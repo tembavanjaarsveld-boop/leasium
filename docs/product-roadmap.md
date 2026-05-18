@@ -22,14 +22,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Asynchronous lease intake extraction with upload returning immediately and review polling for completion.
 - [x] Tenant onboarding cancellation so stale public links can be retired and recreated.
 - [x] Navigation split: dashboard home, property operations page, and tenant register page.
+- [x] Tenant workspace upgrade: onboarding command center, status filters, prioritized queue, and tenant profile route.
+- [x] Managed onboarding backend workflow: expiry, resend, cancel reason, review, apply, and audit-friendly timestamps.
 
 ## Next Build Order
 
-- [ ] Turn tenant onboarding into a managed workflow: due date, resend, cancel, email delivery, expiry, review before applying submitted changes, and document uploads.
-- [ ] Expand the tenant register with lease/onboarding aggregates, documents, and activity history.
+- [ ] Finish tenant onboarding delivery: real email sending, branded templates, resend logs, expiry messaging, and tenant-facing upload fields.
+- [ ] Deepen tenant detail: property/lease context labels, document uploads, richer activity history, and cleaner submitted-change review UI.
 - [ ] Expand billing from readiness into invoice generation: rent periods, line items, invoice drafts, approval, PDF/email delivery, and payment status.
 - [ ] Add Xero connection status, chart of accounts/tax mapping, contact sync, invoice sync, and payment reconciliation.
 - [ ] Add document storage for leases, insurance certificates, guarantees, onboarding attachments, and generated invoices.
+- [ ] Replace temporary tunnels with a stable demo environment and production deployment path.
 
 ## Re-Leased Benchmark
 

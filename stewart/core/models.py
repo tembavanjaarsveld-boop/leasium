@@ -138,6 +138,8 @@ class TenantOnboardingStatus(enum.StrEnum):
     draft = "draft"
     sent = "sent"
     submitted = "submitted"
+    reviewed = "reviewed"
+    applied = "applied"
     cancelled = "cancelled"
 
 
@@ -557,10 +559,23 @@ class TenantOnboarding(Base):
         default=TenantOnboardingStatus.draft,
     )
     due_date: Mapped[date | None] = mapped_column(Date)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_reason: Mapped[str | None] = mapped_column(Text)
     submitted_data: Mapped[dict[str, Any]] = mapped_column(
         JsonbCompat, nullable=False, default=dict
     )
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_data: Mapped[dict[str, Any]] = mapped_column(JsonbCompat, nullable=False, default=dict)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )

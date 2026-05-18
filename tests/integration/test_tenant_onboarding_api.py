@@ -1,5 +1,6 @@
 """Tenant onboarding link API tests."""
 
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -58,16 +59,29 @@ def test_tenant_onboarding_link_public_submit_updates_tenant(
     session: Session,
 ) -> None:
     lease_id = _lease_id(client, session)
-    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    expires_at = datetime.now(UTC) + timedelta(days=14)
+    create_response = client.post(
+        "/api/v1/tenant-onboarding",
+        json={
+            "lease_id": lease_id,
+            "due_date": "2026-08-15",
+            "expires_at": expires_at.isoformat(),
+        },
+    )
     assert create_response.status_code == 201
     body = create_response.json()
     assert body["status"] == "sent"
+    assert body["due_date"] == "2026-08-15"
+    assert body["expires_at"] is not None
+    assert body["last_sent_at"] is not None
+    assert body["resent_at"] is None
     assert "/onboarding/" in body["onboarding_url"]
 
     token = body["token"]
     public_response = client.get(f"/api/v1/tenant-onboarding/public/{token}")
     assert public_response.status_code == 200
     assert public_response.json()["tenant_legal_name"] == "Onboarding Tenant Pty Ltd"
+    assert public_response.json()["due_date"] == "2026-08-15"
 
     submit_response = client.post(
         f"/api/v1/tenant-onboarding/public/{token}/submit",
@@ -98,6 +112,55 @@ def test_tenant_onboarding_link_public_submit_updates_tenant(
     assert tenant.tenant_metadata["insurance_confirmed"] is True
 
 
+def test_tenant_onboarding_resend_review_and_apply_workflow(
+    client: TestClient,
+    session: Session,
+) -> None:
+    lease_id = _lease_id(client, session)
+    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    assert create_response.status_code == 201
+    onboarding_id = create_response.json()["id"]
+    token = create_response.json()["token"]
+
+    resend_response = client.post(f"/api/v1/tenant-onboarding/{onboarding_id}/resend")
+    assert resend_response.status_code == 200
+    assert resend_response.json()["status"] == "sent"
+    assert resend_response.json()["resent_at"] is not None
+    assert resend_response.json()["last_sent_at"] == resend_response.json()["resent_at"]
+
+    submit_response = client.post(
+        f"/api/v1/tenant-onboarding/public/{token}/submit",
+        json={
+            "legal_name": "Workflow Tenant Pty Ltd",
+            "contact_name": "Alex Workflow",
+            "contact_email": "alex@exampletenant.com.au",
+            "accepted": True,
+        },
+    )
+    assert submit_response.status_code == 200
+    assert submit_response.json()["status"] == "submitted"
+
+    review_response = client.post(
+        f"/api/v1/tenant-onboarding/{onboarding_id}/review",
+        json={"approved": True, "notes": "Looks complete."},
+    )
+    assert review_response.status_code == 200
+    assert review_response.json()["status"] == "reviewed"
+    assert review_response.json()["review_data"]["notes"] == "Looks complete."
+    assert review_response.json()["reviewed_at"] is not None
+
+    apply_response = client.post(f"/api/v1/tenant-onboarding/{onboarding_id}/apply")
+    assert apply_response.status_code == 200
+    assert apply_response.json()["status"] == "applied"
+    assert apply_response.json()["applied_at"] is not None
+
+    onboarding = session.get(TenantOnboarding, UUID(onboarding_id))
+    assert onboarding is not None
+    tenant = session.get(Tenant, onboarding.tenant_id)
+    assert tenant is not None
+    assert tenant.legal_name == "Workflow Tenant Pty Ltd"
+
+
 def test_tenant_onboarding_cancel_blocks_public_link_and_allows_recreate(
     client: TestClient,
     session: Session,
@@ -108,9 +171,13 @@ def test_tenant_onboarding_cancel_blocks_public_link_and_allows_recreate(
     onboarding_id = create_response.json()["id"]
     token = create_response.json()["token"]
 
-    cancel_response = client.post(f"/api/v1/tenant-onboarding/{onboarding_id}/cancel")
+    cancel_response = client.post(
+        f"/api/v1/tenant-onboarding/{onboarding_id}/cancel",
+        json={"reason": "Tenant requested a fresh link."},
+    )
     assert cancel_response.status_code == 200
     assert cancel_response.json()["status"] == "cancelled"
+    assert cancel_response.json()["cancel_reason"] == "Tenant requested a fresh link."
 
     public_response = client.get(f"/api/v1/tenant-onboarding/public/{token}")
     assert public_response.status_code == 404
@@ -119,3 +186,31 @@ def test_tenant_onboarding_cancel_blocks_public_link_and_allows_recreate(
     assert recreate_response.status_code == 201
     assert recreate_response.json()["status"] == "sent"
     assert recreate_response.json()["id"] != onboarding_id
+
+
+def test_tenant_onboarding_expired_link_blocks_public_access(
+    client: TestClient,
+    session: Session,
+) -> None:
+    lease_id = _lease_id(client, session)
+    expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    create_response = client.post(
+        "/api/v1/tenant-onboarding",
+        json={"lease_id": lease_id, "expires_at": expires_at.isoformat()},
+    )
+    assert create_response.status_code == 201
+
+    token = create_response.json()["token"]
+    public_response = client.get(f"/api/v1/tenant-onboarding/public/{token}")
+    assert public_response.status_code == 404
+
+    submit_response = client.post(
+        f"/api/v1/tenant-onboarding/public/{token}/submit",
+        json={
+            "legal_name": "Expired Tenant Pty Ltd",
+            "contact_name": "Pat Expired",
+            "contact_email": "pat@exampletenant.com.au",
+            "accepted": True,
+        },
+    )
+    assert submit_response.status_code == 404

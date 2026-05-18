@@ -1,6 +1,7 @@
 """Tenant onboarding link routes."""
 
 import secrets
+from datetime import UTC
 from typing import Annotated
 from uuid import UUID
 
@@ -23,9 +24,11 @@ from stewart.core.settings import get_settings
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.tenant_onboarding import (
+    TenantOnboardingCancel,
     TenantOnboardingCreate,
     TenantOnboardingPublicRead,
     TenantOnboardingRead,
+    TenantOnboardingReview,
     TenantOnboardingSubmit,
 )
 
@@ -43,6 +46,32 @@ def _read(row: TenantOnboarding) -> TenantOnboardingRead:
     response = TenantOnboardingRead.model_validate(row)
     response.onboarding_url = _onboarding_url(row.token)
     return response
+
+
+def _is_expired(row: TenantOnboarding) -> bool:
+    if row.expires_at is None:
+        return False
+    expires_at = row.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return expires_at <= utcnow()
+
+
+def _apply_submission(onboarding: TenantOnboarding, tenant: Tenant) -> None:
+    data = onboarding.submitted_data
+    tenant.legal_name = data["legal_name"]
+    tenant.trading_name = data.get("trading_name")
+    tenant.abn = data.get("abn")
+    tenant.contact_name = data["contact_name"]
+    tenant.contact_email = data["contact_email"]
+    tenant.contact_phone = data.get("contact_phone")
+    tenant.billing_email = data.get("billing_email") or data["contact_email"]
+    tenant.tenant_metadata = {
+        **tenant.tenant_metadata,
+        "tenant_onboarding_id": str(onboarding.id),
+        "insurance_confirmed": data.get("insurance_confirmed", False),
+        "insurance_expiry_date": data.get("insurance_expiry_date"),
+    }
 
 
 def _lease_scope(
@@ -134,7 +163,10 @@ def create_tenant_onboarding(
         token=_new_token(session),
         status=TenantOnboardingStatus.sent,
         due_date=payload.due_date,
+        expires_at=payload.expires_at,
+        last_sent_at=utcnow(),
         submitted_data={},
+        review_data={},
     )
     session.add(onboarding)
     session.flush()
@@ -157,20 +189,139 @@ def cancel_tenant_onboarding(
     onboarding_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
+    payload: TenantOnboardingCancel | None = None,
 ) -> TenantOnboardingRead:
     onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)
-    if onboarding.status == TenantOnboardingStatus.submitted:
+    if onboarding.status in {
+        TenantOnboardingStatus.submitted,
+        TenantOnboardingStatus.reviewed,
+        TenantOnboardingStatus.applied,
+    }:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Submitted onboarding cannot be cancelled.",
         )
     onboarding.status = TenantOnboardingStatus.cancelled
+    if payload is not None:
+        onboarding.cancel_reason = payload.reason
     audit_log(
         session,
         actor=user.actor,
         user_id=user.id,
         entity_id=onboarding.entity_id,
         action="cancel",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+    )
+    session.commit()
+    session.refresh(onboarding)
+    return _read(onboarding)
+
+
+@router.post("/{onboarding_id}/resend", response_model=TenantOnboardingRead)
+def resend_tenant_onboarding(
+    onboarding_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantOnboardingRead:
+    onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)
+    if onboarding.status in {
+        TenantOnboardingStatus.cancelled,
+        TenantOnboardingStatus.submitted,
+        TenantOnboardingStatus.reviewed,
+        TenantOnboardingStatus.applied,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only sent onboarding links can be resent.",
+        )
+    if _is_expired(onboarding):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Expired onboarding links cannot be resent.",
+        )
+
+    now = utcnow()
+    onboarding.status = TenantOnboardingStatus.sent
+    onboarding.last_sent_at = now
+    onboarding.resent_at = now
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=onboarding.entity_id,
+        action="resend",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+    )
+    session.commit()
+    session.refresh(onboarding)
+    return _read(onboarding)
+
+
+@router.post("/{onboarding_id}/review", response_model=TenantOnboardingRead)
+def review_tenant_onboarding(
+    onboarding_id: UUID,
+    payload: TenantOnboardingReview,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantOnboardingRead:
+    onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)
+    if onboarding.status not in {TenantOnboardingStatus.submitted, TenantOnboardingStatus.reviewed}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only submitted onboarding can be reviewed.",
+        )
+
+    onboarding.review_data = payload.model_dump(mode="json")
+    onboarding.reviewed_at = utcnow()
+    onboarding.reviewed_by_user_id = user.id
+    if payload.approved:
+        onboarding.status = TenantOnboardingStatus.reviewed
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=onboarding.entity_id,
+        action="review",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+    )
+    session.commit()
+    session.refresh(onboarding)
+    return _read(onboarding)
+
+
+@router.post("/{onboarding_id}/apply", response_model=TenantOnboardingRead)
+def apply_tenant_onboarding(
+    onboarding_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantOnboardingRead:
+    onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)
+    if onboarding.status not in {
+        TenantOnboardingStatus.submitted,
+        TenantOnboardingStatus.reviewed,
+        TenantOnboardingStatus.applied,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only submitted onboarding can be applied.",
+        )
+    tenant = session.get(Tenant, onboarding.tenant_id)
+    if tenant is None or tenant.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")
+
+    _apply_submission(onboarding, tenant)
+    onboarding.status = TenantOnboardingStatus.applied
+    onboarding.applied_at = utcnow()
+    onboarding.applied_by_user_id = user.id
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=onboarding.entity_id,
+        action="apply",
         target_table="tenant_onboarding",
         target_id=onboarding.id,
     )
@@ -190,7 +341,11 @@ def get_public_tenant_onboarding(
             TenantOnboarding.deleted_at.is_(None),
         )
     )
-    if onboarding is None or onboarding.status == TenantOnboardingStatus.cancelled:
+    if (
+        onboarding is None
+        or onboarding.status == TenantOnboardingStatus.cancelled
+        or _is_expired(onboarding)
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onboarding not found.")
     tenant = session.get(Tenant, onboarding.tenant_id)
     lease = session.get(Lease, onboarding.lease_id)
@@ -207,6 +362,8 @@ def get_public_tenant_onboarding(
         billing_email=tenant.billing_email,
         lease_commencement_date=lease.commencement_date,
         lease_expiry_date=lease.expiry_date,
+        due_date=onboarding.due_date,
+        expires_at=onboarding.expires_at,
         submitted_at=onboarding.submitted_at,
     )
 
@@ -223,7 +380,11 @@ def submit_public_tenant_onboarding(
             TenantOnboarding.deleted_at.is_(None),
         )
     )
-    if onboarding is None or onboarding.status == TenantOnboardingStatus.cancelled:
+    if (
+        onboarding is None
+        or onboarding.status == TenantOnboardingStatus.cancelled
+        or _is_expired(onboarding)
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onboarding not found.")
     if not payload.accepted:
         raise HTTPException(
@@ -235,26 +396,10 @@ def submit_public_tenant_onboarding(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")
 
     data = payload.model_dump(mode="json")
-    tenant.legal_name = payload.legal_name
-    tenant.trading_name = payload.trading_name
-    tenant.abn = payload.abn
-    tenant.contact_name = payload.contact_name
-    tenant.contact_email = payload.contact_email
-    tenant.contact_phone = payload.contact_phone
-    tenant.billing_email = payload.billing_email or payload.contact_email
-    tenant.tenant_metadata = {
-        **tenant.tenant_metadata,
-        "tenant_onboarding_id": str(onboarding.id),
-        "insurance_confirmed": payload.insurance_confirmed,
-        "insurance_expiry_date": (
-            payload.insurance_expiry_date.isoformat()
-            if payload.insurance_expiry_date
-            else None
-        ),
-    }
     onboarding.status = TenantOnboardingStatus.submitted
     onboarding.submitted_data = data
     onboarding.submitted_at = utcnow()
+    _apply_submission(onboarding, tenant)
     audit_log(
         session,
         actor=f"tenant-onboarding:{token[:8]}",

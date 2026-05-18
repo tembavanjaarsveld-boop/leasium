@@ -98,9 +98,21 @@ export type TenantOnboardingRecord = {
   token: string;
   status: string;
   due_date: string | null;
+  expires_at: string | null;
+  last_sent_at: string | null;
+  resent_at: string | null;
+  cancel_reason: string | null;
   onboarding_url: string;
+  submitted_data: Record<string, unknown>;
   submitted_at: string | null;
+  review_data: Record<string, unknown>;
+  reviewed_at: string | null;
+  reviewed_by_user_id: string | null;
+  applied_at: string | null;
+  applied_by_user_id: string | null;
   created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 };
 
 export type TenantOnboardingPublicRecord = {
@@ -114,6 +126,8 @@ export type TenantOnboardingPublicRecord = {
   billing_email: string | null;
   lease_commencement_date: string | null;
   lease_expiry_date: string | null;
+  due_date: string | null;
+  expires_at: string | null;
   submitted_at: string | null;
 };
 
@@ -372,6 +386,10 @@ export function listTenants(entityId: string) {
   return request<TenantRecord[]>(`/tenants?${params.toString()}`);
 }
 
+export function getTenant(tenantId: string) {
+  return request<TenantRecord>(`/tenants/${tenantId}`);
+}
+
 export function createTenant(payload: TenantPayload) {
   return request<TenantRecord>("/tenants", {
     method: "POST",
@@ -405,6 +423,11 @@ export function listLeasesByUnit(unitId: string) {
   return request<LeaseRecord[]>(`/leases?${params.toString()}`);
 }
 
+export function listLeasesByTenant(tenantId: string) {
+  const params = new URLSearchParams({ tenant_id: tenantId });
+  return request<LeaseRecord[]>(`/leases?${params.toString()}`);
+}
+
 export function createLease(payload: LeasePayload) {
   return request<LeaseRecord>("/leases", {
     method: "POST",
@@ -435,6 +458,7 @@ export function listTenantOnboardings(entityId: string) {
 export function createTenantOnboarding(payload: {
   lease_id: string;
   due_date?: string | null;
+  expires_at?: string | null;
 }) {
   return request<TenantOnboardingRecord>("/tenant-onboarding", {
     method: "POST",
@@ -445,6 +469,38 @@ export function createTenantOnboarding(payload: {
 export function cancelTenantOnboarding(onboardingId: string) {
   return request<TenantOnboardingRecord>(
     `/tenant-onboarding/${onboardingId}/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason: null }),
+    },
+  );
+}
+
+export function resendTenantOnboarding(onboardingId: string) {
+  return request<TenantOnboardingRecord>(
+    `/tenant-onboarding/${onboardingId}/resend`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function reviewTenantOnboarding(
+  onboardingId: string,
+  payload: { approved: boolean; notes?: string | null },
+) {
+  return request<TenantOnboardingRecord>(
+    `/tenant-onboarding/${onboardingId}/review`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function applyTenantOnboarding(onboardingId: string) {
+  return request<TenantOnboardingRecord>(
+    `/tenant-onboarding/${onboardingId}/apply`,
     {
       method: "POST",
     },

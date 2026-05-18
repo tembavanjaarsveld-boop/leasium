@@ -25,7 +25,9 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
 
 ## Current Remba Review
 
-Status: pass with fixes.
+Status: pass with fixes. Remba approved the tenant onboarding command center and
+tenant detail direction on 2026-05-19, provided tenant workflow stays in the
+tenant workspace rather than being added to the crowded property workspace.
 
 Required fixes before major new feature work:
 
@@ -34,6 +36,12 @@ Required fixes before major new feature work:
 - Make dashboard cards and rows actionable, with clear drill-ins to the relevant workspace.
 - Add tenant profile/detail surfaces beyond the tenant table and side form.
 - Rework public onboarding into calmer guided sections with better context and next-step reassurance.
+
+Completed in the tenant workspace slice:
+
+- `/tenants` now acts as a tenant onboarding command center with counts, search, status filters, and an action queue.
+- `/tenants/[tenantId]` now owns the tenant profile, linked leases, onboarding actions, document placeholder, and activity history.
+- The always-visible tenant create/edit form has been replaced with focused create/edit panels.
 
 Standing additions from Remba:
 
