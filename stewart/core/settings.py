@@ -3,7 +3,7 @@
 from functools import lru_cache
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,6 +50,19 @@ class Settings(BaseSettings):
     xero_client_secret: str = ""
     postmark_server_token: str = ""
     slack_webhook_url: str = ""
+
+    @field_validator("database_url", "test_database_url", mode="before")
+    @classmethod
+    def normalise_postgres_driver(cls, value: str | None) -> str | None:
+        """Render-style Postgres URLs should use the installed psycopg driver."""
+
+        if value is None:
+            return value
+        if value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql+psycopg://", 1)
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+        return value
 
     def allowed_cors_origins(self) -> list[str]:
         """Return explicit browser origins allowed to call the API."""
