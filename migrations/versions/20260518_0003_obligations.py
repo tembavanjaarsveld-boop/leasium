@@ -28,6 +28,7 @@ obligation_category = postgresql.ENUM(
     "maintenance",
     "other",
     name="obligation_category",
+    create_type=False,
 )
 obligation_status = postgresql.ENUM(
     "upcoming",
@@ -37,6 +38,7 @@ obligation_status = postgresql.ENUM(
     "waived",
     "disputed",
     name="obligation_status",
+    create_type=False,
 )
 user_role = postgresql.ENUM(
     "owner",

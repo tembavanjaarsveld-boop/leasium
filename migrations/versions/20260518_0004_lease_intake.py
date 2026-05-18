@@ -25,6 +25,7 @@ lease_intake_status = postgresql.ENUM(
     "applied",
     "apply_failed",
     name="lease_intake_status",
+    create_type=False,
 )
 
 

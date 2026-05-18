@@ -39,6 +39,7 @@ def main() -> None:
                 timezone="Australia/Brisbane",
             )
             session.add(org)
+            session.flush()
 
         user = session.get(AppUser, settings.dev_user_id)
         if user is None:

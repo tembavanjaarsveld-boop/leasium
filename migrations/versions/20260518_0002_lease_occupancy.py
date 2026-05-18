@@ -24,6 +24,7 @@ lease_status = postgresql.ENUM(
     "expired",
     "terminated",
     name="lease_status",
+    create_type=False,
 )
 rent_frequency = postgresql.ENUM(
     "weekly",
@@ -31,6 +32,7 @@ rent_frequency = postgresql.ENUM(
     "quarterly",
     "annual",
     name="rent_frequency",
+    create_type=False,
 )
 
 

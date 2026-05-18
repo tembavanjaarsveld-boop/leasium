@@ -17,7 +17,9 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-user_role = postgresql.ENUM("owner", "admin", "finance", "ops", "viewer", "agent", name="user_role")
+user_role = postgresql.ENUM(
+    "owner", "admin", "finance", "ops", "viewer", "agent", name="user_role", create_type=False
+)
 property_type = postgresql.ENUM(
     "commercial_office",
     "commercial_retail",
@@ -28,8 +30,11 @@ property_type = postgresql.ENUM(
     "hospitality",
     "other",
     name="property_type",
+    create_type=False,
 )
-audit_outcome = postgresql.ENUM("success", "error", "blocked", "rejected", name="audit_outcome")
+audit_outcome = postgresql.ENUM(
+    "success", "error", "blocked", "rejected", name="audit_outcome", create_type=False
+)
 
 
 def upgrade() -> None:

@@ -26,6 +26,7 @@ rent_charge_type = postgresql.ENUM(
     "storage",
     "other",
     name="rent_charge_type",
+    create_type=False,
 )
 gst_treatment = postgresql.ENUM(
     "taxable",
@@ -33,6 +34,7 @@ gst_treatment = postgresql.ENUM(
     "input_taxed",
     "out_of_scope",
     name="gst_treatment",
+    create_type=False,
 )
 rent_frequency = postgresql.ENUM(
     "weekly",

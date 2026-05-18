@@ -23,6 +23,7 @@ tenant_onboarding_status = postgresql.ENUM(
     "submitted",
     "cancelled",
     name="tenant_onboarding_status",
+    create_type=False,
 )
 
 
