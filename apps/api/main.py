@@ -1,0 +1,49 @@
+"""FastAPI application entrypoint for Leasium."""
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from stewart.core.settings import get_settings
+
+from apps.api.routers import (
+    charge_rules,
+    entities,
+    lease_intakes,
+    leases,
+    obligations,
+    organisations,
+    properties,
+    tenancy_units,
+    tenant_onboarding,
+    tenants,
+)
+
+settings = get_settings()
+
+app = FastAPI(title=settings.app_name, version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.frontend_url, "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Healthcheck for local Docker and uptime checks."""
+
+    return {"status": "ok", "app": settings.app_name}
+
+
+app.include_router(organisations.router, prefix="/api/v1")
+app.include_router(entities.router, prefix="/api/v1")
+app.include_router(properties.router, prefix="/api/v1")
+app.include_router(tenancy_units.router, prefix="/api/v1")
+app.include_router(tenants.router, prefix="/api/v1")
+app.include_router(leases.router, prefix="/api/v1")
+app.include_router(obligations.router, prefix="/api/v1")
+app.include_router(lease_intakes.router, prefix="/api/v1")
+app.include_router(tenant_onboarding.router, prefix="/api/v1")
+app.include_router(charge_rules.router, prefix="/api/v1")

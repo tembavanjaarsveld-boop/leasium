@@ -1,0 +1,57 @@
+"""Application settings loaded from environment variables."""
+
+from functools import lru_cache
+from uuid import UUID
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Runtime configuration for local, staging, and production environments."""
+
+    model_config = SettingsConfigDict(
+        env_file=(".env", ".env.local"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    app_name: str = "Leasium"
+    app_env: str = "local"
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+    frontend_url: str = "http://localhost:3000"
+
+    database_url: str = "postgresql+psycopg://stewart:stewart@localhost:5432/stewart"
+    test_database_url: str | None = None
+    redis_url: str = "redis://localhost:6379/0"
+
+    s3_endpoint_url: str = "http://localhost:9000"
+    s3_access_key_id: str = "stewart"
+    s3_secret_access_key: str = "stewart-password"
+    s3_bucket: str = "stewart-local"
+    s3_region: str = "auto"
+
+    auth_mode: str = Field(default="dev", pattern="^(dev|clerk)$")
+    dev_user_id: UUID = UUID("00000000-0000-7000-8000-000000000001")
+    dev_user_email: str = "temba@example.com"
+    dev_user_name: str = "Temba van Jaarsveld"
+    dev_organisation_id: UUID = UUID("00000000-0000-7000-8000-000000000100")
+    clerk_secret_key: str = ""
+    clerk_jwks_url: str = ""
+
+    anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5.4-mini"
+    lease_intake_max_bytes: int = 15_000_000
+    xero_client_id: str = ""
+    xero_client_secret: str = ""
+    postmark_server_token: str = ""
+    slack_webhook_url: str = ""
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Return cached process settings."""
+
+    return Settings()
