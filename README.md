@@ -5,6 +5,7 @@ Leasium is an AI-native lease operations platform for multi-entity Australian pr
 The living product roadmap is tracked in [docs/product-roadmap.md](docs/product-roadmap.md).
 Design-facing changes require Remba UX sign-off, tracked in
 [docs/design-governance.md](docs/design-governance.md).
+Deployment notes are tracked in [docs/deployment.md](docs/deployment.md).
 
 ## Quick Start
 
@@ -20,6 +21,12 @@ make dev
 The API runs on `http://localhost:8000` and the web app runs on `http://localhost:3000`.
 Lease intake extraction reads `OPENAI_API_KEY` from `.env.local` or `.env` and uses
 `OPENAI_MODEL` for the direct Responses API call.
+
+## Deployment
+
+Vercel should deploy the frontend from `apps/web`. Set
+`NEXT_PUBLIC_API_BASE_URL` in Vercel to the hosted API base URL. The FastAPI API
+is deployed separately and must set `FRONTEND_URL` to the Vercel domain.
 
 ## Make Targets
 
