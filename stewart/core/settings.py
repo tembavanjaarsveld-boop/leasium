@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     frontend_url: str = "http://localhost:3000"
+    cors_allowed_origins: str = ""
+    cors_allowed_origin_regex: str | None = None
 
     database_url: str = "postgresql+psycopg://stewart:stewart@localhost:5432/stewart"
     test_database_url: str | None = None
@@ -48,6 +50,17 @@ class Settings(BaseSettings):
     xero_client_secret: str = ""
     postmark_server_token: str = ""
     slack_webhook_url: str = ""
+
+    def allowed_cors_origins(self) -> list[str]:
+        """Return explicit browser origins allowed to call the API."""
+
+        origins = [self.frontend_url, "http://localhost:3000"]
+        origins.extend(
+            origin.strip()
+            for origin in self.cors_allowed_origins.split(",")
+            if origin.strip()
+        )
+        return list(dict.fromkeys(origins))
 
 
 @lru_cache

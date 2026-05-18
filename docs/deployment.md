@@ -27,6 +27,8 @@ Set the API host environment from `.env.example`, with production values for:
 - `DATABASE_URL`
 - `REDIS_URL`
 - `FRONTEND_URL`
+- `CORS_ALLOWED_ORIGINS`
+- `CORS_ALLOWED_ORIGIN_REGEX`
 - `OPENAI_API_KEY`
 - `S3_ENDPOINT_URL`
 - `S3_ACCESS_KEY_ID`
@@ -35,3 +37,5 @@ Set the API host environment from `.env.example`, with production values for:
 - `S3_REGION`
 
 `FRONTEND_URL` must match the Vercel domain so browser requests pass CORS.
+Use `CORS_ALLOWED_ORIGINS` for extra explicit domains, separated by commas. Use
+`CORS_ALLOWED_ORIGIN_REGEX` only for controlled preview URL patterns.
