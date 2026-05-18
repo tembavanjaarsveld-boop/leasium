@@ -55,6 +55,9 @@ class TenantOnboardingPublicRead(BaseModel):
     status: TenantOnboardingStatus
     tenant_legal_name: str
     tenant_trading_name: str | None
+    property_name: str
+    property_address: str | None
+    unit_label: str
     contact_name: str | None
     contact_email: str | None
     contact_phone: str | None

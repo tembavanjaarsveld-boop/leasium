@@ -81,6 +81,12 @@ def test_tenant_onboarding_link_public_submit_updates_tenant(
     public_response = client.get(f"/api/v1/tenant-onboarding/public/{token}")
     assert public_response.status_code == 200
     assert public_response.json()["tenant_legal_name"] == "Onboarding Tenant Pty Ltd"
+    assert public_response.json()["property_name"] == "Onboarding Plaza"
+    assert (
+        public_response.json()["property_address"]
+        == "4 Welcome Street, Brisbane City, QLD, 4000"
+    )
+    assert public_response.json()["unit_label"] == "Suite 2"
     assert public_response.json()["due_date"] == "2026-08-15"
 
     submit_response = client.post(

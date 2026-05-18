@@ -120,6 +120,9 @@ export type TenantOnboardingPublicRecord = {
   status: string;
   tenant_legal_name: string;
   tenant_trading_name: string | null;
+  property_name: string;
+  property_address: string | null;
+  unit_label: string;
   contact_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;

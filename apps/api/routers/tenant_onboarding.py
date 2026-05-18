@@ -57,6 +57,17 @@ def _is_expired(row: TenantOnboarding) -> bool:
     return expires_at <= utcnow()
 
 
+def _property_address(prop: Property) -> str | None:
+    parts = [
+        prop.street_address,
+        prop.suburb,
+        prop.state,
+        prop.postcode,
+    ]
+    address = ", ".join(part for part in parts if part)
+    return address or None
+
+
 def _apply_submission(onboarding: TenantOnboarding, tenant: Tenant) -> None:
     data = onboarding.submitted_data
     tenant.legal_name = data["legal_name"]
@@ -347,15 +358,18 @@ def get_public_tenant_onboarding(
         or _is_expired(onboarding)
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onboarding not found.")
-    tenant = session.get(Tenant, onboarding.tenant_id)
-    lease = session.get(Lease, onboarding.lease_id)
-    if tenant is None or lease is None:
+    lease, prop, tenant = _lease_scope(onboarding.lease_id, session)
+    unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+    if unit is None or unit.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onboarding not found.")
     return TenantOnboardingPublicRead(
         token=onboarding.token,
         status=onboarding.status,
         tenant_legal_name=tenant.legal_name,
         tenant_trading_name=tenant.trading_name,
+        property_name=prop.name,
+        property_address=_property_address(prop),
+        unit_label=unit.unit_label,
         contact_name=tenant.contact_name,
         contact_email=tenant.contact_email,
         contact_phone=tenant.contact_phone,

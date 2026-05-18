@@ -42,6 +42,7 @@ Completed in the tenant workspace slice:
 - `/tenants` now acts as a tenant onboarding command center with counts, search, status filters, and an action queue.
 - `/tenants/[tenantId]` now owns the tenant profile, linked leases, onboarding actions, document placeholder, and activity history.
 - The always-visible tenant create/edit form has been replaced with focused create/edit panels.
+- Public tenant onboarding now shows property, unit, lease context, guided sections, notes, proper reset behavior, and next-step reassurance without adding upload UI before storage is ready.
 
 Standing additions from Remba:
 

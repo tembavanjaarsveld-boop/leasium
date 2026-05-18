@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-05-18
+Last updated: 2026-05-19
 
 Leasium is being shaped around a simple operating promise: lease data should turn into work with as little re-keying as possible. Upload the lease, confirm the facts, invite the tenant, set the billing rules, then let the system drive dates, invoices, maintenance, compliance, and reporting.
 
@@ -24,6 +24,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Navigation split: dashboard home, property operations page, and tenant register page.
 - [x] Tenant workspace upgrade: onboarding command center, status filters, prioritized queue, and tenant profile route.
 - [x] Managed onboarding backend workflow: expiry, resend, cancel reason, review, apply, and audit-friendly timestamps.
+- [x] Public tenant onboarding refresh: property/unit context, guided sections, notes field, clearer reset/submit states, and next-step reassurance.
 
 ## Next Build Order
 
