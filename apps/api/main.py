@@ -41,6 +41,7 @@ def health() -> dict[str, str]:
 app.include_router(organisations.router, prefix="/api/v1")
 app.include_router(entities.router, prefix="/api/v1")
 app.include_router(properties.router, prefix="/api/v1")
+app.include_router(properties.alias_router, prefix="/api/v1")
 app.include_router(tenancy_units.router, prefix="/api/v1")
 app.include_router(tenants.router, prefix="/api/v1")
 app.include_router(leases.router, prefix="/api/v1")

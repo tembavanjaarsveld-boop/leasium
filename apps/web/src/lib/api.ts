@@ -336,11 +336,11 @@ export function listEntities() {
 }
 
 export function listProperties(entityId: string) {
-  return request<PropertyRecord[]>(`/properties?entity_id=${entityId}`);
+  return request<PropertyRecord[]>(`/premises?entity_id=${entityId}`);
 }
 
 export function createProperty(payload: PropertyPayload) {
-  return request<PropertyRecord>("/properties", {
+  return request<PropertyRecord>("/premises", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -350,7 +350,7 @@ export function updateProperty(
   propertyId: string,
   payload: Partial<PropertyPayload>,
 ) {
-  return request<PropertyRecord>(`/properties/${propertyId}`, {
+  return request<PropertyRecord>(`/premises/${propertyId}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });

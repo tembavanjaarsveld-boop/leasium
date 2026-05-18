@@ -14,6 +14,7 @@ from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get
 from apps.api.schemas.register import PropertyCreate, PropertyRead, PropertyUpdate
 
 router = APIRouter(prefix="/properties", tags=["properties"])
+alias_router = APIRouter(prefix="/premises", tags=["properties"])
 
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
@@ -126,3 +127,36 @@ def delete_property(
         target_id=prop.id,
     )
     session.commit()
+
+
+alias_router.add_api_route(
+    "",
+    list_properties,
+    methods=["GET"],
+    response_model=list[PropertyRead],
+)
+alias_router.add_api_route(
+    "",
+    create_property,
+    methods=["POST"],
+    response_model=PropertyRead,
+    status_code=status.HTTP_201_CREATED,
+)
+alias_router.add_api_route(
+    "/{property_id}",
+    get_property,
+    methods=["GET"],
+    response_model=PropertyRead,
+)
+alias_router.add_api_route(
+    "/{property_id}",
+    update_property,
+    methods=["PATCH"],
+    response_model=PropertyRead,
+)
+alias_router.add_api_route(
+    "/{property_id}",
+    delete_property,
+    methods=["DELETE"],
+    status_code=status.HTTP_204_NO_CONTENT,
+)
