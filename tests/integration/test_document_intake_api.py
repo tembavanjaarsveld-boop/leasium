@@ -371,6 +371,8 @@ def _fake_purchase_contract_with_tenancy_schedule() -> dict[str, Any]:
             "annual_rent": 240000,
             "rent_frequency": "monthly",
             "outgoings": "Recoverable",
+            "outgoings_amount": 5500,
+            "outgoings_frequency": "monthly",
             "option_summary": "One 3 year option",
             "option_notice_date": "2029-01-31",
             "security_summary": "Bank guarantee equal to 3 months rent",
@@ -390,6 +392,8 @@ def _fake_purchase_contract_with_tenancy_schedule() -> dict[str, Any]:
             "annual_rent": 180000,
             "rent_frequency": "monthly",
             "outgoings": "Recoverable subject to annual budget",
+            "outgoings_amount": 4200,
+            "outgoings_frequency": "monthly",
             "option_summary": None,
             "option_notice_date": None,
             "security_summary": "Bond noted, amount to confirm",
@@ -1111,7 +1115,7 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
     assert applied["created_tenant_count"] == 2
     assert applied["created_lease_count"] == 2
     assert applied["tenant_lease_records_created"] == 4
-    assert applied["created_charge_rule_count"] == 2
+    assert applied["created_charge_rule_count"] == 4
     assert applied["lease_obligation_count"] == 6
     assert applied["obligation_count"] == 7
     assert applied["skipped_tenancy_schedule_rows"] == []
@@ -1165,17 +1169,31 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
     assert first_lease.rent_frequency == "monthly"
     assert first_lease.lease_metadata["document_type"] == "purchase_contract"
 
-    first_charge_rule = session.get(RentChargeRule, UUID(applied["charge_rule_ids"][0]))
-    assert first_charge_rule is not None
-    assert first_charge_rule.lease_id == first_lease.id
-    assert first_charge_rule.charge_type == "base_rent"
-    assert first_charge_rule.amount_cents == 2000000
-    assert first_charge_rule.frequency == "monthly"
-    assert first_charge_rule.next_due_date is not None
-    assert first_charge_rule.next_due_date.isoformat() == "2026-07-01"
-    assert first_charge_rule.charge_rule_metadata["draft"] is True
-    assert first_charge_rule.charge_rule_metadata["annual_rent_cents"] == 24000000
-    assert first_charge_rule.charge_rule_metadata["document_intake_id"] == intake_id
+    charge_rules = list(
+        session.scalars(
+            select(RentChargeRule).where(
+                RentChargeRule.id.in_([UUID(item) for item in applied["charge_rule_ids"]])
+            )
+        )
+    )
+    assert len(charge_rules) == 4
+    first_charge_rules = [rule for rule in charge_rules if rule.lease_id == first_lease.id]
+    assert {rule.charge_type for rule in first_charge_rules} == {"base_rent", "outgoings"}
+    first_base_rule = next(rule for rule in first_charge_rules if rule.charge_type == "base_rent")
+    assert first_base_rule.amount_cents == 2000000
+    assert first_base_rule.frequency == "monthly"
+    assert first_base_rule.next_due_date is not None
+    assert first_base_rule.next_due_date.isoformat() == "2026-07-01"
+    assert first_base_rule.charge_rule_metadata["draft"] is True
+    assert first_base_rule.charge_rule_metadata["annual_rent_cents"] == 24000000
+    assert first_base_rule.charge_rule_metadata["document_intake_id"] == intake_id
+    first_outgoings_rule = next(
+        rule for rule in first_charge_rules if rule.charge_type == "outgoings"
+    )
+    assert first_outgoings_rule.amount_cents == 550000
+    assert first_outgoings_rule.frequency == "monthly"
+    assert first_outgoings_rule.charge_rule_metadata["draft"] is True
+    assert first_outgoings_rule.charge_rule_metadata["outgoings"] == "Recoverable"
 
     lease_obligations = list(
         session.scalars(

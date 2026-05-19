@@ -1168,6 +1168,8 @@ def _tenancy_schedule_snapshot(row: dict[str, Any]) -> dict[str, Any]:
         "annual_rent_cents": _money_cents(row.get("annual_rent")),
         "rent_frequency": _str(row.get("rent_frequency")),
         "outgoings": _str(row.get("outgoings")),
+        "outgoings_amount_cents": _money_cents(row.get("outgoings_amount")),
+        "outgoings_frequency": _str(row.get("outgoings_frequency")),
         "option_summary": _str(row.get("option_summary")),
         "option_notice_date": (
             _date(row.get("option_notice_date")).isoformat()
@@ -1449,6 +1451,54 @@ def _create_schedule_base_rent_rule(
     return charge_rule
 
 
+def _create_schedule_outgoings_rule(
+    intake: DocumentIntake,
+    lease: Lease,
+    row: dict[str, Any],
+    session: Session,
+) -> RentChargeRule | None:
+    amount_cents = _money_cents(row.get("outgoings_amount"))
+    frequency = _rent_frequency(row.get("outgoings_frequency") or row.get("rent_frequency"))
+    if amount_cents is None or frequency is None:
+        return None
+
+    existing = session.scalar(
+        select(RentChargeRule).where(
+            RentChargeRule.lease_id == lease.id,
+            RentChargeRule.charge_type == RentChargeType.outgoings,
+            RentChargeRule.deleted_at.is_(None),
+        )
+    )
+    if existing is not None:
+        return existing
+
+    charge_rule = RentChargeRule(
+        lease_id=lease.id,
+        charge_type=RentChargeType.outgoings,
+        amount_cents=amount_cents,
+        frequency=frequency,
+        gst_treatment=GstTreatment.taxable,
+        start_date=lease.commencement_date,
+        end_date=lease.expiry_date,
+        next_due_date=lease.commencement_date,
+        arrears_or_advance="advance",
+        charge_rule_metadata={
+            "source": "document_intake",
+            "draft": True,
+            "draft_status": "needs_review",
+            "document_intake_id": str(intake.id),
+            "document_id": str(intake.document_id),
+            "document_type": "purchase_contract",
+            "source_hint": _str(row.get("source_hint")),
+            "outgoings": _str(row.get("outgoings")),
+            "tenancy_schedule": _tenancy_schedule_snapshot(row),
+        },
+    )
+    session.add(charge_rule)
+    session.flush()
+    return charge_rule
+
+
 def _apply_purchase_schedule_leases(
     intake: DocumentIntake,
     units: list[TenancyUnit],
@@ -1558,8 +1608,15 @@ def _apply_purchase_schedule_leases(
                 f"Created pending lease {lease.id} from purchase contract tenancy schedule."
             ),
         )
-        charge_rule = _create_schedule_base_rent_rule(intake, lease, row, session)
-        if charge_rule is not None:
+        charge_rules = [
+            rule
+            for rule in (
+                _create_schedule_base_rent_rule(intake, lease, row, session),
+                _create_schedule_outgoings_rule(intake, lease, row, session),
+            )
+            if rule is not None
+        ]
+        for charge_rule in charge_rules:
             charge_rule_ids.append(str(charge_rule.id))
             audit_log(
                 session,
@@ -1572,7 +1629,8 @@ def _apply_purchase_schedule_leases(
                 tool_name="smart_intake_apply",
                 tool_input={"document_intake_id": str(intake.id), "lease_id": str(lease.id)},
                 tool_output_summary=(
-                    "Created draft base rent charge rule from acquisition schedule."
+                    f"Created draft {charge_rule.charge_type.value} charge rule "
+                    "from acquisition schedule."
                 ),
             )
         schedule_obligations = _create_schedule_lease_obligations(
