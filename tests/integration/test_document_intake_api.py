@@ -12,6 +12,7 @@ from stewart.core.models import (
     DocumentCategory,
     DocumentIntake,
     Entity,
+    InvoiceDraft,
     Lease,
     LeaseIntake,
     Obligation,
@@ -957,6 +958,11 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert billing_draft.lines[0].amount_cents == 275050
     assert billing_draft.lines[0].source_hint == "Amount due"
 
+    blocked_invoice_response = client.post(
+        f"/api/v1/billing-drafts/{billing_draft.id}/invoice-drafts"
+    )
+    assert blocked_invoice_response.status_code == 409
+
     list_response = client.get(
         "/api/v1/billing-drafts",
         params={"entity_id": entity_id, "document_intake_id": intake_id},
@@ -979,6 +985,49 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert approved_body["metadata"]["approved_by_user_id"]
     assert approved_body["metadata"]["status_history"][0]["status"] == "approved"
 
+    invoice_response = client.post(
+        f"/api/v1/billing-drafts/{billing_draft.id}/invoice-drafts"
+    )
+    assert invoice_response.status_code == 201
+    invoice_body = invoice_response.json()
+    assert invoice_body["billing_draft_id"] == str(billing_draft.id)
+    assert invoice_body["status"] == "draft"
+    assert invoice_body["title"] == billing_draft.title
+    assert invoice_body["total_cents"] == 275050
+    assert invoice_body["subtotal_cents"] == 275050
+    assert invoice_body["gst_cents"] == 0
+    assert invoice_body["due_date"] == "2026-09-30"
+    assert invoice_body["recipient_name"] == "Scope Tenant Pty Ltd"
+    assert invoice_body["metadata"]["delivery_state"] == {
+        "pdf_generated": False,
+        "tenant_email_sent": False,
+        "xero_synced": False,
+    }
+    assert "Tenant billing email missing." in invoice_body["metadata"]["readiness_blockers"]
+    assert invoice_body["lines"][0]["billing_draft_line_id"] == str(billing_draft.lines[0].id)
+    assert invoice_body["lines"][0]["description"] == "Outgoings recovery"
+    assert invoice_body["lines"][0]["amount_cents"] == 275050
+
+    invoice_draft = session.get(InvoiceDraft, UUID(invoice_body["id"]))
+    assert invoice_draft is not None
+    assert invoice_draft.billing_draft_id == billing_draft.id
+    assert invoice_draft.invoice_number is not None
+    assert invoice_draft.notes is not None
+    assert "No PDF generated" in invoice_draft.notes
+
+    duplicate_invoice_response = client.post(
+        f"/api/v1/billing-drafts/{billing_draft.id}/invoice-drafts"
+    )
+    assert duplicate_invoice_response.status_code == 200
+    assert duplicate_invoice_response.json()["id"] == invoice_body["id"]
+
+    invoice_list_response = client.get(
+        "/api/v1/invoice-drafts",
+        params={"entity_id": entity_id, "billing_draft_id": str(billing_draft.id)},
+    )
+    assert invoice_list_response.status_code == 200
+    assert invoice_list_response.json()[0]["id"] == invoice_body["id"]
+
     audit = session.scalar(
         select(AuditAction).where(
             AuditAction.target_table == "billing_draft",
@@ -987,6 +1036,15 @@ def test_document_intake_apply_invoice_prepares_billing_work(
         )
     )
     assert audit is not None
+    invoice_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "invoice_draft",
+            AuditAction.target_id == UUID(invoice_body["id"]),
+            AuditAction.action == "create",
+        )
+    )
+    assert invoice_audit is not None
+    assert "no PDF, tenant email, or Xero sync" in (invoice_audit.tool_output_summary or "")
 
     document = session.get(StoredDocument, UUID(document_id))
     assert document is not None

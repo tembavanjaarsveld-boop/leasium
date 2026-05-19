@@ -4,7 +4,7 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
@@ -13,6 +13,9 @@ from stewart.core.models import (
     BillingDraft,
     BillingDraftStatus,
     Entity,
+    InvoiceDraft,
+    InvoiceDraftLine,
+    InvoiceDraftStatus,
     Lease,
     Property,
     RentChargeRule,
@@ -25,6 +28,8 @@ from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get
 from apps.api.schemas.register import (
     BillingDraftRead,
     BillingDraftUpdate,
+    InvoiceDraftRead,
+    InvoiceDraftUpdate,
     RentChargeRuleCreate,
     RentChargeRuleRead,
     RentChargeRuleUpdate,
@@ -97,6 +102,70 @@ def _billing_draft_for_access(
         )
     assert_entity_role(session, user, draft.entity_id, roles)
     return draft
+
+
+def _invoice_draft_for_access(
+    invoice_draft_id: UUID,
+    user: CurrentUser,
+    session: Session,
+    roles: set[UserRole],
+) -> InvoiceDraft:
+    draft = session.get(InvoiceDraft, invoice_draft_id)
+    if draft is None or draft.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invoice draft not found.",
+        )
+    assert_entity_role(session, user, draft.entity_id, roles)
+    return draft
+
+
+def _invoice_number_for_billing_draft(
+    draft: BillingDraft,
+    prop: Property | None,
+) -> str:
+    prefix = (prop.invoice_reference if prop is not None else None) or "INV-"
+    if not prefix.endswith(("-", "/")):
+        prefix = f"{prefix}-"
+    invoice_date = draft.issue_date or draft.due_date or date.today()
+    return f"{prefix}{invoice_date:%Y%m%d}-{str(draft.id)[:8].upper()}"
+
+
+def _invoice_draft_blockers(
+    draft: BillingDraft,
+    prop: Property | None,
+    tenant: Tenant | None,
+    entity: Entity | None,
+    line_count: int,
+) -> list[str]:
+    blockers: list[str] = []
+    structure = prop.ownership_structure if prop is not None else None
+
+    if prop is None:
+        blockers.append("Property record missing.")
+    elif not (
+        prop.invoice_issuer_name
+        or prop.owner_legal_name
+        or (entity.name if entity is not None else None)
+    ):
+        blockers.append("Invoice issuer missing.")
+    if prop is not None and structure in PROPERTY_OWNER_BILLING_STRUCTURES and not prop.owner_abn:
+        blockers.append("ABN missing for property owner.")
+    if tenant is None:
+        blockers.append("Tenant record missing.")
+    elif not (tenant.billing_email or tenant.contact_email):
+        blockers.append("Tenant billing email missing.")
+    if draft.due_date is None:
+        blockers.append("Due date missing.")
+    if line_count == 0:
+        blockers.append("Invoice draft has no line items.")
+    if draft.total_cents <= 0:
+        blockers.append("Invoice draft amount missing.")
+    if prop is not None and not prop.xero_contact_id:
+        blockers.append("Xero issuer mapping missing before sync.")
+    if entity is not None and not entity.xero_tenant_id:
+        blockers.append("Xero connection missing before sync.")
+    return blockers
 
 
 def _property_billing_blockers(
@@ -220,6 +289,234 @@ def update_billing_draft(
         target_table="billing_draft",
         target_id=draft.id,
         tool_output_summary=f"Updated billing draft status to {draft.status.value}.",
+    )
+    session.commit()
+    session.refresh(draft)
+    return draft
+
+
+@router.post("/billing-drafts/{billing_draft_id}/invoice-drafts", response_model=InvoiceDraftRead)
+def create_invoice_draft_from_billing_draft(
+    billing_draft_id: UUID,
+    response: Response,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> InvoiceDraft:
+    draft = _billing_draft_for_access(billing_draft_id, user, session, WRITE_ROLES)
+    if draft.status != BillingDraftStatus.approved:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Approve the billing draft before creating an invoice draft.",
+        )
+
+    existing = session.scalar(
+        select(InvoiceDraft).where(
+            InvoiceDraft.billing_draft_id == draft.id,
+            InvoiceDraft.deleted_at.is_(None),
+        )
+    )
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return existing
+
+    source_lines = [line for line in draft.lines if line.deleted_at is None]
+    if not source_lines:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Billing draft needs at least one line before invoice drafting.",
+        )
+
+    entity = session.get(Entity, draft.entity_id)
+    prop = session.get(Property, draft.property_id) if draft.property_id else None
+    tenant = session.get(Tenant, draft.tenant_id) if draft.tenant_id else None
+    recipient_email = None
+    if tenant is not None:
+        recipient_email = tenant.billing_email or tenant.contact_email
+    issuer_name = None
+    if prop is not None:
+        issuer_name = prop.invoice_issuer_name or prop.owner_legal_name
+    issuer_name = issuer_name or (entity.name if entity is not None else None)
+    subtotal_cents = sum(line.amount_cents for line in source_lines)
+    blockers = _invoice_draft_blockers(draft, prop, tenant, entity, len(source_lines))
+    created_at = utcnow().isoformat()
+    invoice = InvoiceDraft(
+        entity_id=draft.entity_id,
+        billing_draft_id=draft.id,
+        property_id=draft.property_id,
+        tenancy_unit_id=draft.tenancy_unit_id,
+        tenant_id=draft.tenant_id,
+        lease_id=draft.lease_id,
+        document_id=draft.document_id,
+        document_intake_id=draft.document_intake_id,
+        status=InvoiceDraftStatus.draft,
+        invoice_number=_invoice_number_for_billing_draft(draft, prop),
+        title=draft.title,
+        currency=draft.currency,
+        issue_date=draft.issue_date,
+        due_date=draft.due_date,
+        subtotal_cents=subtotal_cents,
+        gst_cents=0,
+        total_cents=draft.total_cents or subtotal_cents,
+        issuer_name=issuer_name,
+        issuer_abn=prop.owner_abn if prop is not None else None,
+        recipient_name=tenant.legal_name if tenant is not None else None,
+        recipient_email=recipient_email,
+        notes="Internal invoice draft only. No PDF generated, tenant email sent, or Xero sync run.",
+        invoice_metadata={
+            "source": "billing_draft",
+            "billing_draft_id": str(draft.id),
+            "source_document_id": str(draft.document_id),
+            "document_intake_id": str(draft.document_intake_id)
+            if draft.document_intake_id
+            else None,
+            "created_from_billing_draft_at": created_at,
+            "created_by_user_id": str(user.id),
+            "readiness_blockers": blockers,
+            "delivery_state": {
+                "pdf_generated": False,
+                "tenant_email_sent": False,
+                "xero_synced": False,
+            },
+        },
+    )
+    session.add(invoice)
+    session.flush()
+
+    for line in source_lines:
+        session.add(
+            InvoiceDraftLine(
+                invoice_draft_id=invoice.id,
+                billing_draft_line_id=line.id,
+                description=line.description,
+                amount_cents=line.amount_cents,
+                gst_cents=0,
+                currency=line.currency,
+                source_hint=line.source_hint,
+                line_metadata={
+                    **(line.line_metadata or {}),
+                    "source_billing_draft_line_id": str(line.id),
+                },
+            )
+        )
+
+    draft_metadata = dict(draft.billing_metadata or {})
+    draft_metadata["invoice_draft_id"] = str(invoice.id)
+    history = list(draft_metadata.get("invoice_draft_history") or [])
+    history.append(
+        {
+            "invoice_draft_id": str(invoice.id),
+            "created_at": created_at,
+            "user_id": str(user.id),
+        }
+    )
+    draft_metadata["invoice_draft_history"] = history
+    draft.billing_metadata = draft_metadata
+
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=invoice.entity_id,
+        action="create",
+        target_table="invoice_draft",
+        target_id=invoice.id,
+        tool_output_summary=(
+            "Created internal invoice draft from approved billing draft; "
+            "no PDF, tenant email, or Xero sync was run."
+        ),
+    )
+    session.commit()
+    session.refresh(invoice)
+    response.status_code = status.HTTP_201_CREATED
+    return invoice
+
+
+@router.get("/invoice-drafts", response_model=list[InvoiceDraftRead])
+def list_invoice_drafts(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    entity_id: Annotated[UUID, Query()],
+    billing_draft_id: UUID | None = None,
+    draft_status: InvoiceDraftStatus | None = None,
+    include_deleted: bool = False,
+) -> list[InvoiceDraft]:
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    statement = select(InvoiceDraft).where(InvoiceDraft.entity_id == entity_id)
+    if billing_draft_id is not None:
+        billing_draft = _billing_draft_for_access(
+            billing_draft_id,
+            user,
+            session,
+            READ_ROLES,
+        )
+        if billing_draft.entity_id != entity_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Billing draft must belong to the selected entity.",
+            )
+        statement = statement.where(InvoiceDraft.billing_draft_id == billing_draft_id)
+    if draft_status is not None:
+        statement = statement.where(InvoiceDraft.status == draft_status)
+    if not include_deleted:
+        statement = statement.where(InvoiceDraft.deleted_at.is_(None))
+
+    return list(
+        session.scalars(
+            statement.order_by(InvoiceDraft.due_date, InvoiceDraft.created_at.desc())
+        )
+    )
+
+
+@router.get("/invoice-drafts/{invoice_draft_id}", response_model=InvoiceDraftRead)
+def get_invoice_draft(
+    invoice_draft_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> InvoiceDraft:
+    return _invoice_draft_for_access(invoice_draft_id, user, session, READ_ROLES)
+
+
+@router.patch("/invoice-drafts/{invoice_draft_id}", response_model=InvoiceDraftRead)
+def update_invoice_draft(
+    invoice_draft_id: UUID,
+    payload: InvoiceDraftUpdate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> InvoiceDraft:
+    draft = _invoice_draft_for_access(invoice_draft_id, user, session, WRITE_ROLES)
+    data = payload.model_dump(exclude_unset=True)
+    metadata = dict(draft.invoice_metadata or {})
+    if "status" in data and data["status"] is not None:
+        draft.status = data["status"]
+        history = list(metadata.get("status_history") or [])
+        status_entry = {
+            "status": draft.status.value,
+            "changed_at": utcnow().isoformat(),
+            "user_id": str(user.id),
+        }
+        history.append(status_entry)
+        metadata["status_history"] = history
+        if draft.status == InvoiceDraftStatus.approved:
+            metadata["approved_at"] = status_entry["changed_at"]
+            metadata["approved_by_user_id"] = str(user.id)
+        if draft.status == InvoiceDraftStatus.void:
+            metadata["voided_at"] = status_entry["changed_at"]
+            metadata["voided_by_user_id"] = str(user.id)
+    if "notes" in data:
+        draft.notes = data["notes"]
+    draft.invoice_metadata = metadata
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=draft.entity_id,
+        action="update",
+        target_table="invoice_draft",
+        target_id=draft.id,
+        tool_output_summary=(
+            f"Updated invoice draft status to {draft.status.value}; "
+            "no PDF, tenant email, or Xero sync was run."
+        ),
     )
     session.commit()
     session.refresh(draft)

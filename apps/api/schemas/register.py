@@ -8,6 +8,7 @@ from pydantic import AliasChoices, BaseModel, Field
 from stewart.core.models import (
     BillingDraftStatus,
     GstTreatment,
+    InvoiceDraftStatus,
     LeaseStatus,
     ObligationCategory,
     ObligationStatus,
@@ -426,6 +427,62 @@ class BillingDraftRead(ApiModel):
         serialization_alias="metadata",
     )
     lines: list[BillingDraftLineRead]
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None
+
+
+class InvoiceDraftLineRead(ApiModel):
+    id: UUID
+    invoice_draft_id: UUID
+    billing_draft_line_id: UUID | None
+    description: str
+    amount_cents: int
+    gst_cents: int
+    currency: str
+    source_hint: str | None
+    metadata: dict[str, Any] = Field(
+        validation_alias=AliasChoices("line_metadata", "metadata"),
+        serialization_alias="metadata",
+    )
+    created_at: datetime
+    deleted_at: datetime | None
+
+
+class InvoiceDraftUpdate(BaseModel):
+    status: InvoiceDraftStatus | None = None
+    notes: str | None = None
+
+
+class InvoiceDraftRead(ApiModel):
+    id: UUID
+    entity_id: UUID
+    billing_draft_id: UUID
+    property_id: UUID | None
+    tenancy_unit_id: UUID | None
+    tenant_id: UUID | None
+    lease_id: UUID | None
+    document_id: UUID
+    document_intake_id: UUID | None
+    status: InvoiceDraftStatus
+    invoice_number: str | None
+    title: str
+    currency: str
+    issue_date: date | None
+    due_date: date | None
+    subtotal_cents: int
+    gst_cents: int
+    total_cents: int
+    issuer_name: str | None
+    issuer_abn: str | None
+    recipient_name: str | None
+    recipient_email: str | None
+    notes: str | None
+    metadata: dict[str, Any] = Field(
+        validation_alias=AliasChoices("invoice_metadata", "metadata"),
+        serialization_alias="metadata",
+    )
+    lines: list[InvoiceDraftLineRead]
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None

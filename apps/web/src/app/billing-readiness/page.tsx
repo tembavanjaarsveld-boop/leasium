@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   Ban,
   CheckCircle2,
+  FileCheck2,
   FileWarning,
   Loader2,
   ReceiptText,
@@ -27,17 +28,22 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  createInvoiceDraftFromBillingDraft,
   listBillingDrafts,
   listEntities,
+  listInvoiceDrafts,
   listRentRoll,
   updateBillingDraft,
   type BillingDraftRecord,
   type BillingDraftStatus,
+  type InvoiceDraftRecord,
+  type InvoiceDraftStatus,
   type RentRollRow,
 } from "@/lib/api";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_RENT_ROWS: RentRollRow[] = [];
+const EMPTY_INVOICE_DRAFTS: InvoiceDraftRecord[] = [];
 
 type BlockerKind = "invoice" | "xero" | "gst";
 
@@ -129,6 +135,30 @@ function billingDraftSourceContext(draft: BillingDraftRecord) {
     intakeId,
     lineCount: draft.lines.length,
   };
+}
+
+function invoiceDraftStatusLabel(status: InvoiceDraftStatus) {
+  return status.replaceAll("_", " ");
+}
+
+function invoiceDraftStatusTone(status: InvoiceDraftStatus): StatusTone {
+  switch (status) {
+    case "approved":
+      return "success";
+    case "ready_for_approval":
+      return "primary";
+    case "void":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+function invoiceDraftBlockers(draft: InvoiceDraftRecord) {
+  const value = draft.metadata.readiness_blockers;
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function blockerItems(row: RentRollRow): BlockerItem[] {
@@ -352,6 +382,12 @@ function BillingReadinessWorkspace() {
     enabled: Boolean(selectedEntityId),
   });
 
+  const invoiceDraftsQuery = useQuery({
+    queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+    queryFn: () => listInvoiceDrafts({ entity_id: selectedEntityId }),
+    enabled: Boolean(selectedEntityId),
+  });
+
   const updateDraftMutation = useMutation({
     mutationFn: ({
       draftId,
@@ -363,6 +399,18 @@ function BillingReadinessWorkspace() {
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["billing-readiness-drafts", selectedEntityId],
+      });
+    },
+  });
+
+  const createInvoiceDraftMutation = useMutation({
+    mutationFn: (draftId: string) => createInvoiceDraftFromBillingDraft(draftId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-drafts", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
       });
     },
   });
@@ -426,6 +474,14 @@ function BillingReadinessWorkspace() {
       ready: Math.max(rentRows.length - rowsWithBlockers.length, 0),
     };
   }, [rentRows, rowsWithBlockers.length]);
+  const invoiceDrafts = invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS;
+  const invoiceDraftByBillingDraftId = useMemo(() => {
+    const drafts = new Map<string, InvoiceDraftRecord>();
+    for (const draft of invoiceDrafts) {
+      drafts.set(draft.billing_draft_id, draft);
+    }
+    return drafts;
+  }, [invoiceDrafts]);
 
   return (
     <main className="min-h-screen">
@@ -466,11 +522,13 @@ function BillingReadinessWorkspace() {
                 onClick={() => {
                   rentRollQuery.refetch();
                   billingDraftsQuery.refetch();
+                  invoiceDraftsQuery.refetch();
                 }}
                 disabled={
                   !selectedEntityId ||
                   rentRollQuery.isFetching ||
-                  billingDraftsQuery.isFetching
+                  billingDraftsQuery.isFetching ||
+                  invoiceDraftsQuery.isFetching
                 }
               >
                 <RefreshCw size={15} />
@@ -501,11 +559,25 @@ function BillingReadinessWorkspace() {
               : "Could not load billing drafts."}
           </div>
         ) : null}
+        {invoiceDraftsQuery.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {invoiceDraftsQuery.error instanceof Error
+              ? invoiceDraftsQuery.error.message
+              : "Could not load invoice drafts."}
+          </div>
+        ) : null}
         {updateDraftMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {updateDraftMutation.error instanceof Error
               ? updateDraftMutation.error.message
               : "Could not update the billing draft."}
+          </div>
+        ) : null}
+        {createInvoiceDraftMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {createInvoiceDraftMutation.error instanceof Error
+              ? createInvoiceDraftMutation.error.message
+              : "Could not create the invoice draft."}
           </div>
         ) : null}
 
@@ -592,6 +664,12 @@ function BillingReadinessWorkspace() {
                       const canApprove =
                         draft.status !== "approved" && draft.status !== "void";
                       const canVoid = draft.status !== "void";
+                      const invoiceDraft = invoiceDraftByBillingDraftId.get(
+                        draft.id,
+                      );
+                      const isCreatingInvoice =
+                        createInvoiceDraftMutation.isPending &&
+                        createInvoiceDraftMutation.variables === draft.id;
                       return (
                         <tr
                           key={draft.id}
@@ -685,6 +763,35 @@ function BillingReadinessWorkspace() {
                                 )}
                                 Void
                               </SecondaryButton>
+                              {invoiceDraft ? (
+                                <StatusBadge
+                                  tone={invoiceDraftStatusTone(
+                                    invoiceDraft.status,
+                                  )}
+                                >
+                                  Invoice {shortId(invoiceDraft.id)}
+                                </StatusBadge>
+                              ) : draft.status === "approved" ? (
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-9 rounded-lg px-3"
+                                  onClick={() =>
+                                    createInvoiceDraftMutation.mutate(draft.id)
+                                  }
+                                  disabled={isCreatingInvoice}
+                                  title="Creates an internal invoice draft only. No PDF, tenant email, or Xero sync."
+                                >
+                                  {isCreatingInvoice ? (
+                                    <Loader2
+                                      size={14}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <FileCheck2 size={14} />
+                                  )}
+                                  Invoice draft
+                                </SecondaryButton>
+                              ) : null}
                             </div>
                           </td>
                         </tr>
@@ -708,6 +815,122 @@ function BillingReadinessWorkspace() {
                           colSpan={6}
                         >
                           Loading billing drafts...
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </SectionPanel>
+
+            <SectionPanel
+              title="Invoice draft staging"
+              description="Approved billing drafts become internal invoice drafts here. No PDF, tenant email, or Xero sync is run from this step."
+              icon={<FileCheck2 size={17} className="text-primary" />}
+              actions={
+                <StatusBadge tone={invoiceDrafts.length ? "primary" : "neutral"}>
+                  {invoiceDrafts.length} invoice draft
+                  {invoiceDrafts.length === 1 ? "" : "s"}
+                </StatusBadge>
+              }
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Invoice draft</th>
+                      <th className="px-3 py-2 font-semibold">Recipient</th>
+                      <th className="px-3 py-2 font-semibold">Amount</th>
+                      <th className="px-3 py-2 font-semibold">Due</th>
+                      <th className="px-3 py-2 font-semibold">Readiness</th>
+                      <th className="px-3 py-2 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoiceDrafts.map((draft) => {
+                      const blockers = invoiceDraftBlockers(draft);
+                      return (
+                        <tr
+                          key={draft.id}
+                          className="border-t border-border align-top"
+                        >
+                          <td className="min-w-72 px-3 py-3">
+                            <div className="font-medium">
+                              {draft.invoice_number ?? `Invoice ${shortId(draft.id)}`}
+                            </div>
+                            <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                              {draft.title}
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Source billing draft {shortId(draft.billing_draft_id)}
+                            </div>
+                          </td>
+                          <td className="min-w-52 px-3 py-3 text-xs">
+                            <div className="font-medium text-foreground">
+                              {draft.recipient_name ?? "Recipient not confirmed"}
+                            </div>
+                            <div className="mt-1 text-muted-foreground">
+                              {draft.recipient_email ?? "Billing email missing"}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-sm font-medium">
+                            {formatMoney(draft.total_cents)}
+                            {draft.gst_cents ? (
+                              <div className="mt-1 text-xs font-normal text-muted-foreground">
+                                GST {formatMoney(draft.gst_cents)}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-3 text-xs">
+                            {formatDate(draft.due_date)}
+                          </td>
+                          <td className="min-w-64 px-3 py-3 text-xs">
+                            {blockers.length ? (
+                              <div className="grid gap-1 text-muted-foreground">
+                                {blockers.slice(0, 3).map((blocker) => (
+                                  <span key={blocker}>{blocker}</span>
+                                ))}
+                                {blockers.length > 3 ? (
+                                  <span>{blockers.length - 3} more blocker(s)</span>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <span className="text-leasium-success">
+                                Ready for invoice approval
+                              </span>
+                            )}
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <StatusBadge tone="neutral">No PDF</StatusBadge>
+                              <StatusBadge tone="neutral">No email</StatusBadge>
+                              <StatusBadge tone="neutral">No Xero</StatusBadge>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <StatusBadge tone={invoiceDraftStatusTone(draft.status)}>
+                              {invoiceDraftStatusLabel(draft.status)}
+                            </StatusBadge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!invoiceDraftsQuery.isLoading &&
+                    invoiceDrafts.length === 0 ? (
+                      <tr>
+                        <td className="px-3 py-10" colSpan={6}>
+                          <EmptyState
+                            title="No invoice drafts"
+                            description="Approve a billing draft, then create an internal invoice draft from it. Delivery and Xero remain separate approval steps."
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                    {invoiceDraftsQuery.isLoading ? (
+                      <tr>
+                        <td
+                          className="px-3 py-10 text-center text-sm text-muted-foreground"
+                          colSpan={6}
+                        >
+                          Loading invoice drafts...
                         </td>
                       </tr>
                     ) : null}

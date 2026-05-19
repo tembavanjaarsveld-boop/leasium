@@ -40,6 +40,11 @@ Last updated: 2026-05-19
   - The page lists amount, due date, status, line/source context, and approve/void actions.
   - Approve/void only changes draft status; it still does not post invoices, send tenant emails, generate PDFs, or sync to Xero.
   - This is design-facing and still needs Remba review.
+- Invoice draft staging v1 is built and migrated.
+  - Approved billing drafts can create internal `invoice_draft` and `invoice_draft_line` records.
+  - Billing Readiness lists invoice drafts with recipient, amount, due date, readiness blockers, source billing draft, and no-PDF/no-email/no-Xero guardrails.
+  - Invoice draft creation is idempotent per billing draft and blocked until the billing draft is approved.
+  - This is design-facing and still needs Remba review.
 - Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
   - This is design-facing and still needs Remba review.
 - AI enrichment for missing fields is in the backlog, not built yet.
@@ -51,10 +56,18 @@ Last updated: 2026-05-19
 - Backend focused test passed:
   - `.venv/bin/python -m pytest tests/integration/test_document_intake_api.py -q`
   - Result: `17 passed`
+- Backend register test passed:
+  - `.venv/bin/python -m pytest tests/integration/test_register_api.py -q`
+  - Result: `8 passed`
 - Full backend test suite passed:
   - `.venv/bin/python -m pytest -q`
   - Result: `52 passed, 1 skipped`
   - Skipped: migration integration smoke test because `TEST_DATABASE_URL` is not configured in this shell.
+- Frontend checks passed:
+  - `./node_modules/.bin/tsc --noEmit`
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+- Local route smoke passed:
+  - Next dev server loaded `/billing-readiness` on `127.0.0.1:3010` and returned `200`.
 - Password gate checks from the prior implementation passed:
   - Access middleware/page/API lint
   - TypeScript no-emit
@@ -65,7 +78,8 @@ Last updated: 2026-05-19
 - Vercel has no exposed env-var mutation tool in this session.
   - To actually hide the public app, set `LEASIUM_ACCESS_PASSWORD` in the Vercel project environment settings and redeploy.
   - After redeploy, verify `/properties` redirects to `/access`, and `/onboarding/<token>` remains public.
-- Neon production is confirmed migrated through `20260519_0013` on project `snowy-boat-02653440`, branch `production`, database `neondb`.
+- Neon production is confirmed migrated through `20260519_0014` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
+  - Verified `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
 - Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still belongs in the next build order.
 
 ## Recommended Next Tickets
@@ -73,7 +87,7 @@ Last updated: 2026-05-19
 1. Enable the temporary Vercel password gate and verify production access behavior.
 2. Surface stored property source citations and before/after apply history in the Smart Intake/property UI.
 3. Add richer acquisition schedule blockers, broader non-rent charge draft creation from reviewed rows, and UI surfacing for created pending leases.
-4. Move approved billing drafts toward invoice PDF/email delivery without Xero sync until approval.
+4. Add invoice draft approval, PDF preview/generation, and email delivery steps without Xero sync until explicit approval.
 5. Finish tenant onboarding delivery polish: branded templates, editable reminder schedules, expiry reminders, and failure recovery.
 6. Start Xero connection status and mapping surfaces before full invoice sync.
 7. Deepen Insights dashboards for portfolio health, exceptions, automation activity, billing risk, and owner/entity snapshots.

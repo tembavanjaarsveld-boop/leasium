@@ -397,6 +397,57 @@ export type BillingDraftRecord = {
   deleted_at: string | null;
 };
 
+export type InvoiceDraftStatus =
+  | "draft"
+  | "ready_for_approval"
+  | "approved"
+  | "void";
+
+export type InvoiceDraftLineRecord = {
+  id: string;
+  invoice_draft_id: string;
+  billing_draft_line_id: string | null;
+  description: string;
+  amount_cents: number;
+  gst_cents: number;
+  currency: string;
+  source_hint: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type InvoiceDraftRecord = {
+  id: string;
+  entity_id: string;
+  billing_draft_id: string;
+  property_id: string | null;
+  tenancy_unit_id: string | null;
+  tenant_id: string | null;
+  lease_id: string | null;
+  document_id: string;
+  document_intake_id: string | null;
+  status: InvoiceDraftStatus;
+  invoice_number: string | null;
+  title: string;
+  currency: string;
+  issue_date: string | null;
+  due_date: string | null;
+  subtotal_cents: number;
+  gst_cents: number;
+  total_cents: number;
+  issuer_name: string | null;
+  issuer_abn: string | null;
+  recipient_name: string | null;
+  recipient_email: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  lines: InvoiceDraftLineRecord[];
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
 export type LeaseIntakeExtraction = {
   property?: (Partial<PropertyPayload> & { address?: string | null }) | null;
   tenancy_unit?:
@@ -1006,6 +1057,40 @@ export function updateBillingDraft(
   payload: { status?: BillingDraftStatus; notes?: string | null },
 ) {
   return request<BillingDraftRecord>(`/billing-drafts/${billingDraftId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listInvoiceDrafts(filters: {
+  entity_id: string;
+  billing_draft_id?: string;
+  draft_status?: InvoiceDraftStatus;
+}) {
+  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  if (filters.billing_draft_id) {
+    params.set("billing_draft_id", filters.billing_draft_id);
+  }
+  if (filters.draft_status) {
+    params.set("draft_status", filters.draft_status);
+  }
+  return request<InvoiceDraftRecord[]>(`/invoice-drafts?${params.toString()}`);
+}
+
+export function createInvoiceDraftFromBillingDraft(billingDraftId: string) {
+  return request<InvoiceDraftRecord>(
+    `/billing-drafts/${billingDraftId}/invoice-drafts`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function updateInvoiceDraft(
+  invoiceDraftId: string,
+  payload: { status?: InvoiceDraftStatus; notes?: string | null },
+) {
+  return request<InvoiceDraftRecord>(`/invoice-drafts/${invoiceDraftId}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });

@@ -168,6 +168,13 @@ class BillingDraftStatus(enum.StrEnum):
     void = "void"
 
 
+class InvoiceDraftStatus(enum.StrEnum):
+    draft = "draft"
+    ready_for_approval = "ready_for_approval"
+    approved = "approved"
+    void = "void"
+
+
 class AuditOutcome(enum.StrEnum):
     success = "success"
     error = "error"
@@ -217,6 +224,7 @@ class Entity(Base):
     documents: Mapped[list["StoredDocument"]] = relationship(back_populates="entity")
     document_intakes: Mapped[list["DocumentIntake"]] = relationship(back_populates="entity")
     billing_drafts: Mapped[list["BillingDraft"]] = relationship(back_populates="entity")
+    invoice_drafts: Mapped[list["InvoiceDraft"]] = relationship(back_populates="entity")
 
 
 Index("entity_org_idx", Entity.organisation_id, postgresql_where=Entity.deleted_at.is_(None))
@@ -826,6 +834,7 @@ class BillingDraft(Base):
         back_populates="billing_draft",
         order_by="BillingDraftLine.created_at",
     )
+    invoice_drafts: Mapped[list["InvoiceDraft"]] = relationship(back_populates="billing_draft")
 
 
 Index(
@@ -877,6 +886,127 @@ Index(
     "billing_draft_line_draft_idx",
     BillingDraftLine.billing_draft_id,
     postgresql_where=BillingDraftLine.deleted_at.is_(None),
+)
+
+
+class InvoiceDraft(Base):
+    __tablename__ = "invoice_draft"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    billing_draft_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("billing_draft.id"), nullable=False
+    )
+    property_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("property.id"))
+    tenancy_unit_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenancy_unit.id")
+    )
+    tenant_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenant.id"))
+    lease_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("lease.id"))
+    document_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("stored_document.id"), nullable=False
+    )
+    document_intake_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("document_intake.id")
+    )
+    status: Mapped[InvoiceDraftStatus] = mapped_column(
+        Enum(InvoiceDraftStatus, name="invoice_draft_status"),
+        nullable=False,
+        default=InvoiceDraftStatus.draft,
+    )
+    invoice_number: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="AUD")
+    issue_date: Mapped[date | None] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    subtotal_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    gst_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    issuer_name: Mapped[str | None] = mapped_column(Text)
+    issuer_abn: Mapped[str | None] = mapped_column(Text)
+    recipient_name: Mapped[str | None] = mapped_column(Text)
+    recipient_email: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    invoice_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="invoice_drafts")
+    billing_draft: Mapped[BillingDraft] = relationship(back_populates="invoice_drafts")
+    property: Mapped[Property | None] = relationship()
+    tenancy_unit: Mapped[TenancyUnit | None] = relationship()
+    tenant: Mapped[Tenant | None] = relationship()
+    lease: Mapped[Lease | None] = relationship()
+    document: Mapped[StoredDocument] = relationship()
+    document_intake: Mapped[DocumentIntake | None] = relationship()
+    lines: Mapped[list["InvoiceDraftLine"]] = relationship(
+        back_populates="invoice_draft",
+        order_by="InvoiceDraftLine.created_at",
+    )
+
+
+Index(
+    "invoice_draft_entity_idx",
+    InvoiceDraft.entity_id,
+    postgresql_where=InvoiceDraft.deleted_at.is_(None),
+)
+Index(
+    "invoice_draft_billing_draft_idx",
+    InvoiceDraft.billing_draft_id,
+    postgresql_where=InvoiceDraft.deleted_at.is_(None),
+)
+Index(
+    "invoice_draft_status_idx",
+    InvoiceDraft.status,
+    postgresql_where=InvoiceDraft.deleted_at.is_(None),
+)
+Index(
+    "invoice_draft_due_date_idx",
+    InvoiceDraft.due_date,
+    postgresql_where=InvoiceDraft.deleted_at.is_(None),
+)
+
+
+class InvoiceDraftLine(Base):
+    __tablename__ = "invoice_draft_line"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    invoice_draft_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("invoice_draft.id"), nullable=False
+    )
+    billing_draft_line_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("billing_draft_line.id")
+    )
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    gst_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="AUD")
+    source_hint: Mapped[str | None] = mapped_column(Text)
+    line_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    invoice_draft: Mapped[InvoiceDraft] = relationship(back_populates="lines")
+    billing_draft_line: Mapped[BillingDraftLine | None] = relationship()
+
+
+Index(
+    "invoice_draft_line_draft_idx",
+    InvoiceDraftLine.invoice_draft_id,
+    postgresql_where=InvoiceDraftLine.deleted_at.is_(None),
 )
 
 
