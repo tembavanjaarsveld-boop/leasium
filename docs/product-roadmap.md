@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-19
 
-Leasium is being shaped around a simple operating promise: lease data should turn into work with as little re-keying as possible. Upload the lease, confirm the facts, invite the tenant, set the billing rules, then let the system drive dates, invoices, maintenance, compliance, and reporting.
+Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
 Design-facing changes require Remba UX sign-off. See [design-governance.md](design-governance.md).
 
@@ -31,10 +31,24 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Next Build Order
 
+- [ ] Build Smart Intake Inbox: one drag/drop surface for leases, purchase contracts, tenant docs, invoices, guarantees, and certificates, with document classification, entity/property/tenant matching, review status, and apply actions.
+- [ ] Extend AI extraction beyond lease intake: acquisition/building contracts create or update property/unit records; tenant leases update tenant/lease/obligations; compliance docs update expiry dates and document records.
 - [ ] Finish tenant onboarding delivery: real email sending, branded templates, resend logs, expiry messaging, and delivery audit history.
 - [ ] Deepen tenant detail: property/lease context labels, richer activity history, safer document provenance/actions, and reviewed-change history.
 - [ ] Expand billing from readiness into invoice generation: rent periods, line items, invoice drafts, approval, PDF/email delivery, and payment status.
 - [ ] Add Xero connection status, chart of accounts/tax mapping, contact sync, invoice sync, and payment reconciliation.
+
+## Smart Intake North Star
+
+Smart Intake is the primary Leasium workflow: users drag documents into the platform and Leasium creates a reviewable work item. The system should classify the file, extract structured facts, match existing records, highlight proposed changes, show confidence and blockers in plain English, then apply updates only after approval. Manual forms stay available, but the default path is upload, review, approve.
+
+Target document jobs:
+
+- New building or acquisition: purchase contract, disclosure pack, title, tenancy schedule, and management handover files become property, unit, tenant, lease, document, and obligation drafts.
+- New tenant lease: lease PDF/DOCX becomes tenant, lease, rent, option, security, outgoings, insurance, and critical date drafts.
+- Tenant onboarding: insurance certificates, guarantees, and supporting documents attach to the onboarding and update expiry/security fields after review.
+- Billing/admin: invoices, rent schedules, outgoings budgets, and Xero-ready details become invoice or charge-rule drafts.
+- Compliance: certificates, fire/safety reports, insurance renewals, and inspection reports become document records plus recurring obligations.
 
 ## Re-Leased Benchmark
 
@@ -61,6 +75,8 @@ Official Re-Leased pages position their product around a few mature modules that
 
 - Remba signs off any design-facing navigation, layout, workflow, copy, or visual hierarchy change before it is treated as complete.
 - Keep first actions obvious: upload a lease, add a property, invite a tenant, add a charge.
+- Prefer document-first workflows over manual field entry whenever a source document exists.
+- Every extracted field needs provenance: which document, where it came from, confidence, and what will change.
 - Prefer review screens and status panels over hidden configuration.
 - Make blockers plain English, with the next corrective action beside the blocker.
 - Avoid forcing users through accounting concepts until they are needed for invoice readiness.
