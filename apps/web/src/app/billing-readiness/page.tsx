@@ -3,12 +3,14 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowUpRight,
   CheckCircle2,
   FileWarning,
   ReceiptText,
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
+import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
@@ -34,6 +36,19 @@ type BlockerItem = {
   row: RentRollRow;
   kind: BlockerKind;
   message: string;
+};
+
+type BlockerGroup = {
+  id: string;
+  title: string;
+  subtitle: string;
+  row: RentRollRow;
+  items: BlockerItem[];
+};
+
+type BlockerAction = {
+  label: string;
+  href: string;
 };
 
 function dateOnly(value: Date) {
@@ -84,21 +99,6 @@ function blockerItems(row: RentRollRow): BlockerItem[] {
   return rows;
 }
 
-function allBlockers(row: RentRollRow) {
-  return blockerItems(row).map((item) => item.message);
-}
-
-function kindLabel(kind: BlockerKind) {
-  switch (kind) {
-    case "invoice":
-      return "Invoice";
-    case "xero":
-      return "Xero";
-    case "gst":
-      return "GST";
-  }
-}
-
 function kindTone(kind: BlockerKind) {
   switch (kind) {
     case "invoice":
@@ -108,6 +108,115 @@ function kindTone(kind: BlockerKind) {
     case "gst":
       return "primary" as const;
   }
+}
+
+function propertyHref(row: RentRollRow) {
+  const params = new URLSearchParams({
+    entity_id: row.entity_id,
+    property_id: row.property_id,
+  });
+  return `/properties?${params.toString()}`;
+}
+
+function tenantHref(row: RentRollRow) {
+  return row.tenant_id ? `/tenants/${row.tenant_id}` : propertyHref(row);
+}
+
+function blockerTitle(item: BlockerItem) {
+  const message = item.message.toLowerCase();
+  if (/billing|email/.test(message)) {
+    return "Missing billing email";
+  }
+  if (/charge/.test(message) && /no|missing|active|rule/.test(message)) {
+    return "No active charge rule";
+  }
+  if (item.kind === "xero" && /customer|map|mapping/.test(message)) {
+    return "Xero customer not mapped";
+  }
+  if (item.kind === "xero") {
+    return "Xero mapping needs review";
+  }
+  if (item.kind === "gst" || /gst|tax/.test(message)) {
+    return "GST treatment needs review";
+  }
+  if (/date|commencement|expiry|start/.test(message)) {
+    return "Lease dates incomplete";
+  }
+  if (/lease/.test(message)) {
+    return "Lease setup needs review";
+  }
+  return item.message.replace(/\.$/, "");
+}
+
+function blockerChipLabel(item: BlockerItem) {
+  const message = item.message.toLowerCase();
+  if (/billing|email|tenant/.test(message)) {
+    return "Missing details";
+  }
+  if (item.kind === "xero") {
+    return "Xero mapping";
+  }
+  if (item.kind === "gst") {
+    return "GST check";
+  }
+  if (/charge|rule/.test(message)) {
+    return "Charge rules";
+  }
+  return "Blocked";
+}
+
+function blockerGuidance(item: BlockerItem) {
+  const title = blockerTitle(item);
+  switch (title) {
+    case "Missing billing email":
+      return "Add a billing contact before the next invoice run.";
+    case "No active charge rule":
+      return "Create or activate a charge rule before billing.";
+    case "Xero customer not mapped":
+    case "Xero mapping needs review":
+      return "Map the Xero customer, account code, or tax type before sync.";
+    case "GST treatment needs review":
+      return "Confirm GST treatment before invoices are prepared.";
+    case "Lease dates incomplete":
+      return "Confirm lease dates before this tenancy is billed.";
+    default:
+      return "Review the linked record before the next invoice run.";
+  }
+}
+
+function blockerAction(item: BlockerItem): BlockerAction {
+  const message = item.message.toLowerCase();
+  if (/billing|email|tenant/.test(message) && item.row.tenant_id) {
+    return {
+      label: "Open tenant",
+      href: tenantHref(item.row),
+    };
+  }
+  if (
+    item.kind === "xero" ||
+    item.kind === "gst" ||
+    /charge|xero|tax|gst|account|mapping/.test(message)
+  ) {
+    return {
+      label:
+        item.kind === "xero"
+          ? "Map Xero"
+          : item.kind === "gst"
+            ? "Review GST"
+            : "Fix charge rules",
+      href: propertyHref(item.row),
+    };
+  }
+  if (!item.row.lease_id || /lease|vacant|unit/.test(message)) {
+    return {
+      label: "Open property",
+      href: propertyHref(item.row),
+    };
+  }
+  return {
+    label: item.row.tenant_id ? "Open tenant" : "Open property",
+    href: tenantHref(item.row),
+  };
 }
 
 function leaseContext(row: RentRollRow) {
@@ -193,8 +302,28 @@ function BillingReadinessWorkspace() {
     () => rentRows.flatMap((row) => blockerItems(row)),
     [rentRows],
   );
+  const blockerGroups = useMemo(() => {
+    const groups = new Map<string, BlockerGroup>();
+    for (const item of blockerRows) {
+      const row = item.row;
+      const id = `${row.property_id}-${row.tenant_id ?? row.tenancy_unit_id}`;
+      const existing = groups.get(id);
+      if (existing) {
+        existing.items.push(item);
+        continue;
+      }
+      groups.set(id, {
+        id,
+        title: row.tenant_name ?? row.unit_label,
+        subtitle: `${row.property_name} / ${row.unit_label}`,
+        row,
+        items: [item],
+      });
+    }
+    return Array.from(groups.values());
+  }, [blockerRows]);
   const rowsWithBlockers = useMemo(
-    () => rentRows.filter((row) => allBlockers(row).length > 0),
+    () => rentRows.filter((row) => blockerItems(row).length > 0),
     [rentRows],
   );
 
@@ -351,7 +480,7 @@ function BillingReadinessWorkspace() {
                   </thead>
                   <tbody>
                     {rentRows.map((row) => {
-                      const blockers = allBlockers(row);
+                      const blockers = blockerItems(row);
                       return (
                         <tr
                           key={`${row.property_id}-${row.tenancy_unit_id}-${row.lease_id ?? "none"}`}
@@ -386,10 +515,10 @@ function BillingReadinessWorkspace() {
                               <div className="grid gap-1">
                                 {blockers.slice(0, 2).map((blocker) => (
                                   <span
-                                    key={blocker}
+                                    key={blocker.id}
                                     className="rounded bg-leasium-warning-soft px-1.5 py-0.5 text-xs text-[#B54708]"
                                   >
-                                    {blocker}
+                                    {blockerTitle(blocker)}
                                   </span>
                                 ))}
                                 {blockers.length > 2 ? (
@@ -431,30 +560,63 @@ function BillingReadinessWorkspace() {
             </SectionPanel>
 
             <SectionPanel
-              title="Blocker queue"
-              description="Prioritised by invoice, Xero, and GST readiness findings."
+              title="Billing action queue"
+              description="Prioritised work with the right record to open next."
               icon={<AlertTriangle size={17} className="text-[#B54708]" />}
             >
-              {blockerRows.length ? (
+              {blockerGroups.length ? (
                 <div className="divide-y divide-border">
-                  {blockerRows.map((item) => (
-                    <article key={item.id} className="grid gap-2 px-4 py-3">
+                  {blockerGroups.map((group) => (
+                    <article key={group.id} className="grid gap-3 px-4 py-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="font-medium">{item.message}</div>
+                          <div className="font-medium">{group.title}</div>
                           <div className="mt-1 text-sm text-muted-foreground">
-                            {item.row.tenant_name ?? "Vacant tenancy"}
+                            {group.subtitle}
                           </div>
                         </div>
-                        <StatusBadge tone={kindTone(item.kind)}>
-                          {kindLabel(item.kind)}
+                        <StatusBadge tone="warning">
+                          {group.items.length} blocker{group.items.length === 1 ? "" : "s"}
                         </StatusBadge>
                       </div>
                       <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                        <div>
-                          {item.row.property_name} / {item.row.unit_label}
-                        </div>
-                        <div className="mt-1">{leaseContext(item.row)}</div>
+                        {leaseContext(group.row)}
+                      </div>
+                      <div className="grid gap-2">
+                        {group.items.map((item) => {
+                          const action = blockerAction(item);
+                          return (
+                            <div
+                              key={item.id}
+                              className="grid gap-2 rounded-lg border border-border bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <StatusBadge tone={kindTone(item.kind)}>
+                                    {blockerChipLabel(item)}
+                                  </StatusBadge>
+                                  <span className="font-medium">
+                                    {blockerTitle(item)}
+                                  </span>
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {item.row.tenant_name ?? "Vacant"} /{" "}
+                                  {item.row.unit_label} / {item.row.property_name}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {blockerGuidance(item)}
+                                </div>
+                              </div>
+                              <Link
+                                href={action.href}
+                                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                              >
+                                <ArrowUpRight size={15} />
+                                {action.label}
+                              </Link>
+                            </div>
+                          );
+                        })}
                       </div>
                     </article>
                   ))}
@@ -464,7 +626,7 @@ function BillingReadinessWorkspace() {
                   title="No billing blockers"
                   description={
                     rentRows.length
-                      ? "Every rent roll row is clear for invoice, Xero, and GST readiness."
+                      ? "This portfolio is ready for the next invoice run. Leasium will flag missing tenant details, charge rules, Xero mapping, and GST checks here."
                       : "Blockers will appear here once rent roll rows are available."
                   }
                 />
