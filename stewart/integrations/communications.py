@@ -65,6 +65,21 @@ class TenantOnboardingInvite:
     template_version: str
 
 
+@dataclass(frozen=True)
+class OperatorInviteEmail:
+    """Context needed to send an operator invite."""
+
+    user_id: UUID
+    organisation_name: str
+    invited_by_name: str
+    display_name: str
+    email: str
+    accept_url: str
+    expires_at: datetime
+    template_key: str
+    template_version: str
+
+
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
@@ -80,6 +95,10 @@ def _date_label(value: date | datetime | None) -> str:
 
 def _email_subject(invite: TenantOnboardingInvite) -> str:
     return f"Complete tenant onboarding for {invite.property_name}"
+
+
+def _operator_invite_subject(invite: OperatorInviteEmail) -> str:
+    return f"Join {invite.organisation_name} on Leasium"
 
 
 def _email_text(invite: TenantOnboardingInvite) -> str:
@@ -100,6 +119,24 @@ def _email_text(invite: TenantOnboardingInvite) -> str:
             "Nothing is applied to the tenant profile until the property team reviews it.",
             "",
             invite.brand_name,
+        ]
+    )
+
+
+def _operator_invite_text(invite: OperatorInviteEmail) -> str:
+    greeting = f"Hi {invite.display_name}," if invite.display_name else "Hi,"
+    return "\n".join(
+        [
+            greeting,
+            "",
+            f"{invite.invited_by_name} invited you to join {invite.organisation_name} on Leasium.",
+            "",
+            "Accept the invite and sign in with Clerk to link this operator account:",
+            invite.accept_url,
+            "",
+            f"This invite expires on {_date_label(invite.expires_at)}.",
+            "",
+            "Leasium",
         ]
     )
 
@@ -143,6 +180,39 @@ def _email_html(invite: TenantOnboardingInvite) -> str:
         </a>
         <p style="margin:20px 0 0;color:#667085;font-size:13px;line-height:1.45;">
           Nothing is applied to the tenant profile until the property team reviews it.
+        </p>
+      </div>
+    </div>
+    """
+
+
+def _operator_invite_html(invite: OperatorInviteEmail) -> str:
+    greeting = f"Hi {escape(invite.display_name)}," if invite.display_name else "Hi,"
+    shell_style = (
+        "background:#F6F8FB;padding:28px;font-family:Inter,Arial,sans-serif;color:#101828;"
+    )
+    card_style = (
+        "max-width:560px;margin:0 auto;background:#FFFFFF;"
+        "border:1px solid #E4E7EC;border-radius:16px;padding:28px;"
+    )
+    button_style = (
+        "display:inline-block;background:#245BFF;color:#FFFFFF;"
+        "text-decoration:none;border-radius:12px;padding:12px 18px;font-weight:700;"
+    )
+    return f"""
+    <div style="{shell_style}">
+      <div style="{card_style}">
+        <div style="font-weight:700;font-size:20px;margin-bottom:18px;">Leasium</div>
+        <p style="margin:0 0 14px;">{greeting}</p>
+        <p style="margin:0 0 18px;color:#475467;line-height:1.55;">
+          {escape(invite.invited_by_name)} invited you to join
+          {escape(invite.organisation_name)} on Leasium.
+        </p>
+        <a href="{escape(invite.accept_url)}" style="{button_style}">
+          Accept invite
+        </a>
+        <p style="margin:20px 0 0;color:#667085;font-size:13px;line-height:1.45;">
+          This invite expires on {escape(_date_label(invite.expires_at))}.
         </p>
       </div>
     </div>
@@ -229,6 +299,107 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
             {"type": "text/html", "value": _email_html(invite)},
         ],
         "categories": ["tenant_onboarding", invite.template_key],
+    }
+    try:
+        with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
+            response = client.post(
+                settings.sendgrid_mail_send_url,
+                headers={
+                    "Authorization": f"Bearer {settings.sendgrid_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if 200 <= response.status_code < 300:
+            return DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient=recipient,
+                provider_message_id=response.headers.get("x-message-id"),
+                metadata=metadata,
+            )
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=f"SendGrid returned {response.status_code}.",
+            metadata=metadata,
+        )
+    except httpx.HTTPError as exc:
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=str(exc),
+            metadata=metadata,
+        )
+
+
+def send_operator_invite_email(
+    invite: OperatorInviteEmail,
+    settings: Settings,
+) -> DeliveryResult:
+    """Send an operator invitation email where provider credentials allow."""
+
+    recipient = _clean(invite.email)
+    metadata = {
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "organisation_name": invite.organisation_name,
+        "subject": _operator_invite_subject(invite),
+    }
+    if not settings.operator_invite_email_enabled:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="Operator invite email disabled.",
+            metadata=metadata,
+        )
+    if recipient is None:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            error="No operator email recipient.",
+            metadata=metadata,
+        )
+    if not settings.sendgrid_api_key or not settings.sendgrid_from_email:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="SendGrid is not configured.",
+            metadata=metadata,
+        )
+
+    payload = {
+        "personalizations": [
+            {
+                "to": [{"email": recipient, "name": invite.display_name}],
+                "subject": _operator_invite_subject(invite),
+                "custom_args": {
+                    "operator_user_id": str(invite.user_id),
+                    "template_key": invite.template_key,
+                    "template_version": invite.template_version,
+                    "organisation_name": invite.organisation_name,
+                },
+            }
+        ],
+        "from": {
+            "email": settings.sendgrid_from_email,
+            "name": settings.sendgrid_from_name,
+        },
+        "content": [
+            {"type": "text/plain", "value": _operator_invite_text(invite)},
+            {"type": "text/html", "value": _operator_invite_html(invite)},
+        ],
+        "categories": ["operator_invite", invite.template_key],
     }
     try:
         with httpx.Client(timeout=settings.communications_timeout_seconds) as client:

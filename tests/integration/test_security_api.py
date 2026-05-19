@@ -1,12 +1,16 @@
 """Security and operator access API integration tests."""
 
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
+import pytest
+from apps.api.routers import security as security_router
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.models import AppUser, AuditAction, Entity, UserEntityRole, UserRole
 from stewart.core.settings import get_settings
+from stewart.integrations.communications import DeliveryResult
 
 
 def _entity(session: Session) -> Entity:
@@ -49,9 +53,23 @@ def test_security_workspace_lists_current_operator_and_auth_boundary(
 
 def test_owner_can_invite_and_update_operator_roles(
     client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
     session: Session,
 ) -> None:
     entity = _entity(session)
+    sent_urls: list[str] = []
+
+    def fake_send(invite, settings):  # noqa: ANN001, ARG001
+        sent_urls.append(invite.accept_url)
+        return DeliveryResult(
+            channel="email",
+            status="queued",
+            provider="sendgrid",
+            recipient=invite.email,
+            provider_message_id="operator-email-1",
+        )
+
+    monkeypatch.setattr(security_router, "send_operator_invite_email", fake_send)
 
     create_response = client.post(
         "/api/v1/security/members",
@@ -69,11 +87,11 @@ def test_owner_can_invite_and_update_operator_roles(
     assert created["display_name"] == "Ops Team"
     assert created["is_active"] is True
     assert created["login_linked"] is False
-    assert created["invite_email_status"] == "not_sent"
-    assert created["invite_email_detail"] == (
-        "No operator invite email has been sent yet; access is recorded only."
-    )
+    assert created["invite_email_status"] == "sent"
+    assert created["invite_sent_at"] is not None
+    assert created["invite_expires_at"] is not None
     assert created["roles"][0]["role"] == "ops"
+    assert sent_urls
 
     update_response = client.patch(
         f"/api/v1/security/members/{member_id}",
@@ -104,6 +122,52 @@ def test_owner_can_invite_and_update_operator_roles(
         select(AuditAction.action).where(AuditAction.target_table == "app_user")
     ).all()
     assert audit_actions == ["invite", "update"]
+
+
+def test_operator_invite_accept_links_clerk_identity(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    sent_urls: list[str] = []
+
+    def fake_send(invite, settings):  # noqa: ANN001, ARG001
+        sent_urls.append(invite.accept_url)
+        return DeliveryResult(channel="email", status="queued", provider="sendgrid")
+
+    monkeypatch.setattr(security_router, "send_operator_invite_email", fake_send)
+
+    create_response = client.post(
+        "/api/v1/security/members",
+        json={
+            "email": "invitee@example.com",
+            "display_name": "Invitee User",
+            "roles": [{"entity_id": str(entity.id), "role": "admin"}],
+        },
+    )
+    assert create_response.status_code == 201
+    token = parse_qs(urlparse(sent_urls[0]).query)["token"][0]
+
+    accept_response = client.post(
+        "/api/v1/security/invitations/accept",
+        json={
+            "token": token,
+            "auth_provider_id": "user_clerk_invitee",
+            "email": "invitee@example.com",
+            "display_name": "Invitee User",
+        },
+    )
+
+    assert accept_response.status_code == 200
+    body = accept_response.json()
+    assert body["accepted"] is True
+    assert body["member"]["login_linked"] is True
+    assert body["member"]["invite_email_status"] == "accepted"
+    member = session.scalar(select(AppUser).where(AppUser.email == "invitee@example.com"))
+    assert member is not None
+    assert member.auth_provider_id == "user_clerk_invitee"
+    assert member.invite_token_hash is None
 
 
 def test_security_mutations_require_owner_or_admin(

@@ -61,6 +61,16 @@ class UserRole(enum.StrEnum):
     agent = "agent"
 
 
+class OperatorInviteStatus(enum.StrEnum):
+    not_sent = "not_sent"
+    sent = "sent"
+    accepted = "accepted"
+    expired = "expired"
+    revoked = "revoked"
+    failed = "failed"
+    skipped = "skipped"
+
+
 class PropertyType(enum.StrEnum):
     commercial_office = "commercial_office"
     commercial_retail = "commercial_retail"
@@ -241,9 +251,37 @@ class AppUser(Base):
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     auth_provider_id: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    invite_status: Mapped[OperatorInviteStatus] = mapped_column(
+        Enum(OperatorInviteStatus, name="operator_invite_status"),
+        nullable=False,
+        default=OperatorInviteStatus.not_sent,
+    )
+    invite_token_hash: Mapped[str | None] = mapped_column(Text)
+    invite_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    invite_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    invite_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    invite_last_error: Mapped[str | None] = mapped_column(Text)
+    invite_provider_message_id: Mapped[str | None] = mapped_column(Text)
+    invited_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
+
+
+Index(
+    "app_user_auth_provider_id_idx",
+    AppUser.auth_provider_id,
+    unique=True,
+    postgresql_where=AppUser.auth_provider_id.is_not(None),
+)
+Index(
+    "app_user_invite_token_hash_idx",
+    AppUser.invite_token_hash,
+    unique=True,
+    postgresql_where=AppUser.invite_token_hash.is_not(None),
+)
 
 
 class UserEntityRole(Base):

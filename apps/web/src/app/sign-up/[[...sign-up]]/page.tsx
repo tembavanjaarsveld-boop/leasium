@@ -1,0 +1,33 @@
+"use client";
+
+import { SignUp } from "@clerk/nextjs";
+import { UserPlus } from "lucide-react";
+
+function ClerkNotConfigured() {
+  return (
+    <main className="min-h-screen bg-background px-6 py-12 text-foreground">
+      <section className="mx-auto grid max-w-md gap-4 rounded-lg border border-border bg-white p-6 shadow-sm">
+        <div className="flex items-center gap-2 text-primary">
+          <UserPlus size={18} />
+          <span className="font-semibold">Leasium operator signup</span>
+        </div>
+        <h1 className="text-2xl font-semibold">Provider signup is not configured yet.</h1>
+        <p className="text-sm text-muted-foreground">
+          Clerk keys need to be added before invite acceptance can create a login.
+        </p>
+      </section>
+    </main>
+  );
+}
+
+export default function SignUpPage() {
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+    return <ClerkNotConfigured />;
+  }
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
+      <SignUp routing="path" path="/sign-up" signInUrl="/sign-in" />
+    </main>
+  );
+}

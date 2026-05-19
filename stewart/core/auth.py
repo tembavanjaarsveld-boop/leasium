@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 
+import jwt
 from fastapi import Depends, Header, HTTPException, status
+from jwt import PyJWKClient
+from jwt.exceptions import InvalidTokenError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -36,6 +39,7 @@ def _dev_user(settings: Settings) -> CurrentUser:
 def _clerk_user(
     authorization: str | None,
     session: Session,
+    settings: Settings,
 ) -> CurrentUser:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -43,7 +47,8 @@ def _clerk_user(
             detail="Missing Clerk bearer token.",
         )
     token = authorization.removeprefix("Bearer ").strip()
-    user = session.scalar(select(AppUser).where(AppUser.auth_provider_id == token))
+    provider_id = _clerk_provider_id(token, settings)
+    user = session.scalar(select(AppUser).where(AppUser.auth_provider_id == provider_id))
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown Clerk user.")
     return CurrentUser(
@@ -64,7 +69,43 @@ def get_current_user(
 
     if settings.auth_mode == "dev":
         return _dev_user(settings)
-    return _clerk_user(authorization, session)
+    return _clerk_user(authorization, session, settings)
+
+
+def _clerk_provider_id(token: str, settings: Settings) -> str:
+    """Return the verified Clerk subject, with legacy token mapping until JWKS is configured."""
+
+    if not settings.clerk_jwks_url:
+        return token
+    try:
+        jwks_client = PyJWKClient(settings.clerk_jwks_url)
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        options = {"verify_aud": bool(settings.clerk_audience)}
+        decoded = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=settings.clerk_audience or None,
+            issuer=settings.clerk_issuer or None,
+            options=options,
+        )
+    except InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Clerk session.",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not verify Clerk session.",
+        ) from exc
+    subject = decoded.get("sub")
+    if not isinstance(subject, str) or not subject:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Clerk session is missing a subject.",
+        )
+    return subject
 
 
 def assert_entity_role(

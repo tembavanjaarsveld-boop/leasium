@@ -35,8 +35,19 @@ export type SecurityMemberRecord = {
   display_name: string;
   is_active: boolean;
   login_linked: boolean;
-  invite_email_status: "linked" | "not_sent" | string;
+  invite_email_status:
+    | "not_sent"
+    | "sent"
+    | "accepted"
+    | "expired"
+    | "revoked"
+    | "failed"
+    | "skipped"
+    | string;
   invite_email_detail: string;
+  invite_sent_at: string | null;
+  invite_expires_at: string | null;
+  invite_accepted_at: string | null;
   created_at: string;
   roles: SecurityEntityRoleRecord[];
 };
@@ -90,6 +101,24 @@ export type SecurityMemberUpdatePayload = {
   display_name?: string;
   is_active?: boolean;
   roles?: SecurityRoleAssignment[];
+};
+
+export type SecurityMemberInviteRecord = {
+  member: SecurityMemberRecord;
+  delivery_status: string;
+  delivery_detail: string | null;
+};
+
+export type SecurityInviteAcceptPayload = {
+  token: string;
+  auth_provider_id: string;
+  email: string;
+  display_name?: string | null;
+};
+
+export type SecurityInviteAcceptRecord = {
+  member: SecurityMemberRecord;
+  accepted: boolean;
 };
 
 export type PropertyType =
@@ -848,6 +877,17 @@ export type LeaseIntakeRecord = {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
+let authTokenProvider: (() => Promise<string | null>) | null = null;
+
+export function setApiAuthTokenProvider(provider: (() => Promise<string | null>) | null) {
+  authTokenProvider = provider;
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = authTokenProvider ? await authTokenProvider() : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const detail = await response.text();
@@ -879,20 +919,24 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  for (const [key, value] of Object.entries(await authHeaders())) {
+    headers.set(key, value);
+  }
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
+    headers,
   });
   return parseResponse<T>(response);
 }
 
 async function requestForm<T>(path: string, formData: FormData): Promise<T> {
+  const headers = new Headers(await authHeaders());
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     body: formData,
+    headers,
   });
   return parseResponse<T>(response);
 }
@@ -922,6 +966,19 @@ export function updateSecurityMember(
 ) {
   return request<SecurityMemberRecord>(`/security/members/${memberId}`, {
     method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function resendSecurityMemberInvite(memberId: string) {
+  return request<SecurityMemberInviteRecord>(`/security/members/${memberId}/invite`, {
+    method: "POST",
+  });
+}
+
+export function acceptSecurityInvitation(payload: SecurityInviteAcceptPayload) {
+  return request<SecurityInviteAcceptRecord>("/security/invitations/accept", {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }

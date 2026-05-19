@@ -11,6 +11,7 @@ import {
   Loader2,
   PlugZap,
   RefreshCw,
+  Send,
   Settings,
   ShieldCheck,
   UserPlus,
@@ -37,6 +38,7 @@ import {
   getSecurityWorkspace,
   getXeroStatus,
   listEntities,
+  resendSecurityMemberInvite,
   updateSecurityMember,
   updateChargeRule,
   updateXeroConnection,
@@ -119,6 +121,38 @@ function roleLabel(role: SecurityRole) {
 
 function roleForEntity(member: SecurityMemberRecord, entityId: string) {
   return member.roles.find((role) => role.entity_id === entityId);
+}
+
+function inviteTone(member: SecurityMemberRecord): StatusTone {
+  if (member.login_linked || member.invite_email_status === "accepted") {
+    return "success";
+  }
+  if (member.invite_email_status === "failed" || member.invite_email_status === "expired") {
+    return "danger";
+  }
+  if (member.invite_email_status === "sent") {
+    return "primary";
+  }
+  return "warning";
+}
+
+function inviteLabel(member: SecurityMemberRecord) {
+  if (member.login_linked || member.invite_email_status === "accepted") {
+    return "Login linked";
+  }
+  if (member.invite_email_status === "sent") {
+    return "Invite sent";
+  }
+  if (member.invite_email_status === "failed") {
+    return "Invite failed";
+  }
+  if (member.invite_email_status === "skipped") {
+    return "Email skipped";
+  }
+  if (member.invite_email_status === "expired") {
+    return "Invite expired";
+  }
+  return "No email sent";
 }
 
 function nextRolesForEntity(
@@ -275,6 +309,13 @@ function SettingsWorkspace() {
     },
   });
 
+  const resendInviteMutation = useMutation({
+    mutationFn: (memberId: string) => resendSecurityMemberInvite(memberId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["security-workspace"] });
+    },
+  });
+
   const memberMutation = useMutation({
     mutationFn: ({
       memberId,
@@ -414,6 +455,13 @@ function SettingsWorkspace() {
               : "Could not update the operator."}
           </div>
         ) : null}
+        {resendInviteMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {resendInviteMutation.error instanceof Error
+              ? resendInviteMutation.error.message
+              : "Could not send the operator invite."}
+          </div>
+        ) : null}
 
         {activeTab === "security" ? (
           <>
@@ -479,7 +527,7 @@ function SettingsWorkspace() {
 
             <SectionPanel
               title="Operator access"
-              description="Add operator access records now. Email invitations turn on with provider-backed login."
+              description="Send provider-backed invite emails and choose access for the selected entity."
               icon={<UserPlus size={17} className="text-primary" />}
               actions={
                 securityQuery.data?.can_manage_security ? (
@@ -577,9 +625,9 @@ function SettingsWorkspace() {
                     {inviteMutation.isPending ? (
                       <Loader2 size={15} className="animate-spin" />
                     ) : (
-                      <UserPlus size={15} />
+                      <Send size={15} />
                     )}
-                    Add access
+                    Send invite
                   </Button>
                 </form>
               </div>
@@ -612,6 +660,9 @@ function SettingsWorkspace() {
                       const isUpdating =
                         memberMutation.isPending &&
                         memberMutation.variables?.memberId === member.id;
+                      const isSendingInvite =
+                        resendInviteMutation.isPending &&
+                        resendInviteMutation.variables === member.id;
                       return (
                         <tr key={member.id} className="border-t border-border align-top">
                           <td className="min-w-64 px-3 py-3">
@@ -625,13 +676,18 @@ function SettingsWorkspace() {
                               <StatusBadge tone={member.is_active ? "success" : "neutral"}>
                                 {member.is_active ? "Active" : "Inactive"}
                               </StatusBadge>
-                              <StatusBadge tone={member.login_linked ? "success" : "warning"}>
-                                {member.login_linked ? "Login linked" : "No email sent"}
+                              <StatusBadge tone={inviteTone(member)}>
+                                {inviteLabel(member)}
                               </StatusBadge>
                             </div>
                             <div className="mt-2 max-w-48 text-xs text-muted-foreground">
                               {member.invite_email_detail}
                             </div>
+                            {member.invite_sent_at ? (
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                Sent {formatDateTime(member.invite_sent_at)}
+                              </div>
+                            ) : null}
                           </td>
                           <td className="min-w-52 px-3 py-3">
                             <div className="flex gap-2">
@@ -696,24 +752,44 @@ function SettingsWorkspace() {
                             </div>
                           </td>
                           <td className="px-3 py-3">
-                            <SecondaryButton
-                              type="button"
-                              className={member.is_active ? "text-danger" : ""}
-                              disabled={
-                                isSelf ||
-                                isUpdating ||
-                                !securityQuery.data?.can_manage_security
-                              }
-                              onClick={() =>
-                                memberMutation.mutate({
-                                  memberId: member.id,
-                                  payload: { is_active: !member.is_active },
-                                })
-                              }
-                            >
-                              {member.is_active ? <Ban size={14} /> : <CheckCircle2 size={14} />}
-                              {member.is_active ? "Deactivate" : "Activate"}
-                            </SecondaryButton>
+                            <div className="flex flex-wrap gap-2">
+                              {!member.login_linked ? (
+                                <SecondaryButton
+                                  type="button"
+                                  disabled={
+                                    isSendingInvite ||
+                                    !member.is_active ||
+                                    !securityQuery.data?.can_manage_security
+                                  }
+                                  onClick={() => resendInviteMutation.mutate(member.id)}
+                                >
+                                  {isSendingInvite ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                  ) : (
+                                    <Send size={14} />
+                                  )}
+                                  Send invite
+                                </SecondaryButton>
+                              ) : null}
+                              <SecondaryButton
+                                type="button"
+                                className={member.is_active ? "text-danger" : ""}
+                                disabled={
+                                  isSelf ||
+                                  isUpdating ||
+                                  !securityQuery.data?.can_manage_security
+                                }
+                                onClick={() =>
+                                  memberMutation.mutate({
+                                    memberId: member.id,
+                                    payload: { is_active: !member.is_active },
+                                  })
+                                }
+                              >
+                                {member.is_active ? <Ban size={14} /> : <CheckCircle2 size={14} />}
+                                {member.is_active ? "Deactivate" : "Activate"}
+                              </SecondaryButton>
+                            </div>
                           </td>
                         </tr>
                       );

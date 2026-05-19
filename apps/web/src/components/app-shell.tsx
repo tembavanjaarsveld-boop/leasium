@@ -1,5 +1,6 @@
 "use client";
 
+import { UserButton, useUser } from "@clerk/nextjs";
 import { Command, Search, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -57,8 +58,26 @@ const commandActions = [
   })),
 ];
 
+function OperatorUserControl() {
+  const { isLoaded, isSignedIn } = useUser();
+
+  if (isLoaded && isSignedIn) {
+    return <UserButton />;
+  }
+
+  return (
+    <Link
+      href="/sign-in"
+      className="inline-flex min-h-11 items-center rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+    >
+      Sign in
+    </Link>
+  );
+}
+
 export function AppHeader({ children }: { children?: React.ReactNode }) {
   const pathname = usePathname();
+  const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
   const [commandOpen, setCommandOpen] = useState(false);
   const [query, setQuery] = useState("");
   const filteredActions = useMemo(() => {
@@ -139,6 +158,11 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             </kbd>
           </button>
           {children ? <div className="min-w-40 flex-1 sm:max-w-xs">{children}</div> : null}
+          {clerkConfigured ? (
+            <div className="flex h-11 shrink-0 items-center">
+              <OperatorUserControl />
+            </div>
+          ) : null}
         </div>
       </div>
       {commandOpen ? (

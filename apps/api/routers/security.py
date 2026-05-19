@@ -1,5 +1,8 @@
 """Operator security and access-management routes."""
 
+import hashlib
+import secrets
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -7,15 +10,31 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
-from stewart.core.models import AppUser, Entity, Organisation, UserEntityRole, UserRole
+from stewart.core.db import utcnow
+from stewart.core.models import (
+    AppUser,
+    Entity,
+    OperatorInviteStatus,
+    Organisation,
+    UserEntityRole,
+    UserRole,
+)
 from stewart.core.settings import Settings, get_settings
+from stewart.integrations.communications import (
+    DeliveryResult,
+    OperatorInviteEmail,
+    send_operator_invite_email,
+)
 
 from apps.api.deps import CurrentUser, get_current_user, get_session
 from apps.api.schemas.security import (
     SecurityAuthStatusRead,
     SecurityCurrentUserRead,
     SecurityEntityRoleRead,
+    SecurityInviteAccept,
+    SecurityInviteAcceptRead,
     SecurityMemberCreate,
+    SecurityMemberInviteRead,
     SecurityMemberRead,
     SecurityMemberUpdate,
     SecurityMeRead,
@@ -32,6 +51,14 @@ MANAGE_SECURITY_ROLES = {UserRole.owner, UserRole.admin}
 
 def _normalise_email(email: str) -> str:
     return email.strip().lower()
+
+
+def _invite_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _invite_accept_url(token: str, settings: Settings) -> str:
+    return f"{settings.frontend_url.rstrip('/')}/accept-invite?token={token}"
 
 
 def _role_rows(
@@ -86,6 +113,8 @@ def _auth_status(settings: Settings) -> SecurityAuthStatusRead:
         next_steps.append("Set CLERK_SECRET_KEY before enabling provider-backed login.")
     if not clerk_jwks_configured:
         next_steps.append("Set CLERK_JWKS_URL before verifying Clerk sessions.")
+    if not settings.sendgrid_api_key or not settings.sendgrid_from_email:
+        next_steps.append("Set SendGrid credentials before operator invite emails can send.")
     return SecurityAuthStatusRead(
         auth_mode=settings.auth_mode,
         dev_auth_active=settings.auth_mode == "dev",
@@ -101,6 +130,22 @@ def _auth_status(settings: Settings) -> SecurityAuthStatusRead:
     )
 
 
+def _invite_detail(member: AppUser) -> str:
+    if member.auth_provider_id or member.invite_status == OperatorInviteStatus.accepted:
+        return "Provider login is linked for this operator."
+    if member.invite_status == OperatorInviteStatus.sent:
+        return "Operator invite email has been queued for delivery."
+    if member.invite_status == OperatorInviteStatus.failed:
+        return member.invite_last_error or "Operator invite email failed to send."
+    if member.invite_status == OperatorInviteStatus.skipped:
+        return member.invite_last_error or "Operator invite email was skipped."
+    if member.invite_status == OperatorInviteStatus.expired:
+        return "The last operator invite has expired; send a new invite."
+    if member.invite_status == OperatorInviteStatus.revoked:
+        return "The last operator invite was revoked."
+    return "No operator invite email has been sent yet; access is recorded only."
+
+
 def _member_read(
     member: AppUser,
     roles_by_user: dict[UUID, list[SecurityEntityRoleRead]],
@@ -112,12 +157,11 @@ def _member_read(
         display_name=member.display_name,
         is_active=member.is_active,
         login_linked=login_linked,
-        invite_email_status="linked" if login_linked else "not_sent",
-        invite_email_detail=(
-            "Provider login is linked for this operator."
-            if login_linked
-            else "No operator invite email has been sent yet; access is recorded only."
-        ),
+        invite_email_status=OperatorInviteStatus.accepted if login_linked else member.invite_status,
+        invite_email_detail=_invite_detail(member),
+        invite_sent_at=member.invite_sent_at,
+        invite_expires_at=member.invite_expires_at,
+        invite_accepted_at=member.invite_accepted_at,
         created_at=member.created_at,
         roles=roles_by_user.get(member.id, []),
     )
@@ -183,6 +227,53 @@ def _replace_roles(
                 role=assignment.role,
             )
         )
+
+
+def _send_operator_invite(
+    member: AppUser,
+    inviter: CurrentUser,
+    organisation: Organisation,
+    settings: Settings,
+) -> DeliveryResult:
+    now = utcnow()
+    raw_token = secrets.token_urlsafe(32)
+    expires_at = now + timedelta(hours=settings.operator_invite_ttl_hours)
+    member.invite_token_hash = _invite_token_hash(raw_token)
+    member.invite_expires_at = expires_at
+    member.invited_by_user_id = inviter.id
+    member.invite_accepted_at = None
+    member.invite_last_error = None
+    member.invite_provider_message_id = None
+    result = send_operator_invite_email(
+        OperatorInviteEmail(
+            user_id=member.id,
+            organisation_name=organisation.name,
+            invited_by_name=inviter.display_name,
+            display_name=member.display_name,
+            email=member.email,
+            accept_url=_invite_accept_url(raw_token, settings),
+            expires_at=expires_at,
+            template_key=settings.operator_invite_template_key,
+            template_version=settings.operator_invite_template_version,
+        ),
+        settings,
+    )
+    member.invite_sent_at = now if result.status in {"queued", "sent"} else None
+    member.invite_provider_message_id = result.provider_message_id
+    member.invite_last_error = result.error
+    if result.status in {"queued", "sent", "delivered", "opened"}:
+        member.invite_status = OperatorInviteStatus.sent
+    elif result.status == "failed":
+        member.invite_status = OperatorInviteStatus.failed
+    else:
+        member.invite_status = OperatorInviteStatus.skipped
+    return result
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
 
 
 @router.get("/workspace", response_model=SecurityWorkspaceRead)
@@ -256,9 +347,13 @@ def create_security_member(
     payload: SecurityMemberCreate,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> SecurityMemberRead:
     _assert_can_manage_security(session, user)
     assignments = _validate_role_assignments(session, user, payload.roles)
+    organisation = session.get(Organisation, user.organisation_id)
+    if organisation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organisation not found.")
     email = _normalise_email(payload.email)
     if not email or "@" not in email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a valid email.")
@@ -281,6 +376,7 @@ def create_security_member(
         member.display_name = payload.display_name.strip() or member.display_name
         member.is_active = payload.is_active
     _replace_roles(session, user.organisation_id, member.id, assignments)
+    result = _send_operator_invite(member, user, organisation, settings)
     audit_log(
         session,
         actor=user.actor,
@@ -295,12 +391,115 @@ def create_security_member(
                 {"entity_id": str(assignment.entity_id), "role": assignment.role.value}
                 for assignment in assignments
             ],
+            "delivery_status": result.status,
+            "delivery_error": result.error,
         },
     )
     session.commit()
     session.refresh(member)
     roles_by_user = _role_rows(session, user.organisation_id)
     return _member_read(member, roles_by_user)
+
+
+@router.post("/members/{member_id}/invite", response_model=SecurityMemberInviteRead)
+def resend_security_member_invite(
+    member_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SecurityMemberInviteRead:
+    _assert_can_manage_security(session, user)
+    organisation = session.get(Organisation, user.organisation_id)
+    member = session.get(AppUser, member_id)
+    if organisation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organisation not found.")
+    if member is None or member.organisation_id != user.organisation_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
+    if member.auth_provider_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This operator already has a linked provider login.",
+        )
+    result = _send_operator_invite(member, user, organisation, settings)
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        target_table="app_user",
+        target_id=member.id,
+        action="invite",
+        tool_name="security.member_invite_resend",
+        tool_input={
+            "email": member.email,
+            "delivery_status": result.status,
+            "delivery_error": result.error,
+        },
+    )
+    session.commit()
+    session.refresh(member)
+    roles_by_user = _role_rows(session, user.organisation_id)
+    return SecurityMemberInviteRead(
+        member=_member_read(member, roles_by_user),
+        delivery_status=result.status,
+        delivery_detail=result.error,
+    )
+
+
+@router.post("/invitations/accept", response_model=SecurityInviteAcceptRead)
+def accept_security_invitation(
+    payload: SecurityInviteAccept,
+    session: Annotated[Session, Depends(get_session)],
+) -> SecurityInviteAcceptRead:
+    token_hash = _invite_token_hash(payload.token.strip())
+    member = session.scalar(select(AppUser).where(AppUser.invite_token_hash == token_hash))
+    if member is None or not member.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found.")
+    now = utcnow()
+    invite_expires_at = _aware(member.invite_expires_at)
+    if invite_expires_at is None or invite_expires_at < now:
+        member.invite_status = OperatorInviteStatus.expired
+        member.invite_last_error = "Invite expired."
+        session.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invite expired.")
+    email = _normalise_email(payload.email)
+    if email != member.email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Signed-in email does not match this invite.",
+        )
+    existing = session.scalar(
+        select(AppUser).where(
+            AppUser.auth_provider_id == payload.auth_provider_id,
+            AppUser.id != member.id,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This provider login is already linked to another operator.",
+        )
+    member.auth_provider_id = payload.auth_provider_id
+    member.display_name = (
+        payload.display_name.strip() if payload.display_name else member.display_name
+    )
+    member.invite_status = OperatorInviteStatus.accepted
+    member.invite_accepted_at = now
+    member.invite_last_error = None
+    member.invite_token_hash = None
+    audit_log(
+        session,
+        actor=f"user:{member.email}",
+        user_id=member.id,
+        target_table="app_user",
+        target_id=member.id,
+        action="accept",
+        tool_name="security.member_invite_accept",
+        tool_input={"email": member.email},
+    )
+    session.commit()
+    session.refresh(member)
+    roles_by_user = _role_rows(session, member.organisation_id)
+    return SecurityInviteAcceptRead(member=_member_read(member, roles_by_user), accepted=True)
 
 
 @router.patch("/members/{member_id}", response_model=SecurityMemberRead)

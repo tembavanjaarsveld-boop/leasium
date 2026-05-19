@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from stewart.core.models import UserRole
+from stewart.core.models import OperatorInviteStatus, UserRole
 
 from apps.api.schemas.common import ApiModel
 
@@ -41,8 +41,11 @@ class SecurityMemberRead(ApiModel):
     display_name: str
     is_active: bool
     login_linked: bool
-    invite_email_status: str
+    invite_email_status: OperatorInviteStatus
     invite_email_detail: str
+    invite_sent_at: datetime | None
+    invite_expires_at: datetime | None
+    invite_accepted_at: datetime | None
     created_at: datetime
     roles: list[SecurityEntityRoleRead] = Field(default_factory=list)
 
@@ -85,3 +88,21 @@ class SecurityMemberUpdate(BaseModel):
     display_name: str | None = None
     is_active: bool | None = None
     roles: list[SecurityRoleAssignment] | None = None
+
+
+class SecurityMemberInviteRead(BaseModel):
+    member: SecurityMemberRead
+    delivery_status: str
+    delivery_detail: str | None = None
+
+
+class SecurityInviteAccept(BaseModel):
+    token: str
+    auth_provider_id: str
+    email: str
+    display_name: str | None = None
+
+
+class SecurityInviteAcceptRead(BaseModel):
+    member: SecurityMemberRead
+    accepted: bool

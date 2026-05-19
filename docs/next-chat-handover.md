@@ -22,10 +22,11 @@ Last updated: 2026-05-20
   - New `/api/v1/me` returns the current operator, organisation, entity roles, auth boundary, and owner/admin management flag.
   - New `/api/v1/security/workspace` returns Settings-ready auth, organisation, member, and role data.
   - Owner/admin users can create or update operator access records, assign entity-scoped roles, and activate/deactivate teammates through `/api/v1/security/members`.
-  - Operator invite email delivery is explicitly labelled not sent until Clerk invite acceptance is built.
+  - Operator invites now use hashed one-time tokens, SendGrid delivery when configured, resend actions, status tracking, and `/api/v1/security/invitations/accept`.
+  - `/accept-invite` links a signed-in Clerk user to the existing Leasium operator record.
   - Settings now has Security, Organisation, and Xero sections; Security exposes dev-auth/Clerk readiness without exposing secrets.
   - This is design-facing and still needs Remba review.
-  - Full provider-backed Clerk sign-in/sign-up, invite acceptance, first-user setup, and backend JWT verification are still next-build work.
+  - Production rollout still needs Clerk/SendGrid env vars configured, first invite acceptance verified, and `AUTH_MODE` switched from dev to clerk.
 - Temporary private-beta password gate is built and pushed in `f845a69`.
   - `LEASIUM_ACCESS_PASSWORD` controls whether the gate is active.
   - When unset or blank, the frontend remains open for local/dev convenience.

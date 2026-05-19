@@ -293,8 +293,11 @@ const securityWorkspace = () => ({
       display_name: "Owner Operator",
       is_active: true,
       login_linked: true,
-      invite_email_status: "linked",
+      invite_email_status: "accepted",
       invite_email_detail: "Provider login is linked for this operator.",
+      invite_sent_at: "2026-05-01T00:00:00.000Z",
+      invite_expires_at: "2026-05-04T00:00:00.000Z",
+      invite_accepted_at: "2026-05-01T00:00:00.000Z",
       created_at: "2026-05-01T00:00:00.000Z",
       roles: [
         {
