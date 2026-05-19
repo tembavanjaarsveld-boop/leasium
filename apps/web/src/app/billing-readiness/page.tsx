@@ -107,6 +107,10 @@ function formatMoney(cents: number | null | undefined) {
   }).format(cents / 100);
 }
 
+function friendlyError(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 function shortId(value: string | null | undefined) {
   return value ? value.slice(0, 8) : null;
 }
@@ -444,15 +448,39 @@ function BillingReadinessWorkspace() {
     queryFn: () => listInvoiceDrafts({ entity_id: selectedEntityId }),
     enabled: Boolean(selectedEntityId),
   });
+  const entitiesLoading =
+    !entitiesQuery.data && (entitiesQuery.isLoading || entitiesQuery.isFetching);
   const entitySelectionLoading =
-    entitiesQuery.isLoading ||
+    entitiesLoading ||
     (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
+  const rentRollLoading =
+    Boolean(selectedEntityId) &&
+    !rentRollQuery.data &&
+    (rentRollQuery.isLoading || rentRollQuery.isFetching);
+  const billingDraftsLoading =
+    Boolean(selectedEntityId) &&
+    !billingDraftsQuery.data &&
+    (billingDraftsQuery.isLoading || billingDraftsQuery.isFetching);
+  const invoiceDraftsLoading =
+    Boolean(selectedEntityId) &&
+    !invoiceDraftsQuery.data &&
+    (invoiceDraftsQuery.isLoading || invoiceDraftsQuery.isFetching);
   const billingReadinessLoading =
     entitySelectionLoading ||
-    (Boolean(selectedEntityId) &&
-      (rentRollQuery.isLoading ||
-        billingDraftsQuery.isLoading ||
-        invoiceDraftsQuery.isLoading));
+    rentRollLoading ||
+    billingDraftsLoading ||
+    invoiceDraftsLoading;
+  const billingReadinessRefreshing =
+    Boolean(selectedEntityId) &&
+    (rentRollQuery.isFetching ||
+      billingDraftsQuery.isFetching ||
+      invoiceDraftsQuery.isFetching) &&
+    !billingReadinessLoading;
+  const billingReadinessError =
+    entitiesQuery.error ??
+    rentRollQuery.error ??
+    billingDraftsQuery.error ??
+    invoiceDraftsQuery.error;
 
   const updateDraftMutation = useMutation({
     mutationFn: ({
@@ -610,7 +638,9 @@ function BillingReadinessWorkspace() {
           value={selectedEntityId}
           onChange={(event) => setSelectedEntityId(event.target.value)}
         >
-          <option value="">Select entity</option>
+          <option value="">
+            {entitiesLoading ? "Loading entities..." : "Select entity"}
+          </option>
           {entitiesQuery.data?.map((entity) => (
             <option key={entity.id} value={entity.id}>
               {entity.name}
@@ -650,39 +680,42 @@ function BillingReadinessWorkspace() {
                   invoiceDraftsQuery.isFetching
                 }
               >
-                <RefreshCw size={15} />
-                Refresh
+                {billingReadinessRefreshing ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={15} />
+                )}
+                {billingReadinessRefreshing ? "Refreshing" : "Refresh"}
               </SecondaryButton>
             </>
           }
         />
 
-        {entitiesQuery.error ? (
-          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-            {entitiesQuery.error instanceof Error
-              ? entitiesQuery.error.message
-              : "Could not load entities."}
-          </div>
-        ) : null}
-        {rentRollQuery.error ? (
-          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-            {rentRollQuery.error instanceof Error
-              ? rentRollQuery.error.message
-              : "Could not load billing readiness."}
-          </div>
-        ) : null}
-        {billingDraftsQuery.error ? (
-          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-            {billingDraftsQuery.error instanceof Error
-              ? billingDraftsQuery.error.message
-              : "Could not load billing drafts."}
-          </div>
-        ) : null}
-        {invoiceDraftsQuery.error ? (
-          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-            {invoiceDraftsQuery.error instanceof Error
-              ? invoiceDraftsQuery.error.message
-              : "Could not load invoice drafts."}
+        {billingReadinessError ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
+            <div>
+              <div className="font-semibold">Billing data did not finish loading.</div>
+              <div className="mt-1">
+                {friendlyError(
+                  billingReadinessError,
+                  "Could not load billing readiness.",
+                )}
+              </div>
+            </div>
+            <SecondaryButton
+              type="button"
+              onClick={() => {
+                entitiesQuery.refetch();
+                if (selectedEntityId) {
+                  rentRollQuery.refetch();
+                  billingDraftsQuery.refetch();
+                  invoiceDraftsQuery.refetch();
+                }
+              }}
+            >
+              <RefreshCw size={15} />
+              Retry
+            </SecondaryButton>
           </div>
         ) : null}
         {updateDraftMutation.error ? (
@@ -711,6 +744,22 @@ function BillingReadinessWorkspace() {
             {updateInvoiceDraftMutation.error instanceof Error
               ? updateInvoiceDraftMutation.error.message
               : "Could not update the invoice draft."}
+          </div>
+        ) : null}
+        {recordInvoiceDeliveryMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {friendlyError(
+              recordInvoiceDeliveryMutation.error,
+              "Could not record invoice delivery.",
+            )}
+          </div>
+        ) : null}
+        {updatePaymentStatusMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {friendlyError(
+              updatePaymentStatusMutation.error,
+              "Could not update payment status.",
+            )}
           </div>
         ) : null}
 
@@ -782,7 +831,37 @@ function BillingReadinessWorkspace() {
           />
         </section>
 
-        {!selectedEntityId ? (
+        {billingReadinessLoading && !billingReadinessError ? (
+          <SectionPanel
+            title="Loading billing workspace"
+            description={
+              selectedEntity
+                ? `Checking rent roll, billing drafts, and invoice drafts for ${selectedEntity.name}.`
+                : "Connecting to the live billing workspace and selecting an entity."
+            }
+            icon={<Loader2 size={17} className="animate-spin text-primary" />}
+            actions={
+              <StatusBadge tone={billingReadinessRefreshing ? "primary" : "neutral"}>
+                {billingReadinessRefreshing ? "Refreshing" : "Loading"}
+              </StatusBadge>
+            }
+            className="border-primary/20 bg-primary/5"
+          >
+            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-3">
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Rent roll checks
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Billing drafts
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Invoice staging
+              </div>
+            </div>
+          </SectionPanel>
+        ) : null}
+
+        {!selectedEntityId && !billingReadinessLoading ? (
           <SectionPanel>
             <EmptyState
               title="No entity selected"
@@ -800,14 +879,14 @@ function BillingReadinessWorkspace() {
               actions={
                 <StatusBadge
                   tone={
-                    billingDraftsQuery.isLoading
+                    billingDraftsLoading
                       ? "neutral"
                       : billingDrafts.length
                         ? "primary"
                         : "neutral"
                   }
                 >
-                  {billingDraftsQuery.isLoading
+                  {billingDraftsLoading
                     ? "Loading"
                     : `${billingDrafts.length} draft${billingDrafts.length === 1 ? "" : "s"}`}
                 </StatusBadge>
@@ -967,8 +1046,7 @@ function BillingReadinessWorkspace() {
                         </tr>
                       );
                     })}
-                    {!billingDraftsQuery.isLoading &&
-                    billingDrafts.length === 0 ? (
+                    {!billingDraftsLoading && billingDrafts.length === 0 ? (
                       <tr>
                         <td className="px-3 py-10" colSpan={6}>
                           <EmptyState
@@ -978,7 +1056,7 @@ function BillingReadinessWorkspace() {
                         </td>
                       </tr>
                     ) : null}
-                    {billingDraftsQuery.isLoading ? (
+                    {billingDraftsLoading ? (
                       <tr>
                         <td
                           className="px-3 py-10 text-center text-sm text-muted-foreground"
@@ -1000,14 +1078,14 @@ function BillingReadinessWorkspace() {
               actions={
                 <StatusBadge
                   tone={
-                    invoiceDraftsQuery.isLoading
+                    invoiceDraftsLoading
                       ? "neutral"
                       : invoiceDrafts.length
                         ? "primary"
                         : "neutral"
                   }
                 >
-                  {invoiceDraftsQuery.isLoading
+                  {invoiceDraftsLoading
                     ? "Loading"
                     : `${invoiceDrafts.length} invoice draft${invoiceDrafts.length === 1 ? "" : "s"}`}
                 </StatusBadge>
@@ -1288,8 +1366,7 @@ function BillingReadinessWorkspace() {
                         </tr>
                       );
                     })}
-                    {!invoiceDraftsQuery.isLoading &&
-                    invoiceDrafts.length === 0 ? (
+                    {!invoiceDraftsLoading && invoiceDrafts.length === 0 ? (
                       <tr>
                         <td className="px-3 py-10" colSpan={7}>
                           <EmptyState
@@ -1299,7 +1376,7 @@ function BillingReadinessWorkspace() {
                         </td>
                       </tr>
                     ) : null}
-                    {invoiceDraftsQuery.isLoading ? (
+                    {invoiceDraftsLoading ? (
                       <tr>
                         <td
                           className="px-3 py-10 text-center text-sm text-muted-foreground"
@@ -1391,7 +1468,7 @@ function BillingReadinessWorkspace() {
                           </tr>
                         );
                       })}
-                      {!rentRollQuery.isLoading && rentRows.length === 0 ? (
+                      {!rentRollLoading && rentRows.length === 0 ? (
                         <tr>
                           <td className="px-3 py-10" colSpan={5}>
                             <EmptyState
@@ -1401,7 +1478,7 @@ function BillingReadinessWorkspace() {
                           </td>
                         </tr>
                       ) : null}
-                      {rentRollQuery.isLoading ? (
+                      {rentRollLoading ? (
                         <tr>
                           <td
                             className="px-3 py-10 text-center text-sm text-muted-foreground"
@@ -1421,7 +1498,12 @@ function BillingReadinessWorkspace() {
                 description="Prioritised work with the right record to open next."
                 icon={<AlertTriangle size={17} className="text-[#B54708]" />}
               >
-                {blockerGroups.length ? (
+                {rentRollLoading ? (
+                  <EmptyState
+                    title="Loading action queue"
+                    description="Checking rent roll rows and readiness blockers for this entity."
+                  />
+                ) : blockerGroups.length ? (
                   <div className="divide-y divide-border">
                     {blockerGroups.map((group) => (
                       <article key={group.id} className="grid gap-3 px-4 py-3">

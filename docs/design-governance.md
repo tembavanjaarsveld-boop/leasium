@@ -86,6 +86,11 @@ Progress notes:
   retry, and defensive empty states so API wake-up does not look like missing
   portfolio data. Broader loading-state polish remains needed for Properties
   and Billing Readiness.
+- 2026-05-20: Properties and Billing Readiness now have page-level loading
+  panels, consolidated retry states, refresh indicators that preserve prior
+  data, and quieter empty states while entity-scoped queries are waking up.
+  Further Remba work should focus on splitting crowded workspaces into clearer
+  zones or tabs.
 
 Remba decision:
 

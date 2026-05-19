@@ -37,7 +37,15 @@ import { z } from "zod";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
-import { Button, Field, Input, SecondaryButton, Select } from "@/components/ui";
+import {
+  Button,
+  Field,
+  Input,
+  SecondaryButton,
+  SectionPanel,
+  Select,
+  StatusBadge,
+} from "@/components/ui";
 import {
   applyPublicEnrichment,
   applyLeaseIntake,
@@ -1143,12 +1151,80 @@ function Workspace() {
       ),
     [propertiesQuery.data, selectedPropertyId],
   );
+  const entitiesLoading =
+    !entitiesQuery.data && (entitiesQuery.isLoading || entitiesQuery.isFetching);
   const entitySelectionLoading =
-    entitiesQuery.isLoading ||
+    entitiesLoading ||
     (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
   const propertiesLoading =
     entitySelectionLoading ||
-    (Boolean(selectedEntityId) && propertiesQuery.isLoading);
+    (Boolean(selectedEntityId) &&
+      !propertiesQuery.data &&
+      (propertiesQuery.isLoading || propertiesQuery.isFetching));
+  const tenancyUnitsLoading =
+    Boolean(selectedPropertyId) &&
+    !tenancyUnitsQuery.data &&
+    (tenancyUnitsQuery.isLoading || tenancyUnitsQuery.isFetching);
+  const tenantsLoading =
+    Boolean(selectedEntityId) &&
+    !tenantsQuery.data &&
+    (tenantsQuery.isLoading || tenantsQuery.isFetching);
+  const leasesLoading =
+    Boolean(selectedPropertyId) &&
+    !leasesQuery.data &&
+    (leasesQuery.isLoading || leasesQuery.isFetching);
+  const obligationsLoading =
+    entitySelectionLoading ||
+    (Boolean(selectedEntityId) &&
+      !obligationsQuery.data &&
+      (obligationsQuery.isLoading || obligationsQuery.isFetching));
+  const rentRollLoading =
+    entitySelectionLoading ||
+    (Boolean(selectedEntityId) &&
+      !rentRollQuery.data &&
+      (rentRollQuery.isLoading || rentRollQuery.isFetching));
+  const chargeRulesLoading =
+    entitySelectionLoading ||
+    (Boolean(selectedEntityId) &&
+      !chargeRulesQuery.data &&
+      (chargeRulesQuery.isLoading || chargeRulesQuery.isFetching));
+  const tenantOnboardingsLoading =
+    Boolean(selectedEntityId) &&
+    !tenantOnboardingsQuery.data &&
+    (tenantOnboardingsQuery.isLoading || tenantOnboardingsQuery.isFetching);
+  const unitsWorkspaceLoading =
+    Boolean(selectedPropertyId) &&
+    (tenancyUnitsLoading ||
+      tenantsLoading ||
+      leasesLoading ||
+      tenantOnboardingsLoading);
+  const propertyWorkspaceLoading =
+    propertiesLoading ||
+    obligationsLoading ||
+    rentRollLoading ||
+    chargeRulesLoading ||
+    unitsWorkspaceLoading;
+  const propertyWorkspaceRefreshing =
+    Boolean(selectedEntityId) &&
+    (propertiesQuery.isFetching ||
+      tenancyUnitsQuery.isFetching ||
+      tenantsQuery.isFetching ||
+      leasesQuery.isFetching ||
+      obligationsQuery.isFetching ||
+      rentRollQuery.isFetching ||
+      chargeRulesQuery.isFetching ||
+      tenantOnboardingsQuery.isFetching) &&
+    !propertyWorkspaceLoading;
+  const propertyWorkspaceError =
+    entitiesQuery.error ??
+    propertiesQuery.error ??
+    tenancyUnitsQuery.error ??
+    tenantsQuery.error ??
+    leasesQuery.error ??
+    obligationsQuery.error ??
+    rentRollQuery.error ??
+    chargeRulesQuery.error ??
+    tenantOnboardingsQuery.error;
   const selectedPropertyApplyHistory = useMemo(
     () => propertyApplyHistory(selectedProperty),
     [selectedProperty],
@@ -2075,7 +2151,9 @@ function Workspace() {
           value={selectedEntityId}
           onChange={(event) => setSelectedEntityId(event.target.value)}
         >
-          <option value="">Select entity</option>
+          <option value="">
+            {entitiesLoading ? "Loading entities..." : "Select entity"}
+          </option>
           {entitiesQuery.data?.map((entity) => (
             <option key={entity.id} value={entity.id}>
               {entity.name}
@@ -2102,11 +2180,87 @@ function Workspace() {
             <SecondaryButton
               type="button"
               onClick={() => propertiesQuery.refetch()}
+              disabled={!selectedEntityId || propertiesQuery.isFetching}
             >
-              <RefreshCw size={16} />
-              Refresh
+              {propertiesQuery.isFetching && !propertiesLoading ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <RefreshCw size={16} />
+              )}
+              {propertiesQuery.isFetching && !propertiesLoading
+                ? "Refreshing"
+                : "Refresh"}
             </SecondaryButton>
           </div>
+
+          {propertyWorkspaceError ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
+              <div>
+                <div className="font-semibold">
+                  Property data did not finish loading.
+                </div>
+                <div className="mt-1">{friendlyError(propertyWorkspaceError)}</div>
+              </div>
+              <SecondaryButton
+                type="button"
+                onClick={() => {
+                  entitiesQuery.refetch();
+                  if (selectedEntityId) {
+                    propertiesQuery.refetch();
+                    tenantsQuery.refetch();
+                    obligationsQuery.refetch();
+                    rentRollQuery.refetch();
+                    chargeRulesQuery.refetch();
+                    tenantOnboardingsQuery.refetch();
+                  }
+                  if (selectedPropertyId) {
+                    tenancyUnitsQuery.refetch();
+                    leasesQuery.refetch();
+                  }
+                }}
+              >
+                <RefreshCw size={15} />
+                Retry
+              </SecondaryButton>
+            </div>
+          ) : null}
+
+          {propertyWorkspaceLoading && !propertyWorkspaceError ? (
+            <SectionPanel
+              title="Loading property workspace"
+              description={
+                selectedProperty
+                  ? `Checking units, leases, dates, and billing for ${selectedProperty.name}.`
+                  : selectedEntity
+                    ? `Checking property records for ${selectedEntity.name}.`
+                    : "Connecting to the live portfolio and selecting an entity."
+              }
+              icon={<Loader2 size={17} className="animate-spin text-primary" />}
+              actions={
+                <StatusBadge
+                  tone={propertyWorkspaceRefreshing ? "primary" : "neutral"}
+                >
+                  {propertyWorkspaceRefreshing ? "Refreshing" : "Loading"}
+                </StatusBadge>
+              }
+              className="mb-4 border-primary/20 bg-primary/5"
+            >
+              <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-4">
+                <div className="rounded-xl border border-border bg-white px-3 py-2">
+                  Properties
+                </div>
+                <div className="rounded-xl border border-border bg-white px-3 py-2">
+                  Units & leases
+                </div>
+                <div className="rounded-xl border border-border bg-white px-3 py-2">
+                  Attention dates
+                </div>
+                <div className="rounded-xl border border-border bg-white px-3 py-2">
+                  Billing readiness
+                </div>
+              </div>
+            </SectionPanel>
+          ) : null}
 
           <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumXs">
             <div className="grid gap-4 p-4">
@@ -3118,8 +3272,12 @@ function Workspace() {
                     </div>
                   );
                 })}
-                {!obligationsQuery.isLoading &&
-                activeObligations.length === 0 ? (
+                {obligationsLoading ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">
+                    Loading attention items...
+                  </div>
+                ) : null}
+                {!obligationsLoading && activeObligations.length === 0 ? (
                   <div className="px-4 py-6 text-sm text-muted-foreground">
                     Nothing needs attention for this selection.
                   </div>
@@ -3300,7 +3458,7 @@ function Workspace() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rentRollQuery.isLoading ? (
+                    {rentRollLoading ? (
                       <tr>
                         <td
                           className="px-3 py-8 text-center text-muted-foreground"
@@ -3375,7 +3533,7 @@ function Workspace() {
                         </tr>
                       );
                     })}
-                    {!rentRollQuery.isLoading && rentRollRows.length === 0 ? (
+                    {!rentRollLoading && rentRollRows.length === 0 ? (
                       <tr>
                         <td
                           className="px-3 py-8 text-center text-muted-foreground"
@@ -3412,9 +3570,15 @@ function Workspace() {
                 >
                   <Select
                     {...chargeRuleForm.register("lease_id")}
-                    disabled={!selectedPropertyId || !leasesQuery.data?.length}
+                    disabled={
+                      !selectedPropertyId ||
+                      leasesLoading ||
+                      !leasesQuery.data?.length
+                    }
                   >
-                    <option value="">Select lease</option>
+                    <option value="">
+                      {leasesLoading ? "Loading leases..." : "Select lease"}
+                    </option>
                     {leasesQuery.data?.map((lease) => (
                       <option key={lease.id} value={lease.id}>
                         {leaseOptionLabel(lease)}
@@ -3485,6 +3649,8 @@ function Workspace() {
                   disabled={
                     !selectedEntityId ||
                     !selectedPropertyId ||
+                    chargeRulesLoading ||
+                    leasesLoading ||
                     chargeRuleMutation.isPending
                   }
                 >
@@ -3874,7 +4040,7 @@ function Workspace() {
                     : "Tenancy units"}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  {tenancyUnitsQuery.isLoading
+                  {unitsWorkspaceLoading
                     ? "Loading units..."
                     : `${tenancyUnitsQuery.data?.length ?? 0} units`}
                   {tenancyUnitsQuery.data?.length
@@ -3925,7 +4091,7 @@ function Workspace() {
                       </tr>
                     </thead>
                     <tbody>
-                      {tenancyUnitsQuery.isLoading ? (
+                      {unitsWorkspaceLoading ? (
                         <tr>
                           <td
                             className="px-3 py-8 text-center text-muted-foreground"
@@ -3935,7 +4101,8 @@ function Workspace() {
                           </td>
                         </tr>
                       ) : null}
-                      {tenancyUnitsQuery.data?.map((unit) => {
+                      {!unitsWorkspaceLoading
+                        ? tenancyUnitsQuery.data?.map((unit) => {
                         const lease = pickUnitLease(leasesQuery.data, unit.id);
                         const tenant = lease
                           ? tenantsById.get(lease.tenant_id)
@@ -4099,8 +4266,9 @@ function Workspace() {
                             </td>
                           </tr>
                         );
-                      })}
-                      {!tenancyUnitsQuery.isLoading &&
+                      })
+                        : null}
+                      {!unitsWorkspaceLoading &&
                       tenancyUnitsQuery.data?.length === 0 ? (
                         <tr>
                           <td
@@ -4117,7 +4285,9 @@ function Workspace() {
               </div>
             ) : (
               <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                Select a property.
+                {propertiesLoading
+                  ? "Loading selected property..."
+                  : "Select a property."}
               </div>
             )}
           </section>

@@ -118,8 +118,16 @@ Last updated: 2026-05-20
     empty state while obligations are still loading.
   - Insights now shows explicit loading, retry, and defensive empty states for
     the overview request instead of leaving the first viewport looking blank.
-  - This closes part of the 2026-05-20 Remba scan priority fix; Properties and
-    Billing Readiness still need their own loading-state polish.
+- Properties and Billing Readiness loading-state polish is built on this branch.
+  - Properties now has a page-level loading panel, consolidated retry state,
+    refresh indicator, and guarded table/empty states for properties, units,
+    attention dates, rent roll, and charge-rule setup.
+  - Billing Readiness now has a page-level loading panel, consolidated retry
+    state, refresh indicator, and guarded empty states for rent roll blockers,
+    billing drafts, and invoice drafts.
+  - This closes the broad loading-state priority fix from the 2026-05-20 Remba
+    scan; remaining Remba work is mainly workspace structure, tabs, and crowded
+    page hierarchy.
 - Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
   - This is design-facing and still needs Remba review.
 ## Verification
@@ -131,6 +139,12 @@ Last updated: 2026-05-20
     - `git diff --check`
     - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
     - Local `next start` route smoke returned `200` for `/` and `/insights` with the bundled WASM path.
+  - Properties/Billing Readiness loading-state polish checks passed:
+    - `./node_modules/.bin/eslint src/app/billing-readiness/page.tsx src/components/property-workspace.tsx`
+    - `./node_modules/.bin/tsc --noEmit`
+    - `git diff --check`
+    - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+    - Local `next start` route smoke returned `200` for `/properties` and `/billing-readiness` with the bundled WASM path.
   - `.venv/bin/python -m ruff check apps/api/routers/insights.py apps/api/schemas/insights.py apps/api/main.py tests/integration/test_insights_api.py`
   - `.venv/bin/python -m pytest tests/integration/test_insights_api.py tests/integration/test_xero_api.py -q`
   - Result: `2 passed`
