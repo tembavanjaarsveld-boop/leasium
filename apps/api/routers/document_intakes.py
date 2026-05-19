@@ -257,10 +257,34 @@ def _fallback_obligation_category(document_type: str | None) -> ObligationCatego
             return ObligationCategory.bank_guarantee
         case "compliance":
             return ObligationCategory.compliance
+        case "invoice_admin":
+            return ObligationCategory.other
         case "notice":
             return ObligationCategory.other
         case _:
             return ObligationCategory.other
+
+
+def _first_money_record(data: dict[str, Any]) -> dict[str, Any] | None:
+    for record in _records(data.get("money_amounts")):
+        if _float(record.get("amount")) is not None:
+            return record
+    return None
+
+
+def _money_note(record: dict[str, Any] | None) -> str | None:
+    if record is None:
+        return None
+    amount = _float(record.get("amount"))
+    if amount is None:
+        return None
+    currency = _str(record.get("currency")) or "AUD"
+    label = _str(record.get("label")) or "Amount"
+    frequency = _str(record.get("frequency"))
+    formatted = f"{currency} {amount:,.2f}"
+    if frequency:
+        formatted = f"{formatted} {frequency}"
+    return f"{label}: {formatted}."
 
 
 def _fallback_dated_record(
@@ -324,6 +348,37 @@ def _fallback_dated_record(
             due_date,
             ObligationCategory.compliance,
             "Review compliance document before the recorded date.",
+            _str(source_record.get("source_hint")),
+        )
+    if document_type == "invoice_admin":
+        source_record = _first_dated_record(
+            key_dates,
+            {
+                "due",
+                "payment due",
+                "pay by",
+                "invoice due",
+                "service period end",
+                "period end",
+            },
+        )
+        if source_record is None:
+            source_record = _first_dated_record(key_dates)
+        if source_record is None:
+            return None
+        label = _str(source_record.get("label"))
+        due_date = _date(source_record.get("date")) or _date(source_record.get("due_date"))
+        if due_date is None:
+            return None
+        money_note = _money_note(_first_money_record(data))
+        notes = "Prepare billing review. No invoice was created, posted, or synced."
+        if money_note:
+            notes = f"{money_note} {notes}"
+        return (
+            label or "Review billing document",
+            due_date,
+            ObligationCategory.other,
+            notes,
             _str(source_record.get("source_hint")),
         )
     if document_type == "notice":
@@ -673,6 +728,18 @@ def _apply_document_obligation_intake(
     obligations: list[Obligation] = []
     for index, obligation_payload in enumerate(obligation_payloads):
         notes = obligation_payload["notes"] or "Created from Smart Intake document."
+        metadata: dict[str, Any] = {
+            "source": "document_intake",
+            "document_intake_id": str(intake.id),
+            "document_id": str(intake.document_id),
+            "document_type": document_type,
+            "source_hint": obligation_payload["source_hint"],
+            "openai_response_id": intake.openai_response_id,
+            "review_index": index,
+        }
+        if document_type == "invoice_admin":
+            metadata["money_amounts"] = data.get("money_amounts")
+            metadata["proposed_actions"] = data.get("proposed_actions")
         obligation = Obligation(
             entity_id=intake.entity_id,
             property_id=property_id,
@@ -685,15 +752,7 @@ def _apply_document_obligation_intake(
             priority=1,
             owner_role=UserRole.ops,
             notes=f"{notes} Source document: {intake.document.filename}.",
-            obligation_metadata={
-                "source": "document_intake",
-                "document_intake_id": str(intake.id),
-                "document_id": str(intake.document_id),
-                "document_type": document_type,
-                "source_hint": obligation_payload["source_hint"],
-                "openai_response_id": intake.openai_response_id,
-                "review_index": index,
-            },
+            obligation_metadata=metadata,
         )
         session.add(obligation)
         obligations.append(obligation)
@@ -1136,6 +1195,7 @@ def apply_document_intake(
         "insurance_certificate",
         "bank_guarantee",
         "compliance",
+        "invoice_admin",
         "notice",
     }:
         raise HTTPException(
@@ -1148,6 +1208,8 @@ def apply_document_intake(
     applied_action = (
         "created_insurance_obligation"
         if document_type == "insurance_certificate" and len(obligations) == 1
+        else "prepared_billing_work"
+        if document_type == "invoice_admin"
         else "created_document_obligations"
     )
     intake.review_data = {

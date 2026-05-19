@@ -678,10 +678,26 @@ function documentWorkflowType(
       "insurance_certificate",
       "bank_guarantee",
       "compliance",
+      "invoice_admin",
       "notice",
     ].includes(type)
     ? type
     : null;
+}
+
+function workflowTaskNoun(workflowType: string | null) {
+  switch (workflowType) {
+    case "invoice_admin":
+      return "billing review task";
+    case "bank_guarantee":
+      return "guarantee task";
+    case "compliance":
+      return "compliance task";
+    case "notice":
+      return "notice task";
+    default:
+      return "document-driven task";
+  }
 }
 
 function reviewItemWithLabel(
@@ -922,10 +938,16 @@ function DocumentIntakeApplyOutcomeCard({
   outcome: DocumentApplyOutcome;
   onDismiss: () => void;
 }) {
+  const isBilling = outcome.workflowType === "invoice_admin";
+  const taskNoun = workflowTaskNoun(outcome.workflowType);
   return (
     <SectionPanel
-      title="Applied to portfolio"
-      description="Review-first automation outcome"
+      title={isBilling ? "Prepared for billing" : "Applied to portfolio"}
+      description={
+        isBilling
+          ? "Review-first billing work. Nothing was invoiced or synced."
+          : "Review-first automation outcome"
+      }
       icon={<Check size={17} className="text-leasium-success" />}
       actions={<StatusBadge tone="success">Applied</StatusBadge>}
     >
@@ -936,8 +958,12 @@ function DocumentIntakeApplyOutcomeCard({
               ? `Created lease register records and ${outcome.obligationCount} ${
                   outcome.obligationCount === 1 ? "task" : "tasks"
                 }.`
-              : `Created ${outcome.obligationCount} document-driven ${
-                  outcome.obligationCount === 1 ? "task" : "tasks"
+              : isBilling
+                ? `Prepared ${outcome.obligationCount} billing review ${
+                    outcome.obligationCount === 1 ? "task" : "tasks"
+                  }. Nothing was posted to Xero.`
+              : `Created ${outcome.obligationCount} ${taskNoun}${
+                  outcome.obligationCount === 1 ? "" : "s"
                 }.`}
           </div>
           <div className="grid gap-2 text-foreground sm:grid-cols-2">
@@ -983,11 +1009,19 @@ function DocumentIntakeApplyOutcomeCard({
               Open Properties
             </Link>
           ) : null}
+          {isBilling ? (
+            <Link
+              href="/billing-readiness"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+            >
+              Open Billing Readiness
+            </Link>
+          ) : null}
           <Link
             href="/tasks"
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover"
           >
-            View in Tasks
+            View Tasks
           </Link>
         </div>
       </div>
@@ -1194,6 +1228,8 @@ function DocumentIntakeReviewPanel({
                 <p className="mt-1 text-sm text-muted-foreground">
                   {workflowType === "lease"
                     ? "Choose existing records to link only, or let Leasium create new records from the reviewed fields."
+                    : workflowType === "invoice_admin"
+                      ? "Link the billing document to the right property, unit, or lease. Leasium prepares review work only."
                     : "Link the source document and created work to the right property, unit, or lease before applying."}
                 </p>
               </div>
@@ -1503,8 +1539,8 @@ function DocumentIntakeReviewPanel({
         {!canApplyWorkflow ? (
           <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
             Apply is available for leases, certificates, compliance docs,
-            guarantees, and notices first. Invoices can be saved as reviewed
-            here for now.
+            guarantees, notices, and billing docs first. Other documents can be
+            saved as reviewed here for now.
           </div>
         ) : null}
         {applyBlocker ? (
@@ -1520,6 +1556,8 @@ function DocumentIntakeReviewPanel({
                 <p className="mt-1 text-sm text-muted-foreground">
                   {workflowType === "lease"
                     ? `Create the lease register records, source document link, and ${obligationApplyCount} task${obligationApplyCount === 1 ? "" : "s"} from ${applyScope}. `
+                    : workflowType === "invoice_admin"
+                      ? `Prepare ${obligationApplyCount} billing review ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. Nothing will be invoiced or synced. `
                     : `Create ${obligationApplyCount} document-driven ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. `}
                   {ignoredCount
                     ? `${ignoredCount} ignored item${ignoredCount === 1 ? "" : "s"} will be left out.`

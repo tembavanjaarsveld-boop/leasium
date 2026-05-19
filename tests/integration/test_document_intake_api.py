@@ -210,6 +210,62 @@ def _fake_compliance_extraction() -> dict[str, Any]:
     }
 
 
+def _fake_invoice_extraction() -> dict[str, Any]:
+    return {
+        **_fake_extraction(),
+        "document_type": "invoice_admin",
+        "summary": "Outgoings recovery invoice for the September billing run.",
+        "parties": [
+            {
+                "name": "Northlakes Allied Health Pty Ltd",
+                "role": "tenant",
+                "abn": None,
+                "contact": "Alex Taylor",
+                "confidence": 0.82,
+                "source_hint": "Bill to section",
+            }
+        ],
+        "properties": [
+            {
+                "name": "Scope Plaza",
+                "address": "8 Scope Street",
+                "unit_label": "Suite 8",
+                "confidence": 0.78,
+                "source_hint": "Invoice description",
+            }
+        ],
+        "key_dates": [
+            {
+                "label": "Payment due",
+                "date": "2026-09-30",
+                "confidence": 0.84,
+                "source_hint": "Due date",
+            }
+        ],
+        "money_amounts": [
+            {
+                "label": "Outgoings recovery",
+                "amount": 2750.5,
+                "currency": "AUD",
+                "frequency": "one_off",
+                "confidence": 0.83,
+                "source_hint": "Amount due",
+            }
+        ],
+        "obligations": [],
+        "warnings": ["GST treatment needs finance review."],
+        "missing_information": [],
+        "proposed_actions": [
+            {
+                "action": "prepare_billing_review",
+                "target": "billing",
+                "summary": "Review the invoice amount before creating billing work.",
+                "confidence": 0.82,
+            }
+        ],
+    }
+
+
 def _fake_smart_lease_extraction() -> dict[str, Any]:
     return {
         **_fake_extraction(),
@@ -679,6 +735,72 @@ def test_document_intake_apply_compliance_creates_reviewed_obligations(
     assert document.document_metadata["applied_document_type"] == "compliance"
 
 
+def test_document_intake_apply_invoice_prepares_billing_work(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_invoice_extraction(), "resp_invoice_document"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+    scope = _lease_scope(client, session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("outgoings-invoice.txt", b"invoice", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    document_id = create_response.json()["document_id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": _fake_invoice_extraction(),
+            "property_id": scope["property_id"],
+            "tenancy_unit_id": scope["tenancy_unit_id"],
+            "lease_id": scope["lease_id"],
+        },
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "applied"
+    assert body["category"] == "invoice"
+    assert body["review_data"]["applied"]["action"] == "prepared_billing_work"
+    assert body["review_data"]["applied"]["obligation_count"] == 1
+
+    obligation_id = body["review_data"]["applied"]["obligation_id"]
+    obligation = session.get(Obligation, UUID(obligation_id))
+    assert obligation is not None
+    assert obligation.title == "Payment due"
+    assert obligation.due_date.isoformat() == "2026-09-30"
+    assert obligation.category == "other"
+    assert "No invoice was created, posted, or synced." in (obligation.notes or "")
+    assert obligation.obligation_metadata["document_type"] == "invoice_admin"
+    assert obligation.obligation_metadata["money_amounts"][0]["amount"] == 2750.5
+    assert str(obligation.property_id) == scope["property_id"]
+    assert str(obligation.tenancy_unit_id) == scope["tenancy_unit_id"]
+    assert str(obligation.lease_id) == scope["lease_id"]
+
+    document = session.get(StoredDocument, UUID(document_id))
+    assert document is not None
+    assert document.category == "invoice"
+    assert str(document.property_id) == scope["property_id"]
+    assert document.document_metadata["applied_document_type"] == "invoice_admin"
+
+
 def test_document_intake_apply_lease_creates_register_records(
     client: TestClient,
     session: Session,
@@ -851,8 +973,8 @@ def test_document_intake_apply_rejects_unsupported_document_type(
         settings: Settings,
     ) -> tuple[dict[str, Any], str]:
         extraction = _fake_extraction()
-        extraction["document_type"] = "invoice_admin"
-        return extraction, "resp_document_invoice_apply"
+        extraction["document_type"] = "tenant_document"
+        return extraction, "resp_document_tenant_apply"
 
     monkeypatch.setattr(
         "apps.api.routers.document_intakes.extract_document_file",
@@ -869,7 +991,7 @@ def test_document_intake_apply_rejects_unsupported_document_type(
 
     apply_response = client.post(
         f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
-        json={"review_data": {"document_type": "invoice_admin"}},
+        json={"review_data": {"document_type": "tenant_document"}},
     )
     assert apply_response.status_code == 409
 
