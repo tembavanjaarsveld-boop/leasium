@@ -30,6 +30,61 @@ Status: pass with fixes. Remba approved the tenant onboarding command center and
 tenant detail direction on 2026-05-19, provided tenant workflow stays in the
 tenant workspace rather than being added to the crowded property workspace.
 
+## Remba Platform Scan - 2026-05-20
+
+Status: conditional pass with priority fixes.
+
+Scope: live production desktop/laptop scan of Dashboard, Smart Intake,
+Properties, Tenants, Tenant Detail, Tasks, Billing Readiness, Insights,
+Settings, and one public tenant onboarding link. The scan confirmed the live
+API data is reachable and visible in the platform, and no browser console
+errors appeared during the reviewed flows.
+
+What is working:
+
+- The global navigation labels now match the document-first product model.
+- Dashboard, Tasks, Tenants, Billing Readiness, Settings, and Insights all load
+  the seeded live portfolio once the entity query settles.
+- Tenant workspace and tenant detail are much calmer than the old property
+  workspace approach and should remain the home for onboarding/contact work.
+- Tasks is correctly acting as a triage surface, not a second review workflow.
+- Insights is read-only and links users back toward the owning workspaces.
+- Billing Readiness keeps the no-posting/no-Xero-sync guardrails visible.
+
+Priority fixes before treating the current UX as signed off:
+
+- Properties is still overloaded: document intake, attention dates, billing
+  readiness, property table, unit table, and always-visible create form compete
+  in one long workspace. Split this into clearer task zones or tabs, and move
+  create/edit forms into contextual drawers or focused panels.
+- Loading states need one more polish pass. Dashboard, Smart Intake, Properties,
+  Billing Readiness, and Insights should avoid large blank areas or repeated
+  `... Loading` cards after an entity is known. Use stable prior values,
+  section-level skeletons, or a clear page-level loading panel instead.
+- Insights can show a mostly blank first viewport while the overview request is
+  loading. Add an explicit loading panel so the page does not look broken on a
+  slow API wake-up.
+- Billing Readiness is now doing several jobs: readiness checks, Smart Intake
+  billing drafts, invoice draft staging, delivery prep, and payment status.
+  Split these into scannable sections or tabs, and make the primary next action
+  obvious for each state.
+- Tenant detail still shows placeholder lease context such as `Property context
+  pending` and `Unit context pending` even when the tenant is linked to the
+  seeded portfolio. Fix the context label or underlying detail payload before
+  treating tenant detail as fully signed off.
+- Public onboarding should identify the tenant/business in the first viewport
+  and provide clearer due/expiry reassurance. The current first impression is
+  property-led and can feel like a blank form.
+- The desktop global navigation is now wide. A mobile/tablet pass should verify
+  whether it needs a collapsed menu before broader beta use.
+
+Remba decision:
+
+The platform is coherent enough for private pre-production work, but the
+current design-facing surfaces should remain marked `pending Remba review`
+until the priority fixes above are resolved. Tenant workspace and Tasks remain
+directionally approved.
+
 Required fixes before major new feature work:
 
 - Split `/properties` into clearer task zones or tabs instead of one long control panel.
