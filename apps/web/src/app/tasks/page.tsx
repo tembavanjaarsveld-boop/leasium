@@ -538,7 +538,7 @@ function TasksWorkspace() {
                         className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                       >
                         <Sparkles size={15} />
-                        Open Lease Inbox
+                        Open Smart Intake
                       </Link>
                     </div>
                   ) : null

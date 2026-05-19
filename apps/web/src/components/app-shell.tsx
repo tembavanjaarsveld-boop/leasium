@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Dashboard" },
-  { href: "/intake", label: "Lease Inbox" },
+  { href: "/intake", label: "Smart Intake" },
   { href: "/properties", label: "Properties" },
   { href: "/tenants", label: "Tenants" },
   { href: "/tasks", label: "Tasks" },
@@ -23,7 +23,7 @@ const commandActions = [
   {
     href: "/intake",
     label: "Upload document",
-    meta: "Lease Inbox",
+    meta: "Smart Intake",
   },
   {
     href: "/properties",

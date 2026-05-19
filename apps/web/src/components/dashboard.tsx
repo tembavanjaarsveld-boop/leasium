@@ -1089,7 +1089,7 @@ function DocumentIntakeApplyOutcomeCard({
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <SecondaryButton type="button" onClick={onDismiss}>
-            Back to Lease Inbox
+            Back to Smart Intake
           </SecondaryButton>
           {outcome.workflowType === "lease" ? (
             <Link
@@ -2143,7 +2143,7 @@ export function Dashboard({
         <PageHeader
           title={
             isIntakeWorkspace
-              ? "Lease Inbox"
+              ? "Smart Intake"
               : demoMode
                 ? "Leasium demo portfolio"
                 : (selectedEntity?.name ?? "Dashboard")
@@ -2250,8 +2250,8 @@ export function Dashboard({
             tone={needsReviewCount ? "primary" : "neutral"}
             nextAction={
               needsReviewCount
-                ? "Approve extracted lease and tenant data."
-                : "Drop documents into Lease Inbox."
+                ? "Approve extracted document data."
+                : "Drop documents into Smart Intake."
             }
             icon={<Sparkles size={17} />}
           />
@@ -2336,7 +2336,8 @@ export function Dashboard({
                         : "Drop a document here"}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      Lease, invoice, contract, guarantee, certificate
+                      Lease, purchase contract, tenancy schedule, invoice,
+                      certificate, handover file, or tenant document
                     </span>
                   </span>
                 </button>
@@ -2373,7 +2374,7 @@ export function Dashboard({
                 </div>
                 <div className="overflow-hidden rounded-md border border-border">
                   <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                    <span className="text-sm font-semibold">Review inbox</span>
+                    <span className="text-sm font-semibold">Review queue</span>
                     <StatusBadge
                       tone={needsReviewCount ? "primary" : "neutral"}
                     >

@@ -65,6 +65,10 @@ Status: pass. Remba approved invoice/billing documents as the next Smart Intake 
 
 Status: pass. Remba approved acquisition/building contract apply on 2026-05-19 as a property-first workflow. The Apply plan must separate link existing, fill blanks only, create reviewed records, skip optional units, link the source document, and create milestone tasks. It must not imply acquisition completion, financial posting, or destructive overwrites.
 
+## Smart Intake Naming Sign-Off
+
+Status: pass. Remba approved replacing `Lease Inbox` with `Smart Intake` on 2026-05-19 because the intake flow now handles leases, purchase contracts, invoices, certificates, handover files, tenant documents, and property setup packs. Keep the `/intake` route for now. Use `Review queue` for the waiting-list area and keep `Nothing is applied until you review it` as the trust signal.
+
 Applied UX guardrails:
 
 - Keep confirmation in the review panel area rather than a modal.

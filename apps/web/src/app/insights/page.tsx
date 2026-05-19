@@ -369,7 +369,7 @@ function InsightsWorkspace() {
       chip: labelStatus(item.status),
       tone: intakeTone(item),
       href: `/intake?review=${item.id}`,
-      source: "Lease Inbox",
+      source: "Smart Intake",
       rank: item.status === "ready_for_review" ? -1 : 20,
     }));
 
@@ -391,7 +391,7 @@ function InsightsWorkspace() {
 
   const healthCards = [
     {
-      label: "Lease Inbox",
+      label: "Smart Intake",
       value: waitingIntakes.length,
       detail:
         waitingIntakes.length === 1
@@ -468,7 +468,7 @@ function InsightsWorkspace() {
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
               >
                 <Sparkles size={15} />
-                Open Lease Inbox
+                Open Smart Intake
               </Link>
               <SecondaryButton
                 type="button"
@@ -576,7 +576,7 @@ function InsightsWorkspace() {
                           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                         >
                           <Sparkles size={15} />
-                          Open Lease Inbox
+                          Open Smart Intake
                         </Link>
                         <Link
                           href="/billing-readiness"
