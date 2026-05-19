@@ -89,6 +89,10 @@ Status: pending Remba review. Tenant detail now surfaces property/unit/lease con
 
 Status: pending Remba review. Settings now includes a Xero readiness workspace for entity connection state, contact readiness, charge-rule account/tax mapping, approved invoice sync queues, and payment reconciliation counts. Keep the boundary explicit: this is readiness and manual mapping only, not OAuth, live contact sync, invoice posting, or automatic reconciliation.
 
+## Insights Overview Surface
+
+Status: pending Remba review. Insights now uses a backend overview for portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots. Keep it read-only, link users to the owning workspace for action, and leave shareable owner/finance snapshots for a later pass generated from the same data.
+
 ## Property Provenance Surface
 
 Status: pending Remba review. Smart Intake apply outcomes and the Property workspace now expose purchase-contract source history, field citations, confidence, and before/after property changes. Keep this review-first and factual: show what changed and where it came from, without implying the document source is automatically authoritative.

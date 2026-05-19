@@ -367,6 +367,142 @@ export async function mockLeasiumApi(page: Page) {
     };
   };
 
+  const insightsOverview = () => {
+    const xero = xeroStatus();
+    return {
+      entity: {
+        id: entityId,
+        name: "Acme Holdings Pty Ltd",
+        gst_registered: true,
+        xero_connected: Boolean(xeroTenantId),
+        xero_last_sync_at: null,
+      },
+      as_of: "2026-05-19",
+      portfolio_health: {
+        property_count: 1,
+        tenant_count: 2,
+        unit_count: 1,
+        active_lease_count: 1,
+        vacant_unit_count: 0,
+        overdue_obligation_count: 0,
+        due_soon_obligation_count: 1,
+        open_obligation_count: 1,
+        smart_intake_waiting_count: 1,
+        tenant_onboarding_waiting_count: 1,
+      },
+      live_exceptions: [
+        {
+          id: "obligation-obligation-1",
+          kind: "obligation",
+          severity: "warning",
+          title: "Insurance certificate renewal",
+          detail: "Insurance obligation due 2026-05-24.",
+          chip: "In 5d",
+          due_date: "2026-05-24",
+          source: "Tasks",
+          href: "/tasks",
+          target: {
+            property_id: propertyId,
+            tenancy_unit_id: unitId,
+            lease_id: leaseId,
+            tenant_id: null,
+            document_intake_id: null,
+            obligation_id: "obligation-1",
+            billing_draft_id: null,
+            invoice_draft_id: null,
+          },
+          rank: 5,
+        },
+        {
+          id: "smart-intake-intake-1",
+          kind: "smart_intake",
+          severity: "primary",
+          title: "bright-cafe-lease.pdf",
+          detail: "Lease summary is ready for review.",
+          chip: "Ready For Review",
+          due_date: null,
+          source: "Smart Intake",
+          href: "/intake?review=intake-1",
+          target: {
+            property_id: null,
+            tenancy_unit_id: null,
+            lease_id: null,
+            tenant_id: null,
+            document_intake_id: "intake-1",
+            obligation_id: null,
+            billing_draft_id: null,
+            invoice_draft_id: null,
+          },
+          rank: -1,
+        },
+        ...xero.issues.map((issue, index) => ({
+          id: `xero-${issue.id}`,
+          kind: "xero_readiness",
+          severity: issue.severity === "blocker" ? "danger" : "warning",
+          title: issue.label,
+          detail: issue.detail,
+          chip: issue.severity === "blocker" ? "Blocker" : "Warning",
+          due_date: null,
+          source: "Xero Readiness",
+          href: "/settings",
+          target: {
+            property_id: issue.property_id,
+            tenancy_unit_id: issue.tenancy_unit_id,
+            lease_id: issue.lease_id,
+            tenant_id: issue.tenant_id,
+            document_intake_id: null,
+            obligation_id: null,
+            billing_draft_id: null,
+            invoice_draft_id: null,
+          },
+          rank: index + 1,
+        })),
+      ],
+      automation_activity: [
+        {
+          id: "activity-1",
+          occurred_at: "2026-05-19T10:00:00.000Z",
+          kind: "smart_intake_apply",
+          label: "Apply document intake",
+          detail: "Created reviewed lease records from Smart Intake.",
+          source: "smart_intake_apply",
+          target_table: "document_intake",
+          target_id: "intake-1",
+          outcome: "success",
+        },
+      ],
+      billing_risk: {
+        ready_to_bill_count: chargeTaxType ? 1 : 0,
+        blocked_row_count: chargeTaxType ? 0 : 1,
+        blocker_count: chargeTaxType ? 0 : 1,
+        configured_charges_cents: 800000,
+        billing_draft_counts: { approved: 1 },
+        invoice_draft_counts: { ready_for_approval: 1 },
+        xero_issue_count: xero.issues.length,
+        xero_blocker_count: xero.issues.filter((issue) => issue.severity === "blocker")
+          .length,
+        approved_unsynced_invoice_count: 1,
+        unpaid_invoice_count: 1,
+      },
+      owner_entity_snapshot: {
+        ownership_profile_counts: { trust: 1 },
+        missing_invoice_issuer_count: 0,
+        missing_owner_abn_count: 0,
+        missing_trustee_count: 0,
+        missing_ownership_split_count: 0,
+        missing_xero_contact_count: 0,
+        entity_gst_registered: true,
+        xero_connected: Boolean(xeroTenantId),
+        xero_last_sync_at: null,
+      },
+      guardrails: [
+        "Insights is read-only and does not mutate portfolio records.",
+        "Billing and Xero risk counts come from readiness checks; no invoice posting or sync runs here.",
+        "Automation activity is summarized from audit logs without exposing tool inputs.",
+      ],
+    };
+  };
+
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const method = request.method();
@@ -392,6 +528,11 @@ export async function mockLeasiumApi(page: Page) {
 
     if (method === "GET" && path === "/xero/status") {
       await fulfillJson(route, xeroStatus());
+      return;
+    }
+
+    if (method === "GET" && path === "/insights/overview") {
+      await fulfillJson(route, insightsOverview());
       return;
     }
 

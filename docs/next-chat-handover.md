@@ -91,10 +91,22 @@ Last updated: 2026-05-19
   - Settings now surfaces the readiness queue and can apply reviewed charge-rule account/tax mappings through the existing charge-rule API.
   - No OAuth, Xero API call, invoice posting, contact sync, or payment reconciliation runs from this surface yet.
   - This is design-facing and still needs Remba review.
+- Insights overview v1 is built on this branch.
+  - New `/api/v1/insights/overview` returns portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots from existing register, rent-roll, Xero readiness, and audit data.
+  - The endpoint is read-only and does not expose audit `tool_input`.
+  - `/insights` now uses the overview API instead of stitching together many separate client-side queries.
+  - Shareable owner/finance/lease-event snapshots are still backlog work generated from this live overview data.
+  - This is design-facing and still needs Remba review.
 - Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
   - This is design-facing and still needs Remba review.
 ## Verification
 
+- Insights overview focused checks passed:
+  - `.venv/bin/python -m ruff check apps/api/routers/insights.py apps/api/schemas/insights.py apps/api/main.py tests/integration/test_insights_api.py`
+  - `.venv/bin/python -m pytest tests/integration/test_insights_api.py tests/integration/test_xero_api.py -q`
+  - Result: `2 passed`
+  - `./node_modules/.bin/eslint src/app/insights/page.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
+  - `./node_modules/.bin/tsc --noEmit`
 - Backend focused tests passed:
   - `.venv/bin/python -m pytest tests/integration/test_enrichment_api.py tests/integration/test_document_intake_api.py tests/integration/test_tenant_onboarding_api.py tests/integration/test_register_api.py -q`
   - Result: `34 passed`
@@ -109,11 +121,14 @@ Last updated: 2026-05-19
   - `./node_modules/.bin/tsc --noEmit`
 - Full backend test suite passed:
   - `.venv/bin/python -m pytest -q`
-  - Result: `54 passed, 1 skipped`
+  - Result: `56 passed, 1 skipped`
   - Skipped: migration integration smoke test because `TEST_DATABASE_URL` is not configured in this shell.
 - Full frontend lint/build passed:
   - `./node_modules/.bin/eslint .`
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+- Insights browser smoke passed:
+  - Local Next dev loaded `/insights` against a throwaway mock API on `127.0.0.1`.
+  - The page showed the overview cards, Live Exceptions, Billing Risk, Automation Activity, and Owner / Entity Snapshot sections, with no browser console errors.
 - Settings/Xero browser smoke passed:
   - Local Next dev loaded `/settings` against a throwaway mock API on `127.0.0.1`.
   - The page showed the Xero readiness workspace, recorded a mock connection, applied a charge-rule tax mapping, and reported no browser console errors.
@@ -184,7 +199,7 @@ Last updated: 2026-05-19
 
 1. Enable the temporary Vercel password gate and verify production access behavior.
 2. Complete provider-backed Xero OAuth/contact sync, invoice posting approvals, and payment reconciliation on top of the readiness queue.
-3. Deepen Insights dashboards for portfolio health, exceptions, automation activity, billing risk, and owner/entity snapshots.
+3. Add shareable owner, finance, and lease-event snapshots generated from the live Insights overview data.
 4. Add provider-backed invoice email delivery and Xero posting approvals on top of internal invoice drafts.
 5. Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
 6. Start maintenance work orders and arrears/credit-control queues.

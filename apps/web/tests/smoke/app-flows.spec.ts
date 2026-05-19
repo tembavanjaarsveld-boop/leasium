@@ -65,3 +65,17 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page.getByText("Chart and tax mappings look ready")).toBeVisible();
 });
+
+test("insights shows overview, exceptions, activity, and owner snapshot", async ({
+  page,
+}) => {
+  await page.goto("/insights");
+
+  await expect(page.getByRole("heading", { name: "Insights" })).toBeVisible();
+  await expect(page.getByText("Live Exceptions")).toBeVisible();
+  await expect(page.getByText("Insurance certificate renewal")).toBeVisible();
+  await expect(page.getByText("Automation Activity")).toBeVisible();
+  await expect(page.getByText("Created reviewed lease records")).toBeVisible();
+  await expect(page.getByText("Owner / Entity Snapshot")).toBeVisible();
+  await expect(page.getByText("Trust")).toBeVisible();
+});

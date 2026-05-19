@@ -488,6 +488,105 @@ export type XeroStatusRecord = {
   guardrails: string[];
 };
 
+export type InsightsEntityRecord = {
+  id: string;
+  name: string;
+  gst_registered: boolean;
+  xero_connected: boolean;
+  xero_last_sync_at: string | null;
+};
+
+export type PortfolioHealthRecord = {
+  property_count: number;
+  tenant_count: number;
+  unit_count: number;
+  active_lease_count: number;
+  vacant_unit_count: number;
+  overdue_obligation_count: number;
+  due_soon_obligation_count: number;
+  open_obligation_count: number;
+  smart_intake_waiting_count: number;
+  tenant_onboarding_waiting_count: number;
+};
+
+export type InsightTargetRecord = {
+  property_id: string | null;
+  tenancy_unit_id: string | null;
+  lease_id: string | null;
+  tenant_id: string | null;
+  document_intake_id: string | null;
+  obligation_id: string | null;
+  billing_draft_id: string | null;
+  invoice_draft_id: string | null;
+};
+
+export type LiveExceptionRecord = {
+  id: string;
+  kind:
+    | "obligation"
+    | "tenant_onboarding"
+    | "smart_intake"
+    | "billing_readiness"
+    | "xero_readiness";
+  severity: "danger" | "warning" | "primary" | "neutral";
+  title: string;
+  detail: string;
+  chip: string;
+  due_date: string | null;
+  source: string;
+  href: string;
+  target: InsightTargetRecord;
+  rank: number;
+};
+
+export type AutomationActivityRecord = {
+  id: string;
+  occurred_at: string;
+  kind: string;
+  label: string;
+  detail: string | null;
+  source: string;
+  target_table: string | null;
+  target_id: string | null;
+  outcome: string;
+};
+
+export type BillingRiskRecord = {
+  ready_to_bill_count: number;
+  blocked_row_count: number;
+  blocker_count: number;
+  configured_charges_cents: number;
+  billing_draft_counts: Record<string, number>;
+  invoice_draft_counts: Record<string, number>;
+  xero_issue_count: number;
+  xero_blocker_count: number;
+  approved_unsynced_invoice_count: number;
+  unpaid_invoice_count: number;
+};
+
+export type OwnerEntitySnapshotRecord = {
+  ownership_profile_counts: Record<string, number>;
+  missing_invoice_issuer_count: number;
+  missing_owner_abn_count: number;
+  missing_trustee_count: number;
+  missing_ownership_split_count: number;
+  missing_xero_contact_count: number;
+  entity_gst_registered: boolean;
+  xero_connected: boolean;
+  xero_last_sync_at: string | null;
+};
+
+export type InsightsOverviewRecord = {
+  entity: InsightsEntityRecord;
+  as_of: string;
+  portfolio_health: PortfolioHealthRecord;
+  live_exceptions: LiveExceptionRecord[];
+  automation_activity: AutomationActivityRecord[];
+  billing_risk: BillingRiskRecord;
+  owner_entity_snapshot: OwnerEntitySnapshotRecord;
+  guardrails: string[];
+};
+
 export type BillingDraftStatus = "draft" | "needs_review" | "approved" | "void";
 
 export type BillingDraftLineRecord = {
@@ -735,6 +834,14 @@ export function updateXeroConnection(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function getInsightsOverview(entityId: string, asOf?: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  if (asOf) {
+    params.set("as_of", asOf);
+  }
+  return request<InsightsOverviewRecord>(`/insights/overview?${params.toString()}`);
 }
 
 export function listProperties(entityId: string) {
