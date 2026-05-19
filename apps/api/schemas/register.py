@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, Field
 from stewart.core.models import (
+    BillingDraftStatus,
     GstTreatment,
     LeaseStatus,
     ObligationCategory,
@@ -381,6 +382,48 @@ class RentRollRowRead(BaseModel):
     xero_readiness_blockers: list[str]
     invoice_readiness_blockers: list[str]
     readiness_blockers: list[str]
+
+
+class BillingDraftLineRead(ApiModel):
+    id: UUID
+    billing_draft_id: UUID
+    description: str
+    amount_cents: int
+    currency: str
+    source_hint: str | None
+    confidence: float | None
+    metadata: dict[str, Any] = Field(
+        validation_alias=AliasChoices("line_metadata", "metadata"),
+        serialization_alias="metadata",
+    )
+    created_at: datetime
+    deleted_at: datetime | None
+
+
+class BillingDraftRead(ApiModel):
+    id: UUID
+    entity_id: UUID
+    property_id: UUID | None
+    tenancy_unit_id: UUID | None
+    tenant_id: UUID | None
+    lease_id: UUID | None
+    document_id: UUID
+    document_intake_id: UUID | None
+    status: BillingDraftStatus
+    title: str
+    currency: str
+    issue_date: date | None
+    due_date: date | None
+    total_cents: int
+    notes: str | None
+    metadata: dict[str, Any] = Field(
+        validation_alias=AliasChoices("billing_metadata", "metadata"),
+        serialization_alias="metadata",
+    )
+    lines: list[BillingDraftLineRead]
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None
 
 
 class ObligationCreate(BaseModel):

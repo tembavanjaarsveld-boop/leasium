@@ -4,10 +4,11 @@ from typing import Any
 from uuid import UUID
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from stewart.core.models import (
     AuditAction,
+    BillingDraft,
     DocumentCategory,
     DocumentIntake,
     Entity,
@@ -344,6 +345,53 @@ def _fake_purchase_contract_extraction() -> dict[str, Any]:
             }
         ],
     }
+
+
+def _fake_purchase_contract_with_tenancy_schedule() -> dict[str, Any]:
+    extraction = _fake_purchase_contract_extraction()
+    extraction["properties"] = [
+        {
+            **extraction["properties"][0],
+            "unit_label": None,
+            "sqm": None,
+            "parking_spaces": None,
+        }
+    ]
+    extraction["tenancy_schedule"] = [
+        {
+            "unit_label": "Warehouse 1",
+            "sqm": 1200,
+            "parking_spaces": 10,
+            "tenant_name": "Harbour Logistics Pty Ltd",
+            "tenant_abn": "11 222 333 444",
+            "lease_start": "2026-07-01",
+            "lease_expiry": "2029-06-30",
+            "annual_rent": 240000,
+            "rent_frequency": "monthly",
+            "outgoings": "Recoverable",
+            "option_summary": "One 3 year option",
+            "security_summary": "Bank guarantee equal to 3 months rent",
+            "confidence": 0.81,
+            "source_hint": "Tenancy schedule row 1",
+        },
+        {
+            "unit_label": "Warehouse 2",
+            "sqm": 800,
+            "parking_spaces": 6,
+            "tenant_name": "Cold Chain Storage Pty Ltd",
+            "tenant_abn": None,
+            "lease_start": "2026-08-01",
+            "lease_expiry": "2028-07-31",
+            "annual_rent": 180000,
+            "rent_frequency": "monthly",
+            "outgoings": "Recoverable subject to annual budget",
+            "option_summary": None,
+            "security_summary": "Bond noted, amount to confirm",
+            "confidence": 0.74,
+            "source_hint": "Tenancy schedule row 2",
+        },
+    ]
+    return extraction
 
 
 def _fake_smart_lease_extraction() -> dict[str, Any]:
@@ -860,6 +908,7 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert body["category"] == "invoice"
     assert body["review_data"]["applied"]["action"] == "prepared_billing_work"
     assert body["review_data"]["applied"]["obligation_count"] == 1
+    assert body["review_data"]["applied"]["billing_draft_count"] == 1
 
     obligation_id = body["review_data"]["applied"]["obligation_id"]
     obligation = session.get(Obligation, UUID(obligation_id))
@@ -870,9 +919,40 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert "No invoice was created, posted, or synced." in (obligation.notes or "")
     assert obligation.obligation_metadata["document_type"] == "invoice_admin"
     assert obligation.obligation_metadata["money_amounts"][0]["amount"] == 2750.5
+    assert (
+        obligation.obligation_metadata["billing_draft_id"]
+        == body["review_data"]["applied"]["billing_draft_id"]
+    )
     assert str(obligation.property_id) == scope["property_id"]
     assert str(obligation.tenancy_unit_id) == scope["tenancy_unit_id"]
     assert str(obligation.lease_id) == scope["lease_id"]
+
+    billing_draft = session.get(
+        BillingDraft,
+        UUID(body["review_data"]["applied"]["billing_draft_id"]),
+    )
+    assert billing_draft is not None
+    assert billing_draft.status == "needs_review"
+    assert billing_draft.title == "Outgoings recovery invoice for the September billing run."
+    assert billing_draft.total_cents == 275050
+    assert billing_draft.due_date is not None
+    assert billing_draft.due_date.isoformat() == "2026-09-30"
+    assert str(billing_draft.property_id) == scope["property_id"]
+    assert str(billing_draft.tenancy_unit_id) == scope["tenancy_unit_id"]
+    assert str(billing_draft.lease_id) == scope["lease_id"]
+    assert str(billing_draft.tenant_id) == scope["tenant_id"]
+    assert billing_draft.billing_metadata["document_type"] == "invoice_admin"
+    assert billing_draft.lines[0].description == "Outgoings recovery"
+    assert billing_draft.lines[0].amount_cents == 275050
+    assert billing_draft.lines[0].source_hint == "Amount due"
+
+    list_response = client.get(
+        "/api/v1/billing-drafts",
+        params={"entity_id": entity_id, "document_intake_id": intake_id},
+    )
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["id"] == str(billing_draft.id)
+    assert list_response.json()[0]["lines"][0]["amount_cents"] == 275050
 
     document = session.get(StoredDocument, UUID(document_id))
     assert document is not None
@@ -981,6 +1061,73 @@ def test_document_intake_apply_purchase_contract_creates_property_records(
     assert document.property_id == prop.id
     assert document.tenancy_unit_id == unit.id
     assert document.document_metadata["applied_document_type"] == "purchase_contract"
+
+
+def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_purchase_contract_with_tenancy_schedule(), "resp_purchase_schedule"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("purchase-contract-schedule.txt", b"contract", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={"review_data": _fake_purchase_contract_with_tenancy_schedule()},
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    applied = body["review_data"]["applied"]
+    assert applied["tenancy_unit_count"] == 2
+    assert applied["created_tenancy_unit_count"] == 2
+    assert applied["tenancy_schedule_count"] == 2
+    assert applied["tenant_lease_records_created"] == 0
+    assert applied["tenancy_schedule_rows"][0]["tenant_name"] == "Harbour Logistics Pty Ltd"
+    assert applied["tenancy_schedule_rows"][0]["annual_rent_cents"] == 24000000
+
+    units = [
+        session.get(TenancyUnit, UUID(unit_id)) for unit_id in applied["tenancy_unit_ids"]
+    ]
+    assert all(unit is not None for unit in units)
+    assert [unit.unit_label for unit in units if unit is not None] == [
+        "Warehouse 1",
+        "Warehouse 2",
+    ]
+    first_unit = units[0]
+    assert first_unit is not None
+    assert first_unit.unit_metadata["tenancy_schedule"]["tenant_name"] == (
+        "Harbour Logistics Pty Ltd"
+    )
+    assert first_unit.unit_metadata["tenancy_schedule"]["lease_expiry"] == "2029-06-30"
+    assert (
+        first_unit.unit_metadata["tenancy_schedule_history"][0]["document_intake_id"]
+        == intake_id
+    )
+
+    tenant_count = session.scalar(select(func.count()).select_from(Tenant))
+    lease_count = session.scalar(select(func.count()).select_from(Lease))
+    assert tenant_count == 0
+    assert lease_count == 0
 
 
 def test_document_intake_apply_purchase_contract_reuses_selected_property(

@@ -30,6 +30,7 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
         "properties",
         "key_dates",
         "money_amounts",
+        "tenancy_schedule",
         "obligations",
         "suggested_links",
         "warnings",
@@ -156,6 +157,45 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
                 },
             },
         },
+        "tenancy_schedule": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "unit_label",
+                    "sqm",
+                    "parking_spaces",
+                    "tenant_name",
+                    "tenant_abn",
+                    "lease_start",
+                    "lease_expiry",
+                    "annual_rent",
+                    "rent_frequency",
+                    "outgoings",
+                    "option_summary",
+                    "security_summary",
+                    "confidence",
+                    "source_hint",
+                ],
+                "properties": {
+                    "unit_label": {"type": ["string", "null"]},
+                    "sqm": {"type": ["number", "null"]},
+                    "parking_spaces": {"type": ["integer", "null"]},
+                    "tenant_name": {"type": ["string", "null"]},
+                    "tenant_abn": {"type": ["string", "null"]},
+                    "lease_start": {"type": ["string", "null"]},
+                    "lease_expiry": {"type": ["string", "null"]},
+                    "annual_rent": {"type": ["number", "null"]},
+                    "rent_frequency": {"type": ["string", "null"]},
+                    "outgoings": {"type": ["string", "null"]},
+                    "option_summary": {"type": ["string", "null"]},
+                    "security_summary": {"type": ["string", "null"]},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "source_hint": {"type": ["string", "null"]},
+                },
+            },
+        },
         "obligations": {
             "type": "array",
             "items": {
@@ -219,9 +259,10 @@ def extract_document_file(
         "intake summary. Classify the document cautiously. Use only facts present in "
         "the file. Do not give legal advice. Nothing will be applied automatically, "
         "so focus on facts a property manager should review: parties, properties, "
-        "ownership or trust billing identity, key dates, money, obligations, warnings, "
-        "missing information, and proposed actions. Use ISO dates where possible and "
-        "mark uncertainty with lower confidence and warnings."
+        "ownership or trust billing identity, acquisition tenancy schedule rows, key "
+        "dates, money, obligations, warnings, missing information, and proposed "
+        "actions. Use ISO dates where possible and mark uncertainty with lower "
+        "confidence and warnings."
     )
     content: list[dict[str, str]] = [{"type": "input_text", "text": prompt}]
     try:

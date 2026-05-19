@@ -22,6 +22,9 @@ from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
     AuditOutcome,
+    BillingDraft,
+    BillingDraftLine,
+    BillingDraftStatus,
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
@@ -309,6 +312,57 @@ def _money_note(record: dict[str, Any] | None) -> str | None:
     if frequency:
         formatted = f"{formatted} {frequency}"
     return f"{label}: {formatted}."
+
+
+def _money_cents(value: Any) -> int | None:
+    amount = _float(value)
+    if amount is None:
+        return None
+    return int(round(amount * 100))
+
+
+def _currency(value: Any) -> str:
+    text = (_str(value) or "AUD").upper()
+    return text[:3] if len(text) >= 3 else "AUD"
+
+
+def _invoice_date(data: dict[str, Any]) -> date | None:
+    record = _first_dated_record(
+        _records(data.get("key_dates")),
+        {"invoice date", "issued", "issue date", "tax invoice date"},
+    )
+    if record is None:
+        return None
+    return _date(record.get("date") or record.get("due_date"))
+
+
+def _invoice_due_date(data: dict[str, Any]) -> date | None:
+    record = _first_dated_record(
+        _records(data.get("key_dates")),
+        {
+            "due",
+            "payment due",
+            "pay by",
+            "invoice due",
+            "service period end",
+            "period end",
+        },
+    )
+    if record is None:
+        record = _first_dated_record(_records(data.get("key_dates")))
+    if record is None:
+        record = _first_dated_record(_records(data.get("obligations")))
+    if record is None:
+        return None
+    return _date(record.get("date") or record.get("due_date"))
+
+
+def _billing_draft_status(data: dict[str, Any]) -> BillingDraftStatus:
+    if _records(data.get("warnings")) or _records(data.get("missing_information")):
+        return BillingDraftStatus.needs_review
+    if data.get("warnings") or data.get("missing_information"):
+        return BillingDraftStatus.needs_review
+    return BillingDraftStatus.draft
 
 
 def _fallback_dated_record(
@@ -751,6 +805,19 @@ def _property_for_document_apply(
     return prop
 
 
+def _tenant_for_document_apply(
+    tenant_id: UUID,
+    entity_id: UUID,
+    user: CurrentUser,
+    session: Session,
+) -> Tenant:
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is None or tenant.deleted_at is not None or tenant.entity_id != entity_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    return tenant
+
+
 def _unit_for_property_apply(
     unit_id: UUID,
     prop: Property,
@@ -1040,22 +1107,95 @@ def _fill_blank_unit_fields(unit: TenancyUnit, row: dict[str, Any]) -> list[str]
     return filled
 
 
+def _purchase_unit_rows(data: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
+    schedule_rows = [
+        row for row in _records(data.get("tenancy_schedule")) if _str(row.get("unit_label"))
+    ]
+    if schedule_rows:
+        return schedule_rows, True
+    return _records(data.get("properties")), False
+
+
+def _tenancy_schedule_snapshot(row: dict[str, Any]) -> dict[str, Any]:
+    snapshot = {
+        "unit_label": _str(row.get("unit_label")),
+        "sqm": _float(row.get("sqm")),
+        "parking_spaces": _int(row.get("parking_spaces")),
+        "tenant_name": _str(row.get("tenant_name")),
+        "tenant_abn": _str(row.get("tenant_abn")),
+        "lease_start": (
+            _date(row.get("lease_start")).isoformat() if _date(row.get("lease_start")) else None
+        ),
+        "lease_expiry": (
+            _date(row.get("lease_expiry")).isoformat() if _date(row.get("lease_expiry")) else None
+        ),
+        "annual_rent_cents": _money_cents(row.get("annual_rent")),
+        "rent_frequency": _str(row.get("rent_frequency")),
+        "outgoings": _str(row.get("outgoings")),
+        "option_summary": _str(row.get("option_summary")),
+        "security_summary": _str(row.get("security_summary")),
+        "confidence": _confidence(row.get("confidence")),
+        "source_hint": _str(row.get("source_hint")),
+    }
+    return {key: value for key, value in snapshot.items() if value is not None}
+
+
+def _append_unit_schedule_metadata(
+    unit: TenancyUnit,
+    intake: DocumentIntake,
+    row: dict[str, Any],
+) -> None:
+    snapshot = _tenancy_schedule_snapshot(row)
+    if not snapshot:
+        return
+    metadata = dict(unit.unit_metadata or {})
+    history = list(metadata.get("tenancy_schedule_history") or [])
+    entry = {
+        "document_intake_id": str(intake.id),
+        "document_id": str(intake.document_id),
+        "document_type": "purchase_contract",
+        "schedule": snapshot,
+    }
+    history.append(entry)
+    metadata.update(
+        {
+            "last_tenancy_schedule_document_intake_id": str(intake.id),
+            "last_tenancy_schedule_document_id": str(intake.document_id),
+            "tenancy_schedule": snapshot,
+            "tenancy_schedule_history": history,
+        }
+    )
+    unit.unit_metadata = metadata
+
+
 def _resolve_purchase_units(
     intake: DocumentIntake,
     prop: Property,
     data: dict[str, Any],
     payload: DocumentIntakeApplyRequest,
     session: Session,
-) -> tuple[list[TenancyUnit], int, int, list[str]]:
-    rows = _records(data.get("properties"))
+) -> tuple[list[TenancyUnit], int, int, list[str], int, list[dict[str, Any]]]:
+    rows, used_schedule = _purchase_unit_rows(data)
     if payload.tenancy_unit_id is not None:
         unit = _unit_for_property_apply(payload.tenancy_unit_id, prop, session)
-        return [unit], 0, 0, _fill_blank_unit_fields(unit, rows[0] if rows else {})
+        row = rows[0] if rows else {}
+        filled_fields = _fill_blank_unit_fields(unit, row)
+        if used_schedule:
+            _append_unit_schedule_metadata(unit, intake, row)
+        return (
+            [unit],
+            0,
+            0,
+            filled_fields,
+            1 if used_schedule and row else 0,
+            [_tenancy_schedule_snapshot(row)] if used_schedule and row else [],
+        )
 
     units: list[TenancyUnit] = []
     created_count = 0
     linked_count = 0
     filled_fields: list[str] = []
+    schedule_summaries: list[dict[str, Any]] = []
     seen_labels: set[str] = set()
     for row in rows:
         label = _str(row.get("unit_label"))
@@ -1072,6 +1212,9 @@ def _resolve_purchase_units(
         if existing is not None:
             linked_count += 1
             filled_fields.extend(_fill_blank_unit_fields(existing, row))
+            if used_schedule:
+                _append_unit_schedule_metadata(existing, intake, row)
+                schedule_summaries.append(_tenancy_schedule_snapshot(row))
             units.append(existing)
             continue
         unit = TenancyUnit(
@@ -1089,9 +1232,19 @@ def _resolve_purchase_units(
         )
         session.add(unit)
         session.flush()
+        if used_schedule:
+            _append_unit_schedule_metadata(unit, intake, row)
+            schedule_summaries.append(_tenancy_schedule_snapshot(row))
         created_count += 1
         units.append(unit)
-    return units, created_count, linked_count, filled_fields
+    return (
+        units,
+        created_count,
+        linked_count,
+        filled_fields,
+        len(schedule_summaries),
+        schedule_summaries,
+    )
 
 
 def _apply_purchase_contract_intake(
@@ -1108,7 +1261,14 @@ def _apply_purchase_contract_intake(
         user,
         session,
     )
-    units, created_units, linked_units, filled_unit_fields = _resolve_purchase_units(
+    (
+        units,
+        created_units,
+        linked_units,
+        filled_unit_fields,
+        tenancy_schedule_count,
+        tenancy_schedule_rows,
+    ) = _resolve_purchase_units(
         intake,
         prop,
         data,
@@ -1145,6 +1305,9 @@ def _apply_purchase_contract_intake(
         "filled_blank_property_fields": filled_property_fields,
         "property_changes": property_changes,
         "filled_blank_unit_fields": filled_unit_fields,
+        "tenancy_schedule_count": tenancy_schedule_count,
+        "tenancy_schedule_rows": tenancy_schedule_rows,
+        "tenant_lease_records_created": 0,
         "obligation_ids": [str(obligation.id) for obligation in obligations],
         "obligation_count": len(obligations),
     }
@@ -1238,6 +1401,144 @@ def _apply_document_obligation_intake(
             ),
         )
     return obligations
+
+
+def _billing_lines_from_review(data: dict[str, Any]) -> list[dict[str, Any]]:
+    lines: list[dict[str, Any]] = []
+    for index, record in enumerate(_records(data.get("money_amounts"))):
+        amount_cents = _money_cents(record.get("amount"))
+        if amount_cents is None:
+            continue
+        currency = _currency(record.get("currency"))
+        label = _str(record.get("label")) or f"Billing line {index + 1}"
+        lines.append(
+            {
+                "description": label,
+                "amount_cents": amount_cents,
+                "currency": currency,
+                "source_hint": _str(record.get("source_hint")),
+                "confidence": _confidence(record.get("confidence")),
+                "metadata": {
+                    "source": "document_intake",
+                    "review_index": index,
+                    "raw": record,
+                    "frequency": _str(record.get("frequency")),
+                },
+            }
+        )
+    return lines
+
+
+def _apply_billing_draft_intake(
+    intake: DocumentIntake,
+    data: dict[str, Any],
+    payload: DocumentIntakeApplyRequest,
+    user: CurrentUser,
+    session: Session,
+) -> BillingDraft | None:
+    existing = session.scalar(
+        select(BillingDraft).where(
+            BillingDraft.document_intake_id == intake.id,
+            BillingDraft.deleted_at.is_(None),
+        )
+    )
+    if existing is not None:
+        return existing
+
+    lines = _billing_lines_from_review(data)
+    if not lines:
+        return None
+
+    document = intake.document
+    property_id, tenancy_unit_id, lease_id = _validate_obligation_scope(
+        entity_id=intake.entity_id,
+        property_id=payload.property_id or document.property_id,
+        tenancy_unit_id=payload.tenancy_unit_id or document.tenancy_unit_id,
+        lease_id=payload.lease_id or document.lease_id,
+        user=user,
+        session=session,
+        roles=WRITE_ROLES,
+    )
+    tenant_id = payload.tenant_id or document.tenant_id
+    if lease_id is not None:
+        lease = session.get(Lease, lease_id)
+        if lease is not None:
+            tenant_id = lease.tenant_id
+    elif tenant_id is not None:
+        tenant = _tenant_for_document_apply(tenant_id, intake.entity_id, user, session)
+        tenant_id = tenant.id
+    document.property_id = property_id
+    document.tenancy_unit_id = tenancy_unit_id
+    document.lease_id = lease_id
+    document.tenant_id = tenant_id
+    currency = lines[0]["currency"]
+    total_cents = sum(line["amount_cents"] for line in lines)
+    title = _str(data.get("summary")) or lines[0]["description"]
+    draft = BillingDraft(
+        entity_id=intake.entity_id,
+        property_id=property_id,
+        tenancy_unit_id=tenancy_unit_id,
+        tenant_id=tenant_id,
+        lease_id=lease_id,
+        document_id=document.id,
+        document_intake_id=intake.id,
+        status=_billing_draft_status(data),
+        title=title,
+        currency=currency,
+        issue_date=_invoice_date(data),
+        due_date=_invoice_due_date(data),
+        total_cents=total_cents,
+        notes=(
+            "Draft prepared from Smart Intake review. It has not been approved, "
+            "posted, emailed, or synced to Xero."
+        ),
+        billing_metadata={
+            "source": "document_intake",
+            "document_intake_id": str(intake.id),
+            "document_id": str(document.id),
+            "document_type": "invoice_admin",
+            "openai_response_id": intake.openai_response_id,
+            "warnings": data.get("warnings"),
+            "missing_information": data.get("missing_information"),
+            "proposed_actions": data.get("proposed_actions"),
+            "raw_money_amounts": data.get("money_amounts"),
+        },
+    )
+    session.add(draft)
+    session.flush()
+    for line in lines:
+        session.add(
+            BillingDraftLine(
+                billing_draft_id=draft.id,
+                description=line["description"],
+                amount_cents=line["amount_cents"],
+                currency=line["currency"],
+                source_hint=line["source_hint"],
+                confidence=line["confidence"],
+                line_metadata=line["metadata"],
+            )
+        )
+    session.flush()
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=intake.entity_id,
+        action="create",
+        target_table="billing_draft",
+        target_id=draft.id,
+        tool_name="smart_intake_apply",
+        tool_input={
+            "document_intake_id": str(intake.id),
+            "document_id": str(document.id),
+            "line_count": len(lines),
+        },
+        tool_output_summary=(
+            f"Created billing draft {draft.id} with {len(lines)} line(s); "
+            "no posting or Xero sync performed."
+        ),
+    )
+    return draft
 
 
 def _status_for_extraction(extracted: dict[str, Any]) -> DocumentIntakeStatus:
@@ -1732,7 +2033,20 @@ def apply_document_intake(
         )
 
     obligations = _apply_document_obligation_intake(intake, reviewed, payload, user, session)
+    billing_draft = (
+        _apply_billing_draft_intake(intake, reviewed, payload, user, session)
+        if document_type == "invoice_admin"
+        else None
+    )
     obligation_ids = [str(obligation.id) for obligation in obligations]
+    billing_draft_ids = [str(billing_draft.id)] if billing_draft is not None else []
+    if billing_draft is not None:
+        for obligation in obligations:
+            obligation.obligation_metadata = {
+                **(obligation.obligation_metadata or {}),
+                "billing_draft_id": str(billing_draft.id),
+                "billing_draft_ids": billing_draft_ids,
+            }
     applied_action = (
         "created_insurance_obligation"
         if document_type == "insurance_certificate" and len(obligations) == 1
@@ -1746,6 +2060,9 @@ def apply_document_intake(
             "obligation_id": obligation_ids[0],
             "obligation_ids": obligation_ids,
             "obligation_count": len(obligation_ids),
+            "billing_draft_id": billing_draft_ids[0] if billing_draft_ids else None,
+            "billing_draft_ids": billing_draft_ids,
+            "billing_draft_count": len(billing_draft_ids),
             "action": applied_action,
         },
     }
@@ -1754,11 +2071,12 @@ def apply_document_intake(
     intake.applied_by_user_id = user.id
     intake.document.category = _document_apply_category(document_type)
     intake.document.document_metadata = {
-        **(intake.document.document_metadata or {}),
-        "applied_document_intake_id": str(intake.id),
-        "applied_obligation_ids": obligation_ids,
-        "applied_document_type": document_type,
-    }
+            **(intake.document.document_metadata or {}),
+            "applied_document_intake_id": str(intake.id),
+            "applied_obligation_ids": obligation_ids,
+            "applied_billing_draft_ids": billing_draft_ids,
+            "applied_document_type": document_type,
+        }
     audit_log(
         session,
         actor=user.actor,

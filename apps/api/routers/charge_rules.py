@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
+    BillingDraft,
+    BillingDraftStatus,
     Entity,
     Lease,
     Property,
@@ -21,6 +23,7 @@ from stewart.core.models import (
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.register import (
+    BillingDraftRead,
     RentChargeRuleCreate,
     RentChargeRuleRead,
     RentChargeRuleUpdate,
@@ -79,6 +82,22 @@ def _charge_rule_for_access(
     return charge_rule, entity_id
 
 
+def _billing_draft_for_access(
+    billing_draft_id: UUID,
+    user: CurrentUser,
+    session: Session,
+    roles: set[UserRole],
+) -> BillingDraft:
+    draft = session.get(BillingDraft, billing_draft_id)
+    if draft is None or draft.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Billing draft not found.",
+        )
+    assert_entity_role(session, user, draft.entity_id, roles)
+    return draft
+
+
 def _property_billing_blockers(
     prop: Property,
     charge_rules: list[RentChargeRule],
@@ -108,6 +127,58 @@ def _property_billing_blockers(
         gst_blockers.append("Property invoice issuer is not GST registered.")
 
     return gst_blockers, xero_blockers, invoice_blockers
+
+
+@router.get("/billing-drafts", response_model=list[BillingDraftRead])
+def list_billing_drafts(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    entity_id: Annotated[UUID, Query()],
+    property_id: UUID | None = None,
+    lease_id: UUID | None = None,
+    document_intake_id: UUID | None = None,
+    draft_status: BillingDraftStatus | None = None,
+    include_deleted: bool = False,
+) -> list[BillingDraft]:
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    statement = select(BillingDraft).where(BillingDraft.entity_id == entity_id)
+    if property_id is not None:
+        prop = _property_for_access(property_id, user, session, READ_ROLES)
+        if prop.entity_id != entity_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Property must belong to the selected entity.",
+            )
+        statement = statement.where(BillingDraft.property_id == property_id)
+    if lease_id is not None:
+        _, lease_entity_id = _lease_for_access(lease_id, user, session, READ_ROLES)
+        if lease_entity_id != entity_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Lease must belong to the selected entity.",
+            )
+        statement = statement.where(BillingDraft.lease_id == lease_id)
+    if document_intake_id is not None:
+        statement = statement.where(BillingDraft.document_intake_id == document_intake_id)
+    if draft_status is not None:
+        statement = statement.where(BillingDraft.status == draft_status)
+    if not include_deleted:
+        statement = statement.where(BillingDraft.deleted_at.is_(None))
+
+    return list(
+        session.scalars(
+            statement.order_by(BillingDraft.due_date, BillingDraft.created_at.desc())
+        )
+    )
+
+
+@router.get("/billing-drafts/{billing_draft_id}", response_model=BillingDraftRead)
+def get_billing_draft(
+    billing_draft_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> BillingDraft:
+    return _billing_draft_for_access(billing_draft_id, user, session, READ_ROLES)
 
 
 @router.get("/charge-rules", response_model=list[RentChargeRuleRead])
