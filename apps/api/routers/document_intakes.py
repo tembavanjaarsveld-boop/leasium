@@ -166,6 +166,26 @@ def _best_date(records: list[dict[str, Any]], labels: set[str]) -> date | None:
     return None
 
 
+def _first_dated_record(
+    records: list[dict[str, Any]],
+    labels: set[str] | None = None,
+) -> dict[str, Any] | None:
+    for record in records:
+        if _date(record.get("date") or record.get("due_date")) is None:
+            continue
+        if not labels:
+            return record
+        label = (
+            _str(record.get("label"))
+            or _str(record.get("title"))
+            or _str(record.get("category"))
+            or ""
+        ).lower()
+        if any(fragment in label for fragment in labels):
+            return record
+    return None
+
+
 def _insurance_due_date(data: dict[str, Any]) -> date | None:
     labels = {
         "expiry",
@@ -185,34 +205,187 @@ def _insurance_obligation_title(data: dict[str, Any]) -> str:
     return "Insurance certificate renewal"
 
 
-def _apply_insurance_intake(
+def _document_apply_category(document_type: str | None) -> DocumentCategory:
+    if document_type == "compliance":
+        return DocumentCategory.other
+    return _document_category(document_type)
+
+
+def _category_from_text(value: str | None, fallback: ObligationCategory) -> ObligationCategory:
+    if value:
+        try:
+            return ObligationCategory(value)
+        except ValueError:
+            lowered = value.lower()
+            if "insurance" in lowered:
+                return ObligationCategory.insurance
+            if "guarantee" in lowered:
+                return ObligationCategory.bank_guarantee
+            if "compliance" in lowered or "certificate" in lowered:
+                return ObligationCategory.compliance
+            if "option" in lowered:
+                return ObligationCategory.option_notice
+            if "review" in lowered and "rent" in lowered:
+                return ObligationCategory.rent_review
+            if "expiry" in lowered or "expiration" in lowered:
+                return ObligationCategory.lease_expiry
+    return fallback
+
+
+def _fallback_obligation_category(document_type: str | None) -> ObligationCategory:
+    match document_type:
+        case "insurance_certificate":
+            return ObligationCategory.insurance
+        case "bank_guarantee":
+            return ObligationCategory.bank_guarantee
+        case "compliance":
+            return ObligationCategory.compliance
+        case "notice":
+            return ObligationCategory.other
+        case _:
+            return ObligationCategory.other
+
+
+def _fallback_dated_record(
+    data: dict[str, Any],
+    document_type: str | None,
+) -> tuple[str, date, ObligationCategory, str | None, str | None] | None:
+    key_dates = _records(data.get("key_dates"))
+    if document_type == "insurance_certificate":
+        due_date = _insurance_due_date(data)
+        if due_date is None:
+            return None
+        source_record = _first_dated_record(
+            key_dates,
+            {
+                "expiry",
+                "expires",
+                "expiration",
+                "valid until",
+                "policy end",
+                "period end",
+            },
+        )
+        return (
+            _insurance_obligation_title(data),
+            due_date,
+            ObligationCategory.insurance,
+            "Renew certificate before the policy expires.",
+            _str(source_record.get("source_hint")) if source_record else None,
+        )
+    if document_type == "bank_guarantee":
+        source_record = _first_dated_record(
+            key_dates,
+            {"expiry", "expires", "expiration", "valid until", "review", "renewal"},
+        )
+        if source_record is None:
+            return None
+        label = _str(source_record.get("label"))
+        return (
+            label or "Bank guarantee renewal",
+            _date(source_record.get("date")) or _date(source_record.get("due_date")),
+            ObligationCategory.bank_guarantee,
+            "Review bank guarantee before the recorded date.",
+            _str(source_record.get("source_hint")),
+        )
+    if document_type == "compliance":
+        source_record = _first_dated_record(
+            key_dates,
+            {"expiry", "expires", "due", "renewal", "certificate", "inspection", "review"},
+        )
+        if source_record is None:
+            return None
+        label = _str(source_record.get("label"))
+        return (
+            label or "Compliance follow-up",
+            _date(source_record.get("date")) or _date(source_record.get("due_date")),
+            ObligationCategory.compliance,
+            "Review compliance document before the recorded date.",
+            _str(source_record.get("source_hint")),
+        )
+    if document_type == "notice":
+        source_record = _first_dated_record(key_dates)
+        if source_record is None:
+            return None
+        label = _str(source_record.get("label"))
+        category = _category_from_text(label, ObligationCategory.other)
+        return (
+            label or "Notice follow-up",
+            _date(source_record.get("date")) or _date(source_record.get("due_date")),
+            category,
+            "Follow up notice before the recorded date.",
+            _str(source_record.get("source_hint")),
+        )
+    return None
+
+
+def _obligation_payloads_from_review(
+    data: dict[str, Any],
+    document_type: str | None,
+) -> list[dict[str, Any]]:
+    fallback_category = _fallback_obligation_category(document_type)
+    payloads: list[dict[str, Any]] = []
+    for row in _records(data.get("obligations")):
+        due_date = _date(row.get("due_date") or row.get("date"))
+        if due_date is None:
+            continue
+        title = _str(row.get("title")) or _str(row.get("label"))
+        if title is None:
+            title = "Document follow-up"
+        category = _category_from_text(_str(row.get("category")), fallback_category)
+        payloads.append(
+            {
+                "title": title,
+                "due_date": due_date,
+                "category": category,
+                "notes": _str(row.get("notes")),
+                "source_hint": _str(row.get("source_hint")),
+            }
+        )
+    if payloads:
+        return payloads
+    fallback = _fallback_dated_record(data, document_type)
+    if fallback is None:
+        return []
+    title, due_date, category, notes, source_hint = fallback
+    if due_date is None:
+        return []
+    return [
+        {
+            "title": title,
+            "due_date": due_date,
+            "category": category,
+            "notes": notes,
+            "source_hint": source_hint,
+        }
+    ]
+
+
+def _apply_document_obligation_intake(
     intake: DocumentIntake,
     data: dict[str, Any],
     payload: DocumentIntakeApplyRequest,
     user: CurrentUser,
     session: Session,
-) -> Obligation:
-    due_date = _insurance_due_date(data)
-    if due_date is None:
+) -> list[Obligation]:
+    document_type = _str(data.get("document_type")) or intake.document_type
+    obligation_payloads = _obligation_payloads_from_review(data, document_type)
+    if not obligation_payloads:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Confirm an insurance expiry or policy end date before applying.",
+            detail="Confirm at least one obligation due date before applying.",
         )
-    existing = next(
-        (
-            obligation
-            for obligation in session.scalars(
-                select(Obligation).where(
-                    Obligation.entity_id == intake.entity_id,
-                    Obligation.deleted_at.is_(None),
-                    Obligation.category == ObligationCategory.insurance,
-                )
+    existing = [
+        obligation
+        for obligation in session.scalars(
+            select(Obligation).where(
+                Obligation.entity_id == intake.entity_id,
+                Obligation.deleted_at.is_(None),
             )
-            if _dict(obligation.obligation_metadata).get("document_intake_id") == str(intake.id)
-        ),
-        None,
-    )
-    if existing is not None:
+        )
+        if _dict(obligation.obligation_metadata).get("document_intake_id") == str(intake.id)
+    ]
+    if existing:
         return existing
     document = intake.document
     property_id, tenancy_unit_id, lease_id = _validate_obligation_scope(
@@ -224,48 +397,53 @@ def _apply_insurance_intake(
         session=session,
         roles=WRITE_ROLES,
     )
-    title = _insurance_obligation_title(data)
-    source_hint = _str(_records(data.get("key_dates"))[0].get("source_hint")) if _records(
-        data.get("key_dates")
-    ) else None
-    obligation = Obligation(
-        entity_id=intake.entity_id,
-        property_id=property_id,
-        tenancy_unit_id=tenancy_unit_id,
-        lease_id=lease_id,
-        title=title,
-        category=ObligationCategory.insurance,
-        status=ObligationStatus.upcoming,
-        due_date=due_date,
-        priority=1,
-        owner_role=UserRole.ops,
-        notes=f"Created from Smart Intake document: {intake.document.filename}.",
-        obligation_metadata={
-            "source": "document_intake",
-            "document_intake_id": str(intake.id),
-            "document_id": str(intake.document_id),
-            "document_type": intake.document_type,
-            "source_hint": source_hint,
-            "openai_response_id": intake.openai_response_id,
-        },
-    )
     intake.document.property_id = property_id
     intake.document.tenancy_unit_id = tenancy_unit_id
     intake.document.lease_id = lease_id
-    session.add(obligation)
+    obligations: list[Obligation] = []
+    for index, obligation_payload in enumerate(obligation_payloads):
+        notes = obligation_payload["notes"] or "Created from Smart Intake document."
+        obligation = Obligation(
+            entity_id=intake.entity_id,
+            property_id=property_id,
+            tenancy_unit_id=tenancy_unit_id,
+            lease_id=lease_id,
+            title=obligation_payload["title"],
+            category=obligation_payload["category"],
+            status=ObligationStatus.upcoming,
+            due_date=obligation_payload["due_date"],
+            priority=1,
+            owner_role=UserRole.ops,
+            notes=f"{notes} Source document: {intake.document.filename}.",
+            obligation_metadata={
+                "source": "document_intake",
+                "document_intake_id": str(intake.id),
+                "document_id": str(intake.document_id),
+                "document_type": document_type,
+                "source_hint": obligation_payload["source_hint"],
+                "openai_response_id": intake.openai_response_id,
+                "review_index": index,
+            },
+        )
+        session.add(obligation)
+        obligations.append(obligation)
     session.flush()
-    audit_log(
-        session,
-        actor=user.actor,
-        user_id=user.id,
-        entity_id=intake.entity_id,
-        action="create",
-        target_table="obligation",
-        target_id=obligation.id,
-        tool_input={"document_intake_id": str(intake.id), "document_type": intake.document_type},
-        tool_output_summary=f"Created insurance obligation due {due_date.isoformat()}.",
-    )
-    return obligation
+    for obligation in obligations:
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=intake.entity_id,
+            action="create",
+            target_table="obligation",
+            target_id=obligation.id,
+            tool_input={"document_intake_id": str(intake.id), "document_type": document_type},
+            tool_output_summary=(
+                f"Created {obligation.category.value} obligation due "
+                f"{obligation.due_date.isoformat()}."
+            ),
+        )
+    return obligations
 
 
 def _status_for_extraction(extracted: dict[str, Any]) -> DocumentIntakeStatus:
@@ -619,24 +797,43 @@ def apply_document_intake(
 
     reviewed = _reviewed_data(intake, payload.review_data)
     document_type = _str(reviewed.get("document_type")) or intake.document_type
-    if document_type != "insurance_certificate":
+    if document_type not in {
+        "insurance_certificate",
+        "bank_guarantee",
+        "compliance",
+        "notice",
+    }:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This document type is review-only for now.",
         )
 
-    obligation = _apply_insurance_intake(intake, reviewed, payload, user, session)
+    obligations = _apply_document_obligation_intake(intake, reviewed, payload, user, session)
+    obligation_ids = [str(obligation.id) for obligation in obligations]
+    applied_action = (
+        "created_insurance_obligation"
+        if document_type == "insurance_certificate" and len(obligations) == 1
+        else "created_document_obligations"
+    )
     intake.review_data = {
         **reviewed,
         "applied": {
-            "obligation_id": str(obligation.id),
-            "action": "created_insurance_obligation",
+            "obligation_id": obligation_ids[0],
+            "obligation_ids": obligation_ids,
+            "obligation_count": len(obligation_ids),
+            "action": applied_action,
         },
     }
     intake.status = DocumentIntakeStatus.applied
     intake.applied_at = utcnow()
     intake.applied_by_user_id = user.id
-    intake.document.category = DocumentCategory.insurance
+    intake.document.category = _document_apply_category(document_type)
+    intake.document.document_metadata = {
+        **(intake.document.document_metadata or {}),
+        "applied_document_intake_id": str(intake.id),
+        "applied_obligation_ids": obligation_ids,
+        "applied_document_type": document_type,
+    }
     audit_log(
         session,
         actor=user.actor,
@@ -645,7 +842,7 @@ def apply_document_intake(
         action="apply",
         target_table="document_intake",
         target_id=intake.id,
-        tool_output_summary=f"Applied insurance obligation {obligation.id}.",
+        tool_output_summary=f"Applied {len(obligation_ids)} document obligation(s).",
     )
     session.commit()
     session.refresh(intake)

@@ -52,3 +52,14 @@ Standing additions from Remba:
 - Every dashboard item should answer what happened, whether it is urgent, and what to do next.
 - Icon-only actions need labels via tooltips or menus unless the icon is universally obvious.
 - Public tenant screens must feel calmer and more guided than internal admin screens.
+
+## Smart Intake Apply Sign-Off
+
+Status: pass. Remba approved extending Smart Intake apply beyond insurance certificates on 2026-05-19, provided the flow stays review-first, target scope is plain-language, and the user sees a compact post-apply outcome card showing what was created.
+
+Applied UX guardrails:
+
+- Keep confirmation in the review panel area rather than a modal.
+- Show what changed, target scope, first due date, source document, and ignored item count.
+- Use `Portfolio level`, `No unit scope`, and `No lease scope` wording for intentional scope choices.
+- Provide one clear next action to review created work in Tasks.

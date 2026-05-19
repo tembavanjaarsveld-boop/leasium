@@ -163,6 +163,42 @@ def _fake_insurance_extraction() -> dict[str, Any]:
     }
 
 
+def _fake_compliance_extraction() -> dict[str, Any]:
+    return {
+        **_fake_extraction(),
+        "document_type": "compliance",
+        "summary": "Fire safety statement with renewal and inspection actions.",
+        "key_dates": [
+            {
+                "label": "Annual fire safety statement expiry",
+                "date": "2027-05-01",
+                "confidence": 0.88,
+                "source_hint": "Certificate period",
+            }
+        ],
+        "obligations": [
+            {
+                "title": "Renew annual fire safety statement",
+                "due_date": "2027-05-01",
+                "category": "compliance",
+                "notes": "Certificate expires on this date.",
+                "confidence": 0.88,
+                "source_hint": "Certificate period",
+            },
+            {
+                "title": "Schedule fire equipment inspection",
+                "due_date": "2027-04-01",
+                "category": "maintenance",
+                "notes": "Inspection is required before renewal.",
+                "confidence": 0.76,
+                "source_hint": "Inspection notes",
+            },
+        ],
+        "warnings": [],
+        "missing_information": [],
+    }
+
+
 def test_document_intake_upload_extract_get_and_list(
     client: TestClient,
     session: Session,
@@ -420,6 +456,8 @@ def test_document_intake_review_and_apply_insurance_obligation(
     assert obligation.due_date.isoformat() == "2027-04-15"
     assert obligation.title == "Insurance certificate renewal"
     assert obligation.obligation_metadata["source"] == "document_intake"
+    assert body["review_data"]["applied"]["obligation_ids"] == [obligation_id]
+    assert body["review_data"]["applied"]["obligation_count"] == 1
 
     apply_again_response = client.post(
         f"/api/v1/document-intakes/{intake_id}/apply",
@@ -480,6 +518,85 @@ def test_document_intake_apply_insurance_uses_existing_document_scope(
     assert str(obligation.property_id) == scope["property_id"]
     assert str(obligation.tenancy_unit_id) == scope["tenancy_unit_id"]
     assert str(obligation.lease_id) == scope["lease_id"]
+
+
+def test_document_intake_apply_compliance_creates_reviewed_obligations(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_compliance_extraction(), "resp_compliance_document"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+    scope = _lease_scope(client, session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("fire-safety.txt", b"fire safety statement", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    document_id = create_response.json()["document_id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": _fake_compliance_extraction(),
+            "property_id": scope["property_id"],
+            "tenancy_unit_id": scope["tenancy_unit_id"],
+            "lease_id": scope["lease_id"],
+        },
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "applied"
+    assert body["category"] == "other"
+    assert body["review_data"]["applied"]["action"] == "created_document_obligations"
+    assert body["review_data"]["applied"]["obligation_count"] == 2
+
+    obligation_ids = body["review_data"]["applied"]["obligation_ids"]
+    obligations = [session.get(Obligation, UUID(obligation_id)) for obligation_id in obligation_ids]
+    assert [obligation.title for obligation in obligations if obligation is not None] == [
+        "Renew annual fire safety statement",
+        "Schedule fire equipment inspection",
+    ]
+    assert [obligation.category for obligation in obligations if obligation is not None] == [
+        "compliance",
+        "maintenance",
+    ]
+    assert all(
+        str(obligation.property_id) == scope["property_id"]
+        for obligation in obligations
+        if obligation is not None
+    )
+    assert all(
+        str(obligation.tenancy_unit_id) == scope["tenancy_unit_id"]
+        for obligation in obligations
+        if obligation is not None
+    )
+    assert all(
+        str(obligation.lease_id) == scope["lease_id"]
+        for obligation in obligations
+        if obligation is not None
+    )
+
+    document = session.get(StoredDocument, UUID(document_id))
+    assert document is not None
+    assert document.property_id is not None
+    assert document.document_metadata["applied_obligation_ids"] == obligation_ids
+    assert document.document_metadata["applied_document_type"] == "compliance"
 
 
 def test_document_intake_apply_rejects_unsupported_document_type(

@@ -65,6 +65,13 @@ type ReviewApplyTarget = {
   tenancyUnitId: string;
   leaseId: string;
 };
+type DocumentApplyOutcome = {
+  documentName: string;
+  obligationCount: number;
+  targetLabel: string;
+  dueDate: string | null;
+  ignoredCount: number;
+};
 
 function dateOnly(value: Date) {
   const year = value.getFullYear();
@@ -657,6 +664,165 @@ function insuranceExpiryDate(data: DocumentIntakeExtraction) {
   });
 }
 
+function documentWorkflowType(
+  draft: DocumentIntakeExtraction,
+  intake: DocumentIntakeRecord,
+) {
+  const type = fieldText(draft.document_type ?? intake.document_type);
+  return type &&
+    [
+      "insurance_certificate",
+      "bank_guarantee",
+      "compliance",
+      "notice",
+    ].includes(type)
+    ? type
+    : null;
+}
+
+function applicableObligationCount(
+  data: DocumentIntakeExtraction,
+  workflowType: string | null,
+) {
+  const datedObligations = groupItems(data, "obligations").filter(
+    (item) => fieldText(item.due_date ?? item.date) && fieldText(item.title),
+  ).length;
+  if (datedObligations > 0) {
+    return datedObligations;
+  }
+  if (!workflowType) {
+    return 0;
+  }
+  if (workflowType === "insurance_certificate") {
+    return insuranceExpiryDate(data) ? 1 : 0;
+  }
+  const datedKeyDate = groupItems(data, "key_dates").some((item) =>
+    fieldText(item.date ?? item.due_date),
+  );
+  return datedKeyDate ? 1 : 0;
+}
+
+function firstApplicableDueDate(
+  data: DocumentIntakeExtraction,
+  workflowType: string | null,
+) {
+  const obligationDate = groupItems(data, "obligations")
+    .map((item) => fieldText(item.due_date ?? item.date))
+    .find(Boolean);
+  if (obligationDate) {
+    return obligationDate;
+  }
+  if (workflowType === "insurance_certificate") {
+    const expiry = insuranceExpiryDate(data);
+    return fieldText(expiry?.date ?? expiry?.due_date);
+  }
+  return (
+    groupItems(data, "key_dates")
+      .map((item) => fieldText(item.date ?? item.due_date))
+      .find(Boolean) ?? null
+  );
+}
+
+function ignoredReviewItemCount(
+  draft: DocumentIntakeExtraction,
+  included: Record<ReviewGroupKey, boolean>,
+) {
+  return reviewGroups.reduce(
+    (total, group) =>
+      total +
+      (included[group.key]
+        ? groupItems(draft, group.key).filter(
+            (item) => itemReviewAction(item) === "ignore",
+          ).length
+        : groupItems(draft, group.key).length),
+    0,
+  );
+}
+
+function applyTargetLabel(
+  target: ReviewApplyTarget,
+  properties: PropertyRecord[],
+  units: TenancyUnitRecord[],
+  leases: LeaseRecord[],
+) {
+  const property = properties.find((item) => item.id === target.propertyId);
+  const unit = units.find((item) => item.id === target.tenancyUnitId);
+  const lease = leases.find((item) => item.id === target.leaseId);
+  const parts = [
+    property?.name,
+    unit?.unit_label,
+    lease ? `${lease.status} lease` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" / ") : "Portfolio level";
+}
+
+function DocumentIntakeApplyOutcomeCard({
+  outcome,
+  onDismiss,
+}: {
+  outcome: DocumentApplyOutcome;
+  onDismiss: () => void;
+}) {
+  return (
+    <SectionPanel
+      title="Applied to portfolio"
+      description="Review-first automation outcome"
+      icon={<Check size={17} className="text-leasium-success" />}
+      actions={<StatusBadge tone="success">Applied</StatusBadge>}
+    >
+      <div className="grid gap-4 p-4">
+        <div className="grid gap-3 rounded-2xl border border-leasium-success/20 bg-leasium-success-soft p-3 text-sm">
+          <div className="font-semibold text-[#027A48]">
+            Created {outcome.obligationCount} document-driven{" "}
+            {outcome.obligationCount === 1 ? "task" : "tasks"}.
+          </div>
+          <div className="grid gap-2 text-foreground sm:grid-cols-2">
+            <div>
+              <div className="text-xs font-semibold uppercase text-muted-foreground">
+                Target
+              </div>
+              <div>{outcome.targetLabel}</div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold uppercase text-muted-foreground">
+                First due date
+              </div>
+              <div>{formatDate(outcome.dueDate)}</div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold uppercase text-muted-foreground">
+                Source document
+              </div>
+              <div>{outcome.documentName}</div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold uppercase text-muted-foreground">
+                Ignored
+              </div>
+              <div>
+                {outcome.ignoredCount}{" "}
+                {outcome.ignoredCount === 1 ? "item was" : "items were"} left
+                out.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <SecondaryButton type="button" onClick={onDismiss}>
+            Back to Lease Inbox
+          </SecondaryButton>
+          <Link
+            href="/tasks"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover"
+          >
+            View in Tasks
+          </Link>
+        </div>
+      </div>
+    </SectionPanel>
+  );
+}
+
 function DocumentIntakeReviewPanel({
   intake,
   draft,
@@ -699,18 +865,22 @@ function DocumentIntakeReviewPanel({
     ...(data.warnings ?? []),
     ...(data.missing_information ?? []),
   ];
-  const canApplyInsurance =
-    (draft.document_type ?? intake.document_type) === "insurance_certificate";
+  const workflowType = documentWorkflowType(draft, intake);
+  const canApplyWorkflow = Boolean(workflowType);
   const reviewedDraft = buildIncludedReviewData(draft, included);
+  const obligationApplyCount = applicableObligationCount(
+    reviewedDraft,
+    workflowType,
+  );
   const applyBlocker =
-    canApplyInsurance && !insuranceExpiryDate(reviewedDraft)
-      ? "Confirm an insurance expiry or policy end date before applying."
+    canApplyWorkflow && obligationApplyCount === 0
+      ? "Confirm at least one obligation due date before applying."
       : null;
   const visibleGroups = reviewGroups.filter(
     (group) => groupItems(draft, group.key).length > 0,
   );
   const groupTitle = (group: { key: ReviewGroupKey; title: string }) =>
-    canApplyInsurance && group.key === "key_dates"
+    workflowType === "insurance_certificate" && group.key === "key_dates"
       ? "Policy dates"
       : group.title;
   const scopedLeases = applyTarget.tenancyUnitId
@@ -815,14 +985,14 @@ function DocumentIntakeReviewPanel({
           </div>
         ) : null}
 
-        {canApplyInsurance ? (
+        {canApplyWorkflow ? (
           <div className="rounded-2xl border border-border bg-white p-3 shadow-leasiumXs">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold">Apply target</div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Link the renewal obligation to the right property, unit, or
-                  lease before applying.
+                  Link the source document and created work to the right
+                  property, unit, or lease before applying.
                 </p>
               </div>
               <StatusBadge
@@ -830,6 +1000,10 @@ function DocumentIntakeReviewPanel({
               >
                 {applyTarget.propertyId ? "Matched" : "Portfolio level"}
               </StatusBadge>
+            </div>
+            <div className="mt-3 rounded-xl bg-muted/45 px-3 py-2 text-sm text-muted-foreground">
+              Target:{" "}
+              <span className="font-medium text-foreground">{applyScope}</span>
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <Field label="Property">
@@ -844,7 +1018,7 @@ function DocumentIntakeReviewPanel({
                   }
                   disabled={demo}
                 >
-                  <option value="">No property match</option>
+                  <option value="">Portfolio level</option>
                   {properties.map((property) => (
                     <option key={property.id} value={property.id}>
                       {property.name}
@@ -864,7 +1038,7 @@ function DocumentIntakeReviewPanel({
                   }
                   disabled={demo || !applyTarget.propertyId}
                 >
-                  <option value="">No unit match</option>
+                  <option value="">No unit scope</option>
                   {tenancyUnits.map((unit) => (
                     <option key={unit.id} value={unit.id}>
                       {unit.unit_label}
@@ -883,7 +1057,7 @@ function DocumentIntakeReviewPanel({
                   }
                   disabled={demo || !applyTarget.propertyId}
                 >
-                  <option value="">No lease match</option>
+                  <option value="">No lease scope</option>
                   {scopedLeases.map((lease) => (
                     <option key={lease.id} value={lease.id}>
                       {lease.status} - {formatDate(lease.commencement_date)} to{" "}
@@ -1051,10 +1225,11 @@ function DocumentIntakeReviewPanel({
           ))}
         </div>
 
-        {!canApplyInsurance ? (
+        {!canApplyWorkflow ? (
           <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-            Apply is available for insurance certificates first. Other document
-            types can be saved as reviewed here for now.
+            Apply is available for certificates, compliance docs, guarantees,
+            and notices first. Leases and invoices can be saved as reviewed here
+            for now.
           </div>
         ) : null}
         {applyBlocker ? (
@@ -1062,13 +1237,15 @@ function DocumentIntakeReviewPanel({
             {applyBlocker}
           </div>
         ) : null}
-        {canApplyInsurance ? (
+        {canApplyWorkflow ? (
           <div className="rounded-2xl border border-border bg-muted/35 p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold">Ready to apply</div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Create 1 insurance renewal obligation at {applyScope}.{" "}
+                  Create {obligationApplyCount} document-driven{" "}
+                  {obligationApplyCount === 1 ? "task" : "tasks"} at{" "}
+                  {applyScope}.{" "}
                   {ignoredCount
                     ? `${ignoredCount} ignored item${ignoredCount === 1 ? "" : "s"} will be left out.`
                     : "No ignored items will be included."}
@@ -1102,7 +1279,7 @@ function DocumentIntakeReviewPanel({
               saving ||
               demo ||
               intake.status === "applied" ||
-              !canApplyInsurance ||
+              !canApplyWorkflow ||
               Boolean(applyBlocker)
             }
           >
@@ -1142,6 +1319,8 @@ export function Dashboard({
       leaseId: "",
     },
   );
+  const [lastApplyOutcome, setLastApplyOutcome] =
+    useState<DocumentApplyOutcome | null>(null);
   const [includedGroups, setIncludedGroups] = useState<
     Record<ReviewGroupKey, boolean>
   >({
@@ -1264,6 +1443,7 @@ export function Dashboard({
     onMutate: () => {
       setIntakeError(null);
       setIntakeNotice(null);
+      setLastApplyOutcome(null);
     },
     onSuccess: (created) => {
       setReviewIntakeId(created.id);
@@ -1321,6 +1501,7 @@ export function Dashboard({
       intakeId: string;
       reviewData: DocumentIntakeExtraction;
       target: ReviewApplyTarget;
+      outcome: DocumentApplyOutcome;
     }) =>
       applyDocumentIntake(payload.intakeId, {
         reviewData: payload.reviewData,
@@ -1332,8 +1513,9 @@ export function Dashboard({
       setIntakeError(null);
       setIntakeNotice(null);
     },
-    onSuccess: () => {
-      setIntakeNotice("Insurance obligation created.");
+    onSuccess: (_result, payload) => {
+      setLastApplyOutcome(payload.outcome);
+      setIntakeNotice("Document workflow applied.");
       queryClient.invalidateQueries({
         queryKey: ["dashboard-document-intakes", selectedEntityId],
       });
@@ -1848,6 +2030,12 @@ export function Dashboard({
           </div>
 
           <div className="grid gap-5">
+            {isIntakeWorkspace && lastApplyOutcome ? (
+              <DocumentIntakeApplyOutcomeCard
+                outcome={lastApplyOutcome}
+                onDismiss={() => setLastApplyOutcome(null)}
+              />
+            ) : null}
             {isIntakeWorkspace && selectedReviewIntake && reviewDraft ? (
               <DocumentIntakeReviewPanel
                 intake={selectedReviewIntake}
@@ -1874,16 +2062,39 @@ export function Dashboard({
                     ),
                   })
                 }
-                onApply={() =>
+                onApply={() => {
+                  const reviewData = buildIncludedReviewData(
+                    reviewDraft,
+                    includedGroups,
+                  );
+                  const workflowType = documentWorkflowType(
+                    reviewDraft,
+                    selectedReviewIntake,
+                  );
                   applyDocumentIntakeMutation.mutate({
                     intakeId: selectedReviewIntake.id,
-                    reviewData: buildIncludedReviewData(
-                      reviewDraft,
-                      includedGroups,
-                    ),
+                    reviewData,
                     target: reviewApplyTarget,
-                  })
-                }
+                    outcome: {
+                      documentName: selectedReviewIntake.filename,
+                      obligationCount: applicableObligationCount(
+                        reviewData,
+                        workflowType,
+                      ),
+                      targetLabel: applyTargetLabel(
+                        reviewApplyTarget,
+                        propertiesQuery.data ?? [],
+                        reviewTenancyUnitsQuery.data ?? [],
+                        reviewLeasesQuery.data ?? [],
+                      ),
+                      dueDate: firstApplicableDueDate(reviewData, workflowType),
+                      ignoredCount: ignoredReviewItemCount(
+                        reviewDraft,
+                        includedGroups,
+                      ),
+                    },
+                  });
+                }}
                 onClear={() =>
                   deleteDocumentIntakeMutation.mutate(selectedReviewIntake.id)
                 }
