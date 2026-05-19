@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
@@ -42,7 +42,9 @@ import {
   deleteDocument,
   documentDownloadUrl,
   DocumentCategory,
+  DocumentIntakeRecord,
   getTenant,
+  listDocumentIntakes,
   listDocuments,
   listLeasesByTenant,
   listTenantOnboardings,
@@ -165,6 +167,94 @@ function documentCategoryLabel(value: DocumentCategory) {
   return documentCategories.find((item) => item.value === value)?.label ?? value;
 }
 
+function documentTypeLabel(value: string | null | undefined) {
+  return value ? value.replaceAll("_", " ") : "document";
+}
+
+function metadataString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function documentSourceLabel(document: { tenant_onboarding_id: string | null; metadata: Record<string, unknown> }) {
+  if (document.tenant_onboarding_id) {
+    return "Onboarding";
+  }
+  if (metadataString(document.metadata.source) === "smart_intake") {
+    return "Smart Intake";
+  }
+  return "Tenant profile";
+}
+
+function intakeStatusLabel(intake: DocumentIntakeRecord | undefined) {
+  if (!intake) {
+    return "Stored";
+  }
+  if (intake.status === "applied") {
+    return "Applied";
+  }
+  if (intake.reviewed_at) {
+    return "Reviewed";
+  }
+  switch (intake.status) {
+    case "uploaded":
+      return "Sent to Smart Intake";
+    case "reading":
+      return "Reading";
+    case "ready_for_review":
+      return "Needs review";
+    case "needs_attention":
+      return "Needs match";
+    case "failed":
+      return "Could not read";
+    default:
+      return "Stored";
+  }
+}
+
+function intakeStatusTone(intake: DocumentIntakeRecord | undefined) {
+  if (!intake) {
+    return "neutral" as const;
+  }
+  if (intake.status === "applied") {
+    return "success" as const;
+  }
+  if (intake.status === "failed") {
+    return "danger" as const;
+  }
+  if (intake.status === "needs_attention") {
+    return "warning" as const;
+  }
+  if (intake.status === "ready_for_review" || intake.reviewed_at) {
+    return "primary" as const;
+  }
+  return "neutral" as const;
+}
+
+function intakeProvenanceNote(
+  intake: DocumentIntakeRecord | undefined,
+  metadata: Record<string, unknown>,
+) {
+  if (!intake) {
+    return "Stored only - no tenant fields changed.";
+  }
+  if (intake.status === "failed") {
+    return "Could not read - send again or download.";
+  }
+  if (intake.status === "applied") {
+    const appliedType =
+      metadataString(metadata.applied_document_type) ??
+      documentTypeLabel(intake.document_type);
+    return `Applied - ${appliedType} reviewed in Smart Intake.`;
+  }
+  if (intake.reviewed_at) {
+    return "Reviewed in Smart Intake - nothing applied until approved.";
+  }
+  if (intake.status === "reading" || intake.status === "uploaded") {
+    return "Waiting in Smart Intake - nothing applied yet.";
+  }
+  return "Waiting in Smart Intake - review before anything changes.";
+}
+
 const submittedFields: Array<{
   key: keyof TenantForm | "insurance_confirmed" | "insurance_expiry_date" | "emergency_contact_name" | "emergency_contact_phone";
   label: string;
@@ -204,6 +294,7 @@ function TenantDetail() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<TenantForm | null>(null);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const documentFileInputRef = useRef<HTMLInputElement>(null);
   const [documentCategory, setDocumentCategory] = useState<DocumentCategory>("insurance");
   const [documentNotes, setDocumentNotes] = useState("");
   const [reviewNotesById, setReviewNotesById] = useState<Record<string, string>>({});
@@ -237,6 +328,23 @@ function TenantDetail() {
       }),
     enabled: Boolean(tenant?.entity_id && tenantId),
   });
+
+  const documentIntakesQuery = useQuery({
+    queryKey: ["tenant-document-intakes", tenant?.entity_id],
+    queryFn: () => listDocumentIntakes(tenant!.entity_id),
+    enabled: Boolean(tenant?.entity_id),
+  });
+
+  const intakeByDocumentId = useMemo(
+    () =>
+      new Map(
+        (documentIntakesQuery.data ?? []).map((intake) => [
+          intake.document_id,
+          intake,
+        ]),
+      ),
+    [documentIntakesQuery.data],
+  );
 
   const tenantOnboardings = (onboardingQuery.data ?? [])
     .filter((item) => item.tenant_id === tenantId)
@@ -498,6 +606,7 @@ function TenantDetail() {
               <form className="grid gap-3 border-b border-border p-4" onSubmit={submitDocument}>
                 <label className="grid min-h-28 cursor-pointer place-items-center rounded-md border border-dashed border-border bg-muted/40 px-4 py-5 text-center transition hover:border-primary hover:bg-primary/5">
                   <input
+                    ref={documentFileInputRef}
                     type="file"
                     className="sr-only"
                     onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)}
@@ -547,57 +656,106 @@ function TenantDetail() {
               </form>
 
               <div className="divide-y divide-border">
-                {(documentsQuery.data ?? []).map((document) => (
-                  <div key={document.id} className="grid gap-3 p-4 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{document.filename}</div>
-                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          <span>{documentCategoryLabel(document.category)}</span>
-                          <span>{formatBytes(document.byte_size)}</span>
-                          <span>{formatDate(document.created_at)}</span>
-                        </div>
-                        {document.notes ? (
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            {document.notes}
+                {(documentsQuery.data ?? []).map((document) => {
+                  const intake = intakeByDocumentId.get(document.id);
+                  return (
+                    <div key={document.id} className="grid gap-3 p-4 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="truncate font-medium">
+                              {document.filename}
+                            </div>
+                            <StatusBadge tone={intakeStatusTone(intake)}>
+                              {intakeStatusLabel(intake)}
+                            </StatusBadge>
                           </div>
-                        ) : null}
-                      </div>
-                      <div className="flex shrink-0 gap-2">
-                        <SecondaryButton
-                          type="button"
-                          className="h-8"
-                          onClick={() => prepareReviewMutation.mutate(document.id)}
-                          disabled={prepareReviewMutation.isPending}
-                        >
-                          <Sparkles size={15} />
-                          Review
-                        </SecondaryButton>
-                        <a
-                          className={cn(
-                            "inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted",
+                          <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span>{documentCategoryLabel(document.category)}</span>
+                            <span>{formatBytes(document.byte_size)}</span>
+                            <span>{formatDate(document.created_at)}</span>
+                            <span>Source: {documentSourceLabel(document)}</span>
+                            {intake?.document_type ? (
+                              <span>{documentTypeLabel(intake.document_type)}</span>
+                            ) : null}
+                          </div>
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {intakeProvenanceNote(intake, document.metadata)}
+                          </div>
+                          {document.notes ? (
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              {document.notes}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          {intake ? (
+                            <Link
+                              href={`/intake?review=${intake.id}`}
+                              className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                            >
+                              <Sparkles size={15} />
+                              Open review
+                            </Link>
+                          ) : (
+                            <SecondaryButton
+                              type="button"
+                              className="h-8"
+                              onClick={() =>
+                                prepareReviewMutation.mutate(document.id)
+                              }
+                              disabled={prepareReviewMutation.isPending}
+                            >
+                              <Sparkles size={15} />
+                              Send to review
+                            </SecondaryButton>
                           )}
-                          href={documentDownloadUrl(document.id)}
-                          aria-label={`Download ${document.filename}`}
-                        >
-                          <Download size={15} />
-                        </a>
-                        <SecondaryButton
-                          type="button"
-                          className="h-8 w-8 px-0"
-                          onClick={() => deleteDocumentMutation.mutate(document.id)}
-                          aria-label={`Delete ${document.filename}`}
-                        >
-                          <Trash2 size={15} />
-                        </SecondaryButton>
+                          <a
+                            className={cn(
+                              "inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted",
+                            )}
+                            href={documentDownloadUrl(document.id)}
+                            aria-label={`Download ${document.filename}`}
+                          >
+                            <Download size={15} />
+                          </a>
+                          <SecondaryButton
+                            type="button"
+                            className="h-8 w-8 px-0"
+                            onClick={() =>
+                              deleteDocumentMutation.mutate(document.id)
+                            }
+                            aria-label={`Delete ${document.filename}`}
+                          >
+                            <Trash2 size={15} />
+                          </SecondaryButton>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {!documentsQuery.isLoading && (documentsQuery.data ?? []).length === 0 ? (
                   <EmptyState
-                    title="No documents yet"
-                    description="Upload insurance certificates, guarantees, signed leases, or tenant files here."
+                    title="No tenant documents yet"
+                    description="Upload leases, insurance certificates, guarantees, onboarding files, or tenant correspondence. Nothing updates the tenant profile until reviewed."
+                    action={
+                      <div className="flex flex-wrap justify-center gap-2">
+                        <Button
+                          type="button"
+                          onClick={() => documentFileInputRef.current?.click()}
+                        >
+                          <UploadCloud size={16} />
+                          Upload document
+                        </Button>
+                        <Link
+                          href="/intake"
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                        >
+                          <Sparkles size={15} />
+                          Open Smart Intake
+                        </Link>
+                      </div>
+                    }
                   />
                 ) : null}
               </div>
@@ -693,37 +851,55 @@ function TenantDetail() {
                         </div>
                         <div className="grid gap-2">
                           <div className="font-semibold">Uploaded documents</div>
-                          {onboardingDocuments.map((document) => (
-                            <div
-                              key={document.id}
-                              className="flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-white px-3 py-2"
-                            >
-                              <span className="min-w-0 truncate">
-                                {document.filename}
-                              </span>
-                              <span className="flex shrink-0 items-center gap-2">
-                                <span className="text-muted-foreground">
-                                  {documentCategoryLabel(document.category)}
+                          {onboardingDocuments.map((document) => {
+                            const intake = intakeByDocumentId.get(document.id);
+                            return (
+                              <div
+                                key={document.id}
+                                className="flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-white px-3 py-2"
+                              >
+                                <span className="min-w-0 truncate">
+                                  {document.filename}
                                 </span>
-                                <SecondaryButton
-                                  type="button"
-                                  className="h-8"
-                                  onClick={() => prepareReviewMutation.mutate(document.id)}
-                                  disabled={prepareReviewMutation.isPending}
-                                >
-                                  <Sparkles size={14} />
-                                  Review
-                                </SecondaryButton>
-                                <a
-                                  href={documentDownloadUrl(document.id)}
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
-                                  aria-label={`Download ${document.filename}`}
-                                >
-                                  <Download size={14} />
-                                </a>
-                              </span>
-                            </div>
-                          ))}
+                                <span className="flex shrink-0 items-center gap-2">
+                                  <span className="text-muted-foreground">
+                                    {documentCategoryLabel(document.category)}
+                                  </span>
+                                  <StatusBadge tone={intakeStatusTone(intake)}>
+                                    {intakeStatusLabel(intake)}
+                                  </StatusBadge>
+                                  {intake ? (
+                                    <Link
+                                      href={`/intake?review=${intake.id}`}
+                                      className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                                    >
+                                      <Sparkles size={14} />
+                                      Open review
+                                    </Link>
+                                  ) : (
+                                    <SecondaryButton
+                                      type="button"
+                                      className="h-8"
+                                      onClick={() =>
+                                        prepareReviewMutation.mutate(document.id)
+                                      }
+                                      disabled={prepareReviewMutation.isPending}
+                                    >
+                                      <Sparkles size={14} />
+                                      Send to review
+                                    </SecondaryButton>
+                                  )}
+                                  <a
+                                    href={documentDownloadUrl(document.id)}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
+                                    aria-label={`Download ${document.filename}`}
+                                  >
+                                    <Download size={14} />
+                                  </a>
+                                </span>
+                              </div>
+                            );
+                          })}
                           {onboardingDocuments.length === 0 ? (
                             <div className="rounded border border-border bg-white px-3 py-2 text-muted-foreground">
                               No documents uploaded with this onboarding.
@@ -816,9 +992,19 @@ function TenantDetail() {
           </div>
         </section>
 
-        {tenantQuery.error || leasesQuery.error || onboardingQuery.error ? (
+        {tenantQuery.error ||
+        leasesQuery.error ||
+        onboardingQuery.error ||
+        documentsQuery.error ||
+        documentIntakesQuery.error ? (
           <p className="text-sm text-danger">
-            {friendlyError(tenantQuery.error ?? leasesQuery.error ?? onboardingQuery.error)}
+            {friendlyError(
+              tenantQuery.error ??
+                leasesQuery.error ??
+                onboardingQuery.error ??
+                documentsQuery.error ??
+                documentIntakesQuery.error,
+            )}
           </p>
         ) : null}
       </div>
