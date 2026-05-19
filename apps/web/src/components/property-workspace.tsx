@@ -2409,9 +2409,9 @@ function Workspace() {
                             })
                           }
                           disabled={updateObligationMutation.isPending}
-                          className="h-8 w-8 px-0 text-primary"
+                          className="h-8 w-8 px-0"
                         >
-                          <CheckCircle2 size={15} />
+                          <CheckCircle2 size={15} className="text-emerald-600" />
                         </SecondaryButton>
                         <SecondaryButton
                           type="button"
@@ -2424,9 +2424,9 @@ function Workspace() {
                             })
                           }
                           disabled={updateObligationMutation.isPending}
-                          className="h-8 w-8 px-0 text-muted-foreground"
+                          className="h-8 w-8 px-0"
                         >
-                          <Ban size={15} />
+                          <Ban size={15} className="text-danger" />
                         </SecondaryButton>
                       </div>
                     </div>

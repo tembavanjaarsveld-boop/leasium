@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Sparkles,
   UserRound,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,6 +31,7 @@ import {
 } from "@/components/ui";
 import {
   createDocumentIntake,
+  deleteDocumentIntake,
   DocumentIntakeRecord,
   listEntities,
   listDocumentIntakes,
@@ -211,7 +213,15 @@ function intakeIsActive(item: DocumentIntakeRecord) {
   return item.status === "uploaded" || item.status === "reading";
 }
 
-function SmartReviewSummary({ intake }: { intake: DocumentIntakeRecord }) {
+function SmartReviewSummary({
+  intake,
+  onClear,
+  clearing,
+}: {
+  intake: DocumentIntakeRecord;
+  onClear: () => void;
+  clearing: boolean;
+}) {
   const data = intake.extracted_data;
   const warnings = [
     ...(data.warnings ?? []),
@@ -226,9 +236,20 @@ function SmartReviewSummary({ intake }: { intake: DocumentIntakeRecord }) {
             {documentTypeLabel(intake.document_type)} - {confidenceLabel(intake.confidence)}
           </div>
         </div>
-        <StatusBadge tone={intakeStatusTone(intake.status)}>
-          {intakeStatusLabel(intake.status)}
-        </StatusBadge>
+        <div className="flex items-center gap-2">
+          <StatusBadge tone={intakeStatusTone(intake.status)}>
+            {intakeStatusLabel(intake.status)}
+          </StatusBadge>
+          <SecondaryButton
+            type="button"
+            className="h-8"
+            onClick={onClear}
+            disabled={clearing}
+          >
+            <X size={14} />
+            Clear
+          </SecondaryButton>
+        </div>
       </div>
 
       <div className="grid gap-3 text-sm">
@@ -331,6 +352,7 @@ function ReviewGroup({
 function Dashboard() {
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [intakeError, setIntakeError] = useState<string | null>(null);
+  const [intakeNotice, setIntakeNotice] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [reviewIntakeId, setReviewIntakeId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -403,9 +425,29 @@ function Dashboard() {
       }),
     onMutate: () => {
       setIntakeError(null);
+      setIntakeNotice(null);
     },
     onSuccess: (created) => {
       setReviewIntakeId(created.id);
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-document-intakes", selectedEntityId],
+      });
+    },
+    onError: (error) => {
+      setIntakeError(friendlyError(error));
+    },
+  });
+  const deleteDocumentIntakeMutation = useMutation({
+    mutationFn: deleteDocumentIntake,
+    onMutate: () => {
+      setIntakeError(null);
+      setIntakeNotice(null);
+    },
+    onSuccess: (_data, deletedId) => {
+      if (reviewIntakeId === deletedId) {
+        setReviewIntakeId(null);
+      }
+      setIntakeNotice("Removed from review inbox.");
       queryClient.invalidateQueries({
         queryKey: ["dashboard-document-intakes", selectedEntityId],
       });
@@ -654,6 +696,11 @@ function Dashboard() {
                     {intakeError}
                   </div>
                 ) : null}
+                {intakeNotice ? (
+                  <div className="rounded-md bg-primary/5 px-3 py-2 text-sm text-primary">
+                    {intakeNotice}
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Link
                     href="/properties"
@@ -726,13 +773,27 @@ function Dashboard() {
                               {confidenceLabel(item.confidence)}
                             </span>
                           </div>
-                          <div className="flex justify-end">
+                          <div className="flex justify-end gap-2">
                             <SecondaryButton
                               type="button"
                               className="h-8"
                               onClick={() => setReviewIntakeId(item.id)}
                             >
                               Review
+                            </SecondaryButton>
+                            <SecondaryButton
+                              type="button"
+                              className="h-8"
+                              title={
+                                intakeIsActive(item)
+                                  ? "Stop reviewing and clear"
+                                  : "Clear"
+                              }
+                              onClick={() => deleteDocumentIntakeMutation.mutate(item.id)}
+                              disabled={deleteDocumentIntakeMutation.isPending}
+                            >
+                              <X size={14} />
+                              Clear
                             </SecondaryButton>
                           </div>
                         </div>
@@ -747,7 +808,13 @@ function Dashboard() {
                   </div>
                 </div>
                 {selectedReviewIntake ? (
-                  <SmartReviewSummary intake={selectedReviewIntake} />
+                  <SmartReviewSummary
+                    intake={selectedReviewIntake}
+                    onClear={() =>
+                      deleteDocumentIntakeMutation.mutate(selectedReviewIntake.id)
+                    }
+                    clearing={deleteDocumentIntakeMutation.isPending}
+                  />
                 ) : null}
               </div>
             </SectionPanel>

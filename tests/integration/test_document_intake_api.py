@@ -179,3 +179,47 @@ def test_document_intake_rejects_unsupported_files(
         files={"file": ("photo.png", b"png bytes", "image/png")},
     )
     assert response.status_code == 415
+
+
+def test_document_intake_can_be_cleared(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_extraction(), "resp_document_clear"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("insurance.txt", b"insurance", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    document_id = create_response.json()["document_id"]
+
+    delete_response = client.delete(f"/api/v1/document-intakes/{intake_id}")
+    assert delete_response.status_code == 204
+
+    list_response = client.get("/api/v1/document-intakes", params={"entity_id": entity_id})
+    assert list_response.status_code == 200
+    assert list_response.json() == []
+
+    intake = session.get(DocumentIntake, UUID(intake_id))
+    document = session.get(StoredDocument, UUID(document_id))
+    assert intake is not None
+    assert document is not None
+    assert intake.deleted_at is not None
+    assert document.deleted_at is not None

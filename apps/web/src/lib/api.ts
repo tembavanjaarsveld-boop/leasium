@@ -766,6 +766,12 @@ export function extractDocumentIntake(intakeId: string) {
   });
 }
 
+export function deleteDocumentIntake(intakeId: string) {
+  return request<void>(`/document-intakes/${intakeId}`, {
+    method: "DELETE",
+  });
+}
+
 export function listRentRoll(filters: {
   entity_id: string;
   property_id?: string;

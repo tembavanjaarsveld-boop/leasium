@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 from stewart.ai.document_intake import DocumentExtractionError, extract_document_file
 from stewart.core.audit import audit_log
+from stewart.core.db import utcnow
 from stewart.core.models import (
     AuditOutcome,
     DocumentCategory,
@@ -335,3 +336,26 @@ def extract_document_intake(
             detail=intake.error_message or "Document extraction failed.",
         )
     return _read_intake(intake)
+
+
+@router.delete("/{intake_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document_intake(
+    intake_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> None:
+    intake = _get_intake(intake_id, user, session, WRITE_ROLES)
+    now = utcnow()
+    intake.deleted_at = now
+    intake.document.deleted_at = now
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=intake.entity_id,
+        action="delete",
+        target_table="document_intake",
+        target_id=intake.id,
+        tool_input={"document_id": str(intake.document_id)},
+    )
+    session.commit()
