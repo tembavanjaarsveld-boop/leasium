@@ -46,7 +46,7 @@ is deployed separately and must set `FRONTEND_URL` to the Vercel domain.
   apply the intake into lease and obligation records.
 - Tenant onboarding: create a public onboarding link from a lease, let the tenant confirm contact, billing, insurance, and emergency details, then update the tenant record.
 - Billing readiness: maintain recurring rent/charge rules and inspect rent roll rows for invoice, GST, and Xero blockers before invoice generation is built.
-- Dashboard and registers: `/` focuses on quick actions, attention items, events, onboarding, and billing updates; `/properties` holds property/lease operations; `/tenants` holds tenant search and contact/billing management.
+- Dashboard and registers: `/` focuses on quick actions, attention items, events, onboarding, and billing updates; `/insights` shows live portfolio health and exceptions; `/properties` holds property/lease operations; `/tenants` holds tenant search and contact/billing management.
 
 ## Auth Modes
 

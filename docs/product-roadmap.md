@@ -38,6 +38,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [ ] Deepen tenant detail: property/lease context labels, richer activity history, safer document provenance/actions, and reviewed-change history.
 - [ ] Expand billing from readiness into invoice generation: rent periods, line items, invoice drafts, approval, PDF/email delivery, and payment status.
 - [ ] Add Xero connection status, chart of accounts/tax mapping, contact sync, invoice sync, and payment reconciliation.
+- [ ] Deepen Insights dashboards: portfolio health, live exceptions, automation activity, billing risk, owner/entity snapshots, and shareable snapshots generated from dashboard data.
 
 ## Smart Intake North Star
 
@@ -58,7 +59,7 @@ Official Re-Leased pages position their product around a few mature modules that
 - Xero/accounting: two-way sync for contacts, invoices, bills, credit notes, accounts, tracking categories, and tax rates, with Re-Leased handling lease logic and Xero handling accounting. Source: https://www.re-leased.com/product/xero
 - Tenant portal: tenants can view lease details, invoices, documents, rent status, maintenance, compliance, and payment history from a browser portal. Source: https://www.re-leased.com/tenant-portal
 - Maintenance and compliance: work orders, contractor coordination, preventive tasks, inspections, audit trails, and lease-driven obligations. Source: https://www.re-leased.com/product/property-operations-maintenance
-- Reporting: pre-built and flexible reporting across lease performance, financial operations, arrears, maintenance, and portfolio analytics. Source: https://www.re-leased.com/product/property-management-reporting
+- Insights and shareable snapshots: live dashboards should come first, with owner and finance snapshots generated from the same lease performance, financial operations, arrears, maintenance, and portfolio analytics data. Source benchmark: https://www.re-leased.com/product/property-management-reporting
 - API/integrations: REST API coverage for properties, leases, contacts, invoices, maintenance, inspections, dashboards, and communication tools. Source: https://www.re-leased.com/product/apis
 
 ## Later Modules
@@ -67,7 +68,7 @@ Official Re-Leased pages position their product around a few mature modules that
 - [ ] Maintenance work orders: tenant requests, photos, priorities, contractor assignment, quotes, approvals, invoices, and status updates.
 - [ ] Compliance and inspections: recurring checks, certifications, document expiry, fire/safety obligations, delegated owners, and audit trail.
 - [ ] Tenant portal: authenticated self-service for onboarding, documents, invoices, maintenance, compliance uploads, and notification preferences.
-- [ ] Portfolio reporting: rent roll, lease events, arrears, invoice status, maintenance aging, compliance expiry, and owner/entity dashboards.
+- [ ] Portfolio Insights: rent roll health, lease events, arrears, invoice status, maintenance aging, compliance expiry, owner/entity dashboards, and shareable snapshots.
 - [ ] Communications hub: email templates, outbound logs, tenant/contractor threads, and record-linked correspondence.
 - [ ] Approvals and workflow: invoice approval, maintenance spend approval, delegated tasks, reminders, escalation rules, and activity history.
 - [ ] Mobile/field workflows for inspections, photos, quick notes, and work order updates.
@@ -82,3 +83,4 @@ Official Re-Leased pages position their product around a few mature modules that
 - Make blockers plain English, with the next corrective action beside the blocker.
 - Avoid forcing users through accounting concepts until they are needed for invoice readiness.
 - Every module should reduce a spreadsheet, email chase, or duplicate entry job.
+- Prefer live dashboards and exception queues over static report pages; exports should be generated from dashboards when needed.

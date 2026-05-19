@@ -18,6 +18,7 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
 ## Standing UX Direction
 
 - Home is a dashboard: quick adds, notifications, events, updates, and operational health.
+- Insights is the portfolio dashboard layer: live health, exceptions, automation activity, and shareable snapshots generated later from the same data.
 - Property work belongs in the property workspace: lease intake, units, leases, obligations, rent roll, and property-level billing readiness.
 - Tenant work belongs in the tenant workspace: tenant search, contact/billing details, onboarding state, leases, documents, and activity.
 - New modules should earn their own page when they become repeated work, not be squeezed into an existing page.

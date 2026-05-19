@@ -15,7 +15,7 @@ const navItems = [
   { href: "/tenants", label: "Tenants" },
   { href: "/tasks", label: "Tasks" },
   { href: "/billing-readiness", label: "Billing Readiness" },
-  { href: "/reports", label: "Reports" },
+  { href: "/insights", label: "Insights" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -44,6 +44,11 @@ const commandActions = [
     href: "/tasks",
     label: "View attention items",
     meta: "Tasks",
+  },
+  {
+    href: "/insights",
+    label: "Open portfolio insights",
+    meta: "Insights",
   },
   ...navItems.map((item) => ({
     href: item.href,
