@@ -69,6 +69,10 @@ def test_owner_can_invite_and_update_operator_roles(
     assert created["display_name"] == "Ops Team"
     assert created["is_active"] is True
     assert created["login_linked"] is False
+    assert created["invite_email_status"] == "not_sent"
+    assert created["invite_email_detail"] == (
+        "No operator invite email has been sent yet; access is recorded only."
+    )
     assert created["roles"][0]["role"] == "ops"
 
     update_response = client.patch(

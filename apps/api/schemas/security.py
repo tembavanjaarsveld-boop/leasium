@@ -41,6 +41,8 @@ class SecurityMemberRead(ApiModel):
     display_name: str
     is_active: bool
     login_linked: bool
+    invite_email_status: str
+    invite_email_detail: str
     created_at: datetime
     roles: list[SecurityEntityRoleRead] = Field(default_factory=list)
 

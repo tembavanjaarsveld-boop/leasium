@@ -81,7 +81,7 @@ def _auth_status(settings: Settings) -> SecurityAuthStatusRead:
     operator_login_enforced = settings.auth_mode == "clerk"
     next_steps: list[str] = []
     if settings.auth_mode == "dev":
-        next_steps.append("Switch AUTH_MODE to clerk before inviting real operators.")
+        next_steps.append("Switch AUTH_MODE to clerk before sending real operator invites.")
     if not clerk_secret_configured:
         next_steps.append("Set CLERK_SECRET_KEY before enabling provider-backed login.")
     if not clerk_jwks_configured:
@@ -105,12 +105,19 @@ def _member_read(
     member: AppUser,
     roles_by_user: dict[UUID, list[SecurityEntityRoleRead]],
 ) -> SecurityMemberRead:
+    login_linked = bool(member.auth_provider_id)
     return SecurityMemberRead(
         id=member.id,
         email=member.email,
         display_name=member.display_name,
         is_active=member.is_active,
-        login_linked=bool(member.auth_provider_id),
+        login_linked=login_linked,
+        invite_email_status="linked" if login_linked else "not_sent",
+        invite_email_detail=(
+            "Provider login is linked for this operator."
+            if login_linked
+            else "No operator invite email has been sent yet; access is recorded only."
+        ),
         created_at=member.created_at,
         roles=roles_by_user.get(member.id, []),
     )

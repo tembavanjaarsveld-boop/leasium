@@ -479,7 +479,7 @@ function SettingsWorkspace() {
 
             <SectionPanel
               title="Operator access"
-              description="Invite teammates into the organisation and choose their access for the selected entity."
+              description="Add operator access records now. Email invitations turn on with provider-backed login."
               icon={<UserPlus size={17} className="text-primary" />}
               actions={
                 securityQuery.data?.can_manage_security ? (
@@ -579,7 +579,7 @@ function SettingsWorkspace() {
                     ) : (
                       <UserPlus size={15} />
                     )}
-                    Add operator
+                    Add access
                   </Button>
                 </form>
               </div>
@@ -626,8 +626,11 @@ function SettingsWorkspace() {
                                 {member.is_active ? "Active" : "Inactive"}
                               </StatusBadge>
                               <StatusBadge tone={member.login_linked ? "success" : "warning"}>
-                                {member.login_linked ? "Login linked" : "Invite pending"}
+                                {member.login_linked ? "Login linked" : "No email sent"}
                               </StatusBadge>
+                            </div>
+                            <div className="mt-2 max-w-48 text-xs text-muted-foreground">
+                              {member.invite_email_detail}
                             </div>
                           </td>
                           <td className="min-w-52 px-3 py-3">

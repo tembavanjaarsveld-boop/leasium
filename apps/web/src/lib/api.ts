@@ -35,6 +35,8 @@ export type SecurityMemberRecord = {
   display_name: string;
   is_active: boolean;
   login_linked: boolean;
+  invite_email_status: "linked" | "not_sent" | string;
+  invite_email_detail: string;
   created_at: string;
   roles: SecurityEntityRoleRecord[];
 };

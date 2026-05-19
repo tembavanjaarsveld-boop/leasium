@@ -269,7 +269,7 @@ const securityWorkspace = () => ({
     operator_login_enforced: false,
     login_boundary: "Development operator identity",
     next_steps: [
-      "Switch AUTH_MODE to clerk before inviting real operators.",
+      "Switch AUTH_MODE to clerk before sending real operator invites.",
       "Set CLERK_SECRET_KEY before enabling provider-backed login.",
     ],
   },
@@ -293,6 +293,8 @@ const securityWorkspace = () => ({
       display_name: "Owner Operator",
       is_active: true,
       login_linked: true,
+      invite_email_status: "linked",
+      invite_email_detail: "Provider login is linked for this operator.",
       created_at: "2026-05-01T00:00:00.000Z",
       roles: [
         {
