@@ -129,6 +129,15 @@ def delete_property(
     session.commit()
 
 
+def list_premises_by_entity(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    include_deleted: bool = False,
+) -> list[Property]:
+    return list_properties(user, session, entity_id, include_deleted)
+
+
 alias_router.add_api_route(
     "",
     list_properties,
@@ -141,6 +150,12 @@ alias_router.add_api_route(
     methods=["POST"],
     response_model=PropertyRead,
     status_code=status.HTTP_201_CREATED,
+)
+alias_router.add_api_route(
+    "/by-entity/{entity_id}",
+    list_premises_by_entity,
+    methods=["GET"],
+    response_model=list[PropertyRead],
 )
 alias_router.add_api_route(
     "/{property_id}",

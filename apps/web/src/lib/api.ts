@@ -336,7 +336,7 @@ export function listEntities() {
 }
 
 export function listProperties(entityId: string) {
-  return request<PropertyRecord[]>(`/premises?entity_id=${entityId}`);
+  return request<PropertyRecord[]>(`/premises/by-entity/${entityId}`);
 }
 
 export function createProperty(payload: PropertyPayload) {

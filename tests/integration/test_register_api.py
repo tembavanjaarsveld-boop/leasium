@@ -61,6 +61,9 @@ def test_property_crud_writes_audit_and_filters_soft_deleted(
     alias_list_response = client.get(f"/api/v1/premises?entity_id={entity_id}")
     assert alias_list_response.status_code == 200
     assert alias_list_response.json() == list_response.json()
+    path_alias_response = client.get(f"/api/v1/premises/by-entity/{entity_id}")
+    assert path_alias_response.status_code == 200
+    assert path_alias_response.json() == list_response.json()
 
     delete_response = client.delete(f"/api/v1/properties/{property_id}")
     assert delete_response.status_code == 204
