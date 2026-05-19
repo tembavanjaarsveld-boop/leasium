@@ -114,6 +114,18 @@ def _bool(value: Any, default: bool) -> bool:
     return default
 
 
+def _optional_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.lower()
+        if lowered in {"1", "true", "yes", "y"}:
+            return True
+        if lowered in {"0", "false", "no", "n"}:
+            return False
+    return None
+
+
 def _enum(enum_type: type[Any], value: Any, default: Any) -> Any:
     text = _str(value)
     if text is None:
@@ -522,11 +534,13 @@ def _find_or_create_property(
     user: CurrentUser,
     session: Session,
 ) -> Property:
+    data = _dict(extracted.get("property"))
     resolved_property_id = property_id or _context_property_id(extracted)
     if resolved_property_id is not None:
-        return _property_for_entity(resolved_property_id, intake.entity_id, user, session)
+        prop = _property_for_entity(resolved_property_id, intake.entity_id, user, session)
+        _fill_blank_property_billing_fields(prop, data)
+        return prop
 
-    data = _dict(extracted.get("property"))
     name = _str(data.get("name"))
     street_address = _str(data.get("street_address")) or _str(data.get("address"))
     if name:
@@ -541,6 +555,7 @@ def _find_or_create_property(
             )
         existing = session.scalar(statement)
         if existing is not None:
+            _fill_blank_property_billing_fields(existing, data)
             return existing
 
     prop = Property(
@@ -556,11 +571,45 @@ def _find_or_create_property(
         land_sqm=_float(data.get("land_sqm")),
         building_sqm=_float(data.get("building_sqm")),
         parking_spaces=_int(data.get("parking_spaces")),
+        ownership_structure=_str(data.get("ownership_structure")),
+        owner_legal_name=_str(data.get("owner_legal_name")),
+        owner_abn=_str(data.get("owner_abn")),
+        trustee_name=_str(data.get("trustee_name")),
+        trust_name=_str(data.get("trust_name")),
+        invoice_issuer_name=_str(data.get("invoice_issuer_name")),
+        billing_contact_name=_str(data.get("billing_contact_name")),
+        billing_email=_str(data.get("billing_email")),
+        invoice_reference=_str(data.get("invoice_reference")),
+        ownership_split=_str(data.get("ownership_split")),
+        owner_gst_registered=_optional_bool(data.get("owner_gst_registered")),
+        xero_contact_id=_str(data.get("xero_contact_id")),
+        xero_tracking_category=_str(data.get("xero_tracking_category")),
         property_metadata={"source": "lease_intake", "lease_intake_id": str(intake.id)},
     )
     session.add(prop)
     session.flush()
     return prop
+
+
+def _fill_blank_property_billing_fields(prop: Property, data: dict[str, Any]) -> None:
+    updates: dict[str, Any] = {
+        "ownership_structure": _str(data.get("ownership_structure")),
+        "owner_legal_name": _str(data.get("owner_legal_name")),
+        "owner_abn": _str(data.get("owner_abn")),
+        "trustee_name": _str(data.get("trustee_name")),
+        "trust_name": _str(data.get("trust_name")),
+        "invoice_issuer_name": _str(data.get("invoice_issuer_name")),
+        "billing_contact_name": _str(data.get("billing_contact_name")),
+        "billing_email": _str(data.get("billing_email")),
+        "invoice_reference": _str(data.get("invoice_reference")),
+        "ownership_split": _str(data.get("ownership_split")),
+        "owner_gst_registered": _optional_bool(data.get("owner_gst_registered")),
+        "xero_contact_id": _str(data.get("xero_contact_id")),
+        "xero_tracking_category": _str(data.get("xero_tracking_category")),
+    }
+    for key, value in updates.items():
+        if value is not None and getattr(prop, key) is None:
+            setattr(prop, key, value)
 
 
 def _find_or_create_unit(

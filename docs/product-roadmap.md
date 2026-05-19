@@ -38,10 +38,11 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Smart Intake task queue: open document reviews, match issues, processing states, and failed reads now appear in Tasks with a dedicated filter and deep links back to Smart Intake.
 - [x] Tenant onboarding delivery foundation: Twilio SendGrid email and Twilio SMS delivery are wired into create/resend with channel status, audit logs, and safe skipped states when a channel is not configured.
 - [x] Tenant onboarding reminders and receipts v1: reminder schedules, manual due-reminder runner, SendGrid/Twilio receipt ingestion, delivery timeline, and contact-fix actions.
+- [x] Property ownership and billing identity: owner/trust/split profile fields, quiet property-level chips, collapsible setup, billing-readiness blockers, and Smart Intake extraction/apply support.
 
 ## Next Build Order
 
-- [ ] Continue AI apply beyond first-pass register workflows: purchase contracts gain richer tenancy schedule handling; billing prep graduates into true draft charge/invoice records; lease apply gains deeper source citations and before/after audit detail.
+- [ ] Continue AI apply beyond first-pass register workflows: purchase contracts gain richer tenancy schedule handling; billing prep graduates into true draft charge/invoice records; ownership profiles gain source citations and before/after audit detail.
 - [ ] Finish tenant onboarding delivery: hosted provider webhook configuration, branded template management, editable reminder schedules, expiry reminders, and deeper delivery failure recovery.
 - [ ] Deepen tenant detail: property/lease context labels, richer activity history, safer document provenance/actions, and reviewed-change history.
 - [ ] Expand billing from readiness into invoice generation: rent periods, line items, invoice drafts, approval, PDF/email delivery, and payment status.

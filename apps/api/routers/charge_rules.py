@@ -32,6 +32,7 @@ router = APIRouter(tags=["billing"])
 
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
+PROPERTY_OWNER_BILLING_STRUCTURES = {"property_owner", "trust", "split"}
 
 
 def _property_for_access(
@@ -76,6 +77,37 @@ def _charge_rule_for_access(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Charge rule not found.")
     _, entity_id = _lease_for_access(charge_rule.lease_id, user, session, roles)
     return charge_rule, entity_id
+
+
+def _property_billing_blockers(
+    prop: Property,
+    charge_rules: list[RentChargeRule],
+) -> tuple[list[str], list[str], list[str]]:
+    structure = prop.ownership_structure or "current_entity"
+    if structure not in PROPERTY_OWNER_BILLING_STRUCTURES:
+        return [], [], []
+
+    invoice_blockers: list[str] = []
+    xero_blockers: list[str] = []
+    gst_blockers: list[str] = []
+
+    if not (prop.invoice_issuer_name or prop.owner_legal_name):
+        invoice_blockers.append("Invoice issuer missing.")
+    if not prop.owner_abn:
+        invoice_blockers.append("ABN missing for property owner.")
+    if structure == "trust" and not prop.trustee_name:
+        invoice_blockers.append("Trustee missing.")
+    if structure == "split" and not prop.ownership_split:
+        invoice_blockers.append("Ownership split incomplete.")
+    if not prop.xero_contact_id:
+        xero_blockers.append("Xero issuer mapping missing.")
+    if (
+        prop.owner_gst_registered is False
+        and any(rule.gst_treatment == "taxable" for rule in charge_rules)
+    ):
+        gst_blockers.append("Property invoice issuer is not GST registered.")
+
+    return gst_blockers, xero_blockers, invoice_blockers
 
 
 @router.get("/charge-rules", response_model=list[RentChargeRuleRead])
@@ -313,6 +345,14 @@ def rent_roll(
                 invoice_blockers.append(
                     f"{rule.charge_type.replace('_', ' ')} is missing the next due date."
                 )
+        (
+            property_gst_blockers,
+            property_xero_blockers,
+            property_invoice_blockers,
+        ) = _property_billing_blockers(prop, charge_rules)
+        gst_blockers.extend(property_gst_blockers)
+        xero_blockers.extend(property_xero_blockers)
+        invoice_blockers.extend(property_invoice_blockers)
 
         response.append(
             RentRollRowRead(

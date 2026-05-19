@@ -31,6 +31,19 @@ export type PropertyRecord = {
   building_sqm: number | null;
   parking_spaces: number | null;
   has_solar_pv: boolean;
+  ownership_structure: string | null;
+  owner_legal_name: string | null;
+  owner_abn: string | null;
+  trustee_name: string | null;
+  trust_name: string | null;
+  invoice_issuer_name: string | null;
+  billing_contact_name: string | null;
+  billing_email: string | null;
+  invoice_reference: string | null;
+  ownership_split: string | null;
+  owner_gst_registered: boolean | null;
+  xero_contact_id: string | null;
+  xero_tracking_category: string | null;
   metadata: Record<string, unknown>;
 };
 

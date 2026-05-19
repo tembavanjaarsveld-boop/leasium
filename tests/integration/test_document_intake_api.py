@@ -290,6 +290,19 @@ def _fake_purchase_contract_extraction() -> dict[str, Any]:
                 "source_hint": "Property particulars",
                 "sqm": 1200,
                 "parking_spaces": 10,
+                "ownership_structure": "trust",
+                "owner_legal_name": "Docklands Property Trust",
+                "owner_abn": "33 444 555 666",
+                "trustee_name": "Docklands Trustee Pty Ltd",
+                "trust_name": "Docklands Property Trust",
+                "invoice_issuer_name": "Docklands Trustee Pty Ltd",
+                "billing_contact_name": "Pat Morgan",
+                "billing_email": "accounts@docklands.example",
+                "invoice_reference": "DTC-",
+                "ownership_split": "100% Docklands Property Trust",
+                "owner_gst_registered": True,
+                "xero_contact_id": "xero-docklands",
+                "xero_tracking_category": "Docklands Trade Centre",
             }
         ],
         "key_dates": [
@@ -905,6 +918,10 @@ def test_document_intake_apply_purchase_contract_creates_property_records(
     assert prop.name == "Docklands Trade Centre"
     assert prop.street_address == "18 Harbour Road"
     assert prop.property_type == "other"
+    assert prop.ownership_structure == "trust"
+    assert prop.owner_legal_name == "Docklands Property Trust"
+    assert prop.trustee_name == "Docklands Trustee Pty Ltd"
+    assert prop.xero_contact_id == "xero-docklands"
     assert prop.property_metadata["source"] == "document_intake"
     assert prop.property_metadata["document_intake_id"] == intake_id
 
@@ -989,6 +1006,10 @@ def test_document_intake_apply_purchase_contract_reuses_selected_property(
     assert body["review_data"]["applied"]["property_id"] == property_response.json()["id"]
     assert body["review_data"]["applied"]["tenancy_unit_ids"] == [unit_response.json()["id"]]
     assert body["review_data"]["applied"]["created_tenancy_unit_count"] == 0
+    linked_prop = session.get(Property, UUID(property_response.json()["id"]))
+    assert linked_prop is not None
+    assert linked_prop.owner_legal_name == "Docklands Property Trust"
+    assert linked_prop.xero_contact_id == "xero-docklands"
 
     created_prop = session.scalar(
         select(Property).where(Property.name == "Docklands Trade Centre")

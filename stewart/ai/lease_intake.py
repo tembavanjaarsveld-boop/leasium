@@ -37,6 +37,19 @@ LEASE_EXTRACTION_SCHEMA: dict[str, Any] = {
                 "land_sqm",
                 "building_sqm",
                 "parking_spaces",
+                "ownership_structure",
+                "owner_legal_name",
+                "owner_abn",
+                "trustee_name",
+                "trust_name",
+                "invoice_issuer_name",
+                "billing_contact_name",
+                "billing_email",
+                "invoice_reference",
+                "ownership_split",
+                "owner_gst_registered",
+                "xero_contact_id",
+                "xero_tracking_category",
             ],
             "properties": {
                 "name": {"type": ["string", "null"]},
@@ -63,6 +76,22 @@ LEASE_EXTRACTION_SCHEMA: dict[str, Any] = {
                 "land_sqm": {"type": ["number", "null"]},
                 "building_sqm": {"type": ["number", "null"]},
                 "parking_spaces": {"type": ["integer", "null"]},
+                "ownership_structure": {
+                    "type": ["string", "null"],
+                    "enum": ["current_entity", "property_owner", "trust", "split", None],
+                },
+                "owner_legal_name": {"type": ["string", "null"]},
+                "owner_abn": {"type": ["string", "null"]},
+                "trustee_name": {"type": ["string", "null"]},
+                "trust_name": {"type": ["string", "null"]},
+                "invoice_issuer_name": {"type": ["string", "null"]},
+                "billing_contact_name": {"type": ["string", "null"]},
+                "billing_email": {"type": ["string", "null"]},
+                "invoice_reference": {"type": ["string", "null"]},
+                "ownership_split": {"type": ["string", "null"]},
+                "owner_gst_registered": {"type": ["boolean", "null"]},
+                "xero_contact_id": {"type": ["string", "null"]},
+                "xero_tracking_category": {"type": ["string", "null"]},
             },
         },
         "tenancy_unit": {
@@ -183,6 +212,8 @@ def extract_lease_file(
 
     prompt = (
         "Extract commercial lease setup data from this Australian lease file. "
+        "Capture property owner, trust, trustee, invoice issuer, and billing identity "
+        "details only when they are explicitly stated. "
         "Use only facts present in the file. Return null for missing fields. "
         "Use ISO dates, integer cents for money, and concise notes."
     )

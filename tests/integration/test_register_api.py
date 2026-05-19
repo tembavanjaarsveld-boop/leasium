@@ -43,21 +43,43 @@ def test_property_crud_writes_audit_and_filters_soft_deleted(
             "property_type": "commercial_office",
             "building_sqm": 1200,
             "parking_spaces": 24,
+            "ownership_structure": "trust",
+            "owner_legal_name": "Northlakes Property Trust",
+            "owner_abn": "22 333 444 555",
+            "trustee_name": "Northlakes Trustee Pty Ltd",
+            "trust_name": "Northlakes Property Trust",
+            "invoice_issuer_name": "Northlakes Trustee Pty Ltd",
+            "billing_contact_name": "Morgan Finance",
+            "billing_email": "accounts@northlakes.example",
+            "invoice_reference": "NL-",
+            "ownership_split": "100% Northlakes Property Trust",
+            "owner_gst_registered": True,
+            "xero_contact_id": "xero-owner-1",
+            "xero_tracking_category": "Northlakes",
             "metadata": {"source": "test"},
         },
     )
     assert create_response.status_code == 201
-    property_id = create_response.json()["id"]
+    create_body = create_response.json()
+    property_id = create_body["id"]
+    assert create_body["owner_legal_name"] == "Northlakes Property Trust"
+    assert create_body["owner_gst_registered"] is True
+    assert create_body["xero_tracking_category"] == "Northlakes"
 
     update_response = client.patch(
-        f"/api/v1/properties/{property_id}", json={"name": "B4 Northlakes"}
+        f"/api/v1/properties/{property_id}",
+        json={"name": "B4 Northlakes", "billing_email": "billing@northlakes.example"},
     )
     assert update_response.status_code == 200
-    assert update_response.json()["name"] == "B4 Northlakes"
+    update_body = update_response.json()
+    assert update_body["name"] == "B4 Northlakes"
+    assert update_body["billing_email"] == "billing@northlakes.example"
+    assert update_body["owner_legal_name"] == "Northlakes Property Trust"
 
     list_response = client.get(f"/api/v1/properties?entity_id={entity_id}")
     assert list_response.status_code == 200
     assert len(list_response.json()) == 1
+    assert list_response.json()[0]["billing_email"] == "billing@northlakes.example"
     alias_list_response = client.get(f"/api/v1/premises?entity_id={entity_id}")
     assert alias_list_response.status_code == 200
     assert alias_list_response.json() == list_response.json()

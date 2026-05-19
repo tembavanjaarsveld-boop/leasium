@@ -99,6 +99,92 @@ def test_billing_readiness_smoke_surfaces_actionable_blockers(
     assert rows[0]["xero_readiness_blockers"] == ["Entity is not connected to Xero."]
 
 
+def test_billing_readiness_surfaces_property_ownership_blockers(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Trust Billing Centre",
+            "street_address": "20 Trust Street",
+            "property_type": "commercial_retail",
+            "ownership_structure": "trust",
+            "trust_name": "Trust Billing Property Trust",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+
+    unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "Shop 2"},
+    )
+    assert unit_response.status_code == 201
+
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={
+            "entity_id": entity_id,
+            "legal_name": "Trust Tenant Pty Ltd",
+            "billing_email": "accounts@trusttenant.example",
+        },
+    )
+    assert tenant_response.status_code == 201
+
+    lease_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_response.json()["id"],
+            "tenant_id": tenant_response.json()["id"],
+            "status": "active",
+            "commencement_date": "2026-01-01",
+            "expiry_date": "2028-12-31",
+            "annual_rent_cents": 18000000,
+            "rent_frequency": "annual",
+        },
+    )
+    assert lease_response.status_code == 201
+
+    charge_response = client.post(
+        "/api/v1/charge-rules",
+        json={
+            "lease_id": lease_response.json()["id"],
+            "charge_type": "base_rent",
+            "amount_cents": 1500000,
+            "frequency": "monthly",
+            "gst_treatment": "taxable",
+            "xero_account_code": "200",
+            "xero_tax_type": "OUTPUT",
+            "next_due_date": "2026-06-01",
+        },
+    )
+    assert charge_response.status_code == 201
+
+    rent_roll_response = client.get(
+        "/api/v1/rent-roll",
+        params={
+            "entity_id": entity_id,
+            "property_id": property_id,
+            "as_of": "2026-05-19",
+        },
+    )
+
+    assert rent_roll_response.status_code == 200
+    rows = rent_roll_response.json()
+    assert rows[0]["invoice_readiness_blockers"] == [
+        "Invoice issuer missing.",
+        "ABN missing for property owner.",
+        "Trustee missing.",
+    ]
+    assert rows[0]["xero_readiness_blockers"] == [
+        "Entity is not connected to Xero.",
+        "Xero issuer mapping missing.",
+    ]
+
+
 def test_tenant_document_can_be_promoted_to_smart_intake_once(
     client: TestClient,
     session: Session,

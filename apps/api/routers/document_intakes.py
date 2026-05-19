@@ -169,6 +169,18 @@ def _int(value: Any) -> int | None:
         return None
 
 
+def _optional_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.lower()
+        if lowered in {"1", "true", "yes", "y"}:
+            return True
+        if lowered in {"0", "false", "no", "n"}:
+            return False
+    return None
+
+
 def _records(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -786,6 +798,19 @@ def _fill_blank_property_fields(prop: Property, row: dict[str, Any]) -> list[str
         "land_sqm": _float(row.get("land_sqm")),
         "building_sqm": _float(row.get("building_sqm")),
         "parking_spaces": _int(row.get("parking_spaces")),
+        "ownership_structure": _str(row.get("ownership_structure")),
+        "owner_legal_name": _str(row.get("owner_legal_name")),
+        "owner_abn": _str(row.get("owner_abn")),
+        "trustee_name": _str(row.get("trustee_name")),
+        "trust_name": _str(row.get("trust_name")),
+        "invoice_issuer_name": _str(row.get("invoice_issuer_name")),
+        "billing_contact_name": _str(row.get("billing_contact_name")),
+        "billing_email": _str(row.get("billing_email")),
+        "invoice_reference": _str(row.get("invoice_reference")),
+        "ownership_split": _str(row.get("ownership_split")),
+        "owner_gst_registered": _optional_bool(row.get("owner_gst_registered")),
+        "xero_contact_id": _str(row.get("xero_contact_id")),
+        "xero_tracking_category": _str(row.get("xero_tracking_category")),
     }
     for key, value in updates.items():
         if value is not None and getattr(prop, key) is None:
@@ -836,6 +861,19 @@ def _resolve_purchase_property(
         building_sqm=_float(row.get("building_sqm")),
         parking_spaces=_int(row.get("parking_spaces")),
         has_solar_pv=False,
+        ownership_structure=_str(row.get("ownership_structure")),
+        owner_legal_name=_str(row.get("owner_legal_name")),
+        owner_abn=_str(row.get("owner_abn")),
+        trustee_name=_str(row.get("trustee_name")),
+        trust_name=_str(row.get("trust_name")),
+        invoice_issuer_name=_str(row.get("invoice_issuer_name")),
+        billing_contact_name=_str(row.get("billing_contact_name")),
+        billing_email=_str(row.get("billing_email")),
+        invoice_reference=_str(row.get("invoice_reference")),
+        ownership_split=_str(row.get("ownership_split")),
+        owner_gst_registered=_optional_bool(row.get("owner_gst_registered")),
+        xero_contact_id=_str(row.get("xero_contact_id")),
+        xero_tracking_category=_str(row.get("xero_tracking_category")),
         property_metadata={
             "source": "document_intake",
             "document_intake_id": str(intake.id),

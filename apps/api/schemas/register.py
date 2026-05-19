@@ -82,6 +82,19 @@ class PropertyCreate(BaseModel):
     building_sqm: float | None = None
     parking_spaces: int | None = None
     has_solar_pv: bool = False
+    ownership_structure: str | None = None
+    owner_legal_name: str | None = None
+    owner_abn: str | None = None
+    trustee_name: str | None = None
+    trust_name: str | None = None
+    invoice_issuer_name: str | None = None
+    billing_contact_name: str | None = None
+    billing_email: str | None = None
+    invoice_reference: str | None = None
+    ownership_split: str | None = None
+    owner_gst_registered: bool | None = None
+    xero_contact_id: str | None = None
+    xero_tracking_category: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -98,6 +111,19 @@ class PropertyUpdate(BaseModel):
     building_sqm: float | None = None
     parking_spaces: int | None = None
     has_solar_pv: bool | None = None
+    ownership_structure: str | None = None
+    owner_legal_name: str | None = None
+    owner_abn: str | None = None
+    trustee_name: str | None = None
+    trust_name: str | None = None
+    invoice_issuer_name: str | None = None
+    billing_contact_name: str | None = None
+    billing_email: str | None = None
+    invoice_reference: str | None = None
+    ownership_split: str | None = None
+    owner_gst_registered: bool | None = None
+    xero_contact_id: str | None = None
+    xero_tracking_category: str | None = None
     metadata: dict[str, Any] | None = None
 
 
@@ -116,6 +142,19 @@ class PropertyRead(ApiModel):
     building_sqm: float | None
     parking_spaces: int | None
     has_solar_pv: bool
+    ownership_structure: str | None
+    owner_legal_name: str | None
+    owner_abn: str | None
+    trustee_name: str | None
+    trust_name: str | None
+    invoice_issuer_name: str | None
+    billing_contact_name: str | None
+    billing_email: str | None
+    invoice_reference: str | None
+    ownership_split: str | None
+    owner_gst_registered: bool | None
+    xero_contact_id: str | None
+    xero_tracking_category: str | None
     metadata: dict[str, Any] = Field(
         validation_alias=AliasChoices("property_metadata", "metadata"),
         serialization_alias="metadata",

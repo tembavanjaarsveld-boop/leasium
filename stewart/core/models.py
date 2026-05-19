@@ -266,6 +266,19 @@ class Property(Base):
     building_sqm: Mapped[float | None]
     parking_spaces: Mapped[int | None]
     has_solar_pv: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ownership_structure: Mapped[str | None] = mapped_column(Text)
+    owner_legal_name: Mapped[str | None] = mapped_column(Text)
+    owner_abn: Mapped[str | None] = mapped_column(Text)
+    trustee_name: Mapped[str | None] = mapped_column(Text)
+    trust_name: Mapped[str | None] = mapped_column(Text)
+    invoice_issuer_name: Mapped[str | None] = mapped_column(Text)
+    billing_contact_name: Mapped[str | None] = mapped_column(Text)
+    billing_email: Mapped[str | None] = mapped_column(Text)
+    invoice_reference: Mapped[str | None] = mapped_column(Text)
+    ownership_split: Mapped[str | None] = mapped_column(Text)
+    owner_gst_registered: Mapped[bool | None] = mapped_column(Boolean)
+    xero_contact_id: Mapped[str | None] = mapped_column(Text)
+    xero_tracking_category: Mapped[str | None] = mapped_column(Text)
     property_metadata: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JsonbCompat, nullable=False, default=dict
     )

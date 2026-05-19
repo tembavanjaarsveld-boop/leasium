@@ -74,11 +74,46 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["name", "address", "unit_label", "confidence", "source_hint"],
+                "required": [
+                    "name",
+                    "address",
+                    "unit_label",
+                    "ownership_structure",
+                    "owner_legal_name",
+                    "owner_abn",
+                    "trustee_name",
+                    "trust_name",
+                    "invoice_issuer_name",
+                    "billing_contact_name",
+                    "billing_email",
+                    "invoice_reference",
+                    "ownership_split",
+                    "owner_gst_registered",
+                    "xero_contact_id",
+                    "xero_tracking_category",
+                    "confidence",
+                    "source_hint",
+                ],
                 "properties": {
                     "name": {"type": ["string", "null"]},
                     "address": {"type": ["string", "null"]},
                     "unit_label": {"type": ["string", "null"]},
+                    "ownership_structure": {
+                        "type": ["string", "null"],
+                        "enum": ["current_entity", "property_owner", "trust", "split", None],
+                    },
+                    "owner_legal_name": {"type": ["string", "null"]},
+                    "owner_abn": {"type": ["string", "null"]},
+                    "trustee_name": {"type": ["string", "null"]},
+                    "trust_name": {"type": ["string", "null"]},
+                    "invoice_issuer_name": {"type": ["string", "null"]},
+                    "billing_contact_name": {"type": ["string", "null"]},
+                    "billing_email": {"type": ["string", "null"]},
+                    "invoice_reference": {"type": ["string", "null"]},
+                    "ownership_split": {"type": ["string", "null"]},
+                    "owner_gst_registered": {"type": ["boolean", "null"]},
+                    "xero_contact_id": {"type": ["string", "null"]},
+                    "xero_tracking_category": {"type": ["string", "null"]},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                     "source_hint": {"type": ["string", "null"]},
                 },
@@ -184,9 +219,9 @@ def extract_document_file(
         "intake summary. Classify the document cautiously. Use only facts present in "
         "the file. Do not give legal advice. Nothing will be applied automatically, "
         "so focus on facts a property manager should review: parties, properties, "
-        "key dates, money, obligations, warnings, missing information, and proposed "
-        "actions. Use ISO dates where possible and mark uncertainty with lower "
-        "confidence and warnings."
+        "ownership or trust billing identity, key dates, money, obligations, warnings, "
+        "missing information, and proposed actions. Use ISO dates where possible and "
+        "mark uncertainty with lower confidence and warnings."
     )
     content: list[dict[str, str]] = [{"type": "input_text", "text": prompt}]
     try:

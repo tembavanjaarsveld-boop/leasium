@@ -113,6 +113,21 @@ const propertySchema = z.object({
   building_sqm: optionalNumber,
   parking_spaces: optionalInteger,
   has_solar_pv: z.boolean().default(false),
+  ownership_structure: z
+    .enum(["current_entity", "property_owner", "trust", "split"])
+    .default("current_entity"),
+  owner_legal_name: z.string().optional(),
+  owner_abn: z.string().optional(),
+  trustee_name: z.string().optional(),
+  trust_name: z.string().optional(),
+  invoice_issuer_name: z.string().optional(),
+  billing_contact_name: z.string().optional(),
+  billing_email: z.string().optional(),
+  invoice_reference: z.string().optional(),
+  ownership_split: z.string().optional(),
+  owner_gst_registered: z.enum(["", "true", "false"]).default(""),
+  xero_contact_id: z.string().optional(),
+  xero_tracking_category: z.string().optional(),
 });
 
 type PropertyFormValues = z.infer<typeof propertySchema>;
@@ -192,6 +207,19 @@ const defaultPropertyFormValues: PropertyFormValues = {
   building_sqm: undefined,
   parking_spaces: undefined,
   has_solar_pv: false,
+  ownership_structure: "current_entity",
+  owner_legal_name: "",
+  owner_abn: "",
+  trustee_name: "",
+  trust_name: "",
+  invoice_issuer_name: "",
+  billing_contact_name: "",
+  billing_email: "",
+  invoice_reference: "",
+  ownership_split: "",
+  owner_gst_registered: "",
+  xero_contact_id: "",
+  xero_tracking_category: "",
 };
 
 const defaultUnitFormValues: UnitFormValues = {
@@ -305,6 +333,13 @@ const gstTreatments = [
   { value: "out_of_scope", label: "Out of scope" },
 ] as const;
 
+const ownershipStructures = [
+  { value: "current_entity", label: "Current portfolio entity" },
+  { value: "property_owner", label: "Specific owner" },
+  { value: "trust", label: "Trust / trustee" },
+  { value: "split", label: "Split ownership" },
+] as const;
+
 function cleanText(value?: string) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -386,6 +421,100 @@ function formatMoney(cents: number | null | undefined) {
     currency: "AUD",
     maximumFractionDigits: 0,
   }).format(cents / 100);
+}
+
+function ownerGstFormValue(value: boolean | null | undefined) {
+  if (value === true) {
+    return "true" as const;
+  }
+  if (value === false) {
+    return "false" as const;
+  }
+  return "" as const;
+}
+
+function ownerGstPayload(value: PropertyFormValues["owner_gst_registered"]) {
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  return null;
+}
+
+function ownershipStructureLabel(value: string | null | undefined) {
+  return (
+    ownershipStructures.find((structure) => structure.value === value)?.label ??
+    "Current portfolio entity"
+  );
+}
+
+function propertyUsesOwnerBilling(property: PropertyRecord | null | undefined) {
+  return ["property_owner", "trust", "split"].includes(
+    property?.ownership_structure ?? "current_entity",
+  );
+}
+
+function propertyOwnershipBadges(property: PropertyRecord | null | undefined) {
+  if (!property) {
+    return [];
+  }
+  if (!propertyUsesOwnerBilling(property)) {
+    return [{ label: "Owned by current entity", tone: "neutral" as const }];
+  }
+
+  const badges: Array<{
+    label: string;
+    tone: "neutral" | "success" | "warning" | "primary";
+  }> = [];
+  if (property.ownership_structure === "trust") {
+    badges.push({ label: "Trust", tone: "primary" });
+    badges.push({
+      label: property.trustee_name ? "Trustee set" : "Trustee missing",
+      tone: property.trustee_name ? "success" : "warning",
+    });
+  } else if (property.ownership_structure === "split") {
+    badges.push({ label: "Multiple owners", tone: "primary" });
+    badges.push({
+      label: property.ownership_split ? "Split recorded" : "Split incomplete",
+      tone: property.ownership_split ? "success" : "warning",
+    });
+  } else {
+    badges.push({ label: "Specific owner", tone: "primary" });
+  }
+  badges.push({
+    label: property.invoice_issuer_name || property.owner_legal_name
+      ? "Issuer set"
+      : "Issuer missing",
+    tone:
+      property.invoice_issuer_name || property.owner_legal_name
+        ? "success"
+        : "warning",
+  });
+  badges.push({
+    label: property.xero_contact_id ? "Xero mapped" : "Xero missing",
+    tone: property.xero_contact_id ? "success" : "warning",
+  });
+  if (!property.owner_abn) {
+    badges.push({ label: "ABN missing", tone: "warning" });
+  }
+  return badges;
+}
+
+function billingIdentitySummary(property: PropertyRecord | null | undefined) {
+  if (!property) {
+    return "Select a property to see billing identity.";
+  }
+  if (!propertyUsesOwnerBilling(property)) {
+    return "Invoices use the current portfolio entity unless this property needs owner-specific billing.";
+  }
+  return (
+    property.invoice_issuer_name ??
+    property.owner_legal_name ??
+    property.trust_name ??
+    "Ownership setup needs review"
+  );
 }
 
 function draftAnnualRentCents(lease: LeaseIntakeExtraction["lease"]) {
@@ -682,6 +811,7 @@ function Workspace() {
   const [propertyDocumentDropActive, setPropertyDocumentDropActive] =
     useState(false);
   const [copiedOnboardingId, setCopiedOnboardingId] = useState<string>("");
+  const [billingProfileOpen, setBillingProfileOpen] = useState(false);
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -919,6 +1049,8 @@ function Workspace() {
     resolver: zodResolver(propertySchema),
     defaultValues: defaultPropertyFormValues,
   });
+  const ownershipStructure = form.watch("ownership_structure");
+  const showOwnershipFields = ownershipStructure !== "current_entity";
 
   const unitForm = useForm<UnitFormValues>({
     resolver: zodResolver(unitSchema),
@@ -1012,7 +1144,20 @@ function Workspace() {
         building_sqm: values.building_sqm ?? null,
         parking_spaces: values.parking_spaces ?? null,
         has_solar_pv: values.has_solar_pv,
-        metadata: {},
+        ownership_structure: values.ownership_structure,
+        owner_legal_name: cleanText(values.owner_legal_name),
+        owner_abn: cleanText(values.owner_abn),
+        trustee_name: cleanText(values.trustee_name),
+        trust_name: cleanText(values.trust_name),
+        invoice_issuer_name: cleanText(values.invoice_issuer_name),
+        billing_contact_name: cleanText(values.billing_contact_name),
+        billing_email: cleanText(values.billing_email),
+        invoice_reference: cleanText(values.invoice_reference),
+        ownership_split: cleanText(values.ownership_split),
+        owner_gst_registered: ownerGstPayload(values.owner_gst_registered),
+        xero_contact_id: cleanText(values.xero_contact_id),
+        xero_tracking_category: cleanText(values.xero_tracking_category),
+        metadata: editing?.metadata ?? {},
       };
       return editing
         ? updateProperty(editing.id, payload)
@@ -1339,7 +1484,23 @@ function Workspace() {
       building_sqm: property.building_sqm ?? undefined,
       parking_spaces: property.parking_spaces ?? undefined,
       has_solar_pv: property.has_solar_pv,
+      ownership_structure:
+        (property.ownership_structure as PropertyFormValues["ownership_structure"]) ??
+        "current_entity",
+      owner_legal_name: property.owner_legal_name ?? "",
+      owner_abn: property.owner_abn ?? "",
+      trustee_name: property.trustee_name ?? "",
+      trust_name: property.trust_name ?? "",
+      invoice_issuer_name: property.invoice_issuer_name ?? "",
+      billing_contact_name: property.billing_contact_name ?? "",
+      billing_email: property.billing_email ?? "",
+      invoice_reference: property.invoice_reference ?? "",
+      ownership_split: property.ownership_split ?? "",
+      owner_gst_registered: ownerGstFormValue(property.owner_gst_registered),
+      xero_contact_id: property.xero_contact_id ?? "",
+      xero_tracking_category: property.xero_tracking_category ?? "",
     });
+    setBillingProfileOpen(propertyUsesOwnerBilling(property));
   }
 
   function startUnitEdit(unit: TenancyUnitRecord) {
@@ -2014,6 +2175,180 @@ function Workspace() {
                                   />
                                 </Field>
                               </div>
+                              <details className="rounded-md border border-border bg-muted/25">
+                                <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">
+                                  Ownership & billing
+                                </summary>
+                                <div className="grid gap-3 border-t border-border p-3">
+                                  <Field label="Invoice from">
+                                    <Select
+                                      value={
+                                        inputString(
+                                          intakeProperty?.ownership_structure,
+                                        ) || "current_entity"
+                                      }
+                                      onChange={(event) =>
+                                        updateReviewSection(
+                                          "property",
+                                          "ownership_structure",
+                                          event.target.value,
+                                        )
+                                      }
+                                    >
+                                      {ownershipStructures.map((structure) => (
+                                        <option
+                                          key={structure.value}
+                                          value={structure.value}
+                                        >
+                                          {structure.label}
+                                        </option>
+                                      ))}
+                                    </Select>
+                                  </Field>
+                                  <Field label="Invoice issuer">
+                                    <Input
+                                      value={inputString(
+                                        intakeProperty?.invoice_issuer_name,
+                                      )}
+                                      onChange={(event) =>
+                                        updateReviewSection(
+                                          "property",
+                                          "invoice_issuer_name",
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </Field>
+                                  <Field label="Legal owner">
+                                    <Input
+                                      value={inputString(
+                                        intakeProperty?.owner_legal_name,
+                                      )}
+                                      onChange={(event) =>
+                                        updateReviewSection(
+                                          "property",
+                                          "owner_legal_name",
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </Field>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <Field label="ABN">
+                                      <Input
+                                        value={inputString(
+                                          intakeProperty?.owner_abn,
+                                        )}
+                                        onChange={(event) =>
+                                          updateReviewSection(
+                                            "property",
+                                            "owner_abn",
+                                            event.target.value,
+                                          )
+                                        }
+                                      />
+                                    </Field>
+                                    <Field label="GST">
+                                      <Select
+                                        value={
+                                          intakeProperty?.owner_gst_registered === true
+                                            ? "true"
+                                            : intakeProperty?.owner_gst_registered === false
+                                              ? "false"
+                                              : ""
+                                        }
+                                        onChange={(event) =>
+                                          updateReviewSection(
+                                            "property",
+                                            "owner_gst_registered",
+                                            event.target.value === ""
+                                              ? null
+                                              : event.target.value === "true",
+                                          )
+                                        }
+                                      >
+                                        <option value="">Not set</option>
+                                        <option value="true">Registered</option>
+                                        <option value="false">
+                                          Not registered
+                                        </option>
+                                      </Select>
+                                    </Field>
+                                  </div>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <Field label="Trustee">
+                                      <Input
+                                        value={inputString(
+                                          intakeProperty?.trustee_name,
+                                        )}
+                                        onChange={(event) =>
+                                          updateReviewSection(
+                                            "property",
+                                            "trustee_name",
+                                            event.target.value,
+                                          )
+                                        }
+                                      />
+                                    </Field>
+                                    <Field label="Trust">
+                                      <Input
+                                        value={inputString(intakeProperty?.trust_name)}
+                                        onChange={(event) =>
+                                          updateReviewSection(
+                                            "property",
+                                            "trust_name",
+                                            event.target.value,
+                                          )
+                                        }
+                                      />
+                                    </Field>
+                                  </div>
+                                  <Field label="Ownership split">
+                                    <Input
+                                      value={inputString(
+                                        intakeProperty?.ownership_split,
+                                      )}
+                                      onChange={(event) =>
+                                        updateReviewSection(
+                                          "property",
+                                          "ownership_split",
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </Field>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <Field label="Xero issuer">
+                                      <Input
+                                        value={inputString(
+                                          intakeProperty?.xero_contact_id,
+                                        )}
+                                        onChange={(event) =>
+                                          updateReviewSection(
+                                            "property",
+                                            "xero_contact_id",
+                                            event.target.value,
+                                          )
+                                        }
+                                      />
+                                    </Field>
+                                    <Field label="Tracking">
+                                      <Input
+                                        value={inputString(
+                                          intakeProperty?.xero_tracking_category,
+                                        )}
+                                        onChange={(event) =>
+                                          updateReviewSection(
+                                            "property",
+                                            "xero_tracking_category",
+                                            event.target.value,
+                                          )
+                                        }
+                                      />
+                                    </Field>
+                                  </div>
+                                </div>
+                              </details>
                             </div>
                           </div>
 
@@ -2903,6 +3238,26 @@ function Workspace() {
                           {property.street_address}, {property.suburb}{" "}
                           {property.state}
                         </div>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {propertyOwnershipBadges(property)
+                            .slice(0, 3)
+                            .map((badge) => (
+                              <span
+                                key={badge.label}
+                                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                  badge.tone === "success"
+                                    ? "bg-leasium-success-soft text-[#027A48]"
+                                    : badge.tone === "warning"
+                                      ? "bg-leasium-warning-soft text-[#B54708]"
+                                      : badge.tone === "primary"
+                                        ? "bg-leasium-blue-soft text-leasium-blue-hover"
+                                        : "bg-muted text-muted-foreground"
+                                }`}
+                              >
+                                {badge.label}
+                              </span>
+                            ))}
+                        </div>
                       </td>
                       <td className="px-3 py-3">
                         {property.property_type.replaceAll("_", " ")}
@@ -2943,6 +3298,88 @@ function Workspace() {
               </tbody>
             </table>
           </div>
+
+          {selectedProperty ? (
+            <section className="mt-4 overflow-hidden rounded-md border border-border bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ReceiptText size={17} className="text-primary" />
+                    <h2 className="text-base font-semibold">
+                      Ownership & billing identity
+                    </h2>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {billingIdentitySummary(selectedProperty)}
+                  </p>
+                </div>
+                <SecondaryButton
+                  type="button"
+                  onClick={() => startEdit(selectedProperty)}
+                  className="h-9"
+                >
+                  <Pencil size={15} />
+                  Edit setup
+                </SecondaryButton>
+              </div>
+              <div className="grid gap-4 p-4 lg:grid-cols-[1fr_1fr]">
+                <div className="grid gap-2 text-sm">
+                  <div className="flex flex-wrap gap-1">
+                    {propertyOwnershipBadges(selectedProperty).map((badge) => (
+                      <span
+                        key={badge.label}
+                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                          badge.tone === "success"
+                            ? "bg-leasium-success-soft text-[#027A48]"
+                            : badge.tone === "warning"
+                              ? "bg-leasium-warning-soft text-[#B54708]"
+                              : badge.tone === "primary"
+                                ? "bg-leasium-blue-soft text-leasium-blue-hover"
+                                : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {badge.label}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Only appears as a billing blocker when this property is set
+                    to invoice via a specific owner, trust, or split.
+                  </div>
+                </div>
+                <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-xs font-semibold uppercase text-muted-foreground">
+                      Invoice path
+                    </dt>
+                    <dd>{ownershipStructureLabel(selectedProperty.ownership_structure)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase text-muted-foreground">
+                      Owner
+                    </dt>
+                    <dd>{selectedProperty.owner_legal_name ?? "-"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase text-muted-foreground">
+                      ABN
+                    </dt>
+                    <dd>{selectedProperty.owner_abn ?? "-"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase text-muted-foreground">
+                      Xero
+                    </dt>
+                    <dd>
+                      {selectedProperty.xero_contact_id
+                        ? selectedProperty.xero_tracking_category ?? "Mapped"
+                        : "-"}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            </section>
+          ) : null}
 
           <section className="mt-5 overflow-hidden rounded-md border border-border bg-white">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
@@ -3573,6 +4010,7 @@ function Workspace() {
                 type="button"
                 onClick={() => {
                   setEditing(null);
+                  setBillingProfileOpen(false);
                   form.reset(defaultPropertyFormValues);
                 }}
               >
@@ -3642,6 +4080,115 @@ function Workspace() {
               />
               Solar PV
             </label>
+            <details
+              className="rounded-xl border border-border bg-muted/25"
+              open={billingProfileOpen}
+              onToggle={(event) =>
+                setBillingProfileOpen(event.currentTarget.open)
+              }
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-semibold">
+                <span>Ownership & billing identity</span>
+                <span className="text-xs font-medium text-muted-foreground">
+                  {billingProfileOpen ? "Hide" : "Show"}
+                </span>
+              </summary>
+              <div className="grid gap-3 border-t border-border px-3 py-3">
+                <Field label="Invoice from">
+                  <Select {...form.register("ownership_structure")}>
+                    {ownershipStructures.map((structure) => (
+                      <option key={structure.value} value={structure.value}>
+                        {structure.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+
+                {showOwnershipFields ? (
+                  <>
+                    <Field label="Invoice issuer">
+                      <Input
+                        placeholder="Trustee Pty Ltd"
+                        {...form.register("invoice_issuer_name")}
+                      />
+                    </Field>
+                    <Field label="Legal owner">
+                      <Input
+                        placeholder="Property Trust or Owner Pty Ltd"
+                        {...form.register("owner_legal_name")}
+                      />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="ABN">
+                        <Input {...form.register("owner_abn")} />
+                      </Field>
+                      <Field label="GST">
+                        <Select {...form.register("owner_gst_registered")}>
+                          <option value="">Not set</option>
+                          <option value="true">Registered</option>
+                          <option value="false">Not registered</option>
+                        </Select>
+                      </Field>
+                    </div>
+                    {ownershipStructure === "trust" ? (
+                      <div className="grid gap-3">
+                        <Field label="Trustee">
+                          <Input {...form.register("trustee_name")} />
+                        </Field>
+                        <Field label="Trust">
+                          <Input {...form.register("trust_name")} />
+                        </Field>
+                      </div>
+                    ) : null}
+                    {ownershipStructure === "split" ? (
+                      <Field label="Ownership split">
+                        <Input
+                          placeholder="60% Owner A / 40% Owner B"
+                          {...form.register("ownership_split")}
+                        />
+                      </Field>
+                    ) : null}
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Xero issuer">
+                        <Input
+                          placeholder="Contact ID"
+                          {...form.register("xero_contact_id")}
+                        />
+                      </Field>
+                      <Field label="Tracking">
+                        <Input
+                          placeholder="Property or owner"
+                          {...form.register("xero_tracking_category")}
+                        />
+                      </Field>
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-md border border-border bg-white p-3 text-sm text-muted-foreground">
+                    Owned by the current portfolio entity. Add a specific owner,
+                    trust, or split only when invoices need that identity.
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Billing contact">
+                    <Input {...form.register("billing_contact_name")} />
+                  </Field>
+                  <Field label="Billing email">
+                    <Input
+                      type="email"
+                      {...form.register("billing_email")}
+                    />
+                  </Field>
+                </div>
+                <Field label="Invoice reference">
+                  <Input
+                    placeholder="Optional prefix or note"
+                    {...form.register("invoice_reference")}
+                  />
+                </Field>
+              </div>
+            </details>
             <Button
               type="submit"
               disabled={!selectedEntityId || mutation.isPending}

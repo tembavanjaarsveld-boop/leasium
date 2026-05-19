@@ -38,6 +38,19 @@ def _fake_extraction() -> dict[str, Any]:
             "land_sqm": None,
             "building_sqm": 900,
             "parking_spaces": 12,
+            "ownership_structure": "trust",
+            "owner_legal_name": "AI House Property Trust",
+            "owner_abn": "22 333 444 555",
+            "trustee_name": "AI House Trustee Pty Ltd",
+            "trust_name": "AI House Property Trust",
+            "invoice_issuer_name": "AI House Trustee Pty Ltd",
+            "billing_contact_name": "AI Accounts",
+            "billing_email": "accounts@aihouse.example",
+            "invoice_reference": "AIH-",
+            "ownership_split": "100% AI House Property Trust",
+            "owner_gst_registered": True,
+            "xero_contact_id": "xero-ai-house",
+            "xero_tracking_category": "AI House",
         },
         "tenancy_unit": {"unit_label": "Suite 8", "sqm": 180, "parking_spaces": 4},
         "tenant": {
@@ -173,7 +186,11 @@ def test_lease_intake_upload_extract_get_list_and_apply(
     lease = session.get(Lease, intake.applied_lease_id)
     assert lease is not None
     assert lease.annual_rent_cents == 25000000
-    assert session.scalar(select(Property).where(Property.name == "AI House")) is not None
+    prop = session.scalar(select(Property).where(Property.name == "AI House"))
+    assert prop is not None
+    assert prop.ownership_structure == "trust"
+    assert prop.trustee_name == "AI House Trustee Pty Ltd"
+    assert prop.xero_contact_id == "xero-ai-house"
     assert (
         session.scalar(select(Tenant).where(Tenant.legal_name == "Reviewed Lease AI Pty Ltd"))
         is not None
