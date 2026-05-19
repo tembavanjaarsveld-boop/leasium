@@ -1,5 +1,6 @@
 """Smart Intake routes for review-first document ingestion."""
 
+from datetime import date
 from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
@@ -24,13 +25,21 @@ from stewart.core.models import (
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
+    Obligation,
+    ObligationCategory,
+    ObligationStatus,
     StoredDocument,
     UserRole,
 )
 from stewart.core.settings import get_settings
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
-from apps.api.schemas.document_intake import DocumentIntakeRead
+from apps.api.routers.obligations import _validate_obligation_scope
+from apps.api.schemas.document_intake import (
+    DocumentIntakeApplyRequest,
+    DocumentIntakeRead,
+    DocumentIntakeReviewRequest,
+)
 
 router = APIRouter(prefix="/document-intakes", tags=["document-intakes"])
 
@@ -110,6 +119,152 @@ def _confidence(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return min(max(number, 0), 1)
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _date(value: Any) -> date | None:
+    text = _str(value)
+    if text is None:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _records(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _reviewed_data(intake: DocumentIntake, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    if payload is not None:
+        return payload
+    review_data = _dict(intake.review_data)
+    return review_data or _dict(intake.extracted_data)
+
+
+def _best_date(records: list[dict[str, Any]], labels: set[str]) -> date | None:
+    for record in records:
+        value = _date(record.get("date") or record.get("due_date"))
+        if value is None:
+            continue
+        label = (_str(record.get("label")) or _str(record.get("title")) or "").lower()
+        if any(fragment in label for fragment in labels):
+            return value
+    return None
+
+
+def _insurance_due_date(data: dict[str, Any]) -> date | None:
+    labels = {
+        "expiry",
+        "expires",
+        "expiration",
+        "valid until",
+        "policy end",
+        "period end",
+    }
+    due_date = _best_date(_records(data.get("key_dates")), labels)
+    if due_date is not None:
+        return due_date
+    return _best_date(_records(data.get("obligations")), labels)
+
+
+def _insurance_obligation_title(data: dict[str, Any]) -> str:
+    return "Insurance certificate renewal"
+
+
+def _apply_insurance_intake(
+    intake: DocumentIntake,
+    data: dict[str, Any],
+    payload: DocumentIntakeApplyRequest,
+    user: CurrentUser,
+    session: Session,
+) -> Obligation:
+    due_date = _insurance_due_date(data)
+    if due_date is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Confirm an insurance expiry or policy end date before applying.",
+        )
+    existing = next(
+        (
+            obligation
+            for obligation in session.scalars(
+                select(Obligation).where(
+                    Obligation.entity_id == intake.entity_id,
+                    Obligation.deleted_at.is_(None),
+                    Obligation.category == ObligationCategory.insurance,
+                )
+            )
+            if _dict(obligation.obligation_metadata).get("document_intake_id") == str(intake.id)
+        ),
+        None,
+    )
+    if existing is not None:
+        return existing
+    property_id, tenancy_unit_id, lease_id = _validate_obligation_scope(
+        entity_id=intake.entity_id,
+        property_id=payload.property_id,
+        tenancy_unit_id=payload.tenancy_unit_id,
+        lease_id=payload.lease_id,
+        user=user,
+        session=session,
+        roles=WRITE_ROLES,
+    )
+    title = _insurance_obligation_title(data)
+    source_hint = _str(_records(data.get("key_dates"))[0].get("source_hint")) if _records(
+        data.get("key_dates")
+    ) else None
+    obligation = Obligation(
+        entity_id=intake.entity_id,
+        property_id=property_id,
+        tenancy_unit_id=tenancy_unit_id,
+        lease_id=lease_id,
+        title=title,
+        category=ObligationCategory.insurance,
+        status=ObligationStatus.upcoming,
+        due_date=due_date,
+        priority=1,
+        owner_role=UserRole.ops,
+        notes=f"Created from Smart Intake document: {intake.document.filename}.",
+        obligation_metadata={
+            "source": "document_intake",
+            "document_intake_id": str(intake.id),
+            "document_id": str(intake.document_id),
+            "document_type": intake.document_type,
+            "source_hint": source_hint,
+            "openai_response_id": intake.openai_response_id,
+        },
+    )
+    intake.document.property_id = property_id
+    intake.document.tenancy_unit_id = tenancy_unit_id
+    intake.document.lease_id = lease_id
+    session.add(obligation)
+    session.flush()
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=intake.entity_id,
+        action="create",
+        target_table="obligation",
+        target_id=obligation.id,
+        tool_input={"document_intake_id": str(intake.id), "document_type": intake.document_type},
+        tool_output_summary=f"Created insurance obligation due {due_date.isoformat()}.",
+    )
+    return obligation
 
 
 def _status_for_extraction(extracted: dict[str, Any]) -> DocumentIntakeStatus:
@@ -335,6 +490,98 @@ def extract_document_intake(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=intake.error_message or "Document extraction failed.",
         )
+    return _read_intake(intake)
+
+
+@router.post("/{intake_id}/review", response_model=DocumentIntakeRead)
+def review_document_intake(
+    intake_id: UUID,
+    payload: DocumentIntakeReviewRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> DocumentIntakeRead:
+    intake = _get_intake(intake_id, user, session, WRITE_ROLES)
+    if intake.status == DocumentIntakeStatus.applied:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Applied document intakes cannot be reviewed again.",
+        )
+    if intake.status not in {
+        DocumentIntakeStatus.ready_for_review,
+        DocumentIntakeStatus.needs_attention,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document intake is not ready to review.",
+        )
+    intake.review_data = payload.review_data
+    intake.reviewed_at = utcnow()
+    intake.reviewed_by_user_id = user.id
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=intake.entity_id,
+        action="review",
+        target_table="document_intake",
+        target_id=intake.id,
+    )
+    session.commit()
+    session.refresh(intake)
+    return _read_intake(intake)
+
+
+@router.post("/{intake_id}/apply", response_model=DocumentIntakeRead)
+def apply_document_intake(
+    intake_id: UUID,
+    payload: DocumentIntakeApplyRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> DocumentIntakeRead:
+    intake = _get_intake(intake_id, user, session, WRITE_ROLES)
+    if intake.status == DocumentIntakeStatus.applied:
+        return _read_intake(intake)
+    if intake.status not in {
+        DocumentIntakeStatus.ready_for_review,
+        DocumentIntakeStatus.needs_attention,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document intake is not ready to apply.",
+        )
+
+    reviewed = _reviewed_data(intake, payload.review_data)
+    document_type = _str(reviewed.get("document_type")) or intake.document_type
+    if document_type != "insurance_certificate":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This document type is review-only for now.",
+        )
+
+    obligation = _apply_insurance_intake(intake, reviewed, payload, user, session)
+    intake.review_data = {
+        **reviewed,
+        "applied": {
+            "obligation_id": str(obligation.id),
+            "action": "created_insurance_obligation",
+        },
+    }
+    intake.status = DocumentIntakeStatus.applied
+    intake.applied_at = utcnow()
+    intake.applied_by_user_id = user.id
+    intake.document.category = DocumentCategory.insurance
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=intake.entity_id,
+        action="apply",
+        target_table="document_intake",
+        target_id=intake.id,
+        tool_output_summary=f"Applied insurance obligation {obligation.id}.",
+    )
+    session.commit()
+    session.refresh(intake)
     return _read_intake(intake)
 
 

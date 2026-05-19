@@ -766,6 +766,38 @@ export function extractDocumentIntake(intakeId: string) {
   });
 }
 
+export function reviewDocumentIntake(
+  intakeId: string,
+  payload: { reviewData: DocumentIntakeExtraction },
+) {
+  return request<DocumentIntakeRecord>(`/document-intakes/${intakeId}/review`, {
+    method: "POST",
+    body: JSON.stringify({
+      review_data: payload.reviewData,
+    }),
+  });
+}
+
+export function applyDocumentIntake(
+  intakeId: string,
+  payload: {
+    reviewData?: DocumentIntakeExtraction | null;
+    propertyId?: string | null;
+    tenancyUnitId?: string | null;
+    leaseId?: string | null;
+  },
+) {
+  return request<DocumentIntakeRecord>(`/document-intakes/${intakeId}/apply`, {
+    method: "POST",
+    body: JSON.stringify({
+      review_data: payload.reviewData ?? undefined,
+      property_id: payload.propertyId || undefined,
+      tenancy_unit_id: payload.tenancyUnitId || undefined,
+      lease_id: payload.leaseId || undefined,
+    }),
+  });
+}
+
 export function deleteDocumentIntake(intakeId: string) {
   return request<void>(`/document-intakes/${intakeId}`, {
     method: "DELETE",

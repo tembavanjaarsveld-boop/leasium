@@ -9,6 +9,17 @@ from stewart.core.models import DocumentCategory, DocumentIntakeStatus
 from apps.api.schemas.common import ApiModel
 
 
+class DocumentIntakeReviewRequest(ApiModel):
+    review_data: dict[str, Any]
+
+
+class DocumentIntakeApplyRequest(ApiModel):
+    review_data: dict[str, Any] | None = None
+    property_id: UUID | None = None
+    tenancy_unit_id: UUID | None = None
+    lease_id: UUID | None = None
+
+
 class DocumentIntakeRead(ApiModel):
     id: UUID
     entity_id: UUID

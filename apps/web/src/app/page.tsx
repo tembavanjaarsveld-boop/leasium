@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Building2,
   CalendarClock,
+  Check,
   ClipboardList,
   FileText,
   FileUp,
@@ -22,7 +23,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
 import {
+  Button,
   EmptyState,
+  Field,
+  Input,
   PageHeader,
   SecondaryButton,
   SectionPanel,
@@ -30,8 +34,10 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  applyDocumentIntake,
   createDocumentIntake,
   deleteDocumentIntake,
+  DocumentIntakeExtraction,
   DocumentIntakeRecord,
   listEntities,
   listDocumentIntakes,
@@ -42,6 +48,7 @@ import {
   listTenants,
   ObligationRecord,
   RentRollRow,
+  reviewDocumentIntake,
 } from "@/lib/api";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -213,139 +220,289 @@ function intakeIsActive(item: DocumentIntakeRecord) {
   return item.status === "uploaded" || item.status === "reading";
 }
 
-function SmartReviewSummary({
+type ReviewGroupKey =
+  | "parties"
+  | "properties"
+  | "key_dates"
+  | "money_amounts"
+  | "obligations";
+
+const reviewGroups: Array<{
+  key: ReviewGroupKey;
+  title: string;
+  fields: Array<{ key: string; label: string; type?: "text" | "date" | "number" }>;
+}> = [
+  {
+    key: "parties",
+    title: "Parties",
+    fields: [
+      { key: "name", label: "Name" },
+      { key: "role", label: "Role" },
+      { key: "contact", label: "Contact" },
+    ],
+  },
+  {
+    key: "properties",
+    title: "Properties",
+    fields: [
+      { key: "name", label: "Name" },
+      { key: "address", label: "Address" },
+      { key: "unit_label", label: "Unit" },
+    ],
+  },
+  {
+    key: "key_dates",
+    title: "Dates",
+    fields: [
+      { key: "label", label: "Label" },
+      { key: "date", label: "Date", type: "date" },
+      { key: "source_hint", label: "Source" },
+    ],
+  },
+  {
+    key: "money_amounts",
+    title: "Money",
+    fields: [
+      { key: "label", label: "Label" },
+      { key: "amount", label: "Amount", type: "number" },
+      { key: "currency", label: "Currency" },
+      { key: "frequency", label: "Frequency" },
+    ],
+  },
+  {
+    key: "obligations",
+    title: "Obligations",
+    fields: [
+      { key: "title", label: "Title" },
+      { key: "due_date", label: "Due", type: "date" },
+      { key: "category", label: "Category" },
+    ],
+  },
+];
+
+function cloneExtraction(value: DocumentIntakeExtraction): DocumentIntakeExtraction {
+  return JSON.parse(JSON.stringify(value)) as DocumentIntakeExtraction;
+}
+
+function intakeReviewData(intake: DocumentIntakeRecord): DocumentIntakeExtraction {
+  return Object.keys(intake.review_data).length
+    ? (intake.review_data as DocumentIntakeExtraction)
+    : intake.extracted_data;
+}
+
+function groupItems(
+  draft: DocumentIntakeExtraction,
+  key: ReviewGroupKey,
+): Array<Record<string, unknown>> {
+  const value = draft[key];
+  return Array.isArray(value) ? value.filter((item) => typeof item === "object") : [];
+}
+
+function updateGroupItem(
+  draft: DocumentIntakeExtraction,
+  key: ReviewGroupKey,
+  index: number,
+  field: string,
+  value: string,
+): DocumentIntakeExtraction {
+  const next = cloneExtraction(draft);
+  const items = groupItems(next, key).map((item) => ({ ...item }));
+  items[index] = { ...(items[index] ?? {}), [field]: value };
+  next[key] = items as never;
+  return next;
+}
+
+function buildIncludedReviewData(
+  draft: DocumentIntakeExtraction,
+  included: Record<ReviewGroupKey, boolean>,
+): DocumentIntakeExtraction {
+  const next = cloneExtraction(draft);
+  reviewGroups.forEach((group) => {
+    if (!included[group.key]) {
+      next[group.key] = [] as never;
+    }
+  });
+  return next;
+}
+
+function insuranceExpiryDate(data: DocumentIntakeExtraction) {
+  const labels = ["expiry", "expires", "expiration", "valid until", "policy end", "period end"];
+  return groupItems(data, "key_dates").find((item) => {
+    const label = fieldText(item.label)?.toLowerCase() ?? "";
+    return labels.some((fragment) => label.includes(fragment)) && fieldText(item.date);
+  });
+}
+
+function DocumentIntakeReviewPanel({
   intake,
+  draft,
+  included,
+  onDraftChange,
+  onIncludedChange,
+  onSave,
+  onApply,
   onClear,
+  saving,
+  applying,
   clearing,
 }: {
   intake: DocumentIntakeRecord;
+  draft: DocumentIntakeExtraction;
+  included: Record<ReviewGroupKey, boolean>;
+  onDraftChange: (draft: DocumentIntakeExtraction) => void;
+  onIncludedChange: (group: ReviewGroupKey, checked: boolean) => void;
+  onSave: () => void;
+  onApply: () => void;
   onClear: () => void;
+  saving: boolean;
+  applying: boolean;
   clearing: boolean;
 }) {
-  const data = intake.extracted_data;
+  const data = draft;
   const warnings = [
     ...(data.warnings ?? []),
     ...(data.missing_information ?? []),
-  ].slice(0, 4);
+  ];
+  const canApplyInsurance =
+    (draft.document_type ?? intake.document_type) === "insurance_certificate";
+  const applyBlocker = canApplyInsurance && !insuranceExpiryDate(draft)
+    ? "Confirm an insurance expiry or policy end date before applying."
+    : null;
+  const visibleGroups = reviewGroups.filter((group) => groupItems(draft, group.key).length > 0);
+  const groupTitle = (group: { key: ReviewGroupKey; title: string }) =>
+    canApplyInsurance && group.key === "key_dates" ? "Policy dates" : group.title;
   return (
-    <div className="grid gap-3 border-t border-border pt-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-sm font-semibold">Review summary</div>
-          <div className="text-xs text-muted-foreground">
-            {documentTypeLabel(intake.document_type)} - {confidenceLabel(intake.confidence)}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
+    <SectionPanel
+      title="Review document"
+      description="Confirm suggested details before Leasium creates work from this document."
+      icon={<Sparkles size={17} className="text-primary" />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
           <StatusBadge tone={intakeStatusTone(intake.status)}>
             {intakeStatusLabel(intake.status)}
           </StatusBadge>
-          <SecondaryButton
-            type="button"
-            className="h-8"
-            onClick={onClear}
-            disabled={clearing}
-          >
+          <SecondaryButton type="button" className="h-8" onClick={onClear} disabled={clearing}>
             <X size={14} />
             Clear
           </SecondaryButton>
         </div>
+      }
+    >
+      <div className="grid gap-4 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+            <div className="font-semibold">{intake.filename}</div>
+          <div className="text-xs text-muted-foreground">
+            {documentTypeLabel(intake.document_type)} - {confidenceLabel(intake.confidence)}
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-3 text-sm">
-        <div>
-          <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-            Summary
+        <Field label="Summary">
+          <textarea
+            value={fieldText(draft.summary) ?? ""}
+            onChange={(event) =>
+              onDraftChange({ ...draft, summary: event.target.value })
+            }
+            className="min-h-20 w-full rounded-md border border-border bg-white px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+          />
+        </Field>
+
+        {warnings.length ? (
+          <div className="rounded-md border border-danger/20 bg-danger/5 p-3 text-sm text-danger">
+            {warnings.slice(0, 4).map((warning) => (
+              <div key={warning}>{warning}</div>
+            ))}
           </div>
-          <p className="text-muted-foreground">
-            {intake.summary ?? "No summary yet."}
-          </p>
-        </div>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <ReviewGroup
-            title="Parties"
-            empty="No parties found."
-            items={recordList(data.parties).map((item) =>
-              [
-                fieldText(item.name),
-                fieldText(item.role),
-                fieldText(item.contact),
-              ]
-                .filter(Boolean)
-                .join(" - "),
-            )}
-          />
-          <ReviewGroup
-            title="Dates"
-            empty="No dates found."
-            items={recordList(data.key_dates).map((item) =>
-              [fieldText(item.label), fieldText(item.date)].filter(Boolean).join(" - "),
-            )}
-          />
-          <ReviewGroup
-            title="Money"
-            empty="No money found."
-            items={recordList(data.money_amounts).map((item) =>
-              [
-                fieldText(item.label),
-                item.amount === null || item.amount === undefined
-                  ? null
-                  : new Intl.NumberFormat("en-AU", {
-                      style: "currency",
-                      currency: safeCurrency(item.currency),
-                      maximumFractionDigits: 0,
-                    }).format(Number(item.amount)),
-                fieldText(item.frequency),
-              ]
-                .filter(Boolean)
-                .join(" - "),
-            )}
-          />
-          <ReviewGroup
-            title="Warnings"
-            empty="No warnings."
-            items={warnings}
-            tone={warnings.length ? "danger" : "neutral"}
-          />
+          {visibleGroups.map((group) => (
+            <div key={group.key} className="rounded-md border border-border bg-muted/25 p-3">
+              <label className="mb-3 flex items-center justify-between gap-3 text-sm font-semibold">
+                <span>{groupTitle(group)}</span>
+                <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  Include
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={included[group.key]}
+                    onChange={(event) => onIncludedChange(group.key, event.target.checked)}
+                  />
+                </span>
+              </label>
+              <div className={included[group.key] ? "grid gap-3" : "grid gap-3 opacity-45"}>
+                {groupItems(draft, group.key).slice(0, 3).map((item, index) => (
+                  <div key={index} className="grid gap-2 rounded bg-white p-3">
+                    {group.fields.map((field) => (
+                      <Field key={field.key} label={field.label}>
+                        <Input
+                          type={field.type ?? "text"}
+                          value={String(item[field.key] ?? "")}
+                          onChange={(event) =>
+                            onDraftChange(
+                              updateGroupItem(
+                                draft,
+                                group.key,
+                                index,
+                                field.key,
+                                event.target.value,
+                              ),
+                            )
+                          }
+                          disabled={!included[group.key]}
+                        />
+                      </Field>
+                    ))}
+                    {fieldText(item.source_hint) ? (
+                      <div className="text-xs text-muted-foreground">
+                        Source: {fieldText(item.source_hint)}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {groupItems(draft, group.key).length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No suggestions.</div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {!canApplyInsurance ? (
+          <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+            Apply is available for insurance certificates first. Other document types can
+            be saved as reviewed here for now.
+          </div>
+        ) : null}
+        {applyBlocker ? (
+          <div className="rounded-md border border-danger/20 bg-danger/5 px-3 py-2 text-sm text-danger">
+            {applyBlocker}
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+          <SecondaryButton type="button" onClick={onSave} disabled={saving || applying}>
+            {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+            Save review
+          </SecondaryButton>
+          <Button
+            type="button"
+            onClick={onApply}
+            disabled={
+              applying ||
+              saving ||
+              intake.status === "applied" ||
+              !canApplyInsurance ||
+              Boolean(applyBlocker)
+            }
+          >
+            {applying ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+            Apply reviewed items
+          </Button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function ReviewGroup({
-  title,
-  empty,
-  items,
-  tone = "neutral",
-}: {
-  title: string;
-  empty: string;
-  items: Array<string | null>;
-  tone?: "neutral" | "danger";
-}) {
-  const visibleItems = items.filter(Boolean);
-  return (
-    <div className="rounded-md bg-muted/40 p-3">
-      <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-        {title}
-      </div>
-      <div className="grid gap-1.5">
-        {visibleItems.length ? (
-          visibleItems.map((item) => (
-            <div
-              key={item}
-              className={tone === "danger" ? "text-danger" : "text-foreground"}
-            >
-              {item}
-            </div>
-          ))
-        ) : (
-          <div className="text-muted-foreground">{empty}</div>
-        )}
-      </div>
-    </div>
+    </SectionPanel>
   );
 }
 
@@ -355,6 +512,15 @@ function Dashboard() {
   const [intakeNotice, setIntakeNotice] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [reviewIntakeId, setReviewIntakeId] = useState<string | null>(null);
+  const [reviewDraftId, setReviewDraftId] = useState<string | null>(null);
+  const [reviewDraft, setReviewDraft] = useState<DocumentIntakeExtraction | null>(null);
+  const [includedGroups, setIncludedGroups] = useState<Record<ReviewGroupKey, boolean>>({
+    parties: true,
+    properties: true,
+    key_dates: true,
+    money_amounts: true,
+    obligations: true,
+  });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const queryClient = useQueryClient();
   const asOf = dateOnly(new Date());
@@ -456,6 +622,43 @@ function Dashboard() {
       setIntakeError(friendlyError(error));
     },
   });
+  const reviewDocumentIntakeMutation = useMutation({
+    mutationFn: (payload: { intakeId: string; reviewData: DocumentIntakeExtraction }) =>
+      reviewDocumentIntake(payload.intakeId, { reviewData: payload.reviewData }),
+    onMutate: () => {
+      setIntakeError(null);
+      setIntakeNotice(null);
+    },
+    onSuccess: () => {
+      setIntakeNotice("Review saved.");
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-document-intakes", selectedEntityId],
+      });
+    },
+    onError: (error) => {
+      setIntakeError(friendlyError(error));
+    },
+  });
+  const applyDocumentIntakeMutation = useMutation({
+    mutationFn: (payload: { intakeId: string; reviewData: DocumentIntakeExtraction }) =>
+      applyDocumentIntake(payload.intakeId, { reviewData: payload.reviewData }),
+    onMutate: () => {
+      setIntakeError(null);
+      setIntakeNotice(null);
+    },
+    onSuccess: () => {
+      setIntakeNotice("Insurance obligation created.");
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-document-intakes", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-obligations", selectedEntityId],
+      });
+    },
+    onError: (error) => {
+      setIntakeError(friendlyError(error));
+    },
+  });
 
   const openObligations = useMemo(
     () =>
@@ -492,6 +695,25 @@ function Dashboard() {
     }
     documentIntakeMutation.mutate(file);
   }
+
+  useEffect(() => {
+    if (!selectedReviewIntake) {
+      setReviewDraftId(null);
+      setReviewDraft(null);
+      return;
+    }
+    if (reviewDraftId !== selectedReviewIntake.id) {
+      setReviewDraftId(selectedReviewIntake.id);
+      setReviewDraft(cloneExtraction(intakeReviewData(selectedReviewIntake)));
+      setIncludedGroups({
+        parties: true,
+        properties: true,
+        key_dates: true,
+        money_amounts: true,
+        obligations: true,
+      });
+    }
+  }, [reviewDraftId, selectedReviewIntake]);
 
   const upcomingEvents = [
     ...openObligations.slice(0, 5).map((item) => ({
@@ -807,15 +1029,6 @@ function Dashboard() {
                     ) : null}
                   </div>
                 </div>
-                {selectedReviewIntake ? (
-                  <SmartReviewSummary
-                    intake={selectedReviewIntake}
-                    onClear={() =>
-                      deleteDocumentIntakeMutation.mutate(selectedReviewIntake.id)
-                    }
-                    clearing={deleteDocumentIntakeMutation.isPending}
-                  />
-                ) : null}
               </div>
             </SectionPanel>
 
@@ -841,6 +1054,35 @@ function Dashboard() {
           </div>
 
           <div className="grid gap-5">
+            {selectedReviewIntake && reviewDraft ? (
+              <DocumentIntakeReviewPanel
+                intake={selectedReviewIntake}
+                draft={reviewDraft}
+                included={includedGroups}
+                onDraftChange={setReviewDraft}
+                onIncludedChange={(group, checked) =>
+                  setIncludedGroups((current) => ({ ...current, [group]: checked }))
+                }
+                onSave={() =>
+                  reviewDocumentIntakeMutation.mutate({
+                    intakeId: selectedReviewIntake.id,
+                    reviewData: buildIncludedReviewData(reviewDraft, includedGroups),
+                  })
+                }
+                onApply={() =>
+                  applyDocumentIntakeMutation.mutate({
+                    intakeId: selectedReviewIntake.id,
+                    reviewData: buildIncludedReviewData(reviewDraft, includedGroups),
+                  })
+                }
+                onClear={() =>
+                  deleteDocumentIntakeMutation.mutate(selectedReviewIntake.id)
+                }
+                saving={reviewDocumentIntakeMutation.isPending}
+                applying={applyDocumentIntakeMutation.isPending}
+                clearing={deleteDocumentIntakeMutation.isPending}
+              />
+            ) : null}
             <SectionPanel
               title="Needs attention"
               icon={<ClipboardList size={17} className="text-primary" />}

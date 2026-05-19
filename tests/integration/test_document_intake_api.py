@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.models import DocumentIntake, Entity, StoredDocument
+from stewart.core.models import DocumentIntake, Entity, Obligation, StoredDocument
 from stewart.core.settings import Settings
 
 
@@ -74,6 +74,48 @@ def _fake_extraction() -> dict[str, Any]:
                 "confidence": 0.86,
             }
         ],
+    }
+
+
+def _fake_insurance_extraction() -> dict[str, Any]:
+    return {
+        **_fake_extraction(),
+        "document_type": "insurance_certificate",
+        "summary": "Public liability certificate issued by AIG Australia.",
+        "parties": [
+            {
+                "name": "AIG Australia Limited",
+                "role": "insurer",
+                "abn": None,
+                "contact": None,
+                "confidence": 0.9,
+                "source_hint": "Insurer section",
+            },
+            {
+                "name": "Australian Accident Management Commercial Pty Ltd",
+                "role": "named insured",
+                "abn": None,
+                "contact": None,
+                "confidence": 0.82,
+                "source_hint": "Named insured section",
+            },
+        ],
+        "key_dates": [
+            {
+                "label": "Policy start",
+                "date": "2026-03-31",
+                "confidence": 0.9,
+                "source_hint": "Policy period",
+            },
+            {
+                "label": "Policy end",
+                "date": "2027-03-31",
+                "confidence": 0.9,
+                "source_hint": "Policy period",
+            },
+        ],
+        "warnings": [],
+        "missing_information": [],
     }
 
 
@@ -223,3 +265,147 @@ def test_document_intake_can_be_cleared(
     assert document is not None
     assert intake.deleted_at is not None
     assert document.deleted_at is not None
+
+
+def test_document_intake_review_and_apply_insurance_obligation(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_insurance_extraction(), "resp_document_insurance"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("insurance.txt", b"insurance certificate", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+
+    reviewed = _fake_insurance_extraction()
+    reviewed["key_dates"][1]["date"] = "2027-04-15"
+    review_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/review",
+        json={"review_data": reviewed},
+    )
+    assert review_response.status_code == 200
+    assert review_response.json()["review_data"]["key_dates"][1]["date"] == "2027-04-15"
+    assert review_response.json()["reviewed_at"] is not None
+    assert review_response.json()["reviewed_by_user_id"] is not None
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={"review_data": reviewed},
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "applied"
+    assert body["applied_at"] is not None
+    assert body["review_data"]["applied"]["action"] == "created_insurance_obligation"
+    obligation_id = body["review_data"]["applied"]["obligation_id"]
+
+    obligation = session.get(Obligation, UUID(obligation_id))
+    assert obligation is not None
+    assert obligation.category == "insurance"
+    assert obligation.due_date.isoformat() == "2027-04-15"
+    assert obligation.title == "Insurance certificate renewal"
+    assert obligation.obligation_metadata["source"] == "document_intake"
+
+    apply_again_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={"review_data": reviewed},
+    )
+    assert apply_again_response.status_code == 200
+    obligations = session.scalars(select(Obligation)).all()
+    assert len(obligations) == 1
+
+
+def test_document_intake_apply_rejects_unsupported_document_type(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_extraction(), "resp_document_lease_apply"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("lease.txt", b"lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={"review_data": _fake_extraction()},
+    )
+    assert apply_response.status_code == 409
+
+
+def test_document_intake_apply_rejects_insurance_without_expiry(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    extraction = _fake_insurance_extraction()
+    extraction["key_dates"] = [
+        {
+            "label": "Policy start",
+            "date": "2026-03-31",
+            "confidence": 0.9,
+            "source_hint": "Policy period",
+        }
+    ]
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return extraction, "resp_document_no_expiry"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("insurance.txt", b"insurance", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={"review_data": extraction},
+    )
+    assert apply_response.status_code == 422
