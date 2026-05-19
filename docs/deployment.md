@@ -35,7 +35,17 @@ Set the API host environment from `.env.example`, with production values for:
 - `S3_SECRET_ACCESS_KEY`
 - `S3_BUCKET`
 - `S3_REGION`
+- `SENDGRID_API_KEY`
+- `SENDGRID_FROM_EMAIL`
+- `SENDGRID_FROM_NAME`
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_MESSAGING_SERVICE_SID` or `TWILIO_FROM_PHONE`
 
 `FRONTEND_URL` must match the Vercel domain so browser requests pass CORS.
 Use `CORS_ALLOWED_ORIGINS` for extra explicit domains, separated by commas. Use
 `CORS_ALLOWED_ORIGIN_REGEX` only for controlled preview URL patterns.
+
+Tenant onboarding delivery uses Twilio SendGrid for email and Twilio Messaging
+for SMS. If any channel is not configured, Leasium records the channel as
+skipped rather than blocking onboarding link creation.

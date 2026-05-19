@@ -49,7 +49,18 @@ class Settings(BaseSettings):
     document_max_bytes: int = 15_000_000
     xero_client_id: str = ""
     xero_client_secret: str = ""
-    postmark_server_token: str = ""
+    sendgrid_api_key: str = ""
+    sendgrid_from_email: str = ""
+    sendgrid_from_name: str = "Leasium"
+    sendgrid_mail_send_url: str = "https://api.sendgrid.com/v3/mail/send"
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_messaging_service_sid: str = ""
+    twilio_from_phone: str = ""
+    twilio_api_base_url: str = "https://api.twilio.com"
+    communications_timeout_seconds: float = 10.0
+    tenant_onboarding_email_enabled: bool = True
+    tenant_onboarding_sms_enabled: bool = True
     slack_webhook_url: str = ""
 
     @field_validator("database_url", "test_database_url", mode="before")
@@ -70,9 +81,7 @@ class Settings(BaseSettings):
 
         origins = [self.frontend_url, "http://localhost:3000"]
         origins.extend(
-            origin.strip()
-            for origin in self.cors_allowed_origins.split(",")
-            if origin.strip()
+            origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()
         )
         return list(dict.fromkeys(origins))
 

@@ -36,11 +36,12 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Smart Intake acquisition apply: reviewed purchase contracts can create or link property records, optionally create/link reviewed units, attach the source document, and create milestone tasks without posting financials.
 - [x] Smart Intake naming pass: global navigation and workspace copy now reflect the broader document-first workflow instead of lease-only inbox wording.
 - [x] Smart Intake task queue: open document reviews, match issues, processing states, and failed reads now appear in Tasks with a dedicated filter and deep links back to Smart Intake.
+- [x] Tenant onboarding delivery foundation: Twilio SendGrid email and Twilio SMS delivery are wired into create/resend with channel status, audit logs, and safe skipped states when a channel is not configured.
 
 ## Next Build Order
 
 - [ ] Continue AI apply beyond first-pass register workflows: purchase contracts gain richer tenancy schedule handling; billing prep graduates into true draft charge/invoice records; lease apply gains deeper source citations and before/after audit detail.
-- [ ] Finish tenant onboarding delivery: real email sending, branded templates, resend logs, expiry messaging, and delivery audit history.
+- [ ] Finish tenant onboarding delivery: provider webhooks, branded template management, resend log timeline, expiry reminders, and delivery failure recovery.
 - [ ] Deepen tenant detail: property/lease context labels, richer activity history, safer document provenance/actions, and reviewed-change history.
 - [ ] Expand billing from readiness into invoice generation: rent periods, line items, invoice drafts, approval, PDF/email delivery, and payment status.
 - [ ] Add Xero connection status, chart of accounts/tax mapping, contact sync, invoice sync, and payment reconciliation.

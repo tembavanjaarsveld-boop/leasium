@@ -475,6 +475,12 @@ function demoOnboardings(createdAt: string): TenantOnboardingRecord[] {
       submitted_data: {},
       submitted_at: null,
       review_data: {},
+      delivery_data: {
+        channels: {
+          email: { channel: "email", status: "queued", provider: "sendgrid" },
+          sms: { channel: "sms", status: "skipped", provider: "twilio" },
+        },
+      },
       reviewed_at: null,
       reviewed_by_user_id: null,
       applied_at: null,
@@ -499,6 +505,12 @@ function demoOnboardings(createdAt: string): TenantOnboardingRecord[] {
       submitted_data: {},
       submitted_at: createdAt,
       review_data: {},
+      delivery_data: {
+        channels: {
+          email: { channel: "email", status: "queued", provider: "sendgrid" },
+          sms: { channel: "sms", status: "queued", provider: "twilio" },
+        },
+      },
       reviewed_at: null,
       reviewed_by_user_id: null,
       applied_at: null,

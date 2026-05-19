@@ -76,6 +76,8 @@ def test_tenant_onboarding_link_public_submit_waits_for_review_before_apply(
     assert body["last_sent_at"] is not None
     assert body["resent_at"] is None
     assert "/onboarding/" in body["onboarding_url"]
+    assert body["delivery_data"]["channels"]["email"]["status"] == "skipped"
+    assert body["delivery_data"]["channels"]["sms"]["status"] == "skipped"
 
     token = body["token"]
     public_response = client.get(f"/api/v1/tenant-onboarding/public/{token}")
@@ -83,8 +85,7 @@ def test_tenant_onboarding_link_public_submit_waits_for_review_before_apply(
     assert public_response.json()["tenant_legal_name"] == "Onboarding Tenant Pty Ltd"
     assert public_response.json()["property_name"] == "Onboarding Plaza"
     assert (
-        public_response.json()["property_address"]
-        == "4 Welcome Street, Brisbane City, QLD, 4000"
+        public_response.json()["property_address"] == "4 Welcome Street, Brisbane City, QLD, 4000"
     )
     assert public_response.json()["unit_label"] == "Suite 2"
     assert public_response.json()["due_date"] == "2026-08-15"
@@ -187,6 +188,7 @@ def test_tenant_onboarding_resend_review_and_apply_workflow(
     assert resend_response.json()["status"] == "sent"
     assert resend_response.json()["resent_at"] is not None
     assert resend_response.json()["last_sent_at"] == resend_response.json()["resent_at"]
+    assert resend_response.json()["delivery_data"]["last_reason"] == "resend"
 
     submit_response = client.post(
         f"/api/v1/tenant-onboarding/public/{token}/submit",

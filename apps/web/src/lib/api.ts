@@ -106,6 +106,7 @@ export type TenantOnboardingRecord = {
   submitted_data: Record<string, unknown>;
   submitted_at: string | null;
   review_data: Record<string, unknown>;
+  delivery_data: OnboardingDeliveryData;
   reviewed_at: string | null;
   reviewed_by_user_id: string | null;
   applied_at: string | null;
@@ -113,6 +114,26 @@ export type TenantOnboardingRecord = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+};
+
+export type DeliveryChannelRecord = {
+  channel?: string;
+  status?: string;
+  provider?: string;
+  attempted_at?: string | null;
+  recipient?: string | null;
+  provider_message_id?: string | null;
+  error?: string | null;
+};
+
+export type OnboardingDeliveryData = {
+  last_attempted_at?: string | null;
+  last_reason?: string | null;
+  channels?: {
+    email?: DeliveryChannelRecord;
+    sms?: DeliveryChannelRecord;
+  };
+  history?: Array<Record<string, unknown>>;
 };
 
 export type TenantOnboardingPublicRecord = {

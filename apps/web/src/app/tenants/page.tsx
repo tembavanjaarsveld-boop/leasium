@@ -37,6 +37,7 @@ import {
   TenantPayload,
   TenantRecord,
 } from "@/lib/api";
+import { onboardingDeliveryLabel, onboardingDeliveryTone } from "@/lib/delivery";
 import { cn } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -452,9 +453,14 @@ function TenantWorkspace() {
                     </td>
                     <td className="px-3 py-3">
                       {onboarding ? (
-                        <StatusBadge tone={statusTone(onboarding.status, onboarding.due_date)}>
-                          {onboarding.status.replaceAll("_", " ")}
-                        </StatusBadge>
+                        <div className="grid gap-1">
+                          <StatusBadge tone={statusTone(onboarding.status, onboarding.due_date)}>
+                            {onboarding.status.replaceAll("_", " ")}
+                          </StatusBadge>
+                          <StatusBadge tone={onboardingDeliveryTone(onboarding.delivery_data)}>
+                            {onboardingDeliveryLabel(onboarding.delivery_data)}
+                          </StatusBadge>
+                        </div>
                       ) : (
                         <StatusBadge tone="warning">not started</StatusBadge>
                       )}

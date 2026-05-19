@@ -25,6 +25,11 @@ from stewart.core.models import (
     UserRole,
 )
 from stewart.core.settings import get_settings
+from stewart.integrations.communications import (
+    DeliveryResult,
+    TenantOnboardingInvite,
+    send_tenant_onboarding_invite,
+)
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.documents import DocumentRead
@@ -51,6 +56,92 @@ def _read(row: TenantOnboarding) -> TenantOnboardingRead:
     response = TenantOnboardingRead.model_validate(row)
     response.onboarding_url = _onboarding_url(row.token)
     return response
+
+
+def _delivery_data(
+    current: dict[str, object],
+    results: list[DeliveryResult],
+    reason: str,
+) -> dict[str, object]:
+    attempted_at = utcnow().isoformat()
+    channels = {result.channel: result.to_dict() for result in results}
+    history = current.get("history", [])
+    if not isinstance(history, list):
+        history = []
+    return {
+        **current,
+        "last_attempted_at": attempted_at,
+        "last_reason": reason,
+        "channels": channels,
+        "history": [
+            {
+                "attempted_at": attempted_at,
+                "reason": reason,
+                "channels": channels,
+            },
+            *history[:9],
+        ],
+    }
+
+
+def _masked_recipient(value: str | None) -> str | None:
+    if not value:
+        return None
+    if "@" in value:
+        name, domain = value.split("@", 1)
+        return f"{name[:2]}***@{domain}"
+    return f"{value[:4]}***{value[-2:]}" if len(value) > 6 else "***"
+
+
+def _deliver_onboarding_link(
+    onboarding: TenantOnboarding,
+    lease: Lease,
+    prop: Property,
+    tenant: Tenant,
+    user: CurrentUser,
+    session: Session,
+    reason: str,
+) -> None:
+    unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+    if unit is None or unit.deleted_at is not None:
+        return
+    settings = get_settings()
+    invite = TenantOnboardingInvite(
+        onboarding_id=onboarding.id,
+        entity_id=onboarding.entity_id,
+        tenant_name=tenant.trading_name or tenant.legal_name,
+        contact_name=tenant.contact_name,
+        contact_email=tenant.contact_email or tenant.billing_email,
+        contact_phone=tenant.contact_phone,
+        property_name=prop.name,
+        property_address=_property_address(prop),
+        unit_label=unit.unit_label,
+        onboarding_url=_onboarding_url(onboarding.token),
+        due_date=onboarding.due_date,
+        expires_at=onboarding.expires_at,
+    )
+    results = send_tenant_onboarding_invite(invite, settings)
+    onboarding.delivery_data = _delivery_data(onboarding.delivery_data or {}, results, reason)
+    for result in results:
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=onboarding.entity_id,
+            action="deliver",
+            target_table="tenant_onboarding",
+            target_id=onboarding.id,
+            tool_name=f"twilio.{result.provider}",
+            tool_input={
+                "channel": result.channel,
+                "recipient": _masked_recipient(result.recipient),
+                "reason": reason,
+            },
+            tool_output_summary=f"{result.channel} {result.status}",
+            outcome=(AuditOutcome.error if result.status == "failed" else AuditOutcome.success),
+            error_message=result.error if result.status == "failed" else None,
+            data_classification="confidential",
+        )
 
 
 def _is_expired(row: TenantOnboarding) -> bool:
@@ -117,9 +208,7 @@ def _lease_scope(
 def _new_token(session: Session) -> str:
     while True:
         token = secrets.token_urlsafe(24)
-        exists = session.scalar(
-            select(TenantOnboarding.id).where(TenantOnboarding.token == token)
-        )
+        exists = session.scalar(select(TenantOnboarding.id).where(TenantOnboarding.token == token))
         if exists is None:
             return token
 
@@ -217,6 +306,7 @@ def create_tenant_onboarding(
         last_sent_at=utcnow(),
         submitted_data={},
         review_data={},
+        delivery_data={},
     )
     session.add(onboarding)
     session.flush()
@@ -229,6 +319,9 @@ def create_tenant_onboarding(
         target_table="tenant_onboarding",
         target_id=onboarding.id,
     )
+    session.commit()
+    session.refresh(onboarding)
+    _deliver_onboarding_link(onboarding, lease, prop, tenant, user, session, "send")
     session.commit()
     session.refresh(onboarding)
     return _read(onboarding)
@@ -304,6 +397,10 @@ def resend_tenant_onboarding(
         target_table="tenant_onboarding",
         target_id=onboarding.id,
     )
+    session.commit()
+    session.refresh(onboarding)
+    lease, prop, tenant = _lease_scope(onboarding.lease_id, session)
+    _deliver_onboarding_link(onboarding, lease, prop, tenant, user, session, "resend")
     session.commit()
     session.refresh(onboarding)
     return _read(onboarding)
@@ -504,9 +601,7 @@ def download_public_onboarding_document(
     return Response(
         content=document.file_data,
         media_type=document.content_type or "application/octet-stream",
-        headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(document.filename)}"
-        },
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(document.filename)}"},
     )
 
 

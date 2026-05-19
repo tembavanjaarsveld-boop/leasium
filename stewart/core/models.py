@@ -561,9 +561,7 @@ Index("lease_intake_status_idx", LeaseIntake.status)
 
 class TenantOnboarding(Base):
     __tablename__ = "tenant_onboarding"
-    __table_args__ = (
-        UniqueConstraint("token", name="uq_tenant_onboarding_token"),
-    )
+    __table_args__ = (UniqueConstraint("token", name="uq_tenant_onboarding_token"),)
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
     entity_id: Mapped[UUID] = mapped_column(
@@ -591,6 +589,7 @@ class TenantOnboarding(Base):
     )
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     review_data: Mapped[dict[str, Any]] = mapped_column(JsonbCompat, nullable=False, default=dict)
+    delivery_data: Mapped[dict[str, Any]] = mapped_column(JsonbCompat, nullable=False, default=dict)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("app_user.id")
@@ -670,9 +669,7 @@ class StoredDocument(Base):
     tenancy_unit: Mapped[TenancyUnit | None] = relationship()
     tenant: Mapped[Tenant | None] = relationship(back_populates="documents")
     lease: Mapped[Lease | None] = relationship(back_populates="documents")
-    tenant_onboarding: Mapped[TenantOnboarding | None] = relationship(
-        back_populates="documents"
-    )
+    tenant_onboarding: Mapped[TenantOnboarding | None] = relationship(back_populates="documents")
     document_intake: Mapped["DocumentIntake | None"] = relationship(
         back_populates="document", uselist=False
     )

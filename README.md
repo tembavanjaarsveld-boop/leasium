@@ -21,6 +21,9 @@ make dev
 The API runs on `http://localhost:8000` and the web app runs on `http://localhost:3000`.
 Lease intake extraction reads `OPENAI_API_KEY` from `.env.local` or `.env` and uses
 `OPENAI_MODEL` for the direct Responses API call.
+Tenant onboarding delivery reads `SENDGRID_*` and `TWILIO_*` settings for email
+and SMS. Missing communication credentials are recorded as skipped delivery
+states so local development can still create onboarding links.
 
 ## Deployment
 

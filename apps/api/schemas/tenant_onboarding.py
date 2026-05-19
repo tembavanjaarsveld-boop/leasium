@@ -41,6 +41,7 @@ class TenantOnboardingRead(ApiModel):
     submitted_data: dict[str, Any] = Field(default_factory=dict)
     submitted_at: datetime | None
     review_data: dict[str, Any] = Field(default_factory=dict)
+    delivery_data: dict[str, Any] = Field(default_factory=dict)
     reviewed_at: datetime | None
     reviewed_by_user_id: UUID | None
     applied_at: datetime | None

@@ -1,1 +1,4 @@
-"""Email integration placeholder for later phases."""
+"""Legacy email namespace.
+
+Tenant onboarding now sends through :mod:`stewart.integrations.communications`.
+"""

@@ -55,6 +55,11 @@ import {
   uploadDocument,
   updateTenant,
 } from "@/lib/api";
+import {
+  onboardingDeliveryDetail,
+  onboardingDeliveryLabel,
+  onboardingDeliveryTone,
+} from "@/lib/delivery";
 import { cn } from "@/lib/utils";
 
 type TenantForm = {
@@ -812,10 +817,19 @@ function TenantDetail() {
                         ) : null}
                       </div>
                     </div>
-                    <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-3">
+                    <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
                       <div>Last sent {formatDate(item.last_sent_at)}</div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span>Delivery</span>
+                        <StatusBadge tone={onboardingDeliveryTone(item.delivery_data)}>
+                          {onboardingDeliveryLabel(item.delivery_data)}
+                        </StatusBadge>
+                      </div>
                       <div>Expires {formatDate(item.expires_at)}</div>
                       <div>Applied {formatDate(item.applied_at)}</div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {onboardingDeliveryDetail(item.delivery_data)}
                     </div>
                     {item.status === "submitted" ? (
                       <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs">
