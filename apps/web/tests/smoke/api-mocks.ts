@@ -189,6 +189,130 @@ const rentRoll = [
   },
 ];
 
+const billingDrafts = [
+  {
+    id: "billing-draft-1",
+    entity_id: entityId,
+    property_id: propertyId,
+    tenancy_unit_id: unitId,
+    tenant_id: tenantId,
+    lease_id: leaseId,
+    document_id: "document-1",
+    document_intake_id: "intake-1",
+    status: "approved",
+    title: "May rent and outgoings",
+    currency: "AUD",
+    issue_date: "2026-05-01",
+    due_date: "2026-05-15",
+    total_cents: 880000,
+    notes: "Prepared from the reviewed rent schedule.",
+    metadata: {},
+    lines: [
+      {
+        id: "billing-draft-line-1",
+        billing_draft_id: "billing-draft-1",
+        description: "Base rent",
+        amount_cents: 800000,
+        currency: "AUD",
+        source_hint: "Rent schedule",
+        confidence: 0.92,
+        metadata: {},
+        created_at: "2026-05-01T00:00:00.000Z",
+        deleted_at: null,
+      },
+      {
+        id: "billing-draft-line-2",
+        billing_draft_id: "billing-draft-1",
+        description: "GST",
+        amount_cents: 80000,
+        currency: "AUD",
+        source_hint: "GST schedule",
+        confidence: 0.88,
+        metadata: {},
+        created_at: "2026-05-01T00:00:00.000Z",
+        deleted_at: null,
+      },
+    ],
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-05-01T00:00:00.000Z",
+    deleted_at: null,
+  },
+];
+
+const invoiceDrafts = [
+  {
+    id: "invoice-draft-1",
+    entity_id: entityId,
+    billing_draft_id: "billing-draft-1",
+    property_id: propertyId,
+    tenancy_unit_id: unitId,
+    tenant_id: tenantId,
+    lease_id: leaseId,
+    document_id: "document-1",
+    document_intake_id: "intake-1",
+    status: "approved",
+    invoice_number: "INV-1001",
+    title: "May rent and outgoings",
+    currency: "AUD",
+    issue_date: "2026-05-01",
+    due_date: "2026-05-15",
+    subtotal_cents: 800000,
+    gst_cents: 80000,
+    total_cents: 880000,
+    issuer_name: "Queen Street Trustee Pty Ltd",
+    issuer_abn: "22123456789",
+    recipient_name: "Bright Cafe Pty Ltd",
+    recipient_email: "accounts@bright.example",
+    notes: "Approved internal invoice draft.",
+    metadata: {
+      readiness_blockers: [],
+      delivery_state: {
+        pdf_preview_generated: true,
+        pdf_artifact_stored: true,
+        tenant_email_prepared: true,
+        delivery_ready: true,
+        tenant_email_sent: false,
+      },
+      delivery_preview: {
+        email: {
+          to: "accounts@bright.example",
+          subject: "Invoice INV-1001",
+          body: "Please find your invoice attached.",
+        },
+      },
+      pdf_artifact: {
+        document_id: "document-1",
+      },
+      delivery_email: {
+        send: {
+          status: "draft",
+        },
+      },
+      payment_status: {
+        status: "unpaid",
+      },
+    },
+    lines: [
+      {
+        id: "invoice-draft-line-1",
+        invoice_draft_id: "invoice-draft-1",
+        billing_draft_line_id: "billing-draft-line-1",
+        description: "Base rent",
+        amount_cents: 800000,
+        gst_cents: 80000,
+        currency: "AUD",
+        source_hint: "Rent schedule",
+        metadata: {},
+        created_at: "2026-05-01T00:00:00.000Z",
+        deleted_at: null,
+      },
+    ],
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-05-01T00:00:00.000Z",
+    deleted_at: null,
+  },
+];
+
 const documentIntakes = [
   {
     id: "intake-1",
@@ -383,7 +507,8 @@ export async function mockLeasiumApi(page: Page) {
         kind: "tax",
         severity: "blocker",
         label: "Base Rent tax type missing",
-        detail: "Queen Street Retail Centre / Shop 3 is taxable and needs a Xero tax type.",
+        detail:
+          "Queen Street Retail Centre / Shop 3 is taxable and needs a Xero tax type.",
         action: "Review and apply the suggested tax mapping.",
         property_id: propertyId,
         property_name: "Queen Street Retail Centre",
@@ -403,8 +528,16 @@ export async function mockLeasiumApi(page: Page) {
     return {
       connection: xeroConnection(),
       contact_mapping: { total: 2, ready: 2, missing: 0 },
-      chart_mapping: { total: 1, ready: chargeAccountCode ? 1 : 0, missing: chargeAccountCode ? 0 : 1 },
-      tax_mapping: { total: 1, ready: chargeTaxType ? 1 : 0, missing: chargeTaxType ? 0 : 1 },
+      chart_mapping: {
+        total: 1,
+        ready: chargeAccountCode ? 1 : 0,
+        missing: chargeAccountCode ? 0 : 1,
+      },
+      tax_mapping: {
+        total: 1,
+        ready: chargeTaxType ? 1 : 0,
+        missing: chargeTaxType ? 0 : 1,
+      },
       invoice_sync: {
         total_invoice_drafts: 0,
         approved_unsynced: 0,
@@ -538,8 +671,9 @@ export async function mockLeasiumApi(page: Page) {
         billing_draft_counts: { approved: 1 },
         invoice_draft_counts: { ready_for_approval: 1 },
         xero_issue_count: xero.issues.length,
-        xero_blocker_count: xero.issues.filter((issue) => issue.severity === "blocker")
-          .length,
+        xero_blocker_count: xero.issues.filter(
+          (issue) => issue.severity === "blocker",
+        ).length,
         approved_unsynced_invoice_count: 1,
         unpaid_invoice_count: 1,
       },
@@ -643,6 +777,16 @@ export async function mockLeasiumApi(page: Page) {
 
     if (method === "GET" && path === "/rent-roll") {
       await fulfillJson(route, rentRoll);
+      return;
+    }
+
+    if (method === "GET" && path === "/billing-drafts") {
+      await fulfillJson(route, billingDrafts);
+      return;
+    }
+
+    if (method === "GET" && path === "/invoice-drafts") {
+      await fulfillJson(route, invoiceDrafts);
       return;
     }
 

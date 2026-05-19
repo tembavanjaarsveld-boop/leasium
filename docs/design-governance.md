@@ -66,10 +66,9 @@ Priority fixes before treating the current UX as signed off:
 - Insights can show a mostly blank first viewport while the overview request is
   loading. Add an explicit loading panel so the page does not look broken on a
   slow API wake-up.
-- Billing Readiness is now doing several jobs: readiness checks, Smart Intake
-  billing drafts, invoice draft staging, delivery prep, and payment status.
-  Split these into scannable sections or tabs, and make the primary next action
-  obvious for each state.
+- Billing Readiness needs Remba re-review now that its first-pass task-zone
+  split is in place. Confirm the Readiness, Billing drafts, Invoice prep, and
+  Delivery & payments tabs each make the primary next action obvious.
 - Tenant detail still shows placeholder lease context such as `Property context
   pending` and `Unit context pending` even when the tenant is linked to the
   seeded portfolio. Fix the context label or underlying detail payload before
@@ -95,6 +94,11 @@ Progress notes:
   Operations, Billing, and Documents, and the property create/edit form has
   moved out of the always-visible side rail into a focused overlay. This is a
   first-pass fix for the overloaded workspace and remains pending Remba review.
+- 2026-05-20: `/billing-readiness` now has task-zone tabs for Readiness,
+  Billing drafts, Invoice prep, and Delivery & payments. The blocker action
+  queue lives with rent-roll readiness, while preparation/approval work is
+  separated from manual delivery/payment recording. This remains pending Remba
+  review.
 
 Remba decision:
 
@@ -135,15 +139,15 @@ Status: pass. Remba approved invoice/billing documents as the next Smart Intake 
 
 ## Billing Draft Review Surface
 
-Status: pending Remba review. The Billing Readiness workspace now surfaces prepared billing drafts with approve/void status actions. Keep the guardrails visible: this is draft review only, with no invoice posting, tenant email, PDF generation, or Xero sync.
+Status: pending Remba review. The Billing Readiness tabbed workspace now surfaces prepared billing drafts with approve/void status actions. Keep the guardrails visible: this is draft review only, with no invoice posting, tenant email, PDF generation, or Xero sync.
 
 ## Invoice Draft Staging Surface
 
-Status: pending Remba review. Billing Readiness now creates and lists internal invoice drafts from approved billing drafts. Keep the staging language explicit: this is internal invoice preparation only, with readiness blockers visible and no PDF generation, tenant email, or Xero sync from this step.
+Status: pending Remba review. Billing Readiness now creates and lists internal invoice drafts from approved billing drafts inside the Invoice prep tab. Keep the staging language explicit: this is internal invoice preparation only, with readiness blockers visible and no tenant email send or Xero sync from this step.
 
 ## Invoice Delivery Prep Surface
 
-Status: pending Remba review. Billing Readiness now stores internal invoice PDF artifacts, prepares branded email draft metadata, records manual tenant delivery receipts after approval, and tracks payment status. Keep the boundary explicit: Leasium is preparing and recording internal invoice work, provider-backed email sending is manual/recorded for now, and no Xero sync or external posting runs from this surface.
+Status: pending Remba review. Billing Readiness now stores internal invoice PDF artifacts, prepares branded email draft metadata, records manual tenant delivery receipts after approval, and tracks payment status across the Invoice prep and Delivery & payments tabs. Keep the boundary explicit: Leasium is preparing and recording internal invoice work, provider-backed email sending is manual/recorded for now, and no Xero sync or external posting runs from this surface.
 
 ## AI Enrichment Surface
 

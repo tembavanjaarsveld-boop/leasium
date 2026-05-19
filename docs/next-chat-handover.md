@@ -135,6 +135,16 @@ Last updated: 2026-05-20
   - Property create/edit now opens in a focused overlay instead of an
     always-visible side rail.
   - This is design-facing and still needs Remba review.
+- Billing Readiness task-zone split is built on this branch.
+  - `/billing-readiness` now has Readiness, Billing drafts, Invoice prep, and
+    Delivery & payments tabs so blocker cleanup, Smart Intake draft review,
+    invoice preparation/approval, and manual delivery/payment recording no
+    longer compete in one long workspace.
+  - The Readiness tab keeps the action queue with rent-roll checks so operators
+    can see the next blocker to fix before an invoice run.
+  - Invoice prep remains approval-safe, and Delivery & payments keeps the
+    no-tenant-email-send/no-Xero-sync guardrails explicit.
+  - This is design-facing and still needs Remba review.
 - Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
   - This is design-facing and still needs Remba review.
 ## Verification
@@ -158,6 +168,13 @@ Last updated: 2026-05-20
     - `git diff --check`
     - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
     - Local browser smoke confirmed `/properties` shows the Portfolio/Operations/Billing/Documents tabs and each tab switches to the expected workspace section.
+  - Billing Readiness task-zone split checks passed:
+    - `./node_modules/.bin/eslint src/app/billing-readiness/page.tsx tests/smoke/app-flows.spec.ts tests/smoke/api-mocks.ts`
+    - `./node_modules/.bin/tsc --noEmit`
+    - `git diff --check`
+    - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+    - `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "dashboard shows"`
+    - Local Playwright smoke confirmed Dashboard opens Billing Readiness, the Readiness/Billing drafts/Invoice prep/Delivery & payments tabs render, and each new tab exposes the expected mocked billing state.
   - `.venv/bin/python -m ruff check apps/api/routers/insights.py apps/api/schemas/insights.py apps/api/main.py tests/integration/test_insights_api.py`
   - `.venv/bin/python -m pytest tests/integration/test_insights_api.py tests/integration/test_xero_api.py -q`
   - Result: `2 passed`

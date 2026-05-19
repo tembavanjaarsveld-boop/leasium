@@ -70,6 +70,39 @@ type BlockerGroup = {
   items: BlockerItem[];
 };
 
+type BillingWorkspaceTab =
+  | "readiness"
+  | "billing-drafts"
+  | "invoice-prep"
+  | "delivery";
+
+const billingWorkspaceTabs: Array<{
+  id: BillingWorkspaceTab;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "readiness",
+    label: "Readiness",
+    description: "Fix blockers first",
+  },
+  {
+    id: "billing-drafts",
+    label: "Billing drafts",
+    description: "Review source work",
+  },
+  {
+    id: "invoice-prep",
+    label: "Invoice prep",
+    description: "Prepare approval",
+  },
+  {
+    id: "delivery",
+    label: "Delivery & payments",
+    description: "Record after approval",
+  },
+];
+
 type BlockerAction = {
   label: string;
   href: string;
@@ -407,6 +440,8 @@ function BillingReadinessWorkspace() {
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [asOf, setAsOf] = useState(() => dateOnly(new Date()));
+  const [activeBillingTab, setActiveBillingTab] =
+    useState<BillingWorkspaceTab>("readiness");
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -449,7 +484,8 @@ function BillingReadinessWorkspace() {
     enabled: Boolean(selectedEntityId),
   });
   const entitiesLoading =
-    !entitiesQuery.data && (entitiesQuery.isLoading || entitiesQuery.isFetching);
+    !entitiesQuery.data &&
+    (entitiesQuery.isLoading || entitiesQuery.isFetching);
   const entitySelectionLoading =
     entitiesLoading ||
     (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
@@ -498,7 +534,8 @@ function BillingReadinessWorkspace() {
   });
 
   const createInvoiceDraftMutation = useMutation({
-    mutationFn: (draftId: string) => createInvoiceDraftFromBillingDraft(draftId),
+    mutationFn: (draftId: string) =>
+      createInvoiceDraftFromBillingDraft(draftId),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["billing-readiness-drafts", selectedEntityId],
@@ -622,6 +659,10 @@ function BillingReadinessWorkspace() {
     };
   }, [rentRows, rowsWithBlockers.length]);
   const invoiceDrafts = invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS;
+  const approvedInvoiceDrafts = useMemo(
+    () => invoiceDrafts.filter((draft) => draft.status === "approved"),
+    [invoiceDrafts],
+  );
   const invoiceDraftByBillingDraftId = useMemo(() => {
     const drafts = new Map<string, InvoiceDraftRecord>();
     for (const draft of invoiceDrafts) {
@@ -694,7 +735,9 @@ function BillingReadinessWorkspace() {
         {billingReadinessError ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
             <div>
-              <div className="font-semibold">Billing data did not finish loading.</div>
+              <div className="font-semibold">
+                Billing data did not finish loading.
+              </div>
               <div className="mt-1">
                 {friendlyError(
                   billingReadinessError,
@@ -841,13 +884,18 @@ function BillingReadinessWorkspace() {
             }
             icon={<Loader2 size={17} className="animate-spin text-primary" />}
             actions={
-              <StatusBadge tone={billingReadinessRefreshing ? "primary" : "neutral"}>
+              <StatusBadge
+                tone={billingReadinessRefreshing ? "primary" : "neutral"}
+              >
                 {billingReadinessRefreshing ? "Refreshing" : "Loading"}
               </StatusBadge>
             }
             className="border-primary/20 bg-primary/5"
           >
-            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-3">
+            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-4">
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Action queue
+              </div>
               <div className="rounded-xl border border-border bg-white px-3 py-2">
                 Rent roll checks
               </div>
@@ -872,530 +920,806 @@ function BillingReadinessWorkspace() {
 
         {selectedEntityId ? (
           <>
-            <SectionPanel
-              title="Billing draft review"
-              description="Source-linked Smart Intake drafts for review only. Approve or void updates draft status; it does not post an invoice, email a tenant, or sync to Xero."
-              icon={<ReceiptText size={17} className="text-primary" />}
-              actions={
-                <StatusBadge
-                  tone={
-                    billingDraftsLoading
-                      ? "neutral"
-                      : billingDrafts.length
-                        ? "primary"
-                        : "neutral"
-                  }
-                >
-                  {billingDraftsLoading
-                    ? "Loading"
-                    : `${billingDrafts.length} draft${billingDrafts.length === 1 ? "" : "s"}`}
-                </StatusBadge>
-              }
+            <div
+              className="grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-4"
+              role="tablist"
+              aria-label="Billing readiness sections"
             >
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead className="bg-muted text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Draft</th>
-                      <th className="px-3 py-2 font-semibold">Amount</th>
-                      <th className="px-3 py-2 font-semibold">Due</th>
-                      <th className="px-3 py-2 font-semibold">Source</th>
-                      <th className="px-3 py-2 font-semibold">Status</th>
-                      <th className="px-3 py-2 font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {billingDrafts.map((draft) => {
-                      const source = billingDraftSourceContext(draft);
-                      const isUpdating =
-                        updateDraftMutation.isPending &&
-                        updateDraftMutation.variables?.draftId === draft.id;
-                      const canApprove =
-                        draft.status !== "approved" && draft.status !== "void";
-                      const canVoid = draft.status !== "void";
-                      const invoiceDraft = invoiceDraftByBillingDraftId.get(
-                        draft.id,
-                      );
-                      const isCreatingInvoice =
-                        createInvoiceDraftMutation.isPending &&
-                        createInvoiceDraftMutation.variables === draft.id;
-                      return (
-                        <tr
-                          key={draft.id}
-                          className="border-t border-border align-top"
-                        >
-                          <td className="min-w-72 px-3 py-3">
-                            <div className="font-medium">{draft.title}</div>
-                            <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                              {draft.notes ??
-                                "Draft prepared from source review. No invoice has been posted."}
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-sm font-medium">
-                            {formatMoney(draft.total_cents)}
-                          </td>
-                          <td className="px-3 py-3 text-xs">
-                            {formatDate(draft.due_date)}
-                          </td>
-                          <td className="min-w-64 px-3 py-3 text-xs">
-                            <div className="font-medium text-foreground">
-                              {source.primarySource}
-                            </div>
-                            <div className="mt-1 text-muted-foreground">
-                              {source.lineCount} line
-                              {source.lineCount === 1 ? "" : "s"}
-                              {source.extraSources
-                                ? `, ${source.extraSources} more source${
-                                    source.extraSources === 1 ? "" : "s"
-                                  }`
-                                : ""}
-                            </div>
-                            <div className="mt-1 flex flex-wrap gap-2 text-muted-foreground">
-                              {source.intakeId && draft.document_intake_id ? (
-                                <Link
-                                  href={`/intake?review=${draft.document_intake_id}`}
-                                  className="inline-flex items-center gap-1 font-medium text-primary hover:text-leasium-blue-hover"
-                                >
-                                  Intake {source.intakeId}
-                                  <ArrowUpRight size={12} />
-                                </Link>
-                              ) : null}
-                              {source.documentId ? (
-                                <span>Document {source.documentId}</span>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td className="px-3 py-3">
-                            <StatusBadge
-                              tone={billingDraftStatusTone(draft.status)}
-                            >
-                              {billingDraftStatusLabel(draft.status)}
-                            </StatusBadge>
-                          </td>
-                          <td className="px-3 py-3">
-                            <div className="flex flex-wrap gap-2">
-                              <SecondaryButton
-                                type="button"
-                                className="min-h-9 rounded-lg px-3"
-                                onClick={() =>
-                                  updateDraftMutation.mutate({
-                                    draftId: draft.id,
-                                    status: "approved",
-                                  })
-                                }
-                                disabled={!canApprove || isUpdating}
-                                title="Marks this draft approved for later billing steps. No invoice is posted or synced."
+              {billingWorkspaceTabs.map((tab) => {
+                const isActive = activeBillingTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActiveBillingTab(tab.id)}
+                    className={`grid min-h-16 gap-1 rounded-xl px-3 py-2 text-left transition duration-200 ease-leasium ${
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-leasiumXs"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <span className="text-sm font-semibold">{tab.label}</span>
+                    <span
+                      className={`text-xs ${
+                        isActive ? "text-primary-foreground/80" : ""
+                      }`}
+                    >
+                      {tab.description}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeBillingTab === "billing-drafts" ? (
+              <SectionPanel
+                title="Billing draft review"
+                description="Source-linked Smart Intake drafts for review only. Approve or void updates draft status; it does not post an invoice, email a tenant, or sync to Xero."
+                icon={<ReceiptText size={17} className="text-primary" />}
+                actions={
+                  <StatusBadge
+                    tone={
+                      billingDraftsLoading
+                        ? "neutral"
+                        : billingDrafts.length
+                          ? "primary"
+                          : "neutral"
+                    }
+                  >
+                    {billingDraftsLoading
+                      ? "Loading"
+                      : `${billingDrafts.length} draft${billingDrafts.length === 1 ? "" : "s"}`}
+                  </StatusBadge>
+                }
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Draft</th>
+                        <th className="px-3 py-2 font-semibold">Amount</th>
+                        <th className="px-3 py-2 font-semibold">Due</th>
+                        <th className="px-3 py-2 font-semibold">Source</th>
+                        <th className="px-3 py-2 font-semibold">Status</th>
+                        <th className="px-3 py-2 font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {billingDrafts.map((draft) => {
+                        const source = billingDraftSourceContext(draft);
+                        const isUpdating =
+                          updateDraftMutation.isPending &&
+                          updateDraftMutation.variables?.draftId === draft.id;
+                        const canApprove =
+                          draft.status !== "approved" &&
+                          draft.status !== "void";
+                        const canVoid = draft.status !== "void";
+                        const invoiceDraft = invoiceDraftByBillingDraftId.get(
+                          draft.id,
+                        );
+                        const isCreatingInvoice =
+                          createInvoiceDraftMutation.isPending &&
+                          createInvoiceDraftMutation.variables === draft.id;
+                        return (
+                          <tr
+                            key={draft.id}
+                            className="border-t border-border align-top"
+                          >
+                            <td className="min-w-72 px-3 py-3">
+                              <div className="font-medium">{draft.title}</div>
+                              <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                                {draft.notes ??
+                                  "Draft prepared from source review. No invoice has been posted."}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-sm font-medium">
+                              {formatMoney(draft.total_cents)}
+                            </td>
+                            <td className="px-3 py-3 text-xs">
+                              {formatDate(draft.due_date)}
+                            </td>
+                            <td className="min-w-64 px-3 py-3 text-xs">
+                              <div className="font-medium text-foreground">
+                                {source.primarySource}
+                              </div>
+                              <div className="mt-1 text-muted-foreground">
+                                {source.lineCount} line
+                                {source.lineCount === 1 ? "" : "s"}
+                                {source.extraSources
+                                  ? `, ${source.extraSources} more source${
+                                      source.extraSources === 1 ? "" : "s"
+                                    }`
+                                  : ""}
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-2 text-muted-foreground">
+                                {source.intakeId && draft.document_intake_id ? (
+                                  <Link
+                                    href={`/intake?review=${draft.document_intake_id}`}
+                                    className="inline-flex items-center gap-1 font-medium text-primary hover:text-leasium-blue-hover"
+                                  >
+                                    Intake {source.intakeId}
+                                    <ArrowUpRight size={12} />
+                                  </Link>
+                                ) : null}
+                                {source.documentId ? (
+                                  <span>Document {source.documentId}</span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3">
+                              <StatusBadge
+                                tone={billingDraftStatusTone(draft.status)}
                               >
-                                {isUpdating ? (
-                                  <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                  <CheckCircle2 size={14} />
-                                )}
-                                Approve
-                              </SecondaryButton>
-                              <SecondaryButton
-                                type="button"
-                                className="min-h-9 rounded-lg px-3 text-danger"
-                                onClick={() =>
-                                  updateDraftMutation.mutate({
-                                    draftId: draft.id,
-                                    status: "void",
-                                  })
-                                }
-                                disabled={!canVoid || isUpdating}
-                                title="Voids this draft only. No invoice is posted or synced."
-                              >
-                                {isUpdating ? (
-                                  <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                  <Ban size={14} />
-                                )}
-                                Void
-                              </SecondaryButton>
-                              {invoiceDraft ? (
-                                <StatusBadge
-                                  tone={invoiceDraftStatusTone(
-                                    invoiceDraft.status,
-                                  )}
-                                >
-                                  Invoice {shortId(invoiceDraft.id)}
-                                </StatusBadge>
-                              ) : draft.status === "approved" ? (
+                                {billingDraftStatusLabel(draft.status)}
+                              </StatusBadge>
+                            </td>
+                            <td className="px-3 py-3">
+                              <div className="flex flex-wrap gap-2">
                                 <SecondaryButton
                                   type="button"
                                   className="min-h-9 rounded-lg px-3"
                                   onClick={() =>
-                                    createInvoiceDraftMutation.mutate(draft.id)
+                                    updateDraftMutation.mutate({
+                                      draftId: draft.id,
+                                      status: "approved",
+                                    })
                                   }
-                                  disabled={isCreatingInvoice}
-                                  title="Creates an internal invoice draft only. No PDF, tenant email, or Xero sync."
+                                  disabled={!canApprove || isUpdating}
+                                  title="Marks this draft approved for later billing steps. No invoice is posted or synced."
                                 >
-                                  {isCreatingInvoice ? (
+                                  {isUpdating ? (
                                     <Loader2
                                       size={14}
                                       className="animate-spin"
                                     />
                                   ) : (
-                                    <FileCheck2 size={14} />
+                                    <CheckCircle2 size={14} />
                                   )}
-                                  Invoice draft
+                                  Approve
                                 </SecondaryButton>
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {!billingDraftsLoading && billingDrafts.length === 0 ? (
-                      <tr>
-                        <td className="px-3 py-10" colSpan={6}>
-                          <EmptyState
-                            title="No billing drafts"
-                            description="Reviewed invoice or admin documents will appear here as source-linked billing drafts before any invoice posting or Xero sync exists."
-                          />
-                        </td>
-                      </tr>
-                    ) : null}
-                    {billingDraftsLoading ? (
-                      <tr>
-                        <td
-                          className="px-3 py-10 text-center text-sm text-muted-foreground"
-                          colSpan={6}
-                        >
-                          Loading billing drafts...
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-            </SectionPanel>
-
-            <SectionPanel
-              title="Invoice draft staging"
-              description="Approved billing drafts become internal invoice drafts with stored PDF artifacts, email delivery receipts, payment status, and no Xero sync."
-              icon={<FileCheck2 size={17} className="text-primary" />}
-              actions={
-                <StatusBadge
-                  tone={
-                    invoiceDraftsLoading
-                      ? "neutral"
-                      : invoiceDrafts.length
-                        ? "primary"
-                        : "neutral"
-                  }
-                >
-                  {invoiceDraftsLoading
-                    ? "Loading"
-                    : `${invoiceDrafts.length} invoice draft${invoiceDrafts.length === 1 ? "" : "s"}`}
-                </StatusBadge>
-              }
-            >
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead className="bg-muted text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Invoice draft</th>
-                      <th className="px-3 py-2 font-semibold">Recipient</th>
-                      <th className="px-3 py-2 font-semibold">Amount</th>
-                      <th className="px-3 py-2 font-semibold">Due</th>
-                      <th className="px-3 py-2 font-semibold">Readiness</th>
-                      <th className="px-3 py-2 font-semibold">Status</th>
-                      <th className="px-3 py-2 font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoiceDrafts.map((draft) => {
-                      const blockers = invoiceDraftBlockers(draft);
-                      const deliveryBlockers = invoiceDeliveryBlockers(draft);
-                      const deliveryState = invoiceDeliveryState(draft);
-                      const emailPreview = invoiceEmailPreview(draft);
-                      const pdfArtifact = invoicePdfArtifact(draft);
-                      const sendState = invoiceDeliverySend(draft);
-                      const paymentStatus = invoicePaymentStatus(draft);
-                      const previewReady =
-                        deliveryState.pdf_preview_generated === true;
-                      const pdfStored =
-                        deliveryState.pdf_artifact_stored === true ||
-                        Boolean(metadataText(pdfArtifact.document_id));
-                      const emailPrepared =
-                        deliveryState.tenant_email_prepared === true;
-                      const deliveryReady =
-                        deliveryState.delivery_ready === true;
-                      const deliverySent =
-                        deliveryState.tenant_email_sent === true ||
-                        metadataText(sendState.status) === "sent";
-                      const paymentLabel =
-                        metadataText(paymentStatus.status) ?? "unpaid";
-                      const isPreparing =
-                        prepareInvoiceDraftMutation.isPending &&
-                        prepareInvoiceDraftMutation.variables === draft.id;
-                      const isUpdatingInvoice =
-                        updateInvoiceDraftMutation.isPending &&
-                        updateInvoiceDraftMutation.variables?.draftId ===
-                          draft.id;
-                      const isRecordingDelivery =
-                        recordInvoiceDeliveryMutation.isPending &&
-                        recordInvoiceDeliveryMutation.variables === draft.id;
-                      const isUpdatingPayment =
-                        updatePaymentStatusMutation.isPending &&
-                        updatePaymentStatusMutation.variables?.draftId ===
-                          draft.id;
-                      const canPrepare =
-                        draft.status !== "void" && draft.status !== "approved";
-                      const canApprove =
-                        draft.status === "ready_for_approval" && deliveryReady;
-                      const canRecordDelivery =
-                        draft.status === "approved" &&
-                        deliveryReady &&
-                        !deliverySent;
-                      const canMarkPaid =
-                        draft.status === "approved" && paymentLabel !== "paid";
-                      const canVoid = draft.status !== "void";
-                      return (
-                        <tr
-                          key={draft.id}
-                          className="border-t border-border align-top"
-                        >
-                          <td className="min-w-72 px-3 py-3">
-                            <div className="font-medium">
-                              {draft.invoice_number ?? `Invoice ${shortId(draft.id)}`}
-                            </div>
-                            <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                              {draft.title}
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              Source billing draft {shortId(draft.billing_draft_id)}
-                            </div>
-                          </td>
-                          <td className="min-w-52 px-3 py-3 text-xs">
-                            <div className="font-medium text-foreground">
-                              {draft.recipient_name ?? "Recipient not confirmed"}
-                            </div>
-                            <div className="mt-1 text-muted-foreground">
-                              {draft.recipient_email ?? "Billing email missing"}
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-sm font-medium">
-                            {formatMoney(draft.total_cents)}
-                            {draft.gst_cents ? (
-                              <div className="mt-1 text-xs font-normal text-muted-foreground">
-                                GST {formatMoney(draft.gst_cents)}
-                              </div>
-                            ) : null}
-                          </td>
-                          <td className="px-3 py-3 text-xs">
-                            {formatDate(draft.due_date)}
-                          </td>
-                          <td className="min-w-64 px-3 py-3 text-xs">
-                            {blockers.length ? (
-                              <div className="grid gap-1 text-muted-foreground">
-                                {blockers.slice(0, 3).map((blocker) => (
-                                  <span key={blocker}>{blocker}</span>
-                                ))}
-                                {blockers.length > 3 ? (
-                                  <span>{blockers.length - 3} more blocker(s)</span>
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-9 rounded-lg px-3 text-danger"
+                                  onClick={() =>
+                                    updateDraftMutation.mutate({
+                                      draftId: draft.id,
+                                      status: "void",
+                                    })
+                                  }
+                                  disabled={!canVoid || isUpdating}
+                                  title="Voids this draft only. No invoice is posted or synced."
+                                >
+                                  {isUpdating ? (
+                                    <Loader2
+                                      size={14}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <Ban size={14} />
+                                  )}
+                                  Void
+                                </SecondaryButton>
+                                {invoiceDraft ? (
+                                  <StatusBadge
+                                    tone={invoiceDraftStatusTone(
+                                      invoiceDraft.status,
+                                    )}
+                                  >
+                                    Invoice {shortId(invoiceDraft.id)}
+                                  </StatusBadge>
+                                ) : draft.status === "approved" ? (
+                                  <SecondaryButton
+                                    type="button"
+                                    className="min-h-9 rounded-lg px-3"
+                                    onClick={() =>
+                                      createInvoiceDraftMutation.mutate(
+                                        draft.id,
+                                      )
+                                    }
+                                    disabled={isCreatingInvoice}
+                                    title="Creates an internal invoice draft only. No PDF, tenant email, or Xero sync."
+                                  >
+                                    {isCreatingInvoice ? (
+                                      <Loader2
+                                        size={14}
+                                        className="animate-spin"
+                                      />
+                                    ) : (
+                                      <FileCheck2 size={14} />
+                                    )}
+                                    Invoice draft
+                                  </SecondaryButton>
                                 ) : null}
                               </div>
-                            ) : (
-                              <span className="text-leasium-success">
-                                Ready for invoice approval
-                              </span>
-                            )}
-                            <div className="mt-2 flex flex-wrap gap-2">
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {!billingDraftsLoading && billingDrafts.length === 0 ? (
+                        <tr>
+                          <td className="px-3 py-10" colSpan={6}>
+                            <EmptyState
+                              title="No billing drafts"
+                              description="Reviewed invoice or admin documents will appear here as source-linked billing drafts before any invoice posting or Xero sync exists."
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                      {billingDraftsLoading ? (
+                        <tr>
+                          <td
+                            className="px-3 py-10 text-center text-sm text-muted-foreground"
+                            colSpan={6}
+                          >
+                            Loading billing drafts...
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </SectionPanel>
+            ) : null}
+
+            {activeBillingTab === "invoice-prep" ? (
+              <SectionPanel
+                title="Invoice preparation"
+                description="Approved billing drafts become internal invoice drafts. Prepare the preview, store the PDF artifact, and approve only when blockers are clear."
+                icon={<FileCheck2 size={17} className="text-primary" />}
+                actions={
+                  <StatusBadge
+                    tone={
+                      invoiceDraftsLoading
+                        ? "neutral"
+                        : invoiceDrafts.length
+                          ? "primary"
+                          : "neutral"
+                    }
+                  >
+                    {invoiceDraftsLoading
+                      ? "Loading"
+                      : `${invoiceDrafts.length} invoice draft${invoiceDrafts.length === 1 ? "" : "s"}`}
+                  </StatusBadge>
+                }
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">
+                          Invoice draft
+                        </th>
+                        <th className="px-3 py-2 font-semibold">Recipient</th>
+                        <th className="px-3 py-2 font-semibold">Amount</th>
+                        <th className="px-3 py-2 font-semibold">Due</th>
+                        <th className="px-3 py-2 font-semibold">Readiness</th>
+                        <th className="px-3 py-2 font-semibold">Status</th>
+                        <th className="px-3 py-2 font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoiceDrafts.map((draft) => {
+                        const blockers = invoiceDraftBlockers(draft);
+                        const deliveryBlockers = invoiceDeliveryBlockers(draft);
+                        const deliveryState = invoiceDeliveryState(draft);
+                        const emailPreview = invoiceEmailPreview(draft);
+                        const pdfArtifact = invoicePdfArtifact(draft);
+                        const sendState = invoiceDeliverySend(draft);
+                        const paymentStatus = invoicePaymentStatus(draft);
+                        const previewReady =
+                          deliveryState.pdf_preview_generated === true;
+                        const pdfStored =
+                          deliveryState.pdf_artifact_stored === true ||
+                          Boolean(metadataText(pdfArtifact.document_id));
+                        const emailPrepared =
+                          deliveryState.tenant_email_prepared === true;
+                        const deliveryReady =
+                          deliveryState.delivery_ready === true;
+                        const deliverySent =
+                          deliveryState.tenant_email_sent === true ||
+                          metadataText(sendState.status) === "sent";
+                        const paymentLabel =
+                          metadataText(paymentStatus.status) ?? "unpaid";
+                        const isPreparing =
+                          prepareInvoiceDraftMutation.isPending &&
+                          prepareInvoiceDraftMutation.variables === draft.id;
+                        const isUpdatingInvoice =
+                          updateInvoiceDraftMutation.isPending &&
+                          updateInvoiceDraftMutation.variables?.draftId ===
+                            draft.id;
+                        const canPrepare =
+                          draft.status !== "void" &&
+                          draft.status !== "approved";
+                        const canApprove =
+                          draft.status === "ready_for_approval" &&
+                          deliveryReady;
+                        const canVoid = draft.status !== "void";
+                        return (
+                          <tr
+                            key={draft.id}
+                            className="border-t border-border align-top"
+                          >
+                            <td className="min-w-72 px-3 py-3">
+                              <div className="font-medium">
+                                {draft.invoice_number ??
+                                  `Invoice ${shortId(draft.id)}`}
+                              </div>
+                              <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                                {draft.title}
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                Source billing draft{" "}
+                                {shortId(draft.billing_draft_id)}
+                              </div>
+                            </td>
+                            <td className="min-w-52 px-3 py-3 text-xs">
+                              <div className="font-medium text-foreground">
+                                {draft.recipient_name ??
+                                  "Recipient not confirmed"}
+                              </div>
+                              <div className="mt-1 text-muted-foreground">
+                                {draft.recipient_email ??
+                                  "Billing email missing"}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-sm font-medium">
+                              {formatMoney(draft.total_cents)}
+                              {draft.gst_cents ? (
+                                <div className="mt-1 text-xs font-normal text-muted-foreground">
+                                  GST {formatMoney(draft.gst_cents)}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="px-3 py-3 text-xs">
+                              {formatDate(draft.due_date)}
+                            </td>
+                            <td className="min-w-64 px-3 py-3 text-xs">
+                              {blockers.length ? (
+                                <div className="grid gap-1 text-muted-foreground">
+                                  {blockers.slice(0, 3).map((blocker) => (
+                                    <span key={blocker}>{blocker}</span>
+                                  ))}
+                                  {blockers.length > 3 ? (
+                                    <span>
+                                      {blockers.length - 3} more blocker(s)
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <span className="text-leasium-success">
+                                  Ready for invoice approval
+                                </span>
+                              )}
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <StatusBadge
+                                  tone={pdfStored ? "primary" : "neutral"}
+                                >
+                                  {pdfStored ? "PDF stored" : "No PDF"}
+                                </StatusBadge>
+                                <StatusBadge
+                                  tone={
+                                    deliverySent
+                                      ? "success"
+                                      : emailPrepared
+                                        ? "primary"
+                                        : "neutral"
+                                  }
+                                >
+                                  {deliverySent
+                                    ? "Email sent"
+                                    : emailPrepared
+                                      ? "Email draft"
+                                      : "No email"}
+                                </StatusBadge>
+                                <StatusBadge
+                                  tone={
+                                    paymentLabel === "paid"
+                                      ? "success"
+                                      : "neutral"
+                                  }
+                                >
+                                  {paymentLabel.replaceAll("_", " ")}
+                                </StatusBadge>
+                                <StatusBadge tone="neutral">
+                                  No Xero
+                                </StatusBadge>
+                              </div>
+                              {deliveryBlockers.length ? (
+                                <div className="mt-2 grid gap-1 text-danger">
+                                  {deliveryBlockers
+                                    .slice(0, 2)
+                                    .map((blocker) => (
+                                      <span key={blocker}>{blocker}</span>
+                                    ))}
+                                </div>
+                              ) : null}
+                              {emailPreview.subject ? (
+                                <div className="mt-2 line-clamp-2 text-muted-foreground">
+                                  {emailPreview.subject}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="px-3 py-3">
                               <StatusBadge
-                                tone={pdfStored ? "primary" : "neutral"}
+                                tone={invoiceDraftStatusTone(draft.status)}
                               >
-                                {pdfStored ? "PDF stored" : "No PDF"}
+                                {invoiceDraftStatusLabel(draft.status)}
                               </StatusBadge>
+                            </td>
+                            <td className="min-w-72 px-3 py-3">
+                              <div className="flex flex-wrap gap-2">
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-9 rounded-lg px-3"
+                                  onClick={() =>
+                                    prepareInvoiceDraftMutation.mutate(draft.id)
+                                  }
+                                  disabled={!canPrepare || isPreparing}
+                                  title="Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
+                                >
+                                  {isPreparing ? (
+                                    <Loader2
+                                      size={14}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <Mail size={14} />
+                                  )}
+                                  Prepare
+                                </SecondaryButton>
+                                {previewReady ? (
+                                  <a
+                                    href={invoiceDraftPreviewUrl(draft.id)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                  >
+                                    <Eye size={14} />
+                                    Preview
+                                  </a>
+                                ) : null}
+                                {pdfStored &&
+                                metadataText(pdfArtifact.document_id) ? (
+                                  <a
+                                    href={documentDownloadUrl(
+                                      metadataText(pdfArtifact.document_id) ??
+                                        "",
+                                    )}
+                                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                  >
+                                    <ReceiptText size={14} />
+                                    PDF
+                                  </a>
+                                ) : null}
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-9 rounded-lg px-3"
+                                  onClick={() =>
+                                    updateInvoiceDraftMutation.mutate({
+                                      draftId: draft.id,
+                                      status: "approved",
+                                    })
+                                  }
+                                  disabled={!canApprove || isUpdatingInvoice}
+                                  title="Approves the internal invoice draft only. No tenant email or Xero sync is run."
+                                >
+                                  {isUpdatingInvoice ? (
+                                    <Loader2
+                                      size={14}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <CheckCircle2 size={14} />
+                                  )}
+                                  Approve
+                                </SecondaryButton>
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-9 rounded-lg px-3 text-danger"
+                                  onClick={() =>
+                                    updateInvoiceDraftMutation.mutate({
+                                      draftId: draft.id,
+                                      status: "void",
+                                    })
+                                  }
+                                  disabled={!canVoid || isUpdatingInvoice}
+                                  title="Voids this internal invoice draft only."
+                                >
+                                  {isUpdatingInvoice ? (
+                                    <Loader2
+                                      size={14}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <Ban size={14} />
+                                  )}
+                                  Void
+                                </SecondaryButton>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {!invoiceDraftsLoading && invoiceDrafts.length === 0 ? (
+                        <tr>
+                          <td className="px-3 py-10" colSpan={7}>
+                            <EmptyState
+                              title="No invoice drafts"
+                              description="Approve a billing draft, then create an internal invoice draft from it. Delivery and Xero remain separate approval steps."
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                      {invoiceDraftsLoading ? (
+                        <tr>
+                          <td
+                            className="px-3 py-10 text-center text-sm text-muted-foreground"
+                            colSpan={7}
+                          >
+                            Loading invoice drafts...
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </SectionPanel>
+            ) : null}
+
+            {activeBillingTab === "delivery" ? (
+              <SectionPanel
+                title="Delivery & payments"
+                description="Record approved internal invoices as manually delivered or paid. This still does not send tenant email, post an invoice, or sync to Xero."
+                icon={<Mail size={17} className="text-primary" />}
+                actions={
+                  <StatusBadge
+                    tone={
+                      invoiceDraftsLoading
+                        ? "neutral"
+                        : approvedInvoiceDrafts.length
+                          ? "primary"
+                          : "neutral"
+                    }
+                  >
+                    {invoiceDraftsLoading
+                      ? "Loading"
+                      : `${approvedInvoiceDrafts.length} approved invoice${approvedInvoiceDrafts.length === 1 ? "" : "s"}`}
+                  </StatusBadge>
+                }
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Invoice</th>
+                        <th className="px-3 py-2 font-semibold">Recipient</th>
+                        <th className="px-3 py-2 font-semibold">Delivery</th>
+                        <th className="px-3 py-2 font-semibold">Payment</th>
+                        <th className="px-3 py-2 font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {approvedInvoiceDrafts.map((draft) => {
+                        const deliveryState = invoiceDeliveryState(draft);
+                        const emailPreview = invoiceEmailPreview(draft);
+                        const pdfArtifact = invoicePdfArtifact(draft);
+                        const sendState = invoiceDeliverySend(draft);
+                        const paymentStatus = invoicePaymentStatus(draft);
+                        const previewReady =
+                          deliveryState.pdf_preview_generated === true;
+                        const pdfStored =
+                          deliveryState.pdf_artifact_stored === true ||
+                          Boolean(metadataText(pdfArtifact.document_id));
+                        const emailPrepared =
+                          deliveryState.tenant_email_prepared === true;
+                        const deliveryReady =
+                          deliveryState.delivery_ready === true;
+                        const deliverySent =
+                          deliveryState.tenant_email_sent === true ||
+                          metadataText(sendState.status) === "sent";
+                        const paymentLabel =
+                          metadataText(paymentStatus.status) ?? "unpaid";
+                        const isRecordingDelivery =
+                          recordInvoiceDeliveryMutation.isPending &&
+                          recordInvoiceDeliveryMutation.variables === draft.id;
+                        const isUpdatingPayment =
+                          updatePaymentStatusMutation.isPending &&
+                          updatePaymentStatusMutation.variables?.draftId ===
+                            draft.id;
+                        const canRecordDelivery =
+                          deliveryReady && !deliverySent;
+                        const canMarkPaid = paymentLabel !== "paid";
+                        return (
+                          <tr
+                            key={draft.id}
+                            className="border-t border-border align-top"
+                          >
+                            <td className="min-w-72 px-3 py-3">
+                              <div className="font-medium">
+                                {draft.invoice_number ??
+                                  `Invoice ${shortId(draft.id)}`}
+                              </div>
+                              <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                                {draft.title}
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <StatusBadge tone="success">
+                                  Approved
+                                </StatusBadge>
+                                <StatusBadge tone="neutral">
+                                  No Xero
+                                </StatusBadge>
+                              </div>
+                            </td>
+                            <td className="min-w-52 px-3 py-3 text-xs">
+                              <div className="font-medium text-foreground">
+                                {draft.recipient_name ??
+                                  "Recipient not confirmed"}
+                              </div>
+                              <div className="mt-1 text-muted-foreground">
+                                {draft.recipient_email ??
+                                  "Billing email missing"}
+                              </div>
+                              {emailPreview.subject ? (
+                                <div className="mt-2 line-clamp-2 text-muted-foreground">
+                                  {emailPreview.subject}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="min-w-56 px-3 py-3">
+                              <div className="flex flex-wrap gap-2">
+                                <StatusBadge
+                                  tone={pdfStored ? "primary" : "neutral"}
+                                >
+                                  {pdfStored ? "PDF stored" : "No PDF"}
+                                </StatusBadge>
+                                <StatusBadge
+                                  tone={
+                                    deliverySent
+                                      ? "success"
+                                      : emailPrepared
+                                        ? "primary"
+                                        : "neutral"
+                                  }
+                                >
+                                  {deliverySent
+                                    ? "Marked sent"
+                                    : emailPrepared
+                                      ? "Email draft"
+                                      : "No email"}
+                                </StatusBadge>
+                              </div>
+                              <div className="mt-2 text-xs text-muted-foreground">
+                                Manual receipt only. Provider-backed email
+                                sending is still off.
+                              </div>
+                            </td>
+                            <td className="px-3 py-3">
                               <StatusBadge
                                 tone={
-                                  deliverySent
+                                  paymentLabel === "paid"
                                     ? "success"
-                                    : emailPrepared
-                                      ? "primary"
-                                      : "neutral"
+                                    : "neutral"
                                 }
-                              >
-                                {deliverySent
-                                  ? "Email sent"
-                                  : emailPrepared
-                                    ? "Email draft"
-                                    : "No email"}
-                              </StatusBadge>
-                              <StatusBadge
-                                tone={paymentLabel === "paid" ? "success" : "neutral"}
                               >
                                 {paymentLabel.replaceAll("_", " ")}
                               </StatusBadge>
-                              <StatusBadge tone="neutral">No Xero</StatusBadge>
-                            </div>
-                            {deliveryBlockers.length ? (
-                              <div className="mt-2 grid gap-1 text-danger">
-                                {deliveryBlockers.slice(0, 2).map((blocker) => (
-                                  <span key={blocker}>{blocker}</span>
-                                ))}
+                              <div className="mt-2 text-xs text-muted-foreground">
+                                {formatMoney(draft.total_cents)} due{" "}
+                                {formatDate(draft.due_date)}
                               </div>
-                            ) : null}
-                            {emailPreview.subject ? (
-                              <div className="mt-2 line-clamp-2 text-muted-foreground">
-                                {emailPreview.subject}
-                              </div>
-                            ) : null}
-                          </td>
-                          <td className="px-3 py-3">
-                            <StatusBadge tone={invoiceDraftStatusTone(draft.status)}>
-                              {invoiceDraftStatusLabel(draft.status)}
-                            </StatusBadge>
-                          </td>
-                          <td className="min-w-72 px-3 py-3">
-                            <div className="flex flex-wrap gap-2">
-                              <SecondaryButton
-                                type="button"
-                                className="min-h-9 rounded-lg px-3"
-                                onClick={() =>
-                                  prepareInvoiceDraftMutation.mutate(draft.id)
-                                }
-                                disabled={!canPrepare || isPreparing}
-                                title="Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
-                              >
-                                {isPreparing ? (
-                                  <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                  <Mail size={14} />
-                                )}
-                                Prepare
-                              </SecondaryButton>
-                              {previewReady ? (
-                                <a
-                                  href={invoiceDraftPreviewUrl(draft.id)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                            </td>
+                            <td className="min-w-72 px-3 py-3">
+                              <div className="flex flex-wrap gap-2">
+                                {previewReady ? (
+                                  <a
+                                    href={invoiceDraftPreviewUrl(draft.id)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                  >
+                                    <Eye size={14} />
+                                    Preview
+                                  </a>
+                                ) : null}
+                                {pdfStored &&
+                                metadataText(pdfArtifact.document_id) ? (
+                                  <a
+                                    href={documentDownloadUrl(
+                                      metadataText(pdfArtifact.document_id) ??
+                                        "",
+                                    )}
+                                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                  >
+                                    <ReceiptText size={14} />
+                                    PDF
+                                  </a>
+                                ) : null}
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-9 rounded-lg px-3"
+                                  onClick={() =>
+                                    recordInvoiceDeliveryMutation.mutate(
+                                      draft.id,
+                                    )
+                                  }
+                                  disabled={
+                                    !canRecordDelivery || isRecordingDelivery
+                                  }
+                                  title="Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
                                 >
-                                  <Eye size={14} />
-                                  Preview
-                                </a>
-                              ) : null}
-                              {pdfStored && metadataText(pdfArtifact.document_id) ? (
-                                <a
-                                  href={documentDownloadUrl(
-                                    metadataText(pdfArtifact.document_id) ?? "",
+                                  {isRecordingDelivery ? (
+                                    <Loader2
+                                      size={14}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <Mail size={14} />
                                   )}
-                                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                  Sent
+                                </SecondaryButton>
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-9 rounded-lg px-3"
+                                  onClick={() =>
+                                    updatePaymentStatusMutation.mutate({
+                                      draftId: draft.id,
+                                      paymentStatus: "paid",
+                                    })
+                                  }
+                                  disabled={!canMarkPaid || isUpdatingPayment}
+                                  title="Marks the approved internal invoice as paid in Leasium only."
                                 >
-                                  <ReceiptText size={14} />
-                                  PDF
-                                </a>
-                              ) : null}
-                              <SecondaryButton
-                                type="button"
-                                className="min-h-9 rounded-lg px-3"
-                                onClick={() =>
-                                  updateInvoiceDraftMutation.mutate({
-                                    draftId: draft.id,
-                                    status: "approved",
-                                  })
-                                }
-                                disabled={!canApprove || isUpdatingInvoice}
-                                title="Approves the internal invoice draft only. No tenant email or Xero sync is run."
-                              >
-                                {isUpdatingInvoice ? (
-                                  <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                  <CheckCircle2 size={14} />
-                                )}
-                                Approve
-                              </SecondaryButton>
-                              <SecondaryButton
-                                type="button"
-                                className="min-h-9 rounded-lg px-3"
-                                onClick={() =>
-                                  recordInvoiceDeliveryMutation.mutate(draft.id)
-                                }
-                                disabled={!canRecordDelivery || isRecordingDelivery}
-                                title="Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
-                              >
-                                {isRecordingDelivery ? (
-                                  <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                  <Mail size={14} />
-                                )}
-                                Sent
-                              </SecondaryButton>
-                              <SecondaryButton
-                                type="button"
-                                className="min-h-9 rounded-lg px-3"
-                                onClick={() =>
-                                  updatePaymentStatusMutation.mutate({
-                                    draftId: draft.id,
-                                    paymentStatus: "paid",
-                                  })
-                                }
-                                disabled={!canMarkPaid || isUpdatingPayment}
-                                title="Marks the approved internal invoice as paid in Leasium only."
-                              >
-                                {isUpdatingPayment ? (
-                                  <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                  <ReceiptText size={14} />
-                                )}
-                                Paid
-                              </SecondaryButton>
-                              <SecondaryButton
-                                type="button"
-                                className="min-h-9 rounded-lg px-3 text-danger"
-                                onClick={() =>
-                                  updateInvoiceDraftMutation.mutate({
-                                    draftId: draft.id,
-                                    status: "void",
-                                  })
-                                }
-                                disabled={!canVoid || isUpdatingInvoice}
-                                title="Voids this internal invoice draft only."
-                              >
-                                {isUpdatingInvoice ? (
-                                  <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                  <Ban size={14} />
-                                )}
-                                Void
-                              </SecondaryButton>
-                            </div>
+                                  {isUpdatingPayment ? (
+                                    <Loader2
+                                      size={14}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <ReceiptText size={14} />
+                                  )}
+                                  Paid
+                                </SecondaryButton>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {!invoiceDraftsLoading &&
+                      approvedInvoiceDrafts.length === 0 ? (
+                        <tr>
+                          <td className="px-3 py-10" colSpan={5}>
+                            <EmptyState
+                              title="No approved invoices"
+                              description="Approve an internal invoice draft first. Delivery and payment recording stays manual, with no tenant email send or Xero sync."
+                            />
                           </td>
                         </tr>
-                      );
-                    })}
-                    {!invoiceDraftsLoading && invoiceDrafts.length === 0 ? (
-                      <tr>
-                        <td className="px-3 py-10" colSpan={7}>
-                          <EmptyState
-                            title="No invoice drafts"
-                            description="Approve a billing draft, then create an internal invoice draft from it. Delivery and Xero remain separate approval steps."
-                          />
-                        </td>
-                      </tr>
-                    ) : null}
-                    {invoiceDraftsLoading ? (
-                      <tr>
-                        <td
-                          className="px-3 py-10 text-center text-sm text-muted-foreground"
-                          colSpan={7}
-                        >
-                          Loading invoice drafts...
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-            </SectionPanel>
+                      ) : null}
+                      {invoiceDraftsLoading ? (
+                        <tr>
+                          <td
+                            className="px-3 py-10 text-center text-sm text-muted-foreground"
+                            colSpan={5}
+                          >
+                            Loading delivery records...
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </SectionPanel>
+            ) : null}
 
-            <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+            {activeBillingTab === "readiness" ? (
               <SectionPanel
                 title="Rent roll readiness"
                 description="Each tenancy is checked from the rent roll response returned by the API."
                 icon={<ReceiptText size={17} className="text-primary" />}
+                className="order-2"
               >
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-left text-sm">
@@ -1492,11 +1816,14 @@ function BillingReadinessWorkspace() {
                   </table>
                 </div>
               </SectionPanel>
+            ) : null}
 
+            {activeBillingTab === "readiness" ? (
               <SectionPanel
                 title="Billing action queue"
                 description="Prioritised work with the right record to open next."
                 icon={<AlertTriangle size={17} className="text-[#B54708]" />}
+                className="order-1"
               >
                 {rentRollLoading ? (
                   <EmptyState
@@ -1573,7 +1900,7 @@ function BillingReadinessWorkspace() {
                   />
                 )}
               </SectionPanel>
-            </section>
+            ) : null}
           </>
         ) : null}
       </div>
