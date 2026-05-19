@@ -214,11 +214,12 @@ def _apply_insurance_intake(
     )
     if existing is not None:
         return existing
+    document = intake.document
     property_id, tenancy_unit_id, lease_id = _validate_obligation_scope(
         entity_id=intake.entity_id,
-        property_id=payload.property_id,
-        tenancy_unit_id=payload.tenancy_unit_id,
-        lease_id=payload.lease_id,
+        property_id=payload.property_id or document.property_id,
+        tenancy_unit_id=payload.tenancy_unit_id or document.tenancy_unit_id,
+        lease_id=payload.lease_id or document.lease_id,
         user=user,
         session=session,
         roles=WRITE_ROLES,
@@ -468,6 +469,72 @@ def get_document_intake(
     session: Annotated[Session, Depends(get_session)],
 ) -> DocumentIntakeRead:
     return _read_intake(_get_intake(intake_id, user, session, READ_ROLES))
+
+
+@router.post("/from-document/{document_id}", response_model=DocumentIntakeRead)
+def create_document_intake_from_document(
+    background_tasks: BackgroundTasks,
+    document_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    extract: bool = True,
+) -> DocumentIntakeRead:
+    document = session.get(StoredDocument, document_id)
+    if document is None or document.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found.",
+        )
+    assert_entity_role(session, user, document.entity_id, WRITE_ROLES)
+    _validate_upload(document.filename, document.content_type)
+    existing = session.scalar(
+        select(DocumentIntake).where(
+            DocumentIntake.document_id == document.id,
+            DocumentIntake.deleted_at.is_(None),
+        )
+    )
+    if existing is not None:
+        if extract and existing.status in {
+            DocumentIntakeStatus.uploaded,
+            DocumentIntakeStatus.failed,
+        }:
+            background_tasks.add_task(
+                _extract_intake_background,
+                existing.id,
+                user,
+                session.get_bind(),
+            )
+        return _read_intake(existing)
+
+    intake = DocumentIntake(
+        entity_id=document.entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.uploaded,
+        extracted_data={},
+        review_data={},
+    )
+    session.add(intake)
+    session.flush()
+    document.document_metadata = {
+        **(document.document_metadata or {}),
+        "smart_intake_id": str(intake.id),
+        "smart_intake_promoted": True,
+    }
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=document.entity_id,
+        action="promote",
+        target_table="document_intake",
+        target_id=intake.id,
+        tool_input={"document_id": str(document.id), "filename": document.filename},
+    )
+    session.commit()
+    session.refresh(intake)
+    if extract:
+        background_tasks.add_task(_extract_intake_background, intake.id, user, session.get_bind())
+    return _read_intake(intake)
 
 
 @router.post("/{intake_id}/extract", response_model=DocumentIntakeRead)

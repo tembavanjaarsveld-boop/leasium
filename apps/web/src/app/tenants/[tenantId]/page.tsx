@@ -12,13 +12,14 @@ import {
   Plus,
   Save,
   ShieldCheck,
+  Sparkles,
   Trash2,
   UploadCloud,
   X,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
@@ -36,6 +37,7 @@ import {
 import {
   cancelTenantOnboarding,
   applyTenantOnboarding,
+  createDocumentIntakeFromDocument,
   createTenantOnboarding,
   deleteDocument,
   documentDownloadUrl,
@@ -196,6 +198,7 @@ function reviewValue(value: unknown) {
 
 function TenantDetail() {
   const params = useParams<{ tenantId: string }>();
+  const router = useRouter();
   const tenantId = params.tenantId;
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -332,6 +335,13 @@ function TenantDetail() {
       queryClient.invalidateQueries({
         queryKey: ["tenant-documents", tenant?.entity_id, tenantId],
       });
+    },
+  });
+
+  const prepareReviewMutation = useMutation({
+    mutationFn: createDocumentIntakeFromDocument,
+    onSuccess: (intake) => {
+      router.push(`/intake?review=${intake.id}`);
     },
   });
 
@@ -554,6 +564,15 @@ function TenantDetail() {
                         ) : null}
                       </div>
                       <div className="flex shrink-0 gap-2">
+                        <SecondaryButton
+                          type="button"
+                          className="h-8"
+                          onClick={() => prepareReviewMutation.mutate(document.id)}
+                          disabled={prepareReviewMutation.isPending}
+                        >
+                          <Sparkles size={15} />
+                          Review
+                        </SecondaryButton>
                         <a
                           className={cn(
                             "inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted",
@@ -675,19 +694,35 @@ function TenantDetail() {
                         <div className="grid gap-2">
                           <div className="font-semibold">Uploaded documents</div>
                           {onboardingDocuments.map((document) => (
-                            <a
+                            <div
                               key={document.id}
-                              href={documentDownloadUrl(document.id)}
-                              className="flex items-center justify-between gap-3 rounded border border-border bg-white px-3 py-2 hover:bg-muted"
+                              className="flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-white px-3 py-2"
                             >
                               <span className="min-w-0 truncate">
                                 {document.filename}
                               </span>
-                              <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
-                                {documentCategoryLabel(document.category)}
-                                <Download size={14} />
+                              <span className="flex shrink-0 items-center gap-2">
+                                <span className="text-muted-foreground">
+                                  {documentCategoryLabel(document.category)}
+                                </span>
+                                <SecondaryButton
+                                  type="button"
+                                  className="h-8"
+                                  onClick={() => prepareReviewMutation.mutate(document.id)}
+                                  disabled={prepareReviewMutation.isPending}
+                                >
+                                  <Sparkles size={14} />
+                                  Review
+                                </SecondaryButton>
+                                <a
+                                  href={documentDownloadUrl(document.id)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
+                                  aria-label={`Download ${document.filename}`}
+                                >
+                                  <Download size={14} />
+                                </a>
                               </span>
-                            </a>
+                            </div>
                           ))}
                           {onboardingDocuments.length === 0 ? (
                             <div className="rounded border border-border bg-white px-3 py-2 text-muted-foreground">

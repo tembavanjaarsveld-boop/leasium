@@ -766,6 +766,12 @@ export function extractDocumentIntake(intakeId: string) {
   });
 }
 
+export function createDocumentIntakeFromDocument(documentId: string) {
+  return request<DocumentIntakeRecord>(`/document-intakes/from-document/${documentId}`, {
+    method: "POST",
+  });
+}
+
 export function reviewDocumentIntake(
   intakeId: string,
   payload: { reviewData: DocumentIntakeExtraction },

@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.models import DocumentIntake, Entity, Obligation, StoredDocument
+from stewart.core.models import DocumentCategory, DocumentIntake, Entity, Obligation, StoredDocument
 from stewart.core.settings import Settings
 
 
@@ -14,6 +14,50 @@ def _entity_id(session: Session) -> str:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
     return str(entity.id)
+
+
+def _lease_scope(client: TestClient, session: Session) -> dict[str, str]:
+    entity_id = _entity_id(session)
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Scope Plaza",
+            "street_address": "8 Scope Street",
+            "suburb": "Brisbane City",
+            "state": "QLD",
+            "postcode": "4000",
+            "property_type": "commercial_office",
+        },
+    )
+    assert property_response.status_code == 201
+    unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_response.json()["id"], "unit_label": "Suite 8"},
+    )
+    assert unit_response.status_code == 201
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "Scope Tenant Pty Ltd"},
+    )
+    assert tenant_response.status_code == 201
+    lease_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_response.json()["id"],
+            "tenant_id": tenant_response.json()["id"],
+            "status": "active",
+            "commencement_date": "2026-08-01",
+            "expiry_date": "2029-07-31",
+        },
+    )
+    assert lease_response.status_code == 201
+    return {
+        "property_id": property_response.json()["id"],
+        "tenancy_unit_id": unit_response.json()["id"],
+        "tenant_id": tenant_response.json()["id"],
+        "lease_id": lease_response.json()["id"],
+    }
 
 
 def _fake_extraction() -> dict[str, Any]:
@@ -223,6 +267,59 @@ def test_document_intake_rejects_unsupported_files(
     assert response.status_code == 415
 
 
+def test_document_intake_can_be_created_from_existing_document(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        assert file_data == b"existing document"
+        assert filename == "existing.txt"
+        return _fake_extraction(), "resp_existing_document"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = UUID(_entity_id(session))
+    document = StoredDocument(
+        entity_id=entity_id,
+        filename="existing.txt",
+        content_type="text/plain",
+        byte_size=len(b"existing document"),
+        file_data=b"existing document",
+        category=DocumentCategory.onboarding,
+        document_metadata={"source": "tenant_onboarding"},
+    )
+    session.add(document)
+    session.commit()
+
+    create_response = client.post(f"/api/v1/document-intakes/from-document/{document.id}")
+    assert create_response.status_code == 200
+    assert create_response.json()["document_id"] == str(document.id)
+    intake_id = create_response.json()["id"]
+
+    get_response = client.get(f"/api/v1/document-intakes/{intake_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["status"] == "ready_for_review"
+    assert get_response.json()["openai_response_id"] == "resp_existing_document"
+    session.refresh(document)
+    assert document.document_metadata["smart_intake_id"] == intake_id
+    assert document.document_metadata["source"] == "tenant_onboarding"
+
+    create_again_response = client.post(f"/api/v1/document-intakes/from-document/{document.id}")
+    assert create_again_response.status_code == 200
+    assert create_again_response.json()["id"] == intake_id
+    intakes = session.scalars(select(DocumentIntake)).all()
+    assert len(intakes) == 1
+
+
 def test_document_intake_can_be_cleared(
     client: TestClient,
     session: Session,
@@ -331,6 +428,58 @@ def test_document_intake_review_and_apply_insurance_obligation(
     assert apply_again_response.status_code == 200
     obligations = session.scalars(select(Obligation)).all()
     assert len(obligations) == 1
+
+
+def test_document_intake_apply_insurance_uses_existing_document_scope(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_insurance_extraction(), "resp_scoped_insurance"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    scope = _lease_scope(client, session)
+    document = StoredDocument(
+        entity_id=UUID(_entity_id(session)),
+        property_id=UUID(scope["property_id"]),
+        tenancy_unit_id=UUID(scope["tenancy_unit_id"]),
+        tenant_id=UUID(scope["tenant_id"]),
+        lease_id=UUID(scope["lease_id"]),
+        filename="scoped-insurance.txt",
+        content_type="text/plain",
+        byte_size=len(b"insurance"),
+        file_data=b"insurance",
+        category=DocumentCategory.insurance,
+        document_metadata={"source": "tenant_onboarding"},
+    )
+    session.add(document)
+    session.commit()
+
+    create_response = client.post(f"/api/v1/document-intakes/from-document/{document.id}")
+    assert create_response.status_code == 200
+    intake_id = create_response.json()["id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={"review_data": _fake_insurance_extraction()},
+    )
+    assert apply_response.status_code == 200
+    obligation_id = apply_response.json()["review_data"]["applied"]["obligation_id"]
+    obligation = session.get(Obligation, UUID(obligation_id))
+    assert obligation is not None
+    assert str(obligation.property_id) == scope["property_id"]
+    assert str(obligation.tenancy_unit_id) == scope["tenancy_unit_id"]
+    assert str(obligation.lease_id) == scope["lease_id"]
 
 
 def test_document_intake_apply_rejects_unsupported_document_type(
