@@ -13,7 +13,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-transparent bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}
@@ -28,7 +28,7 @@ export function SecondaryButton({
   return (
     <button
       className={cn(
-        "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}
@@ -40,7 +40,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={cn(
-        "h-9 w-full rounded-md border border-border bg-white px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15",
+        "min-h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15",
         className,
       )}
       {...props}
@@ -52,7 +52,7 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
   return (
     <select
       className={cn(
-        "h-9 w-full rounded-md border border-border bg-white px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15",
+        "min-h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15",
         className,
       )}
       {...props}
@@ -114,7 +114,12 @@ export function SectionPanel({
   actions?: React.ReactNode;
 }) {
   return (
-    <section className={cn("overflow-hidden rounded-md border border-border bg-white", className)}>
+    <section
+      className={cn(
+        "overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumXs",
+        className,
+      )}
+    >
       {title || description || icon || actions ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="min-w-0">
@@ -144,14 +149,14 @@ export function StatusBadge({
   children: React.ReactNode;
 }) {
   const tones = {
-    neutral: "bg-muted text-muted-foreground",
-    success: "bg-primary/10 text-primary",
-    warning: "bg-accent/10 text-foreground",
-    danger: "bg-danger/10 text-danger",
-    primary: "bg-primary/10 text-primary",
+    neutral: "bg-muted text-leasium-slate-500",
+    success: "bg-leasium-success-soft text-[#027A48]",
+    warning: "bg-leasium-warning-soft text-[#B54708]",
+    danger: "bg-leasium-danger-soft text-[#B42318]",
+    primary: "bg-leasium-blue-soft text-leasium-blue-hover",
   };
   return (
-    <span className={cn("rounded px-1.5 py-0.5 text-xs font-medium", tones[tone])}>
+    <span className={cn("rounded-full px-2 py-1 text-xs font-semibold", tones[tone])}>
       {children}
     </span>
   );

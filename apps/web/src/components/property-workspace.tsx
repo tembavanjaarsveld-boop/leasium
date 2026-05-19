@@ -21,6 +21,7 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -1652,17 +1653,31 @@ function Workspace() {
             </SecondaryButton>
           </div>
 
-          <section className="mb-4 overflow-hidden rounded-md border border-border bg-white">
+          <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumXs">
             <div className="grid gap-4 p-4">
               <div className="grid gap-3">
-                <div className="flex items-center gap-2">
-                  <FileText size={17} className="text-primary" />
-                  <h2 className="text-base font-semibold">Add a lease</h2>
-                  {activeLeaseIntake ? (
-                    <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                      {intakeStatus}
-                    </span>
-                  ) : null}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <FileText size={17} className="text-primary" />
+                    <div>
+                      <h2 className="text-base font-semibold">Add a lease</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Upload here or continue in Lease Inbox for full document review.
+                      </p>
+                    </div>
+                    {activeLeaseIntake ? (
+                      <span className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover">
+                        {intakeStatus}
+                      </span>
+                    ) : null}
+                  </div>
+                  <Link
+                    href="/intake"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                  >
+                    <UploadCloud size={15} />
+                    Lease Inbox
+                  </Link>
                 </div>
                 <label
                   htmlFor="lease-file"
@@ -1676,10 +1691,10 @@ function Workspace() {
                   }}
                   onDragLeave={() => setLeaseDropActive(false)}
                   onDrop={handleLeaseDrop}
-                  className={`grid cursor-pointer place-items-center gap-3 rounded-md border border-dashed px-4 py-8 text-center transition ${
+                  className={`grid min-h-36 cursor-pointer place-items-center gap-3 rounded-2xl border border-dashed px-4 py-8 text-center transition duration-200 ease-leasium ${
                     leaseDropActive
                       ? "border-primary bg-primary/5"
-                      : "border-border bg-muted/30 hover:bg-muted/60"
+                      : "border-border bg-muted/35 hover:border-primary/50 hover:bg-primary/5"
                   } ${selectedEntityId ? "" : "cursor-not-allowed opacity-60"}`}
                 >
                   {leaseIntakeMutation.isPending ||
@@ -1690,10 +1705,10 @@ function Workspace() {
                   )}
                   <span className="grid gap-1">
                     <span className="text-sm font-semibold">
-                      Drop a lease file here
+                      Drop a lease document here
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      or choose a PDF, Word document, or text file
+                      PDF, Word document, or text file
                     </span>
                   </span>
                   <input
@@ -2411,7 +2426,7 @@ function Workspace() {
                           disabled={updateObligationMutation.isPending}
                           className="h-8 w-8 px-0"
                         >
-                          <CheckCircle2 size={15} className="text-emerald-600" />
+                          <CheckCircle2 size={15} className="text-leasium-success" />
                         </SecondaryButton>
                         <SecondaryButton
                           type="button"

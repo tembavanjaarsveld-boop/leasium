@@ -3,12 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  Building2,
   CalendarClock,
   Check,
   ClipboardList,
   FileText,
   FileUp,
+  Layers3,
   Link2,
   Loader2,
   ReceiptText,
@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import {
@@ -48,9 +48,11 @@ import {
   ObligationRecord,
   RentRollRow,
   reviewDocumentIntake,
+  TenantOnboardingRecord,
 } from "@/lib/api";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
+const DEMO_MODE_STORAGE_KEY = "leasium.demo_mode";
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 
 function dateOnly(value: Date) {
@@ -58,6 +60,12 @@ function dateOnly(value: Date) {
   const month = String(value.getMonth() + 1).padStart(2, "0");
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function addDays(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return dateOnly(date);
 }
 
 function formatDate(value: string | null | undefined) {
@@ -215,8 +223,261 @@ function recordList(items: Array<Record<string, unknown>> | null | undefined) {
   return Array.isArray(items) ? items.slice(0, 4) : [];
 }
 
+function itemConfidence(
+  item: Record<string, unknown>,
+  fallback: number | null | undefined,
+) {
+  return typeof item.confidence === "number" ? item.confidence : fallback;
+}
+
+function itemSource(item: Record<string, unknown>) {
+  const page = typeof item.page === "number" ? `Page ${item.page}` : null;
+  return (
+    fieldText(item.source_hint) ??
+    fieldText(item.source) ??
+    fieldText(item.source_clause) ??
+    fieldText(item.clause) ??
+    page
+  );
+}
+
 function intakeIsActive(item: DocumentIntakeRecord) {
   return item.status === "uploaded" || item.status === "reading";
+}
+
+function DashboardMetricCard({
+  href,
+  label,
+  count,
+  chip,
+  tone,
+  nextAction,
+  icon,
+}: {
+  href: string;
+  label: string;
+  count: number;
+  chip: string;
+  tone: StatusTone;
+  nextAction: string;
+  icon: ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group rounded-2xl border border-border bg-white p-4 shadow-leasiumXs transition duration-200 ease-leasium hover:border-primary/40 hover:shadow-leasiumSm"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-semibold text-muted-foreground">{label}</span>
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-leasium-blue-soft text-primary transition group-hover:bg-primary group-hover:text-white">
+          {icon}
+        </span>
+      </div>
+      <div className="mt-3 flex items-end justify-between gap-3">
+        <div className="text-3xl font-semibold tracking-normal">{count}</div>
+        <StatusBadge tone={tone}>{chip}</StatusBadge>
+      </div>
+      <p className="mt-3 min-h-10 text-sm leading-5 text-muted-foreground">
+        {nextAction}
+      </p>
+    </Link>
+  );
+}
+
+function demoIntake(createdAt: string): DocumentIntakeRecord {
+  return {
+    id: "demo-intake-lease",
+    entity_id: "demo-entity",
+    document_id: "demo-document",
+    status: "ready_for_review",
+    document_type: "lease",
+    summary:
+      "Lease for Queen Street Retail Centre with rent review, option notice, and billing setup items.",
+    confidence: 0.88,
+    extracted_data: {
+      document_type: "lease",
+      summary: "Lease terms extracted for review.",
+      confidence: 0.88,
+      parties: [{ name: "Acme Retail Pty Ltd", role: "tenant" }],
+      properties: [{ name: "Queen Street Retail Centre", unit_label: "Shop 3" }],
+      key_dates: [{ label: "Rent review", date: "2026-06-30" }],
+      money_amounts: [{ label: "Annual rent", amount: 126000, currency: "AUD" }],
+      obligations: [],
+      suggested_links: { tenant_name: "Acme Retail Pty Ltd" },
+      warnings: [],
+      missing_information: [],
+    },
+    review_data: {},
+    openai_response_id: null,
+    error_message: null,
+    reviewed_at: null,
+    reviewed_by_user_id: null,
+    applied_at: null,
+    applied_by_user_id: null,
+    created_at: createdAt,
+    updated_at: createdAt,
+    filename: "acme-retail-lease.pdf",
+    content_type: "application/pdf",
+    byte_size: 840_000,
+    category: "lease",
+  };
+}
+
+function demoObligations(): ObligationRecord[] {
+  return [
+    {
+      id: "demo-obligation-insurance",
+      entity_id: "demo-entity",
+      property_id: "demo-property-queen",
+      tenancy_unit_id: "demo-unit-shop-3",
+      lease_id: "demo-lease-acme",
+      title: "Insurance certificate overdue",
+      category: "insurance_certificate",
+      status: "open",
+      due_date: addDays(-2),
+      completed_at: null,
+      priority: 1,
+      owner_role: "tenant",
+      notes: "Waiting on Acme Retail to upload current cover.",
+      metadata: { demo: true },
+    },
+    {
+      id: "demo-obligation-rent-review",
+      entity_id: "demo-entity",
+      property_id: "demo-property-queen",
+      tenancy_unit_id: "demo-unit-shop-1",
+      lease_id: "demo-lease-north",
+      title: "Annual CPI rent review",
+      category: "rent_review",
+      status: "open",
+      due_date: addDays(7),
+      completed_at: null,
+      priority: 1,
+      owner_role: "manager",
+      notes: "Prepare notice before the invoice run.",
+      metadata: { demo: true },
+    },
+    {
+      id: "demo-obligation-option",
+      entity_id: "demo-entity",
+      property_id: "demo-property-queen",
+      tenancy_unit_id: "demo-unit-shop-4",
+      lease_id: "demo-lease-coffee",
+      title: "Option notice window check",
+      category: "option_notice",
+      status: "open",
+      due_date: addDays(28),
+      completed_at: null,
+      priority: 2,
+      owner_role: "manager",
+      notes: "Confirm notice dates against lease clause 12.",
+      metadata: { demo: true },
+    },
+  ];
+}
+
+function demoRentRoll(): RentRollRow[] {
+  return [
+    {
+      entity_id: "demo-entity",
+      entity_name: "Demo portfolio",
+      property_id: "demo-property-queen",
+      property_name: "Queen Street Retail Centre",
+      tenancy_unit_id: "demo-unit-shop-3",
+      unit_label: "Shop 3",
+      lease_id: "demo-lease-acme",
+      tenant_id: "demo-tenant-acme",
+      tenant_name: "Acme Retail Pty Ltd",
+      lease_status: "active",
+      commencement_date: "2025-07-01",
+      expiry_date: "2028-06-30",
+      tenant_billing_email: null,
+      annual_rent_cents: 126_000_00,
+      rent_frequency: "monthly",
+      charge_rules: [],
+      charge_rules_total_cents: 10_500_00,
+      next_due_date: addDays(12),
+      gst_readiness_blockers: [],
+      xero_readiness_blockers: ["Xero customer mapping missing"],
+      invoice_readiness_blockers: ["Tenant billing email missing"],
+    },
+    {
+      entity_id: "demo-entity",
+      entity_name: "Demo portfolio",
+      property_id: "demo-property-queen",
+      property_name: "Queen Street Retail Centre",
+      tenancy_unit_id: "demo-unit-shop-1",
+      unit_label: "Shop 1",
+      lease_id: "demo-lease-north",
+      tenant_id: "demo-tenant-north",
+      tenant_name: "Northlake Health Pty Ltd",
+      lease_status: "active",
+      commencement_date: "2024-01-01",
+      expiry_date: "2028-12-31",
+      tenant_billing_email: "accounts@northlake.example",
+      annual_rent_cents: 180_000_00,
+      rent_frequency: "annual",
+      charge_rules: [],
+      charge_rules_total_cents: 180_000_00,
+      next_due_date: addDays(20),
+      gst_readiness_blockers: ["GST treatment missing on outgoings rule"],
+      xero_readiness_blockers: [],
+      invoice_readiness_blockers: [],
+    },
+  ];
+}
+
+function demoOnboardings(createdAt: string): TenantOnboardingRecord[] {
+  return [
+    {
+      id: "demo-onboarding-sent",
+      entity_id: "demo-entity",
+      lease_id: "demo-lease-acme",
+      tenant_id: "demo-tenant-acme",
+      token: "demo-sent",
+      status: "sent",
+      due_date: addDays(3),
+      expires_at: addDays(14),
+      last_sent_at: createdAt,
+      resent_at: null,
+      cancel_reason: null,
+      onboarding_url: "/onboarding/demo-sent",
+      submitted_data: {},
+      submitted_at: null,
+      review_data: {},
+      reviewed_at: null,
+      reviewed_by_user_id: null,
+      applied_at: null,
+      applied_by_user_id: null,
+      created_at: createdAt,
+      updated_at: createdAt,
+      deleted_at: null,
+    },
+    {
+      id: "demo-onboarding-submitted",
+      entity_id: "demo-entity",
+      lease_id: "demo-lease-coffee",
+      tenant_id: "demo-tenant-coffee",
+      token: "demo-submitted",
+      status: "submitted",
+      due_date: addDays(5),
+      expires_at: addDays(14),
+      last_sent_at: createdAt,
+      resent_at: null,
+      cancel_reason: null,
+      onboarding_url: "/onboarding/demo-submitted",
+      submitted_data: {},
+      submitted_at: createdAt,
+      review_data: {},
+      reviewed_at: null,
+      reviewed_by_user_id: null,
+      applied_at: null,
+      applied_by_user_id: null,
+      created_at: createdAt,
+      updated_at: createdAt,
+      deleted_at: null,
+    },
+  ];
 }
 
 type ReviewGroupKey =
@@ -311,6 +572,18 @@ function updateGroupItem(
   return next;
 }
 
+function removeGroupItem(
+  draft: DocumentIntakeExtraction,
+  key: ReviewGroupKey,
+  index: number,
+): DocumentIntakeExtraction {
+  const next = cloneExtraction(draft);
+  const items = groupItems(next, key).map((item) => ({ ...item }));
+  items.splice(index, 1);
+  next[key] = items as never;
+  return next;
+}
+
 function buildIncludedReviewData(
   draft: DocumentIntakeExtraction,
   included: Record<ReviewGroupKey, boolean>,
@@ -344,6 +617,7 @@ function DocumentIntakeReviewPanel({
   saving,
   applying,
   clearing,
+  demo = false,
 }: {
   intake: DocumentIntakeRecord;
   draft: DocumentIntakeExtraction;
@@ -356,6 +630,7 @@ function DocumentIntakeReviewPanel({
   saving: boolean;
   applying: boolean;
   clearing: boolean;
+  demo?: boolean;
 }) {
   const data = draft;
   const warnings = [
@@ -380,7 +655,12 @@ function DocumentIntakeReviewPanel({
           <StatusBadge tone={intakeStatusTone(intake.status)}>
             {intakeStatusLabel(intake.status)}
           </StatusBadge>
-          <SecondaryButton type="button" className="h-8" onClick={onClear} disabled={clearing}>
+          <SecondaryButton
+            type="button"
+            className="h-8"
+            onClick={onClear}
+            disabled={demo || clearing}
+          >
             <X size={14} />
             Clear
           </SecondaryButton>
@@ -389,13 +669,13 @@ function DocumentIntakeReviewPanel({
     >
       <div className="grid gap-4 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+          <div>
             <div className="font-semibold">{intake.filename}</div>
-          <div className="text-xs text-muted-foreground">
-            {documentTypeLabel(intake.document_type)} - {confidenceLabel(intake.confidence)}
+            <div className="text-xs text-muted-foreground">
+              {documentTypeLabel(intake.document_type)} - {confidenceLabel(intake.confidence)}
+            </div>
           </div>
         </div>
-      </div>
 
         <Field label="Summary">
           <textarea
@@ -414,10 +694,15 @@ function DocumentIntakeReviewPanel({
             ))}
           </div>
         ) : null}
+        {demo ? (
+          <div className="rounded-xl border border-primary/20 bg-leasium-blue-soft px-3 py-2 text-sm text-leasium-blue-hover">
+            Demo preview only. Upload a live document when you are ready to save or apply.
+          </div>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2">
           {visibleGroups.map((group) => (
-            <div key={group.key} className="rounded-md border border-border bg-muted/25 p-3">
+            <div key={group.key} className="rounded-2xl border border-border bg-muted/25 p-3">
               <label className="mb-3 flex items-center justify-between gap-3 text-sm font-semibold">
                 <span>{groupTitle(group)}</span>
                 <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -432,7 +717,31 @@ function DocumentIntakeReviewPanel({
               </label>
               <div className={included[group.key] ? "grid gap-3" : "grid gap-3 opacity-45"}>
                 {groupItems(draft, group.key).slice(0, 3).map((item, index) => (
-                  <div key={index} className="grid gap-2 rounded bg-white p-3">
+                  <div key={index} className="grid gap-3 rounded-xl border border-border bg-white p-3 shadow-leasiumXs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onIncludedChange(group.key, true)}
+                          className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover transition hover:bg-primary hover:text-white"
+                        >
+                          Approve
+                        </button>
+                        <StatusBadge tone={itemConfidence(item, intake.confidence) && itemConfidence(item, intake.confidence)! >= 0.8 ? "success" : "warning"}>
+                          {confidenceLabel(itemConfidence(item, intake.confidence))}
+                        </StatusBadge>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onDraftChange(removeGroupItem(draft, group.key, index))
+                        }
+                        disabled={!included[group.key]}
+                        className="text-xs font-semibold text-danger transition hover:text-[#B42318] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Ignore
+                      </button>
+                    </div>
                     {group.fields.map((field) => (
                       <Field key={field.key} label={field.label}>
                         <Input
@@ -453,9 +762,9 @@ function DocumentIntakeReviewPanel({
                         />
                       </Field>
                     ))}
-                    {fieldText(item.source_hint) ? (
-                      <div className="text-xs text-muted-foreground">
-                        Source: {fieldText(item.source_hint)}
+                    {itemSource(item) ? (
+                      <div className="rounded-lg bg-leasium-blue-soft px-2 py-1 text-xs font-medium text-leasium-blue-hover">
+                        Source: {itemSource(item)}
                       </div>
                     ) : null}
                   </div>
@@ -481,7 +790,7 @@ function DocumentIntakeReviewPanel({
         ) : null}
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-          <SecondaryButton type="button" onClick={onSave} disabled={saving || applying}>
+          <SecondaryButton type="button" onClick={onSave} disabled={demo || saving || applying}>
             {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
             Save review
           </SecondaryButton>
@@ -491,6 +800,7 @@ function DocumentIntakeReviewPanel({
             disabled={
               applying ||
               saving ||
+              demo ||
               intake.status === "applied" ||
               !canApplyInsurance ||
               Boolean(applyBlocker)
@@ -521,10 +831,26 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
     money_amounts: true,
     obligations: true,
   });
+  const [demoMode, setDemoMode] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(DEMO_MODE_STORAGE_KEY) === "true",
+  );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const queryClient = useQueryClient();
   const asOf = dateOnly(new Date());
   const isIntakeWorkspace = mode === "intake";
+  const demoCreatedAt = useMemo(() => new Date().toISOString(), []);
+  const demoDocumentIntake = useMemo(
+    () => demoIntake(demoCreatedAt),
+    [demoCreatedAt],
+  );
+  const demoObligationRows = useMemo(() => demoObligations(), []);
+  const demoRentRows = useMemo(() => demoRentRoll(), []);
+  const demoOnboardingRows = useMemo(
+    () => demoOnboardings(demoCreatedAt),
+    [demoCreatedAt],
+  );
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -546,6 +872,10 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
       window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
     }
   }, [selectedEntityId]);
+
+  useEffect(() => {
+    window.localStorage.setItem(DEMO_MODE_STORAGE_KEY, String(demoMode));
+  }, [demoMode]);
 
   useEffect(() => {
     if (!isIntakeWorkspace) {
@@ -668,27 +998,45 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
     },
   });
 
+  const displayPropertiesCount = demoMode ? 1 : (propertiesQuery.data?.length ?? 0);
+  const displayTenantsCount = demoMode ? 3 : (tenantsQuery.data?.length ?? 0);
+  const displayObligations = useMemo(
+    () => (demoMode ? demoObligationRows : (obligationsQuery.data ?? [])),
+    [demoMode, demoObligationRows, obligationsQuery.data],
+  );
+  const displayRentRoll = useMemo(
+    () => (demoMode ? demoRentRows : (rentRollQuery.data ?? [])),
+    [demoMode, demoRentRows, rentRollQuery.data],
+  );
+  const displayOnboardings = useMemo(
+    () => (demoMode ? demoOnboardingRows : (onboardingQuery.data ?? [])),
+    [demoMode, demoOnboardingRows, onboardingQuery.data],
+  );
+  const liveDocumentIntakes = documentIntakesQuery.data ?? [];
+  const documentIntakes = demoMode
+    ? [demoDocumentIntake, ...liveDocumentIntakes]
+    : liveDocumentIntakes;
+
   const openObligations = useMemo(
     () =>
-      [...(obligationsQuery.data ?? [])]
+      [...displayObligations]
         .filter((item) => !["completed", "waived"].includes(item.status))
         .sort((a, b) => dueRank(a.due_date) - dueRank(b.due_date)),
-    [obligationsQuery.data],
+    [displayObligations],
   );
 
   const urgentObligations = openObligations.filter(
     (item) => dueRank(item.due_date) <= 14 || item.priority <= 1,
   );
-  const billingIssues = (rentRollQuery.data ?? [])
+  const billingIssues = displayRentRoll
     .map((row) => ({ row, blockers: blockers(row) }))
     .filter((item) => item.blockers.length > 0);
-  const activeOnboardings = (onboardingQuery.data ?? []).filter(
+  const activeOnboardings = displayOnboardings.filter(
     (item) => item.status === "sent",
   );
-  const submittedOnboardings = (onboardingQuery.data ?? []).filter(
+  const submittedOnboardings = displayOnboardings.filter(
     (item) => item.status === "submitted",
   );
-  const documentIntakes = documentIntakesQuery.data ?? [];
   const reviewIntakes = documentIntakes.filter((item) => item.status !== "applied");
   const activeReviewIntakeId = reviewIntakeId ?? requestedReviewId;
   const selectedReviewIntake =
@@ -760,113 +1108,140 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <PageHeader
-          title={isIntakeWorkspace ? "Smart Intake" : selectedEntity?.name ?? "Dashboard"}
+          title={
+            isIntakeWorkspace
+              ? "Lease Inbox"
+              : demoMode
+                ? "Leasium demo portfolio"
+                : selectedEntity?.name ?? "Dashboard"
+          }
           description={
             isIntakeWorkspace
-              ? "Drop documents, review what Leasium found, then apply only the confirmed work."
-              : "Quick adds, attention items, lease events, and operational updates."
+              ? "Drop a document. Review what Leasium found. Apply only what you approve."
+              : "Your lease operations command centre for review queues, key dates, billing blockers, and tenant workflow."
           }
           actions={
-            <SecondaryButton
-              type="button"
-              onClick={() => {
-                propertiesQuery.refetch();
-                tenantsQuery.refetch();
-                obligationsQuery.refetch();
-                rentRollQuery.refetch();
-                onboardingQuery.refetch();
-                documentIntakesQuery.refetch();
-              }}
-              disabled={!selectedEntityId}
-            >
-              <RefreshCw size={15} />
-              Refresh
-            </SecondaryButton>
+            <>
+              {!isIntakeWorkspace || demoMode ? (
+                <SecondaryButton
+                  type="button"
+                  onClick={() => setDemoMode((current) => !current)}
+                >
+                  <Layers3 size={15} />
+                  {demoMode ? "View live portfolio" : "View demo portfolio"}
+                </SecondaryButton>
+              ) : null}
+              <SecondaryButton
+                type="button"
+                onClick={() => {
+                  propertiesQuery.refetch();
+                  tenantsQuery.refetch();
+                  obligationsQuery.refetch();
+                  rentRollQuery.refetch();
+                  onboardingQuery.refetch();
+                  documentIntakesQuery.refetch();
+                }}
+                disabled={!selectedEntityId}
+              >
+                <RefreshCw size={15} />
+                Refresh
+              </SecondaryButton>
+            </>
           }
         />
 
-        {entitiesQuery.error ? (
+        {entitiesQuery.error && !demoMode ? (
           <div className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {friendlyError(entitiesQuery.error)}
           </div>
         ) : null}
 
-        <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <Link
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <DashboardMetricCard
             href="/properties"
-            className="rounded-md border border-border bg-white p-4 transition hover:border-primary/40 hover:shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Properties</span>
-              <Building2 size={16} className="text-primary" />
-            </div>
-            <div className="mt-2 text-2xl font-semibold">
-              {propertiesQuery.data?.length ?? 0}
-            </div>
-          </Link>
-          <Link
+            label="Properties"
+            count={displayPropertiesCount}
+            chip={displayPropertiesCount ? "Live" : "Setup"}
+            tone={displayPropertiesCount ? "success" : "neutral"}
+            nextAction={
+              displayPropertiesCount
+                ? "Open the portfolio workspace."
+                : "Create or import your first property."
+            }
+            icon={<Layers3 size={17} />}
+          />
+          <DashboardMetricCard
             href="/tenants"
-            className="rounded-md border border-border bg-white p-4 transition hover:border-primary/40 hover:shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Tenants</span>
-              <UserRound size={16} className="text-primary" />
-            </div>
-            <div className="mt-2 text-2xl font-semibold">
-              {tenantsQuery.data?.length ?? 0}
-            </div>
-          </Link>
-          <Link
-            href="/properties"
-            className="rounded-md border border-border bg-white p-4 transition hover:border-primary/40 hover:shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Attention</span>
-              <AlertTriangle size={16} className="text-accent" />
-            </div>
-            <div className="mt-2 text-2xl font-semibold">
-              {urgentObligations.length}
-            </div>
-          </Link>
-          <Link
-            href="/properties"
-            className="rounded-md border border-border bg-white p-4 transition hover:border-primary/40 hover:shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Billing blockers</span>
-              <ReceiptText size={16} className="text-primary" />
-            </div>
-            <div className="mt-2 text-2xl font-semibold">
-              {billingIssues.length}
-            </div>
-          </Link>
-          <Link
+            label="Tenants"
+            count={displayTenantsCount}
+            chip={activeOnboardings.length ? "Waiting" : "Ready"}
+            tone={activeOnboardings.length ? "primary" : "success"}
+            nextAction={
+              activeOnboardings.length
+                ? `${activeOnboardings.length} onboarding link waiting on tenants.`
+                : "Add tenants or send onboarding links."
+            }
+            icon={<UserRound size={17} />}
+          />
+          <DashboardMetricCard
+            href="/tasks"
+            label="Attention"
+            count={urgentObligations.length}
+            chip={urgentObligations.length ? "Act now" : "Clear"}
+            tone={urgentObligations.length ? "warning" : "success"}
+            nextAction={
+              urgentObligations[0]
+                ? urgentObligations[0].title
+                : "No urgent dates need action."
+            }
+            icon={<AlertTriangle size={17} />}
+          />
+          <DashboardMetricCard
+            href="/billing-readiness"
+            label="Billing blockers"
+            count={billingIssues.length}
+            chip={billingIssues.length ? "Blocked" : "Ready"}
+            tone={billingIssues.length ? "danger" : "success"}
+            nextAction={
+              billingIssues[0]
+                ? billingIssues[0].blockers[0]
+                : "Invoice run is ready from current data."
+            }
+            icon={<ReceiptText size={17} />}
+          />
+          <DashboardMetricCard
             href="/intake"
-            className="rounded-md border border-border bg-white p-4 transition hover:border-primary/40 hover:shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Needs review</span>
-              <Sparkles size={16} className="text-primary" />
-            </div>
-            <div className="mt-2 text-2xl font-semibold">{needsReviewCount}</div>
-          </Link>
-          <Link
+            label="Needs review"
+            count={needsReviewCount}
+            chip={needsReviewCount ? "Review" : "Empty"}
+            tone={needsReviewCount ? "primary" : "neutral"}
+            nextAction={
+              needsReviewCount
+                ? "Approve extracted lease and tenant data."
+                : "Drop documents into Lease Inbox."
+            }
+            icon={<Sparkles size={17} />}
+          />
+          <DashboardMetricCard
             href="/intake"
-            className="rounded-md border border-border bg-white p-4 transition hover:border-primary/40 hover:shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Blocked docs</span>
-              <FileText size={16} className="text-accent" />
-            </div>
-            <div className="mt-2 text-2xl font-semibold">{failedIntakeCount}</div>
-          </Link>
+            label="Blocked docs"
+            count={failedIntakeCount}
+            chip={failedIntakeCount ? "Fix" : "Clear"}
+            tone={failedIntakeCount ? "danger" : "success"}
+            nextAction={
+              failedIntakeCount
+                ? "Review documents Leasium could not read."
+                : "No intake failures right now."
+            }
+            icon={<FileText size={17} />}
+          />
         </section>
 
         <section className="grid gap-5 lg:grid-cols-[430px_minmax(0,1fr)]">
           <div className="grid gap-5">
             <SectionPanel
-              title="Smart intake"
-              description="Nothing is applied until you review it."
+              title="Smart Intake"
+              description="Upload. Review. Automate. Every change stays under your control."
               icon={<Sparkles size={17} className="text-primary" />}
             >
               <div className="grid gap-4 p-4">
@@ -923,7 +1298,7 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                         : "Drop a document here"}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      PDF, Word, Markdown, or text file
+                      Lease, invoice, guarantee, certificate, tenant document
                     </span>
                   </span>
                 </button>
@@ -947,7 +1322,7 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                     href="/properties"
                     className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                   >
-                    <Building2 size={16} />
+                    <Layers3 size={16} />
                     Add property
                   </Link>
                   <Link
@@ -1040,7 +1415,10 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                                   : "Clear"
                               }
                               onClick={() => deleteDocumentIntakeMutation.mutate(item.id)}
-                              disabled={deleteDocumentIntakeMutation.isPending}
+                              disabled={
+                                item.id.startsWith("demo-") ||
+                                deleteDocumentIntakeMutation.isPending
+                              }
                             >
                               <X size={14} />
                               Clear
@@ -1052,7 +1430,7 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                     {reviewIntakes.length === 0 ? (
                       <EmptyState
                         title="No documents waiting for review."
-                        description="Drop a lease, invoice, guarantee, certificate, or tenant document."
+                        description="Drop in a lease, guarantee, insurance certificate, invoice, or tenant document to start your first review."
                       />
                     ) : null}
                   </div>
@@ -1111,12 +1489,13 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                 saving={reviewDocumentIntakeMutation.isPending}
                 applying={applyDocumentIntakeMutation.isPending}
                 clearing={deleteDocumentIntakeMutation.isPending}
+                demo={selectedReviewIntake.id.startsWith("demo-")}
               />
             ) : null}
             {isIntakeWorkspace && !selectedReviewIntake ? (
               <SectionPanel
                 title="Review document"
-                description="Documents you drop into Smart Intake will open here for confirmation."
+                description="Extracted terms, dates, parties, and obligations will wait here until you approve them."
                 icon={<Sparkles size={17} className="text-primary" />}
               >
                 <EmptyState

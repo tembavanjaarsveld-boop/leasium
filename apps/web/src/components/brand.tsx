@@ -4,21 +4,15 @@ export function LeasiumMark({ className }: { className?: string }) {
   return (
     <svg
       aria-hidden="true"
-      className={cn("h-9 w-9", className)}
-      viewBox="0 0 40 40"
+      className={cn("h-10 w-10 shrink-0", className)}
+      viewBox="0 0 128 128"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <rect width="40" height="40" rx="8" fill="#0E5A78" />
-      <path
-        d="M12 11.5C12 10.672 12.672 10 13.5 10H25.2L30 14.8V28.5C30 29.328 29.328 30 28.5 30H13.5C12.672 30 12 29.328 12 28.5V11.5Z"
-        fill="#F8FBFC"
-      />
-      <path d="M25 10.5V15H29.5" stroke="#A7F3D0" strokeWidth="1.6" />
-      <path d="M17 17H24" stroke="#0E5A78" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M17 21H26" stroke="#0E5A78" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M17 25H22" stroke="#0E5A78" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M11 30H30" stroke="#A7F3D0" strokeWidth="2" strokeLinecap="round" />
+      <rect width="128" height="128" rx="32" fill="#245BFF" />
+      <rect x="36" y="36" width="16" height="64" rx="8" fill="#FFFFFF" />
+      <rect x="36" y="84" width="56" height="16" rx="8" fill="#FFFFFF" />
+      <circle cx="94" cy="38" r="12" fill="#27D8C2" />
     </svg>
   );
 }
