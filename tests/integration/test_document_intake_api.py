@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.models import (
+    AuditAction,
     DocumentCategory,
     DocumentIntake,
     Entity,
@@ -303,6 +304,14 @@ def _fake_purchase_contract_extraction() -> dict[str, Any]:
                 "owner_gst_registered": True,
                 "xero_contact_id": "xero-docklands",
                 "xero_tracking_category": "Docklands Trade Centre",
+                "source_citations": {
+                    "owner_abn": {
+                        "source_hint": "Purchaser billing schedule",
+                        "citation": "ABN 33 444 555 666",
+                        "confidence": 0.91,
+                    },
+                    "owner_legal_name": "Purchaser details",
+                },
             }
         ],
         "key_dates": [
@@ -924,6 +933,33 @@ def test_document_intake_apply_purchase_contract_creates_property_records(
     assert prop.xero_contact_id == "xero-docklands"
     assert prop.property_metadata["source"] == "document_intake"
     assert prop.property_metadata["document_intake_id"] == intake_id
+    assert prop.property_metadata["source_citations"]["owner_abn"] == {
+        "source_hint": "Purchaser billing schedule",
+        "citation": "ABN 33 444 555 666",
+        "confidence": 0.91,
+    }
+    assert prop.property_metadata["apply_change_history"][0]["document_intake_id"] == intake_id
+    assert body["review_data"]["applied"]["property_changes"]
+    owner_abn_change = next(
+        change
+        for change in body["review_data"]["applied"]["property_changes"]
+        if change["field"] == "owner_abn"
+    )
+    assert owner_abn_change["before"] is None
+    assert owner_abn_change["after"] == "33 444 555 666"
+    assert owner_abn_change["source"]["source_hint"] == "Purchaser billing schedule"
+
+    property_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "property",
+            AuditAction.target_id == prop.id,
+            AuditAction.tool_name == "smart_intake_apply",
+        )
+    )
+    assert property_audit is not None
+    assert property_audit.tool_input is not None
+    assert property_audit.tool_input["document_intake_id"] == intake_id
+    assert property_audit.tool_input["changes"][0]["field"]
 
     unit_id = body["review_data"]["applied"]["tenancy_unit_ids"][0]
     unit = session.get(TenancyUnit, UUID(unit_id))
@@ -1010,6 +1046,19 @@ def test_document_intake_apply_purchase_contract_reuses_selected_property(
     assert linked_prop is not None
     assert linked_prop.owner_legal_name == "Docklands Property Trust"
     assert linked_prop.xero_contact_id == "xero-docklands"
+    assert body["review_data"]["applied"]["filled_blank_property_fields"]
+    linked_owner_change = next(
+        change
+        for change in body["review_data"]["applied"]["property_changes"]
+        if change["field"] == "owner_legal_name"
+    )
+    assert linked_owner_change["before"] is None
+    assert linked_owner_change["after"] == "Docklands Property Trust"
+    assert linked_owner_change["source"]["source_hint"] == "Purchaser details"
+    assert (
+        linked_prop.property_metadata["apply_change_history"][0]["document_intake_id"]
+        == create_response.json()["id"]
+    )
 
     created_prop = session.scalar(
         select(Property).where(Property.name == "Docklands Trade Centre")

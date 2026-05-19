@@ -788,12 +788,41 @@ def _find_matching_property(
     return session.scalar(statement)
 
 
-def _fill_blank_property_fields(prop: Property, row: dict[str, Any]) -> list[str]:
-    filled: list[str] = []
-    updates = {
+PROPERTY_APPLY_FIELDS = (
+    "name",
+    "street_address",
+    "suburb",
+    "state",
+    "postcode",
+    "country_code",
+    "parcel_id",
+    "land_sqm",
+    "building_sqm",
+    "parking_spaces",
+    "ownership_structure",
+    "owner_legal_name",
+    "owner_abn",
+    "trustee_name",
+    "trust_name",
+    "invoice_issuer_name",
+    "billing_contact_name",
+    "billing_email",
+    "invoice_reference",
+    "ownership_split",
+    "owner_gst_registered",
+    "xero_contact_id",
+    "xero_tracking_category",
+)
+
+
+def _property_updates_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": _str(row.get("name")),
+        "street_address": _str(row.get("street_address")) or _str(row.get("address")),
         "suburb": _str(row.get("suburb")),
         "state": _str(row.get("state")),
         "postcode": _str(row.get("postcode")),
+        "country_code": _str(row.get("country_code")) or "AU",
         "parcel_id": _str(row.get("parcel_id")),
         "land_sqm": _float(row.get("land_sqm")),
         "building_sqm": _float(row.get("building_sqm")),
@@ -812,11 +841,115 @@ def _fill_blank_property_fields(prop: Property, row: dict[str, Any]) -> list[str
         "xero_contact_id": _str(row.get("xero_contact_id")),
         "xero_tracking_category": _str(row.get("xero_tracking_category")),
     }
+
+
+def _source_for_property_field(row: dict[str, Any], field: str) -> dict[str, Any]:
+    field_sources = (
+        _dict(row.get("source_citations"))
+        or _dict(row.get("field_sources"))
+        or _dict(row.get("source_hints"))
+    )
+    raw_source = field_sources.get(field)
+    if isinstance(raw_source, dict):
+        source = {
+            "source_hint": _str(raw_source.get("source_hint")) or _str(raw_source.get("hint")),
+            "citation": _str(raw_source.get("citation")) or _str(raw_source.get("text")),
+            "confidence": _float(raw_source.get("confidence")),
+        }
+    elif raw_source is not None:
+        source = {
+            "source_hint": _str(raw_source),
+            "citation": None,
+            "confidence": _float(row.get("confidence")),
+        }
+    else:
+        source = {
+            "source_hint": _str(row.get("source_hint")),
+            "citation": None,
+            "confidence": _float(row.get("confidence")),
+        }
+    return {key: value for key, value in source.items() if value is not None}
+
+
+def _property_change(
+    field: str,
+    before: Any,
+    after: Any,
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    change: dict[str, Any] = {
+        "field": field,
+        "before": before,
+        "after": after,
+    }
+    source = _source_for_property_field(row, field)
+    if source:
+        change["source"] = source
+    return change
+
+
+def _append_property_apply_metadata(
+    prop: Property,
+    intake: DocumentIntake,
+    document_type: str,
+    changes: list[dict[str, Any]],
+) -> None:
+    metadata = dict(prop.property_metadata or {})
+    citations = dict(_dict(metadata.get("source_citations")))
+    for change in changes:
+        source = _dict(change.get("source"))
+        field = _str(change.get("field"))
+        if field and source:
+            citations[field] = source
+
+    history = list(metadata.get("apply_change_history") or [])
+    history.append(
+        {
+            "document_intake_id": str(intake.id),
+            "document_id": str(intake.document_id),
+            "document_type": document_type,
+            "changes": changes,
+        }
+    )
+    metadata.update(
+        {
+            "last_applied_document_intake_id": str(intake.id),
+            "last_applied_document_id": str(intake.document_id),
+            "last_applied_document_type": document_type,
+            "apply_change_history": history,
+        }
+    )
+    if citations:
+        metadata["source_citations"] = citations
+    prop.property_metadata = metadata
+
+
+def _fill_blank_property_fields(
+    prop: Property,
+    row: dict[str, Any],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    filled: list[str] = []
+    changes: list[dict[str, Any]] = []
+    updates = _property_updates_from_row(row)
+    updates.pop("name", None)
+    updates.pop("street_address", None)
+    updates.pop("country_code", None)
     for key, value in updates.items():
         if value is not None and getattr(prop, key) is None:
+            before = getattr(prop, key)
             setattr(prop, key, value)
             filled.append(key)
-    return filled
+            changes.append(_property_change(key, before, value, row))
+    return filled, changes
+
+
+def _created_property_changes(prop: Property, row: dict[str, Any]) -> list[dict[str, Any]]:
+    changes: list[dict[str, Any]] = []
+    for field in PROPERTY_APPLY_FIELDS:
+        value = getattr(prop, field)
+        if value is not None:
+            changes.append(_property_change(field, None, value, row))
+    return changes
 
 
 def _resolve_purchase_property(
@@ -825,12 +958,14 @@ def _resolve_purchase_property(
     payload: DocumentIntakeApplyRequest,
     user: CurrentUser,
     session: Session,
-) -> tuple[Property, str, list[str]]:
+) -> tuple[Property, str, list[str], list[dict[str, Any]]]:
     rows = _records(data.get("properties"))
     row = rows[0] if rows else {}
     if payload.property_id is not None:
         prop = _property_for_document_apply(payload.property_id, intake.entity_id, user, session)
-        return prop, "linked_property_register_records", _fill_blank_property_fields(prop, row)
+        filled_fields, changes = _fill_blank_property_fields(prop, row)
+        _append_property_apply_metadata(prop, intake, "purchase_contract", changes)
+        return prop, "linked_property_register_records", filled_fields, changes
 
     name, street_address = _property_identity(row)
     if not name and not street_address:
@@ -841,10 +976,13 @@ def _resolve_purchase_property(
 
     existing = _find_matching_property(intake.entity_id, row, session)
     if existing is not None:
+        filled_fields, changes = _fill_blank_property_fields(existing, row)
+        _append_property_apply_metadata(existing, intake, "purchase_contract", changes)
         return (
             existing,
             "linked_property_register_records",
-            _fill_blank_property_fields(existing, row),
+            filled_fields,
+            changes,
         )
 
     prop = Property(
@@ -884,7 +1022,9 @@ def _resolve_purchase_property(
     )
     session.add(prop)
     session.flush()
-    return prop, "created_property_register_records", []
+    changes = _created_property_changes(prop, row)
+    _append_property_apply_metadata(prop, intake, "purchase_contract", changes)
+    return prop, "created_property_register_records", [], changes
 
 
 def _fill_blank_unit_fields(unit: TenancyUnit, row: dict[str, Any]) -> list[str]:
@@ -961,7 +1101,7 @@ def _apply_purchase_contract_intake(
     user: CurrentUser,
     session: Session,
 ) -> tuple[Property, list[TenancyUnit], list[Obligation], dict[str, Any]]:
-    prop, property_action, filled_property_fields = _resolve_purchase_property(
+    prop, property_action, filled_property_fields, property_changes = _resolve_purchase_property(
         intake,
         data,
         payload,
@@ -1003,6 +1143,7 @@ def _apply_purchase_contract_intake(
         "created_tenancy_unit_count": created_units,
         "linked_tenancy_unit_count": linked_units,
         "filled_blank_property_fields": filled_property_fields,
+        "property_changes": property_changes,
         "filled_blank_unit_fields": filled_unit_fields,
         "obligation_ids": [str(obligation.id) for obligation in obligations],
         "obligation_count": len(obligations),
@@ -1552,6 +1693,28 @@ def apply_document_intake(
                 f"{len(units)} unit(s), {len(obligations)} task(s)."
             ),
         )
+        property_changes = list(applied.get("property_changes") or [])
+        if property_changes:
+            audit_log(
+                session,
+                actor=user.actor,
+                user_id=user.id,
+                entity_id=intake.entity_id,
+                action="apply",
+                target_table="property",
+                target_id=prop.id,
+                tool_name="smart_intake_apply",
+                tool_input={
+                    "document_intake_id": str(intake.id),
+                    "document_id": str(intake.document_id),
+                    "document_type": document_type,
+                    "changes": property_changes,
+                },
+                tool_output_summary=(
+                    f"Applied {len(property_changes)} property field change(s) "
+                    f"from Smart Intake document {intake.id}."
+                ),
+            )
         session.commit()
         session.refresh(intake)
         return _read_intake(intake)
