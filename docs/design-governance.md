@@ -69,6 +69,10 @@ Status: pending Remba review. The Billing Readiness workspace now surfaces prepa
 
 Status: pending Remba review. Billing Readiness now creates and lists internal invoice drafts from approved billing drafts. Keep the staging language explicit: this is internal invoice preparation only, with readiness blockers visible and no PDF generation, tenant email, or Xero sync from this step.
 
+## Property Provenance Surface
+
+Status: pending Remba review. Smart Intake apply outcomes and the Property workspace now expose purchase-contract source history, field citations, confidence, and before/after property changes. Keep this review-first and factual: show what changed and where it came from, without implying the document source is automatically authoritative.
+
 ## Acquisition Apply Sign-Off
 
 Status: pass. Remba approved acquisition/building contract apply on 2026-05-19 as a property-first workflow. The Apply plan must separate link existing, fill blanks only, create reviewed records, skip optional units, link the source document, and create milestone tasks. It must not imply acquisition completion, financial posting, or destructive overwrites.

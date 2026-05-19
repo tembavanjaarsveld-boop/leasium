@@ -23,6 +23,10 @@ Last updated: 2026-05-19
   - Includes owner/trust/split fields, property-level chips, collapsible setup, billing blockers, and Smart Intake extraction/apply support.
 - Smart Intake property provenance v1 is now listed as built.
   - Purchase contract apply stores source citations, before/after property changes, apply history, and property audit logs.
+- Smart Intake property provenance UI is built on this branch.
+  - Purchase-contract apply outcomes show property before/after changes returned by the backend.
+  - The Property workspace now surfaces latest source history, field citations, confidence, and deep links back to the source intake.
+  - This is design-facing and still needs Remba review.
 - Smart Intake acquisition tenancy schedule v1 is built on this branch.
   - Extraction schema includes `tenancy_schedule`.
   - Purchase contract apply now prefers schedule rows for unit creation/linking.
@@ -65,9 +69,11 @@ Last updated: 2026-05-19
   - Skipped: migration integration smoke test because `TEST_DATABASE_URL` is not configured in this shell.
 - Frontend checks passed:
   - `./node_modules/.bin/tsc --noEmit`
+  - `./node_modules/.bin/eslint src/components/property-workspace.tsx src/components/dashboard.tsx`
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
 - Local route smoke passed:
   - Next dev server loaded `/billing-readiness` on `127.0.0.1:3010` and returned `200`.
+  - Next dev server loaded `/properties` on `127.0.0.1:3011`, returned `200`, and the in-app browser reported no console errors.
 - Vercel production deployment passed:
   - Commit `5bd80bc Add invoice draft staging workflow`
   - Deployment `dpl_3SCqotaeA7AzCyRscJJZHq5zV88c`, state `READY`
@@ -89,12 +95,11 @@ Last updated: 2026-05-19
 ## Recommended Next Tickets
 
 1. Enable the temporary Vercel password gate and verify production access behavior.
-2. Surface stored property source citations and before/after apply history in the Smart Intake/property UI.
-3. Add richer acquisition schedule blockers, broader non-rent charge draft creation from reviewed rows, and UI surfacing for created pending leases.
-4. Add invoice draft approval, PDF preview/generation, and email delivery steps without Xero sync until explicit approval.
-5. Finish tenant onboarding delivery polish: branded templates, editable reminder schedules, expiry reminders, and failure recovery.
-6. Start Xero connection status and mapping surfaces before full invoice sync.
-7. Deepen Insights dashboards for portfolio health, exceptions, automation activity, billing risk, and owner/entity snapshots.
+2. Add richer acquisition schedule blockers, broader non-rent charge draft creation from reviewed rows, and UI surfacing for created pending leases.
+3. Add invoice draft approval, PDF preview/generation, and email delivery steps without Xero sync until explicit approval.
+4. Finish tenant onboarding delivery polish: branded templates, editable reminder schedules, expiry reminders, and failure recovery.
+5. Start Xero connection status and mapping surfaces before full invoice sync.
+6. Deepen Insights dashboards for portfolio health, exceptions, automation activity, billing risk, and owner/entity snapshots.
 
 ## Resume Checklist
 

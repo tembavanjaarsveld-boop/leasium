@@ -67,6 +67,17 @@ type ReviewApplyTarget = {
   tenantId: string;
   leaseId: string;
 };
+type AppliedPropertySource = {
+  sourceHint: string | null;
+  citation: string | null;
+  confidence: number | null;
+};
+type AppliedPropertyChange = {
+  field: string;
+  before: unknown;
+  after: unknown;
+  source: AppliedPropertySource | null;
+};
 type DocumentApplyOutcome = {
   documentName: string;
   workflowType: string | null;
@@ -75,9 +86,35 @@ type DocumentApplyOutcome = {
   billingDraftId?: string | null;
   leaseCount?: number;
   chargeRuleCount?: number;
+  propertyChanges?: AppliedPropertyChange[];
   targetLabel: string;
   dueDate: string | null;
   ignoredCount: number;
+};
+
+const propertyFieldLabels: Record<string, string> = {
+  name: "Property name",
+  street_address: "Street address",
+  suburb: "Suburb",
+  state: "State",
+  postcode: "Postcode",
+  parcel_id: "Parcel ID",
+  land_sqm: "Land area",
+  building_sqm: "Building area",
+  parking_spaces: "Parking",
+  ownership_structure: "Ownership path",
+  owner_legal_name: "Owner",
+  owner_abn: "Owner ABN",
+  trustee_name: "Trustee",
+  trust_name: "Trust",
+  invoice_issuer_name: "Invoice issuer",
+  billing_contact_name: "Billing contact",
+  billing_email: "Billing email",
+  invoice_reference: "Invoice reference",
+  ownership_split: "Ownership split",
+  owner_gst_registered: "Owner GST registered",
+  xero_contact_id: "Xero contact",
+  xero_tracking_category: "Xero tracking",
 };
 
 function dateOnly(value: Date) {
@@ -242,6 +279,86 @@ function fieldText(value: unknown) {
 
 function fieldNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function appliedSource(value: unknown): AppliedPropertySource | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const source = {
+    sourceHint: fieldText(value.source_hint) ?? fieldText(value.hint),
+    citation: fieldText(value.citation) ?? fieldText(value.text),
+    confidence: fieldNumber(value.confidence),
+  };
+  return source.sourceHint || source.citation || source.confidence !== null
+    ? source
+    : null;
+}
+
+function appliedPropertyChanges(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      if (!isRecord(item)) {
+        return null;
+      }
+      const field = fieldText(item.field);
+      if (!field) {
+        return null;
+      }
+      return {
+        field,
+        before: item.before,
+        after: item.after,
+        source: appliedSource(item.source),
+      };
+    })
+    .filter((item): item is AppliedPropertyChange => item !== null);
+}
+
+function propertyFieldLabel(field: string) {
+  return (
+    propertyFieldLabels[field] ??
+    field
+      .split("_")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")
+  );
+}
+
+function propertyValue(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+  if (typeof value === "number") {
+    return new Intl.NumberFormat("en-AU").format(value);
+  }
+  return String(value);
+}
+
+function propertySourceCaption(
+  source: AppliedPropertySource | null | undefined,
+) {
+  if (!source) {
+    return null;
+  }
+  const confidence =
+    source.confidence === null || source.confidence === undefined
+      ? null
+      : `${Math.round(source.confidence * 100)}% confidence`;
+  return [source.sourceHint, source.citation, confidence]
+    .filter(Boolean)
+    .join(" - ");
 }
 
 function appliedReviewData(record: DocumentIntakeRecord) {
@@ -1075,13 +1192,13 @@ function DocumentIntakeApplyOutcomeCard({
                       ? "milestone task"
                       : "milestone tasks"
                   }.`
-              : isBilling
-                ? `Prepared ${outcome.obligationCount} billing review ${
-                    outcome.obligationCount === 1 ? "task" : "tasks"
-                  }. Nothing was posted to Xero.`
-              : `Created ${outcome.obligationCount} ${taskNoun}${
-                  outcome.obligationCount === 1 ? "" : "s"
-                }.`}
+                : isBilling
+                  ? `Prepared ${outcome.obligationCount} billing review ${
+                      outcome.obligationCount === 1 ? "task" : "tasks"
+                    }. Nothing was posted to Xero.`
+                  : `Created ${outcome.obligationCount} ${taskNoun}${
+                      outcome.obligationCount === 1 ? "" : "s"
+                    }.`}
           </div>
           <div className="grid gap-2 text-foreground sm:grid-cols-2">
             <div>
@@ -1143,6 +1260,37 @@ function DocumentIntakeApplyOutcomeCard({
               </>
             ) : null}
           </div>
+          {isPropertySetup && outcome.propertyChanges?.length ? (
+            <div className="border-t border-leasium-success/20 pt-3">
+              <div className="text-xs font-semibold uppercase text-[#027A48]">
+                Property changes
+              </div>
+              <div className="mt-2 divide-y divide-leasium-success/20">
+                {outcome.propertyChanges.slice(0, 5).map((change, index) => {
+                  const source = propertySourceCaption(change.source);
+                  return (
+                    <div
+                      key={`${change.field}-${index}`}
+                      className="grid gap-1 py-2"
+                    >
+                      <div className="font-medium">
+                        {propertyFieldLabel(change.field)}
+                      </div>
+                      <div className="text-muted-foreground">
+                        {propertyValue(change.before)} to{" "}
+                        {propertyValue(change.after)}
+                      </div>
+                      {source ? (
+                        <div className="text-xs text-muted-foreground">
+                          {source}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <SecondaryButton type="button" onClick={onDismiss}>
@@ -1242,12 +1390,12 @@ function DocumentIntakeReviewPanel({
       : workflowType === "purchase_contract" &&
           !hasReviewedPropertyIdentity(reviewedDraft, applyTarget)
         ? "Choose or confirm the property before applying."
-      : canApplyWorkflow &&
-          workflowType !== "lease" &&
-          workflowType !== "purchase_contract" &&
-          obligationApplyCount === 0
-        ? "Confirm at least one obligation due date before applying."
-        : null;
+        : canApplyWorkflow &&
+            workflowType !== "lease" &&
+            workflowType !== "purchase_contract" &&
+            obligationApplyCount === 0
+          ? "Confirm at least one obligation due date before applying."
+          : null;
   const visibleGroups = reviewGroups.filter(
     (group) => groupItems(draft, group.key).length > 0,
   );
@@ -1300,13 +1448,13 @@ function DocumentIntakeReviewPanel({
             properties,
             tenancyUnits,
           )
-      : matchedLease && matchedUnit
-        ? `${matchedUnit.unit_label} lease`
-        : matchedUnit
-          ? matchedUnit.unit_label
-          : matchedProperty
-            ? matchedProperty.name
-            : "portfolio level";
+        : matchedLease && matchedUnit
+          ? `${matchedUnit.unit_label} lease`
+          : matchedUnit
+            ? matchedUnit.unit_label
+            : matchedProperty
+              ? matchedProperty.name
+              : "portfolio level";
   const leasePlanRows =
     workflowType === "lease"
       ? leaseApplyPlanRows(
@@ -1406,9 +1554,9 @@ function DocumentIntakeReviewPanel({
                     ? "Choose existing records to link only, or let Leasium create new records from the reviewed fields."
                     : workflowType === "purchase_contract"
                       ? "Choose an existing property to link, or let Leasium create property setup records from the reviewed contract fields."
-                    : workflowType === "invoice_admin"
-                      ? "Link the billing document to the right property, unit, or lease. Leasium prepares review work only."
-                    : "Link the source document and created work to the right property, unit, or lease before applying."}
+                      : workflowType === "invoice_admin"
+                        ? "Link the billing document to the right property, unit, or lease. Leasium prepares review work only."
+                        : "Link the source document and created work to the right property, unit, or lease before applying."}
                 </p>
               </div>
               <StatusBadge
@@ -1426,9 +1574,9 @@ function DocumentIntakeReviewPanel({
                   ? "Apply plan"
                   : workflowType === "purchase_contract"
                     ? "Apply plan"
-                  : applyTarget.propertyId
-                    ? "Matched"
-                    : "Portfolio level"}
+                    : applyTarget.propertyId
+                      ? "Matched"
+                      : "Portfolio level"}
               </StatusBadge>
             </div>
             <div className="mt-3 rounded-xl bg-muted/45 px-3 py-2 text-sm text-muted-foreground">
@@ -1516,7 +1664,7 @@ function DocumentIntakeReviewPanel({
                       ? "Create new from reviewed fields"
                       : workflowType === "purchase_contract"
                         ? "Create new from reviewed property"
-                      : "Portfolio level"}
+                        : "Portfolio level"}
                   </option>
                   {properties.map((property) => (
                     <option key={property.id} value={property.id}>
@@ -1542,7 +1690,7 @@ function DocumentIntakeReviewPanel({
                       ? "Create new from reviewed unit"
                       : workflowType === "purchase_contract"
                         ? "Skip units"
-                      : "No unit scope"}
+                        : "No unit scope"}
                   </option>
                   {tenancyUnits.map((unit) => (
                     <option key={unit.id} value={unit.id}>
@@ -1778,9 +1926,9 @@ function DocumentIntakeReviewPanel({
                             ? `create ${obligationApplyCount} milestone ${obligationApplyCount === 1 ? "task" : "tasks"}`
                             : "skip milestone tasks"
                         } from ${applyScope}. `
-                    : workflowType === "invoice_admin"
-                      ? `Prepare ${obligationApplyCount} billing review ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. Nothing will be invoiced or synced. `
-                    : `Create ${obligationApplyCount} document-driven ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. `}
+                      : workflowType === "invoice_admin"
+                        ? `Prepare ${obligationApplyCount} billing review ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. Nothing will be invoiced or synced. `
+                        : `Create ${obligationApplyCount} document-driven ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. `}
                   {ignoredCount
                     ? `${ignoredCount} ignored item${ignoredCount === 1 ? "" : "s"} will be left out.`
                     : "No ignored items will be included."}
@@ -2055,17 +2203,20 @@ export function Dashboard({
       setLastApplyOutcome({
         ...payload.outcome,
         obligationCount:
-          fieldNumber(applied.obligation_count) ?? payload.outcome.obligationCount,
+          fieldNumber(applied.obligation_count) ??
+          payload.outcome.obligationCount,
         billingDraftCount:
           fieldNumber(applied.billing_draft_count) ??
           payload.outcome.billingDraftCount,
         billingDraftId:
           fieldText(applied.billing_draft_id) ?? payload.outcome.billingDraftId,
         leaseCount:
-          fieldNumber(applied.created_lease_count) ?? payload.outcome.leaseCount,
+          fieldNumber(applied.created_lease_count) ??
+          payload.outcome.leaseCount,
         chargeRuleCount:
           fieldNumber(applied.created_charge_rule_count) ??
           payload.outcome.chargeRuleCount,
+        propertyChanges: appliedPropertyChanges(applied.property_changes),
       });
       setIntakeNotice("Document workflow applied.");
       queryClient.invalidateQueries({
@@ -2662,12 +2813,12 @@ export function Dashboard({
                                 propertiesQuery.data ?? [],
                                 reviewTenancyUnitsQuery.data ?? [],
                               )
-                          : applyTargetLabel(
-                              reviewApplyTarget,
-                              propertiesQuery.data ?? [],
-                              reviewTenancyUnitsQuery.data ?? [],
-                              reviewLeasesQuery.data ?? [],
-                            ),
+                            : applyTargetLabel(
+                                reviewApplyTarget,
+                                propertiesQuery.data ?? [],
+                                reviewTenancyUnitsQuery.data ?? [],
+                                reviewLeasesQuery.data ?? [],
+                              ),
                       dueDate: firstApplicableDueDate(reviewData, workflowType),
                       ignoredCount: ignoredReviewItemCount(
                         reviewDraft,

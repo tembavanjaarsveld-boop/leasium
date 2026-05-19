@@ -340,6 +340,51 @@ const ownershipStructures = [
   { value: "split", label: "Split ownership" },
 ] as const;
 
+type PropertySourceCitation = {
+  source_hint: string | null;
+  citation: string | null;
+  confidence: number | null;
+};
+
+type PropertyApplyChange = {
+  field: string;
+  before: unknown;
+  after: unknown;
+  source: PropertySourceCitation | null;
+};
+
+type PropertyApplyHistoryEntry = {
+  document_intake_id: string | null;
+  document_id: string | null;
+  document_type: string | null;
+  changes: PropertyApplyChange[];
+};
+
+const propertyFieldLabels: Record<string, string> = {
+  name: "Property name",
+  street_address: "Street address",
+  suburb: "Suburb",
+  state: "State",
+  postcode: "Postcode",
+  parcel_id: "Parcel ID",
+  land_sqm: "Land area",
+  building_sqm: "Building area",
+  parking_spaces: "Parking",
+  ownership_structure: "Ownership path",
+  owner_legal_name: "Owner",
+  owner_abn: "Owner ABN",
+  trustee_name: "Trustee",
+  trust_name: "Trust",
+  invoice_issuer_name: "Invoice issuer",
+  billing_contact_name: "Billing contact",
+  billing_email: "Billing email",
+  invoice_reference: "Invoice reference",
+  ownership_split: "Ownership split",
+  owner_gst_registered: "Owner GST registered",
+  xero_contact_id: "Xero contact",
+  xero_tracking_category: "Xero tracking",
+};
+
 function cleanText(value?: string) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -484,9 +529,10 @@ function propertyOwnershipBadges(property: PropertyRecord | null | undefined) {
     badges.push({ label: "Specific owner", tone: "primary" });
   }
   badges.push({
-    label: property.invoice_issuer_name || property.owner_legal_name
-      ? "Issuer set"
-      : "Issuer missing",
+    label:
+      property.invoice_issuer_name || property.owner_legal_name
+        ? "Issuer set"
+        : "Issuer missing",
     tone:
       property.invoice_issuer_name || property.owner_legal_name
         ? "success"
@@ -500,6 +546,142 @@ function propertyOwnershipBadges(property: PropertyRecord | null | undefined) {
     badges.push({ label: "ABN missing", tone: "warning" });
   }
   return badges;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function textValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function propertyMetadata(property: PropertyRecord | null | undefined) {
+  return isRecord(property?.metadata) ? property.metadata : {};
+}
+
+function sourceCitation(value: unknown): PropertySourceCitation | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const source = {
+    source_hint: textValue(value.source_hint) ?? textValue(value.hint),
+    citation: textValue(value.citation) ?? textValue(value.text),
+    confidence: numberValue(value.confidence),
+  };
+  return source.source_hint || source.citation || source.confidence !== null
+    ? source
+    : null;
+}
+
+function propertySourceCitations(property: PropertyRecord | null | undefined) {
+  const citations = propertyMetadata(property).source_citations;
+  if (!isRecord(citations)) {
+    return [];
+  }
+  return Object.entries(citations)
+    .map(([field, value]) => ({
+      field,
+      source: sourceCitation(value),
+    }))
+    .filter(
+      (item): item is { field: string; source: PropertySourceCitation } =>
+        item.source !== null,
+    )
+    .sort((a, b) =>
+      propertyFieldLabel(a.field).localeCompare(propertyFieldLabel(b.field)),
+    );
+}
+
+function propertyApplyChange(value: unknown): PropertyApplyChange | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const field = textValue(value.field);
+  if (!field) {
+    return null;
+  }
+  return {
+    field,
+    before: value.before,
+    after: value.after,
+    source: sourceCitation(value.source),
+  };
+}
+
+function propertyApplyHistory(
+  property: PropertyRecord | null | undefined,
+): PropertyApplyHistoryEntry[] {
+  const history = propertyMetadata(property).apply_change_history;
+  if (!Array.isArray(history)) {
+    return [];
+  }
+  return history
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+      const changes = Array.isArray(entry.changes)
+        ? entry.changes
+            .map((change) => propertyApplyChange(change))
+            .filter((change): change is PropertyApplyChange => change !== null)
+        : [];
+      return {
+        document_intake_id: textValue(entry.document_intake_id),
+        document_id: textValue(entry.document_id),
+        document_type: textValue(entry.document_type),
+        changes,
+      };
+    })
+    .filter((entry): entry is PropertyApplyHistoryEntry => entry !== null);
+}
+
+function propertyFieldLabel(field: string) {
+  return (
+    propertyFieldLabels[field] ??
+    field
+      .split("_")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")
+  );
+}
+
+function propertyDocumentTypeLabel(value: string | null | undefined) {
+  if (value === "purchase_contract") {
+    return "Purchase contract";
+  }
+  if (!value) {
+    return "Source document";
+  }
+  return value.replaceAll("_", " ");
+}
+
+function confidencePercent(value: number | null | undefined) {
+  return value === null || value === undefined
+    ? null
+    : `${Math.round(value * 100)}% confidence`;
+}
+
+function sourceCaption(source: PropertySourceCitation | null | undefined) {
+  if (!source) {
+    return null;
+  }
+  return [
+    source.source_hint,
+    source.citation,
+    confidencePercent(source.confidence),
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function shortId(value: string | null | undefined) {
+  return value ? value.slice(0, 8) : null;
 }
 
 function billingIdentitySummary(property: PropertyRecord | null | undefined) {
@@ -521,7 +703,10 @@ function draftAnnualRentCents(lease: LeaseIntakeExtraction["lease"]) {
   if (!lease) {
     return null;
   }
-  if (lease.annual_rent_cents !== null && lease.annual_rent_cents !== undefined) {
+  if (
+    lease.annual_rent_cents !== null &&
+    lease.annual_rent_cents !== undefined
+  ) {
     return lease.annual_rent_cents;
   }
   const dollars = lease.annual_rent_dollars ?? lease.annual_rent;
@@ -555,9 +740,13 @@ function leaseIntakeApplyBlockers(params: {
   if (
     !params.propertyId &&
     !inputString(params.property?.name).trim() &&
-    !inputString(params.property?.street_address ?? params.property?.address).trim()
+    !inputString(
+      params.property?.street_address ?? params.property?.address,
+    ).trim()
   ) {
-    blockers.push("Choose an existing property or enter a property name/address.");
+    blockers.push(
+      "Choose an existing property or enter a property name/address.",
+    );
   }
   if (
     !params.unitId &&
@@ -710,7 +899,8 @@ function ReviewFields({
   items: Array<{ label: string; value: unknown }>;
 }) {
   const visibleItems = items.filter(
-    (item) => item.value !== null && item.value !== undefined && item.value !== "",
+    (item) =>
+      item.value !== null && item.value !== undefined && item.value !== "",
   );
   return (
     <div className="rounded-md border border-border bg-white">
@@ -726,7 +916,9 @@ function ReviewFields({
             </div>
           ))
         ) : (
-          <div className="text-sm text-muted-foreground">Nothing found yet.</div>
+          <div className="text-sm text-muted-foreground">
+            Nothing found yet.
+          </div>
         )}
       </dl>
     </div>
@@ -890,7 +1082,9 @@ function Workspace() {
       window.localStorage.getItem(ENTITY_STORAGE_KEY) ??
       window.localStorage.getItem("stewart.entity_id");
     const firstEntity = entitiesQuery.data?.[0]?.id;
-    const accessibleIds = new Set((entitiesQuery.data ?? []).map((entity) => entity.id));
+    const accessibleIds = new Set(
+      (entitiesQuery.data ?? []).map((entity) => entity.id),
+    );
     const preferred = [fromUrl, stored, firstEntity].find(
       (id) => id && accessibleIds.has(id),
     );
@@ -898,7 +1092,11 @@ function Workspace() {
     if (!selectedEntityId && next) {
       setSelectedEntityId(next);
     }
-    if (selectedEntityId && accessibleIds.size && !accessibleIds.has(selectedEntityId)) {
+    if (
+      selectedEntityId &&
+      accessibleIds.size &&
+      !accessibleIds.has(selectedEntityId)
+    ) {
       setSelectedEntityId(next);
       setSelectedPropertyId("");
       window.localStorage.removeItem(ENTITY_STORAGE_KEY);
@@ -935,6 +1133,17 @@ function Workspace() {
       ),
     [propertiesQuery.data, selectedPropertyId],
   );
+  const selectedPropertyApplyHistory = useMemo(
+    () => propertyApplyHistory(selectedProperty),
+    [selectedProperty],
+  );
+  const selectedPropertySources = useMemo(
+    () => propertySourceCitations(selectedProperty),
+    [selectedProperty],
+  );
+  const latestPropertyApply =
+    selectedPropertyApplyHistory[selectedPropertyApplyHistory.length - 1] ??
+    null;
 
   const unitTotals = useMemo(
     () =>
@@ -1438,7 +1647,8 @@ function Workspace() {
   });
 
   const tenantOnboardingMutation = useMutation({
-    mutationFn: (leaseId: string) => createTenantOnboarding({ lease_id: leaseId }),
+    mutationFn: (leaseId: string) =>
+      createTenantOnboarding({ lease_id: leaseId }),
     onSuccess: (onboarding) => {
       queryClient.invalidateQueries({
         queryKey: ["tenant-onboarding", selectedEntityId],
@@ -1672,10 +1882,8 @@ function Workspace() {
     setLeaseReviewDraft((current) => ({
       ...(current ?? {}),
       [section]: {
-        ...(((current?.[section] as Record<string, unknown> | null) ?? {}) as Record<
-          string,
-          unknown
-        >),
+        ...(((current?.[section] as Record<string, unknown> | null) ??
+          {}) as Record<string, unknown>),
         [field]: value,
       },
     }));
@@ -1713,7 +1921,9 @@ function Workspace() {
   function removeReviewObligation(index: number) {
     setLeaseReviewDraft((current) => ({
       ...(current ?? {}),
-      obligations: (current?.obligations ?? []).filter((_, itemIndex) => itemIndex !== index),
+      obligations: (current?.obligations ?? []).filter(
+        (_, itemIndex) => itemIndex !== index,
+      ),
     }));
   }
 
@@ -1965,16 +2175,14 @@ function Workspace() {
                       <Button
                         type="button"
                         onClick={() =>
-                              activeLeaseIntakeId
-                            ? applyLeaseIntakeMutation.mutate(
-                                {
-                                  intakeId: activeLeaseIntakeId,
-                                  reviewedData: reviewExtraction,
-                                  propertyId: leaseReviewPropertyId,
-                                  tenancyUnitId: leaseReviewUnitId,
-                                  tenantId: leaseReviewTenantId,
-                                },
-                              )
+                          activeLeaseIntakeId
+                            ? applyLeaseIntakeMutation.mutate({
+                                intakeId: activeLeaseIntakeId,
+                                reviewedData: reviewExtraction,
+                                propertyId: leaseReviewPropertyId,
+                                tenancyUnitId: leaseReviewUnitId,
+                                tenantId: leaseReviewTenantId,
+                              })
                             : null
                         }
                         disabled={
@@ -2038,9 +2246,7 @@ function Workspace() {
 
                         {intakeApplyBlockers.length ? (
                           <div className="rounded-md border border-accent/30 bg-accent/5 p-3 text-sm">
-                            <div className="font-semibold">
-                              Before applying
-                            </div>
+                            <div className="font-semibold">Before applying</div>
                             <ul className="mt-1 grid gap-1 text-muted-foreground">
                               {intakeApplyBlockers.map((blocker) => (
                                 <li key={blocker}>{blocker}</li>
@@ -2059,13 +2265,18 @@ function Workspace() {
                                 <Select
                                   value={leaseReviewPropertyId}
                                   onChange={(event) => {
-                                    setLeaseReviewPropertyId(event.target.value);
+                                    setLeaseReviewPropertyId(
+                                      event.target.value,
+                                    );
                                     setLeaseReviewUnitId("");
                                   }}
                                 >
                                   <option value="">Create from review</option>
                                   {propertiesQuery.data?.map((property) => (
-                                    <option key={property.id} value={property.id}>
+                                    <option
+                                      key={property.id}
+                                      value={property.id}
+                                    >
                                       {property.name}
                                     </option>
                                   ))}
@@ -2125,7 +2336,9 @@ function Workspace() {
                                 </Field>
                                 <Field label="Postcode">
                                   <Input
-                                    value={inputString(intakeProperty?.postcode)}
+                                    value={inputString(
+                                      intakeProperty?.postcode,
+                                    )}
                                     onChange={(event) =>
                                       updateReviewSection(
                                         "property",
@@ -2153,7 +2366,10 @@ function Workspace() {
                                     }
                                   >
                                     {propertyTypes.map((type) => (
-                                      <option key={type.value} value={type.value}>
+                                      <option
+                                        key={type.value}
+                                        value={type.value}
+                                      >
                                         {type.label}
                                       </option>
                                     ))}
@@ -2251,9 +2467,11 @@ function Workspace() {
                                     <Field label="GST">
                                       <Select
                                         value={
-                                          intakeProperty?.owner_gst_registered === true
+                                          intakeProperty?.owner_gst_registered ===
+                                          true
                                             ? "true"
-                                            : intakeProperty?.owner_gst_registered === false
+                                            : intakeProperty?.owner_gst_registered ===
+                                                false
                                               ? "false"
                                               : ""
                                         }
@@ -2292,7 +2510,9 @@ function Workspace() {
                                     </Field>
                                     <Field label="Trust">
                                       <Input
-                                        value={inputString(intakeProperty?.trust_name)}
+                                        value={inputString(
+                                          intakeProperty?.trust_name,
+                                        )}
                                         onChange={(event) =>
                                           updateReviewSection(
                                             "property",
@@ -2389,7 +2609,9 @@ function Workspace() {
                               </Field>
                               <Field label="Trading as">
                                 <Input
-                                  value={inputString(intakeTenant?.trading_name)}
+                                  value={inputString(
+                                    intakeTenant?.trading_name,
+                                  )}
                                   onChange={(event) =>
                                     updateReviewSection(
                                       "tenant",
@@ -2484,7 +2706,9 @@ function Workspace() {
                                 <Field label="Expiry">
                                   <Input
                                     type="date"
-                                    value={inputString(intakeLease?.expiry_date)}
+                                    value={inputString(
+                                      intakeLease?.expiry_date,
+                                    )}
                                     onChange={(event) =>
                                       updateReviewSection(
                                         "lease",
@@ -2557,7 +2781,9 @@ function Workspace() {
                               </Field>
                               <Field label="Options">
                                 <Input
-                                  value={inputString(intakeLease?.option_summary)}
+                                  value={inputString(
+                                    intakeLease?.option_summary,
+                                  )}
                                   onChange={(event) =>
                                     updateReviewSection(
                                       "lease",
@@ -2646,14 +2872,16 @@ function Workspace() {
                                             )
                                           }
                                         >
-                                          {obligationCategories.map((category) => (
-                                            <option
-                                              key={category.value}
-                                              value={category.value}
-                                            >
-                                              {category.label}
-                                            </option>
-                                          ))}
+                                          {obligationCategories.map(
+                                            (category) => (
+                                              <option
+                                                key={category.value}
+                                                value={category.value}
+                                              >
+                                                {category.label}
+                                              </option>
+                                            ),
+                                          )}
                                         </Select>
                                       </Field>
                                       <Field label="Due">
@@ -2808,7 +3036,10 @@ function Workspace() {
                           disabled={updateObligationMutation.isPending}
                           className="h-8 w-8 px-0"
                         >
-                          <CheckCircle2 size={15} className="text-leasium-success" />
+                          <CheckCircle2
+                            size={15}
+                            className="text-leasium-success"
+                          />
                         </SecondaryButton>
                         <SecondaryButton
                           type="button"
@@ -2957,9 +3188,7 @@ function Workspace() {
               <div>
                 <div className="flex items-center gap-2">
                   <ReceiptText size={17} className="text-primary" />
-                  <h2 className="text-base font-semibold">
-                    Billing readiness
-                  </h2>
+                  <h2 className="text-base font-semibold">Billing readiness</h2>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Charge rules, Xero mapping, and invoice blockers before the
@@ -2969,7 +3198,9 @@ function Workspace() {
               <div className="flex flex-wrap items-center gap-2">
                 <Select
                   value={rentRollPropertyId}
-                  onChange={(event) => setRentRollPropertyId(event.target.value)}
+                  onChange={(event) =>
+                    setRentRollPropertyId(event.target.value)
+                  }
                   disabled={!selectedEntityId}
                   className="h-8 min-w-44"
                 >
@@ -3035,7 +3266,8 @@ function Workspace() {
                               )}
                             </div>
                             <div className="text-muted-foreground">
-                              {row.lease_status?.replaceAll("_", " ") ?? "No lease"}
+                              {row.lease_status?.replaceAll("_", " ") ??
+                                "No lease"}
                             </div>
                           </td>
                           <td className="px-3 py-3 text-xs">
@@ -3352,7 +3584,11 @@ function Workspace() {
                     <dt className="text-xs font-semibold uppercase text-muted-foreground">
                       Invoice path
                     </dt>
-                    <dd>{ownershipStructureLabel(selectedProperty.ownership_structure)}</dd>
+                    <dd>
+                      {ownershipStructureLabel(
+                        selectedProperty.ownership_structure,
+                      )}
+                    </dd>
                   </div>
                   <div>
                     <dt className="text-xs font-semibold uppercase text-muted-foreground">
@@ -3372,11 +3608,113 @@ function Workspace() {
                     </dt>
                     <dd>
                       {selectedProperty.xero_contact_id
-                        ? selectedProperty.xero_tracking_category ?? "Mapped"
+                        ? (selectedProperty.xero_tracking_category ?? "Mapped")
                         : "-"}
                     </dd>
                   </div>
                 </dl>
+              </div>
+            </section>
+          ) : null}
+
+          {selectedProperty ? (
+            <section className="mt-4 overflow-hidden rounded-md border border-border bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ClipboardList size={17} className="text-primary" />
+                    <h2 className="text-base font-semibold">Source history</h2>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Smart Intake changes stored against this property.
+                  </p>
+                </div>
+                {latestPropertyApply?.document_intake_id ? (
+                  <Link
+                    href={`/intake?review=${latestPropertyApply.document_intake_id}`}
+                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                  >
+                    <FileText size={15} />
+                    Intake {shortId(latestPropertyApply.document_intake_id)}
+                  </Link>
+                ) : null}
+              </div>
+              <div className="grid gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold">
+                      Latest applied changes
+                    </h3>
+                    {latestPropertyApply ? (
+                      <span className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover">
+                        {propertyDocumentTypeLabel(
+                          latestPropertyApply.document_type,
+                        )}
+                      </span>
+                    ) : null}
+                  </div>
+                  {latestPropertyApply?.changes.length ? (
+                    <div className="mt-3 divide-y divide-border text-sm">
+                      {latestPropertyApply.changes
+                        .slice(0, 6)
+                        .map((change, index) => {
+                          const source = sourceCaption(change.source);
+                          return (
+                            <div
+                              key={`${change.field}-${index}`}
+                              className="grid gap-1 py-2"
+                            >
+                              <div className="font-medium">
+                                {propertyFieldLabel(change.field)}
+                              </div>
+                              <div className="text-muted-foreground">
+                                {presentValue(change.before)} to{" "}
+                                {presentValue(change.after)}
+                              </div>
+                              {source ? (
+                                <div className="text-xs text-muted-foreground">
+                                  {source}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-sm text-muted-foreground">
+                      No before/after changes have been recorded yet.
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold">Field citations</h3>
+                    {selectedPropertyApplyHistory.length ? (
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {selectedPropertyApplyHistory.length} apply run
+                        {selectedPropertyApplyHistory.length === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
+                  </div>
+                  {selectedPropertySources.length ? (
+                    <div className="mt-3 divide-y divide-border text-sm">
+                      {selectedPropertySources.slice(0, 6).map((item) => (
+                        <div key={item.field} className="grid gap-1 py-2">
+                          <div className="font-medium">
+                            {propertyFieldLabel(item.field)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {sourceCaption(item.source)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-sm text-muted-foreground">
+                      No field citations stored yet.
+                    </div>
+                  )}
+                </div>
               </div>
             </section>
           ) : null}
@@ -3492,7 +3830,8 @@ function Workspace() {
                               ) : null}
                               {onboarding ? (
                                 <div className="mt-1 text-xs text-primary">
-                                  Onboarding {onboarding.status.replaceAll("_", " ")}
+                                  Onboarding{" "}
+                                  {onboarding.status.replaceAll("_", " ")}
                                 </div>
                               ) : null}
                             </td>
@@ -3617,7 +3956,6 @@ function Workspace() {
                     </tbody>
                   </table>
                 </div>
-
               </div>
             ) : (
               <div className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -3653,9 +3991,14 @@ function Workspace() {
                       <CalendarClock size={13} />
                       {editingLease ? "Lease update" : "New lease"}
                     </div>
-                    <h3 id="lease-editor-title" className="text-lg font-semibold">
+                    <h3
+                      id="lease-editor-title"
+                      className="text-lg font-semibold"
+                    >
                       {editingLease ? "Edit lease" : "Add lease"}
-                      {leaseEditorUnit ? ` for ${leaseEditorUnit.unit_label}` : ""}
+                      {leaseEditorUnit
+                        ? ` for ${leaseEditorUnit.unit_label}`
+                        : ""}
                     </h3>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {selectedProperty?.name ?? "Selected property"}
@@ -3681,7 +4024,9 @@ function Workspace() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground">Current tenant</div>
+                    <div className="text-xs text-muted-foreground">
+                      Current tenant
+                    </div>
                     <div className="font-medium">
                       {leaseEditorTenant
                         ? tenantDisplayName(leaseEditorTenant)
@@ -3711,7 +4056,9 @@ function Workspace() {
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Field
                         label="Unit"
-                        error={leaseForm.formState.errors.tenancy_unit_id?.message}
+                        error={
+                          leaseForm.formState.errors.tenancy_unit_id?.message
+                        }
                       >
                         <Select {...leaseForm.register("tenancy_unit_id")}>
                           <option value="">Select unit</option>
@@ -3802,7 +4149,10 @@ function Workspace() {
                       <Field label="Frequency">
                         <Select {...leaseForm.register("rent_frequency")}>
                           {rentFrequencies.map((frequency) => (
-                            <option key={frequency.value} value={frequency.value}>
+                            <option
+                              key={frequency.value}
+                              value={frequency.value}
+                            >
                               {frequency.label}
                             </option>
                           ))}
@@ -3958,7 +4308,10 @@ function Workspace() {
                   />
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Sqm" error={unitForm.formState.errors.sqm?.message}>
+                  <Field
+                    label="Sqm"
+                    error={unitForm.formState.errors.sqm?.message}
+                  >
                     <Input
                       type="number"
                       min="0"
@@ -3980,7 +4333,9 @@ function Workspace() {
                 </div>
                 {unitMutation.error || deleteUnitMutation.error ? (
                   <p className="text-sm text-danger">
-                    {friendlyError(unitMutation.error ?? deleteUnitMutation.error)}
+                    {friendlyError(
+                      unitMutation.error ?? deleteUnitMutation.error,
+                    )}
                   </p>
                 ) : null}
               </div>
@@ -4175,10 +4530,7 @@ function Workspace() {
                     <Input {...form.register("billing_contact_name")} />
                   </Field>
                   <Field label="Billing email">
-                    <Input
-                      type="email"
-                      {...form.register("billing_email")}
-                    />
+                    <Input type="email" {...form.register("billing_email")} />
                   </Field>
                 </div>
                 <Field label="Invoice reference">

@@ -45,6 +45,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Tenant onboarding reminders and receipts v1: reminder schedules, manual due-reminder runner, SendGrid/Twilio receipt ingestion, delivery timeline, and contact-fix actions.
 - [x] Property ownership and billing identity: owner/trust/split profile fields, quiet property-level chips, collapsible setup, billing-readiness blockers, and Smart Intake extraction/apply support.
 - [x] Smart Intake property provenance v1: purchase contract applies now store source citations, before/after property field changes, apply history, and property audit logs.
+- [x] Smart Intake property provenance UI: purchase-contract apply outcomes show property before/after changes, and the Property workspace surfaces stored field citations, latest apply history, confidence, and deep links back to the source intake.
 - [x] Temporary private-beta access gate: Vercel frontend supports an env-controlled password screen while tenant onboarding links remain publicly reachable.
 
 ## Next Build Order
