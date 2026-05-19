@@ -22,7 +22,15 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  ChangeEvent,
+  DragEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -33,6 +41,7 @@ import {
   applyLeaseIntake,
   cancelTenantOnboarding,
   createChargeRule,
+  createDocumentIntake,
   createObligation,
   createLease,
   createLeaseIntake,
@@ -647,6 +656,8 @@ function obligationPriorityRank(priority: ObligationFormValues["priority"]) {
 
 function Workspace() {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const propertyDocumentInputRef = useRef<HTMLInputElement>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string>("");
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const [rentRollPropertyId, setRentRollPropertyId] = useState<string>("");
@@ -668,7 +679,8 @@ function Workspace() {
   const [leaseReviewPropertyId, setLeaseReviewPropertyId] = useState("");
   const [leaseReviewUnitId, setLeaseReviewUnitId] = useState("");
   const [leaseReviewTenantId, setLeaseReviewTenantId] = useState("");
-  const [leaseDropActive, setLeaseDropActive] = useState(false);
+  const [propertyDocumentDropActive, setPropertyDocumentDropActive] =
+    useState(false);
   const [copiedOnboardingId, setCopiedOnboardingId] = useState<string>("");
 
   const entitiesQuery = useQuery({
@@ -1266,6 +1278,20 @@ function Workspace() {
     },
   });
 
+  const propertyDocumentIntakeMutation = useMutation({
+    mutationFn: (file: File) =>
+      createDocumentIntake({
+        entityId: selectedEntityId,
+        file,
+      }),
+    onSuccess: (intake) => {
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-document-intakes", selectedEntityId],
+      });
+      router.push(`/intake?review=${intake.id}`);
+    },
+  });
+
   const tenantOnboardingMutation = useMutation({
     mutationFn: (leaseId: string) => createTenantOnboarding({ lease_id: leaseId }),
     onSuccess: (onboarding) => {
@@ -1452,7 +1478,7 @@ function Workspace() {
     }
   }
 
-  function uploadLeaseFile(file: File | null | undefined) {
+  function uploadPropertyDocument(file: File | null | undefined) {
     if (!file || !selectedEntityId) {
       return;
     }
@@ -1463,18 +1489,18 @@ function Workspace() {
     setLeaseReviewUnitId("");
     setLeaseReviewTenantId("");
     applyLeaseIntakeMutation.reset();
-    leaseIntakeMutation.mutate(file);
+    propertyDocumentIntakeMutation.mutate(file);
   }
 
-  function handleLeaseInput(event: ChangeEvent<HTMLInputElement>) {
-    uploadLeaseFile(event.target.files?.[0]);
+  function handlePropertyDocumentInput(event: ChangeEvent<HTMLInputElement>) {
+    uploadPropertyDocument(event.target.files?.[0]);
     event.target.value = "";
   }
 
-  function handleLeaseDrop(event: DragEvent<HTMLLabelElement>) {
+  function handlePropertyDocumentDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
-    setLeaseDropActive(false);
-    uploadLeaseFile(event.dataTransfer.files?.[0]);
+    setPropertyDocumentDropActive(false);
+    uploadPropertyDocument(event.dataTransfer.files?.[0]);
   }
 
   function updateReviewSection(
@@ -1660,9 +1686,11 @@ function Workspace() {
                   <div className="flex items-center gap-2">
                     <FileText size={17} className="text-primary" />
                     <div>
-                      <h2 className="text-base font-semibold">Add a lease</h2>
+                      <h2 className="text-base font-semibold">
+                        Add property document
+                      </h2>
                       <p className="text-sm text-muted-foreground">
-                        Upload here or continue in Lease Inbox for full document review.
+                        Upload setup documents. Nothing is applied until review.
                       </p>
                     </div>
                     {activeLeaseIntake ? (
@@ -1671,69 +1699,87 @@ function Workspace() {
                       </span>
                     ) : null}
                   </div>
-                  <Link
-                    href="/intake"
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
-                  >
-                    <UploadCloud size={15} />
-                    Lease Inbox
-                  </Link>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => propertyDocumentInputRef.current?.click()}
+                      disabled={
+                        !selectedEntityId ||
+                        propertyDocumentIntakeMutation.isPending
+                      }
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover disabled:pointer-events-none disabled:opacity-60"
+                    >
+                      <Plus size={15} />
+                      New property setup
+                    </button>
+                    <Link
+                      href="/intake"
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                    >
+                      <UploadCloud size={15} />
+                      Review document
+                    </Link>
+                  </div>
                 </div>
                 <label
-                  htmlFor="lease-file"
+                  htmlFor="property-document-file"
                   onDragEnter={(event) => {
                     event.preventDefault();
-                    setLeaseDropActive(true);
+                    setPropertyDocumentDropActive(true);
                   }}
                   onDragOver={(event) => {
                     event.preventDefault();
-                    setLeaseDropActive(true);
+                    setPropertyDocumentDropActive(true);
                   }}
-                  onDragLeave={() => setLeaseDropActive(false)}
-                  onDrop={handleLeaseDrop}
+                  onDragLeave={() => setPropertyDocumentDropActive(false)}
+                  onDrop={handlePropertyDocumentDrop}
                   className={`grid min-h-36 cursor-pointer place-items-center gap-3 rounded-2xl border border-dashed px-4 py-8 text-center transition duration-200 ease-leasium ${
-                    leaseDropActive
+                    propertyDocumentDropActive
                       ? "border-primary bg-primary/5"
                       : "border-border bg-muted/35 hover:border-primary/50 hover:bg-primary/5"
                   } ${selectedEntityId ? "" : "cursor-not-allowed opacity-60"}`}
                 >
-                  {leaseIntakeMutation.isPending ||
-                  isLeaseIntakeProcessing(activeLeaseIntake) ? (
+                  {propertyDocumentIntakeMutation.isPending ? (
                     <Loader2 size={24} className="animate-spin text-primary" />
                   ) : (
                     <UploadCloud size={26} className="text-primary" />
                   )}
                   <span className="grid gap-1">
                     <span className="text-sm font-semibold">
-                      Drop a lease document here
+                      Drop a property document here
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      PDF, Word document, or text file
+                      Lease, purchase contract, tenancy schedule, disclosure
+                      pack, handover file, or certificate
                     </span>
                   </span>
                   <input
-                    id="lease-file"
+                    id="property-document-file"
+                    ref={propertyDocumentInputRef}
                     type="file"
                     accept=".pdf,.docx,.txt,.md"
                     className="sr-only"
-                    disabled={!selectedEntityId || leaseIntakeMutation.isPending}
-                    onChange={handleLeaseInput}
+                    disabled={
+                      !selectedEntityId ||
+                      propertyDocumentIntakeMutation.isPending
+                    }
+                    onChange={handlePropertyDocumentInput}
                   />
                 </label>
                 {selectedProperty ? (
                   <p className="text-xs text-muted-foreground">
-                    New details will be matched against {selectedProperty.name}{" "}
-                    where possible.
+                    Leasium will match this document against{" "}
+                    {selectedProperty.name} where possible.
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    Select a property first if this lease belongs to an
-                    existing building.
+                    Select a property to update it, or upload a setup document
+                    to start a new property review.
                   </p>
                 )}
-                {leaseIntakeMutation.error ? (
+                {propertyDocumentIntakeMutation.error ? (
                   <p className="text-sm text-danger">
-                    {friendlyError(leaseIntakeMutation.error)}
+                    {friendlyError(propertyDocumentIntakeMutation.error)}
                   </p>
                 ) : null}
                 {leaseIntakeQuery.error ? (
@@ -2326,10 +2372,11 @@ function Workspace() {
                   <div className="grid min-h-48 place-items-center text-center">
                     <div>
                       <div className="text-sm font-semibold">
-                        Lease review will appear here
+                        Document review opens in the inbox
                       </div>
                       <div className="mt-1 text-sm text-muted-foreground">
-                        Nothing is added until you press Apply lease.
+                        Nothing is applied until you review and approve the
+                        extracted details.
                       </div>
                     </div>
                   </div>
