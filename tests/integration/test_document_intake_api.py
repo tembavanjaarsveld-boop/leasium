@@ -1037,6 +1037,64 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert invoice_draft.notes is not None
     assert "No PDF generated" in invoice_draft.notes
 
+    blocked_delivery_response = client.post(
+        f"/api/v1/invoice-drafts/{invoice_body['id']}/prepare-delivery"
+    )
+    assert blocked_delivery_response.status_code == 200
+    blocked_delivery_body = blocked_delivery_response.json()
+    assert blocked_delivery_body["status"] == "draft"
+    assert "Tenant billing email missing." in blocked_delivery_body["metadata"][
+        "delivery_blockers"
+    ]
+    assert blocked_delivery_body["metadata"]["delivery_state"]["pdf_preview_generated"] is True
+    assert blocked_delivery_body["metadata"]["delivery_state"]["tenant_email_prepared"] is False
+    assert blocked_delivery_body["metadata"]["delivery_state"]["tenant_email_sent"] is False
+    assert blocked_delivery_body["metadata"]["delivery_state"]["xero_synced"] is False
+
+    blocked_approval_response = client.patch(
+        f"/api/v1/invoice-drafts/{invoice_body['id']}",
+        json={"status": "approved"},
+    )
+    assert blocked_approval_response.status_code == 409
+    assert "delivery blockers" in blocked_approval_response.json()["detail"]
+
+    preview_response = client.get(f"/api/v1/invoice-drafts/{invoice_body['id']}/preview")
+    assert preview_response.status_code == 200
+    assert "text/html" in preview_response.headers["content-type"]
+    assert invoice_body["invoice_number"] in preview_response.text
+    assert "Outgoings recovery" in preview_response.text
+    assert "No PDF file has been stored" in preview_response.text
+
+    invoice_draft.recipient_email = "accounts@scope-tenant.example"
+    session.commit()
+    ready_delivery_response = client.post(
+        f"/api/v1/invoice-drafts/{invoice_body['id']}/prepare-delivery"
+    )
+    assert ready_delivery_response.status_code == 200
+    ready_delivery_body = ready_delivery_response.json()
+    assert ready_delivery_body["status"] == "ready_for_approval"
+    assert ready_delivery_body["metadata"]["delivery_blockers"] == []
+    assert ready_delivery_body["metadata"]["delivery_state"]["tenant_email_prepared"] is True
+    assert ready_delivery_body["metadata"]["delivery_state"]["tenant_email_sent"] is False
+    assert ready_delivery_body["metadata"]["delivery_state"]["xero_synced"] is False
+    assert ready_delivery_body["metadata"]["delivery_preview"]["email"]["to"] == (
+        "accounts@scope-tenant.example"
+    )
+    assert "No email has been sent" in ready_delivery_body["metadata"][
+        "delivery_preview"
+    ]["email"]["body"]
+
+    approved_invoice_response = client.patch(
+        f"/api/v1/invoice-drafts/{invoice_body['id']}",
+        json={"status": "approved"},
+    )
+    assert approved_invoice_response.status_code == 200
+    approved_invoice_body = approved_invoice_response.json()
+    assert approved_invoice_body["status"] == "approved"
+    assert approved_invoice_body["metadata"]["approved_by_user_id"]
+    assert approved_invoice_body["metadata"]["delivery_state"]["tenant_email_sent"] is False
+    assert approved_invoice_body["metadata"]["delivery_state"]["xero_synced"] is False
+
     duplicate_invoice_response = client.post(
         f"/api/v1/billing-drafts/{billing_draft.id}/invoice-drafts"
     )

@@ -55,6 +55,12 @@ Last updated: 2026-05-19
   - Billing Readiness lists invoice drafts with recipient, amount, due date, readiness blockers, source billing draft, and no-PDF/no-email/no-Xero guardrails.
   - Invoice draft creation is idempotent per billing draft and blocked until the billing draft is approved.
   - This is design-facing and still needs Remba review.
+- Invoice draft delivery preparation v1 is built on this branch.
+  - Internal invoice drafts can prepare an HTML invoice preview and tenant email draft metadata.
+  - Delivery preparation stores blocker state and keeps `pdf_generated`, `tenant_email_sent`, and `xero_synced` false.
+  - Drafts move to `ready_for_approval` only when delivery blockers are clear, and API approval is blocked until delivery prep is ready.
+  - Billing Readiness now shows preview/email/Xero state plus Prepare, Preview, Approve, and Void actions.
+  - This is design-facing and still needs Remba review.
 - Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
   - This is design-facing and still needs Remba review.
 - AI enrichment for missing fields is in the backlog, not built yet.
@@ -67,7 +73,7 @@ Last updated: 2026-05-19
   - `.venv/bin/python -m pytest tests/integration/test_document_intake_api.py -q`
   - Result: `18 passed`
 - Backend lint passed:
-  - `.venv/bin/python -m ruff check apps/api/routers/document_intakes.py stewart/ai/document_intake.py tests/integration/test_document_intake_api.py`
+  - `.venv/bin/python -m ruff check apps/api/routers/charge_rules.py tests/integration/test_document_intake_api.py`
 - Backend register test passed:
   - `.venv/bin/python -m pytest tests/integration/test_register_api.py -q`
   - Result: `8 passed`
@@ -77,12 +83,13 @@ Last updated: 2026-05-19
   - Skipped: migration integration smoke test because `TEST_DATABASE_URL` is not configured in this shell.
 - Frontend checks passed:
   - `./node_modules/.bin/tsc --noEmit`
-  - `./node_modules/.bin/eslint src/components/dashboard.tsx`
+  - `./node_modules/.bin/eslint src/app/billing-readiness/page.tsx src/lib/api.ts`
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
 - Local route smoke passed:
   - Next dev server loaded `/billing-readiness` on `127.0.0.1:3010` and returned `200`.
   - Next dev server loaded `/properties` on `127.0.0.1:3011`, returned `200`, and the in-app browser reported no console errors.
   - Next dev server loaded `/intake` on `127.0.0.1:3012`, returned `200`, showed `Smart Intake` and `Review queue`, and the in-app browser reported no console errors.
+  - Next dev server loaded `/billing-readiness` on `127.0.0.1:3013` against a throwaway seeded API database; invoice delivery Prepare moved a smoke invoice to preview/email-draft ready, the Preview link served HTML, and the in-app browser reported no console errors.
 - Vercel production deployment passed:
   - Commit `6ff7c0b Expand acquisition schedule apply`
   - Deployment `dpl_51Y9Jq9FKDvRMuGpnYtetq7f8uNR`, state `READY`
@@ -110,7 +117,7 @@ Last updated: 2026-05-19
 ## Recommended Next Tickets
 
 1. Enable the temporary Vercel password gate and verify production access behavior.
-2. Add invoice draft approval, PDF preview/generation, and email delivery steps without Xero sync until explicit approval.
+2. Turn invoice preview preparation into stored PDF artifacts, branded email delivery, and delivery receipts without Xero sync until explicit approval.
 3. Add AI enrichment for missing public fields such as ABN, postcode, suburb/state, registered business details, and registered address with citation/confidence review before Apply.
 4. Finish tenant onboarding delivery polish: branded templates, editable reminder schedules, expiry reminders, and failure recovery.
 5. Start Xero connection status and mapping surfaces before full invoice sync.

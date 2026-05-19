@@ -1,10 +1,12 @@
 """Rent charge rule and rent roll routes."""
 
 from datetime import date
+from html import escape
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
@@ -166,6 +168,180 @@ def _invoice_draft_blockers(
     if entity is not None and not entity.xero_tenant_id:
         blockers.append("Xero connection missing before sync.")
     return blockers
+
+
+def _invoice_draft_delivery_blockers(draft: InvoiceDraft) -> list[str]:
+    blockers: list[str] = []
+    active_lines = [line for line in draft.lines if line.deleted_at is None]
+    if not draft.invoice_number:
+        blockers.append("Invoice number missing.")
+    if not draft.issuer_name:
+        blockers.append("Invoice issuer missing.")
+    if not draft.recipient_name:
+        blockers.append("Recipient name missing.")
+    if not draft.recipient_email:
+        blockers.append("Tenant billing email missing.")
+    if draft.due_date is None:
+        blockers.append("Due date missing.")
+    if not active_lines:
+        blockers.append("Invoice draft has no line items.")
+    if draft.total_cents <= 0:
+        blockers.append("Invoice draft amount missing.")
+    return blockers
+
+
+def _invoice_money(cents: int, currency: str) -> str:
+    amount = cents / 100
+    return f"{currency} {amount:,.2f}"
+
+
+def _invoice_email_preview(draft: InvoiceDraft) -> dict[str, str | None]:
+    subject_number = draft.invoice_number or str(draft.id)[:8].upper()
+    due = draft.due_date.isoformat() if draft.due_date else "the due date shown on the invoice"
+    body = (
+        f"Hi {draft.recipient_name or 'there'},\n\n"
+        f"Please find invoice {subject_number} for "
+        f"{_invoice_money(draft.total_cents, draft.currency)} attached for review. "
+        f"Payment is due {due}.\n\n"
+        "This is a Leasium draft email preview only. No email has been sent."
+    )
+    return {
+        "to": draft.recipient_email,
+        "subject": f"Invoice {subject_number} from {draft.issuer_name or 'Leasium'}",
+        "body": body,
+    }
+
+
+def _invoice_preview_html(draft: InvoiceDraft) -> str:
+    line_rows = "\n".join(
+        "<tr>"
+        f"<td>{escape(line.description)}</td>"
+        f"<td>{escape(line.source_hint or '')}</td>"
+        f"<td class=\"amount\">{escape(_invoice_money(line.amount_cents, line.currency))}</td>"
+        "</tr>"
+        for line in draft.lines
+        if line.deleted_at is None
+    )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{escape(draft.invoice_number or 'Invoice draft')}</title>
+  <style>
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 40px;
+      color: #172033;
+    }}
+    main {{ max-width: 760px; margin: 0 auto; }}
+    header {{
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      border-bottom: 1px solid #d8dde8;
+      padding-bottom: 24px;
+    }}
+    h1 {{ margin: 0 0 8px; font-size: 28px; }}
+    h2 {{ margin: 28px 0 8px; font-size: 16px; }}
+    p {{ margin: 4px 0; }}
+    table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
+    th, td {{
+      border-bottom: 1px solid #e7eaf0;
+      padding: 10px 0;
+      text-align: left;
+      vertical-align: top;
+    }}
+    th {{ color: #5c667a; font-size: 12px; text-transform: uppercase; }}
+    .amount {{ text-align: right; white-space: nowrap; }}
+    .total {{ font-size: 20px; font-weight: 700; }}
+    .muted {{ color: #5c667a; }}
+    .notice {{
+      margin-top: 28px;
+      padding: 12px;
+      border: 1px solid #d8dde8;
+      background: #f7f9fc;
+      border-radius: 8px;
+    }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <section>
+        <h1>Invoice preview</h1>
+        <p class="muted">{escape(draft.invoice_number or 'Number to confirm')}</p>
+        <p>Issue date: {escape(draft.issue_date.isoformat() if draft.issue_date else '-')}</p>
+        <p>Due date: {escape(draft.due_date.isoformat() if draft.due_date else '-')}</p>
+      </section>
+      <section>
+        <p><strong>{escape(draft.issuer_name or 'Issuer to confirm')}</strong></p>
+        <p>ABN: {escape(draft.issuer_abn or '-')}</p>
+      </section>
+    </header>
+    <h2>Bill to</h2>
+    <p><strong>{escape(draft.recipient_name or 'Recipient to confirm')}</strong></p>
+    <p>{escape(draft.recipient_email or 'Billing email missing')}</p>
+    <h2>Line items</h2>
+    <table>
+      <thead>
+        <tr><th>Description</th><th>Source</th><th class="amount">Amount</th></tr>
+      </thead>
+      <tbody>{line_rows}</tbody>
+    </table>
+    <p class="amount total">Total {escape(_invoice_money(draft.total_cents, draft.currency))}</p>
+    <div class="notice">
+      Preview only. No PDF file has been stored, no tenant email has been sent,
+      and no Xero sync has run.
+    </div>
+  </main>
+</body>
+</html>"""
+
+
+def _prepare_invoice_delivery_metadata(
+    draft: InvoiceDraft,
+    user: CurrentUser,
+) -> tuple[dict[str, object], list[str]]:
+    metadata = dict(draft.invoice_metadata or {})
+    blockers = _invoice_draft_delivery_blockers(draft)
+    prepared_at = utcnow().isoformat()
+    delivery_state = dict(metadata.get("delivery_state") or {})
+    delivery_state.update(
+        {
+            "pdf_generated": False,
+            "pdf_preview_generated": True,
+            "tenant_email_prepared": len(blockers) == 0,
+            "tenant_email_sent": False,
+            "xero_synced": False,
+            "delivery_ready": len(blockers) == 0,
+        }
+    )
+    metadata["delivery_state"] = delivery_state
+    metadata["delivery_blockers"] = blockers
+    metadata["delivery_preview"] = {
+        "prepared_at": prepared_at,
+        "prepared_by_user_id": str(user.id),
+        "preview_path": f"/api/v1/invoice-drafts/{draft.id}/preview",
+        "email": _invoice_email_preview(draft),
+    }
+    history = list(metadata.get("delivery_history") or [])
+    history.append(
+        {
+            "event": "prepared_delivery_preview",
+            "at": prepared_at,
+            "user_id": str(user.id),
+            "blockers": blockers,
+            "sent": False,
+            "xero_synced": False,
+        }
+    )
+    metadata["delivery_history"] = history
+    return metadata, blockers
+
+
+def _invoice_delivery_ready(metadata: dict[str, object]) -> bool:
+    delivery_state = metadata.get("delivery_state")
+    return isinstance(delivery_state, dict) and delivery_state.get("delivery_ready") is True
 
 
 def _property_billing_blockers(
@@ -487,7 +663,18 @@ def update_invoice_draft(
     data = payload.model_dump(exclude_unset=True)
     metadata = dict(draft.invoice_metadata or {})
     if "status" in data and data["status"] is not None:
-        draft.status = data["status"]
+        next_status = data["status"]
+        if next_status == InvoiceDraftStatus.approved:
+            blockers = _invoice_draft_delivery_blockers(draft)
+            if blockers:
+                detail = "Invoice draft has delivery blockers: " + " ".join(blockers)
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+            if not _invoice_delivery_ready(metadata):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Prepare invoice delivery before approval.",
+                )
+        draft.status = next_status
         history = list(metadata.get("status_history") or [])
         status_entry = {
             "status": draft.status.value,
@@ -521,6 +708,59 @@ def update_invoice_draft(
     session.commit()
     session.refresh(draft)
     return draft
+
+
+@router.post(
+    "/invoice-drafts/{invoice_draft_id}/prepare-delivery",
+    response_model=InvoiceDraftRead,
+)
+def prepare_invoice_draft_delivery(
+    invoice_draft_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> InvoiceDraft:
+    draft = _invoice_draft_for_access(invoice_draft_id, user, session, WRITE_ROLES)
+    if draft.status == InvoiceDraftStatus.void:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Void invoice drafts cannot be prepared for delivery.",
+        )
+
+    metadata, blockers = _prepare_invoice_delivery_metadata(draft, user)
+    draft.invoice_metadata = metadata
+    if not blockers and draft.status == InvoiceDraftStatus.draft:
+        draft.status = InvoiceDraftStatus.ready_for_approval
+    if not draft.notes:
+        draft.notes = (
+            "Delivery preview prepared only. No PDF file stored, tenant email sent, "
+            "or Xero sync run."
+        )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=draft.entity_id,
+        action="update",
+        target_table="invoice_draft",
+        target_id=draft.id,
+        tool_output_summary=(
+            "Prepared invoice draft delivery preview; no PDF file, tenant email, "
+            "or Xero sync was run."
+        ),
+    )
+    session.commit()
+    session.refresh(draft)
+    return draft
+
+
+@router.get("/invoice-drafts/{invoice_draft_id}/preview", response_class=HTMLResponse)
+def preview_invoice_draft(
+    invoice_draft_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> HTMLResponse:
+    draft = _invoice_draft_for_access(invoice_draft_id, user, session, READ_ROLES)
+    return HTMLResponse(_invoice_preview_html(draft))
 
 
 @router.get("/charge-rules", response_model=list[RentChargeRuleRead])

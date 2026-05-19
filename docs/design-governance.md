@@ -69,6 +69,10 @@ Status: pending Remba review. The Billing Readiness workspace now surfaces prepa
 
 Status: pending Remba review. Billing Readiness now creates and lists internal invoice drafts from approved billing drafts. Keep the staging language explicit: this is internal invoice preparation only, with readiness blockers visible and no PDF generation, tenant email, or Xero sync from this step.
 
+## Invoice Delivery Prep Surface
+
+Status: pending Remba review. Billing Readiness now prepares invoice previews and tenant email drafts from internal invoice drafts, then allows approval only when delivery blockers are clear. Keep the preview-only guardrail visible: no PDF file is stored, no tenant email is sent, and no Xero sync is run from this step.
+
 ## Property Provenance Surface
 
 Status: pending Remba review. Smart Intake apply outcomes and the Property workspace now expose purchase-contract source history, field citations, confidence, and before/after property changes. Keep this review-first and factual: show what changed and where it came from, without implying the document source is automatically authoritative.

@@ -6,9 +6,11 @@ import {
   ArrowUpRight,
   Ban,
   CheckCircle2,
+  Eye,
   FileCheck2,
   FileWarning,
   Loader2,
+  Mail,
   ReceiptText,
   RefreshCw,
   ShieldCheck,
@@ -29,11 +31,14 @@ import {
 } from "@/components/ui";
 import {
   createInvoiceDraftFromBillingDraft,
+  invoiceDraftPreviewUrl,
   listBillingDrafts,
   listEntities,
   listInvoiceDrafts,
   listRentRoll,
+  prepareInvoiceDraftDelivery,
   updateBillingDraft,
+  updateInvoiceDraft,
   type BillingDraftRecord,
   type BillingDraftStatus,
   type InvoiceDraftRecord,
@@ -103,6 +108,24 @@ function shortId(value: string | null | undefined) {
   return value ? value.slice(0, 8) : null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function metadataRecord(value: unknown) {
+  return isRecord(value) ? value : {};
+}
+
+function metadataText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function metadataStringList(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
 function billingDraftStatusLabel(status: BillingDraftStatus) {
   return status.replaceAll("_", " ");
 }
@@ -159,6 +182,24 @@ function invoiceDraftBlockers(draft: InvoiceDraftRecord) {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function invoiceDeliveryState(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.delivery_state);
+}
+
+function invoiceDeliveryBlockers(draft: InvoiceDraftRecord) {
+  return metadataStringList(draft.metadata.delivery_blockers);
+}
+
+function invoiceEmailPreview(draft: InvoiceDraftRecord) {
+  const preview = metadataRecord(draft.metadata.delivery_preview);
+  const email = metadataRecord(preview.email);
+  return {
+    to: metadataText(email.to),
+    subject: metadataText(email.subject),
+    body: metadataText(email.body),
+  };
 }
 
 function blockerItems(row: RentRollRow): BlockerItem[] {
@@ -415,6 +456,30 @@ function BillingReadinessWorkspace() {
     },
   });
 
+  const prepareInvoiceDraftMutation = useMutation({
+    mutationFn: (draftId: string) => prepareInvoiceDraftDelivery(draftId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+      });
+    },
+  });
+
+  const updateInvoiceDraftMutation = useMutation({
+    mutationFn: ({
+      draftId,
+      status,
+    }: {
+      draftId: string;
+      status: InvoiceDraftStatus;
+    }) => updateInvoiceDraft(draftId, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+      });
+    },
+  });
+
   const selectedEntity = entitiesQuery.data?.find(
     (entity) => entity.id === selectedEntityId,
   );
@@ -578,6 +643,20 @@ function BillingReadinessWorkspace() {
             {createInvoiceDraftMutation.error instanceof Error
               ? createInvoiceDraftMutation.error.message
               : "Could not create the invoice draft."}
+          </div>
+        ) : null}
+        {prepareInvoiceDraftMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {prepareInvoiceDraftMutation.error instanceof Error
+              ? prepareInvoiceDraftMutation.error.message
+              : "Could not prepare invoice delivery."}
+          </div>
+        ) : null}
+        {updateInvoiceDraftMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {updateInvoiceDraftMutation.error instanceof Error
+              ? updateInvoiceDraftMutation.error.message
+              : "Could not update the invoice draft."}
           </div>
         ) : null}
 
@@ -844,11 +923,33 @@ function BillingReadinessWorkspace() {
                       <th className="px-3 py-2 font-semibold">Due</th>
                       <th className="px-3 py-2 font-semibold">Readiness</th>
                       <th className="px-3 py-2 font-semibold">Status</th>
+                      <th className="px-3 py-2 font-semibold">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {invoiceDrafts.map((draft) => {
                       const blockers = invoiceDraftBlockers(draft);
+                      const deliveryBlockers = invoiceDeliveryBlockers(draft);
+                      const deliveryState = invoiceDeliveryState(draft);
+                      const emailPreview = invoiceEmailPreview(draft);
+                      const previewReady =
+                        deliveryState.pdf_preview_generated === true;
+                      const emailPrepared =
+                        deliveryState.tenant_email_prepared === true;
+                      const deliveryReady =
+                        deliveryState.delivery_ready === true;
+                      const isPreparing =
+                        prepareInvoiceDraftMutation.isPending &&
+                        prepareInvoiceDraftMutation.variables === draft.id;
+                      const isUpdatingInvoice =
+                        updateInvoiceDraftMutation.isPending &&
+                        updateInvoiceDraftMutation.variables?.draftId ===
+                          draft.id;
+                      const canPrepare =
+                        draft.status !== "void" && draft.status !== "approved";
+                      const canApprove =
+                        draft.status === "ready_for_approval" && deliveryReady;
+                      const canVoid = draft.status !== "void";
                       return (
                         <tr
                           key={draft.id}
@@ -900,15 +1001,104 @@ function BillingReadinessWorkspace() {
                               </span>
                             )}
                             <div className="mt-2 flex flex-wrap gap-2">
-                              <StatusBadge tone="neutral">No PDF</StatusBadge>
-                              <StatusBadge tone="neutral">No email</StatusBadge>
+                              <StatusBadge
+                                tone={previewReady ? "primary" : "neutral"}
+                              >
+                                {previewReady ? "Preview ready" : "No PDF"}
+                              </StatusBadge>
+                              <StatusBadge
+                                tone={emailPrepared ? "primary" : "neutral"}
+                              >
+                                {emailPrepared ? "Email draft" : "No email"}
+                              </StatusBadge>
                               <StatusBadge tone="neutral">No Xero</StatusBadge>
                             </div>
+                            {deliveryBlockers.length ? (
+                              <div className="mt-2 grid gap-1 text-danger">
+                                {deliveryBlockers.slice(0, 2).map((blocker) => (
+                                  <span key={blocker}>{blocker}</span>
+                                ))}
+                              </div>
+                            ) : null}
+                            {emailPreview.subject ? (
+                              <div className="mt-2 line-clamp-2 text-muted-foreground">
+                                {emailPreview.subject}
+                              </div>
+                            ) : null}
                           </td>
                           <td className="px-3 py-3">
                             <StatusBadge tone={invoiceDraftStatusTone(draft.status)}>
                               {invoiceDraftStatusLabel(draft.status)}
                             </StatusBadge>
+                          </td>
+                          <td className="min-w-72 px-3 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <SecondaryButton
+                                type="button"
+                                className="min-h-9 rounded-lg px-3"
+                                onClick={() =>
+                                  prepareInvoiceDraftMutation.mutate(draft.id)
+                                }
+                                disabled={!canPrepare || isPreparing}
+                                title="Prepares an invoice preview and email draft only. Nothing is sent or synced."
+                              >
+                                {isPreparing ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <Mail size={14} />
+                                )}
+                                Prepare
+                              </SecondaryButton>
+                              {previewReady ? (
+                                <a
+                                  href={invoiceDraftPreviewUrl(draft.id)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                >
+                                  <Eye size={14} />
+                                  Preview
+                                </a>
+                              ) : null}
+                              <SecondaryButton
+                                type="button"
+                                className="min-h-9 rounded-lg px-3"
+                                onClick={() =>
+                                  updateInvoiceDraftMutation.mutate({
+                                    draftId: draft.id,
+                                    status: "approved",
+                                  })
+                                }
+                                disabled={!canApprove || isUpdatingInvoice}
+                                title="Approves the internal invoice draft only. No tenant email or Xero sync is run."
+                              >
+                                {isUpdatingInvoice ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <CheckCircle2 size={14} />
+                                )}
+                                Approve
+                              </SecondaryButton>
+                              <SecondaryButton
+                                type="button"
+                                className="min-h-9 rounded-lg px-3 text-danger"
+                                onClick={() =>
+                                  updateInvoiceDraftMutation.mutate({
+                                    draftId: draft.id,
+                                    status: "void",
+                                  })
+                                }
+                                disabled={!canVoid || isUpdatingInvoice}
+                                title="Voids this internal invoice draft only."
+                              >
+                                {isUpdatingInvoice ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <Ban size={14} />
+                                )}
+                                Void
+                              </SecondaryButton>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -916,7 +1106,7 @@ function BillingReadinessWorkspace() {
                     {!invoiceDraftsQuery.isLoading &&
                     invoiceDrafts.length === 0 ? (
                       <tr>
-                        <td className="px-3 py-10" colSpan={6}>
+                        <td className="px-3 py-10" colSpan={7}>
                           <EmptyState
                             title="No invoice drafts"
                             description="Approve a billing draft, then create an internal invoice draft from it. Delivery and Xero remain separate approval steps."
@@ -928,7 +1118,7 @@ function BillingReadinessWorkspace() {
                       <tr>
                         <td
                           className="px-3 py-10 text-center text-sm text-muted-foreground"
-                          colSpan={6}
+                          colSpan={7}
                         >
                           Loading invoice drafts...
                         </td>

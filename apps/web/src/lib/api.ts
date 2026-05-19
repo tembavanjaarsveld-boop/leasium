@@ -1086,6 +1086,19 @@ export function createInvoiceDraftFromBillingDraft(billingDraftId: string) {
   );
 }
 
+export function prepareInvoiceDraftDelivery(invoiceDraftId: string) {
+  return request<InvoiceDraftRecord>(
+    `/invoice-drafts/${invoiceDraftId}/prepare-delivery`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function invoiceDraftPreviewUrl(invoiceDraftId: string) {
+  return `${API_BASE}/invoice-drafts/${invoiceDraftId}/preview`;
+}
+
 export function updateInvoiceDraft(
   invoiceDraftId: string,
   payload: { status?: InvoiceDraftStatus; notes?: string | null },

@@ -39,6 +39,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Smart Intake billing drafts v1: reviewed invoice/admin documents now create source-linked draft billing documents and lines, support reviewed draft status updates, and preserve the no-posting/no-Xero-sync guardrail.
 - [x] Billing draft review surface: Billing Readiness now lists source-linked Smart Intake billing drafts with status, due date, amount, source context, and approve/void actions that still do not post invoices, email tenants, or sync to Xero.
 - [x] Invoice draft staging v1: approved billing drafts can create internal source-linked invoice drafts and lines, surface recipient/readiness blockers in Billing Readiness, and preserve no-PDF/no-email/no-Xero-sync guardrails.
+- [x] Invoice draft delivery preparation v1: internal invoice drafts can prepare an approval-safe invoice preview and tenant email draft metadata, show delivery blockers, move complete drafts to ready for approval, and keep PDF storage, tenant sending, and Xero sync explicitly off.
 - [x] Smart Intake naming pass: global navigation and workspace copy now reflect the broader document-first workflow instead of lease-only inbox wording.
 - [x] Smart Intake task queue: open document reviews, match issues, processing states, and failed reads now appear in Tasks with a dedicated filter and deep links back to Smart Intake.
 - [x] Smart Intake applied outcome counts: the applied outcome panel now surfaces returned billing draft, pending lease, and draft charge counts from the backend apply result.
@@ -51,7 +52,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Next Build Order
 
-- [ ] Continue AI apply beyond first-pass register workflows: expand invoice drafts toward PDF/email generation, tenant delivery, and approval-safe posting preparation.
+- [ ] Continue AI apply beyond first-pass register workflows: expand invoice drafts from preview-only preparation into stored PDF artifacts, branded email delivery, delivery receipts, and approval-safe posting preparation.
 - [ ] Add AI enrichment for missing fields: when reviewed records are missing safe public facts like ABN, postcode, suburb/state, business names, or registered addresses, Leasium can search trusted online sources, suggest the value with citation/confidence, and require review before applying.
 - [ ] Finish tenant onboarding delivery: hosted provider webhook configuration, branded template management, editable reminder schedules, expiry reminders, and deeper delivery failure recovery.
 - [ ] Deepen tenant detail: property/lease context labels, richer activity history, safer document provenance/actions, and reviewed-change history.
