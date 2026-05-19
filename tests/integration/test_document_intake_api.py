@@ -1101,7 +1101,10 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
     assert applied["tenancy_unit_count"] == 2
     assert applied["created_tenancy_unit_count"] == 2
     assert applied["tenancy_schedule_count"] == 2
-    assert applied["tenant_lease_records_created"] == 0
+    assert applied["created_tenant_count"] == 2
+    assert applied["created_lease_count"] == 2
+    assert applied["tenant_lease_records_created"] == 4
+    assert applied["skipped_tenancy_schedule_rows"] == []
     assert applied["tenancy_schedule_rows"][0]["tenant_name"] == "Harbour Logistics Pty Ltd"
     assert applied["tenancy_schedule_rows"][0]["annual_rent_cents"] == 24000000
 
@@ -1126,8 +1129,27 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
 
     tenant_count = session.scalar(select(func.count()).select_from(Tenant))
     lease_count = session.scalar(select(func.count()).select_from(Lease))
-    assert tenant_count == 0
-    assert lease_count == 0
+    assert tenant_count == 2
+    assert lease_count == 2
+
+    first_tenant = session.get(Tenant, UUID(applied["tenant_ids"][0]))
+    assert first_tenant is not None
+    assert first_tenant.legal_name == "Harbour Logistics Pty Ltd"
+    assert first_tenant.abn == "11 222 333 444"
+    assert first_tenant.tenant_metadata["document_intake_id"] == intake_id
+
+    first_lease = session.get(Lease, UUID(applied["lease_ids"][0]))
+    assert first_lease is not None
+    assert first_lease.tenancy_unit_id == first_unit.id
+    assert first_lease.tenant_id == first_tenant.id
+    assert first_lease.status == "pending"
+    assert first_lease.commencement_date is not None
+    assert first_lease.commencement_date.isoformat() == "2026-07-01"
+    assert first_lease.expiry_date is not None
+    assert first_lease.expiry_date.isoformat() == "2029-06-30"
+    assert first_lease.annual_rent_cents == 24000000
+    assert first_lease.rent_frequency == "monthly"
+    assert first_lease.lease_metadata["document_type"] == "purchase_contract"
 
 
 def test_document_intake_apply_purchase_contract_reuses_selected_property(

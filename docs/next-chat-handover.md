@@ -26,7 +26,9 @@ Last updated: 2026-05-19
 - Smart Intake acquisition tenancy schedule v1 is built on this branch.
   - Extraction schema includes `tenancy_schedule`.
   - Purchase contract apply now prefers schedule rows for unit creation/linking.
-  - Tenant/rent/lease facts are stored on `TenancyUnit.metadata.tenancy_schedule` and history, but tenant/lease records are not auto-created yet.
+  - Tenant/rent/lease facts are stored on `TenancyUnit.metadata.tenancy_schedule` and history.
+  - Complete reviewed schedule rows now create/link tenants and create pending leases after Apply.
+  - Incomplete or overlapping rows are skipped with plain blockers in the applied summary.
 - Smart Intake billing drafts v1 is built on this branch.
   - `invoice_admin` apply still creates the source-linked billing review task.
   - It now also creates `billing_draft` and `billing_draft_line` records from reviewed money amounts.
@@ -63,7 +65,7 @@ Last updated: 2026-05-19
 
 1. Enable the temporary Vercel password gate and verify production access behavior.
 2. Surface stored property source citations and before/after apply history in the Smart Intake/property UI.
-3. Promote reviewed acquisition tenancy schedule rows into tenant/lease drafts, still with review-first provenance.
+3. Add richer acquisition schedule blockers, lease-derived tasks, and UI surfacing for created pending leases.
 4. Add billing draft UI review surfaces and move toward invoice approval/PDF/email delivery without Xero sync until approval.
 5. Finish tenant onboarding delivery polish: branded templates, editable reminder schedules, expiry reminders, and failure recovery.
 6. Start Xero connection status and mapping surfaces before full invoice sync.

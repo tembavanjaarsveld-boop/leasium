@@ -31,11 +31,13 @@ from stewart.core.models import (
     Lease,
     LeaseIntake,
     LeaseIntakeStatus,
+    LeaseStatus,
     Obligation,
     ObligationCategory,
     ObligationStatus,
     Property,
     PropertyType,
+    RentFrequency,
     StoredDocument,
     TenancyUnit,
     Tenant,
@@ -182,6 +184,11 @@ def _optional_bool(value: Any) -> bool | None:
         if lowered in {"0", "false", "no", "n"}:
             return False
     return None
+
+
+def _bool(value: Any, default: bool) -> bool:
+    parsed = _optional_bool(value)
+    return default if parsed is None else parsed
 
 
 def _records(value: Any) -> list[dict[str, Any]]:
@@ -588,6 +595,16 @@ def _normalised_rent_frequency(value: Any, label: str | None = None) -> str | No
     if "annual" in text or "year" in text or "annum" in text or "pa" in text:
         return "annual"
     return None
+
+
+def _rent_frequency(value: Any, label: str | None = None) -> RentFrequency | None:
+    normalised = _normalised_rent_frequency(value, label)
+    if normalised is None:
+        return None
+    try:
+        return RentFrequency(normalised)
+    except ValueError:
+        return None
 
 
 def _annualised_cents(amount: float, frequency: str | None) -> int:
@@ -1168,6 +1185,215 @@ def _append_unit_schedule_metadata(
     unit.unit_metadata = metadata
 
 
+def _schedule_row_for_unit(
+    unit: TenancyUnit,
+    schedule_rows: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    for row in schedule_rows:
+        label = _str(row.get("unit_label"))
+        if label and label.lower() == unit.unit_label.lower():
+            return row
+    return None
+
+
+def _find_or_create_schedule_tenant(
+    intake: DocumentIntake,
+    row: dict[str, Any],
+    session: Session,
+) -> tuple[Tenant | None, bool, str | None]:
+    tenant_name = _str(row.get("tenant_name"))
+    tenant_abn = _str(row.get("tenant_abn"))
+    if not tenant_name and not tenant_abn:
+        return None, False, "Tenant name missing."
+
+    statement = select(Tenant).where(
+        Tenant.entity_id == intake.entity_id,
+        Tenant.deleted_at.is_(None),
+    )
+    if tenant_abn:
+        statement = statement.where(Tenant.abn == tenant_abn)
+    elif tenant_name:
+        statement = statement.where(func.lower(Tenant.legal_name) == tenant_name.lower())
+    existing = session.scalar(statement)
+    if existing is not None:
+        return existing, False, None
+
+    tenant = Tenant(
+        entity_id=intake.entity_id,
+        legal_name=tenant_name or "Tenant to confirm",
+        abn=tenant_abn,
+        tenant_metadata={
+            "source": "document_intake",
+            "document_intake_id": str(intake.id),
+            "document_id": str(intake.document_id),
+            "document_type": "purchase_contract",
+            "source_hint": _str(row.get("source_hint")),
+            "tenancy_schedule": _tenancy_schedule_snapshot(row),
+        },
+    )
+    session.add(tenant)
+    session.flush()
+    return tenant, True, None
+
+
+def _schedule_outgoings_recoverable(value: Any) -> bool:
+    text = (_str(value) or "").lower()
+    if any(fragment in text for fragment in {"non-recoverable", "not recoverable", "gross"}):
+        return False
+    if any(fragment in text for fragment in {"recoverable", "net", "outgoing"}):
+        return True
+    return True
+
+
+def _schedule_lease_blockers(row: dict[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    if _date(row.get("lease_start")) is None:
+        blockers.append("Lease start missing.")
+    if _date(row.get("lease_expiry")) is None:
+        blockers.append("Lease expiry missing.")
+    if _money_cents(row.get("annual_rent")) is None:
+        blockers.append("Annual rent missing.")
+    if _rent_frequency(row.get("rent_frequency")) is None:
+        blockers.append("Rent frequency missing.")
+    return blockers
+
+
+def _has_overlapping_unit_lease(
+    unit: TenancyUnit,
+    start: date,
+    end: date,
+    session: Session,
+) -> bool:
+    return (
+        session.scalar(
+            select(Lease).where(
+                Lease.tenancy_unit_id == unit.id,
+                Lease.deleted_at.is_(None),
+                Lease.commencement_date <= end,
+                Lease.expiry_date >= start,
+            )
+        )
+        is not None
+    )
+
+
+def _apply_purchase_schedule_leases(
+    intake: DocumentIntake,
+    units: list[TenancyUnit],
+    schedule_rows: list[dict[str, Any]],
+    user: CurrentUser,
+    session: Session,
+) -> dict[str, Any]:
+    tenant_ids: list[str] = []
+    lease_ids: list[str] = []
+    created_tenants = 0
+    linked_tenants = 0
+    created_leases = 0
+    skipped_rows: list[dict[str, Any]] = []
+
+    for unit in units:
+        row = _schedule_row_for_unit(unit, schedule_rows)
+        if row is None:
+            continue
+        tenant, tenant_created, tenant_blocker = _find_or_create_schedule_tenant(
+            intake,
+            row,
+            session,
+        )
+        row_blockers = _schedule_lease_blockers(row)
+        if tenant_blocker:
+            row_blockers.append(tenant_blocker)
+        start = _date(row.get("lease_start"))
+        end = _date(row.get("lease_expiry"))
+        if start is not None and end is not None and _has_overlapping_unit_lease(
+            unit,
+            start,
+            end,
+            session,
+        ):
+            row_blockers.append("Unit already has an overlapping lease.")
+        if row_blockers or tenant is None or start is None or end is None:
+            skipped_rows.append(
+                {
+                    "unit_label": unit.unit_label,
+                    "tenant_name": _str(row.get("tenant_name")),
+                    "blockers": row_blockers,
+                }
+            )
+            continue
+
+        if tenant_created:
+            created_tenants += 1
+            audit_log(
+                session,
+                actor=user.actor,
+                user_id=user.id,
+                entity_id=intake.entity_id,
+                action="create",
+                target_table="tenant",
+                target_id=tenant.id,
+                tool_name="smart_intake_apply",
+                tool_input={"document_intake_id": str(intake.id)},
+                tool_output_summary=(
+                    f"Created tenant {tenant.id} from purchase contract tenancy schedule."
+                ),
+            )
+        else:
+            linked_tenants += 1
+        tenant_ids.append(str(tenant.id))
+
+        rent_frequency = _rent_frequency(row.get("rent_frequency"))
+        annual_rent_cents = _money_cents(row.get("annual_rent"))
+        lease = Lease(
+            tenancy_unit_id=unit.id,
+            tenant_id=tenant.id,
+            status=LeaseStatus.pending,
+            commencement_date=start,
+            expiry_date=end,
+            annual_rent_cents=annual_rent_cents,
+            rent_frequency=rent_frequency,
+            outgoings_recoverable=_schedule_outgoings_recoverable(row.get("outgoings")),
+            option_summary=_str(row.get("option_summary")),
+            security_summary=_str(row.get("security_summary")),
+            notes="Created from reviewed purchase contract tenancy schedule.",
+            lease_metadata={
+                "source": "document_intake",
+                "document_intake_id": str(intake.id),
+                "document_id": str(intake.document_id),
+                "document_type": "purchase_contract",
+                "source_hint": _str(row.get("source_hint")),
+                "tenancy_schedule": _tenancy_schedule_snapshot(row),
+            },
+        )
+        session.add(lease)
+        session.flush()
+        created_leases += 1
+        lease_ids.append(str(lease.id))
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=intake.entity_id,
+            action="create",
+            target_table="lease",
+            target_id=lease.id,
+            tool_name="smart_intake_apply",
+            tool_input={"document_intake_id": str(intake.id), "unit_id": str(unit.id)},
+            tool_output_summary=(
+                f"Created pending lease {lease.id} from purchase contract tenancy schedule."
+            ),
+        )
+
+    return {
+        "tenant_ids": tenant_ids,
+        "lease_ids": lease_ids,
+        "created_tenant_count": created_tenants,
+        "linked_tenant_count": linked_tenants,
+        "created_lease_count": created_leases,
+        "skipped_tenancy_schedule_rows": skipped_rows,
+    }
+
+
 def _resolve_purchase_units(
     intake: DocumentIntake,
     prop: Property,
@@ -1277,6 +1503,15 @@ def _apply_purchase_contract_intake(
     )
     intake.document.property_id = prop.id
     intake.document.tenancy_unit_id = units[0].id if len(units) == 1 else None
+    schedule_apply = _apply_purchase_schedule_leases(
+        intake,
+        units,
+        _records(data.get("tenancy_schedule")),
+        user,
+        session,
+    )
+    if len(schedule_apply["lease_ids"]) == 1:
+        intake.document.lease_id = UUID(schedule_apply["lease_ids"][0])
 
     obligation_payloads = _obligation_payloads_from_review(data, "purchase_contract")
     obligations: list[Obligation] = []
@@ -1307,7 +1542,15 @@ def _apply_purchase_contract_intake(
         "filled_blank_unit_fields": filled_unit_fields,
         "tenancy_schedule_count": tenancy_schedule_count,
         "tenancy_schedule_rows": tenancy_schedule_rows,
-        "tenant_lease_records_created": 0,
+        "tenant_ids": schedule_apply["tenant_ids"],
+        "created_tenant_count": schedule_apply["created_tenant_count"],
+        "linked_tenant_count": schedule_apply["linked_tenant_count"],
+        "lease_ids": schedule_apply["lease_ids"],
+        "created_lease_count": schedule_apply["created_lease_count"],
+        "tenant_lease_records_created": (
+            schedule_apply["created_tenant_count"] + schedule_apply["created_lease_count"]
+        ),
+        "skipped_tenancy_schedule_rows": schedule_apply["skipped_tenancy_schedule_rows"],
         "obligation_ids": [str(obligation.id) for obligation in obligations],
         "obligation_count": len(obligations),
     }
@@ -1978,6 +2221,8 @@ def apply_document_intake(
             "applied_document_intake_id": str(intake.id),
             "applied_property_id": str(prop.id),
             "applied_tenancy_unit_ids": [str(unit.id) for unit in units],
+            "applied_tenant_ids": applied.get("tenant_ids") or [],
+            "applied_lease_ids": applied.get("lease_ids") or [],
             "applied_obligation_ids": [str(obligation.id) for obligation in obligations],
             "applied_document_type": document_type,
         }
@@ -1991,7 +2236,8 @@ def apply_document_intake(
             target_id=intake.id,
             tool_output_summary=(
                 f"Applied purchase contract to property {prop.id}; "
-                f"{len(units)} unit(s), {len(obligations)} task(s)."
+                f"{len(units)} unit(s), {applied.get('created_lease_count', 0)} "
+                f"lease(s), {len(obligations)} task(s)."
             ),
         )
         property_changes = list(applied.get("property_changes") or [])
