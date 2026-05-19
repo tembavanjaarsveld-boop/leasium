@@ -175,7 +175,9 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
                     "rent_frequency",
                     "outgoings",
                     "option_summary",
+                    "option_notice_date",
                     "security_summary",
+                    "security_due_date",
                     "confidence",
                     "source_hint",
                 ],
@@ -192,7 +194,9 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
                     "rent_frequency": {"type": ["string", "null"]},
                     "outgoings": {"type": ["string", "null"]},
                     "option_summary": {"type": ["string", "null"]},
+                    "option_notice_date": {"type": ["string", "null"]},
                     "security_summary": {"type": ["string", "null"]},
+                    "security_due_date": {"type": ["string", "null"]},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                     "source_hint": {"type": ["string", "null"]},
                 },
@@ -262,9 +266,10 @@ def extract_document_file(
         "the file. Do not give legal advice. Nothing will be applied automatically, "
         "so focus on facts a property manager should review: parties, properties, "
         "ownership or trust billing identity, acquisition tenancy schedule rows, rent "
-        "review dates, key dates, money, obligations, warnings, missing information, "
-        "and proposed actions. Use ISO dates where possible and mark uncertainty with "
-        "lower confidence and warnings."
+        "review dates, option notice dates, security or bank guarantee due dates, key "
+        "dates, money, obligations, warnings, missing information, and proposed "
+        "actions. Use ISO dates where possible and mark uncertainty with lower "
+        "confidence and warnings."
     )
     content: list[dict[str, str]] = [{"type": "input_text", "text": prompt}]
     try:

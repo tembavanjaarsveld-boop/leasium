@@ -1155,7 +1155,17 @@ def _tenancy_schedule_snapshot(row: dict[str, Any]) -> dict[str, Any]:
         "rent_frequency": _str(row.get("rent_frequency")),
         "outgoings": _str(row.get("outgoings")),
         "option_summary": _str(row.get("option_summary")),
+        "option_notice_date": (
+            _date(row.get("option_notice_date")).isoformat()
+            if _date(row.get("option_notice_date"))
+            else None
+        ),
         "security_summary": _str(row.get("security_summary")),
+        "security_due_date": (
+            _date(row.get("security_due_date")).isoformat()
+            if _date(row.get("security_due_date"))
+            else None
+        ),
         "confidence": _confidence(row.get("confidence")),
         "source_hint": _str(row.get("source_hint")),
     }
@@ -1309,6 +1319,28 @@ def _create_schedule_lease_obligations(
                 "due_date": lease.expiry_date,
                 "owner_role": UserRole.ops,
                 "notes": "Track lease expiry from acquisition tenancy schedule.",
+            }
+        )
+    option_notice_date = _date(row.get("option_notice_date"))
+    if option_notice_date is not None:
+        candidates.append(
+            {
+                "title": f"Option notice - {unit.unit_label}",
+                "category": ObligationCategory.option_notice,
+                "due_date": option_notice_date,
+                "owner_role": UserRole.ops,
+                "notes": "Track option notice window from acquisition tenancy schedule.",
+            }
+        )
+    security_due_date = _date(row.get("security_due_date"))
+    if security_due_date is not None:
+        candidates.append(
+            {
+                "title": f"Security review - {unit.unit_label}",
+                "category": ObligationCategory.bank_guarantee,
+                "due_date": security_due_date,
+                "owner_role": UserRole.ops,
+                "notes": "Review lease security from acquisition tenancy schedule.",
             }
         )
 

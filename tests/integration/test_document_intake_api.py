@@ -371,7 +371,9 @@ def _fake_purchase_contract_with_tenancy_schedule() -> dict[str, Any]:
             "rent_frequency": "monthly",
             "outgoings": "Recoverable",
             "option_summary": "One 3 year option",
+            "option_notice_date": "2029-01-31",
             "security_summary": "Bank guarantee equal to 3 months rent",
+            "security_due_date": "2026-06-15",
             "confidence": 0.81,
             "source_hint": "Tenancy schedule row 1",
         },
@@ -388,7 +390,9 @@ def _fake_purchase_contract_with_tenancy_schedule() -> dict[str, Any]:
             "rent_frequency": "monthly",
             "outgoings": "Recoverable subject to annual budget",
             "option_summary": None,
+            "option_notice_date": None,
             "security_summary": "Bond noted, amount to confirm",
+            "security_due_date": "2026-07-15",
             "confidence": 0.74,
             "source_hint": "Tenancy schedule row 2",
         },
@@ -1106,8 +1110,8 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
     assert applied["created_tenant_count"] == 2
     assert applied["created_lease_count"] == 2
     assert applied["tenant_lease_records_created"] == 4
-    assert applied["lease_obligation_count"] == 3
-    assert applied["obligation_count"] == 4
+    assert applied["lease_obligation_count"] == 6
+    assert applied["obligation_count"] == 7
     assert applied["skipped_tenancy_schedule_rows"] == []
     assert applied["tenancy_schedule_rows"][0]["tenant_name"] == "Harbour Logistics Pty Ltd"
     assert applied["tenancy_schedule_rows"][0]["annual_rent_cents"] == 24000000
@@ -1126,6 +1130,8 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
         "Harbour Logistics Pty Ltd"
     )
     assert first_unit.unit_metadata["tenancy_schedule"]["lease_expiry"] == "2029-06-30"
+    assert first_unit.unit_metadata["tenancy_schedule"]["option_notice_date"] == "2029-01-31"
+    assert first_unit.unit_metadata["tenancy_schedule"]["security_due_date"] == "2026-06-15"
     assert (
         first_unit.unit_metadata["tenancy_schedule_history"][0]["document_intake_id"]
         == intake_id
@@ -1164,14 +1170,26 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
             )
         )
     )
-    assert len(lease_obligations) == 3
+    assert len(lease_obligations) == 6
     assert {obligation.category for obligation in lease_obligations} == {
+        "bank_guarantee",
         "lease_expiry",
+        "option_notice",
         "rent_review",
     }
     assert any(
         obligation.title == "Rent review - Warehouse 1"
         and obligation.due_date.isoformat() == "2027-07-01"
+        for obligation in lease_obligations
+    )
+    assert any(
+        obligation.title == "Option notice - Warehouse 1"
+        and obligation.due_date.isoformat() == "2029-01-31"
+        for obligation in lease_obligations
+    )
+    assert any(
+        obligation.title == "Security review - Warehouse 2"
+        and obligation.due_date.isoformat() == "2026-07-15"
         for obligation in lease_obligations
     )
 
