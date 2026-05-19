@@ -29,10 +29,10 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] MVP tenant document storage: upload, list, download, soft-delete, and tenant profile UI for insurance, guarantees, leases, invoices, and onboarding files.
 - [x] Tenant onboarding uploads and review-first apply: public token document uploads, staff review documents, labelled submitted details, and no profile mutation before Apply.
 - [x] Smart Intake Inbox first slice: dashboard drag/drop, stored source document, generic AI classification/extraction envelope, review status queue, summary groups, confidence, warnings, and no automatic record mutation.
+- [x] Focused Smart Intake review surface: approve/edit/ignore item decisions, visible confidence and source hints, ignored-item filtering, insurance apply target matching, and explicit change summary before Apply.
 
 ## Next Build Order
 
-- [ ] Add focused Smart Intake review/apply surfaces: field-level accept/edit/dismiss, source snippets, matched property/unit/tenant choices, and explicit Apply actions.
 - [ ] Extend AI extraction beyond the generic envelope: acquisition/building contracts create or update property/unit records; tenant leases update tenant/lease/obligations; compliance docs update expiry dates and document records.
 - [ ] Finish tenant onboarding delivery: real email sending, branded templates, resend logs, expiry messaging, and delivery audit history.
 - [ ] Deepen tenant detail: property/lease context labels, richer activity history, safer document provenance/actions, and reviewed-change history.

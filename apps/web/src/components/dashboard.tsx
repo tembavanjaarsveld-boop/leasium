@@ -38,22 +38,33 @@ import {
   deleteDocumentIntake,
   DocumentIntakeExtraction,
   DocumentIntakeRecord,
+  LeaseRecord,
   listEntities,
   listDocumentIntakes,
+  listLeasesByProperty,
   listObligations,
   listProperties,
   listRentRoll,
+  listTenancyUnits,
   listTenantOnboardings,
   listTenants,
   ObligationRecord,
+  PropertyRecord,
   RentRollRow,
   reviewDocumentIntake,
+  TenancyUnitRecord,
   TenantOnboardingRecord,
 } from "@/lib/api";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const DEMO_MODE_STORAGE_KEY = "leasium.demo_mode";
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
+type ReviewItemAction = "approve" | "edit" | "ignore";
+type ReviewApplyTarget = {
+  propertyId: string;
+  tenancyUnitId: string;
+  leaseId: string;
+};
 
 function dateOnly(value: Date) {
   const year = value.getFullYear();
@@ -215,7 +226,10 @@ function fieldText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function firstField(items: Array<Record<string, unknown>> | null | undefined, key: string) {
+function firstField(
+  items: Array<Record<string, unknown>> | null | undefined,
+  key: string,
+) {
   return fieldText(items?.[0]?.[key]);
 }
 
@@ -268,7 +282,9 @@ function DashboardMetricCard({
       className="group rounded-2xl border border-border bg-white p-4 shadow-leasiumXs transition duration-200 ease-leasium hover:border-primary/40 hover:shadow-leasiumSm"
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-semibold text-muted-foreground">{label}</span>
+        <span className="text-sm font-semibold text-muted-foreground">
+          {label}
+        </span>
         <span className="grid h-9 w-9 place-items-center rounded-xl bg-leasium-blue-soft text-primary transition group-hover:bg-primary group-hover:text-white">
           {icon}
         </span>
@@ -299,9 +315,13 @@ function demoIntake(createdAt: string): DocumentIntakeRecord {
       summary: "Lease terms extracted for review.",
       confidence: 0.88,
       parties: [{ name: "Acme Retail Pty Ltd", role: "tenant" }],
-      properties: [{ name: "Queen Street Retail Centre", unit_label: "Shop 3" }],
+      properties: [
+        { name: "Queen Street Retail Centre", unit_label: "Shop 3" },
+      ],
       key_dates: [{ label: "Rent review", date: "2026-06-30" }],
-      money_amounts: [{ label: "Annual rent", amount: 126000, currency: "AUD" }],
+      money_amounts: [
+        { label: "Annual rent", amount: 126000, currency: "AUD" },
+      ],
       obligations: [],
       suggested_links: { tenant_name: "Acme Retail Pty Ltd" },
       warnings: [],
@@ -490,7 +510,11 @@ type ReviewGroupKey =
 const reviewGroups: Array<{
   key: ReviewGroupKey;
   title: string;
-  fields: Array<{ key: string; label: string; type?: "text" | "date" | "number" }>;
+  fields: Array<{
+    key: string;
+    label: string;
+    type?: "text" | "date" | "number";
+  }>;
 }> = [
   {
     key: "parties",
@@ -540,11 +564,15 @@ const reviewGroups: Array<{
   },
 ];
 
-function cloneExtraction(value: DocumentIntakeExtraction): DocumentIntakeExtraction {
+function cloneExtraction(
+  value: DocumentIntakeExtraction,
+): DocumentIntakeExtraction {
   return JSON.parse(JSON.stringify(value)) as DocumentIntakeExtraction;
 }
 
-function intakeReviewData(intake: DocumentIntakeRecord): DocumentIntakeExtraction {
+function intakeReviewData(
+  intake: DocumentIntakeRecord,
+): DocumentIntakeExtraction {
   return Object.keys(intake.review_data).length
     ? (intake.review_data as DocumentIntakeExtraction)
     : intake.extracted_data;
@@ -555,7 +583,9 @@ function groupItems(
   key: ReviewGroupKey,
 ): Array<Record<string, unknown>> {
   const value = draft[key];
-  return Array.isArray(value) ? value.filter((item) => typeof item === "object") : [];
+  return Array.isArray(value)
+    ? value.filter((item) => typeof item === "object")
+    : [];
 }
 
 function updateGroupItem(
@@ -572,16 +602,24 @@ function updateGroupItem(
   return next;
 }
 
-function removeGroupItem(
+function itemReviewAction(item: Record<string, unknown>): ReviewItemAction {
+  const action = fieldText(item._review_action);
+  return action === "edit" || action === "ignore" ? action : "approve";
+}
+
+function setGroupItemAction(
   draft: DocumentIntakeExtraction,
   key: ReviewGroupKey,
   index: number,
+  action: ReviewItemAction,
 ): DocumentIntakeExtraction {
-  const next = cloneExtraction(draft);
-  const items = groupItems(next, key).map((item) => ({ ...item }));
-  items.splice(index, 1);
-  next[key] = items as never;
-  return next;
+  return updateGroupItem(draft, key, index, "_review_action", action);
+}
+
+function cleanReviewItem(item: Record<string, unknown>) {
+  const { _review_action: _reviewAction, ...cleaned } = item;
+  void _reviewAction;
+  return cleaned;
 }
 
 function buildIncludedReviewData(
@@ -592,16 +630,30 @@ function buildIncludedReviewData(
   reviewGroups.forEach((group) => {
     if (!included[group.key]) {
       next[group.key] = [] as never;
+      return;
     }
+    next[group.key] = groupItems(next, group.key)
+      .filter((item) => itemReviewAction(item) !== "ignore")
+      .map(cleanReviewItem) as never;
   });
   return next;
 }
 
 function insuranceExpiryDate(data: DocumentIntakeExtraction) {
-  const labels = ["expiry", "expires", "expiration", "valid until", "policy end", "period end"];
+  const labels = [
+    "expiry",
+    "expires",
+    "expiration",
+    "valid until",
+    "policy end",
+    "period end",
+  ];
   return groupItems(data, "key_dates").find((item) => {
     const label = fieldText(item.label)?.toLowerCase() ?? "";
-    return labels.some((fragment) => label.includes(fragment)) && fieldText(item.date);
+    return (
+      labels.some((fragment) => label.includes(fragment)) &&
+      fieldText(item.date)
+    );
   });
 }
 
@@ -609,8 +661,13 @@ function DocumentIntakeReviewPanel({
   intake,
   draft,
   included,
+  applyTarget,
+  properties,
+  tenancyUnits,
+  leases,
   onDraftChange,
   onIncludedChange,
+  onApplyTargetChange,
   onSave,
   onApply,
   onClear,
@@ -622,8 +679,13 @@ function DocumentIntakeReviewPanel({
   intake: DocumentIntakeRecord;
   draft: DocumentIntakeExtraction;
   included: Record<ReviewGroupKey, boolean>;
+  applyTarget: ReviewApplyTarget;
+  properties: PropertyRecord[];
+  tenancyUnits: TenancyUnitRecord[];
+  leases: LeaseRecord[];
   onDraftChange: (draft: DocumentIntakeExtraction) => void;
   onIncludedChange: (group: ReviewGroupKey, checked: boolean) => void;
+  onApplyTargetChange: (target: ReviewApplyTarget) => void;
   onSave: () => void;
   onApply: () => void;
   onClear: () => void;
@@ -639,12 +701,52 @@ function DocumentIntakeReviewPanel({
   ];
   const canApplyInsurance =
     (draft.document_type ?? intake.document_type) === "insurance_certificate";
-  const applyBlocker = canApplyInsurance && !insuranceExpiryDate(draft)
-    ? "Confirm an insurance expiry or policy end date before applying."
-    : null;
-  const visibleGroups = reviewGroups.filter((group) => groupItems(draft, group.key).length > 0);
+  const reviewedDraft = buildIncludedReviewData(draft, included);
+  const applyBlocker =
+    canApplyInsurance && !insuranceExpiryDate(reviewedDraft)
+      ? "Confirm an insurance expiry or policy end date before applying."
+      : null;
+  const visibleGroups = reviewGroups.filter(
+    (group) => groupItems(draft, group.key).length > 0,
+  );
   const groupTitle = (group: { key: ReviewGroupKey; title: string }) =>
-    canApplyInsurance && group.key === "key_dates" ? "Policy dates" : group.title;
+    canApplyInsurance && group.key === "key_dates"
+      ? "Policy dates"
+      : group.title;
+  const scopedLeases = applyTarget.tenancyUnitId
+    ? leases.filter(
+        (lease) => lease.tenancy_unit_id === applyTarget.tenancyUnitId,
+      )
+    : leases;
+  const approvedCount = reviewGroups.reduce(
+    (total, group) => total + groupItems(reviewedDraft, group.key).length,
+    0,
+  );
+  const ignoredCount = reviewGroups.reduce(
+    (total, group) =>
+      total +
+      (included[group.key]
+        ? groupItems(draft, group.key).filter(
+            (item) => itemReviewAction(item) === "ignore",
+          ).length
+        : groupItems(draft, group.key).length),
+    0,
+  );
+  const matchedProperty = properties.find(
+    (property) => property.id === applyTarget.propertyId,
+  );
+  const matchedUnit = tenancyUnits.find(
+    (unit) => unit.id === applyTarget.tenancyUnitId,
+  );
+  const matchedLease = leases.find((lease) => lease.id === applyTarget.leaseId);
+  const applyScope =
+    matchedLease && matchedUnit
+      ? `${matchedUnit.unit_label} lease`
+      : matchedUnit
+        ? matchedUnit.unit_label
+        : matchedProperty
+          ? matchedProperty.name
+          : "portfolio level";
   return (
     <SectionPanel
       title="Review document"
@@ -672,9 +774,21 @@ function DocumentIntakeReviewPanel({
           <div>
             <div className="font-semibold">{intake.filename}</div>
             <div className="text-xs text-muted-foreground">
-              {documentTypeLabel(intake.document_type)} - {confidenceLabel(intake.confidence)}
+              {documentTypeLabel(intake.document_type)} -{" "}
+              {confidenceLabel(intake.confidence)}
             </div>
           </div>
+          <div className="flex flex-wrap gap-2">
+            <StatusBadge tone="primary">{approvedCount} to apply</StatusBadge>
+            {ignoredCount ? (
+              <StatusBadge tone="neutral">{ignoredCount} ignored</StatusBadge>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-primary/15 bg-leasium-blue-soft p-3 text-sm text-leasium-blue-hover">
+          Nothing is applied until you approve the items below and press Apply.
+          Ignored items stay out of the reviewed data sent to the workflow.
         </div>
 
         <Field label="Summary">
@@ -696,13 +810,98 @@ function DocumentIntakeReviewPanel({
         ) : null}
         {demo ? (
           <div className="rounded-xl border border-primary/20 bg-leasium-blue-soft px-3 py-2 text-sm text-leasium-blue-hover">
-            Demo preview only. Upload a live document when you are ready to save or apply.
+            Demo preview only. Upload a live document when you are ready to save
+            or apply.
           </div>
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        {canApplyInsurance ? (
+          <div className="rounded-2xl border border-border bg-white p-3 shadow-leasiumXs">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Apply target</div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Link the renewal obligation to the right property, unit, or
+                  lease before applying.
+                </p>
+              </div>
+              <StatusBadge
+                tone={applyTarget.propertyId ? "success" : "neutral"}
+              >
+                {applyTarget.propertyId ? "Matched" : "Portfolio level"}
+              </StatusBadge>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <Field label="Property">
+                <Select
+                  value={applyTarget.propertyId}
+                  onChange={(event) =>
+                    onApplyTargetChange({
+                      propertyId: event.target.value,
+                      tenancyUnitId: "",
+                      leaseId: "",
+                    })
+                  }
+                  disabled={demo}
+                >
+                  <option value="">No property match</option>
+                  {properties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Unit">
+                <Select
+                  value={applyTarget.tenancyUnitId}
+                  onChange={(event) =>
+                    onApplyTargetChange({
+                      ...applyTarget,
+                      tenancyUnitId: event.target.value,
+                      leaseId: "",
+                    })
+                  }
+                  disabled={demo || !applyTarget.propertyId}
+                >
+                  <option value="">No unit match</option>
+                  {tenancyUnits.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.unit_label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Lease">
+                <Select
+                  value={applyTarget.leaseId}
+                  onChange={(event) =>
+                    onApplyTargetChange({
+                      ...applyTarget,
+                      leaseId: event.target.value,
+                    })
+                  }
+                  disabled={demo || !applyTarget.propertyId}
+                >
+                  <option value="">No lease match</option>
+                  {scopedLeases.map((lease) => (
+                    <option key={lease.id} value={lease.id}>
+                      {lease.status} - {formatDate(lease.commencement_date)} to{" "}
+                      {formatDate(lease.expiry_date)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="grid gap-3">
           {visibleGroups.map((group) => (
-            <div key={group.key} className="rounded-2xl border border-border bg-muted/25 p-3">
+            <div
+              key={group.key}
+              className="rounded-2xl border border-border bg-muted/25 p-3"
+            >
               <label className="mb-3 flex items-center justify-between gap-3 text-sm font-semibold">
                 <span>{groupTitle(group)}</span>
                 <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -711,66 +910,141 @@ function DocumentIntakeReviewPanel({
                     type="checkbox"
                     className="h-4 w-4 accent-primary"
                     checked={included[group.key]}
-                    onChange={(event) => onIncludedChange(group.key, event.target.checked)}
+                    onChange={(event) =>
+                      onIncludedChange(group.key, event.target.checked)
+                    }
                   />
                 </span>
               </label>
-              <div className={included[group.key] ? "grid gap-3" : "grid gap-3 opacity-45"}>
-                {groupItems(draft, group.key).slice(0, 3).map((item, index) => (
-                  <div key={index} className="grid gap-3 rounded-xl border border-border bg-white p-3 shadow-leasiumXs">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onIncludedChange(group.key, true)}
-                          className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover transition hover:bg-primary hover:text-white"
-                        >
-                          Approve
-                        </button>
-                        <StatusBadge tone={itemConfidence(item, intake.confidence) && itemConfidence(item, intake.confidence)! >= 0.8 ? "success" : "warning"}>
-                          {confidenceLabel(itemConfidence(item, intake.confidence))}
-                        </StatusBadge>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onDraftChange(removeGroupItem(draft, group.key, index))
-                        }
-                        disabled={!included[group.key]}
-                        className="text-xs font-semibold text-danger transition hover:text-[#B42318] disabled:cursor-not-allowed disabled:opacity-50"
+              <div
+                className={
+                  included[group.key] ? "grid gap-3" : "grid gap-3 opacity-45"
+                }
+              >
+                {groupItems(draft, group.key)
+                  .slice(0, 3)
+                  .map((item, index) => {
+                    const action = itemReviewAction(item);
+                    const ignored = action === "ignore";
+                    return (
+                      <div
+                        key={index}
+                        className={[
+                          "grid gap-3 rounded-xl border bg-white p-3 shadow-leasiumXs transition",
+                          ignored
+                            ? "border-border opacity-60"
+                            : "border-primary/20",
+                        ].join(" ")}
                       >
-                        Ignore
-                      </button>
-                    </div>
-                    {group.fields.map((field) => (
-                      <Field key={field.key} label={field.label}>
-                        <Input
-                          type={field.type ?? "text"}
-                          value={String(item[field.key] ?? "")}
-                          onChange={(event) =>
-                            onDraftChange(
-                              updateGroupItem(
-                                draft,
-                                group.key,
-                                index,
-                                field.key,
-                                event.target.value,
-                              ),
-                            )
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge
+                              tone={
+                                itemConfidence(item, intake.confidence) &&
+                                itemConfidence(item, intake.confidence)! >= 0.8
+                                  ? "success"
+                                  : "warning"
+                              }
+                            >
+                              {confidenceLabel(
+                                itemConfidence(item, intake.confidence),
+                              )}
+                            </StatusBadge>
+                            {itemSource(item) ? (
+                              <span className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover">
+                                {itemSource(item)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-wrap gap-1 rounded-xl border border-border bg-muted p-1">
+                            {(
+                              [
+                                "approve",
+                                "edit",
+                                "ignore",
+                              ] as ReviewItemAction[]
+                            ).map((nextAction) => (
+                              <button
+                                key={nextAction}
+                                type="button"
+                                onClick={() => {
+                                  onIncludedChange(group.key, true);
+                                  onDraftChange(
+                                    setGroupItemAction(
+                                      draft,
+                                      group.key,
+                                      index,
+                                      nextAction,
+                                    ),
+                                  );
+                                }}
+                                disabled={!included[group.key]}
+                                className={[
+                                  "rounded-lg px-2 py-1 text-xs font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-50",
+                                  action === nextAction
+                                    ? nextAction === "ignore"
+                                      ? "bg-leasium-danger-soft text-danger"
+                                      : "bg-primary text-white"
+                                    : "text-muted-foreground hover:bg-white hover:text-foreground",
+                                ].join(" ")}
+                              >
+                                {nextAction}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div
+                          className={
+                            ignored
+                              ? "pointer-events-none grid gap-3"
+                              : "grid gap-3"
                           }
-                          disabled={!included[group.key]}
-                        />
-                      </Field>
-                    ))}
-                    {itemSource(item) ? (
-                      <div className="rounded-lg bg-leasium-blue-soft px-2 py-1 text-xs font-medium text-leasium-blue-hover">
-                        Source: {itemSource(item)}
+                        >
+                          {group.fields.map((field) => (
+                            <Field key={field.key} label={field.label}>
+                              <Input
+                                type={field.type ?? "text"}
+                                value={String(item[field.key] ?? "")}
+                                onFocus={() => {
+                                  if (action === "approve") {
+                                    onDraftChange(
+                                      setGroupItemAction(
+                                        draft,
+                                        group.key,
+                                        index,
+                                        "edit",
+                                      ),
+                                    );
+                                  }
+                                }}
+                                onChange={(event) =>
+                                  onDraftChange(
+                                    updateGroupItem(
+                                      setGroupItemAction(
+                                        draft,
+                                        group.key,
+                                        index,
+                                        "edit",
+                                      ),
+                                      group.key,
+                                      index,
+                                      field.key,
+                                      event.target.value,
+                                    ),
+                                  )
+                                }
+                                disabled={!included[group.key] || ignored}
+                              />
+                            </Field>
+                          ))}
+                        </div>
                       </div>
-                    ) : null}
-                  </div>
-                ))}
+                    );
+                  })}
                 {groupItems(draft, group.key).length === 0 ? (
-                  <div className="text-sm text-muted-foreground">No suggestions.</div>
+                  <div className="text-sm text-muted-foreground">
+                    No suggestions.
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -779,8 +1053,8 @@ function DocumentIntakeReviewPanel({
 
         {!canApplyInsurance ? (
           <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-            Apply is available for insurance certificates first. Other document types can
-            be saved as reviewed here for now.
+            Apply is available for insurance certificates first. Other document
+            types can be saved as reviewed here for now.
           </div>
         ) : null}
         {applyBlocker ? (
@@ -788,10 +1062,36 @@ function DocumentIntakeReviewPanel({
             {applyBlocker}
           </div>
         ) : null}
+        {canApplyInsurance ? (
+          <div className="rounded-2xl border border-border bg-muted/35 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Ready to apply</div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Create 1 insurance renewal obligation at {applyScope}.{" "}
+                  {ignoredCount
+                    ? `${ignoredCount} ignored item${ignoredCount === 1 ? "" : "s"} will be left out.`
+                    : "No ignored items will be included."}
+                </p>
+              </div>
+              <StatusBadge tone={applyBlocker ? "danger" : "success"}>
+                {applyBlocker ? "Blocked" : "Review first"}
+              </StatusBadge>
+            </div>
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-          <SecondaryButton type="button" onClick={onSave} disabled={demo || saving || applying}>
-            {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+          <SecondaryButton
+            type="button"
+            onClick={onSave}
+            disabled={demo || saving || applying}
+          >
+            {saving ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Check size={15} />
+            )}
             Save review
           </SecondaryButton>
           <Button
@@ -806,7 +1106,11 @@ function DocumentIntakeReviewPanel({
               Boolean(applyBlocker)
             }
           >
-            {applying ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+            {applying ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Check size={15} />
+            )}
             Apply reviewed items
           </Button>
         </div>
@@ -815,16 +1119,32 @@ function DocumentIntakeReviewPanel({
   );
 }
 
-export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake" }) {
+export function Dashboard({
+  mode = "dashboard",
+}: {
+  mode?: "dashboard" | "intake";
+}) {
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [intakeError, setIntakeError] = useState<string | null>(null);
   const [intakeNotice, setIntakeNotice] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [reviewIntakeId, setReviewIntakeId] = useState<string | null>(null);
-  const [requestedReviewId, setRequestedReviewId] = useState<string | null>(null);
+  const [requestedReviewId, setRequestedReviewId] = useState<string | null>(
+    null,
+  );
   const [reviewDraftId, setReviewDraftId] = useState<string | null>(null);
-  const [reviewDraft, setReviewDraft] = useState<DocumentIntakeExtraction | null>(null);
-  const [includedGroups, setIncludedGroups] = useState<Record<ReviewGroupKey, boolean>>({
+  const [reviewDraft, setReviewDraft] =
+    useState<DocumentIntakeExtraction | null>(null);
+  const [reviewApplyTarget, setReviewApplyTarget] = useState<ReviewApplyTarget>(
+    {
+      propertyId: "",
+      tenancyUnitId: "",
+      leaseId: "",
+    },
+  );
+  const [includedGroups, setIncludedGroups] = useState<
+    Record<ReviewGroupKey, boolean>
+  >({
     parties: true,
     properties: true,
     key_dates: true,
@@ -859,7 +1179,9 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
 
   useEffect(() => {
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    const accessibleIds = new Set((entitiesQuery.data ?? []).map((entity) => entity.id));
+    const accessibleIds = new Set(
+      (entitiesQuery.data ?? []).map((entity) => entity.id),
+    );
     const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
     const next = stored && accessibleIds.has(stored) ? stored : firstEntity;
     if (!selectedEntityId && next) {
@@ -881,7 +1203,9 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
     if (!isIntakeWorkspace) {
       return;
     }
-    setRequestedReviewId(new URLSearchParams(window.location.search).get("review"));
+    setRequestedReviewId(
+      new URLSearchParams(window.location.search).get("review"),
+    );
   }, [isIntakeWorkspace]);
 
   const selectedEntity = entitiesQuery.data?.find(
@@ -919,6 +1243,16 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
     enabled: Boolean(selectedEntityId),
     refetchInterval: (query) =>
       query.state.data?.some(intakeIsActive) ? 2500 : false,
+  });
+  const reviewTenancyUnitsQuery = useQuery({
+    queryKey: ["dashboard-review-tenancy-units", reviewApplyTarget.propertyId],
+    queryFn: () => listTenancyUnits(reviewApplyTarget.propertyId),
+    enabled: isIntakeWorkspace && Boolean(reviewApplyTarget.propertyId),
+  });
+  const reviewLeasesQuery = useQuery({
+    queryKey: ["dashboard-review-leases", reviewApplyTarget.propertyId],
+    queryFn: () => listLeasesByProperty(reviewApplyTarget.propertyId),
+    enabled: isIntakeWorkspace && Boolean(reviewApplyTarget.propertyId),
   });
 
   const documentIntakeMutation = useMutation({
@@ -961,8 +1295,13 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
     },
   });
   const reviewDocumentIntakeMutation = useMutation({
-    mutationFn: (payload: { intakeId: string; reviewData: DocumentIntakeExtraction }) =>
-      reviewDocumentIntake(payload.intakeId, { reviewData: payload.reviewData }),
+    mutationFn: (payload: {
+      intakeId: string;
+      reviewData: DocumentIntakeExtraction;
+    }) =>
+      reviewDocumentIntake(payload.intakeId, {
+        reviewData: payload.reviewData,
+      }),
     onMutate: () => {
       setIntakeError(null);
       setIntakeNotice(null);
@@ -978,8 +1317,17 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
     },
   });
   const applyDocumentIntakeMutation = useMutation({
-    mutationFn: (payload: { intakeId: string; reviewData: DocumentIntakeExtraction }) =>
-      applyDocumentIntake(payload.intakeId, { reviewData: payload.reviewData }),
+    mutationFn: (payload: {
+      intakeId: string;
+      reviewData: DocumentIntakeExtraction;
+      target: ReviewApplyTarget;
+    }) =>
+      applyDocumentIntake(payload.intakeId, {
+        reviewData: payload.reviewData,
+        propertyId: payload.target.propertyId,
+        tenancyUnitId: payload.target.tenancyUnitId,
+        leaseId: payload.target.leaseId,
+      }),
     onMutate: () => {
       setIntakeError(null);
       setIntakeNotice(null);
@@ -998,7 +1346,9 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
     },
   });
 
-  const displayPropertiesCount = demoMode ? 1 : (propertiesQuery.data?.length ?? 0);
+  const displayPropertiesCount = demoMode
+    ? 1
+    : (propertiesQuery.data?.length ?? 0);
   const displayTenantsCount = demoMode ? 3 : (tenantsQuery.data?.length ?? 0);
   const displayObligations = useMemo(
     () => (demoMode ? demoObligationRows : (obligationsQuery.data ?? [])),
@@ -1037,14 +1387,20 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
   const submittedOnboardings = displayOnboardings.filter(
     (item) => item.status === "submitted",
   );
-  const reviewIntakes = documentIntakes.filter((item) => item.status !== "applied");
+  const reviewIntakes = documentIntakes.filter(
+    (item) => item.status !== "applied",
+  );
   const activeReviewIntakeId = reviewIntakeId ?? requestedReviewId;
   const selectedReviewIntake =
-    reviewIntakes.find((item) => item.id === activeReviewIntakeId) ?? reviewIntakes[0] ?? null;
+    reviewIntakes.find((item) => item.id === activeReviewIntakeId) ??
+    reviewIntakes[0] ??
+    null;
   const needsReviewCount = documentIntakes.filter((item) =>
     ["ready_for_review", "needs_attention"].includes(item.status),
   ).length;
-  const failedIntakeCount = documentIntakes.filter((item) => item.status === "failed").length;
+  const failedIntakeCount = documentIntakes.filter(
+    (item) => item.status === "failed",
+  ).length;
 
   function uploadSmartIntake(file: File | null | undefined) {
     if (!file || !selectedEntityId || documentIntakeMutation.isPending) {
@@ -1062,6 +1418,11 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
     if (reviewDraftId !== selectedReviewIntake.id) {
       setReviewDraftId(selectedReviewIntake.id);
       setReviewDraft(cloneExtraction(intakeReviewData(selectedReviewIntake)));
+      setReviewApplyTarget({
+        propertyId: "",
+        tenancyUnitId: "",
+        leaseId: "",
+      });
       setIncludedGroups({
         parties: true,
         properties: true,
@@ -1113,7 +1474,7 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
               ? "Lease Inbox"
               : demoMode
                 ? "Leasium demo portfolio"
-                : selectedEntity?.name ?? "Dashboard"
+                : (selectedEntity?.name ?? "Dashboard")
           }
           description={
             isIntakeWorkspace
@@ -1265,7 +1626,9 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                     setDragActive(false);
                     uploadSmartIntake(event.dataTransfer.files[0]);
                   }}
-                  disabled={!selectedEntityId || documentIntakeMutation.isPending}
+                  disabled={
+                    !selectedEntityId || documentIntakeMutation.isPending
+                  }
                   className={[
                     "grid min-h-32 place-items-center rounded-md border border-dashed p-4 text-center transition",
                     dragActive
@@ -1288,7 +1651,10 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                   />
                   <span className="grid justify-items-center gap-2">
                     {documentIntakeMutation.isPending ? (
-                      <Loader2 size={24} className="animate-spin text-primary" />
+                      <Loader2
+                        size={24}
+                        className="animate-spin text-primary"
+                      />
                     ) : (
                       <FileUp size={24} className="text-primary" />
                     )}
@@ -1336,7 +1702,9 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                 <div className="overflow-hidden rounded-md border border-border">
                   <div className="flex items-center justify-between border-b border-border px-3 py-2">
                     <span className="text-sm font-semibold">Review inbox</span>
-                    <StatusBadge tone={needsReviewCount ? "primary" : "neutral"}>
+                    <StatusBadge
+                      tone={needsReviewCount ? "primary" : "neutral"}
+                    >
                       {needsReviewCount} waiting
                     </StatusBadge>
                   </div>
@@ -1348,14 +1716,23 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                       );
                       const tenantName =
                         firstField(item.extracted_data.parties, "name") ??
-                        fieldText(item.extracted_data.suggested_links?.tenant_name);
+                        fieldText(
+                          item.extracted_data.suggested_links?.tenant_name,
+                        );
                       return (
-                        <div key={item.id} className="grid gap-2 px-3 py-3 text-sm">
+                        <div
+                          key={item.id}
+                          className="grid gap-2 px-3 py-3 text-sm"
+                        >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="truncate font-medium">{item.filename}</div>
+                              <div className="truncate font-medium">
+                                {item.filename}
+                              </div>
                               <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                                <span>{documentTypeLabel(item.document_type)}</span>
+                                <span>
+                                  {documentTypeLabel(item.document_type)}
+                                </span>
                                 <span>{formatDateTime(item.created_at)}</span>
                               </div>
                             </div>
@@ -1363,7 +1740,8 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                               {intakeStatusLabel(item.status)}
                             </StatusBadge>
                           </div>
-                          {item.status === "reading" || item.status === "uploaded" ? (
+                          {item.status === "reading" ||
+                          item.status === "uploaded" ? (
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               <Loader2 size={13} className="animate-spin" />
                               Reading document and preparing review.
@@ -1414,7 +1792,9 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                                   ? "Stop reviewing and clear"
                                   : "Clear"
                               }
-                              onClick={() => deleteDocumentIntakeMutation.mutate(item.id)}
+                              onClick={() =>
+                                deleteDocumentIntakeMutation.mutate(item.id)
+                              }
                               disabled={
                                 item.id.startsWith("demo-") ||
                                 deleteDocumentIntakeMutation.isPending
@@ -1442,12 +1822,18 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
               <SectionPanel title="Onboarding">
                 <div className="grid gap-3 p-4 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Waiting on tenants</span>
-                    <span className="font-semibold">{activeOnboardings.length}</span>
+                    <span className="text-muted-foreground">
+                      Waiting on tenants
+                    </span>
+                    <span className="font-semibold">
+                      {activeOnboardings.length}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Submitted</span>
-                    <span className="font-semibold">{submittedOnboardings.length}</span>
+                    <span className="font-semibold">
+                      {submittedOnboardings.length}
+                    </span>
                   </div>
                   <Link
                     href="/properties"
@@ -1467,20 +1853,35 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
                 intake={selectedReviewIntake}
                 draft={reviewDraft}
                 included={includedGroups}
+                applyTarget={reviewApplyTarget}
+                properties={propertiesQuery.data ?? []}
+                tenancyUnits={reviewTenancyUnitsQuery.data ?? []}
+                leases={reviewLeasesQuery.data ?? []}
                 onDraftChange={setReviewDraft}
                 onIncludedChange={(group, checked) =>
-                  setIncludedGroups((current) => ({ ...current, [group]: checked }))
+                  setIncludedGroups((current) => ({
+                    ...current,
+                    [group]: checked,
+                  }))
                 }
+                onApplyTargetChange={setReviewApplyTarget}
                 onSave={() =>
                   reviewDocumentIntakeMutation.mutate({
                     intakeId: selectedReviewIntake.id,
-                    reviewData: buildIncludedReviewData(reviewDraft, includedGroups),
+                    reviewData: buildIncludedReviewData(
+                      reviewDraft,
+                      includedGroups,
+                    ),
                   })
                 }
                 onApply={() =>
                   applyDocumentIntakeMutation.mutate({
                     intakeId: selectedReviewIntake.id,
-                    reviewData: buildIncludedReviewData(reviewDraft, includedGroups),
+                    reviewData: buildIncludedReviewData(
+                      reviewDraft,
+                      includedGroups,
+                    ),
+                    target: reviewApplyTarget,
                   })
                 }
                 onClear={() =>
@@ -1535,70 +1936,73 @@ export function Dashboard({ mode = "dashboard" }: { mode?: "dashboard" | "intake
             ) : null}
 
             {!isIntakeWorkspace ? (
-            <section className="grid gap-5 xl:grid-cols-2">
-              <SectionPanel
-                title="Events"
-                icon={<CalendarClock size={17} className="text-primary" />}
-              >
-                <div className="divide-y divide-border">
-                  {upcomingEvents.slice(0, 8).map((event) => (
-                    <Link
-                      href="/properties"
-                      key={event.id}
-                      className="block px-4 py-3 text-sm transition hover:bg-muted/60"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-medium">{event.title}</span>
-                        <StatusBadge tone={event.tone}>
-                          {dueLabel(event.date)}
-                        </StatusBadge>
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {event.meta}
-                      </div>
-                    </Link>
-                  ))}
-                  {upcomingEvents.length === 0 ? (
-                    <EmptyState title="No upcoming events for this entity." />
-                  ) : null}
-                </div>
-              </SectionPanel>
-
-              <SectionPanel
-                title="Billing updates"
-                icon={<ReceiptText size={17} className="text-primary" />}
-              >
-                <div className="divide-y divide-border">
-                  {billingIssues.slice(0, 6).map(({ row, blockers: rowBlockers }) => (
-                    <Link
-                      href="/properties"
-                      key={`${row.property_id}-${row.tenancy_unit_id}`}
-                      className="block px-4 py-3 text-sm transition hover:bg-muted/60"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate font-medium">
-                            {row.unit_label}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {row.property_name} - {row.tenant_name ?? "Vacant"}
-                          </div>
+              <section className="grid gap-5 xl:grid-cols-2">
+                <SectionPanel
+                  title="Events"
+                  icon={<CalendarClock size={17} className="text-primary" />}
+                >
+                  <div className="divide-y divide-border">
+                    {upcomingEvents.slice(0, 8).map((event) => (
+                      <Link
+                        href="/properties"
+                        key={event.id}
+                        className="block px-4 py-3 text-sm transition hover:bg-muted/60"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-medium">{event.title}</span>
+                          <StatusBadge tone={event.tone}>
+                            {dueLabel(event.date)}
+                          </StatusBadge>
                         </div>
-                        <span className="text-xs font-medium">
-                          {formatMoney(row.charge_rules_total_cents)}
-                        </span>
-                      </div>
-                      <div className="mt-2 rounded bg-accent/10 px-2 py-1 text-xs">
-                        {rowBlockers[0]}
-                      </div>
-                    </Link>
-                  ))}
-                  {billingIssues.length === 0 ? (
-                    <EmptyState title="No billing readiness blockers." />
-                  ) : null}
-                </div>
-              </SectionPanel>
-            </section>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {event.meta}
+                        </div>
+                      </Link>
+                    ))}
+                    {upcomingEvents.length === 0 ? (
+                      <EmptyState title="No upcoming events for this entity." />
+                    ) : null}
+                  </div>
+                </SectionPanel>
+
+                <SectionPanel
+                  title="Billing updates"
+                  icon={<ReceiptText size={17} className="text-primary" />}
+                >
+                  <div className="divide-y divide-border">
+                    {billingIssues
+                      .slice(0, 6)
+                      .map(({ row, blockers: rowBlockers }) => (
+                        <Link
+                          href="/properties"
+                          key={`${row.property_id}-${row.tenancy_unit_id}`}
+                          className="block px-4 py-3 text-sm transition hover:bg-muted/60"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">
+                                {row.unit_label}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {row.property_name} -{" "}
+                                {row.tenant_name ?? "Vacant"}
+                              </div>
+                            </div>
+                            <span className="text-xs font-medium">
+                              {formatMoney(row.charge_rules_total_cents)}
+                            </span>
+                          </div>
+                          <div className="mt-2 rounded bg-accent/10 px-2 py-1 text-xs">
+                            {rowBlockers[0]}
+                          </div>
+                        </Link>
+                      ))}
+                    {billingIssues.length === 0 ? (
+                      <EmptyState title="No billing readiness blockers." />
+                    ) : null}
+                  </div>
+                </SectionPanel>
+              </section>
             ) : null}
           </div>
         </section>
