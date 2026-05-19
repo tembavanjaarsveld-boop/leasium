@@ -18,6 +18,13 @@ Last updated: 2026-05-20
 - Codex design source of truth has been imported into the project.
   - Source file now lives at `docs/leasium-codex-design-source-of-truth.md`.
   - `docs/design-governance.md` and `docs/product-roadmap.md` link to it for future design-facing work.
+- Operator security and settings arena v1 is built on this branch.
+  - New `/api/v1/me` returns the current operator, organisation, entity roles, auth boundary, and owner/admin management flag.
+  - New `/api/v1/security/workspace` returns Settings-ready auth, organisation, member, and role data.
+  - Owner/admin users can create or update operators, assign entity-scoped roles, and activate/deactivate teammates through `/api/v1/security/members`.
+  - Settings now has Security, Organisation, and Xero sections; Security exposes dev-auth/Clerk readiness without exposing secrets.
+  - This is design-facing and still needs Remba review.
+  - Full provider-backed Clerk sign-in/sign-up, invite acceptance, first-user setup, and backend JWT verification are still next-build work.
 - Temporary private-beta password gate is built and pushed in `f845a69`.
   - `LEASIUM_ACCESS_PASSWORD` controls whether the gate is active.
   - When unset or blank, the frontend remains open for local/dev convenience.
@@ -204,11 +211,12 @@ Last updated: 2026-05-20
 ## Recommended Next Tickets
 
 1. Enable the temporary Vercel password gate and verify production access behavior.
-2. Complete provider-backed Xero OAuth/contact sync, invoice posting approvals, and payment reconciliation on top of the readiness queue.
-3. Add shareable owner, finance, and lease-event snapshots generated from the live Insights overview data.
-4. Add provider-backed invoice email delivery and Xero posting approvals on top of internal invoice drafts.
-5. Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
-6. Start maintenance work orders and arrears/credit-control queues.
+2. Complete provider-backed operator login: Clerk sign-in/sign-up, verified backend sessions, invite acceptance, first-user organisation setup, and production replacement of dev auth.
+3. Complete provider-backed Xero OAuth/contact sync, invoice posting approvals, and payment reconciliation on top of the readiness queue.
+4. Add shareable owner, finance, and lease-event snapshots generated from the live Insights overview data.
+5. Add provider-backed invoice email delivery and Xero posting approvals on top of internal invoice drafts.
+6. Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
+7. Start maintenance work orders and arrears/credit-control queues.
 
 ## Resume Checklist
 

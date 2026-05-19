@@ -12,6 +12,84 @@ export type Entity = {
   deleted_at: string | null;
 };
 
+export type SecurityRole =
+  | "owner"
+  | "admin"
+  | "finance"
+  | "ops"
+  | "viewer"
+  | "agent";
+
+export type SecurityRoleAssignment = {
+  entity_id: string;
+  role: SecurityRole;
+};
+
+export type SecurityEntityRoleRecord = SecurityRoleAssignment & {
+  entity_name: string;
+};
+
+export type SecurityMemberRecord = {
+  id: string;
+  email: string;
+  display_name: string;
+  is_active: boolean;
+  login_linked: boolean;
+  created_at: string;
+  roles: SecurityEntityRoleRecord[];
+};
+
+export type SecurityAuthStatusRecord = {
+  auth_mode: string;
+  dev_auth_active: boolean;
+  clerk_secret_configured: boolean;
+  clerk_jwks_configured: boolean;
+  operator_login_enforced: boolean;
+  login_boundary: string;
+  next_steps: string[];
+};
+
+export type SecurityWorkspaceRecord = {
+  auth: SecurityAuthStatusRecord;
+  current_user: {
+    id: string;
+    organisation_id: string;
+    email: string;
+    display_name: string;
+  };
+  organisation: {
+    id: string;
+    name: string;
+    country_code: string;
+    timezone: string;
+    created_at: string;
+  };
+  members: SecurityMemberRecord[];
+  current_user_roles: SecurityEntityRoleRecord[];
+  can_manage_security: boolean;
+};
+
+export type SecurityMeRecord = {
+  auth: SecurityAuthStatusRecord;
+  current_user: SecurityWorkspaceRecord["current_user"];
+  organisation: SecurityWorkspaceRecord["organisation"];
+  roles: SecurityEntityRoleRecord[];
+  can_manage_security: boolean;
+};
+
+export type SecurityMemberPayload = {
+  email: string;
+  display_name: string;
+  roles: SecurityRoleAssignment[];
+  is_active?: boolean;
+};
+
+export type SecurityMemberUpdatePayload = {
+  display_name?: string;
+  is_active?: boolean;
+  roles?: SecurityRoleAssignment[];
+};
+
 export type PropertyType =
   | "commercial_office"
   | "commercial_retail"
@@ -819,6 +897,31 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
 
 export function listEntities() {
   return request<Entity[]>("/entities");
+}
+
+export function getSecurityWorkspace() {
+  return request<SecurityWorkspaceRecord>("/security/workspace");
+}
+
+export function getCurrentOperator() {
+  return request<SecurityMeRecord>("/me");
+}
+
+export function createSecurityMember(payload: SecurityMemberPayload) {
+  return request<SecurityMemberRecord>("/security/members", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateSecurityMember(
+  memberId: string,
+  payload: SecurityMemberUpdatePayload,
+) {
+  return request<SecurityMemberRecord>(`/security/members/${memberId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getXeroStatus(entityId: string) {

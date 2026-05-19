@@ -55,6 +55,10 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.goto("/settings");
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByText("Operator security")).toBeVisible();
+  await expect(page.getByText("Owner Operator")).toBeVisible();
+
+  await page.getByRole("tab", { name: "Xero" }).click();
   await expect(page.getByText("Xero is not connected")).toBeVisible();
 
   await page.getByLabel("Xero tenant ID").fill("tenant-smoke");

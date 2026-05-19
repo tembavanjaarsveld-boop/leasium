@@ -4,15 +4,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Ban,
+  Building2,
   CheckCircle2,
   CircleDollarSign,
+  KeyRound,
   Loader2,
   PlugZap,
   RefreshCw,
   Settings,
+  ShieldCheck,
+  UserPlus,
+  UsersRound,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
@@ -28,10 +33,16 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  createSecurityMember,
+  getSecurityWorkspace,
   getXeroStatus,
   listEntities,
+  updateSecurityMember,
   updateChargeRule,
   updateXeroConnection,
+  type SecurityMemberRecord,
+  type SecurityRole,
+  type SecurityRoleAssignment,
   type XeroMappingIssueRecord,
   type XeroReadinessSummaryRecord,
 } from "@/lib/api";
@@ -39,7 +50,31 @@ import {
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_XERO_ISSUES: XeroMappingIssueRecord[] = [];
 
+type SettingsTab = "security" | "organisation" | "xero";
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
+
+const settingsTabs: Array<{
+  id: SettingsTab;
+  label: string;
+  icon: ReactNode;
+}> = [
+  { id: "security", label: "Security", icon: <ShieldCheck size={15} /> },
+  { id: "organisation", label: "Organisation", icon: <Building2 size={15} /> },
+  { id: "xero", label: "Xero", icon: <PlugZap size={15} /> },
+];
+
+const roleOptions: Array<{ value: SecurityRole; label: string }> = [
+  { value: "owner", label: "Owner" },
+  { value: "admin", label: "Admin" },
+  { value: "finance", label: "Finance" },
+  { value: "ops", label: "Ops" },
+  { value: "viewer", label: "Viewer" },
+  { value: "agent", label: "Agent" },
+];
+
+const roleLabels = Object.fromEntries(
+  roleOptions.map((option) => [option.value, option.label]),
+) as Record<SecurityRole, string>;
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) {
@@ -78,16 +113,43 @@ function summaryLabel(summary: XeroReadinessSummaryRecord) {
   return `${summary.ready}/${summary.total} ready`;
 }
 
+function roleLabel(role: SecurityRole) {
+  return roleLabels[role] ?? role;
+}
+
+function roleForEntity(member: SecurityMemberRecord, entityId: string) {
+  return member.roles.find((role) => role.entity_id === entityId);
+}
+
+function nextRolesForEntity(
+  member: SecurityMemberRecord,
+  entityId: string,
+  role: SecurityRole | "",
+): SecurityRoleAssignment[] {
+  const otherRoles = member.roles
+    .filter((assignment) => assignment.entity_id !== entityId)
+    .map((assignment) => ({
+      entity_id: assignment.entity_id,
+      role: assignment.role,
+    }));
+  if (!role) {
+    return otherRoles;
+  }
+  return [...otherRoles, { entity_id: entityId, role }];
+}
+
 function MetricCard({
   label,
   value,
   detail,
   tone = "neutral",
+  icon,
 }: {
   label: string;
   value: string | number;
   detail: string;
   tone?: StatusTone;
+  icon?: ReactNode;
 }) {
   const toneClass = {
     neutral: "bg-muted text-leasium-slate-500",
@@ -104,13 +166,13 @@ function MetricCard({
           <div className="mt-1 text-sm font-medium">{label}</div>
         </div>
         <div className={`rounded-xl p-2 ${toneClass}`}>
-          {tone === "success" ? (
+          {icon ?? (tone === "success" ? (
             <CheckCircle2 size={18} />
           ) : tone === "danger" || tone === "warning" ? (
             <AlertTriangle size={18} />
           ) : (
             <CircleDollarSign size={18} />
-          )}
+          ))}
         </div>
       </div>
       <p className="mt-3 text-sm text-muted-foreground">{detail}</p>
@@ -120,8 +182,15 @@ function MetricCard({
 
 function SettingsWorkspace() {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<SettingsTab>("security");
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [xeroTenantId, setXeroTenantId] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteDisplayName, setInviteDisplayName] = useState("");
+  const [inviteRole, setInviteRole] = useState<SecurityRole>("viewer");
+  const [roleDrafts, setRoleDrafts] = useState<Record<string, SecurityRole | "">>(
+    {},
+  );
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -156,6 +225,11 @@ function SettingsWorkspace() {
     enabled: Boolean(selectedEntityId),
   });
 
+  const securityQuery = useQuery({
+    queryKey: ["security-workspace"],
+    queryFn: getSecurityWorkspace,
+  });
+
   useEffect(() => {
     setXeroTenantId(xeroStatusQuery.data?.connection.xero_tenant_id ?? "");
   }, [xeroStatusQuery.data?.connection.xero_tenant_id]);
@@ -185,6 +259,36 @@ function SettingsWorkspace() {
     },
   });
 
+  const inviteMutation = useMutation({
+    mutationFn: () =>
+      createSecurityMember({
+        email: inviteEmail,
+        display_name: inviteDisplayName,
+        roles: [{ entity_id: selectedEntityId, role: inviteRole }],
+      }),
+    onSuccess: () => {
+      setInviteEmail("");
+      setInviteDisplayName("");
+      setInviteRole("viewer");
+      queryClient.invalidateQueries({ queryKey: ["security-workspace"] });
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+    },
+  });
+
+  const memberMutation = useMutation({
+    mutationFn: ({
+      memberId,
+      payload,
+    }: {
+      memberId: string;
+      payload: { display_name?: string; is_active?: boolean; roles?: SecurityRoleAssignment[] };
+    }) => updateSecurityMember(memberId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["security-workspace"] });
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+    },
+  });
+
   const status = xeroStatusQuery.data;
   const issues = status?.issues ?? EMPTY_XERO_ISSUES;
   const mappingIssues = useMemo(
@@ -197,6 +301,8 @@ function SettingsWorkspace() {
       issues.filter((issue) => issue.kind !== "chart" && issue.kind !== "tax"),
     [issues],
   );
+  const selectedEntityRoleMembers = securityQuery.data?.members ?? [];
+  const selectedEntityName = selectedEntity?.name ?? "selected entity";
 
   return (
     <main className="min-h-screen">
@@ -220,8 +326,8 @@ function SettingsWorkspace() {
           title="Settings"
           description={
             selectedEntity
-              ? `Xero readiness and sync controls for ${selectedEntity.name}.`
-              : "Choose an entity to review Xero readiness."
+              ? `${selectedEntity.name} access, organisation, and integration controls.`
+              : "Choose an entity to review access, organisation, and integration controls."
           }
           actions={
             <SecondaryButton
@@ -234,6 +340,30 @@ function SettingsWorkspace() {
             </SecondaryButton>
           }
         />
+
+        <div
+          aria-label="Settings sections"
+          className="flex w-full flex-wrap gap-2 rounded-2xl border border-border bg-white p-1 shadow-leasiumXs md:w-fit"
+          role="tablist"
+        >
+          {settingsTabs.map((tab) => (
+            <button
+              key={tab.id}
+              aria-selected={activeTab === tab.id}
+              className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition duration-200 ease-leasium ${
+                activeTab === tab.id
+                  ? "bg-primary text-primary-foreground shadow-leasiumXs"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              onClick={() => setActiveTab(tab.id)}
+              role="tab"
+              type="button"
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
         {entitiesQuery.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
@@ -263,8 +393,422 @@ function SettingsWorkspace() {
               : "Could not update the Xero mapping."}
           </div>
         ) : null}
+        {securityQuery.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {securityQuery.error instanceof Error
+              ? securityQuery.error.message
+              : "Could not load security settings."}
+          </div>
+        ) : null}
+        {inviteMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {inviteMutation.error instanceof Error
+              ? inviteMutation.error.message
+              : "Could not add the operator."}
+          </div>
+        ) : null}
+        {memberMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {memberMutation.error instanceof Error
+              ? memberMutation.error.message
+              : "Could not update the operator."}
+          </div>
+        ) : null}
 
-        {!selectedEntityId ? (
+        {activeTab === "security" ? (
+          <>
+            <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                label="Auth mode"
+                value={securityQuery.data?.auth.auth_mode ?? "..."}
+                detail={
+                  securityQuery.data?.auth.login_boundary ??
+                  "Loading the current login boundary."
+                }
+                tone={
+                  securityQuery.data?.auth.operator_login_enforced
+                    ? "success"
+                    : "warning"
+                }
+                icon={<ShieldCheck size={18} />}
+              />
+              <MetricCard
+                label="Operator login"
+                value={
+                  securityQuery.data?.auth.operator_login_enforced
+                    ? "Enforced"
+                    : "Pre-prod"
+                }
+                detail={
+                  securityQuery.data?.auth.operator_login_enforced
+                    ? "Production requests resolve through the configured provider."
+                    : "Private beta access is still protected by the temporary gate."
+                }
+                tone={
+                  securityQuery.data?.auth.operator_login_enforced
+                    ? "success"
+                    : "warning"
+                }
+                icon={<KeyRound size={18} />}
+              />
+              <MetricCard
+                label="Clerk config"
+                value={
+                  securityQuery.data?.auth.clerk_secret_configured &&
+                  securityQuery.data?.auth.clerk_jwks_configured
+                    ? "Ready"
+                    : "Pending"
+                }
+                detail="Secret and JWKS settings are tracked without exposing values."
+                tone={
+                  securityQuery.data?.auth.clerk_secret_configured &&
+                  securityQuery.data?.auth.clerk_jwks_configured
+                    ? "success"
+                    : "neutral"
+                }
+                icon={<PlugZap size={18} />}
+              />
+              <MetricCard
+                label="Operators"
+                value={securityQuery.data?.members.length ?? "..."}
+                detail={`${selectedEntityName} role access can be reviewed below.`}
+                tone="primary"
+                icon={<UsersRound size={18} />}
+              />
+            </section>
+
+            <SectionPanel
+              title="Operator access"
+              description="Invite teammates into the organisation and choose their access for the selected entity."
+              icon={<UserPlus size={17} className="text-primary" />}
+              actions={
+                securityQuery.data?.can_manage_security ? (
+                  <StatusBadge tone="success">Owner/admin controls</StatusBadge>
+                ) : (
+                  <StatusBadge tone="warning">Read-only</StatusBadge>
+                )
+              }
+            >
+              <div className="grid gap-4 p-4 lg:grid-cols-[1fr_360px]">
+                <div className="grid gap-3">
+                  <div className="rounded-md border border-border bg-muted/25 p-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge
+                        tone={
+                          securityQuery.data?.auth.dev_auth_active
+                            ? "warning"
+                            : "success"
+                        }
+                      >
+                        {securityQuery.data?.auth.dev_auth_active
+                          ? "Dev auth active"
+                          : "Provider login active"}
+                      </StatusBadge>
+                      <span className="font-medium">
+                        {securityQuery.data?.current_user.display_name ??
+                          "Loading operator"}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-muted-foreground">
+                      {securityQuery.data?.current_user.email ??
+                        "Current operator details will appear here."}
+                    </p>
+                  </div>
+                  {securityQuery.data?.auth.next_steps.length ? (
+                    <div className="rounded-md border border-border bg-white p-3">
+                      <div className="text-sm font-semibold">Login rollout checklist</div>
+                      <ul className="mt-2 grid gap-2 text-sm text-muted-foreground">
+                        {securityQuery.data.auth.next_steps.map((step) => (
+                          <li key={step} className="flex gap-2">
+                            <span className="mt-2 h-1.5 w-1.5 rounded-full bg-primary" />
+                            <span>{step}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+
+                <form
+                  className="grid gap-3 rounded-md border border-border bg-muted/25 p-4"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    inviteMutation.mutate();
+                  }}
+                >
+                  <Field label="Name">
+                    <Input
+                      value={inviteDisplayName}
+                      onChange={(event) => setInviteDisplayName(event.target.value)}
+                      placeholder="Alex Morgan"
+                    />
+                  </Field>
+                  <Field label="Email">
+                    <Input
+                      value={inviteEmail}
+                      onChange={(event) => setInviteEmail(event.target.value)}
+                      placeholder="alex@example.com"
+                      type="email"
+                    />
+                  </Field>
+                  <Field label="Role for selected entity">
+                    <Select
+                      value={inviteRole}
+                      onChange={(event) =>
+                        setInviteRole(event.target.value as SecurityRole)
+                      }
+                    >
+                      {roleOptions.map((role) => (
+                        <option key={role.value} value={role.value}>
+                          {role.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Button
+                    type="submit"
+                    disabled={
+                      inviteMutation.isPending ||
+                      !securityQuery.data?.can_manage_security ||
+                      !selectedEntityId ||
+                      !inviteEmail.trim()
+                    }
+                  >
+                    {inviteMutation.isPending ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <UserPlus size={15} />
+                    )}
+                    Add operator
+                  </Button>
+                </form>
+              </div>
+            </SectionPanel>
+
+            <SectionPanel
+              title="Users and roles"
+              description={`Review who can access ${selectedEntityName}.`}
+              icon={<UsersRound size={17} className="text-primary" />}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Operator</th>
+                      <th className="px-3 py-2 font-semibold">Status</th>
+                      <th className="px-3 py-2 font-semibold">Selected entity role</th>
+                      <th className="px-3 py-2 font-semibold">All access</th>
+                      <th className="px-3 py-2 font-semibold">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedEntityRoleMembers.map((member) => {
+                      const roleKey = `${member.id}:${selectedEntityId}`;
+                      const currentRole = roleForEntity(member, selectedEntityId);
+                      const draftRole =
+                        roleDrafts[roleKey] ?? currentRole?.role ?? "";
+                      const isSelf =
+                        member.id === securityQuery.data?.current_user.id;
+                      const isUpdating =
+                        memberMutation.isPending &&
+                        memberMutation.variables?.memberId === member.id;
+                      return (
+                        <tr key={member.id} className="border-t border-border align-top">
+                          <td className="min-w-64 px-3 py-3">
+                            <div className="font-medium">{member.display_name}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {member.email}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <StatusBadge tone={member.is_active ? "success" : "neutral"}>
+                                {member.is_active ? "Active" : "Inactive"}
+                              </StatusBadge>
+                              <StatusBadge tone={member.login_linked ? "success" : "warning"}>
+                                {member.login_linked ? "Login linked" : "Invite pending"}
+                              </StatusBadge>
+                            </div>
+                          </td>
+                          <td className="min-w-52 px-3 py-3">
+                            <div className="flex gap-2">
+                              <Select
+                                aria-label={`${member.display_name} role`}
+                                value={draftRole}
+                                onChange={(event) =>
+                                  setRoleDrafts((drafts) => ({
+                                    ...drafts,
+                                    [roleKey]: event.target.value as SecurityRole | "",
+                                  }))
+                                }
+                              >
+                                <option value="">No access</option>
+                                {roleOptions.map((role) => (
+                                  <option key={role.value} value={role.value}>
+                                    {role.label}
+                                  </option>
+                                ))}
+                              </Select>
+                              <SecondaryButton
+                                type="button"
+                                disabled={
+                                  isUpdating ||
+                                  !securityQuery.data?.can_manage_security ||
+                                  !selectedEntityId
+                                }
+                                onClick={() =>
+                                  memberMutation.mutate({
+                                    memberId: member.id,
+                                    payload: {
+                                      roles: nextRolesForEntity(
+                                        member,
+                                        selectedEntityId,
+                                        draftRole,
+                                      ),
+                                    },
+                                  })
+                                }
+                              >
+                                {isUpdating ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <CheckCircle2 size={14} />
+                                )}
+                                Save
+                              </SecondaryButton>
+                            </div>
+                          </td>
+                          <td className="min-w-64 px-3 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              {member.roles.map((role) => (
+                                <StatusBadge key={`${member.id}-${role.entity_id}`} tone="neutral">
+                                  {role.entity_name}: {roleLabel(role.role)}
+                                </StatusBadge>
+                              ))}
+                              {member.roles.length === 0 ? (
+                                <span className="text-xs text-muted-foreground">
+                                  No entity access
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <SecondaryButton
+                              type="button"
+                              className={member.is_active ? "text-danger" : ""}
+                              disabled={
+                                isSelf ||
+                                isUpdating ||
+                                !securityQuery.data?.can_manage_security
+                              }
+                              onClick={() =>
+                                memberMutation.mutate({
+                                  memberId: member.id,
+                                  payload: { is_active: !member.is_active },
+                                })
+                              }
+                            >
+                              {member.is_active ? <Ban size={14} /> : <CheckCircle2 size={14} />}
+                              {member.is_active ? "Deactivate" : "Activate"}
+                            </SecondaryButton>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!securityQuery.isLoading && selectedEntityRoleMembers.length === 0 ? (
+                      <tr>
+                        <td className="px-3 py-10" colSpan={5}>
+                          <EmptyState
+                            title="No operators yet"
+                            description="Owner and admin users will appear here once the security workspace loads."
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </SectionPanel>
+          </>
+        ) : null}
+
+        {activeTab === "organisation" ? (
+          <>
+            <SectionPanel
+              title="Organisation profile"
+              description="The operator account, entities, and integration settings all sit under this organisation."
+              icon={<Building2 size={17} className="text-primary" />}
+              actions={
+                securityQuery.data ? (
+                  <StatusBadge tone="primary">
+                    {securityQuery.data.organisation.country_code}
+                  </StatusBadge>
+                ) : null
+              }
+            >
+              <div className="grid gap-3 p-4 md:grid-cols-3">
+                <div className="rounded-md border border-border bg-muted/25 p-3">
+                  <div className="text-xs uppercase text-muted-foreground">Name</div>
+                  <div className="mt-1 font-semibold">
+                    {securityQuery.data?.organisation.name ?? "Loading"}
+                  </div>
+                </div>
+                <div className="rounded-md border border-border bg-muted/25 p-3">
+                  <div className="text-xs uppercase text-muted-foreground">Timezone</div>
+                  <div className="mt-1 font-semibold">
+                    {securityQuery.data?.organisation.timezone ?? "Loading"}
+                  </div>
+                </div>
+                <div className="rounded-md border border-border bg-muted/25 p-3">
+                  <div className="text-xs uppercase text-muted-foreground">Entities</div>
+                  <div className="mt-1 font-semibold">{entitiesQuery.data?.length ?? 0}</div>
+                </div>
+              </div>
+            </SectionPanel>
+
+            <SectionPanel
+              title="Entity access map"
+              description="Each entity carries its own roles so operators only see the portfolio slices they should."
+              icon={<KeyRound size={17} className="text-primary" />}
+            >
+              <div className="divide-y divide-border">
+                {(entitiesQuery.data ?? []).map((entity) => {
+                  const currentUserRole = securityQuery.data?.current_user_roles.find(
+                    (role) => role.entity_id === entity.id,
+                  );
+                  return (
+                    <div
+                      key={entity.id}
+                      className="grid gap-3 px-4 py-3 text-sm md:grid-cols-[1fr_180px_220px]"
+                    >
+                      <div>
+                        <div className="font-medium">{entity.name}</div>
+                        <p className="mt-1 text-muted-foreground">
+                          {entity.abn ? `ABN ${entity.abn}` : "ABN not recorded"}
+                        </p>
+                      </div>
+                      <StatusBadge tone={entity.gst_registered ? "success" : "warning"}>
+                        {entity.gst_registered ? "GST registered" : "GST not recorded"}
+                      </StatusBadge>
+                      <div className="text-sm text-muted-foreground">
+                        Your role:{" "}
+                        {currentUserRole ? roleLabel(currentUserRole.role) : "No access"}
+                      </div>
+                    </div>
+                  );
+                })}
+                {!entitiesQuery.isLoading && !entitiesQuery.data?.length ? (
+                  <EmptyState
+                    title="No entities available"
+                    description="Create an entity before inviting operators into scoped roles."
+                  />
+                ) : null}
+              </div>
+            </SectionPanel>
+          </>
+        ) : null}
+
+        {activeTab === "xero" && !selectedEntityId ? (
           <SectionPanel>
             <EmptyState
               title="No entity selected"
@@ -273,7 +817,7 @@ function SettingsWorkspace() {
           </SectionPanel>
         ) : null}
 
-        {selectedEntityId && status ? (
+        {activeTab === "xero" && selectedEntityId && status ? (
           <>
             <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <MetricCard

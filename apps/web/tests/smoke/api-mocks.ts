@@ -13,6 +13,7 @@ const propertyId = "property-1";
 const tenantId = "tenant-1";
 const unitId = "unit-1";
 const leaseId = "lease-1";
+const operatorId = "operator-1";
 
 const entities = [
   {
@@ -258,6 +259,59 @@ const leases = [
     notes: null,
   },
 ];
+
+const securityWorkspace = () => ({
+  auth: {
+    auth_mode: "dev",
+    dev_auth_active: true,
+    clerk_secret_configured: false,
+    clerk_jwks_configured: false,
+    operator_login_enforced: false,
+    login_boundary: "Development operator identity",
+    next_steps: [
+      "Switch AUTH_MODE to clerk before inviting real operators.",
+      "Set CLERK_SECRET_KEY before enabling provider-backed login.",
+    ],
+  },
+  current_user: {
+    id: operatorId,
+    organisation_id: "org-1",
+    email: "owner@example.com",
+    display_name: "Owner Operator",
+  },
+  organisation: {
+    id: "org-1",
+    name: "Acme Holdings",
+    country_code: "AU",
+    timezone: "Australia/Brisbane",
+    created_at: "2026-05-01T00:00:00.000Z",
+  },
+  members: [
+    {
+      id: operatorId,
+      email: "owner@example.com",
+      display_name: "Owner Operator",
+      is_active: true,
+      login_linked: true,
+      created_at: "2026-05-01T00:00:00.000Z",
+      roles: [
+        {
+          entity_id: entityId,
+          entity_name: "Acme Holdings Pty Ltd",
+          role: "owner",
+        },
+      ],
+    },
+  ],
+  current_user_roles: [
+    {
+      entity_id: entityId,
+      entity_name: "Acme Holdings Pty Ltd",
+      role: "owner",
+    },
+  ],
+  can_manage_security: true,
+});
 
 const corsHeaders = {
   "access-control-allow-headers": "content-type",
@@ -523,6 +577,11 @@ export async function mockLeasiumApi(page: Page) {
           xero_connected_at: xeroConnectedAt,
         })),
       );
+      return;
+    }
+
+    if (method === "GET" && path === "/security/workspace") {
+      await fulfillJson(route, securityWorkspace());
       return;
     }
 
