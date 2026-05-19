@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production feature deployment in this handover: `d116f2b Polish property billing loading states`, Vercel deployment `dpl_FYaPZPJeGMR9JSvxAGPk7ZL8P48s`, state `READY`; latest Render deploy remains `dep-d86dtfutsp3c7391n6lg`, state `Live`.
+- Latest confirmed production feature deployment in this handover: `f767853 Split property workspace into task zones`, Vercel deployment `dpl_3xA7GEpWGe2R36nQ2XKfmUN8M5nh`, state `READY`; latest Render deploy remains `dep-d86dtfutsp3c7391n6lg`, state `Live`.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -193,6 +193,11 @@ Last updated: 2026-05-20
   - Next dev server loaded `/billing-readiness`, `/properties`, and `/tenants` on `127.0.0.1:3014`.
   - Each route returned `200`, showed expected Leasium screen text, and the in-app browser reported no console errors.
 - Production deployment verification passed:
+  - Commit `f767853 Split property workspace into task zones`
+  - Vercel deployment `dpl_3xA7GEpWGe2R36nQ2XKfmUN8M5nh`, state `READY`
+  - Production alias route `/properties` and exact deployment route returned `200`.
+  - Production `/properties` includes the Portfolio, Operations, Billing, and Documents workspace tabs.
+  - Production browser smoke confirmed each tab switches to the expected section, and `New property` opens the focused property editor overlay.
   - Commit `d116f2b Polish property billing loading states`
   - Vercel deployment `dpl_FYaPZPJeGMR9JSvxAGPk7ZL8P48s`, state `READY`
   - Production alias routes `/properties` and `/billing-readiness` returned `200`.
