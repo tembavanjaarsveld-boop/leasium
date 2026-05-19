@@ -176,6 +176,17 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
                     "outgoings",
                     "outgoings_amount",
                     "outgoings_frequency",
+                    "parking_amount",
+                    "parking_frequency",
+                    "storage_amount",
+                    "storage_frequency",
+                    "utilities_amount",
+                    "utilities_frequency",
+                    "promotion_levy_amount",
+                    "promotion_levy_frequency",
+                    "other_charge_label",
+                    "other_charge_amount",
+                    "other_charge_frequency",
                     "option_summary",
                     "option_notice_date",
                     "security_summary",
@@ -197,6 +208,17 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
                     "outgoings": {"type": ["string", "null"]},
                     "outgoings_amount": {"type": ["number", "null"]},
                     "outgoings_frequency": {"type": ["string", "null"]},
+                    "parking_amount": {"type": ["number", "null"]},
+                    "parking_frequency": {"type": ["string", "null"]},
+                    "storage_amount": {"type": ["number", "null"]},
+                    "storage_frequency": {"type": ["string", "null"]},
+                    "utilities_amount": {"type": ["number", "null"]},
+                    "utilities_frequency": {"type": ["string", "null"]},
+                    "promotion_levy_amount": {"type": ["number", "null"]},
+                    "promotion_levy_frequency": {"type": ["string", "null"]},
+                    "other_charge_label": {"type": ["string", "null"]},
+                    "other_charge_amount": {"type": ["number", "null"]},
+                    "other_charge_frequency": {"type": ["string", "null"]},
                     "option_summary": {"type": ["string", "null"]},
                     "option_notice_date": {"type": ["string", "null"]},
                     "security_summary": {"type": ["string", "null"]},
@@ -270,7 +292,8 @@ def extract_document_file(
         "the file. Do not give legal advice. Nothing will be applied automatically, "
         "so focus on facts a property manager should review: parties, properties, "
         "ownership or trust billing identity, acquisition tenancy schedule rows, rent "
-        "review dates, outgoings amounts and frequency, option notice dates, security "
+        "review dates, outgoings amounts and frequency, parking, storage, utilities, "
+        "promotion levy or other schedule charges, option notice dates, security "
         "or bank guarantee due dates, key dates, money, obligations, warnings, "
         "missing information, and proposed actions. Use ISO dates where possible and "
         "mark uncertainty with lower confidence and warnings."

@@ -1170,6 +1170,17 @@ def _tenancy_schedule_snapshot(row: dict[str, Any]) -> dict[str, Any]:
         "outgoings": _str(row.get("outgoings")),
         "outgoings_amount_cents": _money_cents(row.get("outgoings_amount")),
         "outgoings_frequency": _str(row.get("outgoings_frequency")),
+        "parking_amount_cents": _money_cents(row.get("parking_amount")),
+        "parking_frequency": _str(row.get("parking_frequency")),
+        "storage_amount_cents": _money_cents(row.get("storage_amount")),
+        "storage_frequency": _str(row.get("storage_frequency")),
+        "utilities_amount_cents": _money_cents(row.get("utilities_amount")),
+        "utilities_frequency": _str(row.get("utilities_frequency")),
+        "promotion_levy_amount_cents": _money_cents(row.get("promotion_levy_amount")),
+        "promotion_levy_frequency": _str(row.get("promotion_levy_frequency")),
+        "other_charge_label": _str(row.get("other_charge_label")),
+        "other_charge_amount_cents": _money_cents(row.get("other_charge_amount")),
+        "other_charge_frequency": _str(row.get("other_charge_frequency")),
         "option_summary": _str(row.get("option_summary")),
         "option_notice_date": (
             _date(row.get("option_notice_date")).isoformat()
@@ -1276,14 +1287,27 @@ def _schedule_outgoings_recoverable(value: Any) -> bool:
     return True
 
 
+def _schedule_tenant_blocker(row: dict[str, Any]) -> str | None:
+    if not _str(row.get("tenant_name")) and not _str(row.get("tenant_abn")):
+        return "Tenant name missing."
+    return None
+
+
 def _schedule_lease_blockers(row: dict[str, Any]) -> list[str]:
     blockers: list[str] = []
-    if _date(row.get("lease_start")) is None:
+    start = _date(row.get("lease_start"))
+    end = _date(row.get("lease_expiry"))
+    annual_rent_cents = _money_cents(row.get("annual_rent"))
+    if start is None:
         blockers.append("Lease start missing.")
-    if _date(row.get("lease_expiry")) is None:
+    if end is None:
         blockers.append("Lease expiry missing.")
-    if _money_cents(row.get("annual_rent")) is None:
+    if start is not None and end is not None and end < start:
+        blockers.append("Lease expiry is before lease start.")
+    if annual_rent_cents is None:
         blockers.append("Annual rent missing.")
+    elif annual_rent_cents <= 0:
+        blockers.append("Annual rent must be greater than zero.")
     if _rent_frequency(row.get("rent_frequency")) is None:
         blockers.append("Rent frequency missing.")
     return blockers
@@ -1403,21 +1427,82 @@ def _create_schedule_lease_obligations(
     return obligations
 
 
-def _create_schedule_base_rent_rule(
+SCHEDULE_EXTRA_CHARGE_FIELDS: tuple[
+    tuple[RentChargeType, tuple[str, ...], tuple[str, ...], str],
+    ...,
+] = (
+    (
+        RentChargeType.parking,
+        ("parking_amount", "car_parking_amount", "parking_charge"),
+        ("parking_frequency", "car_parking_frequency"),
+        "Parking",
+    ),
+    (
+        RentChargeType.storage,
+        ("storage_amount", "storage_charge"),
+        ("storage_frequency",),
+        "Storage",
+    ),
+    (
+        RentChargeType.utilities,
+        ("utilities_amount", "utility_amount", "utilities_charge"),
+        ("utilities_frequency", "utility_frequency"),
+        "Utilities",
+    ),
+    (
+        RentChargeType.promotion_levy,
+        ("promotion_levy_amount", "marketing_levy_amount", "promotion_fund_amount"),
+        ("promotion_levy_frequency", "marketing_levy_frequency"),
+        "Promotion levy",
+    ),
+    (
+        RentChargeType.other,
+        ("other_charge_amount", "misc_charge_amount"),
+        ("other_charge_frequency", "misc_charge_frequency"),
+        "Other charge",
+    ),
+)
+
+
+def _schedule_first_money(
+    row: dict[str, Any],
+    keys: tuple[str, ...],
+) -> tuple[int | None, str | None]:
+    for key in keys:
+        amount_cents = _money_cents(row.get(key))
+        if amount_cents is not None:
+            return amount_cents, key
+    return None, None
+
+
+def _schedule_first_frequency(
+    row: dict[str, Any],
+    keys: tuple[str, ...],
+) -> tuple[RentFrequency | None, str | None]:
+    for key in keys:
+        frequency = _rent_frequency(row.get(key))
+        if frequency is not None:
+            return frequency, key
+    fallback = _rent_frequency(row.get("rent_frequency"))
+    if fallback is not None:
+        return fallback, "rent_frequency"
+    return None, None
+
+
+def _create_schedule_charge_rule(
     intake: DocumentIntake,
     lease: Lease,
     row: dict[str, Any],
     session: Session,
-) -> RentChargeRule | None:
-    annual_rent_cents = _money_cents(row.get("annual_rent"))
-    frequency = _rent_frequency(row.get("rent_frequency"))
-    if annual_rent_cents is None or frequency is None:
-        return None
-
+    charge_type: RentChargeType,
+    amount_cents: int,
+    frequency: RentFrequency,
+    extra_metadata: dict[str, Any] | None = None,
+) -> RentChargeRule:
     existing = session.scalar(
         select(RentChargeRule).where(
             RentChargeRule.lease_id == lease.id,
-            RentChargeRule.charge_type == RentChargeType.base_rent,
+            RentChargeRule.charge_type == charge_type,
             RentChargeRule.deleted_at.is_(None),
         )
     )
@@ -1426,55 +1511,7 @@ def _create_schedule_base_rent_rule(
 
     charge_rule = RentChargeRule(
         lease_id=lease.id,
-        charge_type=RentChargeType.base_rent,
-        amount_cents=_periodic_rent_cents(annual_rent_cents, frequency),
-        frequency=frequency,
-        gst_treatment=GstTreatment.taxable,
-        start_date=lease.commencement_date,
-        end_date=lease.expiry_date,
-        next_due_date=lease.commencement_date,
-        arrears_or_advance="advance",
-        charge_rule_metadata={
-            "source": "document_intake",
-            "draft": True,
-            "draft_status": "needs_review",
-            "document_intake_id": str(intake.id),
-            "document_id": str(intake.document_id),
-            "document_type": "purchase_contract",
-            "source_hint": _str(row.get("source_hint")),
-            "annual_rent_cents": annual_rent_cents,
-            "tenancy_schedule": _tenancy_schedule_snapshot(row),
-        },
-    )
-    session.add(charge_rule)
-    session.flush()
-    return charge_rule
-
-
-def _create_schedule_outgoings_rule(
-    intake: DocumentIntake,
-    lease: Lease,
-    row: dict[str, Any],
-    session: Session,
-) -> RentChargeRule | None:
-    amount_cents = _money_cents(row.get("outgoings_amount"))
-    frequency = _rent_frequency(row.get("outgoings_frequency") or row.get("rent_frequency"))
-    if amount_cents is None or frequency is None:
-        return None
-
-    existing = session.scalar(
-        select(RentChargeRule).where(
-            RentChargeRule.lease_id == lease.id,
-            RentChargeRule.charge_type == RentChargeType.outgoings,
-            RentChargeRule.deleted_at.is_(None),
-        )
-    )
-    if existing is not None:
-        return existing
-
-    charge_rule = RentChargeRule(
-        lease_id=lease.id,
-        charge_type=RentChargeType.outgoings,
+        charge_type=charge_type,
         amount_cents=amount_cents,
         frequency=frequency,
         gst_treatment=GstTreatment.taxable,
@@ -1490,13 +1527,117 @@ def _create_schedule_outgoings_rule(
             "document_id": str(intake.document_id),
             "document_type": "purchase_contract",
             "source_hint": _str(row.get("source_hint")),
-            "outgoings": _str(row.get("outgoings")),
             "tenancy_schedule": _tenancy_schedule_snapshot(row),
+            **(extra_metadata or {}),
         },
     )
     session.add(charge_rule)
     session.flush()
     return charge_rule
+
+
+def _create_schedule_base_rent_rule(
+    intake: DocumentIntake,
+    lease: Lease,
+    row: dict[str, Any],
+    session: Session,
+) -> RentChargeRule | None:
+    annual_rent_cents = _money_cents(row.get("annual_rent"))
+    frequency = _rent_frequency(row.get("rent_frequency"))
+    if annual_rent_cents is None or frequency is None:
+        return None
+
+    return _create_schedule_charge_rule(
+        intake,
+        lease,
+        row,
+        session,
+        RentChargeType.base_rent,
+        _periodic_rent_cents(annual_rent_cents, frequency),
+        frequency,
+        {
+            "annual_rent_cents": annual_rent_cents,
+            "source_field": "annual_rent",
+        },
+    )
+
+
+def _create_schedule_outgoings_rule(
+    intake: DocumentIntake,
+    lease: Lease,
+    row: dict[str, Any],
+    session: Session,
+) -> RentChargeRule | None:
+    amount_cents = _money_cents(row.get("outgoings_amount"))
+    frequency = _rent_frequency(row.get("outgoings_frequency") or row.get("rent_frequency"))
+    if amount_cents is None or frequency is None:
+        return None
+
+    return _create_schedule_charge_rule(
+        intake,
+        lease,
+        row,
+        session,
+        RentChargeType.outgoings,
+        amount_cents,
+        frequency,
+        {
+            "outgoings": _str(row.get("outgoings")),
+            "source_field": "outgoings_amount",
+        },
+    )
+
+
+def _create_schedule_extra_charge_rules(
+    intake: DocumentIntake,
+    lease: Lease,
+    row: dict[str, Any],
+    session: Session,
+) -> list[RentChargeRule]:
+    charge_rules: list[RentChargeRule] = []
+    for charge_type, amount_keys, frequency_keys, label in SCHEDULE_EXTRA_CHARGE_FIELDS:
+        amount_cents, amount_field = _schedule_first_money(row, amount_keys)
+        frequency, frequency_field = _schedule_first_frequency(row, frequency_keys)
+        if amount_cents is None or frequency is None:
+            continue
+        display_label = (
+            _str(row.get("other_charge_label"))
+            if charge_type == RentChargeType.other
+            else label
+        )
+        charge_rules.append(
+            _create_schedule_charge_rule(
+                intake,
+                lease,
+                row,
+                session,
+                charge_type,
+                amount_cents,
+                frequency,
+                {
+                    "source_field": amount_field,
+                    "frequency_source_field": frequency_field,
+                    "schedule_charge_label": display_label or label,
+                },
+            )
+        )
+    return charge_rules
+
+
+def _schedule_charge_rule_summary(rule: RentChargeRule) -> dict[str, Any]:
+    metadata = _dict(rule.charge_rule_metadata)
+    charge_type = getattr(rule.charge_type, "value", str(rule.charge_type))
+    frequency = getattr(rule.frequency, "value", str(rule.frequency))
+    return {
+        "id": str(rule.id),
+        "lease_id": str(rule.lease_id),
+        "charge_type": charge_type,
+        "amount_cents": rule.amount_cents,
+        "frequency": frequency,
+        "source_hint": _str(metadata.get("source_hint")),
+        "source_field": _str(metadata.get("source_field")),
+        "label": _str(metadata.get("schedule_charge_label")),
+    }
 
 
 def _apply_purchase_schedule_leases(
@@ -1513,18 +1654,15 @@ def _apply_purchase_schedule_leases(
     created_leases = 0
     schedule_obligation_ids: list[str] = []
     charge_rule_ids: list[str] = []
+    charge_rule_summaries: list[dict[str, Any]] = []
     skipped_rows: list[dict[str, Any]] = []
 
     for unit in units:
         row = _schedule_row_for_unit(unit, schedule_rows)
         if row is None:
             continue
-        tenant, tenant_created, tenant_blocker = _find_or_create_schedule_tenant(
-            intake,
-            row,
-            session,
-        )
         row_blockers = _schedule_lease_blockers(row)
+        tenant_blocker = _schedule_tenant_blocker(row)
         if tenant_blocker:
             row_blockers.append(tenant_blocker)
         start = _date(row.get("lease_start"))
@@ -1536,12 +1674,27 @@ def _apply_purchase_schedule_leases(
             session,
         ):
             row_blockers.append("Unit already has an overlapping lease.")
-        if row_blockers or tenant is None or start is None or end is None:
+        if row_blockers:
             skipped_rows.append(
                 {
                     "unit_label": unit.unit_label,
                     "tenant_name": _str(row.get("tenant_name")),
                     "blockers": row_blockers,
+                }
+            )
+            continue
+
+        tenant, tenant_created, tenant_blocker = _find_or_create_schedule_tenant(
+            intake,
+            row,
+            session,
+        )
+        if tenant_blocker or tenant is None:
+            skipped_rows.append(
+                {
+                    "unit_label": unit.unit_label,
+                    "tenant_name": _str(row.get("tenant_name")),
+                    "blockers": [tenant_blocker or "Tenant could not be resolved."],
                 }
             )
             continue
@@ -1613,11 +1766,13 @@ def _apply_purchase_schedule_leases(
             for rule in (
                 _create_schedule_base_rent_rule(intake, lease, row, session),
                 _create_schedule_outgoings_rule(intake, lease, row, session),
+                *_create_schedule_extra_charge_rules(intake, lease, row, session),
             )
             if rule is not None
         ]
         for charge_rule in charge_rules:
             charge_rule_ids.append(str(charge_rule.id))
+            charge_rule_summaries.append(_schedule_charge_rule_summary(charge_rule))
             audit_log(
                 session,
                 actor=user.actor,
@@ -1664,6 +1819,7 @@ def _apply_purchase_schedule_leases(
         "linked_tenant_count": linked_tenants,
         "created_lease_count": created_leases,
         "charge_rule_ids": charge_rule_ids,
+        "charge_rule_summaries": charge_rule_summaries,
         "created_charge_rule_count": len(charge_rule_ids),
         "lease_obligation_ids": schedule_obligation_ids,
         "lease_obligation_count": len(schedule_obligation_ids),
@@ -1829,6 +1985,7 @@ def _apply_purchase_contract_intake(
             schedule_apply["created_tenant_count"] + schedule_apply["created_lease_count"]
         ),
         "charge_rule_ids": schedule_apply["charge_rule_ids"],
+        "charge_rule_summaries": schedule_apply["charge_rule_summaries"],
         "created_charge_rule_count": schedule_apply["created_charge_rule_count"],
         "lease_obligation_ids": schedule_apply["lease_obligation_ids"],
         "lease_obligation_count": schedule_apply["lease_obligation_count"],

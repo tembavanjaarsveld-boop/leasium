@@ -78,6 +78,20 @@ type AppliedPropertyChange = {
   after: unknown;
   source: AppliedPropertySource | null;
 };
+type AppliedScheduleRowSkip = {
+  unitLabel: string | null;
+  tenantName: string | null;
+  blockers: string[];
+};
+type AppliedChargeRuleSummary = {
+  id: string;
+  leaseId: string | null;
+  chargeType: string;
+  amountCents: number | null;
+  frequency: string | null;
+  label: string | null;
+  sourceHint: string | null;
+};
 type DocumentApplyOutcome = {
   documentName: string;
   workflowType: string | null;
@@ -85,7 +99,11 @@ type DocumentApplyOutcome = {
   billingDraftCount?: number;
   billingDraftId?: string | null;
   leaseCount?: number;
+  leaseIds?: string[];
   chargeRuleCount?: number;
+  chargeRuleIds?: string[];
+  chargeRuleSummaries?: AppliedChargeRuleSummary[];
+  skippedTenancyScheduleRows?: AppliedScheduleRowSkip[];
   propertyChanges?: AppliedPropertyChange[];
   targetLabel: string;
   dueDate: string | null;
@@ -281,6 +299,16 @@ function fieldNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function fieldTextList(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    const text = fieldText(item);
+    return text ? [text] : [];
+  });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -322,6 +350,55 @@ function appliedPropertyChanges(value: unknown) {
     .filter((item): item is AppliedPropertyChange => item !== null);
 }
 
+function appliedScheduleRowSkips(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      if (!isRecord(item)) {
+        return null;
+      }
+      const blockers = fieldTextList(item.blockers);
+      if (blockers.length === 0) {
+        return null;
+      }
+      return {
+        unitLabel: fieldText(item.unit_label),
+        tenantName: fieldText(item.tenant_name),
+        blockers,
+      };
+    })
+    .filter((item): item is AppliedScheduleRowSkip => item !== null);
+}
+
+function appliedChargeRuleSummaries(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      if (!isRecord(item)) {
+        return null;
+      }
+      const id = fieldText(item.id);
+      const chargeType = fieldText(item.charge_type);
+      if (!id || !chargeType) {
+        return null;
+      }
+      return {
+        id,
+        leaseId: fieldText(item.lease_id),
+        chargeType,
+        amountCents: fieldNumber(item.amount_cents),
+        frequency: fieldText(item.frequency),
+        label: fieldText(item.label),
+        sourceHint: fieldText(item.source_hint),
+      };
+    })
+    .filter((item): item is AppliedChargeRuleSummary => item !== null);
+}
+
 function propertyFieldLabel(field: string) {
   return (
     propertyFieldLabels[field] ??
@@ -359,6 +436,25 @@ function propertySourceCaption(
   return [source.sourceHint, source.citation, confidence]
     .filter(Boolean)
     .join(" - ");
+}
+
+function shortRecordId(value: string) {
+  return value.slice(0, 8);
+}
+
+function chargeTypeLabel(value: string) {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function chargeSummaryCaption(summary: AppliedChargeRuleSummary) {
+  const amount = formatMoney(summary.amountCents);
+  const frequency = summary.frequency ? ` ${summary.frequency}` : "";
+  const source = summary.sourceHint ? ` - ${summary.sourceHint}` : "";
+  return `${amount}${frequency}${source}`;
 }
 
 function appliedReviewData(record: DocumentIntakeRecord) {
@@ -1168,6 +1264,10 @@ function DocumentIntakeApplyOutcomeCard({
   const isBilling = outcome.workflowType === "invoice_admin";
   const isPropertySetup = outcome.workflowType === "purchase_contract";
   const taskNoun = workflowTaskNoun(outcome.workflowType);
+  const shownLeaseIds = outcome.leaseIds?.slice(0, 4) ?? [];
+  const shownChargeSummaries = outcome.chargeRuleSummaries?.slice(0, 5) ?? [];
+  const shownChargeIds = outcome.chargeRuleIds?.slice(0, 4) ?? [];
+  const skippedScheduleRows = outcome.skippedTenancyScheduleRows ?? [];
   return (
     <SectionPanel
       title={isBilling ? "Prepared for billing" : "Applied to portfolio"}
@@ -1260,6 +1360,88 @@ function DocumentIntakeApplyOutcomeCard({
               </>
             ) : null}
           </div>
+          {isPropertySetup &&
+          (shownLeaseIds.length > 0 ||
+            shownChargeSummaries.length > 0 ||
+            shownChargeIds.length > 0 ||
+            skippedScheduleRows.length > 0) ? (
+            <div className="grid gap-3 border-t border-leasium-success/20 pt-3">
+              {shownLeaseIds.length > 0 ? (
+                <div>
+                  <div className="text-xs font-semibold uppercase text-[#027A48]">
+                    Created pending leases
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    {shownLeaseIds.map((leaseId) => (
+                      <span
+                        key={leaseId}
+                        className="rounded-full border border-leasium-success/20 bg-white px-2 py-1"
+                      >
+                        {shortRecordId(leaseId)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {shownChargeSummaries.length > 0 ? (
+                <div>
+                  <div className="text-xs font-semibold uppercase text-[#027A48]">
+                    Draft charges prepared
+                  </div>
+                  <div className="mt-2 grid gap-2">
+                    {shownChargeSummaries.map((summary) => (
+                      <div
+                        key={summary.id}
+                        className="grid gap-0.5 text-xs text-muted-foreground sm:grid-cols-[minmax(8rem,12rem)_1fr]"
+                      >
+                        <span className="font-medium text-foreground">
+                          {summary.label ?? chargeTypeLabel(summary.chargeType)}
+                        </span>
+                        <span>{chargeSummaryCaption(summary)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : shownChargeIds.length > 0 ? (
+                <div>
+                  <div className="text-xs font-semibold uppercase text-[#027A48]">
+                    Draft charge rules
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    {shownChargeIds.map((chargeRuleId) => (
+                      <span
+                        key={chargeRuleId}
+                        className="rounded-full border border-leasium-success/20 bg-white px-2 py-1"
+                      >
+                        {shortRecordId(chargeRuleId)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {skippedScheduleRows.length > 0 ? (
+                <div>
+                  <div className="text-xs font-semibold uppercase text-[#027A48]">
+                    Schedule rows needing review
+                  </div>
+                  <div className="mt-2 grid gap-2">
+                    {skippedScheduleRows.slice(0, 3).map((row, index) => (
+                      <div
+                        key={`${row.unitLabel ?? "unit"}-${index}`}
+                        className="grid gap-1 text-xs text-muted-foreground"
+                      >
+                        <div className="font-medium text-foreground">
+                          {[row.unitLabel, row.tenantName].filter(Boolean).join(" - ") ||
+                            "Schedule row"}
+                        </div>
+                        <div>{row.blockers.join(" ")}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {isPropertySetup && outcome.propertyChanges?.length ? (
             <div className="border-t border-leasium-success/20 pt-3">
               <div className="text-xs font-semibold uppercase text-[#027A48]">
@@ -2213,9 +2395,17 @@ export function Dashboard({
         leaseCount:
           fieldNumber(applied.created_lease_count) ??
           payload.outcome.leaseCount,
+        leaseIds: fieldTextList(applied.lease_ids),
         chargeRuleCount:
           fieldNumber(applied.created_charge_rule_count) ??
           payload.outcome.chargeRuleCount,
+        chargeRuleIds: fieldTextList(applied.charge_rule_ids),
+        chargeRuleSummaries: appliedChargeRuleSummaries(
+          applied.charge_rule_summaries,
+        ),
+        skippedTenancyScheduleRows: appliedScheduleRowSkips(
+          applied.skipped_tenancy_schedule_rows,
+        ),
         propertyChanges: appliedPropertyChanges(applied.property_changes),
       });
       setIntakeNotice("Document workflow applied.");

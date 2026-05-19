@@ -374,6 +374,17 @@ def _fake_purchase_contract_with_tenancy_schedule() -> dict[str, Any]:
             "outgoings": "Recoverable",
             "outgoings_amount": 5500,
             "outgoings_frequency": "monthly",
+            "parking_amount": 400,
+            "parking_frequency": "monthly",
+            "storage_amount": None,
+            "storage_frequency": None,
+            "utilities_amount": None,
+            "utilities_frequency": None,
+            "promotion_levy_amount": 250,
+            "promotion_levy_frequency": "monthly",
+            "other_charge_label": None,
+            "other_charge_amount": None,
+            "other_charge_frequency": None,
             "option_summary": "One 3 year option",
             "option_notice_date": "2029-01-31",
             "security_summary": "Bank guarantee equal to 3 months rent",
@@ -395,6 +406,17 @@ def _fake_purchase_contract_with_tenancy_schedule() -> dict[str, Any]:
             "outgoings": "Recoverable subject to annual budget",
             "outgoings_amount": 4200,
             "outgoings_frequency": "monthly",
+            "parking_amount": None,
+            "parking_frequency": None,
+            "storage_amount": None,
+            "storage_frequency": None,
+            "utilities_amount": 900,
+            "utilities_frequency": "quarterly",
+            "promotion_levy_amount": None,
+            "promotion_levy_frequency": None,
+            "other_charge_label": None,
+            "other_charge_amount": None,
+            "other_charge_frequency": None,
             "option_summary": None,
             "option_notice_date": None,
             "security_summary": "Bond noted, amount to confirm",
@@ -1196,12 +1218,14 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
     assert applied["created_tenant_count"] == 2
     assert applied["created_lease_count"] == 2
     assert applied["tenant_lease_records_created"] == 4
-    assert applied["created_charge_rule_count"] == 4
+    assert applied["created_charge_rule_count"] == 7
     assert applied["lease_obligation_count"] == 6
     assert applied["obligation_count"] == 7
     assert applied["skipped_tenancy_schedule_rows"] == []
     assert applied["tenancy_schedule_rows"][0]["tenant_name"] == "Harbour Logistics Pty Ltd"
     assert applied["tenancy_schedule_rows"][0]["annual_rent_cents"] == 24000000
+    assert applied["tenancy_schedule_rows"][0]["parking_amount_cents"] == 40000
+    assert applied["tenancy_schedule_rows"][0]["promotion_levy_amount_cents"] == 25000
 
     units = [
         session.get(TenancyUnit, UUID(unit_id)) for unit_id in applied["tenancy_unit_ids"]
@@ -1257,9 +1281,14 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
             )
         )
     )
-    assert len(charge_rules) == 4
+    assert len(charge_rules) == 7
     first_charge_rules = [rule for rule in charge_rules if rule.lease_id == first_lease.id]
-    assert {rule.charge_type for rule in first_charge_rules} == {"base_rent", "outgoings"}
+    assert {rule.charge_type for rule in first_charge_rules} == {
+        "base_rent",
+        "outgoings",
+        "parking",
+        "promotion_levy",
+    }
     first_base_rule = next(rule for rule in first_charge_rules if rule.charge_type == "base_rent")
     assert first_base_rule.amount_cents == 2000000
     assert first_base_rule.frequency == "monthly"
@@ -1275,6 +1304,20 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
     assert first_outgoings_rule.frequency == "monthly"
     assert first_outgoings_rule.charge_rule_metadata["draft"] is True
     assert first_outgoings_rule.charge_rule_metadata["outgoings"] == "Recoverable"
+    first_parking_rule = next(rule for rule in first_charge_rules if rule.charge_type == "parking")
+    assert first_parking_rule.amount_cents == 40000
+    assert first_parking_rule.frequency == "monthly"
+    assert first_parking_rule.charge_rule_metadata["schedule_charge_label"] == "Parking"
+    first_promotion_rule = next(
+        rule for rule in first_charge_rules if rule.charge_type == "promotion_levy"
+    )
+    assert first_promotion_rule.amount_cents == 25000
+    assert first_promotion_rule.frequency == "monthly"
+    assert first_promotion_rule.charge_rule_metadata["source_field"] == "promotion_levy_amount"
+    assert applied["charge_rule_summaries"][0]["charge_type"] == "base_rent"
+    assert {
+        summary["charge_type"] for summary in applied["charge_rule_summaries"]
+    } == {"base_rent", "outgoings", "parking", "promotion_levy", "utilities"}
 
     lease_obligations = list(
         session.scalars(
@@ -1305,6 +1348,72 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
         and obligation.due_date.isoformat() == "2026-07-15"
         for obligation in lease_obligations
     )
+
+
+def test_document_intake_apply_purchase_contract_skips_invalid_schedule_rows(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    extraction = _fake_purchase_contract_with_tenancy_schedule()
+    extraction["tenancy_schedule"] = [
+        {
+            **extraction["tenancy_schedule"][0],
+            "tenant_name": None,
+            "tenant_abn": None,
+            "lease_start": "2027-07-01",
+            "lease_expiry": "2026-06-30",
+            "annual_rent": 0,
+        }
+    ]
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return extraction, "resp_purchase_schedule_invalid"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("purchase-contract-invalid-schedule.txt", b"contract", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={"review_data": extraction},
+    )
+    assert apply_response.status_code == 200
+    applied = apply_response.json()["review_data"]["applied"]
+    assert applied["tenancy_unit_count"] == 1
+    assert applied["created_tenant_count"] == 0
+    assert applied["created_lease_count"] == 0
+    assert applied["created_charge_rule_count"] == 0
+    assert applied["lease_obligation_count"] == 0
+    assert len(applied["skipped_tenancy_schedule_rows"]) == 1
+    skipped = applied["skipped_tenancy_schedule_rows"][0]
+    assert skipped["unit_label"] == "Warehouse 1"
+    assert "Lease expiry is before lease start." in skipped["blockers"]
+    assert "Annual rent must be greater than zero." in skipped["blockers"]
+    assert "Tenant name missing." in skipped["blockers"]
+
+    tenant_count = session.scalar(select(func.count()).select_from(Tenant))
+    lease_count = session.scalar(select(func.count()).select_from(Lease))
+    charge_rule_count = session.scalar(select(func.count()).select_from(RentChargeRule))
+    assert tenant_count == 0
+    assert lease_count == 0
+    assert charge_rule_count == 0
 
 
 def test_document_intake_apply_purchase_contract_reuses_selected_property(

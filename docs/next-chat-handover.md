@@ -35,6 +35,12 @@ Last updated: 2026-05-19
   - Lease expiry, rent review, option notice, and security review tasks are generated from schedule dates with source metadata.
   - Reviewed annual rent and outgoings rows now seed draft-marked charge rules for the created pending leases.
   - Incomplete or overlapping rows are skipped with plain blockers in the applied summary.
+- Smart Intake acquisition tenancy schedule v2 is built on this branch.
+  - Extraction schema now asks purchase-contract tenancy schedules for parking, storage, utilities, promotion levy, and other charge amounts/frequencies.
+  - Apply now creates draft-marked non-rent charge rules from reviewed complete rows, still with no invoice posting and no Xero sync.
+  - Invalid rows are skipped before tenant creation when core lease facts are blocked, including expiry-before-start and zero-rent checks.
+  - Purchase-contract apply outcomes now surface pending lease IDs, draft charge detail, and skipped schedule row blockers.
+  - This is design-facing and still needs Remba review.
 - Smart Intake billing drafts v1 is built on this branch.
   - `invoice_admin` apply still creates the source-linked billing review task.
   - It now also creates `billing_draft` and `billing_draft_line` records from reviewed money amounts.
@@ -59,7 +65,9 @@ Last updated: 2026-05-19
 
 - Backend focused test passed:
   - `.venv/bin/python -m pytest tests/integration/test_document_intake_api.py -q`
-  - Result: `17 passed`
+  - Result: `18 passed`
+- Backend lint passed:
+  - `.venv/bin/python -m ruff check apps/api/routers/document_intakes.py stewart/ai/document_intake.py tests/integration/test_document_intake_api.py`
 - Backend register test passed:
   - `.venv/bin/python -m pytest tests/integration/test_register_api.py -q`
   - Result: `8 passed`
@@ -69,11 +77,12 @@ Last updated: 2026-05-19
   - Skipped: migration integration smoke test because `TEST_DATABASE_URL` is not configured in this shell.
 - Frontend checks passed:
   - `./node_modules/.bin/tsc --noEmit`
-  - `./node_modules/.bin/eslint src/components/property-workspace.tsx src/components/dashboard.tsx`
+  - `./node_modules/.bin/eslint src/components/dashboard.tsx`
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
 - Local route smoke passed:
   - Next dev server loaded `/billing-readiness` on `127.0.0.1:3010` and returned `200`.
   - Next dev server loaded `/properties` on `127.0.0.1:3011`, returned `200`, and the in-app browser reported no console errors.
+  - Next dev server loaded `/intake` on `127.0.0.1:3012`, returned `200`, showed `Smart Intake` and `Review queue`, and the in-app browser reported no console errors.
 - Vercel production deployment passed:
   - Commit `e60ee68 Surface property provenance in Smart Intake`
   - Deployment `dpl_4DNDh781bqpqL4cVCPqfbHWncQk4`, state `READY`
@@ -98,8 +107,8 @@ Last updated: 2026-05-19
 ## Recommended Next Tickets
 
 1. Enable the temporary Vercel password gate and verify production access behavior.
-2. Add richer acquisition schedule blockers, broader non-rent charge draft creation from reviewed rows, and UI surfacing for created pending leases.
-3. Add invoice draft approval, PDF preview/generation, and email delivery steps without Xero sync until explicit approval.
+2. Add invoice draft approval, PDF preview/generation, and email delivery steps without Xero sync until explicit approval.
+3. Add AI enrichment for missing public fields such as ABN, postcode, suburb/state, registered business details, and registered address with citation/confidence review before Apply.
 4. Finish tenant onboarding delivery polish: branded templates, editable reminder schedules, expiry reminders, and failure recovery.
 5. Start Xero connection status and mapping surfaces before full invoice sync.
 6. Deepen Insights dashboards for portfolio health, exceptions, automation activity, billing risk, and owner/entity snapshots.
