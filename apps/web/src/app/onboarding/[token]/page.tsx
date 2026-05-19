@@ -57,6 +57,9 @@ const emptyForm: TenantOnboardingSubmitPayload = {
   accepted: false,
 };
 
+const DOCUMENT_ACCEPT =
+  ".pdf,.docx,.txt,.md,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
 function formFromOnboarding(
   onboarding: TenantOnboardingPublicRecord,
 ): TenantOnboardingSubmitPayload {
@@ -168,6 +171,7 @@ function TenantOnboardingContent() {
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentCategory, setDocumentCategory] = useState<DocumentCategory>("insurance");
   const [documentNotes, setDocumentNotes] = useState("");
+  const [documentDragActive, setDocumentDragActive] = useState(false);
 
   const documentsQuery = useQuery({
     queryKey: ["public-onboarding-documents", token],
@@ -223,9 +227,8 @@ function TenantOnboardingContent() {
     submitMutation.mutate();
   }
 
-  function submitDocument(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    uploadDocumentMutation.mutate();
+  function selectDocumentFile(file: File | null | undefined) {
+    setDocumentFile(file ?? null);
   }
 
   if (onboardingQuery.isLoading) {
@@ -484,20 +487,45 @@ function TenantOnboardingContent() {
                     <FileText size={18} className="text-primary" />
                     <h3 className="text-lg font-semibold">Upload documents</h3>
                   </div>
-                  <form className="mt-4 grid gap-4" onSubmit={submitDocument}>
-                    <label className="grid min-h-28 cursor-pointer place-items-center rounded-md border border-dashed border-border bg-muted/30 px-4 py-5 text-center transition hover:border-primary hover:bg-primary/5">
+                  <div className="mt-4 grid gap-4">
+                    <label
+                      onDragEnter={(event) => {
+                        event.preventDefault();
+                        setDocumentDragActive(true);
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setDocumentDragActive(true);
+                      }}
+                      onDragLeave={(event) => {
+                        event.preventDefault();
+                        setDocumentDragActive(false);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        setDocumentDragActive(false);
+                        selectDocumentFile(event.dataTransfer.files[0]);
+                      }}
+                      className={[
+                        "grid min-h-28 cursor-pointer place-items-center rounded-md border border-dashed px-4 py-5 text-center transition hover:border-primary hover:bg-primary/5",
+                        documentDragActive
+                          ? "border-primary bg-primary/5"
+                          : "border-border bg-muted/30",
+                      ].join(" ")}
+                    >
                       <input
                         type="file"
+                        accept={DOCUMENT_ACCEPT}
                         className="sr-only"
-                        onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)}
+                        onChange={(event) => selectDocumentFile(event.target.files?.[0])}
                       />
                       <span className="grid justify-items-center gap-2">
                         <UploadCloud size={22} className="text-primary" />
                         <span className="text-sm font-semibold">
-                          {documentFile ? documentFile.name : "Choose a document"}
+                          {documentFile ? documentFile.name : "Drop a document here"}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          Insurance, guarantees, signed files, PDF or image up to 15 MB
+                          PDF, Word, Markdown, or text file up to 15 MB
                         </span>
                       </span>
                     </label>
@@ -526,7 +554,8 @@ function TenantOnboardingContent() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
-                        type="submit"
+                        type="button"
+                        onClick={() => uploadDocumentMutation.mutate()}
                         disabled={!documentFile || uploadDocumentMutation.isPending}
                       >
                         {uploadDocumentMutation.isPending ? (
@@ -550,7 +579,7 @@ function TenantOnboardingContent() {
                         {uploadDocumentMutation.error.message}
                       </p>
                     ) : null}
-                  </form>
+                  </div>
                   <div className="mt-4 grid gap-2">
                     {documents.map((document) => (
                       <div
