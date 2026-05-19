@@ -16,7 +16,12 @@ Required Vercel environment variable:
 
 ```bash
 NEXT_PUBLIC_API_BASE_URL=https://your-api-host.example.com/api/v1
+LEASIUM_ACCESS_PASSWORD=choose-a-temporary-private-beta-password
 ```
+
+`LEASIUM_ACCESS_PASSWORD` enables the temporary app-level password gate for the
+main Leasium workspace. It is a light private-beta screen only; public tenant
+onboarding links under `/onboarding/...` remain accessible without the password.
 
 The web app is only the frontend. The FastAPI backend still needs a separate host.
 
