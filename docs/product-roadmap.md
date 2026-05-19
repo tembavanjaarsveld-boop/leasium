@@ -1,10 +1,10 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
-Design-facing changes require Remba UX sign-off. See [design-governance.md](design-governance.md).
+Design-facing changes require Remba UX sign-off. See [design-governance.md](design-governance.md) and the brand/frontend source of truth in [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md).
 
 ## Built
 

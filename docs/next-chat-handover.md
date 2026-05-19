@@ -1,6 +1,6 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 
 ## Current State
 
@@ -10,10 +10,14 @@ Last updated: 2026-05-19
 - Production frontend: `https://leasium.vercel.app`
 - Latest confirmed production feature deployment in this handover: `0d50513 Add Insights overview dashboard`, Vercel deployment `dpl_HJ5bGeVpqLt5JymC1pDCr9gh7n43`, state `READY`.
 - Product source of truth: `docs/product-roadmap.md`
+- Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
 
 ## Closed And Updated
 
+- Codex design source of truth has been imported into the project.
+  - Source file now lives at `docs/leasium-codex-design-source-of-truth.md`.
+  - `docs/design-governance.md` and `docs/product-roadmap.md` link to it for future design-facing work.
 - Temporary private-beta password gate is built and pushed in `f845a69`.
   - `LEASIUM_ACCESS_PASSWORD` controls whether the gate is active.
   - When unset or blank, the frontend remains open for local/dev convenience.
