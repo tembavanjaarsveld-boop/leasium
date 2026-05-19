@@ -444,6 +444,15 @@ function BillingReadinessWorkspace() {
     queryFn: () => listInvoiceDrafts({ entity_id: selectedEntityId }),
     enabled: Boolean(selectedEntityId),
   });
+  const entitySelectionLoading =
+    entitiesQuery.isLoading ||
+    (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
+  const billingReadinessLoading =
+    entitySelectionLoading ||
+    (Boolean(selectedEntityId) &&
+      (rentRollQuery.isLoading ||
+        billingDraftsQuery.isLoading ||
+        invoiceDraftsQuery.isLoading));
 
   const updateDraftMutation = useMutation({
     mutationFn: ({
@@ -708,38 +717,68 @@ function BillingReadinessWorkspace() {
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <KpiCard
             title="Ready to bill"
-            value={counts.ready}
-            detail={`${rentRows.length} rent roll rows checked as at ${formatDate(asOf)}.`}
+            value={billingReadinessLoading ? "..." : counts.ready}
+            detail={
+              billingReadinessLoading
+                ? "Loading rent roll readiness checks."
+                : `${rentRows.length} rent roll rows checked as at ${formatDate(asOf)}.`
+            }
             icon={<CheckCircle2 size={18} />}
-            tone="success"
+            tone={billingReadinessLoading ? "neutral" : "success"}
           />
           <KpiCard
             title="Blocked tenancies"
-            value={rowsWithBlockers.length}
+            value={billingReadinessLoading ? "..." : rowsWithBlockers.length}
             detail="Tenancies with at least one invoice, Xero, or GST issue."
             icon={<AlertTriangle size={18} />}
-            tone={rowsWithBlockers.length ? "danger" : "success"}
+            tone={
+              billingReadinessLoading
+                ? "neutral"
+                : rowsWithBlockers.length
+                  ? "danger"
+                  : "success"
+            }
           />
           <KpiCard
             title="Missing billing details"
-            value={counts.missingBillingDetails}
+            value={
+              billingReadinessLoading ? "..." : counts.missingBillingDetails
+            }
             detail="Tenant billing contacts or invoice details that need cleanup."
             icon={<ReceiptText size={18} />}
-            tone={counts.missingBillingDetails ? "warning" : "success"}
+            tone={
+              billingReadinessLoading
+                ? "neutral"
+                : counts.missingBillingDetails
+                  ? "warning"
+                  : "success"
+            }
           />
           <KpiCard
             title="Missing Xero mapping"
-            value={counts.xero}
+            value={billingReadinessLoading ? "..." : counts.xero}
             detail="Customer mapping, account code, or tax type issues blocking sync."
             icon={<FileWarning size={18} />}
-            tone={counts.xero ? "warning" : "success"}
+            tone={
+              billingReadinessLoading
+                ? "neutral"
+                : counts.xero
+                  ? "warning"
+                  : "success"
+            }
           />
           <KpiCard
             title="GST checks"
-            value={counts.gst}
+            value={billingReadinessLoading ? "..." : counts.gst}
             detail="Tax treatment checks that need attention before invoices are raised."
             icon={<ShieldCheck size={18} />}
-            tone={counts.gst ? "primary" : "success"}
+            tone={
+              billingReadinessLoading
+                ? "neutral"
+                : counts.gst
+                  ? "primary"
+                  : "success"
+            }
           />
         </section>
 
@@ -760,10 +799,17 @@ function BillingReadinessWorkspace() {
               icon={<ReceiptText size={17} className="text-primary" />}
               actions={
                 <StatusBadge
-                  tone={billingDrafts.length ? "primary" : "neutral"}
+                  tone={
+                    billingDraftsQuery.isLoading
+                      ? "neutral"
+                      : billingDrafts.length
+                        ? "primary"
+                        : "neutral"
+                  }
                 >
-                  {billingDrafts.length} draft
-                  {billingDrafts.length === 1 ? "" : "s"}
+                  {billingDraftsQuery.isLoading
+                    ? "Loading"
+                    : `${billingDrafts.length} draft${billingDrafts.length === 1 ? "" : "s"}`}
                 </StatusBadge>
               }
             >
@@ -952,9 +998,18 @@ function BillingReadinessWorkspace() {
               description="Approved billing drafts become internal invoice drafts with stored PDF artifacts, email delivery receipts, payment status, and no Xero sync."
               icon={<FileCheck2 size={17} className="text-primary" />}
               actions={
-                <StatusBadge tone={invoiceDrafts.length ? "primary" : "neutral"}>
-                  {invoiceDrafts.length} invoice draft
-                  {invoiceDrafts.length === 1 ? "" : "s"}
+                <StatusBadge
+                  tone={
+                    invoiceDraftsQuery.isLoading
+                      ? "neutral"
+                      : invoiceDrafts.length
+                        ? "primary"
+                        : "neutral"
+                  }
+                >
+                  {invoiceDraftsQuery.isLoading
+                    ? "Loading"
+                    : `${invoiceDrafts.length} invoice draft${invoiceDrafts.length === 1 ? "" : "s"}`}
                 </StatusBadge>
               }
             >

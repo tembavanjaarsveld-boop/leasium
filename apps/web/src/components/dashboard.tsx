@@ -508,7 +508,7 @@ function DashboardMetricCard({
 }: {
   href: string;
   label: string;
-  count: number;
+  count: number | string;
   chip: string;
   tone: StatusTone;
   nextAction: string;
@@ -2430,6 +2430,28 @@ export function Dashboard({
     },
   });
 
+  const entitySelectionLoading =
+    !demoMode &&
+    (entitiesQuery.isLoading ||
+      (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0));
+  const propertiesLoading =
+    entitySelectionLoading ||
+    (!demoMode && Boolean(selectedEntityId) && propertiesQuery.isLoading);
+  const tenantsLoading =
+    entitySelectionLoading ||
+    (!demoMode && Boolean(selectedEntityId) && tenantsQuery.isLoading);
+  const obligationsLoading =
+    entitySelectionLoading ||
+    (!demoMode && Boolean(selectedEntityId) && obligationsQuery.isLoading);
+  const rentRollLoading =
+    entitySelectionLoading ||
+    (!demoMode && Boolean(selectedEntityId) && rentRollQuery.isLoading);
+  const onboardingLoading =
+    entitySelectionLoading ||
+    (!demoMode && Boolean(selectedEntityId) && onboardingQuery.isLoading);
+  const documentIntakesLoading =
+    entitySelectionLoading ||
+    (!demoMode && Boolean(selectedEntityId) && documentIntakesQuery.isLoading);
   const displayPropertiesCount = demoMode
     ? 1
     : (propertiesQuery.data?.length ?? 0);
@@ -2606,11 +2628,25 @@ export function Dashboard({
           <DashboardMetricCard
             href="/properties"
             label="Properties"
-            count={displayPropertiesCount}
-            chip={displayPropertiesCount ? "Live" : "Setup"}
-            tone={displayPropertiesCount ? "success" : "neutral"}
+            count={propertiesLoading ? "..." : displayPropertiesCount}
+            chip={
+              propertiesLoading
+                ? "Loading"
+                : displayPropertiesCount
+                  ? "Live"
+                  : "Setup"
+            }
+            tone={
+              propertiesLoading
+                ? "neutral"
+                : displayPropertiesCount
+                  ? "success"
+                  : "neutral"
+            }
             nextAction={
-              displayPropertiesCount
+              propertiesLoading
+                ? "Loading live property data."
+                : displayPropertiesCount
                 ? "Open the portfolio workspace."
                 : "Create or import your first property."
             }
@@ -2619,11 +2655,25 @@ export function Dashboard({
           <DashboardMetricCard
             href="/tenants"
             label="Tenants"
-            count={displayTenantsCount}
-            chip={activeOnboardings.length ? "Waiting" : "Ready"}
-            tone={activeOnboardings.length ? "primary" : "success"}
+            count={tenantsLoading ? "..." : displayTenantsCount}
+            chip={
+              tenantsLoading
+                ? "Loading"
+                : activeOnboardings.length
+                  ? "Waiting"
+                  : "Ready"
+            }
+            tone={
+              tenantsLoading
+                ? "neutral"
+                : activeOnboardings.length
+                  ? "primary"
+                  : "success"
+            }
             nextAction={
-              activeOnboardings.length
+              tenantsLoading
+                ? "Loading tenant records."
+                : activeOnboardings.length
                 ? `${activeOnboardings.length} onboarding link waiting on tenants.`
                 : "Add tenants or send onboarding links."
             }
@@ -2632,11 +2682,25 @@ export function Dashboard({
           <DashboardMetricCard
             href="/tasks"
             label="Attention"
-            count={urgentObligations.length}
-            chip={urgentObligations.length ? "Act now" : "Clear"}
-            tone={urgentObligations.length ? "warning" : "success"}
+            count={obligationsLoading ? "..." : urgentObligations.length}
+            chip={
+              obligationsLoading
+                ? "Loading"
+                : urgentObligations.length
+                  ? "Act now"
+                  : "Clear"
+            }
+            tone={
+              obligationsLoading
+                ? "neutral"
+                : urgentObligations.length
+                  ? "warning"
+                  : "success"
+            }
             nextAction={
-              urgentObligations[0]
+              obligationsLoading
+                ? "Loading key dates."
+                : urgentObligations[0]
                 ? urgentObligations[0].title
                 : "No urgent dates need action."
             }
@@ -2645,11 +2709,25 @@ export function Dashboard({
           <DashboardMetricCard
             href="/billing-readiness"
             label="Billing blockers"
-            count={billingIssues.length}
-            chip={billingIssues.length ? "Blocked" : "Ready"}
-            tone={billingIssues.length ? "danger" : "success"}
+            count={rentRollLoading ? "..." : billingIssues.length}
+            chip={
+              rentRollLoading
+                ? "Loading"
+                : billingIssues.length
+                  ? "Blocked"
+                  : "Ready"
+            }
+            tone={
+              rentRollLoading
+                ? "neutral"
+                : billingIssues.length
+                  ? "danger"
+                  : "success"
+            }
             nextAction={
-              billingIssues[0]
+              rentRollLoading
+                ? "Loading billing readiness."
+                : billingIssues[0]
                 ? billingIssues[0].blockers[0]
                 : "Invoice run is ready from current data."
             }
@@ -2658,11 +2736,25 @@ export function Dashboard({
           <DashboardMetricCard
             href="/intake"
             label="Needs review"
-            count={needsReviewCount}
-            chip={needsReviewCount ? "Review" : "Empty"}
-            tone={needsReviewCount ? "primary" : "neutral"}
+            count={documentIntakesLoading ? "..." : needsReviewCount}
+            chip={
+              documentIntakesLoading
+                ? "Loading"
+                : needsReviewCount
+                  ? "Review"
+                  : "Empty"
+            }
+            tone={
+              documentIntakesLoading
+                ? "neutral"
+                : needsReviewCount
+                  ? "primary"
+                  : "neutral"
+            }
             nextAction={
-              needsReviewCount
+              documentIntakesLoading
+                ? "Loading review queue."
+                : needsReviewCount
                 ? "Approve extracted document data."
                 : "Drop documents into Smart Intake."
             }
@@ -2671,11 +2763,25 @@ export function Dashboard({
           <DashboardMetricCard
             href="/intake"
             label="Blocked docs"
-            count={failedIntakeCount}
-            chip={failedIntakeCount ? "Fix" : "Clear"}
-            tone={failedIntakeCount ? "danger" : "success"}
+            count={documentIntakesLoading ? "..." : failedIntakeCount}
+            chip={
+              documentIntakesLoading
+                ? "Loading"
+                : failedIntakeCount
+                  ? "Fix"
+                  : "Clear"
+            }
+            tone={
+              documentIntakesLoading
+                ? "neutral"
+                : failedIntakeCount
+                  ? "danger"
+                  : "success"
+            }
             nextAction={
-              failedIntakeCount
+              documentIntakesLoading
+                ? "Checking document reads."
+                : failedIntakeCount
                 ? "Review documents Leasium could not read."
                 : "No intake failures right now."
             }
@@ -2791,7 +2897,9 @@ export function Dashboard({
                     <StatusBadge
                       tone={needsReviewCount ? "primary" : "neutral"}
                     >
-                      {needsReviewCount} waiting
+                      {documentIntakesLoading
+                        ? "Loading"
+                        : `${needsReviewCount} waiting`}
                     </StatusBadge>
                   </div>
                   <div className="divide-y divide-border">
@@ -2893,7 +3001,9 @@ export function Dashboard({
                         </div>
                       );
                     })}
-                    {reviewIntakes.length === 0 ? (
+                    {documentIntakesLoading ? (
+                      <EmptyState title="Loading document reviews." />
+                    ) : reviewIntakes.length === 0 ? (
                       <EmptyState
                         title="No documents waiting for review."
                         description="Drop in a lease, acquisition contract, invoice, guarantee, insurance certificate, or tenant document to start your first review."
@@ -2912,13 +3022,15 @@ export function Dashboard({
                       Waiting on tenants
                     </span>
                     <span className="font-semibold">
-                      {activeOnboardings.length}
+                      {onboardingLoading ? "..." : activeOnboardings.length}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Submitted</span>
                     <span className="font-semibold">
-                      {submittedOnboardings.length}
+                      {onboardingLoading
+                        ? "..."
+                        : submittedOnboardings.length}
                     </span>
                   </div>
                   <Link
@@ -3092,7 +3204,9 @@ export function Dashboard({
                         </div>
                       </Link>
                     ))}
-                    {upcomingEvents.length === 0 ? (
+                    {obligationsLoading ? (
+                      <EmptyState title="Loading upcoming events." />
+                    ) : upcomingEvents.length === 0 ? (
                       <EmptyState title="No upcoming events for this entity." />
                     ) : null}
                   </div>
@@ -3130,7 +3244,9 @@ export function Dashboard({
                           </div>
                         </Link>
                       ))}
-                    {billingIssues.length === 0 ? (
+                    {rentRollLoading ? (
+                      <EmptyState title="Loading billing readiness." />
+                    ) : billingIssues.length === 0 ? (
                       <EmptyState title="No billing readiness blockers." />
                     ) : null}
                   </div>

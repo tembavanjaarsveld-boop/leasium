@@ -443,6 +443,15 @@ function TasksWorkspace() {
     queryFn: () => listDocumentIntakes(selectedEntityId),
     enabled: Boolean(selectedEntityId),
   });
+  const entitySelectionLoading =
+    entitiesQuery.isLoading ||
+    (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
+  const tasksLoading =
+    entitySelectionLoading ||
+    (Boolean(selectedEntityId) &&
+      (obligationsQuery.isLoading ||
+        onboardingQuery.isLoading ||
+        documentIntakesQuery.isLoading));
 
   const updateMutation = useMutation({
     mutationFn: (payload: { obligation: ObligationRecord; status: "completed" | "waived" }) =>
@@ -563,7 +572,9 @@ function TasksWorkspace() {
               <span className="text-sm font-semibold text-muted-foreground">Overdue</span>
               <AlertTriangle size={17} className="text-primary" />
             </div>
-            <div className="mt-3 text-3xl font-semibold">{overdueTasks.length}</div>
+            <div className="mt-3 text-3xl font-semibold">
+              {tasksLoading ? "..." : overdueTasks.length}
+            </div>
             <p className="mt-2 text-sm text-muted-foreground">
               Items already past their target date.
             </p>
@@ -573,7 +584,9 @@ function TasksWorkspace() {
               <span className="text-sm font-semibold text-muted-foreground">Due this week</span>
               <Clock3 size={17} className="text-primary" />
             </div>
-            <div className="mt-3 text-3xl font-semibold">{dueSoonTasks.length}</div>
+            <div className="mt-3 text-3xl font-semibold">
+              {tasksLoading ? "..." : dueSoonTasks.length}
+            </div>
             <p className="mt-2 text-sm text-muted-foreground">
               Work that needs attention before the week gets away.
             </p>
@@ -583,7 +596,9 @@ function TasksWorkspace() {
               <span className="text-sm font-semibold text-muted-foreground">Waiting on tenant</span>
               <UserRound size={17} className="text-primary" />
             </div>
-            <div className="mt-3 text-3xl font-semibold">{waitingOnTenantTasks.length}</div>
+            <div className="mt-3 text-3xl font-semibold">
+              {tasksLoading ? "..." : waitingOnTenantTasks.length}
+            </div>
             <p className="mt-2 text-sm text-muted-foreground">
               Sent onboarding links still awaiting response.
             </p>
@@ -593,7 +608,9 @@ function TasksWorkspace() {
               <span className="text-sm font-semibold text-muted-foreground">Submitted</span>
               <MailCheck size={17} className="text-primary" />
             </div>
-            <div className="mt-3 text-3xl font-semibold">{submittedTasks.length}</div>
+            <div className="mt-3 text-3xl font-semibold">
+              {tasksLoading ? "..." : submittedTasks.length}
+            </div>
             <p className="mt-2 text-sm text-muted-foreground">
               Tenant submissions ready for internal review.
             </p>
@@ -603,7 +620,9 @@ function TasksWorkspace() {
               <span className="text-sm font-semibold text-muted-foreground">Smart Intake</span>
               <Sparkles size={17} className="text-primary" />
             </div>
-            <div className="mt-3 text-3xl font-semibold">{smartIntakeTasks.length}</div>
+            <div className="mt-3 text-3xl font-semibold">
+              {tasksLoading ? "..." : smartIntakeTasks.length}
+            </div>
             <p className="mt-2 text-sm text-muted-foreground">
               Documents waiting for review, match, or recovery.
             </p>
@@ -635,6 +654,9 @@ function TasksWorkspace() {
           }
         >
           <div className="divide-y divide-border">
+            {tasksLoading ? (
+              <EmptyState title="Loading work queue." />
+            ) : null}
             {visibleTasks.map((task) => (
               <div
                 key={task.id}
@@ -705,7 +727,7 @@ function TasksWorkspace() {
                 </div>
               </div>
             ))}
-            {visibleTasks.length === 0 ? (
+            {!tasksLoading && visibleTasks.length === 0 ? (
               <EmptyState
                 title={
                   filter === "intake"

@@ -197,6 +197,13 @@ function TenantWorkspace() {
     queryFn: () => listTenantOnboardings(selectedEntityId),
     enabled: Boolean(selectedEntityId),
   });
+  const entitySelectionLoading =
+    entitiesQuery.isLoading ||
+    (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
+  const tenantsLoading =
+    entitySelectionLoading ||
+    (Boolean(selectedEntityId) &&
+      (tenantsQuery.isLoading || onboardingQuery.isLoading));
 
   const tenantRows = useMemo(() => {
     const onboardings = onboardingQuery.data ?? [];
@@ -360,19 +367,27 @@ function TenantWorkspace() {
 
         <section className="grid gap-3 md:grid-cols-4">
           <div className="rounded-md border border-border bg-white p-4">
-            <div className="text-2xl font-semibold">{counts.all}</div>
+            <div className="text-2xl font-semibold">
+              {tenantsLoading ? "..." : counts.all}
+            </div>
             <div className="mt-1 text-sm text-muted-foreground">Tenants</div>
           </div>
           <div className="rounded-md border border-border bg-white p-4">
-            <div className="text-2xl font-semibold">{counts.sent}</div>
+            <div className="text-2xl font-semibold">
+              {tenantsLoading ? "..." : counts.sent}
+            </div>
             <div className="mt-1 text-sm text-muted-foreground">Waiting on tenants</div>
           </div>
           <div className="rounded-md border border-border bg-white p-4">
-            <div className="text-2xl font-semibold">{counts.submitted}</div>
+            <div className="text-2xl font-semibold">
+              {tenantsLoading ? "..." : counts.submitted}
+            </div>
             <div className="mt-1 text-sm text-muted-foreground">Submitted for review</div>
           </div>
           <div className="rounded-md border border-border bg-white p-4">
-            <div className="text-2xl font-semibold">{counts.overdue}</div>
+            <div className="text-2xl font-semibold">
+              {tenantsLoading ? "..." : counts.overdue}
+            </div>
             <div className="mt-1 text-sm text-muted-foreground">Overdue</div>
           </div>
         </section>
@@ -477,6 +492,13 @@ function TenantWorkspace() {
                 </tr>
               </thead>
               <tbody>
+                {tenantsLoading ? (
+                  <tr>
+                    <td colSpan={5}>
+                      <EmptyState title="Loading tenants." />
+                    </td>
+                  </tr>
+                ) : null}
                 {tenantRows.map(({ tenant, onboarding }) => (
                   <tr key={tenant.id} className="border-t border-border align-top hover:bg-muted/50">
                     <td className="px-3 py-3">
@@ -540,7 +562,7 @@ function TenantWorkspace() {
                     </td>
                   </tr>
                 ))}
-                {!tenantsQuery.isLoading && tenantRows.length === 0 ? (
+                {!tenantsLoading && tenantRows.length === 0 ? (
                   <tr>
                     <td colSpan={5}>
                       <EmptyState

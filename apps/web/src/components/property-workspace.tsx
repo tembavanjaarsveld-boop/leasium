@@ -1143,6 +1143,12 @@ function Workspace() {
       ),
     [propertiesQuery.data, selectedPropertyId],
   );
+  const entitySelectionLoading =
+    entitiesQuery.isLoading ||
+    (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
+  const propertiesLoading =
+    entitySelectionLoading ||
+    (Boolean(selectedEntityId) && propertiesQuery.isLoading);
   const selectedPropertyApplyHistory = useMemo(
     () => propertyApplyHistory(selectedProperty),
     [selectedProperty],
@@ -1295,7 +1301,10 @@ function Workspace() {
   });
 
   useEffect(() => {
-    const properties = propertiesQuery.data ?? [];
+    if (!propertiesQuery.data) {
+      return;
+    }
+    const properties = propertiesQuery.data;
     if (properties.length === 0) {
       if (selectedPropertyId) {
         setSelectedPropertyId("");
@@ -2085,7 +2094,9 @@ function Workspace() {
               <p className="text-sm text-muted-foreground">
                 {propertiesQuery.isError
                   ? friendlyError(propertiesQuery.error)
-                  : `${propertiesQuery.data?.length ?? 0} active properties`}
+                  : propertiesLoading
+                    ? "Loading properties..."
+                    : `${propertiesQuery.data?.length ?? 0} active properties`}
               </p>
             </div>
             <SecondaryButton
@@ -3289,6 +3300,16 @@ function Workspace() {
                     </tr>
                   </thead>
                   <tbody>
+                    {rentRollQuery.isLoading ? (
+                      <tr>
+                        <td
+                          className="px-3 py-8 text-center text-muted-foreground"
+                          colSpan={5}
+                        >
+                          Loading rent roll rows...
+                        </td>
+                      </tr>
+                    ) : null}
                     {rentRollRows.slice(0, 8).map((row) => {
                       const blockers = readinessBlockers(row);
                       return (
@@ -3563,8 +3584,16 @@ function Workspace() {
                     </tr>
                   );
                 })}
-                {!propertiesQuery.isLoading &&
-                propertiesQuery.data?.length === 0 ? (
+                {propertiesLoading ? (
+                  <tr>
+                    <td
+                      className="px-3 py-8 text-center text-muted-foreground"
+                      colSpan={5}
+                    >
+                      Loading properties...
+                    </td>
+                  </tr>
+                ) : propertiesQuery.data?.length === 0 ? (
                   <tr>
                     <td
                       className="px-3 py-8 text-center text-muted-foreground"
@@ -3845,7 +3874,9 @@ function Workspace() {
                     : "Tenancy units"}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  {tenancyUnitsQuery.data?.length ?? 0} units
+                  {tenancyUnitsQuery.isLoading
+                    ? "Loading units..."
+                    : `${tenancyUnitsQuery.data?.length ?? 0} units`}
                   {tenancyUnitsQuery.data?.length
                     ? ` - ${unitTotals.sqm} sqm - ${unitTotals.parking} parks`
                     : ""}
@@ -3894,6 +3925,16 @@ function Workspace() {
                       </tr>
                     </thead>
                     <tbody>
+                      {tenancyUnitsQuery.isLoading ? (
+                        <tr>
+                          <td
+                            className="px-3 py-8 text-center text-muted-foreground"
+                            colSpan={5}
+                          >
+                            Loading units...
+                          </td>
+                        </tr>
+                      ) : null}
                       {tenancyUnitsQuery.data?.map((unit) => {
                         const lease = pickUnitLease(leasesQuery.data, unit.id);
                         const tenant = lease
