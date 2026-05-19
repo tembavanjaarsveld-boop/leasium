@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production feature deployment in this handover: `3891223 Add operator invite acceptance flow`, Vercel deployment `dpl_AszYo7DdJwAs5psiEy5464ZwGvkn`, state `READY`; Render deploy `dep-d86dtfutsp3c7391n6lg`, state `Live`.
+- Latest confirmed production feature deployment in this handover: `d116f2b Polish property billing loading states`, Vercel deployment `dpl_FYaPZPJeGMR9JSvxAGPk7ZL8P48s`, state `READY`; latest Render deploy remains `dep-d86dtfutsp3c7391n6lg`, state `Live`.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -180,6 +180,10 @@ Last updated: 2026-05-20
   - Next dev server loaded `/billing-readiness`, `/properties`, and `/tenants` on `127.0.0.1:3014`.
   - Each route returned `200`, showed expected Leasium screen text, and the in-app browser reported no console errors.
 - Production deployment verification passed:
+  - Commit `d116f2b Polish property billing loading states`
+  - Vercel deployment `dpl_FYaPZPJeGMR9JSvxAGPk7ZL8P48s`, state `READY`
+  - Production alias routes `/properties` and `/billing-readiness` returned `200`.
+  - Production alias pages include `Loading property workspace` and `Loading billing workspace`.
   - Commit `0d50513 Add Insights overview dashboard`
   - Vercel deployment `dpl_HJ5bGeVpqLt5JymC1pDCr9gh7n43`, state `READY`
   - Production alias route `/insights` returned `200`.
