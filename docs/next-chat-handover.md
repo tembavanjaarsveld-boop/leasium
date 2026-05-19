@@ -8,7 +8,7 @@ Last updated: 2026-05-19
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed Vercel production deployment in this handover: `9fbadb5 Add Xero readiness and mapping surface`, deployment `dpl_72LoYjVEiVEHsfzuQkzUZz1Yv234`, state `READY`.
+- Latest confirmed production feature deployment in this handover: `0d50513 Add Insights overview dashboard`, Vercel deployment `dpl_HJ5bGeVpqLt5JymC1pDCr9gh7n43`, state `READY`.
 - Product source of truth: `docs/product-roadmap.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
 
@@ -137,11 +137,13 @@ Last updated: 2026-05-19
   - Next dev server loaded `/billing-readiness`, `/properties`, and `/tenants` on `127.0.0.1:3014`.
   - Each route returned `200`, showed expected Leasium screen text, and the in-app browser reported no console errors.
 - Production deployment verification passed:
-  - Commit `9fbadb5 Add Xero readiness and mapping surface`
-  - Vercel deployment `dpl_72LoYjVEiVEHsfzuQkzUZz1Yv234`, state `READY`
-  - Production alias route `/settings` returned `200` with the Xero readiness bundle deployed.
+  - Commit `0d50513 Add Insights overview dashboard`
+  - Vercel deployment `dpl_HJ5bGeVpqLt5JymC1pDCr9gh7n43`, state `READY`
+  - Production alias route `/insights` returned `200`.
   - Production API health returned `{"status":"ok","app":"Leasium"}`.
-  - Production OpenAPI exposes `/api/v1/xero/status` and `/api/v1/xero/connection/{entity_id}`.
+  - Production OpenAPI exposes `/api/v1/insights/overview`, `/api/v1/xero/status`, and `/api/v1/xero/connection/{entity_id}`.
+  - Production `/api/v1/insights/overview` returned `200` for the seeded entity.
+  - Earlier production alias route `/settings` returned `200` with the Xero readiness bundle deployed.
   - Earlier production alias routes `/billing-readiness`, `/properties`, and `/tenants` returned `200` with expected Leasium screen text.
   - Earlier production OpenAPI verification exposed the public enrichment, invoice delivery/payment, onboarding reminder, and tenant detail routes.
 - Previous verification before this branch:
