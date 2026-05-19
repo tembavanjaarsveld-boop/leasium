@@ -28,11 +28,12 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Stable hosted demo path: Vercel frontend, Render API, Neon Postgres, CORS, seeded data, and no temporary tunnel dependency.
 - [x] MVP tenant document storage: upload, list, download, soft-delete, and tenant profile UI for insurance, guarantees, leases, invoices, and onboarding files.
 - [x] Tenant onboarding uploads and review-first apply: public token document uploads, staff review documents, labelled submitted details, and no profile mutation before Apply.
+- [x] Smart Intake Inbox first slice: dashboard drag/drop, stored source document, generic AI classification/extraction envelope, review status queue, summary groups, confidence, warnings, and no automatic record mutation.
 
 ## Next Build Order
 
-- [ ] Build Smart Intake Inbox: one drag/drop surface for leases, purchase contracts, tenant docs, invoices, guarantees, and certificates, with document classification, entity/property/tenant matching, review status, and apply actions.
-- [ ] Extend AI extraction beyond lease intake: acquisition/building contracts create or update property/unit records; tenant leases update tenant/lease/obligations; compliance docs update expiry dates and document records.
+- [ ] Add focused Smart Intake review/apply surfaces: field-level accept/edit/dismiss, source snippets, matched property/unit/tenant choices, and explicit Apply actions.
+- [ ] Extend AI extraction beyond the generic envelope: acquisition/building contracts create or update property/unit records; tenant leases update tenant/lease/obligations; compliance docs update expiry dates and document records.
 - [ ] Finish tenant onboarding delivery: real email sending, branded templates, resend logs, expiry messaging, and delivery audit history.
 - [ ] Deepen tenant detail: property/lease context labels, richer activity history, safer document provenance/actions, and reviewed-change history.
 - [ ] Expand billing from readiness into invoice generation: rent periods, line items, invoice drafts, approval, PDF/email delivery, and payment status.
