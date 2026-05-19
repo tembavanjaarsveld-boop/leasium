@@ -43,6 +43,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 ## Next Build Order
 
 - [ ] Continue AI apply beyond first-pass register workflows: purchase contracts gain richer tenancy schedule handling; billing prep graduates into true draft charge/invoice records; ownership profiles gain source citations and before/after audit detail.
+- [ ] Add AI enrichment for missing fields: when reviewed records are missing safe public facts like ABN, postcode, suburb/state, business names, or registered addresses, Leasium can search trusted online sources, suggest the value with citation/confidence, and require review before applying.
 - [ ] Finish tenant onboarding delivery: hosted provider webhook configuration, branded template management, editable reminder schedules, expiry reminders, and deeper delivery failure recovery.
 - [ ] Deepen tenant detail: property/lease context labels, richer activity history, safer document provenance/actions, and reviewed-change history.
 - [ ] Expand billing from readiness into invoice generation: rent periods, line items, invoice drafts, approval, PDF/email delivery, and payment status.
