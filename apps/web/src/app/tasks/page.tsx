@@ -26,7 +26,9 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  DocumentIntakeRecord,
   listEntities,
+  listDocumentIntakes,
   listObligations,
   listTenantOnboardings,
   ObligationRecord,
@@ -38,7 +40,14 @@ import { cn } from "@/lib/utils";
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 type TaskTone = "neutral" | "success" | "warning" | "danger" | "primary";
-type TaskFilter = "all" | "overdue" | "soon" | "waiting" | "submitted" | "done";
+type TaskFilter =
+  | "all"
+  | "overdue"
+  | "soon"
+  | "intake"
+  | "waiting"
+  | "submitted"
+  | "done";
 
 type WorkTask =
   | {
@@ -64,12 +73,25 @@ type WorkTask =
       href: string;
       record: TenantOnboardingRecord;
       completed: boolean;
+    }
+  | {
+      id: string;
+      kind: "document_intake";
+      title: string;
+      description: string;
+      dueDate: string | null;
+      tone: TaskTone;
+      chip: string;
+      href: string;
+      record: DocumentIntakeRecord;
+      completed: boolean;
     };
 
 const filters: Array<{ key: TaskFilter; label: string }> = [
   { key: "all", label: "All" },
   { key: "overdue", label: "Overdue" },
   { key: "soon", label: "Due soon" },
+  { key: "intake", label: "Smart Intake" },
   { key: "waiting", label: "Waiting on tenant" },
   { key: "submitted", label: "Submitted" },
   { key: "done", label: "Done" },
@@ -119,8 +141,24 @@ function dueLabel(value: string | null | undefined) {
   }).format(new Date(`${value.slice(0, 10)}T00:00:00`));
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "No date";
+  }
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function categoryLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function documentTypeLabel(value: string | null | undefined) {
+  return value ? value.replaceAll("_", " ") : "document";
 }
 
 function obligationTone(obligation: ObligationRecord): TaskTone {
@@ -153,6 +191,63 @@ function onboardingTone(onboarding: TenantOnboardingRecord): TaskTone {
   return "neutral";
 }
 
+function intakeIsOpen(intake: DocumentIntakeRecord) {
+  return ["uploaded", "reading", "ready_for_review", "needs_attention", "failed"].includes(
+    intake.status,
+  );
+}
+
+function intakeTone(intake: DocumentIntakeRecord): TaskTone {
+  if (intake.status === "failed") {
+    return "danger";
+  }
+  if (intake.status === "needs_attention") {
+    return "warning";
+  }
+  if (intake.status === "ready_for_review") {
+    return "primary";
+  }
+  return "neutral";
+}
+
+function intakeChip(intake: DocumentIntakeRecord) {
+  switch (intake.status) {
+    case "failed":
+      return "Could not read";
+    case "needs_attention":
+      return "Needs match";
+    case "ready_for_review":
+      return "Needs review";
+    case "reading":
+      return "Reading";
+    default:
+      return "Processing";
+  }
+}
+
+function intakeTitle(intake: DocumentIntakeRecord) {
+  switch (intake.status) {
+    case "failed":
+      return "Document could not be read";
+    case "needs_attention":
+      return "Document needs match";
+    case "ready_for_review":
+      return "Document waiting for review";
+    default:
+      return "Document still processing";
+  }
+}
+
+function intakeDescription(intake: DocumentIntakeRecord) {
+  return [
+    `Smart Intake - ${documentTypeLabel(intake.document_type)}`,
+    intake.filename,
+    intake.summary,
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
 function obligationDescription(obligation: ObligationRecord) {
   return [
     categoryLabel(obligation.category),
@@ -166,6 +261,7 @@ function obligationDescription(obligation: ObligationRecord) {
 function buildTasks(
   obligations: ObligationRecord[],
   onboardings: TenantOnboardingRecord[],
+  documentIntakes: DocumentIntakeRecord[],
 ): WorkTask[] {
   const obligationTasks: WorkTask[] = obligations.map((obligation) => ({
     id: `obligation-${obligation.id}`,
@@ -202,12 +298,67 @@ function buildTasks(
       } satisfies WorkTask;
     });
 
-  return [...obligationTasks, ...onboardingTasks].sort((a, b) => {
+  const intakeTasks: WorkTask[] = documentIntakes
+    .filter(intakeIsOpen)
+    .map((intake) => ({
+      id: `document-intake-${intake.id}`,
+      kind: "document_intake",
+      title: intakeTitle(intake),
+      description: intakeDescription(intake),
+      dueDate: intake.created_at,
+      tone: intakeTone(intake),
+      chip: intakeChip(intake),
+      href: `/intake?review=${intake.id}`,
+      record: intake,
+      completed: false,
+    }));
+
+  return [...obligationTasks, ...onboardingTasks, ...intakeTasks].sort((a, b) => {
     if (a.completed !== b.completed) {
       return a.completed ? 1 : -1;
     }
-    return dueRank(a.dueDate) - dueRank(b.dueDate);
+    return taskSortRank(a) - taskSortRank(b);
   });
+}
+
+function taskSortRank(task: WorkTask) {
+  if (task.kind === "document_intake") {
+    if (task.record.status === "failed") {
+      return -30;
+    }
+    if (task.record.status === "needs_attention") {
+      return -20;
+    }
+    if (task.record.status === "ready_for_review") {
+      return 5;
+    }
+    return 20;
+  }
+  return dueRank(task.dueDate);
+}
+
+function taskKindLabel(task: WorkTask) {
+  if (task.kind === "onboarding") {
+    return "Onboarding";
+  }
+  if (task.kind === "document_intake") {
+    return "Smart Intake";
+  }
+  return "Lease date";
+}
+
+function taskKindTone(task: WorkTask): TaskTone {
+  if (task.kind === "document_intake") {
+    return "primary";
+  }
+  return task.kind === "onboarding" ? "primary" : "neutral";
+}
+
+function taskDateLabel(task: WorkTask) {
+  if (task.kind === "document_intake") {
+    return formatDateTime(task.dueDate);
+  }
+  return dueLabel(task.dueDate);
 }
 
 function taskMatchesFilter(task: WorkTask, filter: TaskFilter) {
@@ -215,10 +366,18 @@ function taskMatchesFilter(task: WorkTask, filter: TaskFilter) {
     return !task.completed;
   }
   if (filter === "overdue") {
-    return !task.completed && dueRank(task.dueDate) < 0;
+    return !task.completed && task.kind !== "document_intake" && dueRank(task.dueDate) < 0;
   }
   if (filter === "soon") {
-    return !task.completed && dueRank(task.dueDate) >= 0 && dueRank(task.dueDate) <= 7;
+    return (
+      !task.completed &&
+      task.kind !== "document_intake" &&
+      dueRank(task.dueDate) >= 0 &&
+      dueRank(task.dueDate) <= 7
+    );
+  }
+  if (filter === "intake") {
+    return !task.completed && task.kind === "document_intake";
   }
   if (filter === "waiting") {
     return (
@@ -279,6 +438,12 @@ function TasksWorkspace() {
     enabled: Boolean(selectedEntityId),
   });
 
+  const documentIntakesQuery = useQuery({
+    queryKey: ["tasks-document-intakes", selectedEntityId],
+    queryFn: () => listDocumentIntakes(selectedEntityId),
+    enabled: Boolean(selectedEntityId),
+  });
+
   const updateMutation = useMutation({
     mutationFn: (payload: { obligation: ObligationRecord; status: "completed" | "waived" }) =>
       updateObligation(payload.obligation.id, {
@@ -308,8 +473,9 @@ function TasksWorkspace() {
       buildTasks(
         obligationsQuery.data ?? [],
         onboardingQuery.data ?? [],
+        documentIntakesQuery.data ?? [],
       ),
-    [obligationsQuery.data, onboardingQuery.data],
+    [documentIntakesQuery.data, obligationsQuery.data, onboardingQuery.data],
   );
 
   const visibleTasks = tasks.filter((task) => taskMatchesFilter(task, filter));
@@ -323,6 +489,9 @@ function TasksWorkspace() {
   );
   const submittedTasks = openTasks.filter(
     (task) => task.kind === "onboarding" && task.record.status === "submitted",
+  );
+  const smartIntakeTasks = openTasks.filter(
+    (task) => task.kind === "document_intake",
   );
 
   return (
@@ -352,6 +521,7 @@ function TasksWorkspace() {
               onClick={() => {
                 obligationsQuery.refetch();
                 onboardingQuery.refetch();
+                documentIntakesQuery.refetch();
               }}
               disabled={!selectedEntityId}
             >
@@ -376,13 +546,18 @@ function TasksWorkspace() {
             {friendlyError(onboardingQuery.error)}
           </div>
         ) : null}
+        {documentIntakesQuery.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {friendlyError(documentIntakesQuery.error)}
+          </div>
+        ) : null}
         {updateMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {friendlyError(updateMutation.error)}
           </div>
         ) : null}
 
-        <section className="grid gap-3 md:grid-cols-4">
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-2xl border border-border bg-white p-4 shadow-leasiumXs">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-semibold text-muted-foreground">Overdue</span>
@@ -423,6 +598,16 @@ function TasksWorkspace() {
               Tenant submissions ready for internal review.
             </p>
           </div>
+          <div className="rounded-2xl border border-border bg-white p-4 shadow-leasiumXs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-muted-foreground">Smart Intake</span>
+              <Sparkles size={17} className="text-primary" />
+            </div>
+            <div className="mt-3 text-3xl font-semibold">{smartIntakeTasks.length}</div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Documents waiting for review, match, or recovery.
+            </p>
+          </div>
         </section>
 
         <SectionPanel
@@ -459,14 +644,14 @@ function TasksWorkspace() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold">{task.title}</span>
                     <StatusBadge tone={task.tone}>{task.chip}</StatusBadge>
-                    <StatusBadge tone={task.kind === "onboarding" ? "primary" : "neutral"}>
-                      {task.kind === "onboarding" ? "Onboarding" : "Lease date"}
+                    <StatusBadge tone={taskKindTone(task)}>
+                      {taskKindLabel(task)}
                     </StatusBadge>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">{task.description}</p>
                 </Link>
                 <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                  <StatusBadge tone={task.tone}>{dueLabel(task.dueDate)}</StatusBadge>
+                  <StatusBadge tone={task.tone}>{taskDateLabel(task)}</StatusBadge>
                   {task.kind === "obligation" && !task.completed ? (
                     <>
                       <SecondaryButton
@@ -508,31 +693,46 @@ function TasksWorkspace() {
                       Open tenants
                     </Link>
                   ) : null}
+                  {task.kind === "document_intake" ? (
+                    <Link
+                      href={task.href}
+                      className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                    >
+                      <Sparkles size={15} />
+                      Review in Smart Intake
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             ))}
             {visibleTasks.length === 0 ? (
               <EmptyState
                 title={
-                  selectedEntityId
+                  filter === "intake"
+                    ? "No documents waiting for review"
+                    : selectedEntityId
                     ? "No open tasks"
                     : "Select an entity to see tasks."
                 }
                 description={
-                  selectedEntityId
+                  filter === "intake"
+                    ? "Reviewed documents and applied work will move into the right workspace automatically."
+                    : selectedEntityId
                     ? "Leasium will surface rent reviews, expiries, onboarding follow-ups, and document-driven obligations here."
                     : "Choose an entity from the top right to load the work queue."
                 }
                 action={
                   selectedEntityId ? (
                     <div className="flex flex-wrap justify-center gap-2">
-                      <Link
-                        href="/properties"
-                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
-                      >
-                        <ClipboardList size={15} />
-                        Add critical date
-                      </Link>
+                      {filter === "intake" ? null : (
+                        <Link
+                          href="/properties"
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                        >
+                          <ClipboardList size={15} />
+                          Add critical date
+                        </Link>
+                      )}
                       <Link
                         href="/intake"
                         className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
