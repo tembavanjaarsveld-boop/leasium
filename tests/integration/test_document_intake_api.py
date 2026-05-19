@@ -16,6 +16,7 @@ from stewart.core.models import (
     LeaseIntake,
     Obligation,
     Property,
+    RentChargeRule,
     StoredDocument,
     TenancyUnit,
     Tenant,
@@ -1110,6 +1111,7 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
     assert applied["created_tenant_count"] == 2
     assert applied["created_lease_count"] == 2
     assert applied["tenant_lease_records_created"] == 4
+    assert applied["created_charge_rule_count"] == 2
     assert applied["lease_obligation_count"] == 6
     assert applied["obligation_count"] == 7
     assert applied["skipped_tenancy_schedule_rows"] == []
@@ -1162,6 +1164,18 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
     assert first_lease.annual_rent_cents == 24000000
     assert first_lease.rent_frequency == "monthly"
     assert first_lease.lease_metadata["document_type"] == "purchase_contract"
+
+    first_charge_rule = session.get(RentChargeRule, UUID(applied["charge_rule_ids"][0]))
+    assert first_charge_rule is not None
+    assert first_charge_rule.lease_id == first_lease.id
+    assert first_charge_rule.charge_type == "base_rent"
+    assert first_charge_rule.amount_cents == 2000000
+    assert first_charge_rule.frequency == "monthly"
+    assert first_charge_rule.next_due_date is not None
+    assert first_charge_rule.next_due_date.isoformat() == "2026-07-01"
+    assert first_charge_rule.charge_rule_metadata["draft"] is True
+    assert first_charge_rule.charge_rule_metadata["annual_rent_cents"] == 24000000
+    assert first_charge_rule.charge_rule_metadata["document_intake_id"] == intake_id
 
     lease_obligations = list(
         session.scalars(

@@ -28,6 +28,7 @@ from stewart.core.models import (
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
+    GstTreatment,
     Lease,
     LeaseIntake,
     LeaseIntakeStatus,
@@ -37,6 +38,8 @@ from stewart.core.models import (
     ObligationStatus,
     Property,
     PropertyType,
+    RentChargeRule,
+    RentChargeType,
     RentFrequency,
     StoredDocument,
     TenancyUnit,
@@ -616,6 +619,17 @@ def _annualised_cents(amount: float, frequency: str | None) -> int:
     elif frequency == "quarterly":
         multiplier = 4
     return int(round(amount * multiplier * 100))
+
+
+def _periodic_rent_cents(annual_rent_cents: int, frequency: RentFrequency) -> int:
+    divisor = 1
+    if frequency == RentFrequency.weekly:
+        divisor = 52
+    elif frequency == RentFrequency.monthly:
+        divisor = 12
+    elif frequency == RentFrequency.quarterly:
+        divisor = 4
+    return int(round(annual_rent_cents / divisor))
 
 
 def _generic_rent(data: dict[str, Any]) -> tuple[int | None, str | None]:
@@ -1387,6 +1401,54 @@ def _create_schedule_lease_obligations(
     return obligations
 
 
+def _create_schedule_base_rent_rule(
+    intake: DocumentIntake,
+    lease: Lease,
+    row: dict[str, Any],
+    session: Session,
+) -> RentChargeRule | None:
+    annual_rent_cents = _money_cents(row.get("annual_rent"))
+    frequency = _rent_frequency(row.get("rent_frequency"))
+    if annual_rent_cents is None or frequency is None:
+        return None
+
+    existing = session.scalar(
+        select(RentChargeRule).where(
+            RentChargeRule.lease_id == lease.id,
+            RentChargeRule.charge_type == RentChargeType.base_rent,
+            RentChargeRule.deleted_at.is_(None),
+        )
+    )
+    if existing is not None:
+        return existing
+
+    charge_rule = RentChargeRule(
+        lease_id=lease.id,
+        charge_type=RentChargeType.base_rent,
+        amount_cents=_periodic_rent_cents(annual_rent_cents, frequency),
+        frequency=frequency,
+        gst_treatment=GstTreatment.taxable,
+        start_date=lease.commencement_date,
+        end_date=lease.expiry_date,
+        next_due_date=lease.commencement_date,
+        arrears_or_advance="advance",
+        charge_rule_metadata={
+            "source": "document_intake",
+            "draft": True,
+            "draft_status": "needs_review",
+            "document_intake_id": str(intake.id),
+            "document_id": str(intake.document_id),
+            "document_type": "purchase_contract",
+            "source_hint": _str(row.get("source_hint")),
+            "annual_rent_cents": annual_rent_cents,
+            "tenancy_schedule": _tenancy_schedule_snapshot(row),
+        },
+    )
+    session.add(charge_rule)
+    session.flush()
+    return charge_rule
+
+
 def _apply_purchase_schedule_leases(
     intake: DocumentIntake,
     units: list[TenancyUnit],
@@ -1400,6 +1462,7 @@ def _apply_purchase_schedule_leases(
     linked_tenants = 0
     created_leases = 0
     schedule_obligation_ids: list[str] = []
+    charge_rule_ids: list[str] = []
     skipped_rows: list[dict[str, Any]] = []
 
     for unit in units:
@@ -1495,6 +1558,23 @@ def _apply_purchase_schedule_leases(
                 f"Created pending lease {lease.id} from purchase contract tenancy schedule."
             ),
         )
+        charge_rule = _create_schedule_base_rent_rule(intake, lease, row, session)
+        if charge_rule is not None:
+            charge_rule_ids.append(str(charge_rule.id))
+            audit_log(
+                session,
+                actor=user.actor,
+                user_id=user.id,
+                entity_id=intake.entity_id,
+                action="create",
+                target_table="rent_charge_rule",
+                target_id=charge_rule.id,
+                tool_name="smart_intake_apply",
+                tool_input={"document_intake_id": str(intake.id), "lease_id": str(lease.id)},
+                tool_output_summary=(
+                    "Created draft base rent charge rule from acquisition schedule."
+                ),
+            )
         schedule_obligations = _create_schedule_lease_obligations(
             intake,
             unit,
@@ -1525,6 +1605,8 @@ def _apply_purchase_schedule_leases(
         "created_tenant_count": created_tenants,
         "linked_tenant_count": linked_tenants,
         "created_lease_count": created_leases,
+        "charge_rule_ids": charge_rule_ids,
+        "created_charge_rule_count": len(charge_rule_ids),
         "lease_obligation_ids": schedule_obligation_ids,
         "lease_obligation_count": len(schedule_obligation_ids),
         "skipped_tenancy_schedule_rows": skipped_rows,
@@ -1688,6 +1770,8 @@ def _apply_purchase_contract_intake(
         "tenant_lease_records_created": (
             schedule_apply["created_tenant_count"] + schedule_apply["created_lease_count"]
         ),
+        "charge_rule_ids": schedule_apply["charge_rule_ids"],
+        "created_charge_rule_count": schedule_apply["created_charge_rule_count"],
         "lease_obligation_ids": schedule_apply["lease_obligation_ids"],
         "lease_obligation_count": schedule_apply["lease_obligation_count"],
         "skipped_tenancy_schedule_rows": schedule_apply["skipped_tenancy_schedule_rows"],
@@ -2363,6 +2447,7 @@ def apply_document_intake(
             "applied_tenancy_unit_ids": [str(unit.id) for unit in units],
             "applied_tenant_ids": applied.get("tenant_ids") or [],
             "applied_lease_ids": applied.get("lease_ids") or [],
+            "applied_charge_rule_ids": applied.get("charge_rule_ids") or [],
             "applied_obligation_ids": [
                 *[str(obligation.id) for obligation in obligations],
                 *(applied.get("lease_obligation_ids") or []),
