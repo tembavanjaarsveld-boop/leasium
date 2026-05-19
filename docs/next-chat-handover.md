@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production feature deployment in this handover: `0d50513 Add Insights overview dashboard`, Vercel deployment `dpl_HJ5bGeVpqLt5JymC1pDCr9gh7n43`, state `READY`.
+- Latest confirmed production feature deployment in this handover: `3891223 Add operator invite acceptance flow`, Vercel deployment `dpl_AszYo7DdJwAs5psiEy5464ZwGvkn`, state `READY`; Render deploy `dep-d86dtfutsp3c7391n6lg`, state `Live`.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -201,10 +201,24 @@ Last updated: 2026-05-20
 
 ## Important Deployment Notes
 
+- Render/Alembic packaging fragility was investigated on 2026-05-20.
+  - Production API recovered by changing the Render start command to
+    `.venv/bin/alembic upgrade head && .venv/bin/uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT`,
+    canceling the stuck deploy, and clearing the build cache for commit
+    `3891223`.
+  - `pyproject.toml` now force-includes `alembic.ini` and the full `migrations/`
+    tree in wheel builds, so installed artifacts can resolve
+    `20260520_0015_operator_invites`.
+  - Alembic still needs to run from the repository or extracted artifact root
+    because `alembic.ini` uses `script_location = migrations`.
+  - If Render has already advanced production to `20260520_0015`, recover by
+    redeploying the same or newer commit that contains that migration. Avoid
+    booting an older backend against the advanced database unless the database is
+    restored, downgraded, or stamped back to a revision present in that artifact.
 - Vercel has no exposed env-var mutation tool in this session.
   - To actually hide the public app, set `LEASIUM_ACCESS_PASSWORD` in the Vercel project environment settings and redeploy.
   - After redeploy, verify `/properties` redirects to `/access`, and `/onboarding/<token>` remains public.
-- Neon production is confirmed migrated through `20260519_0014` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
+- Neon production is confirmed migrated through `20260520_0015` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
   - Verified `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
 - Xero readiness v1 uses existing columns only and does not need a new database migration.
 - Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still needs to be configured outside the codebase.

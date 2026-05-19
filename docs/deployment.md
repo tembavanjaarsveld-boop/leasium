@@ -73,3 +73,32 @@ Operator invite delivery also uses the SendGrid key/from settings above. Invite
 links point to `/accept-invite?token=...`; the raw token is sent once by email,
 while only a hash is stored in the database. Keep `AUTH_MODE=dev` until at least
 one owner/admin operator has accepted an invite and is linked to a Clerk user.
+
+## Render And Alembic Safety
+
+Current Render API commands:
+
+```bash
+uv sync --frozen && uv cache prune --ci
+.venv/bin/alembic upgrade head && .venv/bin/uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT
+```
+
+Use the virtualenv executables in the start command because the build command
+already creates `.venv`; this avoids re-resolving or recompiling dependencies
+during instance startup.
+
+The API deploy artifact must include `alembic.ini` and the full `migrations/`
+tree. The Python wheel build is configured to force-include both so Alembic can
+resolve every revision, including `20260520_0015`, after the service is installed
+from a wheel. Run Alembic from the repository or extracted artifact root so the
+existing `script_location = migrations` setting resolves to the bundled
+`migrations/` directory.
+
+Treat Alembic migrations and the API runtime as one release. If Render applies a
+new migration and the deploy then falls back to an older service image or commit,
+the older code may fail on startup because the database `alembic_version` points
+at a revision that does not exist in that artifact. When production has advanced
+to `20260520_0015`, recover by redeploying the same or newer commit that contains
+that revision. Do not intentionally start an older backend against the advanced
+database unless the database is first restored, downgraded, or explicitly stamped
+to a revision that the older artifact contains.
