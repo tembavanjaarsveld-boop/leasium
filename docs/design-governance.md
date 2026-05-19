@@ -91,6 +91,10 @@ Progress notes:
   data, and quieter empty states while entity-scoped queries are waking up.
   Further Remba work should focus on splitting crowded workspaces into clearer
   zones or tabs.
+- 2026-05-20: `/properties` now has task-zone tabs for Portfolio,
+  Operations, Billing, and Documents, and the property create/edit form has
+  moved out of the always-visible side rail into a focused overlay. This is a
+  first-pass fix for the overloaded workspace and remains pending Remba review.
 
 Remba decision:
 
@@ -101,8 +105,7 @@ directionally approved.
 
 Required fixes before major new feature work:
 
-- Split `/properties` into clearer task zones or tabs instead of one long control panel.
-- Move always-visible create/edit forms into contextual drawers or focused panels.
+- Remba re-review the `/properties` task-zone split and focused property editor overlay.
 - Make dashboard cards and rows actionable, with clear drill-ins to the relevant workspace.
 - Add tenant profile/detail surfaces beyond the tenant table and side form.
 - Rework public onboarding into calmer guided sections with better context and next-step reassurance.

@@ -23,6 +23,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Tenant onboarding cancellation so stale public links can be retired and recreated.
 - [x] Navigation split: dashboard home, property operations page, and tenant register page.
 - [x] Tenant workspace upgrade: onboarding command center, status filters, prioritized queue, and tenant profile route.
+- [x] Property workspace task-zone split: `/properties` now separates Portfolio, Operations, Billing, and Documents, and property create/edit opens in a focused overlay instead of an always-visible side rail.
 - [x] Managed onboarding backend workflow: expiry, resend, cancel reason, review, apply, and audit-friendly timestamps.
 - [x] Public tenant onboarding refresh: property/unit context, guided sections, notes field, clearer reset/submit states, and next-step reassurance.
 - [x] Stable hosted demo path: Vercel frontend, Render API, Neon Postgres, CORS, seeded data, and no temporary tunnel dependency.

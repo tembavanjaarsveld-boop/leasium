@@ -128,6 +128,13 @@ Last updated: 2026-05-20
   - This closes the broad loading-state priority fix from the 2026-05-20 Remba
     scan; remaining Remba work is mainly workspace structure, tabs, and crowded
     page hierarchy.
+- Property workspace task-zone split is built on this branch.
+  - `/properties` now has Portfolio, Operations, Billing, and Documents tabs so
+    document intake, dates/units/leases, rent roll, billing identity, source
+    history, and the property table no longer compete in one long page.
+  - Property create/edit now opens in a focused overlay instead of an
+    always-visible side rail.
+  - This is design-facing and still needs Remba review.
 - Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
   - This is design-facing and still needs Remba review.
 ## Verification
@@ -145,6 +152,12 @@ Last updated: 2026-05-20
     - `git diff --check`
     - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
     - Local `next start` route smoke returned `200` for `/properties` and `/billing-readiness` with the bundled WASM path.
+  - Property workspace task-zone split checks passed:
+    - `./node_modules/.bin/eslint src/components/property-workspace.tsx`
+    - `./node_modules/.bin/tsc --noEmit`
+    - `git diff --check`
+    - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+    - Local browser smoke confirmed `/properties` shows the Portfolio/Operations/Billing/Documents tabs and each tab switches to the expected workspace section.
   - `.venv/bin/python -m ruff check apps/api/routers/insights.py apps/api/schemas/insights.py apps/api/main.py tests/integration/test_insights_api.py`
   - `.venv/bin/python -m pytest tests/integration/test_insights_api.py tests/integration/test_xero_api.py -q`
   - Result: `2 passed`

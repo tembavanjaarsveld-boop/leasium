@@ -143,6 +143,34 @@ const propertySchema = z.object({
 });
 
 type PropertyFormValues = z.infer<typeof propertySchema>;
+type PropertyWorkspaceTab = "portfolio" | "operations" | "billing" | "documents";
+
+const propertyWorkspaceTabs: Array<{
+  id: PropertyWorkspaceTab;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "portfolio",
+    label: "Portfolio",
+    description: "Properties and setup",
+  },
+  {
+    id: "operations",
+    label: "Operations",
+    description: "Dates, units, leases",
+  },
+  {
+    id: "billing",
+    label: "Billing",
+    description: "Readiness and identity",
+  },
+  {
+    id: "documents",
+    label: "Documents",
+    description: "Upload and sources",
+  },
+];
 
 const unitSchema = z.object({
   unit_label: z.string().min(1, "Unit label is required"),
@@ -997,7 +1025,10 @@ function Workspace() {
   const [rentRollAsOf, setRentRollAsOf] = useState<string>(() =>
     dateOnly(new Date()),
   );
+  const [activeWorkspaceTab, setActiveWorkspaceTab] =
+    useState<PropertyWorkspaceTab>("portfolio");
   const [editing, setEditing] = useState<PropertyRecord | null>(null);
+  const [propertyEditorOpen, setPropertyEditorOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<TenancyUnitRecord | null>(
     null,
   );
@@ -1473,6 +1504,8 @@ function Workspace() {
       });
       setSelectedPropertyId(property.id);
       setEditing(null);
+      setPropertyEditorOpen(false);
+      setBillingProfileOpen(false);
       form.reset(defaultPropertyFormValues);
     },
   });
@@ -1816,6 +1849,7 @@ function Workspace() {
   function startEdit(property: PropertyRecord) {
     selectProperty(property.id);
     setEditing(property);
+    setPropertyEditorOpen(true);
     form.reset({
       name: property.name,
       street_address: property.street_address,
@@ -1843,6 +1877,20 @@ function Workspace() {
       xero_tracking_category: property.xero_tracking_category ?? "",
     });
     setBillingProfileOpen(propertyUsesOwnerBilling(property));
+  }
+
+  function startPropertyCreate() {
+    setEditing(null);
+    setBillingProfileOpen(false);
+    form.reset(defaultPropertyFormValues);
+    setPropertyEditorOpen(true);
+  }
+
+  function closePropertyEditor() {
+    setEditing(null);
+    setPropertyEditorOpen(false);
+    setBillingProfileOpen(false);
+    form.reset(defaultPropertyFormValues);
   }
 
   function startUnitEdit(unit: TenancyUnitRecord) {
@@ -2162,9 +2210,9 @@ function Workspace() {
         </Select>
       </AppHeader>
 
-      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5 lg:grid-cols-[1fr_360px]">
+      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <section className="min-w-0">
-          <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold">
                 {selectedEntity?.name ?? "Select an entity"}
@@ -2177,20 +2225,30 @@ function Workspace() {
                     : `${propertiesQuery.data?.length ?? 0} active properties`}
               </p>
             </div>
-            <SecondaryButton
-              type="button"
-              onClick={() => propertiesQuery.refetch()}
-              disabled={!selectedEntityId || propertiesQuery.isFetching}
-            >
-              {propertiesQuery.isFetching && !propertiesLoading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <RefreshCw size={16} />
-              )}
-              {propertiesQuery.isFetching && !propertiesLoading
-                ? "Refreshing"
-                : "Refresh"}
-            </SecondaryButton>
+            <div className="flex flex-wrap items-center gap-2">
+              <SecondaryButton
+                type="button"
+                onClick={() => propertiesQuery.refetch()}
+                disabled={!selectedEntityId || propertiesQuery.isFetching}
+              >
+                {propertiesQuery.isFetching && !propertiesLoading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={16} />
+                )}
+                {propertiesQuery.isFetching && !propertiesLoading
+                  ? "Refreshing"
+                  : "Refresh"}
+              </SecondaryButton>
+              <Button
+                type="button"
+                onClick={startPropertyCreate}
+                disabled={!selectedEntityId}
+              >
+                <Plus size={16} />
+                New property
+              </Button>
+            </div>
           </div>
 
           {propertyWorkspaceError ? (
@@ -2262,6 +2320,40 @@ function Workspace() {
             </SectionPanel>
           ) : null}
 
+          <div
+            className="mb-4 grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-4"
+            role="tablist"
+            aria-label="Property workspace sections"
+          >
+            {propertyWorkspaceTabs.map((tab) => {
+              const isActive = activeWorkspaceTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActiveWorkspaceTab(tab.id)}
+                  className={`grid min-h-16 gap-1 rounded-xl px-3 py-2 text-left transition duration-200 ease-leasium ${
+                    isActive
+                      ? "bg-primary text-primary-foreground shadow-leasiumXs"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <span className="text-sm font-semibold">{tab.label}</span>
+                  <span
+                    className={`text-xs ${
+                      isActive ? "text-primary-foreground/80" : ""
+                    }`}
+                  >
+                    {tab.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {activeWorkspaceTab === "documents" ? (
           <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumXs">
             <div className="grid gap-4 p-4">
               <div className="grid gap-3">
@@ -3159,7 +3251,9 @@ function Workspace() {
               </div>
             </div>
           </section>
+          ) : null}
 
+          {activeWorkspaceTab === "operations" ? (
           <section className="mb-4 overflow-hidden rounded-md border border-border bg-white">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
               <div>
@@ -3398,7 +3492,9 @@ function Workspace() {
               </form>
             </div>
           </section>
+          ) : null}
 
+          {activeWorkspaceTab === "billing" ? (
           <section className="mb-4 overflow-hidden rounded-md border border-border bg-white">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
               <div>
@@ -3675,7 +3771,9 @@ function Workspace() {
               </form>
             </div>
           </section>
+          ) : null}
 
+          {activeWorkspaceTab === "portfolio" ? (
           <div className="overflow-hidden rounded-md border border-border bg-white">
             <table className="w-full border-collapse text-left text-sm">
               <thead className="bg-muted text-xs uppercase text-muted-foreground">
@@ -3772,8 +3870,9 @@ function Workspace() {
               </tbody>
             </table>
           </div>
+          ) : null}
 
-          {selectedProperty ? (
+          {activeWorkspaceTab === "billing" && selectedProperty ? (
             <section className="mt-4 overflow-hidden rounded-md border border-border bg-white">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                 <div>
@@ -3929,7 +4028,7 @@ function Workspace() {
             </section>
           ) : null}
 
-          {selectedProperty ? (
+          {activeWorkspaceTab === "documents" && selectedProperty ? (
             <section className="mt-4 overflow-hidden rounded-md border border-border bg-white">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                 <div>
@@ -4031,6 +4130,7 @@ function Workspace() {
             </section>
           ) : null}
 
+          {activeWorkspaceTab === "operations" ? (
           <section className="mt-5 overflow-hidden rounded-md border border-border bg-white">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
               <div>
@@ -4291,6 +4391,7 @@ function Workspace() {
               </div>
             )}
           </section>
+          ) : null}
         </section>
 
         {leaseEditorOpen ? (
@@ -4683,23 +4784,32 @@ function Workspace() {
           </div>
         ) : null}
 
-        <aside className="rounded-md border border-border bg-white p-4">
+        {propertyEditorOpen ? (
+          <div
+            className="fixed inset-0 z-50 grid bg-foreground/20 backdrop-blur-[1px] lg:justify-items-end"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="property-editor-title"
+          >
+            <button
+              type="button"
+              className="absolute inset-0 cursor-default"
+              aria-label="Close property editor"
+              onClick={closePropertyEditor}
+            />
+            <aside className="relative h-full w-full max-w-xl overflow-y-auto border-l border-border bg-white p-4 shadow-xl">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-base font-semibold">
+            <h2 id="property-editor-title" className="text-base font-semibold">
               {editing ? "Edit property" : "New property"}
             </h2>
-            {editing ? (
-              <SecondaryButton
-                type="button"
-                onClick={() => {
-                  setEditing(null);
-                  setBillingProfileOpen(false);
-                  form.reset(defaultPropertyFormValues);
-                }}
-              >
-                Clear
-              </SecondaryButton>
-            ) : null}
+            <SecondaryButton
+              type="button"
+              aria-label="Close property editor"
+              onClick={closePropertyEditor}
+              className="h-8 w-8 px-0"
+            >
+              <X size={15} />
+            </SecondaryButton>
           </div>
 
           <form
@@ -4880,7 +4990,9 @@ function Workspace() {
               <p className="text-sm text-danger">{mutation.error.message}</p>
             ) : null}
           </form>
-        </aside>
+            </aside>
+          </div>
+        ) : null}
       </div>
     </main>
   );
