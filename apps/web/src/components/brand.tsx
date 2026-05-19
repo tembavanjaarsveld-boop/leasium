@@ -5,6 +5,8 @@ export function LeasiumMark({ className }: { className?: string }) {
     <svg
       aria-hidden="true"
       className={cn("h-10 w-10 shrink-0", className)}
+      width="40"
+      height="40"
       viewBox="0 0 128 128"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"

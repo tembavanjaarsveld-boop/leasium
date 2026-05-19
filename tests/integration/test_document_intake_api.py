@@ -6,7 +6,18 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.models import DocumentCategory, DocumentIntake, Entity, Obligation, StoredDocument
+from stewart.core.models import (
+    DocumentCategory,
+    DocumentIntake,
+    Entity,
+    Lease,
+    LeaseIntake,
+    Obligation,
+    Property,
+    StoredDocument,
+    TenancyUnit,
+    Tenant,
+)
 from stewart.core.settings import Settings
 
 
@@ -193,6 +204,75 @@ def _fake_compliance_extraction() -> dict[str, Any]:
                 "confidence": 0.76,
                 "source_hint": "Inspection notes",
             },
+        ],
+        "warnings": [],
+        "missing_information": [],
+    }
+
+
+def _fake_smart_lease_extraction() -> dict[str, Any]:
+    return {
+        **_fake_extraction(),
+        "document_type": "lease",
+        "summary": "Retail lease for Shop 2 at Smart Lease Arcade.",
+        "parties": [
+            {
+                "name": "Smart Lease Retail Pty Ltd",
+                "role": "tenant",
+                "abn": "98 765 432 100",
+                "contact": "Mia Patel",
+                "confidence": 0.88,
+                "source_hint": "Tenant schedule",
+            }
+        ],
+        "properties": [
+            {
+                "name": "Smart Lease Arcade",
+                "address": "44 Review Road",
+                "unit_label": "Shop 2",
+                "confidence": 0.86,
+                "source_hint": "Premises schedule",
+            }
+        ],
+        "key_dates": [
+            {
+                "label": "Lease commencement",
+                "date": "2026-09-01",
+                "confidence": 0.9,
+                "source_hint": "Term",
+            },
+            {
+                "label": "Lease expiry",
+                "date": "2029-08-31",
+                "confidence": 0.9,
+                "source_hint": "Term",
+            },
+            {
+                "label": "Rent review",
+                "date": "2027-09-01",
+                "confidence": 0.82,
+                "source_hint": "Rent review clause",
+            },
+        ],
+        "money_amounts": [
+            {
+                "label": "Annual rent",
+                "amount": 144000,
+                "currency": "AUD",
+                "frequency": "annual",
+                "confidence": 0.9,
+                "source_hint": "Rent schedule",
+            }
+        ],
+        "obligations": [
+            {
+                "title": "Bank guarantee review",
+                "due_date": "2026-09-01",
+                "category": "bank_guarantee",
+                "notes": "Confirm guarantee before possession.",
+                "confidence": 0.84,
+                "source_hint": "Security clause",
+            }
         ],
         "warnings": [],
         "missing_information": [],
@@ -599,6 +679,165 @@ def test_document_intake_apply_compliance_creates_reviewed_obligations(
     assert document.document_metadata["applied_document_type"] == "compliance"
 
 
+def test_document_intake_apply_lease_creates_register_records(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_smart_lease"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("smart-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    document_id = create_response.json()["document_id"]
+
+    reviewed = _fake_smart_lease_extraction()
+    reviewed["money_amounts"][0]["amount"] = 150000
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={"review_data": reviewed},
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "applied"
+    assert body["category"] == "lease"
+    assert body["review_data"]["applied"]["action"] == "created_lease_register_records"
+
+    lease = session.get(Lease, UUID(body["review_data"]["applied"]["lease_id"]))
+    assert lease is not None
+    assert lease.annual_rent_cents == 15000000
+    assert lease.commencement_date is not None
+    assert lease.commencement_date.isoformat() == "2026-09-01"
+    assert lease.expiry_date is not None
+    assert lease.expiry_date.isoformat() == "2029-08-31"
+    assert lease.next_review_date is not None
+    assert lease.next_review_date.isoformat() == "2027-09-01"
+
+    tenant = session.get(Tenant, lease.tenant_id)
+    assert tenant is not None
+    assert tenant.legal_name == "Smart Lease Retail Pty Ltd"
+    assert tenant.contact_name == "Mia Patel"
+
+    unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+    assert unit is not None
+    assert unit.unit_label == "Shop 2"
+    prop = session.get(Property, unit.property_id)
+    assert prop is not None
+    assert prop.name == "Smart Lease Arcade"
+    assert prop.street_address == "44 Review Road"
+
+    obligations = session.scalars(select(Obligation).where(Obligation.lease_id == lease.id)).all()
+    assert {obligation.title for obligation in obligations} == {
+        "Bank guarantee review",
+        "Rent review",
+        "Lease expiry",
+    }
+
+    lease_intake = session.get(
+        LeaseIntake,
+        UUID(body["review_data"]["applied"]["lease_intake_id"]),
+    )
+    assert lease_intake is not None
+    assert lease_intake.applied_lease_id == lease.id
+    assert lease_intake.extracted_data["source_document_intake_id"] == intake_id
+
+    document = session.get(StoredDocument, UUID(document_id))
+    assert document is not None
+    assert document.lease_id == lease.id
+    assert document.document_metadata["applied_lease_id"] == str(lease.id)
+
+
+def test_document_intake_apply_lease_reuses_selected_records(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_selected_smart_lease"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Selected Lease House",
+            "street_address": "12 Link Only Lane",
+            "suburb": "Brisbane City",
+            "state": "QLD",
+            "postcode": "4000",
+            "property_type": "commercial_office",
+        },
+    )
+    assert property_response.status_code == 201
+    unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_response.json()["id"], "unit_label": "Selected Suite"},
+    )
+    assert unit_response.status_code == 201
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "Selected Tenant Pty Ltd"},
+    )
+    assert tenant_response.status_code == 201
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("selected-smart-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction(),
+            "property_id": property_response.json()["id"],
+            "tenancy_unit_id": unit_response.json()["id"],
+            "tenant_id": tenant_response.json()["id"],
+        },
+    )
+    assert apply_response.status_code == 200
+    lease = session.get(Lease, UUID(apply_response.json()["review_data"]["applied"]["lease_id"]))
+    assert lease is not None
+    assert str(lease.tenancy_unit_id) == unit_response.json()["id"]
+    assert str(lease.tenant_id) == tenant_response.json()["id"]
+
+    unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+    assert unit is not None
+    assert str(unit.property_id) == property_response.json()["id"]
+    generated_tenant = session.scalar(
+        select(Tenant).where(Tenant.legal_name == "Smart Lease Retail Pty Ltd")
+    )
+    assert generated_tenant is None
+
+
 def test_document_intake_apply_rejects_unsupported_document_type(
     client: TestClient,
     session: Session,
@@ -611,7 +850,9 @@ def test_document_intake_apply_rejects_unsupported_document_type(
         content_type: str | None,
         settings: Settings,
     ) -> tuple[dict[str, Any], str]:
-        return _fake_extraction(), "resp_document_lease_apply"
+        extraction = _fake_extraction()
+        extraction["document_type"] = "invoice_admin"
+        return extraction, "resp_document_invoice_apply"
 
     monkeypatch.setattr(
         "apps.api.routers.document_intakes.extract_document_file",
@@ -628,7 +869,7 @@ def test_document_intake_apply_rejects_unsupported_document_type(
 
     apply_response = client.post(
         f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
-        json={"review_data": _fake_extraction()},
+        json={"review_data": {"document_type": "invoice_admin"}},
     )
     assert apply_response.status_code == 409
 

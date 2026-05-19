@@ -437,23 +437,12 @@ def apply_lease_intake(
         )
 
     try:
-        extracted = _dict(payload.reviewed_data) or _dict(intake.extracted_data)
-        context = _dict(intake.extracted_data).get("context")
-        if isinstance(context, dict):
-            extracted.setdefault("context", {}).update(context)
-        validation_errors = _apply_validation_errors(payload, extracted)
-        if validation_errors:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=validation_errors,
-            )
-        intake.extracted_data = extracted
-        prop = _find_or_create_property(payload.property_id, intake, extracted, user, session)
-        unit = _find_or_create_unit(payload.tenancy_unit_id, prop, extracted, intake, session)
-        _assert_no_overlapping_lease(unit, extracted, session)
-        tenant = _find_or_create_tenant(payload.tenant_id, intake, extracted, user, session)
-        lease = _create_lease(unit, tenant, intake, extracted, session)
-        obligations = _create_obligations(intake, prop, unit, lease, extracted, session)
+        prop, unit, tenant, lease, obligations = _apply_lease_records(
+            intake,
+            payload,
+            user,
+            session,
+        )
     except HTTPException:
         intake.status = LeaseIntakeStatus.apply_failed
         intake.error_message = "Lease could not be applied."
@@ -498,6 +487,32 @@ def apply_lease_intake(
     session.commit()
     session.refresh(intake)
     return intake
+
+
+def _apply_lease_records(
+    intake: LeaseIntake,
+    payload: LeaseIntakeApplyRequest,
+    user: CurrentUser,
+    session: Session,
+) -> tuple[Property, TenancyUnit, Tenant, Lease, list[Obligation]]:
+    extracted = _dict(payload.reviewed_data) or _dict(intake.extracted_data)
+    context = _dict(intake.extracted_data).get("context")
+    if isinstance(context, dict):
+        extracted.setdefault("context", {}).update(context)
+    validation_errors = _apply_validation_errors(payload, extracted)
+    if validation_errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=validation_errors,
+        )
+    intake.extracted_data = extracted
+    prop = _find_or_create_property(payload.property_id, intake, extracted, user, session)
+    unit = _find_or_create_unit(payload.tenancy_unit_id, prop, extracted, intake, session)
+    _assert_no_overlapping_lease(unit, extracted, session)
+    tenant = _find_or_create_tenant(payload.tenant_id, intake, extracted, user, session)
+    lease = _create_lease(unit, tenant, intake, extracted, session)
+    obligations = _create_obligations(intake, prop, unit, lease, extracted, session)
+    return prop, unit, tenant, lease, obligations
 
 
 def _find_or_create_property(
@@ -597,11 +612,7 @@ def _find_or_create_tenant(
 ) -> Tenant:
     if tenant_id is not None:
         tenant = session.get(Tenant, tenant_id)
-        if (
-            tenant is None
-            or tenant.deleted_at is not None
-            or tenant.entity_id != intake.entity_id
-        ):
+        if tenant is None or tenant.deleted_at is not None or tenant.entity_id != intake.entity_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Tenant not found.",
@@ -610,9 +621,7 @@ def _find_or_create_tenant(
         return tenant
 
     data = _dict(extracted.get("tenant"))
-    legal_name = (
-        _str(data.get("legal_name")) or _str(data.get("name")) or "Tenant to confirm"
-    )
+    legal_name = _str(data.get("legal_name")) or _str(data.get("name")) or "Tenant to confirm"
     abn = _str(data.get("abn"))
     statement = select(Tenant).where(
         Tenant.entity_id == intake.entity_id,

@@ -17,6 +17,7 @@ class DocumentIntakeApplyRequest(ApiModel):
     review_data: dict[str, Any] | None = None
     property_id: UUID | None = None
     tenancy_unit_id: UUID | None = None
+    tenant_id: UUID | None = None
     lease_id: UUID | None = None
 
 

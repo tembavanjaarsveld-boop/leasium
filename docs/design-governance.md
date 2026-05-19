@@ -55,7 +55,7 @@ Standing additions from Remba:
 
 ## Smart Intake Apply Sign-Off
 
-Status: pass. Remba approved extending Smart Intake apply beyond insurance certificates on 2026-05-19, provided the flow stays review-first, target scope is plain-language, and the user sees a compact post-apply outcome card showing what was created.
+Status: pass. Remba approved extending Smart Intake apply beyond insurance certificates on 2026-05-19, provided the flow stays review-first, target scope is plain-language, and the user sees a compact post-apply outcome card showing what was created. Remba also approved the lease apply extension with an Apply plan rather than a lease mega-form.
 
 Applied UX guardrails:
 
@@ -63,3 +63,8 @@ Applied UX guardrails:
 - Show what changed, target scope, first due date, source document, and ignored item count.
 - Use `Portfolio level`, `No unit scope`, and `No lease scope` wording for intentional scope choices.
 - Provide one clear next action to review created work in Tasks.
+- For lease documents, show the Apply plan before apply: property, unit, tenant, lease, and task outcomes.
+- Say `Link only` when an existing record is selected and no mutation is intended.
+- Block lease apply until property/unit/tenant can be linked or created, and start, expiry, and rent are confirmed.
+- Treat low confidence, missing option/security detail, and no extracted obligations as warnings rather than blockers.
+- After lease apply, offer both property workspace and task follow-up actions.

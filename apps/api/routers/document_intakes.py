@@ -25,21 +25,29 @@ from stewart.core.models import (
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
+    Lease,
+    LeaseIntake,
+    LeaseIntakeStatus,
     Obligation,
     ObligationCategory,
     ObligationStatus,
+    Property,
     StoredDocument,
+    TenancyUnit,
+    Tenant,
     UserRole,
 )
 from stewart.core.settings import get_settings
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.routers.lease_intakes import _apply_lease_records
 from apps.api.routers.obligations import _validate_obligation_scope
 from apps.api.schemas.document_intake import (
     DocumentIntakeApplyRequest,
     DocumentIntakeRead,
     DocumentIntakeReviewRequest,
 )
+from apps.api.schemas.lease_intake import LeaseIntakeApplyRequest
 
 router = APIRouter(prefix="/document-intakes", tags=["document-intakes"])
 
@@ -138,6 +146,15 @@ def _date(value: Any) -> date | None:
         return None
     try:
         return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(str(value).replace(",", ""))
     except ValueError:
         return None
 
@@ -281,9 +298,12 @@ def _fallback_dated_record(
         if source_record is None:
             return None
         label = _str(source_record.get("label"))
+        due_date = _date(source_record.get("date")) or _date(source_record.get("due_date"))
+        if due_date is None:
+            return None
         return (
             label or "Bank guarantee renewal",
-            _date(source_record.get("date")) or _date(source_record.get("due_date")),
+            due_date,
             ObligationCategory.bank_guarantee,
             "Review bank guarantee before the recorded date.",
             _str(source_record.get("source_hint")),
@@ -296,9 +316,12 @@ def _fallback_dated_record(
         if source_record is None:
             return None
         label = _str(source_record.get("label"))
+        due_date = _date(source_record.get("date")) or _date(source_record.get("due_date"))
+        if due_date is None:
+            return None
         return (
             label or "Compliance follow-up",
-            _date(source_record.get("date")) or _date(source_record.get("due_date")),
+            due_date,
             ObligationCategory.compliance,
             "Review compliance document before the recorded date.",
             _str(source_record.get("source_hint")),
@@ -309,9 +332,12 @@ def _fallback_dated_record(
             return None
         label = _str(source_record.get("label"))
         category = _category_from_text(label, ObligationCategory.other)
+        due_date = _date(source_record.get("date")) or _date(source_record.get("due_date"))
+        if due_date is None:
+            return None
         return (
             label or "Notice follow-up",
-            _date(source_record.get("date")) or _date(source_record.get("due_date")),
+            due_date,
             category,
             "Follow up notice before the recorded date.",
             _str(source_record.get("source_hint")),
@@ -359,6 +385,250 @@ def _obligation_payloads_from_review(
             "source_hint": source_hint,
         }
     ]
+
+
+def _record_with_label(records: list[dict[str, Any]], labels: set[str]) -> dict[str, Any] | None:
+    for record in records:
+        label = (
+            _str(record.get("label")) or _str(record.get("title")) or _str(record.get("role")) or ""
+        ).lower()
+        if any(fragment in label for fragment in labels):
+            return record
+    return None
+
+
+def _generic_date(data: dict[str, Any], labels: set[str]) -> str | None:
+    record = _first_dated_record(_records(data.get("key_dates")), labels)
+    if record is None:
+        record = _first_dated_record(_records(data.get("obligations")), labels)
+    if record is None:
+        return None
+    value = _date(record.get("date") or record.get("due_date"))
+    return value.isoformat() if value else None
+
+
+def _generic_tenant_party(data: dict[str, Any]) -> dict[str, Any]:
+    parties = _records(data.get("parties"))
+    for party in parties:
+        role = (_str(party.get("role")) or "").lower()
+        if "tenant" in role or "lessee" in role:
+            return party
+    return parties[0] if parties else {}
+
+
+def _normalised_rent_frequency(value: Any, label: str | None = None) -> str | None:
+    text = (_str(value) or label or "").lower()
+    if "week" in text:
+        return "weekly"
+    if "month" in text:
+        return "monthly"
+    if "quarter" in text:
+        return "quarterly"
+    if "annual" in text or "year" in text or "annum" in text or "pa" in text:
+        return "annual"
+    return None
+
+
+def _annualised_cents(amount: float, frequency: str | None) -> int:
+    multiplier = 1
+    if frequency == "weekly":
+        multiplier = 52
+    elif frequency == "monthly":
+        multiplier = 12
+    elif frequency == "quarterly":
+        multiplier = 4
+    return int(round(amount * multiplier * 100))
+
+
+def _generic_rent(data: dict[str, Any]) -> tuple[int | None, str | None]:
+    amounts = _records(data.get("money_amounts"))
+    rent_record = _record_with_label(
+        amounts,
+        {"annual rent", "base rent", "rent", "licence fee"},
+    )
+    if rent_record is None and amounts:
+        rent_record = amounts[0]
+    if rent_record is None:
+        return None, None
+    amount = _float(rent_record.get("amount"))
+    if amount is None:
+        return None, None
+    label = _str(rent_record.get("label"))
+    frequency = _normalised_rent_frequency(rent_record.get("frequency"), label)
+    return _annualised_cents(amount, frequency), frequency or "annual"
+
+
+def _generic_lease_review_to_lease_intake_data(data: dict[str, Any]) -> dict[str, Any]:
+    if {"property", "tenancy_unit", "tenant", "lease"}.issubset(data.keys()):
+        return data
+
+    property_record = _records(data.get("properties"))
+    prop = property_record[0] if property_record else {}
+    tenant_party = _generic_tenant_party(data)
+    annual_rent_cents, rent_frequency = _generic_rent(data)
+    commencement_date = _generic_date(
+        data,
+        {"commencement", "lease start", "term start", "start date", "start"},
+    )
+    expiry_date = _generic_date(
+        data,
+        {"expiry", "expiration", "lease end", "term end", "end date", "expires"},
+    )
+    next_review_date = _generic_date(
+        data,
+        {"rent review", "review date", "cpi review", "rent adjustment"},
+    )
+    option_record = _record_with_label(
+        _records(data.get("obligations")) + _records(data.get("key_dates")),
+        {"option", "renewal option"},
+    )
+    security_record = _record_with_label(
+        _records(data.get("obligations")) + _records(data.get("money_amounts")),
+        {"bank guarantee", "security", "bond", "deposit"},
+    )
+    obligations: list[dict[str, Any]] = []
+    for row in _records(data.get("obligations")):
+        due_date = _date(row.get("due_date") or row.get("date"))
+        title = _str(row.get("title")) or _str(row.get("label"))
+        if due_date is None or title is None:
+            continue
+        obligations.append(
+            {
+                "title": title,
+                "category": _category_from_text(
+                    _str(row.get("category")) or title,
+                    ObligationCategory.other,
+                ).value,
+                "due_date": due_date.isoformat(),
+                "priority": 1 if (_float(row.get("confidence")) or 1) >= 0.8 else 2,
+                "owner_role": UserRole.ops.value,
+                "notes": _str(row.get("notes")) or _str(row.get("source_hint")),
+            }
+        )
+
+    return {
+        "property": {
+            "name": _str(prop.get("name")),
+            "street_address": _str(prop.get("street_address")) or _str(prop.get("address")),
+            "suburb": _str(prop.get("suburb")),
+            "state": _str(prop.get("state")),
+            "postcode": _str(prop.get("postcode")),
+            "country_code": _str(prop.get("country_code")) or "AU",
+            "property_type": _str(prop.get("property_type")) or "other",
+        },
+        "tenancy_unit": {
+            "unit_label": _str(prop.get("unit_label")) or _str(prop.get("label")),
+            "sqm": _float(prop.get("sqm")),
+            "parking_spaces": None,
+        },
+        "tenant": {
+            "legal_name": _str(tenant_party.get("name")),
+            "trading_name": _str(tenant_party.get("trading_name")),
+            "abn": _str(tenant_party.get("abn")),
+            "contact_name": _str(tenant_party.get("contact")),
+            "contact_email": _str(tenant_party.get("contact_email")),
+            "contact_phone": _str(tenant_party.get("contact_phone")),
+            "billing_email": _str(tenant_party.get("billing_email"))
+            or _str(tenant_party.get("contact_email")),
+        },
+        "lease": {
+            "status": "active",
+            "commencement_date": commencement_date,
+            "expiry_date": expiry_date,
+            "annual_rent_cents": annual_rent_cents,
+            "rent_frequency": rent_frequency,
+            "outgoings_recoverable": True,
+            "next_review_date": next_review_date,
+            "option_summary": _str(option_record.get("title") or option_record.get("label"))
+            if option_record
+            else None,
+            "security_summary": _str(security_record.get("title") or security_record.get("label"))
+            if security_record
+            else None,
+            "notes": _str(data.get("summary")),
+        },
+        "obligations": obligations,
+        "warnings": data.get("warnings") if isinstance(data.get("warnings"), list) else [],
+    }
+
+
+def _apply_lease_document_intake(
+    intake: DocumentIntake,
+    data: dict[str, Any],
+    payload: DocumentIntakeApplyRequest,
+    user: CurrentUser,
+    session: Session,
+) -> tuple[LeaseIntake, Property, TenancyUnit, Tenant, Lease, list[Obligation]]:
+    existing = next(
+        (
+            candidate
+            for candidate in session.scalars(
+                select(LeaseIntake).where(
+                    LeaseIntake.entity_id == intake.entity_id,
+                    LeaseIntake.deleted_at.is_(None),
+                )
+            )
+            if _dict(candidate.extracted_data).get("source_document_intake_id") == str(intake.id)
+        ),
+        None,
+    )
+    if existing is not None and existing.status == LeaseIntakeStatus.applied:
+        lease = session.get(Lease, existing.applied_lease_id)
+        if lease is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Applied lease intake is missing its lease record.",
+            )
+        unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+        tenant = session.get(Tenant, lease.tenant_id)
+        prop = session.get(Property, unit.property_id) if unit is not None else None
+        obligations = list(
+            session.scalars(
+                select(Obligation).where(
+                    Obligation.lease_id == lease.id,
+                    Obligation.deleted_at.is_(None),
+                )
+            )
+        )
+        if prop is None or unit is None or tenant is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Applied lease intake is missing linked register records.",
+            )
+        return existing, prop, unit, tenant, lease, obligations
+
+    lease_data = _generic_lease_review_to_lease_intake_data(data)
+    lease_data["source_document_intake_id"] = str(intake.id)
+    lease_data["source_document_id"] = str(intake.document_id)
+    lease_intake = existing or LeaseIntake(
+        entity_id=intake.entity_id,
+        filename=intake.document.filename,
+        content_type=intake.document.content_type,
+        byte_size=intake.document.byte_size,
+        file_data=intake.document.file_data,
+        status=LeaseIntakeStatus.extracted,
+        extracted_data=lease_data,
+        openai_response_id=intake.openai_response_id,
+    )
+    lease_intake.status = LeaseIntakeStatus.extracted
+    lease_intake.extracted_data = lease_data
+    session.add(lease_intake)
+    session.flush()
+    prop, unit, tenant, lease, obligations = _apply_lease_records(
+        lease_intake,
+        LeaseIntakeApplyRequest(
+            property_id=payload.property_id,
+            tenancy_unit_id=payload.tenancy_unit_id,
+            tenant_id=payload.tenant_id,
+            reviewed_data=lease_data,
+        ),
+        user,
+        session,
+    )
+    lease_intake.status = LeaseIntakeStatus.applied
+    lease_intake.applied_lease_id = lease.id
+    lease_intake.applied_at = utcnow()
+    return lease_intake, prop, unit, tenant, lease, obligations
 
 
 def _apply_document_obligation_intake(
@@ -797,6 +1067,71 @@ def apply_document_intake(
 
     reviewed = _reviewed_data(intake, payload.review_data)
     document_type = _str(reviewed.get("document_type")) or intake.document_type
+    if document_type == "lease":
+        lease_intake, prop, unit, tenant, lease, obligations = _apply_lease_document_intake(
+            intake,
+            reviewed,
+            payload,
+            user,
+            session,
+        )
+        obligation_ids = [str(obligation.id) for obligation in obligations]
+        intake.review_data = {
+            **reviewed,
+            "applied": {
+                "action": "created_lease_register_records",
+                "lease_intake_id": str(lease_intake.id),
+                "property_id": str(prop.id),
+                "tenancy_unit_id": str(unit.id),
+                "tenant_id": str(tenant.id),
+                "lease_id": str(lease.id),
+                "obligation_ids": obligation_ids,
+                "obligation_count": len(obligation_ids),
+            },
+        }
+        intake.status = DocumentIntakeStatus.applied
+        intake.applied_at = utcnow()
+        intake.applied_by_user_id = user.id
+        intake.document.category = DocumentCategory.lease
+        intake.document.property_id = prop.id
+        intake.document.tenancy_unit_id = unit.id
+        intake.document.tenant_id = tenant.id
+        intake.document.lease_id = lease.id
+        intake.document.document_metadata = {
+            **(intake.document.document_metadata or {}),
+            "applied_document_intake_id": str(intake.id),
+            "applied_lease_intake_id": str(lease_intake.id),
+            "applied_lease_id": str(lease.id),
+            "applied_document_type": document_type,
+        }
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=intake.entity_id,
+            action="apply",
+            target_table="document_intake",
+            target_id=intake.id,
+            tool_output_summary=(
+                f"Applied lease {lease.id}; {len(obligation_ids)} obligation(s) created."
+            ),
+        )
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=intake.entity_id,
+            action="apply",
+            target_table="lease_intake",
+            target_id=lease_intake.id,
+            tool_output_summary=(
+                f"Created lease {lease.id} from Smart Intake document {intake.id}."
+            ),
+        )
+        session.commit()
+        session.refresh(intake)
+        return _read_intake(intake)
+
     if document_type not in {
         "insurance_certificate",
         "bank_guarantee",

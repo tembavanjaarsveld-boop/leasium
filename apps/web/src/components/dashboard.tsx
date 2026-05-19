@@ -53,6 +53,7 @@ import {
   RentRollRow,
   reviewDocumentIntake,
   TenancyUnitRecord,
+  TenantRecord,
   TenantOnboardingRecord,
 } from "@/lib/api";
 
@@ -63,10 +64,12 @@ type ReviewItemAction = "approve" | "edit" | "ignore";
 type ReviewApplyTarget = {
   propertyId: string;
   tenancyUnitId: string;
+  tenantId: string;
   leaseId: string;
 };
 type DocumentApplyOutcome = {
   documentName: string;
+  workflowType: string | null;
   obligationCount: number;
   targetLabel: string;
   dueDate: string | null;
@@ -671,6 +674,7 @@ function documentWorkflowType(
   const type = fieldText(draft.document_type ?? intake.document_type);
   return type &&
     [
+      "lease",
       "insurance_certificate",
       "bank_guarantee",
       "compliance",
@@ -680,10 +684,76 @@ function documentWorkflowType(
     : null;
 }
 
+function reviewItemWithLabel(
+  data: DocumentIntakeExtraction,
+  group: ReviewGroupKey,
+  labels: string[],
+) {
+  return groupItems(data, group).find((item) => {
+    const label =
+      fieldText(item.label ?? item.title ?? item.role)?.toLowerCase() ?? "";
+    return labels.some((fragment) => label.includes(fragment));
+  });
+}
+
+function reviewDateWithLabel(data: DocumentIntakeExtraction, labels: string[]) {
+  return reviewItemWithLabel(data, "key_dates", labels);
+}
+
+function reviewedTenantName(data: DocumentIntakeExtraction) {
+  const tenant =
+    groupItems(data, "parties").find((item) =>
+      (fieldText(item.role)?.toLowerCase() ?? "").includes("tenant"),
+    ) ?? groupItems(data, "parties")[0];
+  return fieldText(tenant?.name);
+}
+
+function hasReviewedLeaseBasics(
+  data: DocumentIntakeExtraction,
+  target: ReviewApplyTarget,
+) {
+  const property = groupItems(data, "properties")[0];
+  const start = reviewDateWithLabel(data, ["commencement", "start"]);
+  const expiry = reviewDateWithLabel(data, ["expiry", "expires", "end"]);
+  const rent = reviewItemWithLabel(data, "money_amounts", [
+    "annual rent",
+    "base rent",
+    "rent",
+  ]);
+  return Boolean(
+    (target.propertyId || fieldText(property?.name ?? property?.address)) &&
+    (target.tenancyUnitId || fieldText(property?.unit_label)) &&
+    (target.tenantId || reviewedTenantName(data)) &&
+    fieldText(start?.date ?? start?.due_date) &&
+    fieldText(expiry?.date ?? expiry?.due_date) &&
+    fieldText(rent?.amount),
+  );
+}
+
+function leaseGeneratedTaskCount(data: DocumentIntakeExtraction) {
+  const datedObligations = groupItems(data, "obligations").filter(
+    (item) => fieldText(item.due_date ?? item.date) && fieldText(item.title),
+  ).length;
+  const expiry = reviewDateWithLabel(data, ["expiry", "expires", "end"]);
+  const review = reviewDateWithLabel(data, [
+    "rent review",
+    "review date",
+    "cpi review",
+  ]);
+  return (
+    datedObligations +
+    (fieldText(expiry?.date ?? expiry?.due_date) ? 1 : 0) +
+    (fieldText(review?.date ?? review?.due_date) ? 1 : 0)
+  );
+}
+
 function applicableObligationCount(
   data: DocumentIntakeExtraction,
   workflowType: string | null,
 ) {
+  if (workflowType === "lease") {
+    return leaseGeneratedTaskCount(data);
+  }
   const datedObligations = groupItems(data, "obligations").filter(
     (item) => fieldText(item.due_date ?? item.date) && fieldText(item.title),
   ).length;
@@ -711,6 +781,10 @@ function firstApplicableDueDate(
     .find(Boolean);
   if (obligationDate) {
     return obligationDate;
+  }
+  if (workflowType === "lease") {
+    const start = reviewDateWithLabel(data, ["commencement", "start"]);
+    return fieldText(start?.date ?? start?.due_date);
   }
   if (workflowType === "insurance_certificate") {
     const expiry = insuranceExpiryDate(data);
@@ -756,6 +830,91 @@ function applyTargetLabel(
   return parts.length ? parts.join(" / ") : "Portfolio level";
 }
 
+function reviewedLeaseTargetLabel(
+  data: DocumentIntakeExtraction,
+  target: ReviewApplyTarget,
+  properties: PropertyRecord[],
+  units: TenancyUnitRecord[],
+  tenants: TenantRecord[],
+) {
+  const property = properties.find((item) => item.id === target.propertyId);
+  const unit = units.find((item) => item.id === target.tenancyUnitId);
+  const tenant = tenants.find((item) => item.id === target.tenantId);
+  const reviewedProperty = groupItems(data, "properties")[0];
+  const parts = [
+    property?.name ?? fieldText(reviewedProperty?.name),
+    unit?.unit_label ?? fieldText(reviewedProperty?.unit_label),
+    tenant?.legal_name ?? reviewedTenantName(data),
+  ].filter(Boolean);
+  return parts.length ? parts.join(" / ") : "Reviewed lease details";
+}
+
+function leaseApplyPlanRows(
+  data: DocumentIntakeExtraction,
+  target: ReviewApplyTarget,
+  properties: PropertyRecord[],
+  units: TenancyUnitRecord[],
+  tenants: TenantRecord[],
+  obligationCount: number,
+) {
+  const property = properties.find((item) => item.id === target.propertyId);
+  const unit = units.find((item) => item.id === target.tenancyUnitId);
+  const tenant = tenants.find((item) => item.id === target.tenantId);
+  const reviewedProperty = groupItems(data, "properties")[0];
+  const reviewedPropertyName = fieldText(
+    reviewedProperty?.name ?? reviewedProperty?.address,
+  );
+  const reviewedUnitLabel = fieldText(reviewedProperty?.unit_label);
+  const reviewedTenant = reviewedTenantName(data);
+  return [
+    {
+      label: "Property",
+      value: property
+        ? `Link only to ${property.name}`
+        : reviewedPropertyName
+          ? `Create new property: ${reviewedPropertyName}`
+          : "Property detail needed",
+      tone:
+        property || reviewedPropertyName
+          ? ("success" as const)
+          : ("danger" as const),
+    },
+    {
+      label: "Unit",
+      value: unit
+        ? `Link only to ${unit.unit_label}`
+        : reviewedUnitLabel
+          ? `Create new unit: ${reviewedUnitLabel}`
+          : "Unit detail needed",
+      tone:
+        unit || reviewedUnitLabel ? ("success" as const) : ("danger" as const),
+    },
+    {
+      label: "Tenant",
+      value: tenant
+        ? `Link only to ${tenant.legal_name}`
+        : reviewedTenant
+          ? `Create new tenant: ${reviewedTenant}`
+          : "Tenant detail needed",
+      tone:
+        tenant || reviewedTenant ? ("success" as const) : ("danger" as const),
+    },
+    {
+      label: "Lease",
+      value: "Create new lease after apply",
+      tone: "primary" as const,
+    },
+    {
+      label: "Tasks",
+      value:
+        obligationCount > 0
+          ? `Create ${obligationCount} lease task${obligationCount === 1 ? "" : "s"}`
+          : "No dated obligations yet",
+      tone: obligationCount > 0 ? ("success" as const) : ("neutral" as const),
+    },
+  ];
+}
+
 function DocumentIntakeApplyOutcomeCard({
   outcome,
   onDismiss,
@@ -773,8 +932,13 @@ function DocumentIntakeApplyOutcomeCard({
       <div className="grid gap-4 p-4">
         <div className="grid gap-3 rounded-2xl border border-leasium-success/20 bg-leasium-success-soft p-3 text-sm">
           <div className="font-semibold text-[#027A48]">
-            Created {outcome.obligationCount} document-driven{" "}
-            {outcome.obligationCount === 1 ? "task" : "tasks"}.
+            {outcome.workflowType === "lease"
+              ? `Created lease register records and ${outcome.obligationCount} ${
+                  outcome.obligationCount === 1 ? "task" : "tasks"
+                }.`
+              : `Created ${outcome.obligationCount} document-driven ${
+                  outcome.obligationCount === 1 ? "task" : "tasks"
+                }.`}
           </div>
           <div className="grid gap-2 text-foreground sm:grid-cols-2">
             <div>
@@ -811,6 +975,14 @@ function DocumentIntakeApplyOutcomeCard({
           <SecondaryButton type="button" onClick={onDismiss}>
             Back to Lease Inbox
           </SecondaryButton>
+          {outcome.workflowType === "lease" ? (
+            <Link
+              href="/properties"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+            >
+              Open Properties
+            </Link>
+          ) : null}
           <Link
             href="/tasks"
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover"
@@ -830,6 +1002,7 @@ function DocumentIntakeReviewPanel({
   applyTarget,
   properties,
   tenancyUnits,
+  tenants,
   leases,
   onDraftChange,
   onIncludedChange,
@@ -848,6 +1021,7 @@ function DocumentIntakeReviewPanel({
   applyTarget: ReviewApplyTarget;
   properties: PropertyRecord[];
   tenancyUnits: TenancyUnitRecord[];
+  tenants: TenantRecord[];
   leases: LeaseRecord[];
   onDraftChange: (draft: DocumentIntakeExtraction) => void;
   onIncludedChange: (group: ReviewGroupKey, checked: boolean) => void;
@@ -873,16 +1047,24 @@ function DocumentIntakeReviewPanel({
     workflowType,
   );
   const applyBlocker =
-    canApplyWorkflow && obligationApplyCount === 0
-      ? "Confirm at least one obligation due date before applying."
-      : null;
+    workflowType === "lease" &&
+    !hasReviewedLeaseBasics(reviewedDraft, applyTarget)
+      ? "Confirm property, unit, tenant, start, expiry, and rent before applying."
+      : canApplyWorkflow &&
+          workflowType !== "lease" &&
+          obligationApplyCount === 0
+        ? "Confirm at least one obligation due date before applying."
+        : null;
   const visibleGroups = reviewGroups.filter(
     (group) => groupItems(draft, group.key).length > 0,
   );
   const groupTitle = (group: { key: ReviewGroupKey; title: string }) =>
     workflowType === "insurance_certificate" && group.key === "key_dates"
       ? "Policy dates"
-      : group.title;
+      : workflowType === "lease" && group.key === "key_dates"
+        ? "Lease dates"
+        : group.title;
+  const canSelectLease = workflowType !== "lease";
   const scopedLeases = applyTarget.tenancyUnitId
     ? leases.filter(
         (lease) => lease.tenancy_unit_id === applyTarget.tenancyUnitId,
@@ -910,13 +1092,32 @@ function DocumentIntakeReviewPanel({
   );
   const matchedLease = leases.find((lease) => lease.id === applyTarget.leaseId);
   const applyScope =
-    matchedLease && matchedUnit
-      ? `${matchedUnit.unit_label} lease`
-      : matchedUnit
-        ? matchedUnit.unit_label
-        : matchedProperty
-          ? matchedProperty.name
-          : "portfolio level";
+    workflowType === "lease"
+      ? reviewedLeaseTargetLabel(
+          reviewedDraft,
+          applyTarget,
+          properties,
+          tenancyUnits,
+          tenants,
+        )
+      : matchedLease && matchedUnit
+        ? `${matchedUnit.unit_label} lease`
+        : matchedUnit
+          ? matchedUnit.unit_label
+          : matchedProperty
+            ? matchedProperty.name
+            : "portfolio level";
+  const leasePlanRows =
+    workflowType === "lease"
+      ? leaseApplyPlanRows(
+          reviewedDraft,
+          applyTarget,
+          properties,
+          tenancyUnits,
+          tenants,
+          obligationApplyCount,
+        )
+      : [];
   return (
     <SectionPanel
       title="Review document"
@@ -991,21 +1192,64 @@ function DocumentIntakeReviewPanel({
               <div>
                 <div className="text-sm font-semibold">Apply target</div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Link the source document and created work to the right
-                  property, unit, or lease before applying.
+                  {workflowType === "lease"
+                    ? "Choose existing records to link only, or let Leasium create new records from the reviewed fields."
+                    : "Link the source document and created work to the right property, unit, or lease before applying."}
                 </p>
               </div>
               <StatusBadge
-                tone={applyTarget.propertyId ? "success" : "neutral"}
+                tone={
+                  workflowType === "lease"
+                    ? applyBlocker
+                      ? "danger"
+                      : "primary"
+                    : applyTarget.propertyId
+                      ? "success"
+                      : "neutral"
+                }
               >
-                {applyTarget.propertyId ? "Matched" : "Portfolio level"}
+                {workflowType === "lease"
+                  ? "Apply plan"
+                  : applyTarget.propertyId
+                    ? "Matched"
+                    : "Portfolio level"}
               </StatusBadge>
             </div>
             <div className="mt-3 rounded-xl bg-muted/45 px-3 py-2 text-sm text-muted-foreground">
               Target:{" "}
               <span className="font-medium text-foreground">{applyScope}</span>
             </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {workflowType === "lease" ? (
+              <div className="mt-3 grid gap-2 rounded-xl border border-primary/10 bg-leasium-blue-soft/60 p-3">
+                {leasePlanRows.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                  >
+                    <span className="font-medium text-foreground">
+                      {row.label}
+                    </span>
+                    <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+                      <span className="truncate text-right text-muted-foreground">
+                        {row.value}
+                      </span>
+                      <StatusBadge tone={row.tone}>
+                        {row.tone === "danger"
+                          ? "Needs detail"
+                          : row.tone === "primary"
+                            ? "Create"
+                            : row.value.startsWith("Link")
+                              ? "Link only"
+                              : row.tone === "neutral"
+                                ? "Optional"
+                                : "Create new"}
+                      </StatusBadge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className={["mt-3 grid gap-3", "md:grid-cols-3"].join(" ")}>
               <Field label="Property">
                 <Select
                   value={applyTarget.propertyId}
@@ -1013,12 +1257,17 @@ function DocumentIntakeReviewPanel({
                     onApplyTargetChange({
                       propertyId: event.target.value,
                       tenancyUnitId: "",
+                      tenantId: applyTarget.tenantId,
                       leaseId: "",
                     })
                   }
                   disabled={demo}
                 >
-                  <option value="">Portfolio level</option>
+                  <option value="">
+                    {workflowType === "lease"
+                      ? "Create new from reviewed fields"
+                      : "Portfolio level"}
+                  </option>
                   {properties.map((property) => (
                     <option key={property.id} value={property.id}>
                       {property.name}
@@ -1038,7 +1287,11 @@ function DocumentIntakeReviewPanel({
                   }
                   disabled={demo || !applyTarget.propertyId}
                 >
-                  <option value="">No unit scope</option>
+                  <option value="">
+                    {workflowType === "lease"
+                      ? "Create new from reviewed unit"
+                      : "No unit scope"}
+                  </option>
                   {tenancyUnits.map((unit) => (
                     <option key={unit.id} value={unit.id}>
                       {unit.unit_label}
@@ -1046,26 +1299,48 @@ function DocumentIntakeReviewPanel({
                   ))}
                 </Select>
               </Field>
-              <Field label="Lease">
-                <Select
-                  value={applyTarget.leaseId}
-                  onChange={(event) =>
-                    onApplyTargetChange({
-                      ...applyTarget,
-                      leaseId: event.target.value,
-                    })
-                  }
-                  disabled={demo || !applyTarget.propertyId}
-                >
-                  <option value="">No lease scope</option>
-                  {scopedLeases.map((lease) => (
-                    <option key={lease.id} value={lease.id}>
-                      {lease.status} - {formatDate(lease.commencement_date)} to{" "}
-                      {formatDate(lease.expiry_date)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+              {workflowType === "lease" ? (
+                <Field label="Tenant">
+                  <Select
+                    value={applyTarget.tenantId}
+                    onChange={(event) =>
+                      onApplyTargetChange({
+                        ...applyTarget,
+                        tenantId: event.target.value,
+                      })
+                    }
+                    disabled={demo}
+                  >
+                    <option value="">Create new from reviewed tenant</option>
+                    {tenants.map((tenant) => (
+                      <option key={tenant.id} value={tenant.id}>
+                        {tenant.legal_name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : canSelectLease ? (
+                <Field label="Lease">
+                  <Select
+                    value={applyTarget.leaseId}
+                    onChange={(event) =>
+                      onApplyTargetChange({
+                        ...applyTarget,
+                        leaseId: event.target.value,
+                      })
+                    }
+                    disabled={demo || !applyTarget.propertyId}
+                  >
+                    <option value="">No lease scope</option>
+                    {scopedLeases.map((lease) => (
+                      <option key={lease.id} value={lease.id}>
+                        {lease.status} - {formatDate(lease.commencement_date)}{" "}
+                        to {formatDate(lease.expiry_date)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -1227,9 +1502,9 @@ function DocumentIntakeReviewPanel({
 
         {!canApplyWorkflow ? (
           <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-            Apply is available for certificates, compliance docs, guarantees,
-            and notices first. Leases and invoices can be saved as reviewed here
-            for now.
+            Apply is available for leases, certificates, compliance docs,
+            guarantees, and notices first. Invoices can be saved as reviewed
+            here for now.
           </div>
         ) : null}
         {applyBlocker ? (
@@ -1243,9 +1518,9 @@ function DocumentIntakeReviewPanel({
               <div>
                 <div className="text-sm font-semibold">Ready to apply</div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Create {obligationApplyCount} document-driven{" "}
-                  {obligationApplyCount === 1 ? "task" : "tasks"} at{" "}
-                  {applyScope}.{" "}
+                  {workflowType === "lease"
+                    ? `Create the lease register records, source document link, and ${obligationApplyCount} task${obligationApplyCount === 1 ? "" : "s"} from ${applyScope}. `
+                    : `Create ${obligationApplyCount} document-driven ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. `}
                   {ignoredCount
                     ? `${ignoredCount} ignored item${ignoredCount === 1 ? "" : "s"} will be left out.`
                     : "No ignored items will be included."}
@@ -1316,6 +1591,7 @@ export function Dashboard({
     {
       propertyId: "",
       tenancyUnitId: "",
+      tenantId: "",
       leaseId: "",
     },
   );
@@ -1507,6 +1783,7 @@ export function Dashboard({
         reviewData: payload.reviewData,
         propertyId: payload.target.propertyId,
         tenancyUnitId: payload.target.tenancyUnitId,
+        tenantId: payload.target.tenantId,
         leaseId: payload.target.leaseId,
       }),
     onMutate: () => {
@@ -1521,6 +1798,15 @@ export function Dashboard({
       });
       queryClient.invalidateQueries({
         queryKey: ["dashboard-obligations", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-properties", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-tenants", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-rent-roll", selectedEntityId],
       });
     },
     onError: (error) => {
@@ -1603,6 +1889,7 @@ export function Dashboard({
       setReviewApplyTarget({
         propertyId: "",
         tenancyUnitId: "",
+        tenantId: "",
         leaseId: "",
       });
       setIncludedGroups({
@@ -2044,6 +2331,7 @@ export function Dashboard({
                 applyTarget={reviewApplyTarget}
                 properties={propertiesQuery.data ?? []}
                 tenancyUnits={reviewTenancyUnitsQuery.data ?? []}
+                tenants={tenantsQuery.data ?? []}
                 leases={reviewLeasesQuery.data ?? []}
                 onDraftChange={setReviewDraft}
                 onIncludedChange={(group, checked) =>
@@ -2077,16 +2365,26 @@ export function Dashboard({
                     target: reviewApplyTarget,
                     outcome: {
                       documentName: selectedReviewIntake.filename,
+                      workflowType,
                       obligationCount: applicableObligationCount(
                         reviewData,
                         workflowType,
                       ),
-                      targetLabel: applyTargetLabel(
-                        reviewApplyTarget,
-                        propertiesQuery.data ?? [],
-                        reviewTenancyUnitsQuery.data ?? [],
-                        reviewLeasesQuery.data ?? [],
-                      ),
+                      targetLabel:
+                        workflowType === "lease"
+                          ? reviewedLeaseTargetLabel(
+                              reviewData,
+                              reviewApplyTarget,
+                              propertiesQuery.data ?? [],
+                              reviewTenancyUnitsQuery.data ?? [],
+                              tenantsQuery.data ?? [],
+                            )
+                          : applyTargetLabel(
+                              reviewApplyTarget,
+                              propertiesQuery.data ?? [],
+                              reviewTenancyUnitsQuery.data ?? [],
+                              reviewLeasesQuery.data ?? [],
+                            ),
                       dueDate: firstApplicableDueDate(reviewData, workflowType),
                       ignoredCount: ignoredReviewItemCount(
                         reviewDraft,

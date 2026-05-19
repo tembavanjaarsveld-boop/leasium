@@ -86,11 +86,13 @@ def test_document_upload_rejects_cross_entity_tenant(
 ) -> None:
     entity_id = _entity_id(session)
     tenant_id = _tenant_id(client, session)
+    organisation_entity = session.scalar(select(Entity))
+    assert organisation_entity is not None
 
     other_entity_response = client.post(
         "/api/v1/entities",
         json={
-            "organisation_id": str(session.scalar(select(Entity)).organisation_id),
+            "organisation_id": str(organisation_entity.organisation_id),
             "name": "Other Entity Pty Ltd",
         },
     )

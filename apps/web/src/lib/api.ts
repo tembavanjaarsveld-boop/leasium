@@ -790,6 +790,7 @@ export function applyDocumentIntake(
     reviewData?: DocumentIntakeExtraction | null;
     propertyId?: string | null;
     tenancyUnitId?: string | null;
+    tenantId?: string | null;
     leaseId?: string | null;
   },
 ) {
@@ -799,6 +800,7 @@ export function applyDocumentIntake(
       review_data: payload.reviewData ?? undefined,
       property_id: payload.propertyId || undefined,
       tenancy_unit_id: payload.tenancyUnitId || undefined,
+      tenant_id: payload.tenantId || undefined,
       lease_id: payload.leaseId || undefined,
     }),
   });
