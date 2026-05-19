@@ -80,6 +80,13 @@ Priority fixes before treating the current UX as signed off:
 - The desktop global navigation is now wide. A mobile/tablet pass should verify
   whether it needs a collapsed menu before broader beta use.
 
+Progress notes:
+
+- 2026-05-20: Dashboard and Insights now have explicit live-data loading,
+  retry, and defensive empty states so API wake-up does not look like missing
+  portfolio data. Broader loading-state polish remains needed for Properties
+  and Billing Readiness.
+
 Remba decision:
 
 The platform is coherent enough for private pre-production work, but the

@@ -2430,28 +2430,77 @@ export function Dashboard({
     },
   });
 
-  const entitySelectionLoading =
+  const entitiesLoading =
     !demoMode &&
-    (entitiesQuery.isLoading ||
-      (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0));
+    !entitiesQuery.data &&
+    (entitiesQuery.isLoading || entitiesQuery.isFetching);
+  const entitySelectionLoading =
+    entitiesLoading ||
+    (!demoMode && !selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
   const propertiesLoading =
     entitySelectionLoading ||
-    (!demoMode && Boolean(selectedEntityId) && propertiesQuery.isLoading);
+    (!demoMode &&
+      Boolean(selectedEntityId) &&
+      !propertiesQuery.data &&
+      (propertiesQuery.isLoading || propertiesQuery.isFetching));
   const tenantsLoading =
     entitySelectionLoading ||
-    (!demoMode && Boolean(selectedEntityId) && tenantsQuery.isLoading);
+    (!demoMode &&
+      Boolean(selectedEntityId) &&
+      !tenantsQuery.data &&
+      (tenantsQuery.isLoading || tenantsQuery.isFetching));
   const obligationsLoading =
     entitySelectionLoading ||
-    (!demoMode && Boolean(selectedEntityId) && obligationsQuery.isLoading);
+    (!demoMode &&
+      Boolean(selectedEntityId) &&
+      !obligationsQuery.data &&
+      (obligationsQuery.isLoading || obligationsQuery.isFetching));
   const rentRollLoading =
     entitySelectionLoading ||
-    (!demoMode && Boolean(selectedEntityId) && rentRollQuery.isLoading);
+    (!demoMode &&
+      Boolean(selectedEntityId) &&
+      !rentRollQuery.data &&
+      (rentRollQuery.isLoading || rentRollQuery.isFetching));
   const onboardingLoading =
     entitySelectionLoading ||
-    (!demoMode && Boolean(selectedEntityId) && onboardingQuery.isLoading);
+    (!demoMode &&
+      Boolean(selectedEntityId) &&
+      !onboardingQuery.data &&
+      (onboardingQuery.isLoading || onboardingQuery.isFetching));
   const documentIntakesLoading =
     entitySelectionLoading ||
-    (!demoMode && Boolean(selectedEntityId) && documentIntakesQuery.isLoading);
+    (!demoMode &&
+      Boolean(selectedEntityId) &&
+      !documentIntakesQuery.data &&
+      (documentIntakesQuery.isLoading || documentIntakesQuery.isFetching));
+  const dashboardDataQueries = [
+    propertiesQuery,
+    tenantsQuery,
+    obligationsQuery,
+    rentRollQuery,
+    onboardingQuery,
+    documentIntakesQuery,
+  ];
+  const dashboardLoading =
+    !demoMode &&
+    (entitySelectionLoading ||
+      (Boolean(selectedEntityId) &&
+        dashboardDataQueries.some(
+          (query) => !query.data && (query.isLoading || query.isFetching),
+        )));
+  const dashboardRefreshing =
+    !demoMode &&
+    Boolean(selectedEntityId) &&
+    dashboardDataQueries.some((query) => query.isFetching && !query.isLoading);
+  const dashboardError =
+    !demoMode &&
+    (entitiesQuery.error ??
+      propertiesQuery.error ??
+      tenantsQuery.error ??
+      obligationsQuery.error ??
+      rentRollQuery.error ??
+      onboardingQuery.error ??
+      documentIntakesQuery.error);
   const displayPropertiesCount = demoMode
     ? 1
     : (propertiesQuery.data?.length ?? 0);
@@ -2618,10 +2667,60 @@ export function Dashboard({
           }
         />
 
-        {entitiesQuery.error && !demoMode ? (
-          <div className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-            {friendlyError(entitiesQuery.error)}
+        {dashboardError ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
+            <div>
+              <div className="font-semibold">Live data did not finish loading.</div>
+              <div className="mt-1">{friendlyError(dashboardError)}</div>
+            </div>
+            <SecondaryButton
+              type="button"
+              onClick={() => {
+                entitiesQuery.refetch();
+                propertiesQuery.refetch();
+                tenantsQuery.refetch();
+                obligationsQuery.refetch();
+                rentRollQuery.refetch();
+                onboardingQuery.refetch();
+                documentIntakesQuery.refetch();
+              }}
+            >
+              <RefreshCw size={15} />
+              Retry
+            </SecondaryButton>
           </div>
+        ) : null}
+
+        {dashboardLoading && !dashboardError ? (
+          <SectionPanel
+            title="Loading live portfolio"
+            description={
+              selectedEntity?.name
+                ? `Checking records for ${selectedEntity.name}.`
+                : "Connecting to the live portfolio and selecting an entity."
+            }
+            icon={<Loader2 size={17} className="animate-spin text-primary" />}
+            actions={
+              dashboardRefreshing ? (
+                <StatusBadge tone="primary">Refreshing</StatusBadge>
+              ) : (
+                <StatusBadge tone="neutral">Loading</StatusBadge>
+              )
+            }
+            className="border-primary/20 bg-primary/5"
+          >
+            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-3">
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Entity access
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Portfolio records
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Dashboard queues
+              </div>
+            </div>
+          </SectionPanel>
         ) : null}
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
@@ -3156,24 +3255,31 @@ export function Dashboard({
                 icon={<ClipboardList size={17} className="text-primary" />}
               >
                 <div className="divide-y divide-border">
-                  {urgentObligations.slice(0, 6).map((item) => (
-                    <Link
-                      href="/properties"
-                      key={item.id}
-                      className="grid gap-2 px-4 py-3 transition hover:bg-muted/60 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{item.title}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {item.category.replaceAll("_", " ")}
+                  {obligationsLoading ? (
+                    <EmptyState
+                      title="Loading attention items."
+                      description="Checking key dates, obligations, and review tasks for this entity."
+                    />
+                  ) : (
+                    urgentObligations.slice(0, 6).map((item) => (
+                      <Link
+                        href="/properties"
+                        key={item.id}
+                        className="grid gap-2 px-4 py-3 transition hover:bg-muted/60 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{item.title}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {item.category.replaceAll("_", " ")}
+                          </div>
                         </div>
-                      </div>
-                      <StatusBadge tone={obligationTone(item)}>
-                        {dueLabel(item.due_date)}
-                      </StatusBadge>
-                    </Link>
-                  ))}
-                  {urgentObligations.length === 0 ? (
+                        <StatusBadge tone={obligationTone(item)}>
+                          {dueLabel(item.due_date)}
+                        </StatusBadge>
+                      </Link>
+                    ))
+                  )}
+                  {!obligationsLoading && urgentObligations.length === 0 ? (
                     <EmptyState title="No urgent dates right now." />
                   ) : null}
                 </div>

@@ -9,6 +9,7 @@ import {
   Clock3,
   Gauge,
   LineChart,
+  Loader2,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -234,8 +235,15 @@ function InsightsWorkspace() {
   });
 
   const overview = overviewQuery.data;
-  const error = entitiesQuery.error || overviewQuery.error;
-  const isLoading = entitiesQuery.isLoading || overviewQuery.isLoading;
+  const entityError = entitiesQuery.error;
+  const overviewError = overviewQuery.error;
+  const isOverviewLoading =
+    Boolean(activeEntityId) &&
+    !overview &&
+    (overviewQuery.isLoading || overviewQuery.isFetching);
+  const isOverviewFetching = Boolean(activeEntityId) && overviewQuery.isFetching;
+  const showOverviewEmpty =
+    Boolean(activeEntityId) && overviewQuery.isSuccess && !overview;
 
   const health = overview?.portfolio_health;
   const billing = overview?.billing_risk;
@@ -332,19 +340,41 @@ function InsightsWorkspace() {
               <SecondaryButton
                 type="button"
                 onClick={() => void overviewQuery.refetch()}
-                disabled={!activeEntityId || isLoading}
+                disabled={!activeEntityId || isOverviewFetching}
               >
-                <RefreshCw size={15} />
-                Refresh
+                {isOverviewFetching ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={15} />
+                )}
+                {isOverviewFetching ? "Refreshing" : "Refresh"}
               </SecondaryButton>
             </div>
           }
         />
 
-        {error ? (
+        {entityError ? (
           <div className="rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
-            {friendlyError(error)}
+            {friendlyError(entityError)}
           </div>
+        ) : null}
+
+        {overviewError && activeEntityId && !overview ? (
+          <SectionPanel>
+            <EmptyState
+              title="Insights could not load"
+              description={friendlyError(overviewError)}
+              action={
+                <SecondaryButton
+                  type="button"
+                  onClick={() => void overviewQuery.refetch()}
+                >
+                  <RefreshCw size={15} />
+                  Retry
+                </SecondaryButton>
+              }
+            />
+          </SectionPanel>
         ) : null}
 
         {!activeEntityId ? (
@@ -352,6 +382,46 @@ function InsightsWorkspace() {
             <EmptyState
               title="Select an entity"
               description="Insights will load once an entity is selected."
+            />
+          </SectionPanel>
+        ) : null}
+
+        {isOverviewLoading ? (
+          <SectionPanel
+            title="Loading live insights"
+            description="Preparing the latest portfolio, exception, billing, and owner/entity view."
+            icon={<Loader2 size={17} className="animate-spin text-primary" />}
+            actions={<StatusBadge tone="neutral">Loading</StatusBadge>}
+            className="border-primary/20 bg-primary/5"
+          >
+            <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
+              {[
+                "Portfolio",
+                "Active leases",
+                "Live exceptions",
+                "Ready to bill",
+                "Configured charges",
+              ].map((label) => (
+                <div
+                  key={label}
+                  className="rounded-2xl border border-border bg-white p-4 text-sm text-muted-foreground"
+                >
+                  <div className="h-6 w-16 rounded bg-muted" />
+                  <div className="mt-3 font-semibold text-foreground">
+                    {label}
+                  </div>
+                  <div className="mt-2 h-4 w-full rounded bg-muted" />
+                </div>
+              ))}
+            </div>
+          </SectionPanel>
+        ) : null}
+
+        {showOverviewEmpty ? (
+          <SectionPanel>
+            <EmptyState
+              title="No insights available"
+              description="There is no overview data for this entity yet."
             />
           </SectionPanel>
         ) : null}

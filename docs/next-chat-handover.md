@@ -110,11 +110,27 @@ Last updated: 2026-05-20
   - `/insights` now uses the overview API instead of stitching together many separate client-side queries.
   - Shareable owner/finance/lease-event snapshots are still backlog work generated from this live overview data.
   - This is design-facing and still needs Remba review.
+- Dashboard and Insights loading-state polish is built on this branch.
+  - Dashboard now shows a clear live-portfolio loading panel while entity/data
+    queries are waking up, keeps prior data during refetches, and shows a
+    consolidated retry state if live data fails.
+  - The Dashboard attention panel no longer shows a false `No urgent dates`
+    empty state while obligations are still loading.
+  - Insights now shows explicit loading, retry, and defensive empty states for
+    the overview request instead of leaving the first viewport looking blank.
+  - This closes part of the 2026-05-20 Remba scan priority fix; Properties and
+    Billing Readiness still need their own loading-state polish.
 - Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
   - This is design-facing and still needs Remba review.
 ## Verification
 
 - Insights overview focused checks passed:
+  - Dashboard/Insights loading-state polish checks passed:
+    - `./node_modules/.bin/eslint src/components/dashboard.tsx src/app/insights/page.tsx`
+    - `./node_modules/.bin/tsc --noEmit`
+    - `git diff --check`
+    - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+    - Local `next start` route smoke returned `200` for `/` and `/insights` with the bundled WASM path.
   - `.venv/bin/python -m ruff check apps/api/routers/insights.py apps/api/schemas/insights.py apps/api/main.py tests/integration/test_insights_api.py`
   - `.venv/bin/python -m pytest tests/integration/test_insights_api.py tests/integration/test_xero_api.py -q`
   - Result: `2 passed`
