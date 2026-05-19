@@ -152,6 +152,15 @@ class DocumentCategory(enum.StrEnum):
     other = "other"
 
 
+class DocumentIntakeStatus(enum.StrEnum):
+    uploaded = "uploaded"
+    reading = "reading"
+    ready_for_review = "ready_for_review"
+    needs_attention = "needs_attention"
+    applied = "applied"
+    failed = "failed"
+
+
 class AuditOutcome(enum.StrEnum):
     success = "success"
     error = "error"
@@ -199,6 +208,7 @@ class Entity(Base):
     lease_intakes: Mapped[list["LeaseIntake"]] = relationship(back_populates="entity")
     tenant_onboardings: Mapped[list["TenantOnboarding"]] = relationship(back_populates="entity")
     documents: Mapped[list["StoredDocument"]] = relationship(back_populates="entity")
+    document_intakes: Mapped[list["DocumentIntake"]] = relationship(back_populates="entity")
 
 
 Index("entity_org_idx", Entity.organisation_id, postgresql_where=Entity.deleted_at.is_(None))
@@ -663,6 +673,9 @@ class StoredDocument(Base):
     tenant_onboarding: Mapped[TenantOnboarding | None] = relationship(
         back_populates="documents"
     )
+    document_intake: Mapped["DocumentIntake | None"] = relationship(
+        back_populates="document", uselist=False
+    )
 
 
 Index(
@@ -686,6 +699,59 @@ Index(
     postgresql_where=StoredDocument.deleted_at.is_(None),
 )
 Index("stored_document_category_idx", StoredDocument.category)
+
+
+class DocumentIntake(Base):
+    __tablename__ = "document_intake"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    document_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("stored_document.id"), nullable=False, unique=True
+    )
+    status: Mapped[DocumentIntakeStatus] = mapped_column(
+        Enum(DocumentIntakeStatus, name="document_intake_status"),
+        nullable=False,
+        default=DocumentIntakeStatus.uploaded,
+    )
+    document_type: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[float | None]
+    extracted_data: Mapped[dict[str, Any]] = mapped_column(
+        JsonbCompat, nullable=False, default=dict
+    )
+    review_data: Mapped[dict[str, Any]] = mapped_column(JsonbCompat, nullable=False, default=dict)
+    openai_response_id: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="document_intakes")
+    document: Mapped[StoredDocument] = relationship(back_populates="document_intake")
+
+
+Index(
+    "document_intake_entity_idx",
+    DocumentIntake.entity_id,
+    postgresql_where=DocumentIntake.deleted_at.is_(None),
+)
+Index("document_intake_document_idx", DocumentIntake.document_id)
+Index("document_intake_status_idx", DocumentIntake.status)
 
 
 class AuditAction(Base):

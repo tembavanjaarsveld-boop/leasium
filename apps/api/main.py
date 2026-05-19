@@ -6,6 +6,7 @@ from stewart.core.settings import get_settings
 
 from apps.api.routers import (
     charge_rules,
+    document_intakes,
     documents,
     entities,
     lease_intakes,
@@ -51,3 +52,4 @@ app.include_router(lease_intakes.router, prefix="/api/v1")
 app.include_router(tenant_onboarding.router, prefix="/api/v1")
 app.include_router(charge_rules.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
+app.include_router(document_intakes.router, prefix="/api/v1")

@@ -176,6 +176,46 @@ export type DocumentRecord = {
   deleted_at: string | null;
 };
 
+export type DocumentIntakeExtraction = {
+  document_type?: string | null;
+  summary?: string | null;
+  confidence?: number | null;
+  parties?: Array<Record<string, unknown>> | null;
+  properties?: Array<Record<string, unknown>> | null;
+  key_dates?: Array<Record<string, unknown>> | null;
+  money_amounts?: Array<Record<string, unknown>> | null;
+  obligations?: Array<Record<string, unknown>> | null;
+  suggested_links?: Record<string, unknown> | null;
+  warnings?: string[] | null;
+  missing_information?: string[] | null;
+  proposed_actions?: Array<Record<string, unknown>> | null;
+  [key: string]: unknown;
+};
+
+export type DocumentIntakeRecord = {
+  id: string;
+  entity_id: string;
+  document_id: string;
+  status: string;
+  document_type: string | null;
+  summary: string | null;
+  confidence: number | null;
+  extracted_data: DocumentIntakeExtraction;
+  review_data: Record<string, unknown>;
+  openai_response_id: string | null;
+  error_message: string | null;
+  reviewed_at: string | null;
+  reviewed_by_user_id: string | null;
+  applied_at: string | null;
+  applied_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  filename: string;
+  content_type: string | null;
+  byte_size: number;
+  category: DocumentCategory;
+};
+
 export type ObligationRecord = {
   id: string;
   entity_id: string;
@@ -695,6 +735,34 @@ export function publicOnboardingDocumentDownloadUrl(token: string, documentId: s
 export function deletePublicOnboardingDocument(token: string, documentId: string) {
   return request<void>(`/tenant-onboarding/public/${token}/documents/${documentId}`, {
     method: "DELETE",
+  });
+}
+
+export function listDocumentIntakes(entityId: string) {
+  return request<DocumentIntakeRecord[]>(`/document-intakes?entity_id=${entityId}`);
+}
+
+export function createDocumentIntake(payload: {
+  entityId: string;
+  file: File;
+  extract?: boolean;
+}) {
+  const formData = new FormData();
+  formData.append("entity_id", payload.entityId);
+  if (payload.extract === false) {
+    formData.append("extract", "false");
+  }
+  formData.append("file", payload.file);
+  return requestForm<DocumentIntakeRecord>("/document-intakes", formData);
+}
+
+export function getDocumentIntake(intakeId: string) {
+  return request<DocumentIntakeRecord>(`/document-intakes/${intakeId}`);
+}
+
+export function extractDocumentIntake(intakeId: string) {
+  return request<DocumentIntakeRecord>(`/document-intakes/${intakeId}/extract`, {
+    method: "POST",
   });
 }
 
