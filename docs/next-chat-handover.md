@@ -36,6 +36,10 @@ Last updated: 2026-05-19
   - It now also creates `billing_draft` and `billing_draft_line` records from reviewed money amounts.
   - Drafts support reviewed status updates such as approved or void.
   - Drafts are still no-posting/no-PDF/no-email/no-Xero-sync.
+- Billing Readiness now surfaces Smart Intake billing drafts.
+  - The page lists amount, due date, status, line/source context, and approve/void actions.
+  - Approve/void only changes draft status; it still does not post invoices, send tenant emails, generate PDFs, or sync to Xero.
+  - This is design-facing and still needs Remba review.
 - Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
   - This is design-facing and still needs Remba review.
 - AI enrichment for missing fields is in the backlog, not built yet.
@@ -61,9 +65,7 @@ Last updated: 2026-05-19
 - Vercel has no exposed env-var mutation tool in this session.
   - To actually hide the public app, set `LEASIUM_ACCESS_PASSWORD` in the Vercel project environment settings and redeploy.
   - After redeploy, verify `/properties` redirects to `/access`, and `/onboarding/<token>` remains public.
-- Render/Neon still need the latest database migration applied if auto-migrations are not running:
-  - `20260519_0012_property_ownership_billing`
-  - `20260519_0013_billing_drafts`
+- Neon production is confirmed migrated through `20260519_0013` on project `snowy-boat-02653440`, branch `production`, database `neondb`.
 - Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still belongs in the next build order.
 
 ## Recommended Next Tickets
@@ -71,7 +73,7 @@ Last updated: 2026-05-19
 1. Enable the temporary Vercel password gate and verify production access behavior.
 2. Surface stored property source citations and before/after apply history in the Smart Intake/property UI.
 3. Add richer acquisition schedule blockers, broader non-rent charge draft creation from reviewed rows, and UI surfacing for created pending leases.
-4. Add billing draft UI review surfaces and move approved drafts toward invoice PDF/email delivery without Xero sync until approval.
+4. Move approved billing drafts toward invoice PDF/email delivery without Xero sync until approval.
 5. Finish tenant onboarding delivery polish: branded templates, editable reminder schedules, expiry reminders, and failure recovery.
 6. Start Xero connection status and mapping surfaces before full invoice sync.
 7. Deepen Insights dashboards for portfolio health, exceptions, automation activity, billing risk, and owner/entity snapshots.

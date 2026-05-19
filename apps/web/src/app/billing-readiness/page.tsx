@@ -1,11 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowUpRight,
+  Ban,
   CheckCircle2,
   FileWarning,
+  Loader2,
   ReceiptText,
   RefreshCw,
   ShieldCheck,
@@ -24,7 +26,15 @@ import {
   Select,
   StatusBadge,
 } from "@/components/ui";
-import { listEntities, listRentRoll, type RentRollRow } from "@/lib/api";
+import {
+  listBillingDrafts,
+  listEntities,
+  listRentRoll,
+  updateBillingDraft,
+  type BillingDraftRecord,
+  type BillingDraftStatus,
+  type RentRollRow,
+} from "@/lib/api";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_RENT_ROWS: RentRollRow[] = [];
@@ -50,6 +60,8 @@ type BlockerAction = {
   label: string;
   href: string;
 };
+
+type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 
 function dateOnly(value: Date) {
   const year = value.getFullYear();
@@ -79,6 +91,44 @@ function formatMoney(cents: number | null | undefined) {
     currency: "AUD",
     maximumFractionDigits: 0,
   }).format(cents / 100);
+}
+
+function shortId(value: string | null | undefined) {
+  return value ? value.slice(0, 8) : null;
+}
+
+function billingDraftStatusLabel(status: BillingDraftStatus) {
+  return status.replaceAll("_", " ");
+}
+
+function billingDraftStatusTone(status: BillingDraftStatus): StatusTone {
+  switch (status) {
+    case "approved":
+      return "success";
+    case "needs_review":
+      return "warning";
+    case "void":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+function billingDraftSourceContext(draft: BillingDraftRecord) {
+  const lineSources = draft.lines
+    .map((line) => line.source_hint)
+    .filter((value): value is string => Boolean(value));
+  const primarySource = lineSources[0] ?? "Smart Intake source document";
+  const extraSources = Math.max(new Set(lineSources).size - 1, 0);
+  const documentId = shortId(draft.document_id);
+  const intakeId = shortId(draft.document_intake_id);
+  return {
+    primarySource,
+    extraSources,
+    documentId,
+    intakeId,
+    lineCount: draft.lines.length,
+  };
 }
 
 function blockerItems(row: RentRollRow): BlockerItem[] {
@@ -263,6 +313,7 @@ function KpiCard({
 }
 
 function BillingReadinessWorkspace() {
+  const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [asOf, setAsOf] = useState(() => dateOnly(new Date()));
 
@@ -273,7 +324,9 @@ function BillingReadinessWorkspace() {
 
   useEffect(() => {
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    const accessibleIds = new Set((entitiesQuery.data ?? []).map((entity) => entity.id));
+    const accessibleIds = new Set(
+      (entitiesQuery.data ?? []).map((entity) => entity.id),
+    );
     const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
     const next = stored && accessibleIds.has(stored) ? stored : firstEntity;
     if (!selectedEntityId && next) {
@@ -291,6 +344,27 @@ function BillingReadinessWorkspace() {
     queryKey: ["billing-readiness-rent-roll", selectedEntityId, asOf],
     queryFn: () => listRentRoll({ entity_id: selectedEntityId, as_of: asOf }),
     enabled: Boolean(selectedEntityId),
+  });
+
+  const billingDraftsQuery = useQuery({
+    queryKey: ["billing-readiness-drafts", selectedEntityId],
+    queryFn: () => listBillingDrafts({ entity_id: selectedEntityId }),
+    enabled: Boolean(selectedEntityId),
+  });
+
+  const updateDraftMutation = useMutation({
+    mutationFn: ({
+      draftId,
+      status,
+    }: {
+      draftId: string;
+      status: BillingDraftStatus;
+    }) => updateBillingDraft(draftId, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-drafts", selectedEntityId],
+      });
+    },
   });
 
   const selectedEntity = entitiesQuery.data?.find(
@@ -326,6 +400,7 @@ function BillingReadinessWorkspace() {
     () => rentRows.filter((row) => blockerItems(row).length > 0),
     [rentRows],
   );
+  const billingDrafts = billingDraftsQuery.data ?? [];
 
   const counts = useMemo(() => {
     const xero = rentRows.reduce(
@@ -388,8 +463,15 @@ function BillingReadinessWorkspace() {
               />
               <SecondaryButton
                 type="button"
-                onClick={() => rentRollQuery.refetch()}
-                disabled={!selectedEntityId || rentRollQuery.isFetching}
+                onClick={() => {
+                  rentRollQuery.refetch();
+                  billingDraftsQuery.refetch();
+                }}
+                disabled={
+                  !selectedEntityId ||
+                  rentRollQuery.isFetching ||
+                  billingDraftsQuery.isFetching
+                }
               >
                 <RefreshCw size={15} />
                 Refresh
@@ -410,6 +492,20 @@ function BillingReadinessWorkspace() {
             {rentRollQuery.error instanceof Error
               ? rentRollQuery.error.message
               : "Could not load billing readiness."}
+          </div>
+        ) : null}
+        {billingDraftsQuery.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {billingDraftsQuery.error instanceof Error
+              ? billingDraftsQuery.error.message
+              : "Could not load billing drafts."}
+          </div>
+        ) : null}
+        {updateDraftMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {updateDraftMutation.error instanceof Error
+              ? updateDraftMutation.error.message
+              : "Could not update the billing draft."}
           </div>
         ) : null}
 
@@ -461,96 +557,157 @@ function BillingReadinessWorkspace() {
         ) : null}
 
         {selectedEntityId ? (
-          <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <>
             <SectionPanel
-              title="Rent roll readiness"
-              description="Each tenancy is checked from the rent roll response returned by the API."
+              title="Billing draft review"
+              description="Source-linked Smart Intake drafts for review only. Approve or void updates draft status; it does not post an invoice, email a tenant, or sync to Xero."
               icon={<ReceiptText size={17} className="text-primary" />}
+              actions={
+                <StatusBadge
+                  tone={billingDrafts.length ? "primary" : "neutral"}
+                >
+                  {billingDrafts.length} draft
+                  {billingDrafts.length === 1 ? "" : "s"}
+                </StatusBadge>
+              }
             >
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead className="bg-muted text-xs uppercase text-muted-foreground">
                     <tr>
-                      <th className="px-3 py-2 font-semibold">Tenancy</th>
-                      <th className="px-3 py-2 font-semibold">Rent</th>
-                      <th className="px-3 py-2 font-semibold">Rules</th>
-                      <th className="px-3 py-2 font-semibold">Next due</th>
-                      <th className="px-3 py-2 font-semibold">Readiness</th>
+                      <th className="px-3 py-2 font-semibold">Draft</th>
+                      <th className="px-3 py-2 font-semibold">Amount</th>
+                      <th className="px-3 py-2 font-semibold">Due</th>
+                      <th className="px-3 py-2 font-semibold">Source</th>
+                      <th className="px-3 py-2 font-semibold">Status</th>
+                      <th className="px-3 py-2 font-semibold">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rentRows.map((row) => {
-                      const blockers = blockerItems(row);
+                    {billingDrafts.map((draft) => {
+                      const source = billingDraftSourceContext(draft);
+                      const isUpdating =
+                        updateDraftMutation.isPending &&
+                        updateDraftMutation.variables?.draftId === draft.id;
+                      const canApprove =
+                        draft.status !== "approved" && draft.status !== "void";
+                      const canVoid = draft.status !== "void";
                       return (
                         <tr
-                          key={`${row.property_id}-${row.tenancy_unit_id}-${row.lease_id ?? "none"}`}
+                          key={draft.id}
                           className="border-t border-border align-top"
                         >
+                          <td className="min-w-72 px-3 py-3">
+                            <div className="font-medium">{draft.title}</div>
+                            <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                              {draft.notes ??
+                                "Draft prepared from source review. No invoice has been posted."}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-sm font-medium">
+                            {formatMoney(draft.total_cents)}
+                          </td>
+                          <td className="px-3 py-3 text-xs">
+                            {formatDate(draft.due_date)}
+                          </td>
+                          <td className="min-w-64 px-3 py-3 text-xs">
+                            <div className="font-medium text-foreground">
+                              {source.primarySource}
+                            </div>
+                            <div className="mt-1 text-muted-foreground">
+                              {source.lineCount} line
+                              {source.lineCount === 1 ? "" : "s"}
+                              {source.extraSources
+                                ? `, ${source.extraSources} more source${
+                                    source.extraSources === 1 ? "" : "s"
+                                  }`
+                                : ""}
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-2 text-muted-foreground">
+                              {source.intakeId && draft.document_intake_id ? (
+                                <Link
+                                  href={`/intake?review=${draft.document_intake_id}`}
+                                  className="inline-flex items-center gap-1 font-medium text-primary hover:text-leasium-blue-hover"
+                                >
+                                  Intake {source.intakeId}
+                                  <ArrowUpRight size={12} />
+                                </Link>
+                              ) : null}
+                              {source.documentId ? (
+                                <span>Document {source.documentId}</span>
+                              ) : null}
+                            </div>
+                          </td>
                           <td className="px-3 py-3">
-                            <div className="font-medium">{row.unit_label}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {row.property_name}
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {row.tenant_name ?? "Vacant"}
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-xs">
-                            <div>{formatMoney(row.annual_rent_cents)}</div>
-                            <div className="text-muted-foreground">
-                              {row.rent_frequency ?? "No frequency"}
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-xs">
-                            <div>{formatMoney(row.charge_rules_total_cents)}</div>
-                            <div className="text-muted-foreground">
-                              {row.charge_rules?.length ?? 0} rules
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-xs">
-                            {formatDate(row.next_due_date)}
+                            <StatusBadge
+                              tone={billingDraftStatusTone(draft.status)}
+                            >
+                              {billingDraftStatusLabel(draft.status)}
+                            </StatusBadge>
                           </td>
                           <td className="px-3 py-3">
-                            {blockers.length ? (
-                              <div className="grid gap-1">
-                                {blockers.slice(0, 2).map((blocker) => (
-                                  <span
-                                    key={blocker.id}
-                                    className="rounded bg-leasium-warning-soft px-1.5 py-0.5 text-xs text-[#B54708]"
-                                  >
-                                    {blockerTitle(blocker)}
-                                  </span>
-                                ))}
-                                {blockers.length > 2 ? (
-                                  <span className="text-xs text-muted-foreground">
-                                    +{blockers.length - 2} more
-                                  </span>
-                                ) : null}
-                              </div>
-                            ) : (
-                              <StatusBadge tone="success">Ready</StatusBadge>
-                            )}
+                            <div className="flex flex-wrap gap-2">
+                              <SecondaryButton
+                                type="button"
+                                className="min-h-9 rounded-lg px-3"
+                                onClick={() =>
+                                  updateDraftMutation.mutate({
+                                    draftId: draft.id,
+                                    status: "approved",
+                                  })
+                                }
+                                disabled={!canApprove || isUpdating}
+                                title="Marks this draft approved for later billing steps. No invoice is posted or synced."
+                              >
+                                {isUpdating ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <CheckCircle2 size={14} />
+                                )}
+                                Approve
+                              </SecondaryButton>
+                              <SecondaryButton
+                                type="button"
+                                className="min-h-9 rounded-lg px-3 text-danger"
+                                onClick={() =>
+                                  updateDraftMutation.mutate({
+                                    draftId: draft.id,
+                                    status: "void",
+                                  })
+                                }
+                                disabled={!canVoid || isUpdating}
+                                title="Voids this draft only. No invoice is posted or synced."
+                              >
+                                {isUpdating ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <Ban size={14} />
+                                )}
+                                Void
+                              </SecondaryButton>
+                            </div>
                           </td>
                         </tr>
                       );
                     })}
-                    {!rentRollQuery.isLoading && rentRows.length === 0 ? (
+                    {!billingDraftsQuery.isLoading &&
+                    billingDrafts.length === 0 ? (
                       <tr>
-                        <td className="px-3 py-10" colSpan={5}>
+                        <td className="px-3 py-10" colSpan={6}>
                           <EmptyState
-                            title="No rent roll rows"
-                            description="Create leases and charge rules for this entity, then return here to check billing readiness."
+                            title="No billing drafts"
+                            description="Reviewed invoice or admin documents will appear here as source-linked billing drafts before any invoice posting or Xero sync exists."
                           />
                         </td>
                       </tr>
                     ) : null}
-                    {rentRollQuery.isLoading ? (
+                    {billingDraftsQuery.isLoading ? (
                       <tr>
                         <td
                           className="px-3 py-10 text-center text-sm text-muted-foreground"
-                          colSpan={5}
+                          colSpan={6}
                         >
-                          Loading rent roll checks...
+                          Loading billing drafts...
                         </td>
                       </tr>
                     ) : null}
@@ -559,80 +716,185 @@ function BillingReadinessWorkspace() {
               </div>
             </SectionPanel>
 
-            <SectionPanel
-              title="Billing action queue"
-              description="Prioritised work with the right record to open next."
-              icon={<AlertTriangle size={17} className="text-[#B54708]" />}
-            >
-              {blockerGroups.length ? (
-                <div className="divide-y divide-border">
-                  {blockerGroups.map((group) => (
-                    <article key={group.id} className="grid gap-3 px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-medium">{group.title}</div>
-                          <div className="mt-1 text-sm text-muted-foreground">
-                            {group.subtitle}
-                          </div>
-                        </div>
-                        <StatusBadge tone="warning">
-                          {group.items.length} blocker{group.items.length === 1 ? "" : "s"}
-                        </StatusBadge>
-                      </div>
-                      <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                        {leaseContext(group.row)}
-                      </div>
-                      <div className="grid gap-2">
-                        {group.items.map((item) => {
-                          const action = blockerAction(item);
-                          return (
-                            <div
-                              key={item.id}
-                              className="grid gap-2 rounded-lg border border-border bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                            >
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <StatusBadge tone={kindTone(item.kind)}>
-                                    {blockerChipLabel(item)}
-                                  </StatusBadge>
-                                  <span className="font-medium">
-                                    {blockerTitle(item)}
-                                  </span>
-                                </div>
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                  {item.row.tenant_name ?? "Vacant"} /{" "}
-                                  {item.row.unit_label} / {item.row.property_name}
-                                </div>
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                  {blockerGuidance(item)}
-                                </div>
+            <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+              <SectionPanel
+                title="Rent roll readiness"
+                description="Each tenancy is checked from the rent roll response returned by the API."
+                icon={<ReceiptText size={17} className="text-primary" />}
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Tenancy</th>
+                        <th className="px-3 py-2 font-semibold">Rent</th>
+                        <th className="px-3 py-2 font-semibold">Rules</th>
+                        <th className="px-3 py-2 font-semibold">Next due</th>
+                        <th className="px-3 py-2 font-semibold">Readiness</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rentRows.map((row) => {
+                        const blockers = blockerItems(row);
+                        return (
+                          <tr
+                            key={`${row.property_id}-${row.tenancy_unit_id}-${row.lease_id ?? "none"}`}
+                            className="border-t border-border align-top"
+                          >
+                            <td className="px-3 py-3">
+                              <div className="font-medium">
+                                {row.unit_label}
                               </div>
-                              <Link
-                                href={action.href}
-                                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
-                              >
-                                <ArrowUpRight size={15} />
-                                {action.label}
-                              </Link>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </article>
-                  ))}
+                              <div className="text-xs text-muted-foreground">
+                                {row.property_name}
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {row.tenant_name ?? "Vacant"}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-xs">
+                              <div>{formatMoney(row.annual_rent_cents)}</div>
+                              <div className="text-muted-foreground">
+                                {row.rent_frequency ?? "No frequency"}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-xs">
+                              <div>
+                                {formatMoney(row.charge_rules_total_cents)}
+                              </div>
+                              <div className="text-muted-foreground">
+                                {row.charge_rules?.length ?? 0} rules
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-xs">
+                              {formatDate(row.next_due_date)}
+                            </td>
+                            <td className="px-3 py-3">
+                              {blockers.length ? (
+                                <div className="grid gap-1">
+                                  {blockers.slice(0, 2).map((blocker) => (
+                                    <span
+                                      key={blocker.id}
+                                      className="rounded bg-leasium-warning-soft px-1.5 py-0.5 text-xs text-[#B54708]"
+                                    >
+                                      {blockerTitle(blocker)}
+                                    </span>
+                                  ))}
+                                  {blockers.length > 2 ? (
+                                    <span className="text-xs text-muted-foreground">
+                                      +{blockers.length - 2} more
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <StatusBadge tone="success">Ready</StatusBadge>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {!rentRollQuery.isLoading && rentRows.length === 0 ? (
+                        <tr>
+                          <td className="px-3 py-10" colSpan={5}>
+                            <EmptyState
+                              title="No rent roll rows"
+                              description="Create leases and charge rules for this entity, then return here to check billing readiness."
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                      {rentRollQuery.isLoading ? (
+                        <tr>
+                          <td
+                            className="px-3 py-10 text-center text-sm text-muted-foreground"
+                            colSpan={5}
+                          >
+                            Loading rent roll checks...
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
                 </div>
-              ) : (
-                <EmptyState
-                  title="No billing blockers"
-                  description={
-                    rentRows.length
-                      ? "This portfolio is ready for the next invoice run. Leasium will flag missing tenant details, charge rules, Xero mapping, and GST checks here."
-                      : "Blockers will appear here once rent roll rows are available."
-                  }
-                />
-              )}
-            </SectionPanel>
-          </section>
+              </SectionPanel>
+
+              <SectionPanel
+                title="Billing action queue"
+                description="Prioritised work with the right record to open next."
+                icon={<AlertTriangle size={17} className="text-[#B54708]" />}
+              >
+                {blockerGroups.length ? (
+                  <div className="divide-y divide-border">
+                    {blockerGroups.map((group) => (
+                      <article key={group.id} className="grid gap-3 px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-medium">{group.title}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">
+                              {group.subtitle}
+                            </div>
+                          </div>
+                          <StatusBadge tone="warning">
+                            {group.items.length} blocker
+                            {group.items.length === 1 ? "" : "s"}
+                          </StatusBadge>
+                        </div>
+                        <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                          {leaseContext(group.row)}
+                        </div>
+                        <div className="grid gap-2">
+                          {group.items.map((item) => {
+                            const action = blockerAction(item);
+                            return (
+                              <div
+                                key={item.id}
+                                className="grid gap-2 rounded-lg border border-border bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                              >
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <StatusBadge tone={kindTone(item.kind)}>
+                                      {blockerChipLabel(item)}
+                                    </StatusBadge>
+                                    <span className="font-medium">
+                                      {blockerTitle(item)}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 text-xs text-muted-foreground">
+                                    {item.row.tenant_name ?? "Vacant"} /{" "}
+                                    {item.row.unit_label} /{" "}
+                                    {item.row.property_name}
+                                  </div>
+                                  <div className="mt-1 text-xs text-muted-foreground">
+                                    {blockerGuidance(item)}
+                                  </div>
+                                </div>
+                                <Link
+                                  href={action.href}
+                                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                >
+                                  <ArrowUpRight size={15} />
+                                  {action.label}
+                                </Link>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No billing blockers"
+                    description={
+                      rentRows.length
+                        ? "This portfolio is ready for the next invoice run. Leasium will flag missing tenant details, charge rules, Xero mapping, and GST checks here."
+                        : "Blockers will appear here once rent roll rows are available."
+                    }
+                  />
+                )}
+              </SectionPanel>
+            </section>
+          </>
         ) : null}
       </div>
     </main>
