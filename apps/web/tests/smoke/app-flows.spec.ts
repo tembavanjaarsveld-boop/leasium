@@ -50,3 +50,18 @@ test("tenant workspace supports search and the add tenant form", async ({
   await expect(page.getByLabel("Legal name")).toBeVisible();
   await expect(page.getByLabel("Contact email")).toBeVisible();
 });
+
+test("settings shows Xero readiness and records mappings", async ({ page }) => {
+  await page.goto("/settings");
+
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByText("Xero is not connected")).toBeVisible();
+
+  await page.getByLabel("Xero tenant ID").fill("tenant-smoke");
+  await page.getByRole("button", { name: "Save status" }).click();
+  await expect(page.getByText("Connected")).toBeVisible();
+
+  await expect(page.getByText("Base Rent tax type missing")).toBeVisible();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByText("Chart and tax mappings look ready")).toBeVisible();
+});

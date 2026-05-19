@@ -18,6 +18,7 @@ from apps.api.routers import (
     tenancy_units,
     tenant_onboarding,
     tenants,
+    xero,
 )
 
 settings = get_settings()
@@ -55,3 +56,4 @@ app.include_router(charge_rules.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(document_intakes.router, prefix="/api/v1")
 app.include_router(enrichment.router, prefix="/api/v1")
+app.include_router(xero.router, prefix="/api/v1")

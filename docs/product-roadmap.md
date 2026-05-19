@@ -53,10 +53,11 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Smart Intake property provenance v1: purchase contract applies now store source citations, before/after property field changes, apply history, and property audit logs.
 - [x] Smart Intake property provenance UI: purchase-contract apply outcomes show property before/after changes, and the Property workspace surfaces stored field citations, latest apply history, confidence, and deep links back to the source intake.
 - [x] Temporary private-beta access gate: Vercel frontend supports an env-controlled password screen while tenant onboarding links remain publicly reachable.
+- [x] Xero readiness and mapping v1: Settings now surfaces entity connection state, contact readiness, chart/account mapping gaps, tax mapping gaps, approved invoice sync queues, and payment reconciliation counts, with suggested charge-rule mappings and no live Xero posting.
 
 ## Next Build Order
 
-- [ ] Add Xero connection status, chart of accounts/tax mapping, contact sync, invoice sync, and payment reconciliation.
+- [ ] Complete provider-backed Xero OAuth/contact sync, invoice posting approvals, and payment reconciliation on top of the readiness queue.
 - [ ] Deepen Insights dashboards: portfolio health, live exceptions, automation activity, billing risk, owner/entity snapshots, and shareable snapshots generated from dashboard data.
 - [ ] Add provider-backed invoice email delivery and Xero posting approvals on top of the internal invoice draft/PDF/payment workflow.
 - [ ] Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.

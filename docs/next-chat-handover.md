@@ -85,6 +85,12 @@ Last updated: 2026-05-19
   - Tenant detail now shows richer lease context, activity, reviewed changes, and public-fact enrichment.
   - Applied source documents and submitted onboarding documents are protected from unsafe deletion.
   - This is design-facing and still needs Remba review.
+- Xero readiness and mapping v1 is built on this branch.
+  - New `/api/v1/xero/status` reports entity connection state, contact readiness, chart/account mapping gaps, tax mapping gaps, approved invoice sync queue counts, payment reconciliation counts, and explicit no-sync guardrails.
+  - New `/api/v1/xero/connection/{entity_id}` records or clears the entity Xero tenant ID with audit logging; `xero_last_sync_at` remains read-only until a real sync worker exists.
+  - Settings now surfaces the readiness queue and can apply reviewed charge-rule account/tax mappings through the existing charge-rule API.
+  - No OAuth, Xero API call, invoice posting, contact sync, or payment reconciliation runs from this surface yet.
+  - This is design-facing and still needs Remba review.
 - Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
   - This is design-facing and still needs Remba review.
 ## Verification
@@ -92,6 +98,10 @@ Last updated: 2026-05-19
 - Backend focused tests passed:
   - `.venv/bin/python -m pytest tests/integration/test_enrichment_api.py tests/integration/test_document_intake_api.py tests/integration/test_tenant_onboarding_api.py tests/integration/test_register_api.py -q`
   - Result: `34 passed`
+- Xero readiness focused tests passed:
+  - `.venv/bin/python -m pytest tests/integration/test_xero_api.py tests/integration/test_register_api.py -q`
+  - Result: `9 passed`
+  - `xero_last_sync_at` is not client-writable from the manual connection endpoint.
 - Backend lint passed:
   - `.venv/bin/python -m ruff check apps/api/routers/tenant_onboarding.py apps/api/routers/charge_rules.py apps/api/routers/enrichment.py apps/api/routers/tenants.py apps/api/schemas/register.py apps/api/schemas/enrichment.py apps/api/schemas/tenant_onboarding.py stewart/ai/enrichment.py stewart/integrations/communications.py tests/integration/test_document_intake_api.py tests/integration/test_tenant_onboarding_api.py`
 - Frontend targeted checks passed:
@@ -104,6 +114,10 @@ Last updated: 2026-05-19
 - Full frontend lint/build passed:
   - `./node_modules/.bin/eslint .`
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+- Settings/Xero browser smoke passed:
+  - Local Next dev loaded `/settings` against a throwaway mock API on `127.0.0.1`.
+  - The page showed the Xero readiness workspace, recorded a mock connection, applied a charge-rule tax mapping, and reported no browser console errors.
+  - The package lists Playwright smoke tests, but `apps/web/node_modules/.bin/playwright` is not installed in this checkout.
 - Local route smoke passed:
   - Next dev server loaded `/billing-readiness`, `/properties`, and `/tenants` on `127.0.0.1:3014`.
   - Each route returned `200`, showed expected Leasium screen text, and the in-app browser reported no console errors.
@@ -160,13 +174,14 @@ Last updated: 2026-05-19
   - After redeploy, verify `/properties` redirects to `/access`, and `/onboarding/<token>` remains public.
 - Neon production is confirmed migrated through `20260519_0014` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
   - Verified `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
+- Xero readiness v1 uses existing columns only and does not need a new database migration.
 - Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still needs to be configured outside the codebase.
 - Public enrichment requires `OPENAI_API_KEY` on the API service. Without it, preview returns a clear 503 and does not mutate records.
 
 ## Recommended Next Tickets
 
 1. Enable the temporary Vercel password gate and verify production access behavior.
-2. Start Xero connection status and mapping surfaces before full invoice sync.
+2. Complete provider-backed Xero OAuth/contact sync, invoice posting approvals, and payment reconciliation on top of the readiness queue.
 3. Deepen Insights dashboards for portfolio health, exceptions, automation activity, billing risk, and owner/entity snapshots.
 4. Add provider-backed invoice email delivery and Xero posting approvals on top of internal invoice drafts.
 5. Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.

@@ -21,6 +21,12 @@ const entities = [
     name: "Acme Holdings Pty Ltd",
     abn: "12123123123",
     gst_registered: true,
+    xero_tenant_id: null,
+    xero_connected_at: null,
+    xero_last_sync_at: null,
+    notes: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+    deleted_at: null,
   },
 ];
 
@@ -269,6 +275,98 @@ async function fulfillJson(route: Route, body: JsonBody, status = 200) {
 }
 
 export async function mockLeasiumApi(page: Page) {
+  let xeroTenantId: string | null = null;
+  let xeroConnectedAt: string | null = null;
+  let chargeAccountCode: string | null = "401";
+  let chargeTaxType: string | null = null;
+
+  const xeroConnection = () => ({
+    entity_id: entityId,
+    entity_name: "Acme Holdings Pty Ltd",
+    connected: Boolean(xeroTenantId),
+    xero_tenant_id: xeroTenantId,
+    connected_at: xeroConnectedAt,
+    last_sync_at: null,
+    status_label: xeroTenantId ? "Connected" : "Not connected",
+    next_action: xeroTenantId
+      ? "Review contact, chart, tax, invoice, and payment readiness before enabling sync."
+      : "Record the Xero tenant connection before any sync approval can be enabled.",
+  });
+
+  const xeroStatus = () => {
+    const issues = [];
+    if (!xeroTenantId) {
+      issues.push({
+        id: `connection-${entityId}`,
+        kind: "connection",
+        severity: "blocker",
+        label: "Xero is not connected",
+        detail: "This entity has no Xero tenant recorded yet.",
+        action: "Record the Xero tenant before approving invoice sync.",
+        property_id: null,
+        property_name: null,
+        tenancy_unit_id: null,
+        unit_label: null,
+        lease_id: null,
+        tenant_id: null,
+        tenant_name: null,
+        charge_rule_id: null,
+        charge_type: null,
+        current_account_code: null,
+        current_tax_type: null,
+        suggested_account_code: null,
+        suggested_tax_type: null,
+      });
+    }
+    if (!chargeTaxType) {
+      issues.push({
+        id: "tax-charge-1",
+        kind: "tax",
+        severity: "blocker",
+        label: "Base Rent tax type missing",
+        detail: "Queen Street Retail Centre / Shop 3 is taxable and needs a Xero tax type.",
+        action: "Review and apply the suggested tax mapping.",
+        property_id: propertyId,
+        property_name: "Queen Street Retail Centre",
+        tenancy_unit_id: unitId,
+        unit_label: "Shop 3",
+        lease_id: leaseId,
+        tenant_id: tenantId,
+        tenant_name: "Bright Cafe",
+        charge_rule_id: "charge-1",
+        charge_type: "base_rent",
+        current_account_code: chargeAccountCode,
+        current_tax_type: chargeTaxType,
+        suggested_account_code: "200",
+        suggested_tax_type: "OUTPUT",
+      });
+    }
+    return {
+      connection: xeroConnection(),
+      contact_mapping: { total: 2, ready: 2, missing: 0 },
+      chart_mapping: { total: 1, ready: chargeAccountCode ? 1 : 0, missing: chargeAccountCode ? 0 : 1 },
+      tax_mapping: { total: 1, ready: chargeTaxType ? 1 : 0, missing: chargeTaxType ? 0 : 1 },
+      invoice_sync: {
+        total_invoice_drafts: 0,
+        approved_unsynced: 0,
+        synced: 0,
+        blocked: 0,
+      },
+      payment_reconciliation: {
+        unpaid: 0,
+        partially_paid: 0,
+        paid: 0,
+        reconciliation_ready: 0,
+      },
+      issues,
+      guardrails: [
+        "This surface records readiness only; it does not call Xero.",
+        "Invoice posting remains blocked until a future explicit approval action exists.",
+        "Payment reconciliation is manual status tracking until bank/Xero feeds are connected.",
+      ],
+    };
+  };
+
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const method = request.method();
@@ -281,7 +379,35 @@ export async function mockLeasiumApi(page: Page) {
     }
 
     if (method === "GET" && path === "/entities") {
-      await fulfillJson(route, entities);
+      await fulfillJson(
+        route,
+        entities.map((entity) => ({
+          ...entity,
+          xero_tenant_id: xeroTenantId,
+          xero_connected_at: xeroConnectedAt,
+        })),
+      );
+      return;
+    }
+
+    if (method === "GET" && path === "/xero/status") {
+      await fulfillJson(route, xeroStatus());
+      return;
+    }
+
+    if (method === "PATCH" && path === `/xero/connection/${entityId}`) {
+      const payload = request.postDataJSON() as {
+        connected?: boolean;
+        xero_tenant_id?: string | null;
+      };
+      if (payload.connected === false) {
+        xeroTenantId = null;
+        xeroConnectedAt = null;
+      } else {
+        xeroTenantId = payload.xero_tenant_id ?? "tenant-smoke";
+        xeroConnectedAt = "2026-05-19T10:00:00.000Z";
+      }
+      await fulfillJson(route, xeroConnection());
       return;
     }
 
@@ -332,6 +458,21 @@ export async function mockLeasiumApi(page: Page) {
 
     if (method === "GET" && path === "/charge-rules") {
       await fulfillJson(route, rentRoll[0].charge_rules);
+      return;
+    }
+
+    if (method === "PATCH" && path === "/charge-rules/charge-1") {
+      const payload = request.postDataJSON() as {
+        xero_account_code?: string | null;
+        xero_tax_type?: string | null;
+      };
+      chargeAccountCode = payload.xero_account_code ?? chargeAccountCode;
+      chargeTaxType = payload.xero_tax_type ?? chargeTaxType;
+      await fulfillJson(route, {
+        ...rentRoll[0].charge_rules[0],
+        xero_account_code: chargeAccountCode,
+        xero_tax_type: chargeTaxType,
+      });
       return;
     }
 

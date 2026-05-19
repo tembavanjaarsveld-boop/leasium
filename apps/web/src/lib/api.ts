@@ -4,6 +4,12 @@ export type Entity = {
   name: string;
   abn: string | null;
   gst_registered: boolean;
+  xero_tenant_id: string | null;
+  xero_connected_at: string | null;
+  xero_last_sync_at: string | null;
+  notes: string | null;
+  created_at: string;
+  deleted_at: string | null;
 };
 
 export type PropertyType =
@@ -418,6 +424,70 @@ export type ChargeRulePayload = Omit<
   metadata?: Record<string, unknown>;
 };
 
+export type XeroConnectionStatusRecord = {
+  entity_id: string;
+  entity_name: string;
+  connected: boolean;
+  xero_tenant_id: string | null;
+  connected_at: string | null;
+  last_sync_at: string | null;
+  status_label: string;
+  next_action: string;
+};
+
+export type XeroReadinessSummaryRecord = {
+  total: number;
+  ready: number;
+  missing: number;
+};
+
+export type XeroInvoiceSyncSummaryRecord = {
+  total_invoice_drafts: number;
+  approved_unsynced: number;
+  synced: number;
+  blocked: number;
+};
+
+export type XeroPaymentSummaryRecord = {
+  unpaid: number;
+  partially_paid: number;
+  paid: number;
+  reconciliation_ready: number;
+};
+
+export type XeroMappingIssueRecord = {
+  id: string;
+  kind: "connection" | "contact" | "chart" | "tax" | "invoice_sync" | "payment";
+  severity: "blocker" | "warning" | "info";
+  label: string;
+  detail: string;
+  action: string;
+  property_id: string | null;
+  property_name: string | null;
+  tenancy_unit_id: string | null;
+  unit_label: string | null;
+  lease_id: string | null;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  charge_rule_id: string | null;
+  charge_type: string | null;
+  current_account_code: string | null;
+  current_tax_type: string | null;
+  suggested_account_code: string | null;
+  suggested_tax_type: string | null;
+};
+
+export type XeroStatusRecord = {
+  connection: XeroConnectionStatusRecord;
+  contact_mapping: XeroReadinessSummaryRecord;
+  chart_mapping: XeroReadinessSummaryRecord;
+  tax_mapping: XeroReadinessSummaryRecord;
+  invoice_sync: XeroInvoiceSyncSummaryRecord;
+  payment_reconciliation: XeroPaymentSummaryRecord;
+  issues: XeroMappingIssueRecord[];
+  guardrails: string[];
+};
+
 export type BillingDraftStatus = "draft" | "needs_review" | "approved" | "void";
 
 export type BillingDraftLineRecord = {
@@ -650,6 +720,21 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
 
 export function listEntities() {
   return request<Entity[]>("/entities");
+}
+
+export function getXeroStatus(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<XeroStatusRecord>(`/xero/status?${params.toString()}`);
+}
+
+export function updateXeroConnection(
+  entityId: string,
+  payload: { connected: boolean; xero_tenant_id?: string | null },
+) {
+  return request<XeroConnectionStatusRecord>(`/xero/connection/${entityId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function listProperties(entityId: string) {
