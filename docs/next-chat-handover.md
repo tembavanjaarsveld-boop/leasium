@@ -8,7 +8,7 @@ Last updated: 2026-05-19
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed feature Vercel production deployment before this handover: `6ff7c0b Expand acquisition schedule apply`, state `READY`.
+- Latest confirmed feature Vercel production deployment before this handover: `c8d2cce Prepare invoice draft delivery previews`, state `READY`.
 - Product source of truth: `docs/product-roadmap.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
 
@@ -100,6 +100,9 @@ Last updated: 2026-05-19
   - Commit `5bd80bc Add invoice draft staging workflow`
   - Deployment `dpl_3SCqotaeA7AzCyRscJJZHq5zV88c`, state `READY`
   - Deployment URL `/billing-readiness` returned `200`.
+  - Commit `c8d2cce Prepare invoice draft delivery previews`
+  - Deployment `dpl_F6J6pD8qPvgq4y4sj7gALpJfkLJy`, state `READY`
+  - Production alias `/billing-readiness` returned `200`.
 - Password gate checks from the prior implementation passed:
   - Access middleware/page/API lint
   - TypeScript no-emit
