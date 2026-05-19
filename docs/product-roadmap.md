@@ -33,10 +33,11 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Smart Intake document-to-task apply: approved certificates, compliance docs, bank guarantees, and notices create scoped obligations/tasks, link the source document, and show a calm post-apply outcome.
 - [x] Smart Intake lease apply: reviewed lease documents can create/reuse property, unit, tenant, lease, source document links, and lease obligations through an Apply plan that keeps humans in control.
 - [x] Smart Intake billing prep: reviewed invoice/admin documents prepare source-linked billing review tasks with money context and clear no-invoice/no-Xero-sync guardrails.
+- [x] Smart Intake acquisition apply: reviewed purchase contracts can create or link property records, optionally create/link reviewed units, attach the source document, and create milestone tasks without posting financials.
 
 ## Next Build Order
 
-- [ ] Continue AI apply beyond lease and billing-prep workflows: acquisition/building contracts create or update property/unit records; billing prep graduates into true draft charge/invoice records; lease apply gains deeper source citations and before/after audit detail.
+- [ ] Continue AI apply beyond first-pass register workflows: purchase contracts gain richer tenancy schedule handling; billing prep graduates into true draft charge/invoice records; lease apply gains deeper source citations and before/after audit detail.
 - [ ] Finish tenant onboarding delivery: real email sending, branded templates, resend logs, expiry messaging, and delivery audit history.
 - [ ] Deepen tenant detail: property/lease context labels, richer activity history, safer document provenance/actions, and reviewed-change history.
 - [ ] Expand billing from readiness into invoice generation: rent periods, line items, invoice drafts, approval, PDF/email delivery, and payment status.

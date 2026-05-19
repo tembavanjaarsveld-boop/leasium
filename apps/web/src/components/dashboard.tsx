@@ -679,6 +679,7 @@ function documentWorkflowType(
       "bank_guarantee",
       "compliance",
       "invoice_admin",
+      "purchase_contract",
       "notice",
     ].includes(type)
     ? type
@@ -689,6 +690,8 @@ function workflowTaskNoun(workflowType: string | null) {
   switch (workflowType) {
     case "invoice_admin":
       return "billing review task";
+    case "purchase_contract":
+      return "contract milestone task";
     case "bank_guarantee":
       return "guarantee task";
     case "compliance":
@@ -865,6 +868,23 @@ function reviewedLeaseTargetLabel(
   return parts.length ? parts.join(" / ") : "Reviewed lease details";
 }
 
+function reviewedPropertyTargetLabel(
+  data: DocumentIntakeExtraction,
+  target: ReviewApplyTarget,
+  properties: PropertyRecord[],
+  units: TenancyUnitRecord[],
+) {
+  const property = properties.find((item) => item.id === target.propertyId);
+  const unit = units.find((item) => item.id === target.tenancyUnitId);
+  const reviewedProperty = groupItems(data, "properties")[0];
+  const parts = [
+    property?.name ??
+      fieldText(reviewedProperty?.name ?? reviewedProperty?.address),
+    unit?.unit_label ?? fieldText(reviewedProperty?.unit_label),
+  ].filter(Boolean);
+  return parts.length ? parts.join(" / ") : "Reviewed property details";
+}
+
 function leaseApplyPlanRows(
   data: DocumentIntakeExtraction,
   target: ReviewApplyTarget,
@@ -931,6 +951,69 @@ function leaseApplyPlanRows(
   ];
 }
 
+function hasReviewedPropertyIdentity(
+  data: DocumentIntakeExtraction,
+  target: ReviewApplyTarget,
+) {
+  const property = groupItems(data, "properties")[0];
+  return Boolean(
+    target.propertyId || fieldText(property?.name ?? property?.address),
+  );
+}
+
+function propertyApplyPlanRows(
+  data: DocumentIntakeExtraction,
+  target: ReviewApplyTarget,
+  properties: PropertyRecord[],
+  units: TenancyUnitRecord[],
+  obligationCount: number,
+) {
+  const property = properties.find((item) => item.id === target.propertyId);
+  const unit = units.find((item) => item.id === target.tenancyUnitId);
+  const reviewedProperty = groupItems(data, "properties")[0];
+  const reviewedPropertyName = fieldText(
+    reviewedProperty?.name ?? reviewedProperty?.address,
+  );
+  const reviewedUnitLabel = fieldText(reviewedProperty?.unit_label);
+  return [
+    {
+      label: "Property",
+      value: property
+        ? `Link existing: ${property.name}`
+        : reviewedPropertyName
+          ? `Create new property: ${reviewedPropertyName}`
+          : "Property detail needed",
+      tone:
+        property || reviewedPropertyName
+          ? ("success" as const)
+          : ("danger" as const),
+    },
+    {
+      label: "Units",
+      value: unit
+        ? `Link existing unit: ${unit.unit_label}`
+        : reviewedUnitLabel
+          ? `Create reviewed unit: ${reviewedUnitLabel}`
+          : "Skip units",
+      tone:
+        unit || reviewedUnitLabel ? ("success" as const) : ("neutral" as const),
+    },
+    {
+      label: "Source",
+      value: "Link document to the property records",
+      tone: "primary" as const,
+    },
+    {
+      label: "Tasks",
+      value:
+        obligationCount > 0
+          ? `Create ${obligationCount} milestone task${obligationCount === 1 ? "" : "s"}`
+          : "No contract dates yet",
+      tone: obligationCount > 0 ? ("success" as const) : ("neutral" as const),
+    },
+  ];
+}
+
 function DocumentIntakeApplyOutcomeCard({
   outcome,
   onDismiss,
@@ -939,6 +1022,7 @@ function DocumentIntakeApplyOutcomeCard({
   onDismiss: () => void;
 }) {
   const isBilling = outcome.workflowType === "invoice_admin";
+  const isPropertySetup = outcome.workflowType === "purchase_contract";
   const taskNoun = workflowTaskNoun(outcome.workflowType);
   return (
     <SectionPanel
@@ -958,6 +1042,12 @@ function DocumentIntakeApplyOutcomeCard({
               ? `Created lease register records and ${outcome.obligationCount} ${
                   outcome.obligationCount === 1 ? "task" : "tasks"
                 }.`
+              : isPropertySetup
+                ? `Applied property records and ${outcome.obligationCount} ${
+                    outcome.obligationCount === 1
+                      ? "milestone task"
+                      : "milestone tasks"
+                  }.`
               : isBilling
                 ? `Prepared ${outcome.obligationCount} billing review ${
                     outcome.obligationCount === 1 ? "task" : "tasks"
@@ -1002,6 +1092,14 @@ function DocumentIntakeApplyOutcomeCard({
             Back to Lease Inbox
           </SecondaryButton>
           {outcome.workflowType === "lease" ? (
+            <Link
+              href="/properties"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+            >
+              Open Properties
+            </Link>
+          ) : null}
+          {isPropertySetup ? (
             <Link
               href="/properties"
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
@@ -1084,8 +1182,12 @@ function DocumentIntakeReviewPanel({
     workflowType === "lease" &&
     !hasReviewedLeaseBasics(reviewedDraft, applyTarget)
       ? "Confirm property, unit, tenant, start, expiry, and rent before applying."
+      : workflowType === "purchase_contract" &&
+          !hasReviewedPropertyIdentity(reviewedDraft, applyTarget)
+        ? "Choose or confirm the property before applying."
       : canApplyWorkflow &&
           workflowType !== "lease" &&
+          workflowType !== "purchase_contract" &&
           obligationApplyCount === 0
         ? "Confirm at least one obligation due date before applying."
         : null;
@@ -1134,6 +1236,13 @@ function DocumentIntakeReviewPanel({
           tenancyUnits,
           tenants,
         )
+      : workflowType === "purchase_contract"
+        ? reviewedPropertyTargetLabel(
+            reviewedDraft,
+            applyTarget,
+            properties,
+            tenancyUnits,
+          )
       : matchedLease && matchedUnit
         ? `${matchedUnit.unit_label} lease`
         : matchedUnit
@@ -1149,6 +1258,16 @@ function DocumentIntakeReviewPanel({
           properties,
           tenancyUnits,
           tenants,
+          obligationApplyCount,
+        )
+      : [];
+  const propertyPlanRows =
+    workflowType === "purchase_contract"
+      ? propertyApplyPlanRows(
+          reviewedDraft,
+          applyTarget,
+          properties,
+          tenancyUnits,
           obligationApplyCount,
         )
       : [];
@@ -1228,6 +1347,8 @@ function DocumentIntakeReviewPanel({
                 <p className="mt-1 text-sm text-muted-foreground">
                   {workflowType === "lease"
                     ? "Choose existing records to link only, or let Leasium create new records from the reviewed fields."
+                    : workflowType === "purchase_contract"
+                      ? "Choose an existing property to link, or let Leasium create property setup records from the reviewed contract fields."
                     : workflowType === "invoice_admin"
                       ? "Link the billing document to the right property, unit, or lease. Leasium prepares review work only."
                     : "Link the source document and created work to the right property, unit, or lease before applying."}
@@ -1246,6 +1367,8 @@ function DocumentIntakeReviewPanel({
               >
                 {workflowType === "lease"
                   ? "Apply plan"
+                  : workflowType === "purchase_contract"
+                    ? "Apply plan"
                   : applyTarget.propertyId
                     ? "Matched"
                     : "Portfolio level"}
@@ -1285,6 +1408,38 @@ function DocumentIntakeReviewPanel({
                 ))}
               </div>
             ) : null}
+            {workflowType === "purchase_contract" ? (
+              <div className="mt-3 grid gap-2 rounded-xl border border-primary/10 bg-leasium-blue-soft/60 p-3">
+                {propertyPlanRows.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                  >
+                    <span className="font-medium text-foreground">
+                      {row.label}
+                    </span>
+                    <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+                      <span className="truncate text-right text-muted-foreground">
+                        {row.value}
+                      </span>
+                      <StatusBadge tone={row.tone}>
+                        {row.tone === "danger"
+                          ? "Needs detail"
+                          : row.value.startsWith("Link")
+                            ? "Link only"
+                            : row.value.startsWith("Skip")
+                              ? "Skip"
+                              : row.tone === "primary"
+                                ? "Source"
+                                : row.tone === "neutral"
+                                  ? "Optional"
+                                  : "Create"}
+                      </StatusBadge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div className={["mt-3 grid gap-3", "md:grid-cols-3"].join(" ")}>
               <Field label="Property">
                 <Select
@@ -1302,6 +1457,8 @@ function DocumentIntakeReviewPanel({
                   <option value="">
                     {workflowType === "lease"
                       ? "Create new from reviewed fields"
+                      : workflowType === "purchase_contract"
+                        ? "Create new from reviewed property"
                       : "Portfolio level"}
                   </option>
                   {properties.map((property) => (
@@ -1326,6 +1483,8 @@ function DocumentIntakeReviewPanel({
                   <option value="">
                     {workflowType === "lease"
                       ? "Create new from reviewed unit"
+                      : workflowType === "purchase_contract"
+                        ? "Skip units"
                       : "No unit scope"}
                   </option>
                   {tenancyUnits.map((unit) => (
@@ -1539,8 +1698,8 @@ function DocumentIntakeReviewPanel({
         {!canApplyWorkflow ? (
           <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
             Apply is available for leases, certificates, compliance docs,
-            guarantees, notices, and billing docs first. Other documents can be
-            saved as reviewed here for now.
+            guarantees, notices, billing docs, and acquisition contracts first.
+            Other documents can be saved as reviewed here for now.
           </div>
         ) : null}
         {applyBlocker ? (
@@ -1556,6 +1715,12 @@ function DocumentIntakeReviewPanel({
                 <p className="mt-1 text-sm text-muted-foreground">
                   {workflowType === "lease"
                     ? `Create the lease register records, source document link, and ${obligationApplyCount} task${obligationApplyCount === 1 ? "" : "s"} from ${applyScope}. `
+                    : workflowType === "purchase_contract"
+                      ? `Apply property setup records, link the source document, and ${
+                          obligationApplyCount
+                            ? `create ${obligationApplyCount} milestone ${obligationApplyCount === 1 ? "task" : "tasks"}`
+                            : "skip milestone tasks"
+                        } from ${applyScope}. `
                     : workflowType === "invoice_admin"
                       ? `Prepare ${obligationApplyCount} billing review ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. Nothing will be invoiced or synced. `
                     : `Create ${obligationApplyCount} document-driven ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. `}
@@ -2171,7 +2336,7 @@ export function Dashboard({
                         : "Drop a document here"}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      Lease, invoice, guarantee, certificate, tenant document
+                      Lease, invoice, contract, guarantee, certificate
                     </span>
                   </span>
                 </button>
@@ -2317,7 +2482,7 @@ export function Dashboard({
                     {reviewIntakes.length === 0 ? (
                       <EmptyState
                         title="No documents waiting for review."
-                        description="Drop in a lease, guarantee, insurance certificate, invoice, or tenant document to start your first review."
+                        description="Drop in a lease, acquisition contract, invoice, guarantee, insurance certificate, or tenant document to start your first review."
                       />
                     ) : null}
                   </div>
@@ -2417,6 +2582,13 @@ export function Dashboard({
                               reviewTenancyUnitsQuery.data ?? [],
                               tenantsQuery.data ?? [],
                             )
+                          : workflowType === "purchase_contract"
+                            ? reviewedPropertyTargetLabel(
+                                reviewData,
+                                reviewApplyTarget,
+                                propertiesQuery.data ?? [],
+                                reviewTenancyUnitsQuery.data ?? [],
+                              )
                           : applyTargetLabel(
                               reviewApplyTarget,
                               propertiesQuery.data ?? [],
@@ -2448,7 +2620,7 @@ export function Dashboard({
               >
                 <EmptyState
                   title="No document selected."
-                  description="Drop a lease, certificate, invoice, guarantee, or tenant document to start."
+                  description="Drop a lease, acquisition contract, invoice, guarantee, certificate, or tenant document to start."
                 />
               </SectionPanel>
             ) : null}

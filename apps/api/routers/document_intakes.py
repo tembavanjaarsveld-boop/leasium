@@ -15,7 +15,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 from stewart.ai.document_intake import DocumentExtractionError, extract_document_file
 from stewart.core.audit import audit_log
@@ -32,6 +32,7 @@ from stewart.core.models import (
     ObligationCategory,
     ObligationStatus,
     Property,
+    PropertyType,
     StoredDocument,
     TenancyUnit,
     Tenant,
@@ -159,6 +160,15 @@ def _float(value: Any) -> float | None:
         return None
 
 
+def _int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(float(str(value).replace(",", "")))
+    except ValueError:
+        return None
+
+
 def _records(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -259,6 +269,8 @@ def _fallback_obligation_category(document_type: str | None) -> ObligationCatego
             return ObligationCategory.compliance
         case "invoice_admin":
             return ObligationCategory.other
+        case "purchase_contract":
+            return ObligationCategory.other
         case "notice":
             return ObligationCategory.other
         case _:
@@ -348,6 +360,34 @@ def _fallback_dated_record(
             due_date,
             ObligationCategory.compliance,
             "Review compliance document before the recorded date.",
+            _str(source_record.get("source_hint")),
+        )
+    if document_type == "purchase_contract":
+        source_record = _first_dated_record(
+            key_dates,
+            {
+                "settlement",
+                "completion",
+                "due diligence",
+                "finance",
+                "handover",
+                "condition",
+                "deposit",
+            },
+        )
+        if source_record is None:
+            source_record = _first_dated_record(key_dates)
+        if source_record is None:
+            return None
+        label = _str(source_record.get("label"))
+        due_date = _date(source_record.get("date")) or _date(source_record.get("due_date"))
+        if due_date is None:
+            return None
+        return (
+            label or "Acquisition milestone",
+            due_date,
+            ObligationCategory.other,
+            "Review acquisition milestone from the source document.",
             _str(source_record.get("source_hint")),
         )
     if document_type == "invoice_admin":
@@ -684,6 +724,252 @@ def _apply_lease_document_intake(
     lease_intake.applied_lease_id = lease.id
     lease_intake.applied_at = utcnow()
     return lease_intake, prop, unit, tenant, lease, obligations
+
+
+def _property_for_document_apply(
+    property_id: UUID,
+    entity_id: UUID,
+    user: CurrentUser,
+    session: Session,
+) -> Property:
+    prop = session.get(Property, property_id)
+    if prop is None or prop.deleted_at is not None or prop.entity_id != entity_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found.")
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    return prop
+
+
+def _unit_for_property_apply(
+    unit_id: UUID,
+    prop: Property,
+    session: Session,
+) -> TenancyUnit:
+    unit = session.get(TenancyUnit, unit_id)
+    if unit is None or unit.deleted_at is not None or unit.property_id != prop.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenancy unit not found.",
+        )
+    return unit
+
+
+def _property_identity(row: dict[str, Any]) -> tuple[str | None, str | None]:
+    return _str(row.get("name")), _str(row.get("street_address")) or _str(row.get("address"))
+
+
+def _find_matching_property(
+    entity_id: UUID,
+    row: dict[str, Any],
+    session: Session,
+) -> Property | None:
+    name, street_address = _property_identity(row)
+    if not name and not street_address:
+        return None
+    statement = select(Property).where(
+        Property.entity_id == entity_id,
+        Property.deleted_at.is_(None),
+    )
+    if name:
+        statement = statement.where(func.lower(Property.name) == name.lower())
+    if street_address:
+        statement = statement.where(func.lower(Property.street_address) == street_address.lower())
+    return session.scalar(statement)
+
+
+def _fill_blank_property_fields(prop: Property, row: dict[str, Any]) -> list[str]:
+    filled: list[str] = []
+    updates = {
+        "suburb": _str(row.get("suburb")),
+        "state": _str(row.get("state")),
+        "postcode": _str(row.get("postcode")),
+        "parcel_id": _str(row.get("parcel_id")),
+        "land_sqm": _float(row.get("land_sqm")),
+        "building_sqm": _float(row.get("building_sqm")),
+        "parking_spaces": _int(row.get("parking_spaces")),
+    }
+    for key, value in updates.items():
+        if value is not None and getattr(prop, key) is None:
+            setattr(prop, key, value)
+            filled.append(key)
+    return filled
+
+
+def _resolve_purchase_property(
+    intake: DocumentIntake,
+    data: dict[str, Any],
+    payload: DocumentIntakeApplyRequest,
+    user: CurrentUser,
+    session: Session,
+) -> tuple[Property, str, list[str]]:
+    rows = _records(data.get("properties"))
+    row = rows[0] if rows else {}
+    if payload.property_id is not None:
+        prop = _property_for_document_apply(payload.property_id, intake.entity_id, user, session)
+        return prop, "linked_property_register_records", _fill_blank_property_fields(prop, row)
+
+    name, street_address = _property_identity(row)
+    if not name and not street_address:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Choose an existing property or confirm the property name/address.",
+        )
+
+    existing = _find_matching_property(intake.entity_id, row, session)
+    if existing is not None:
+        return (
+            existing,
+            "linked_property_register_records",
+            _fill_blank_property_fields(existing, row),
+        )
+
+    prop = Property(
+        entity_id=intake.entity_id,
+        name=name or street_address or "Property to confirm",
+        street_address=street_address or "Address to confirm",
+        suburb=_str(row.get("suburb")),
+        state=_str(row.get("state")),
+        postcode=_str(row.get("postcode")),
+        country_code=_str(row.get("country_code")) or "AU",
+        property_type=PropertyType.other,
+        parcel_id=_str(row.get("parcel_id")),
+        land_sqm=_float(row.get("land_sqm")),
+        building_sqm=_float(row.get("building_sqm")),
+        parking_spaces=_int(row.get("parking_spaces")),
+        has_solar_pv=False,
+        property_metadata={
+            "source": "document_intake",
+            "document_intake_id": str(intake.id),
+            "document_id": str(intake.document_id),
+            "document_type": "purchase_contract",
+            "source_hint": _str(row.get("source_hint")),
+        },
+    )
+    session.add(prop)
+    session.flush()
+    return prop, "created_property_register_records", []
+
+
+def _fill_blank_unit_fields(unit: TenancyUnit, row: dict[str, Any]) -> list[str]:
+    filled: list[str] = []
+    updates = {
+        "sqm": _float(row.get("sqm")),
+        "parking_spaces": _int(row.get("parking_spaces")),
+    }
+    for key, value in updates.items():
+        if value is not None and getattr(unit, key) is None:
+            setattr(unit, key, value)
+            filled.append(key)
+    return filled
+
+
+def _resolve_purchase_units(
+    intake: DocumentIntake,
+    prop: Property,
+    data: dict[str, Any],
+    payload: DocumentIntakeApplyRequest,
+    session: Session,
+) -> tuple[list[TenancyUnit], int, int, list[str]]:
+    rows = _records(data.get("properties"))
+    if payload.tenancy_unit_id is not None:
+        unit = _unit_for_property_apply(payload.tenancy_unit_id, prop, session)
+        return [unit], 0, 0, _fill_blank_unit_fields(unit, rows[0] if rows else {})
+
+    units: list[TenancyUnit] = []
+    created_count = 0
+    linked_count = 0
+    filled_fields: list[str] = []
+    seen_labels: set[str] = set()
+    for row in rows:
+        label = _str(row.get("unit_label"))
+        if label is None or label.lower() in seen_labels:
+            continue
+        seen_labels.add(label.lower())
+        existing = session.scalar(
+            select(TenancyUnit).where(
+                TenancyUnit.property_id == prop.id,
+                TenancyUnit.deleted_at.is_(None),
+                func.lower(TenancyUnit.unit_label) == label.lower(),
+            )
+        )
+        if existing is not None:
+            linked_count += 1
+            filled_fields.extend(_fill_blank_unit_fields(existing, row))
+            units.append(existing)
+            continue
+        unit = TenancyUnit(
+            property_id=prop.id,
+            unit_label=label,
+            sqm=_float(row.get("sqm")),
+            parking_spaces=_int(row.get("parking_spaces")),
+            unit_metadata={
+                "source": "document_intake",
+                "document_intake_id": str(intake.id),
+                "document_id": str(intake.document_id),
+                "document_type": "purchase_contract",
+                "source_hint": _str(row.get("source_hint")),
+            },
+        )
+        session.add(unit)
+        session.flush()
+        created_count += 1
+        units.append(unit)
+    return units, created_count, linked_count, filled_fields
+
+
+def _apply_purchase_contract_intake(
+    intake: DocumentIntake,
+    data: dict[str, Any],
+    payload: DocumentIntakeApplyRequest,
+    user: CurrentUser,
+    session: Session,
+) -> tuple[Property, list[TenancyUnit], list[Obligation], dict[str, Any]]:
+    prop, property_action, filled_property_fields = _resolve_purchase_property(
+        intake,
+        data,
+        payload,
+        user,
+        session,
+    )
+    units, created_units, linked_units, filled_unit_fields = _resolve_purchase_units(
+        intake,
+        prop,
+        data,
+        payload,
+        session,
+    )
+    intake.document.property_id = prop.id
+    intake.document.tenancy_unit_id = units[0].id if len(units) == 1 else None
+
+    obligation_payloads = _obligation_payloads_from_review(data, "purchase_contract")
+    obligations: list[Obligation] = []
+    if obligation_payloads:
+        scoped_payload = payload.model_copy(
+            update={
+                "property_id": prop.id,
+                "tenancy_unit_id": units[0].id if len(units) == 1 else None,
+            }
+        )
+        obligations = _apply_document_obligation_intake(
+            intake,
+            data,
+            scoped_payload,
+            user,
+            session,
+        )
+
+    summary = {
+        "action": property_action,
+        "property_id": str(prop.id),
+        "tenancy_unit_ids": [str(unit.id) for unit in units],
+        "tenancy_unit_count": len(units),
+        "created_tenancy_unit_count": created_units,
+        "linked_tenancy_unit_count": linked_units,
+        "filled_blank_property_fields": filled_property_fields,
+        "filled_blank_unit_fields": filled_unit_fields,
+        "obligation_ids": [str(obligation.id) for obligation in obligations],
+        "obligation_count": len(obligations),
+    }
+    return prop, units, obligations, summary
 
 
 def _apply_document_obligation_intake(
@@ -1185,6 +1471,47 @@ def apply_document_intake(
             target_id=lease_intake.id,
             tool_output_summary=(
                 f"Created lease {lease.id} from Smart Intake document {intake.id}."
+            ),
+        )
+        session.commit()
+        session.refresh(intake)
+        return _read_intake(intake)
+
+    if document_type == "purchase_contract":
+        prop, units, obligations, applied = _apply_purchase_contract_intake(
+            intake,
+            reviewed,
+            payload,
+            user,
+            session,
+        )
+        intake.review_data = {
+            **reviewed,
+            "applied": applied,
+        }
+        intake.status = DocumentIntakeStatus.applied
+        intake.applied_at = utcnow()
+        intake.applied_by_user_id = user.id
+        intake.document.category = DocumentCategory.other
+        intake.document.document_metadata = {
+            **(intake.document.document_metadata or {}),
+            "applied_document_intake_id": str(intake.id),
+            "applied_property_id": str(prop.id),
+            "applied_tenancy_unit_ids": [str(unit.id) for unit in units],
+            "applied_obligation_ids": [str(obligation.id) for obligation in obligations],
+            "applied_document_type": document_type,
+        }
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=intake.entity_id,
+            action="apply",
+            target_table="document_intake",
+            target_id=intake.id,
+            tool_output_summary=(
+                f"Applied purchase contract to property {prop.id}; "
+                f"{len(units)} unit(s), {len(obligations)} task(s)."
             ),
         )
         session.commit()

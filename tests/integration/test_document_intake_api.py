@@ -266,6 +266,64 @@ def _fake_invoice_extraction() -> dict[str, Any]:
     }
 
 
+def _fake_purchase_contract_extraction() -> dict[str, Any]:
+    return {
+        **_fake_extraction(),
+        "document_type": "purchase_contract",
+        "summary": "Purchase contract for Docklands Trade Centre with settlement milestones.",
+        "parties": [
+            {
+                "name": "Docklands Vendor Pty Ltd",
+                "role": "vendor",
+                "abn": None,
+                "contact": "Pat Morgan",
+                "confidence": 0.8,
+                "source_hint": "Contract parties",
+            }
+        ],
+        "properties": [
+            {
+                "name": "Docklands Trade Centre",
+                "address": "18 Harbour Road",
+                "unit_label": "Warehouse 1",
+                "confidence": 0.88,
+                "source_hint": "Property particulars",
+                "sqm": 1200,
+                "parking_spaces": 10,
+            }
+        ],
+        "key_dates": [
+            {
+                "label": "Settlement",
+                "date": "2026-10-15",
+                "confidence": 0.87,
+                "source_hint": "Settlement clause",
+            }
+        ],
+        "money_amounts": [
+            {
+                "label": "Purchase price",
+                "amount": 4200000,
+                "currency": "AUD",
+                "frequency": None,
+                "confidence": 0.86,
+                "source_hint": "Price schedule",
+            }
+        ],
+        "obligations": [],
+        "warnings": [],
+        "missing_information": [],
+        "proposed_actions": [
+            {
+                "action": "prepare_property_setup",
+                "target": "property",
+                "summary": "Create property shell and settlement milestone after review.",
+                "confidence": 0.84,
+            }
+        ],
+    }
+
+
 def _fake_smart_lease_extraction() -> dict[str, Any]:
     return {
         **_fake_extraction(),
@@ -799,6 +857,180 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert document.category == "invoice"
     assert str(document.property_id) == scope["property_id"]
     assert document.document_metadata["applied_document_type"] == "invoice_admin"
+
+
+def test_document_intake_apply_purchase_contract_creates_property_records(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_purchase_contract_extraction(), "resp_purchase_contract"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("purchase-contract.txt", b"contract", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    document_id = create_response.json()["document_id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={"review_data": _fake_purchase_contract_extraction()},
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "applied"
+    assert body["review_data"]["applied"]["action"] == "created_property_register_records"
+    assert body["review_data"]["applied"]["tenancy_unit_count"] == 1
+    assert body["review_data"]["applied"]["created_tenancy_unit_count"] == 1
+    assert body["review_data"]["applied"]["obligation_count"] == 1
+
+    prop = session.get(Property, UUID(body["review_data"]["applied"]["property_id"]))
+    assert prop is not None
+    assert prop.name == "Docklands Trade Centre"
+    assert prop.street_address == "18 Harbour Road"
+    assert prop.property_type == "other"
+    assert prop.property_metadata["source"] == "document_intake"
+    assert prop.property_metadata["document_intake_id"] == intake_id
+
+    unit_id = body["review_data"]["applied"]["tenancy_unit_ids"][0]
+    unit = session.get(TenancyUnit, UUID(unit_id))
+    assert unit is not None
+    assert unit.unit_label == "Warehouse 1"
+    assert unit.sqm == 1200
+    assert unit.parking_spaces == 10
+
+    obligation_id = body["review_data"]["applied"]["obligation_ids"][0]
+    obligation = session.get(Obligation, UUID(obligation_id))
+    assert obligation is not None
+    assert obligation.title == "Settlement"
+    assert obligation.due_date.isoformat() == "2026-10-15"
+    assert obligation.property_id == prop.id
+    assert obligation.tenancy_unit_id == unit.id
+
+    document = session.get(StoredDocument, UUID(document_id))
+    assert document is not None
+    assert document.property_id == prop.id
+    assert document.tenancy_unit_id == unit.id
+    assert document.document_metadata["applied_document_type"] == "purchase_contract"
+
+
+def test_document_intake_apply_purchase_contract_reuses_selected_property(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_purchase_contract_extraction(), "resp_selected_purchase_contract"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Existing Acquisition Asset",
+            "street_address": "99 Existing Road",
+            "property_type": "commercial_industrial",
+        },
+    )
+    assert property_response.status_code == 201
+    unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={
+            "property_id": property_response.json()["id"],
+            "unit_label": "Existing Warehouse",
+        },
+    )
+    assert unit_response.status_code == 201
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("selected-purchase-contract.txt", b"contract", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={
+            "review_data": _fake_purchase_contract_extraction(),
+            "property_id": property_response.json()["id"],
+            "tenancy_unit_id": unit_response.json()["id"],
+        },
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["review_data"]["applied"]["action"] == "linked_property_register_records"
+    assert body["review_data"]["applied"]["property_id"] == property_response.json()["id"]
+    assert body["review_data"]["applied"]["tenancy_unit_ids"] == [unit_response.json()["id"]]
+    assert body["review_data"]["applied"]["created_tenancy_unit_count"] == 0
+
+    created_prop = session.scalar(
+        select(Property).where(Property.name == "Docklands Trade Centre")
+    )
+    assert created_prop is None
+
+
+def test_document_intake_apply_purchase_contract_rejects_missing_property_context(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    extraction = _fake_purchase_contract_extraction()
+    extraction["properties"] = []
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return extraction, "resp_purchase_contract_missing_property"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("missing-property-contract.txt", b"contract", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={"review_data": extraction},
+    )
+    assert apply_response.status_code == 422
 
 
 def test_document_intake_apply_lease_creates_register_records(
