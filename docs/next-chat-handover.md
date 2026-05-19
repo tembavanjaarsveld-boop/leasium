@@ -8,7 +8,7 @@ Last updated: 2026-05-19
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed feature Vercel production deployment before this handover: `c8d2cce Prepare invoice draft delivery previews`, state `READY`.
+- Latest confirmed feature Vercel production deployment before this handover: `36d21cd Update invoice delivery deployment status`, state `READY`.
 - Product source of truth: `docs/product-roadmap.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
 
@@ -61,19 +61,59 @@ Last updated: 2026-05-19
   - Drafts move to `ready_for_approval` only when delivery blockers are clear, and API approval is blocked until delivery prep is ready.
   - Billing Readiness now shows preview/email/Xero state plus Prepare, Preview, Approve, and Void actions.
   - This is design-facing and still needs Remba review.
+- Invoice generation and delivery v1 is built on this branch.
+  - Delivery prep now stores a source-linked PDF artifact document and keeps branded email draft metadata.
+  - Approved invoice drafts can record manual tenant delivery receipts.
+  - Invoice drafts track unpaid/part-paid/paid payment status and approval-safe posting preparation.
+  - Xero sync remains explicitly off; no external posting action exists yet.
+  - This is design-facing and still needs Remba review.
+- Public AI enrichment v1 is built on this branch.
+  - New `/api/v1/public-enrichment/preview` and `/api/v1/public-enrichment/apply` routes support property and tenant targets.
+  - Supported facts include ABN, suburb/state/postcode, owner/legal names, trust/trustee names, invoice issuer name, tenant registered address, and tenant business names.
+  - Preview calls OpenAI web search with trusted-source instructions and returns value, source hint, citation, confidence, warnings, and response id.
+  - Apply refuses existing non-blank fields, stores public enrichment metadata/source citations/apply history, and audits the reviewed apply.
+  - Property and tenant workspaces expose the review-first suggestion/apply surface.
+  - This is design-facing and still needs Remba review.
+- Tenant onboarding delivery polish v1 is built on this branch.
+  - Delivery attempts store brand/template metadata from settings.
+  - Reminder schedules can be edited with `PATCH /api/v1/tenant-onboarding/{id}/reminders`.
+  - Expiry reminders are planned before link expiry, and reminder runs handle normal and expiry reminders.
+  - Contact/configuration recovery hints remain visible from delivery status.
+  - This is design-facing and still needs Remba review.
+- Tenant detail deepening v1 is built on this branch.
+  - New `/api/v1/tenants/{tenant_id}/detail` returns property/unit/lease labels, activity, and reviewed-change history.
+  - Tenant detail now shows richer lease context, activity, reviewed changes, and public-fact enrichment.
+  - Applied source documents and submitted onboarding documents are protected from unsafe deletion.
+  - This is design-facing and still needs Remba review.
 - Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
   - This is design-facing and still needs Remba review.
-- AI enrichment for missing fields is in the backlog, not built yet.
-  - Target examples: ABN, postcode, suburb/state, registered business details, registered address.
-  - Must remain review-first with source citation and confidence before applying.
-
 ## Verification
 
-- Backend focused test passed:
-  - `.venv/bin/python -m pytest tests/integration/test_document_intake_api.py -q`
-  - Result: `18 passed`
+- Backend focused tests passed:
+  - `.venv/bin/python -m pytest tests/integration/test_enrichment_api.py tests/integration/test_document_intake_api.py tests/integration/test_tenant_onboarding_api.py tests/integration/test_register_api.py -q`
+  - Result: `34 passed`
 - Backend lint passed:
-  - `.venv/bin/python -m ruff check apps/api/routers/charge_rules.py tests/integration/test_document_intake_api.py`
+  - `.venv/bin/python -m ruff check apps/api/routers/tenant_onboarding.py apps/api/routers/charge_rules.py apps/api/routers/enrichment.py apps/api/routers/tenants.py apps/api/schemas/register.py apps/api/schemas/enrichment.py apps/api/schemas/tenant_onboarding.py stewart/ai/enrichment.py stewart/integrations/communications.py tests/integration/test_document_intake_api.py tests/integration/test_tenant_onboarding_api.py`
+- Frontend targeted checks passed:
+  - `./node_modules/.bin/eslint src/app/billing-readiness/page.tsx 'src/app/tenants/[tenantId]/page.tsx' src/components/property-workspace.tsx src/lib/api.ts`
+  - `./node_modules/.bin/tsc --noEmit`
+- Full backend test suite passed:
+  - `.venv/bin/python -m pytest -q`
+  - Result: `54 passed, 1 skipped`
+  - Skipped: migration integration smoke test because `TEST_DATABASE_URL` is not configured in this shell.
+- Full frontend lint/build passed:
+  - `./node_modules/.bin/eslint .`
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+- Local route smoke passed:
+  - Next dev server loaded `/billing-readiness`, `/properties`, and `/tenants` on `127.0.0.1:3014`.
+  - Each route returned `200`, showed expected Leasium screen text, and the in-app browser reported no console errors.
+- Production deployment verification for this branch is still pending.
+- Previous verification before this branch:
+  - Backend focused test passed:
+    - `.venv/bin/python -m pytest tests/integration/test_document_intake_api.py -q`
+    - Result: `18 passed`
+  - Backend lint passed:
+    - `.venv/bin/python -m ruff check apps/api/routers/charge_rules.py tests/integration/test_document_intake_api.py`
 - Backend register test passed:
   - `.venv/bin/python -m pytest tests/integration/test_register_api.py -q`
   - Result: `8 passed`
@@ -115,16 +155,17 @@ Last updated: 2026-05-19
   - After redeploy, verify `/properties` redirects to `/access`, and `/onboarding/<token>` remains public.
 - Neon production is confirmed migrated through `20260519_0014` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
   - Verified `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
-- Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still belongs in the next build order.
+- Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still needs to be configured outside the codebase.
+- Public enrichment requires `OPENAI_API_KEY` on the API service. Without it, preview returns a clear 503 and does not mutate records.
 
 ## Recommended Next Tickets
 
 1. Enable the temporary Vercel password gate and verify production access behavior.
-2. Turn invoice preview preparation into stored PDF artifacts, branded email delivery, and delivery receipts without Xero sync until explicit approval.
-3. Add AI enrichment for missing public fields such as ABN, postcode, suburb/state, registered business details, and registered address with citation/confidence review before Apply.
-4. Finish tenant onboarding delivery polish: branded templates, editable reminder schedules, expiry reminders, and failure recovery.
-5. Start Xero connection status and mapping surfaces before full invoice sync.
-6. Deepen Insights dashboards for portfolio health, exceptions, automation activity, billing risk, and owner/entity snapshots.
+2. Start Xero connection status and mapping surfaces before full invoice sync.
+3. Deepen Insights dashboards for portfolio health, exceptions, automation activity, billing risk, and owner/entity snapshots.
+4. Add provider-backed invoice email delivery and Xero posting approvals on top of internal invoice drafts.
+5. Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
+6. Start maintenance work orders and arrears/credit-control queues.
 
 ## Resume Checklist
 

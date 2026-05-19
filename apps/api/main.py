@@ -8,6 +8,7 @@ from apps.api.routers import (
     charge_rules,
     document_intakes,
     documents,
+    enrichment,
     entities,
     lease_intakes,
     leases,
@@ -53,3 +54,4 @@ app.include_router(tenant_onboarding.router, prefix="/api/v1")
 app.include_router(charge_rules.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(document_intakes.router, prefix="/api/v1")
+app.include_router(enrichment.router, prefix="/api/v1")

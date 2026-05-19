@@ -81,9 +81,68 @@ export type TenantRecord = {
   contact_phone: string | null;
   billing_email: string | null;
   notes: string | null;
+  metadata: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+  deleted_at?: string | null;
 };
 
-export type TenantPayload = Omit<TenantRecord, "id">;
+export type TenantPayload = Omit<
+  TenantRecord,
+  "id" | "metadata" | "created_at" | "updated_at" | "deleted_at"
+> & {
+  metadata?: Record<string, unknown>;
+};
+
+export type TenantLeaseContextRecord = {
+  lease_id: string;
+  status: string;
+  property_id: string;
+  property_name: string;
+  property_address: string | null;
+  tenancy_unit_id: string;
+  unit_label: string;
+  commencement_date: string | null;
+  expiry_date: string | null;
+  annual_rent_cents: number | null;
+  rent_frequency: string | null;
+  outgoings_recoverable: boolean;
+  next_review_date: string | null;
+};
+
+export type TenantActivityItemRecord = {
+  occurred_at: string;
+  kind: string;
+  label: string;
+  detail: string | null;
+  source: string;
+  related_id: string | null;
+  tone: "neutral" | "primary" | "success" | "warning" | "danger" | string;
+};
+
+export type TenantReviewedFieldChangeRecord = {
+  field: string;
+  label: string;
+  before: unknown;
+  after: unknown;
+};
+
+export type TenantReviewedChangeRecord = {
+  occurred_at: string;
+  source: string;
+  source_label: string;
+  source_id: string | null;
+  status: string;
+  notes: string | null;
+  changes: TenantReviewedFieldChangeRecord[];
+};
+
+export type TenantDetailRecord = {
+  tenant: TenantRecord;
+  leases: TenantLeaseContextRecord[];
+  activity: TenantActivityItemRecord[];
+  reviewed_changes: TenantReviewedChangeRecord[];
+};
 
 export type LeaseRecord = {
   id: string;
@@ -448,6 +507,50 @@ export type InvoiceDraftRecord = {
   deleted_at: string | null;
 };
 
+export type EnrichmentTargetType = "property" | "tenant";
+
+export type EnrichmentSource = {
+  source_hint: string;
+  citation: string;
+  confidence: number;
+  url: string | null;
+};
+
+export type EnrichmentSuggestion = {
+  field: string;
+  label: string;
+  value: string;
+  source: EnrichmentSource;
+  confidence: number;
+  notes: string | null;
+};
+
+export type EnrichmentPreviewRecord = {
+  target: {
+    target_type: EnrichmentTargetType;
+    target_id: string;
+    entity_id: string;
+    display_name: string;
+    missing_fields: string[];
+  };
+  suggestions: EnrichmentSuggestion[];
+  warnings: string[];
+  openai_response_id: string | null;
+};
+
+export type EnrichmentApplyRecord = {
+  target: EnrichmentPreviewRecord["target"];
+  applied: Array<{
+    field: string;
+    label: string;
+    before: unknown;
+    after: unknown;
+    source: EnrichmentSource;
+    storage: "record_field" | "metadata";
+  }>;
+  skipped: Array<{ field: string; value: string | null; reason: string }>;
+};
+
 export type LeaseIntakeExtraction = {
   property?: (Partial<PropertyPayload> & { address?: string | null }) | null;
   tenancy_unit?:
@@ -607,6 +710,10 @@ export function getTenant(tenantId: string) {
   return request<TenantRecord>(`/tenants/${tenantId}`);
 }
 
+export function getTenantDetail(tenantId: string) {
+  return request<TenantDetailRecord>(`/tenants/${tenantId}/detail`);
+}
+
 export function createTenant(payload: TenantPayload) {
   return request<TenantRecord>("/tenants", {
     method: "POST",
@@ -712,6 +819,44 @@ export function runTenantOnboardingReminders(entityId: string) {
   }>(`/tenant-onboarding/reminders/run?${params.toString()}`, {
     method: "POST",
   });
+}
+
+export function updateTenantOnboardingReminders(
+  onboardingId: string,
+  payload: {
+    reminders?: {
+      enabled?: boolean;
+      paused?: boolean;
+      paused_reason?: string | null;
+      schedule?: Array<{
+        key: string;
+        label?: string | null;
+        after_days?: number | null;
+        scheduled_at?: string | null;
+        status?: string | null;
+      }>;
+    };
+    expiry_reminders?: {
+      enabled?: boolean;
+      paused?: boolean;
+      paused_reason?: string | null;
+      schedule?: Array<{
+        key: string;
+        label?: string | null;
+        after_days?: number | null;
+        scheduled_at?: string | null;
+        status?: string | null;
+      }>;
+    };
+  },
+) {
+  return request<TenantOnboardingRecord>(
+    `/tenant-onboarding/${onboardingId}/reminders`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function reviewTenantOnboarding(
@@ -1095,6 +1240,37 @@ export function prepareInvoiceDraftDelivery(invoiceDraftId: string) {
   );
 }
 
+export function recordInvoiceDraftDelivery(
+  invoiceDraftId: string,
+  payload: { method?: "manual"; sent_at?: string | null; notes?: string | null },
+) {
+  return request<InvoiceDraftRecord>(
+    `/invoice-drafts/${invoiceDraftId}/record-delivery`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function updateInvoiceDraftPaymentStatus(
+  invoiceDraftId: string,
+  payload: {
+    status: "unpaid" | "partially_paid" | "paid";
+    paid_cents?: number | null;
+    paid_at?: string | null;
+    notes?: string | null;
+  },
+) {
+  return request<InvoiceDraftRecord>(
+    `/invoice-drafts/${invoiceDraftId}/payment-status`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export function invoiceDraftPreviewUrl(invoiceDraftId: string) {
   return `${API_BASE}/invoice-drafts/${invoiceDraftId}/preview`;
 }
@@ -1144,5 +1320,27 @@ export function applyLeaseIntake(
       tenancy_unit_id: payload?.tenancyUnitId || undefined,
       tenant_id: payload?.tenantId || undefined,
     }),
+  });
+}
+
+export function previewPublicEnrichment(payload: {
+  target_type: EnrichmentTargetType;
+  target_id: string;
+  requested_fields?: string[] | null;
+}) {
+  return request<EnrichmentPreviewRecord>("/public-enrichment/preview", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function applyPublicEnrichment(payload: {
+  target_type: EnrichmentTargetType;
+  target_id: string;
+  suggestions: EnrichmentSuggestion[];
+}) {
+  return request<EnrichmentApplyRecord>("/public-enrichment/apply", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }

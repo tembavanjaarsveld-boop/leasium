@@ -1022,9 +1022,15 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert invoice_body["recipient_name"] == "Scope Tenant Pty Ltd"
     assert invoice_body["metadata"]["delivery_state"] == {
         "pdf_generated": False,
+        "pdf_artifact_stored": False,
+        "pdf_preview_generated": False,
+        "tenant_email_prepared": False,
         "tenant_email_sent": False,
+        "delivery_ready": False,
         "xero_synced": False,
     }
+    assert invoice_body["metadata"]["payment_status"]["status"] == "unpaid"
+    assert invoice_body["metadata"]["rent_period"]["label"] == "Due 2026-09-30"
     assert "Tenant billing email missing." in invoice_body["metadata"]["readiness_blockers"]
     assert invoice_body["lines"][0]["billing_draft_line_id"] == str(billing_draft.lines[0].id)
     assert invoice_body["lines"][0]["description"] == "Outgoings recovery"
@@ -1046,10 +1052,18 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert "Tenant billing email missing." in blocked_delivery_body["metadata"][
         "delivery_blockers"
     ]
+    assert blocked_delivery_body["metadata"]["delivery_state"]["pdf_generated"] is True
+    assert blocked_delivery_body["metadata"]["delivery_state"]["pdf_artifact_stored"] is True
     assert blocked_delivery_body["metadata"]["delivery_state"]["pdf_preview_generated"] is True
     assert blocked_delivery_body["metadata"]["delivery_state"]["tenant_email_prepared"] is False
     assert blocked_delivery_body["metadata"]["delivery_state"]["tenant_email_sent"] is False
     assert blocked_delivery_body["metadata"]["delivery_state"]["xero_synced"] is False
+    pdf_document_id = blocked_delivery_body["metadata"]["pdf_artifact"]["document_id"]
+    pdf_document = session.get(StoredDocument, UUID(pdf_document_id))
+    assert pdf_document is not None
+    assert pdf_document.category == DocumentCategory.invoice
+    assert pdf_document.content_type == "application/pdf"
+    assert pdf_document.file_data.startswith(b"%PDF")
 
     blocked_approval_response = client.patch(
         f"/api/v1/invoice-drafts/{invoice_body['id']}",
@@ -1063,7 +1077,7 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert "text/html" in preview_response.headers["content-type"]
     assert invoice_body["invoice_number"] in preview_response.text
     assert "Outgoings recovery" in preview_response.text
-    assert "No PDF file has been stored" in preview_response.text
+    assert "A PDF artifact record has been stored" in preview_response.text
 
     invoice_draft.recipient_email = "accounts@scope-tenant.example"
     session.commit()
@@ -1074,6 +1088,7 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     ready_delivery_body = ready_delivery_response.json()
     assert ready_delivery_body["status"] == "ready_for_approval"
     assert ready_delivery_body["metadata"]["delivery_blockers"] == []
+    assert ready_delivery_body["metadata"]["delivery_state"]["pdf_artifact_stored"] is True
     assert ready_delivery_body["metadata"]["delivery_state"]["tenant_email_prepared"] is True
     assert ready_delivery_body["metadata"]["delivery_state"]["tenant_email_sent"] is False
     assert ready_delivery_body["metadata"]["delivery_state"]["xero_synced"] is False
@@ -1094,6 +1109,31 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert approved_invoice_body["metadata"]["approved_by_user_id"]
     assert approved_invoice_body["metadata"]["delivery_state"]["tenant_email_sent"] is False
     assert approved_invoice_body["metadata"]["delivery_state"]["xero_synced"] is False
+    assert (
+        approved_invoice_body["metadata"]["posting_preparation"]["status"]
+        == "approved_for_posting_preparation"
+    )
+
+    delivered_invoice_response = client.post(
+        f"/api/v1/invoice-drafts/{invoice_body['id']}/record-delivery",
+        json={"method": "manual", "notes": "Sent from finance inbox."},
+    )
+    assert delivered_invoice_response.status_code == 200
+    delivered_invoice_body = delivered_invoice_response.json()
+    assert delivered_invoice_body["metadata"]["delivery_state"]["tenant_email_sent"] is True
+    assert delivered_invoice_body["metadata"]["delivery_email"]["send"]["status"] == "sent"
+    assert delivered_invoice_body["metadata"]["delivery_receipts"][0]["status"] == "sent"
+    assert delivered_invoice_body["metadata"]["delivery_state"]["xero_synced"] is False
+
+    payment_response = client.patch(
+        f"/api/v1/invoice-drafts/{invoice_body['id']}/payment-status",
+        json={"status": "paid"},
+    )
+    assert payment_response.status_code == 200
+    payment_body = payment_response.json()
+    assert payment_body["metadata"]["payment_status"]["status"] == "paid"
+    assert payment_body["metadata"]["payment_status"]["paid_cents"] == 275050
+    assert payment_body["metadata"]["payment_status"]["outstanding_cents"] == 0
 
     duplicate_invoice_response = client.post(
         f"/api/v1/billing-drafts/{billing_draft.id}/invoice-drafts"

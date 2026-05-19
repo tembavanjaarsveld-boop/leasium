@@ -25,6 +25,26 @@ class TenantOnboardingReview(BaseModel):
     notes: str | None = None
 
 
+class TenantOnboardingReminderStepUpdate(BaseModel):
+    key: str
+    label: str | None = None
+    after_days: int | None = None
+    scheduled_at: datetime | None = None
+    status: str | None = None
+
+
+class TenantOnboardingReminderSectionUpdate(BaseModel):
+    enabled: bool | None = None
+    paused: bool | None = None
+    paused_reason: str | None = None
+    schedule: list[TenantOnboardingReminderStepUpdate] | None = None
+
+
+class TenantOnboardingReminderUpdate(BaseModel):
+    reminders: TenantOnboardingReminderSectionUpdate | None = None
+    expiry_reminders: TenantOnboardingReminderSectionUpdate | None = None
+
+
 class TenantOnboardingReminderRunRead(BaseModel):
     checked: int
     sent: int

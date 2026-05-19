@@ -22,12 +22,14 @@ from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
     DocumentCategory,
+    DocumentIntakeStatus,
     Lease,
     Property,
     StoredDocument,
     TenancyUnit,
     Tenant,
     TenantOnboarding,
+    TenantOnboardingStatus,
     UserRole,
 )
 from stewart.core.settings import get_settings
@@ -234,6 +236,25 @@ def delete_document(
     session: Annotated[Session, Depends(get_session)],
 ) -> None:
     document = _document_for_user(document_id, user, session, WRITE_ROLES)
+    if (
+        document.document_intake is not None
+        and document.document_intake.status == DocumentIntakeStatus.applied
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Applied source documents cannot be deleted.",
+        )
+    if document.tenant_onboarding_id is not None:
+        onboarding = session.get(TenantOnboarding, document.tenant_onboarding_id)
+        if onboarding is not None and onboarding.status in {
+            TenantOnboardingStatus.submitted,
+            TenantOnboardingStatus.reviewed,
+            TenantOnboardingStatus.applied,
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Submitted onboarding documents cannot be deleted.",
+            )
     document.deleted_at = utcnow()
     audit_log(
         session,

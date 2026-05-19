@@ -17,6 +17,7 @@ import {
   Plus,
   ReceiptText,
   RefreshCw,
+  Sparkles,
   Trash2,
   UploadCloud,
   X,
@@ -38,6 +39,7 @@ import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
 import { Button, Field, Input, SecondaryButton, Select } from "@/components/ui";
 import {
+  applyPublicEnrichment,
   applyLeaseIntake,
   cancelTenantOnboarding,
   createChargeRule,
@@ -51,6 +53,7 @@ import {
   createTenantOnboarding,
   deleteLease,
   deleteTenancyUnit,
+  EnrichmentSuggestion,
   getLeaseIntake,
   LeaseRecord,
   LeaseIntakeExtraction,
@@ -71,6 +74,7 @@ import {
   TenantOnboardingRecord,
   TenancyUnitRecord,
   updateObligation,
+  previewPublicEnrichment,
   updateLease,
   updateTenancyUnit,
   updateProperty,
@@ -1004,6 +1008,8 @@ function Workspace() {
     useState(false);
   const [copiedOnboardingId, setCopiedOnboardingId] = useState<string>("");
   const [billingProfileOpen, setBillingProfileOpen] = useState(false);
+  const [propertyEnrichmentSuggestions, setPropertyEnrichmentSuggestions] =
+    useState<EnrichmentSuggestion[]>([]);
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -1120,6 +1126,10 @@ function Workspace() {
       window.history.replaceState(null, "", url);
     }
   }, [selectedEntityId]);
+
+  useEffect(() => {
+    setPropertyEnrichmentSuggestions([]);
+  }, [selectedPropertyId]);
 
   const selectedEntity = useMemo(
     () => entitiesQuery.data?.find((entity) => entity.id === selectedEntityId),
@@ -1379,6 +1389,43 @@ function Workspace() {
       setSelectedPropertyId(property.id);
       setEditing(null);
       form.reset(defaultPropertyFormValues);
+    },
+  });
+
+  const previewPropertyEnrichmentMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedPropertyId) {
+        throw new Error("Select a property first.");
+      }
+      return previewPublicEnrichment({
+        target_type: "property",
+        target_id: selectedPropertyId,
+      });
+    },
+    onSuccess: (result) => {
+      setPropertyEnrichmentSuggestions(result.suggestions);
+    },
+  });
+
+  const applyPropertyEnrichmentMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedPropertyId) {
+        throw new Error("Select a property first.");
+      }
+      return applyPublicEnrichment({
+        target_type: "property",
+        target_id: selectedPropertyId,
+        suggestions: propertyEnrichmentSuggestions,
+      });
+    },
+    onSuccess: () => {
+      setPropertyEnrichmentSuggestions([]);
+      queryClient.invalidateQueries({
+        queryKey: ["properties", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["rent-roll", selectedEntityId, rentRollPropertyId, rentRollAsOf],
+      });
     },
   });
 
@@ -3613,6 +3660,76 @@ function Workspace() {
                     </dd>
                   </div>
                 </dl>
+                <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm lg:col-span-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-semibold">Public fact suggestions</div>
+                    <SecondaryButton
+                      type="button"
+                      className="h-8"
+                      onClick={() => previewPropertyEnrichmentMutation.mutate()}
+                      disabled={previewPropertyEnrichmentMutation.isPending}
+                    >
+                      {previewPropertyEnrichmentMutation.isPending ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Sparkles size={14} />
+                      )}
+                      Suggest
+                    </SecondaryButton>
+                  </div>
+                  {propertyEnrichmentSuggestions.length ? (
+                    <div className="grid gap-2">
+                      {propertyEnrichmentSuggestions.map((suggestion) => (
+                        <div
+                          key={`${suggestion.field}-${suggestion.value}`}
+                          className="rounded border border-border bg-white px-3 py-2"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span>
+                              <span className="text-xs text-muted-foreground">
+                                {suggestion.label}
+                              </span>
+                              <span className="ml-2 font-medium">
+                                {suggestion.value}
+                              </span>
+                            </span>
+                            <span className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover">
+                              {confidencePercent(suggestion.confidence)}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {suggestion.source.source_hint} - {suggestion.source.citation}
+                          </div>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        onClick={() => applyPropertyEnrichmentMutation.mutate()}
+                        disabled={applyPropertyEnrichmentMutation.isPending}
+                      >
+                        {applyPropertyEnrichmentMutation.isPending ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Check size={16} />
+                        )}
+                        Apply reviewed facts
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">
+                      Missing owner ABNs, suburb, state, postcode, and registered names stay review-first with citations.
+                    </div>
+                  )}
+                  {previewPropertyEnrichmentMutation.error ||
+                  applyPropertyEnrichmentMutation.error ? (
+                    <div className="text-xs text-danger">
+                      {friendlyError(
+                        previewPropertyEnrichmentMutation.error ??
+                          applyPropertyEnrichmentMutation.error,
+                      )}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </section>
           ) : null}

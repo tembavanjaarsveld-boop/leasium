@@ -31,14 +31,17 @@ import {
 } from "@/components/ui";
 import {
   createInvoiceDraftFromBillingDraft,
+  documentDownloadUrl,
   invoiceDraftPreviewUrl,
   listBillingDrafts,
   listEntities,
   listInvoiceDrafts,
   listRentRoll,
   prepareInvoiceDraftDelivery,
+  recordInvoiceDraftDelivery,
   updateBillingDraft,
   updateInvoiceDraft,
+  updateInvoiceDraftPaymentStatus,
   type BillingDraftRecord,
   type BillingDraftStatus,
   type InvoiceDraftRecord,
@@ -200,6 +203,19 @@ function invoiceEmailPreview(draft: InvoiceDraftRecord) {
     subject: metadataText(email.subject),
     body: metadataText(email.body),
   };
+}
+
+function invoicePdfArtifact(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.pdf_artifact);
+}
+
+function invoiceDeliverySend(draft: InvoiceDraftRecord) {
+  const email = metadataRecord(draft.metadata.delivery_email);
+  return metadataRecord(email.send);
+}
+
+function invoicePaymentStatus(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.payment_status);
 }
 
 function blockerItems(row: RentRollRow): BlockerItem[] {
@@ -473,6 +489,35 @@ function BillingReadinessWorkspace() {
       draftId: string;
       status: InvoiceDraftStatus;
     }) => updateInvoiceDraft(draftId, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+      });
+    },
+  });
+
+  const recordInvoiceDeliveryMutation = useMutation({
+    mutationFn: (draftId: string) =>
+      recordInvoiceDraftDelivery(draftId, { method: "manual" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+      });
+    },
+  });
+
+  const updatePaymentStatusMutation = useMutation({
+    mutationFn: ({
+      draftId,
+      paymentStatus,
+    }: {
+      draftId: string;
+      paymentStatus: "unpaid" | "partially_paid" | "paid";
+    }) =>
+      updateInvoiceDraftPaymentStatus(draftId, {
+        status: paymentStatus,
+        paid_cents: paymentStatus === "paid" ? null : undefined,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
@@ -904,7 +949,7 @@ function BillingReadinessWorkspace() {
 
             <SectionPanel
               title="Invoice draft staging"
-              description="Approved billing drafts become internal invoice drafts here. No PDF, tenant email, or Xero sync is run from this step."
+              description="Approved billing drafts become internal invoice drafts with stored PDF artifacts, email delivery receipts, payment status, and no Xero sync."
               icon={<FileCheck2 size={17} className="text-primary" />}
               actions={
                 <StatusBadge tone={invoiceDrafts.length ? "primary" : "neutral"}>
@@ -932,12 +977,23 @@ function BillingReadinessWorkspace() {
                       const deliveryBlockers = invoiceDeliveryBlockers(draft);
                       const deliveryState = invoiceDeliveryState(draft);
                       const emailPreview = invoiceEmailPreview(draft);
+                      const pdfArtifact = invoicePdfArtifact(draft);
+                      const sendState = invoiceDeliverySend(draft);
+                      const paymentStatus = invoicePaymentStatus(draft);
                       const previewReady =
                         deliveryState.pdf_preview_generated === true;
+                      const pdfStored =
+                        deliveryState.pdf_artifact_stored === true ||
+                        Boolean(metadataText(pdfArtifact.document_id));
                       const emailPrepared =
                         deliveryState.tenant_email_prepared === true;
                       const deliveryReady =
                         deliveryState.delivery_ready === true;
+                      const deliverySent =
+                        deliveryState.tenant_email_sent === true ||
+                        metadataText(sendState.status) === "sent";
+                      const paymentLabel =
+                        metadataText(paymentStatus.status) ?? "unpaid";
                       const isPreparing =
                         prepareInvoiceDraftMutation.isPending &&
                         prepareInvoiceDraftMutation.variables === draft.id;
@@ -945,10 +1001,23 @@ function BillingReadinessWorkspace() {
                         updateInvoiceDraftMutation.isPending &&
                         updateInvoiceDraftMutation.variables?.draftId ===
                           draft.id;
+                      const isRecordingDelivery =
+                        recordInvoiceDeliveryMutation.isPending &&
+                        recordInvoiceDeliveryMutation.variables === draft.id;
+                      const isUpdatingPayment =
+                        updatePaymentStatusMutation.isPending &&
+                        updatePaymentStatusMutation.variables?.draftId ===
+                          draft.id;
                       const canPrepare =
                         draft.status !== "void" && draft.status !== "approved";
                       const canApprove =
                         draft.status === "ready_for_approval" && deliveryReady;
+                      const canRecordDelivery =
+                        draft.status === "approved" &&
+                        deliveryReady &&
+                        !deliverySent;
+                      const canMarkPaid =
+                        draft.status === "approved" && paymentLabel !== "paid";
                       const canVoid = draft.status !== "void";
                       return (
                         <tr
@@ -1002,14 +1071,29 @@ function BillingReadinessWorkspace() {
                             )}
                             <div className="mt-2 flex flex-wrap gap-2">
                               <StatusBadge
-                                tone={previewReady ? "primary" : "neutral"}
+                                tone={pdfStored ? "primary" : "neutral"}
                               >
-                                {previewReady ? "Preview ready" : "No PDF"}
+                                {pdfStored ? "PDF stored" : "No PDF"}
                               </StatusBadge>
                               <StatusBadge
-                                tone={emailPrepared ? "primary" : "neutral"}
+                                tone={
+                                  deliverySent
+                                    ? "success"
+                                    : emailPrepared
+                                      ? "primary"
+                                      : "neutral"
+                                }
                               >
-                                {emailPrepared ? "Email draft" : "No email"}
+                                {deliverySent
+                                  ? "Email sent"
+                                  : emailPrepared
+                                    ? "Email draft"
+                                    : "No email"}
+                              </StatusBadge>
+                              <StatusBadge
+                                tone={paymentLabel === "paid" ? "success" : "neutral"}
+                              >
+                                {paymentLabel.replaceAll("_", " ")}
                               </StatusBadge>
                               <StatusBadge tone="neutral">No Xero</StatusBadge>
                             </div>
@@ -1040,7 +1124,7 @@ function BillingReadinessWorkspace() {
                                   prepareInvoiceDraftMutation.mutate(draft.id)
                                 }
                                 disabled={!canPrepare || isPreparing}
-                                title="Prepares an invoice preview and email draft only. Nothing is sent or synced."
+                                title="Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
                               >
                                 {isPreparing ? (
                                   <Loader2 size={14} className="animate-spin" />
@@ -1058,6 +1142,17 @@ function BillingReadinessWorkspace() {
                                 >
                                   <Eye size={14} />
                                   Preview
+                                </a>
+                              ) : null}
+                              {pdfStored && metadataText(pdfArtifact.document_id) ? (
+                                <a
+                                  href={documentDownloadUrl(
+                                    metadataText(pdfArtifact.document_id) ?? "",
+                                  )}
+                                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                >
+                                  <ReceiptText size={14} />
+                                  PDF
                                 </a>
                               ) : null}
                               <SecondaryButton
@@ -1078,6 +1173,41 @@ function BillingReadinessWorkspace() {
                                   <CheckCircle2 size={14} />
                                 )}
                                 Approve
+                              </SecondaryButton>
+                              <SecondaryButton
+                                type="button"
+                                className="min-h-9 rounded-lg px-3"
+                                onClick={() =>
+                                  recordInvoiceDeliveryMutation.mutate(draft.id)
+                                }
+                                disabled={!canRecordDelivery || isRecordingDelivery}
+                                title="Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
+                              >
+                                {isRecordingDelivery ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <Mail size={14} />
+                                )}
+                                Sent
+                              </SecondaryButton>
+                              <SecondaryButton
+                                type="button"
+                                className="min-h-9 rounded-lg px-3"
+                                onClick={() =>
+                                  updatePaymentStatusMutation.mutate({
+                                    draftId: draft.id,
+                                    paymentStatus: "paid",
+                                  })
+                                }
+                                disabled={!canMarkPaid || isUpdatingPayment}
+                                title="Marks the approved internal invoice as paid in Leasium only."
+                              >
+                                {isUpdatingPayment ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <ReceiptText size={14} />
+                                )}
+                                Paid
                               </SecondaryButton>
                               <SecondaryButton
                                 type="button"

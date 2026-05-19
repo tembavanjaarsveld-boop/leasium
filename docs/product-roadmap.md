@@ -40,11 +40,15 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Billing draft review surface: Billing Readiness now lists source-linked Smart Intake billing drafts with status, due date, amount, source context, and approve/void actions that still do not post invoices, email tenants, or sync to Xero.
 - [x] Invoice draft staging v1: approved billing drafts can create internal source-linked invoice drafts and lines, surface recipient/readiness blockers in Billing Readiness, and preserve no-PDF/no-email/no-Xero-sync guardrails.
 - [x] Invoice draft delivery preparation v1: internal invoice drafts can prepare an approval-safe invoice preview and tenant email draft metadata, show delivery blockers, move complete drafts to ready for approval, and keep PDF storage, tenant sending, and Xero sync explicitly off.
+- [x] Invoice generation and delivery v1: internal invoice drafts now store source-linked PDF artifacts, keep branded email draft metadata, record manual tenant delivery receipts after approval, maintain approval-safe posting preparation, and track unpaid/part-paid/paid status with no Xero sync.
 - [x] Smart Intake naming pass: global navigation and workspace copy now reflect the broader document-first workflow instead of lease-only inbox wording.
 - [x] Smart Intake task queue: open document reviews, match issues, processing states, and failed reads now appear in Tasks with a dedicated filter and deep links back to Smart Intake.
 - [x] Smart Intake applied outcome counts: the applied outcome panel now surfaces returned billing draft, pending lease, and draft charge counts from the backend apply result.
 - [x] Tenant onboarding delivery foundation: Twilio SendGrid email and Twilio SMS delivery are wired into create/resend with channel status, audit logs, and safe skipped states when a channel is not configured.
 - [x] Tenant onboarding reminders and receipts v1: reminder schedules, manual due-reminder runner, SendGrid/Twilio receipt ingestion, delivery timeline, and contact-fix actions.
+- [x] Tenant onboarding delivery polish v1: outbound delivery stores brand/template metadata, reminder schedules can be edited through the API, expiry reminders are scheduled before link expiry, and contact/configuration recovery hints stay visible.
+- [x] Tenant detail deepening v1: tenant detail now has property/unit/lease context, richer activity history, safer document provenance/actions, reviewed onboarding change history, and public-fact enrichment suggestions.
+- [x] Public AI enrichment v1: property and tenant records can request safe public facts such as ABN, suburb/state/postcode, registered names, and registered addresses from trusted web sources, show citation/confidence, and apply only reviewed suggestions.
 - [x] Property ownership and billing identity: owner/trust/split profile fields, quiet property-level chips, collapsible setup, billing-readiness blockers, and Smart Intake extraction/apply support.
 - [x] Smart Intake property provenance v1: purchase contract applies now store source citations, before/after property field changes, apply history, and property audit logs.
 - [x] Smart Intake property provenance UI: purchase-contract apply outcomes show property before/after changes, and the Property workspace surfaces stored field citations, latest apply history, confidence, and deep links back to the source intake.
@@ -52,13 +56,12 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Next Build Order
 
-- [ ] Continue AI apply beyond first-pass register workflows: expand invoice drafts from preview-only preparation into stored PDF artifacts, branded email delivery, delivery receipts, and approval-safe posting preparation.
-- [ ] Add AI enrichment for missing fields: when reviewed records are missing safe public facts like ABN, postcode, suburb/state, business names, or registered addresses, Leasium can search trusted online sources, suggest the value with citation/confidence, and require review before applying.
-- [ ] Finish tenant onboarding delivery: hosted provider webhook configuration, branded template management, editable reminder schedules, expiry reminders, and deeper delivery failure recovery.
-- [ ] Deepen tenant detail: property/lease context labels, richer activity history, safer document provenance/actions, and reviewed-change history.
-- [ ] Expand billing from readiness into invoice generation: rent periods, approval workflow, PDF/email delivery, and payment status.
 - [ ] Add Xero connection status, chart of accounts/tax mapping, contact sync, invoice sync, and payment reconciliation.
 - [ ] Deepen Insights dashboards: portfolio health, live exceptions, automation activity, billing risk, owner/entity snapshots, and shareable snapshots generated from dashboard data.
+- [ ] Add provider-backed invoice email delivery and Xero posting approvals on top of the internal invoice draft/PDF/payment workflow.
+- [ ] Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
+- [ ] Add maintenance work orders with tenant requests, photos, priorities, contractor assignment, approvals, invoices, and status tracking.
+- [ ] Start arrears and credit control with aged balances, reminder schedules, dispute status, promise-to-pay notes, and escalation queues.
 
 ## Smart Intake North Star
 

@@ -1,7 +1,7 @@
 """Schemas for organisation, entity, property, and tenancy unit registers."""
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -240,6 +240,56 @@ class TenantRead(ApiModel):
     deleted_at: datetime | None
 
 
+class TenantLeaseContextRead(BaseModel):
+    lease_id: UUID
+    status: LeaseStatus
+    property_id: UUID
+    property_name: str
+    property_address: str | None
+    tenancy_unit_id: UUID
+    unit_label: str
+    commencement_date: date | None
+    expiry_date: date | None
+    annual_rent_cents: int | None
+    rent_frequency: RentFrequency | None
+    outgoings_recoverable: bool
+    next_review_date: date | None
+
+
+class TenantActivityItemRead(BaseModel):
+    occurred_at: datetime
+    kind: str
+    label: str
+    detail: str | None = None
+    source: str
+    related_id: UUID | None = None
+    tone: str = "neutral"
+
+
+class TenantReviewedFieldChangeRead(BaseModel):
+    field: str
+    label: str
+    before: Any = None
+    after: Any = None
+
+
+class TenantReviewedChangeRead(BaseModel):
+    occurred_at: datetime
+    source: str
+    source_label: str
+    source_id: UUID | None = None
+    status: str
+    notes: str | None = None
+    changes: list[TenantReviewedFieldChangeRead] = Field(default_factory=list)
+
+
+class TenantDetailRead(BaseModel):
+    tenant: TenantRead
+    leases: list[TenantLeaseContextRead] = Field(default_factory=list)
+    activity: list[TenantActivityItemRead] = Field(default_factory=list)
+    reviewed_changes: list[TenantReviewedChangeRead] = Field(default_factory=list)
+
+
 class LeaseCreate(BaseModel):
     tenancy_unit_id: UUID
     tenant_id: UUID
@@ -451,6 +501,19 @@ class InvoiceDraftLineRead(ApiModel):
 
 class InvoiceDraftUpdate(BaseModel):
     status: InvoiceDraftStatus | None = None
+    notes: str | None = None
+
+
+class InvoiceDraftDeliverySendRecord(BaseModel):
+    method: Literal["manual"] = "manual"
+    sent_at: datetime | None = None
+    notes: str | None = None
+
+
+class InvoiceDraftPaymentStatusUpdate(BaseModel):
+    status: Literal["unpaid", "partially_paid", "paid"]
+    paid_cents: int | None = Field(default=None, ge=0)
+    paid_at: datetime | None = None
     notes: str | None = None
 
 

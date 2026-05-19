@@ -71,7 +71,19 @@ Status: pending Remba review. Billing Readiness now creates and lists internal i
 
 ## Invoice Delivery Prep Surface
 
-Status: pending Remba review. Billing Readiness now prepares invoice previews and tenant email drafts from internal invoice drafts, then allows approval only when delivery blockers are clear. Keep the preview-only guardrail visible: no PDF file is stored, no tenant email is sent, and no Xero sync is run from this step.
+Status: pending Remba review. Billing Readiness now stores internal invoice PDF artifacts, prepares branded email draft metadata, records manual tenant delivery receipts after approval, and tracks payment status. Keep the boundary explicit: Leasium is preparing and recording internal invoice work, provider-backed email sending is manual/recorded for now, and no Xero sync or external posting runs from this surface.
+
+## AI Enrichment Surface
+
+Status: pending Remba review. Property and tenant workspaces now expose public-fact suggestions for missing fields such as ABN, suburb/state/postcode, registered names, and registered addresses. Keep it review-first: show suggested value, citation, source hint, confidence, and any warning before Apply; never overwrite an existing field from enrichment; and keep unsupported/private facts out of the flow.
+
+## Tenant Onboarding Delivery Polish
+
+Status: pending Remba review. Tenant onboarding delivery now includes brand/template metadata, editable reminder schedules through the API, expiry reminders, provider receipt states, and contact/configuration recovery hints. Keep this in the tenant workspace and avoid turning reminder setup into a hidden configuration page.
+
+## Tenant Detail Deepening
+
+Status: pending Remba review. Tenant detail now surfaces property/unit/lease context, richer activity history, safer document provenance/actions, and reviewed-change history. Keep the page focused on the tenant record and avoid duplicating the full property workspace.
 
 ## Property Provenance Surface
 

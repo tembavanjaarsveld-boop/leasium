@@ -10,6 +10,7 @@ import {
   Edit3,
   FileText,
   Link2,
+  Loader2,
   Plus,
   Save,
   ShieldCheck,
@@ -36,6 +37,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  applyPublicEnrichment,
   cancelTenantOnboarding,
   applyTenantOnboarding,
   createDocumentIntakeFromDocument,
@@ -44,11 +46,14 @@ import {
   documentDownloadUrl,
   DocumentCategory,
   DocumentIntakeRecord,
+  EnrichmentSuggestion,
   getTenant,
+  getTenantDetail,
   listDocumentIntakes,
   listDocuments,
   listLeasesByTenant,
   listTenantOnboardings,
+  previewPublicEnrichment,
   resendTenantOnboarding,
   reviewTenantOnboarding,
   TenantPayload,
@@ -325,6 +330,12 @@ function reviewValue(value: unknown) {
   return String(value);
 }
 
+function confidenceLabel(value: number | null | undefined) {
+  return value === null || value === undefined
+    ? "confidence pending"
+    : `${Math.round(value * 100)}% confidence`;
+}
+
 function TenantDetail() {
   const params = useParams<{ tenantId: string }>();
   const router = useRouter();
@@ -337,10 +348,17 @@ function TenantDetail() {
   const [documentCategory, setDocumentCategory] = useState<DocumentCategory>("insurance");
   const [documentNotes, setDocumentNotes] = useState("");
   const [reviewNotesById, setReviewNotesById] = useState<Record<string, string>>({});
+  const [enrichmentSuggestions, setEnrichmentSuggestions] = useState<EnrichmentSuggestion[]>([]);
 
   const tenantQuery = useQuery({
     queryKey: ["tenant", tenantId],
     queryFn: () => getTenant(tenantId),
+    enabled: Boolean(tenantId),
+  });
+
+  const tenantDetailQuery = useQuery({
+    queryKey: ["tenant-detail", tenantId],
+    queryFn: () => getTenantDetail(tenantId),
     enabled: Boolean(tenantId),
   });
 
@@ -357,6 +375,8 @@ function TenantDetail() {
   });
 
   const tenant = tenantQuery.data;
+  const tenantDetail = tenantDetailQuery.data;
+  const tenantLeaseContexts = tenantDetail?.leases ?? [];
 
   const documentsQuery = useQuery({
     queryKey: ["tenant-documents", tenant?.entity_id, tenantId],
@@ -388,6 +408,18 @@ function TenantDetail() {
   const tenantOnboardings = (onboardingQuery.data ?? [])
     .filter((item) => item.tenant_id === tenantId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const linkedLeases = tenantLeaseContexts.length
+    ? tenantLeaseContexts
+    : (leasesQuery.data ?? []).map((lease) => ({
+        lease_id: lease.id,
+        status: lease.status,
+        property_name: "Property context pending",
+        property_address: null,
+        unit_label: "Unit context pending",
+        commencement_date: lease.commencement_date,
+        expiry_date: lease.expiry_date,
+        annual_rent_cents: lease.annual_rent_cents,
+      }));
 
   const updateMutation = useMutation({
     mutationFn: (values: TenantForm) => {
@@ -405,6 +437,7 @@ function TenantDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenant", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
       setEditing(false);
     },
@@ -451,6 +484,7 @@ function TenantDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", tenant?.entity_id] });
       queryClient.invalidateQueries({ queryKey: ["tenant", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
     },
   });
 
@@ -489,6 +523,32 @@ function TenantDetail() {
     mutationFn: createDocumentIntakeFromDocument,
     onSuccess: (intake) => {
       router.push(`/intake?review=${intake.id}`);
+    },
+  });
+
+  const previewEnrichmentMutation = useMutation({
+    mutationFn: () =>
+      previewPublicEnrichment({
+        target_type: "tenant",
+        target_id: tenantId,
+      }),
+    onSuccess: (result) => {
+      setEnrichmentSuggestions(result.suggestions);
+    },
+  });
+
+  const applyEnrichmentMutation = useMutation({
+    mutationFn: () =>
+      applyPublicEnrichment({
+        target_type: "tenant",
+        target_id: tenantId,
+        suggestions: enrichmentSuggestions,
+      }),
+    onSuccess: () => {
+      setEnrichmentSuggestions([]);
+      queryClient.invalidateQueries({ queryKey: ["tenant", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenants"] });
     },
   });
 
@@ -639,6 +699,79 @@ function TenantDetail() {
                   <dd>{tenant.billing_email ?? tenant.contact_email ?? "-"}</dd>
                 </div>
               </dl>
+            </SectionPanel>
+
+            <SectionPanel
+              title="Public facts"
+              icon={<Sparkles size={17} />}
+              actions={
+                <SecondaryButton
+                  type="button"
+                  className="h-8"
+                  onClick={() => previewEnrichmentMutation.mutate()}
+                  disabled={previewEnrichmentMutation.isPending}
+                >
+                  {previewEnrichmentMutation.isPending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={14} />
+                  )}
+                  Suggest
+                </SecondaryButton>
+              }
+            >
+              <div className="grid gap-3 p-4 text-sm">
+                {enrichmentSuggestions.length ? (
+                  <>
+                    <div className="grid gap-2">
+                      {enrichmentSuggestions.map((suggestion) => (
+                        <div
+                          key={`${suggestion.field}-${suggestion.value}`}
+                          className="rounded-md border border-border bg-white p-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <div className="text-xs text-muted-foreground">
+                                {suggestion.label}
+                              </div>
+                              <div className="font-medium">{suggestion.value}</div>
+                            </div>
+                            <StatusBadge tone="primary">
+                              {confidenceLabel(suggestion.confidence)}
+                            </StatusBadge>
+                          </div>
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {suggestion.source.source_hint} - {suggestion.source.citation}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => applyEnrichmentMutation.mutate()}
+                      disabled={applyEnrichmentMutation.isPending}
+                    >
+                      {applyEnrichmentMutation.isPending ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Check size={16} />
+                      )}
+                      Apply reviewed facts
+                    </Button>
+                  </>
+                ) : (
+                  <div className="text-muted-foreground">
+                    Missing public fields like ABN or registered address can be suggested with citations before applying.
+                  </div>
+                )}
+                {previewEnrichmentMutation.error || applyEnrichmentMutation.error ? (
+                  <p className="text-sm text-danger">
+                    {friendlyError(
+                      previewEnrichmentMutation.error ?? applyEnrichmentMutation.error,
+                    )}
+                  </p>
+                ) : null}
+              </div>
             </SectionPanel>
 
             <SectionPanel title="Documents" icon={<FileText size={17} />}>
@@ -1045,18 +1178,25 @@ function TenantDetail() {
 
             <SectionPanel title="Linked leases" icon={<Link2 size={17} />}>
               <div className="divide-y divide-border">
-                {(leasesQuery.data ?? []).map((lease) => {
+                {linkedLeases.map((lease) => {
                   const activeOnboarding = tenantOnboardings.find(
-                    (item) => item.lease_id === lease.id && item.status !== "cancelled",
+                    (item) => item.lease_id === lease.lease_id && item.status !== "cancelled",
                   );
                   return (
-                    <div key={lease.id} className="grid gap-3 p-4 text-sm">
+                    <div key={lease.lease_id} className="grid gap-3 p-4 text-sm">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <div className="font-medium">Lease {lease.status}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {formatDate(lease.commencement_date)} to {formatDate(lease.expiry_date)}
+                          <div className="font-medium">
+                            {lease.property_name} - {lease.unit_label}
                           </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Lease {lease.status} - {formatDate(lease.commencement_date)} to {formatDate(lease.expiry_date)}
+                          </div>
+                          {lease.property_address ? (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {lease.property_address}
+                            </div>
+                          ) : null}
                         </div>
                         <StatusBadge tone={lease.status === "active" ? "success" : "neutral"}>
                           {formatMoney(lease.annual_rent_cents)}
@@ -1069,7 +1209,7 @@ function TenantDetail() {
                             Copy onboarding link
                           </SecondaryButton>
                         ) : (
-                          <Button type="button" onClick={() => createOnboardingMutation.mutate(lease.id)}>
+                          <Button type="button" onClick={() => createOnboardingMutation.mutate(lease.lease_id)}>
                             <Plus size={16} />
                             Send onboarding
                           </Button>
@@ -1078,7 +1218,7 @@ function TenantDetail() {
                     </div>
                   );
                 })}
-                {!leasesQuery.isLoading && (leasesQuery.data ?? []).length === 0 ? (
+                {!leasesQuery.isLoading && linkedLeases.length === 0 ? (
                   <EmptyState
                     title="No leases linked yet"
                     description="Lease intake or the property workspace will attach leases to this tenant."
@@ -1089,14 +1229,64 @@ function TenantDetail() {
 
             <SectionPanel title="Activity">
               <div className="grid gap-2 p-4 text-sm">
-                {tenantOnboardings.slice(0, 5).map((item) => (
-                  <div key={item.id} className="flex items-center justify-between gap-3">
-                    <span>Onboarding {item.status}</span>
-                    <span className="text-xs text-muted-foreground">{formatDate(item.submitted_at ?? item.created_at)}</span>
+                {(tenantDetail?.activity ?? []).slice(0, 10).map((item) => (
+                  <div key={`${item.kind}-${item.related_id}-${item.occurred_at}`} className="flex items-start justify-between gap-3">
+                    <span>
+                      <span className="font-medium">{item.label}</span>
+                      {item.detail ? (
+                        <span className="ml-1 text-muted-foreground">{item.detail}</span>
+                      ) : null}
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        {item.source}
+                      </span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">{formatDateTime(item.occurred_at)}</span>
                   </div>
                 ))}
-                {tenantOnboardings.length === 0 ? (
+                {!tenantDetailQuery.isLoading && (tenantDetail?.activity ?? []).length === 0 ? (
                   <div className="text-muted-foreground">No activity yet.</div>
+                ) : null}
+              </div>
+            </SectionPanel>
+
+            <SectionPanel title="Reviewed changes">
+              <div className="grid gap-3 p-4 text-sm">
+                {(tenantDetail?.reviewed_changes ?? []).slice(0, 6).map((entry) => (
+                  <div
+                    key={`${entry.source}-${entry.source_id}-${entry.occurred_at}`}
+                    className="rounded-md border border-border bg-white p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-medium">{entry.source_label}</div>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDateTime(entry.occurred_at)}
+                      </span>
+                    </div>
+                    {entry.notes ? (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {entry.notes}
+                      </div>
+                    ) : null}
+                    <div className="mt-2 grid gap-2">
+                      {entry.changes.slice(0, 4).map((change) => (
+                        <div
+                          key={`${change.field}-${reviewValue(change.after)}`}
+                          className="grid gap-1 rounded border border-border bg-muted/30 px-3 py-2 text-xs"
+                        >
+                          <div className="font-semibold">{change.label}</div>
+                          <div className="text-muted-foreground">
+                            {reviewValue(change.before)} to {reviewValue(change.after)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {!tenantDetailQuery.isLoading &&
+                (tenantDetail?.reviewed_changes ?? []).length === 0 ? (
+                  <div className="text-muted-foreground">
+                    Reviewed onboarding and Smart Intake changes will appear here.
+                  </div>
                 ) : null}
               </div>
             </SectionPanel>
@@ -1104,6 +1294,7 @@ function TenantDetail() {
         </section>
 
         {tenantQuery.error ||
+        tenantDetailQuery.error ||
         leasesQuery.error ||
         onboardingQuery.error ||
         documentsQuery.error ||
@@ -1111,6 +1302,7 @@ function TenantDetail() {
           <p className="text-sm text-danger">
             {friendlyError(
               tenantQuery.error ??
+                tenantDetailQuery.error ??
                 leasesQuery.error ??
                 onboardingQuery.error ??
                 documentsQuery.error ??

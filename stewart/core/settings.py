@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     communications_timeout_seconds: float = 10.0
     tenant_onboarding_email_enabled: bool = True
     tenant_onboarding_sms_enabled: bool = True
+    tenant_onboarding_brand_name: str = "Leasium"
+    tenant_onboarding_template_key: str = "tenant_onboarding_invite"
+    tenant_onboarding_template_version: str = "v1"
     slack_webhook_url: str = ""
 
     @field_validator("database_url", "test_database_url", mode="before")

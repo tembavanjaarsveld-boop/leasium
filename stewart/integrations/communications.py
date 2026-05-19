@@ -29,8 +29,9 @@ class DeliveryResult:
     recipient: str | None = None
     provider_message_id: str | None = None
     error: str | None = None
+    metadata: dict[str, str | None] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, str | None]:
+    def to_dict(self) -> dict[str, str | dict[str, str | None] | None]:
         return {
             "channel": self.channel,
             "status": self.status,
@@ -39,6 +40,7 @@ class DeliveryResult:
             "recipient": self.recipient,
             "provider_message_id": self.provider_message_id,
             "error": self.error,
+            "metadata": self.metadata,
         }
 
 
@@ -58,6 +60,9 @@ class TenantOnboardingInvite:
     onboarding_url: str
     due_date: date | None
     expires_at: datetime | None
+    brand_name: str
+    template_key: str
+    template_version: str
 
 
 def _clean(value: str | None) -> str | None:
@@ -94,7 +99,7 @@ def _email_text(invite: TenantOnboardingInvite) -> str:
             "",
             "Nothing is applied to the tenant profile until the property team reviews it.",
             "",
-            "Leasium",
+            invite.brand_name,
         ]
     )
 
@@ -120,7 +125,9 @@ def _email_html(invite: TenantOnboardingInvite) -> str:
     return f"""
     <div style="{shell_style}">
       <div style="{card_style}">
-        <div style="font-weight:700;font-size:20px;margin-bottom:18px;">Leasium</div>
+        <div style="font-weight:700;font-size:20px;margin-bottom:18px;">
+          {escape(invite.brand_name)}
+        </div>
         <p style="margin:0 0 14px;">{greeting}</p>
         <p style="margin:0 0 18px;color:#475467;line-height:1.55;">
           Please review and complete your tenant onboarding details.
@@ -145,7 +152,7 @@ def _email_html(invite: TenantOnboardingInvite) -> str:
 def _sms_body(invite: TenantOnboardingInvite) -> str:
     due = _date_label(invite.due_date)
     return (
-        f"Leasium: please complete tenant onboarding for {invite.property_name} "
+        f"{invite.brand_name}: please complete tenant onboarding for {invite.property_name} "
         f"({invite.unit_label}) by {due}: {invite.onboarding_url}"
     )
 
@@ -161,6 +168,12 @@ def _twilio_status_callback_url(settings: Settings) -> str | None:
 
 def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryResult:
     recipient = _clean(invite.contact_email)
+    metadata = {
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "brand_name": invite.brand_name,
+        "subject": _email_subject(invite),
+    }
     if not settings.tenant_onboarding_email_enabled:
         return DeliveryResult(
             channel="email",
@@ -168,6 +181,7 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
             provider="sendgrid",
             recipient=recipient,
             error="Email disabled.",
+            metadata=metadata,
         )
     if recipient is None:
         return DeliveryResult(
@@ -175,6 +189,7 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
             status="skipped",
             provider="sendgrid",
             error="No email recipient.",
+            metadata=metadata,
         )
     if not settings.sendgrid_api_key or not settings.sendgrid_from_email:
         return DeliveryResult(
@@ -183,6 +198,7 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
             provider="sendgrid",
             recipient=recipient,
             error="SendGrid is not configured.",
+            metadata=metadata,
         )
 
     payload = {
@@ -198,6 +214,9 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
                 "custom_args": {
                     "tenant_onboarding_id": str(invite.onboarding_id),
                     "entity_id": str(invite.entity_id),
+                    "template_key": invite.template_key,
+                    "template_version": invite.template_version,
+                    "brand_name": invite.brand_name,
                 },
             }
         ],
@@ -209,7 +228,7 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
             {"type": "text/plain", "value": _email_text(invite)},
             {"type": "text/html", "value": _email_html(invite)},
         ],
-        "categories": ["tenant_onboarding"],
+        "categories": ["tenant_onboarding", invite.template_key],
     }
     try:
         with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
@@ -228,6 +247,7 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
                 provider="sendgrid",
                 recipient=recipient,
                 provider_message_id=response.headers.get("x-message-id"),
+                metadata=metadata,
             )
         return DeliveryResult(
             channel="email",
@@ -235,6 +255,7 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
             provider="sendgrid",
             recipient=recipient,
             error=f"SendGrid returned {response.status_code}.",
+            metadata=metadata,
         )
     except httpx.HTTPError as exc:
         return DeliveryResult(
@@ -243,6 +264,7 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
             provider="sendgrid",
             recipient=recipient,
             error=str(exc),
+            metadata=metadata,
         )
 
 
@@ -255,6 +277,11 @@ def _send_sms(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryRes
             provider="twilio",
             recipient=recipient,
             error="SMS disabled.",
+            metadata={
+                "template_key": invite.template_key,
+                "template_version": invite.template_version,
+                "brand_name": invite.brand_name,
+            },
         )
     if recipient is None:
         return DeliveryResult(
@@ -262,6 +289,11 @@ def _send_sms(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryRes
             status="skipped",
             provider="twilio",
             error="No SMS recipient.",
+            metadata={
+                "template_key": invite.template_key,
+                "template_version": invite.template_version,
+                "brand_name": invite.brand_name,
+            },
         )
     if not recipient.startswith("+"):
         return DeliveryResult(
@@ -270,6 +302,11 @@ def _send_sms(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryRes
             provider="twilio",
             recipient=recipient,
             error="SMS recipient must be in E.164 format.",
+            metadata={
+                "template_key": invite.template_key,
+                "template_version": invite.template_version,
+                "brand_name": invite.brand_name,
+            },
         )
     if (
         not settings.twilio_account_sid
@@ -282,6 +319,11 @@ def _send_sms(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryRes
             provider="twilio",
             recipient=recipient,
             error="Twilio Messaging is not configured.",
+            metadata={
+                "template_key": invite.template_key,
+                "template_version": invite.template_version,
+                "brand_name": invite.brand_name,
+            },
         )
 
     data = {
@@ -315,6 +357,11 @@ def _send_sms(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryRes
                 provider="twilio",
                 recipient=recipient,
                 provider_message_id=body.get("sid"),
+                metadata={
+                    "template_key": invite.template_key,
+                    "template_version": invite.template_version,
+                    "brand_name": invite.brand_name,
+                },
             )
         return DeliveryResult(
             channel="sms",
@@ -322,6 +369,11 @@ def _send_sms(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryRes
             provider="twilio",
             recipient=recipient,
             error=f"Twilio returned {response.status_code}.",
+            metadata={
+                "template_key": invite.template_key,
+                "template_version": invite.template_version,
+                "brand_name": invite.brand_name,
+            },
         )
     except (httpx.HTTPError, ValueError) as exc:
         return DeliveryResult(
@@ -330,6 +382,11 @@ def _send_sms(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryRes
             provider="twilio",
             recipient=recipient,
             error=str(exc),
+            metadata={
+                "template_key": invite.template_key,
+                "template_version": invite.template_version,
+                "brand_name": invite.brand_name,
+            },
         )
 
 

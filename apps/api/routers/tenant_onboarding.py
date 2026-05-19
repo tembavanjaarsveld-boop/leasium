@@ -42,6 +42,10 @@ from stewart.integrations.communications import (
 )
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.routers.tenants import (
+    append_tenant_reviewed_change_history,
+    tenant_submission_changes,
+)
 from apps.api.schemas.documents import DocumentRead
 from apps.api.schemas.tenant_onboarding import (
     TenantOnboardingCancel,
@@ -49,6 +53,8 @@ from apps.api.schemas.tenant_onboarding import (
     TenantOnboardingPublicRead,
     TenantOnboardingRead,
     TenantOnboardingReminderRunRead,
+    TenantOnboardingReminderSectionUpdate,
+    TenantOnboardingReminderUpdate,
     TenantOnboardingReview,
     TenantOnboardingSubmit,
 )
@@ -63,6 +69,9 @@ REMINDER_STEPS = (
     ("second", "Second reminder", 5),
     ("final", "Final reminder", 10),
 )
+EXPIRY_REMINDER_STEPS = (
+    ("expires_soon", "Expiry reminder", 1),
+)
 ACTIVE_DELIVERY_STATUSES = {"queued", "sent", "delivered", "opened"}
 
 
@@ -76,26 +85,148 @@ def _read(row: TenantOnboarding) -> TenantOnboardingRead:
     return response
 
 
+def _template_metadata(invite: TenantOnboardingInvite) -> dict[str, object]:
+    return {
+        "key": invite.template_key,
+        "version": invite.template_version,
+        "brand_name": invite.brand_name,
+        "from_name": get_settings().sendgrid_from_name,
+        "email_subject": f"Complete tenant onboarding for {invite.property_name}",
+        "sms_sender": invite.brand_name,
+    }
+
+
+def _recovery_hint(
+    channel: str,
+    status_value: object,
+    error_value: object,
+) -> dict[str, str] | None:
+    status_text = str(status_value or "")
+    error = str(error_value or "")
+    lowered = error.lower()
+    if status_text in ACTIVE_DELIVERY_STATUSES:
+        return None
+    label = "email address" if channel == "email" else "mobile number"
+    if "no email recipient" in lowered:
+        return {
+            "channel": channel,
+            "type": "contact",
+            "field": "contact_email",
+            "message": "Add a tenant email address, then resend.",
+        }
+    if "no sms recipient" in lowered:
+        return {
+            "channel": channel,
+            "type": "contact",
+            "field": "contact_phone",
+            "message": "Add a tenant mobile number, then resend.",
+        }
+    if "e.164" in lowered:
+        return {
+            "channel": channel,
+            "type": "contact",
+            "field": "contact_phone",
+            "message": "Fix the tenant mobile number format, then resend.",
+        }
+    if "not configured" in lowered or "disabled" in lowered:
+        return {
+            "channel": channel,
+            "type": "configuration",
+            "field": channel,
+            "message": f"Enable {channel} delivery, then resend.",
+        }
+    if status_text == "failed":
+        return {
+            "channel": channel,
+            "type": "contact",
+            "field": "contact_email" if channel == "email" else "contact_phone",
+            "message": f"Check the tenant {label}, then resend.",
+        }
+    if status_text == "attention":
+        return {
+            "channel": channel,
+            "type": "provider_status",
+            "field": channel,
+            "message": f"Check the {channel} provider status before resending.",
+        }
+    return None
+
+
+def _delivery_recovery_data(
+    channels: dict[str, Any],
+    checked_at: str,
+) -> dict[str, object]:
+    hints = []
+    has_active_channel = False
+    for channel, channel_data in channels.items():
+        if not isinstance(channel_data, dict):
+            continue
+        status_value = channel_data.get("status")
+        has_active_channel = has_active_channel or status_value in ACTIVE_DELIVERY_STATUSES
+        hint = _recovery_hint(channel, status_value, channel_data.get("error"))
+        if hint is not None:
+            hints.append(hint)
+    needs_contact_fix = any(hint["type"] == "contact" for hint in hints)
+    needed = bool(hints)
+    next_action = None
+    if needs_contact_fix:
+        next_action = "fix_contact_and_resend"
+    elif needed:
+        next_action = "resolve_delivery_and_resend"
+    message = None
+    if hints:
+        contact_hints = [hint["message"] for hint in hints if hint["type"] == "contact"]
+        message = contact_hints[0] if contact_hints else hints[0]["message"]
+    return {
+        "needed": needed,
+        "needs_contact_fix": needs_contact_fix,
+        "blocking_delivery": needed and not has_active_channel,
+        "next_action": next_action,
+        "message": message,
+        "channels": hints,
+        "last_checked_at": checked_at,
+    }
+
+
+def _pause_reason_for_results(results: list[DeliveryResult]) -> str | None:
+    if not _channel_results_need_attention(results):
+        return None
+    checked_at = utcnow().isoformat()
+    channels = {result.channel: result.to_dict() for result in results}
+    recovery = _delivery_recovery_data(channels, checked_at)
+    if recovery.get("needs_contact_fix") is True:
+        return "contact_issue"
+    if recovery.get("needed") is True:
+        return "delivery_unavailable"
+    return "delivery_attention"
+
+
 def _delivery_data(
     current: dict[str, object],
     results: list[DeliveryResult],
     reason: str,
+    template: dict[str, object],
 ) -> dict[str, object]:
     attempted_at = utcnow().isoformat()
     channels = {result.channel: result.to_dict() for result in results}
     history = current.get("history", [])
     if not isinstance(history, list):
         history = []
+    recovery = _delivery_recovery_data(channels, attempted_at)
     return {
         **current,
         "last_attempted_at": attempted_at,
         "last_reason": reason,
         "channels": channels,
+        "template": template,
+        "contact_recovery": recovery,
         "history": [
             {
                 "attempted_at": attempted_at,
                 "reason": reason,
                 "channels": channels,
+                "template": template,
+                "contact_recovery": recovery,
             },
             *history[:9],
         ],
@@ -121,16 +252,20 @@ def _normalise_datetime(value: datetime) -> datetime:
 
 
 def _channel_results_need_attention(results: list[DeliveryResult]) -> bool:
-    return not any(result.status in ACTIVE_DELIVERY_STATUSES for result in results)
+    return bool(results) and not any(
+        result.status in ACTIVE_DELIVERY_STATUSES for result in results
+    )
 
 
 def _reset_reminders(
     current: dict[str, object],
     sent_at: datetime,
     results: list[DeliveryResult],
+    expires_at: datetime | None,
 ) -> dict[str, object]:
     base = _normalise_datetime(sent_at)
     paused = _channel_results_need_attention(results)
+    paused_reason = _pause_reason_for_results(results) if paused else None
     schedule = [
         {
             "key": key,
@@ -142,14 +277,26 @@ def _reset_reminders(
         }
         for key, label, days in REMINDER_STEPS
     ]
+    expiry_schedule = _expiry_reminder_schedule(expires_at, paused)
     return {
         **current,
         "reminders": {
             "enabled": True,
             "paused": paused,
-            "paused_reason": "contact_issue" if paused else None,
+            "paused_reason": paused_reason,
             "schedule": schedule,
             "next_reminder_at": None if paused else schedule[0]["scheduled_at"],
+            "last_reminder_sent_at": None,
+            "completed_at": None,
+        },
+        "expiry_reminders": {
+            "enabled": bool(expiry_schedule),
+            "paused": paused,
+            "paused_reason": paused_reason,
+            "schedule": expiry_schedule,
+            "next_reminder_at": (
+                None if paused or not expiry_schedule else expiry_schedule[0]["scheduled_at"]
+            ),
             "last_reminder_sent_at": None,
             "completed_at": None,
         },
@@ -161,18 +308,54 @@ def _reminder_state(current: dict[str, object]) -> dict[str, Any]:
     return reminders if isinstance(reminders, dict) else {}
 
 
+def _expiry_reminder_state(current: dict[str, object]) -> dict[str, Any]:
+    reminders = current.get("expiry_reminders", {})
+    return reminders if isinstance(reminders, dict) else {}
+
+
 def _reminder_schedule(reminders: dict[str, Any]) -> list[dict[str, Any]]:
     schedule = reminders.get("schedule", [])
     return schedule if isinstance(schedule, list) else []
+
+
+def _expiry_reminder_schedule(
+    expires_at: datetime | None,
+    paused: bool,
+) -> list[dict[str, Any]]:
+    if expires_at is None:
+        return []
+    expiry = _normalise_datetime(expires_at)
+    now = utcnow()
+    schedule = []
+    for key, label, days_before in EXPIRY_REMINDER_STEPS:
+        scheduled_at = expiry - timedelta(days=days_before)
+        if scheduled_at <= now:
+            continue
+        schedule.append(
+            {
+                "key": key,
+                "label": label,
+                "before_expiry_days": days_before,
+                "scheduled_at": scheduled_at.isoformat(),
+                "status": "paused" if paused else "scheduled",
+                "sent_at": None,
+            }
+        )
+    return schedule
 
 
 def _mark_reminder_attempt(
     current: dict[str, object],
     reminder_key: str,
     results: list[DeliveryResult],
+    section_key: str,
 ) -> dict[str, object]:
     now = utcnow().isoformat()
-    reminders = _reminder_state(current)
+    reminders = (
+        _expiry_reminder_state(current)
+        if section_key == "expiry_reminders"
+        else _reminder_state(current)
+    )
     schedule = []
     any_active = not _channel_results_need_attention(results)
     for step in _reminder_schedule(reminders):
@@ -187,6 +370,7 @@ def _mark_reminder_attempt(
 
     next_reminder_at = None
     paused = not any_active
+    paused_reason = _pause_reason_for_results(results) if paused else None
     if not paused:
         for step in schedule:
             if step.get("status") == "scheduled":
@@ -195,11 +379,11 @@ def _mark_reminder_attempt(
 
     return {
         **current,
-        "reminders": {
+        section_key: {
             **reminders,
             "enabled": True,
             "paused": paused,
-            "paused_reason": "contact_issue" if paused else None,
+            "paused_reason": paused_reason,
             "schedule": schedule,
             "next_reminder_at": next_reminder_at,
             "last_reminder_sent_at": now,
@@ -209,24 +393,38 @@ def _mark_reminder_attempt(
 
 def _complete_reminders(current: dict[str, object], reason: str) -> dict[str, object]:
     reminders = _reminder_state(current)
-    if not reminders:
+    expiry_reminders = _expiry_reminder_state(current)
+    if not reminders and not expiry_reminders:
         return current
-    return {
-        **current,
-        "reminders": {
+    completed_at = utcnow().isoformat()
+    next_data = {**current}
+    if reminders:
+        next_data["reminders"] = {
             **reminders,
             "enabled": False,
             "paused": False,
             "paused_reason": None,
-            "completed_at": utcnow().isoformat(),
+            "completed_at": completed_at,
             "completed_reason": reason,
             "next_reminder_at": None,
-        },
-    }
+        }
+    if expiry_reminders:
+        next_data["expiry_reminders"] = {
+            **expiry_reminders,
+            "enabled": False,
+            "paused": False,
+            "paused_reason": None,
+            "completed_at": completed_at,
+            "completed_reason": reason,
+            "next_reminder_at": None,
+        }
+    return next_data
 
 
-def _next_due_reminder(row: TenantOnboarding, now: datetime) -> str | None:
-    reminders = _reminder_state(row.delivery_data or {})
+def _next_due_reminder_section(
+    reminders: dict[str, Any],
+    now: datetime,
+) -> str | None:
     if reminders.get("enabled") is False or reminders.get("paused") is True:
         return None
     next_at = _parse_datetime(reminders.get("next_reminder_at"))
@@ -238,10 +436,111 @@ def _next_due_reminder(row: TenantOnboarding, now: datetime) -> str | None:
     return None
 
 
+def _next_reminder_at(reminders: dict[str, Any]) -> str | None:
+    candidates = []
+    for step in _reminder_schedule(reminders):
+        if step.get("status") != "scheduled":
+            continue
+        scheduled_at = _parse_datetime(step.get("scheduled_at"))
+        if scheduled_at is not None:
+            candidates.append((scheduled_at, step.get("scheduled_at")))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0])
+    return str(candidates[0][1])
+
+
+def _normalise_reminder_section(
+    current: dict[str, Any],
+    update: TenantOnboardingReminderSectionUpdate,
+    user_id: UUID,
+) -> dict[str, Any]:
+    section = {**current}
+    if update.enabled is not None:
+        section["enabled"] = update.enabled
+    if update.paused is not None:
+        section["paused"] = update.paused
+        if not update.paused:
+            section["paused_reason"] = None
+    if update.paused_reason is not None or update.paused:
+        section["paused_reason"] = update.paused_reason
+    if update.schedule is not None:
+        existing_by_key = {
+            str(step.get("key")): step
+            for step in _reminder_schedule(section)
+            if isinstance(step, dict) and step.get("key") is not None
+        }
+        schedule = []
+        for incoming in update.schedule:
+            existing = existing_by_key.get(incoming.key, {})
+            step = {**existing, "key": incoming.key}
+            if incoming.label is not None:
+                step["label"] = incoming.label
+            if incoming.after_days is not None:
+                step["after_days"] = incoming.after_days
+            if incoming.scheduled_at is not None:
+                step["scheduled_at"] = _normalise_datetime(incoming.scheduled_at).isoformat()
+            if incoming.status is not None:
+                step["status"] = incoming.status
+            elif not step.get("status"):
+                step["status"] = "scheduled"
+            schedule.append(step)
+        section["schedule"] = schedule
+    if section.get("paused") is True or section.get("enabled") is False:
+        section["next_reminder_at"] = None
+    else:
+        section["next_reminder_at"] = _next_reminder_at(section)
+    section["updated_at"] = utcnow().isoformat()
+    section["updated_by_user_id"] = str(user_id)
+    section["manual_edit"] = True
+    return section
+
+
+def _apply_reminder_update(
+    current: dict[str, object],
+    payload: TenantOnboardingReminderUpdate,
+    user_id: UUID,
+) -> dict[str, object]:
+    next_data = {**current}
+    if payload.reminders is not None:
+        next_data["reminders"] = _normalise_reminder_section(
+            _reminder_state(next_data),
+            payload.reminders,
+            user_id,
+        )
+    if payload.expiry_reminders is not None:
+        next_data["expiry_reminders"] = _normalise_reminder_section(
+            _expiry_reminder_state(next_data),
+            payload.expiry_reminders,
+            user_id,
+        )
+    return {
+        **next_data,
+        "reminder_edit": {
+            "updated_at": utcnow().isoformat(),
+            "updated_by_user_id": str(user_id),
+        },
+    }
+
+
+def _next_due_reminder(row: TenantOnboarding, now: datetime) -> tuple[str, str] | None:
+    data = row.delivery_data or {}
+    reminder_key = _next_due_reminder_section(_reminder_state(data), now)
+    if reminder_key is not None:
+        return ("reminders", reminder_key)
+    expiry_key = _next_due_reminder_section(_expiry_reminder_state(data), now)
+    if expiry_key is not None:
+        return ("expiry_reminders", expiry_key)
+    return None
+
+
 def _ensure_reminder_plan(row: TenantOnboarding) -> None:
-    if _reminder_state(row.delivery_data or {}) or row.last_sent_at is None:
+    data = row.delivery_data or {}
+    if _reminder_state(data) and (_expiry_reminder_state(data) or row.expires_at is None):
         return
-    row.delivery_data = _reset_reminders(row.delivery_data or {}, row.last_sent_at, [])
+    if row.last_sent_at is None:
+        return
+    row.delivery_data = _reset_reminders(data, row.last_sent_at, [], row.expires_at)
 
 
 def _receipt_status(channel: str, raw_status: str) -> str:
@@ -403,20 +702,31 @@ def _deliver_onboarding_link(
         onboarding_url=_onboarding_url(onboarding.token),
         due_date=onboarding.due_date,
         expires_at=onboarding.expires_at,
+        brand_name=settings.tenant_onboarding_brand_name,
+        template_key=settings.tenant_onboarding_template_key,
+        template_version=settings.tenant_onboarding_template_version,
     )
     results = send_tenant_onboarding_invite(invite, settings)
-    next_delivery_data = _delivery_data(onboarding.delivery_data or {}, results, reason)
+    next_delivery_data = _delivery_data(
+        onboarding.delivery_data or {},
+        results,
+        reason,
+        _template_metadata(invite),
+    )
     if reason in {"send", "resend"}:
         next_delivery_data = _reset_reminders(
             next_delivery_data,
             onboarding.last_sent_at or utcnow(),
             results,
+            onboarding.expires_at,
         )
     elif reason.startswith("reminder:"):
+        _prefix, section_key, reminder_key = reason.split(":", 2)
         next_delivery_data = _mark_reminder_attempt(
             next_delivery_data,
-            reason.split(":", 1)[1],
+            reminder_key,
             results,
+            section_key,
         )
     onboarding.delivery_data = next_delivery_data
     for result in results:
@@ -475,6 +785,8 @@ def _apply_submission(onboarding: TenantOnboarding, tenant: Tenant) -> None:
         "tenant_onboarding_id": str(onboarding.id),
         "insurance_confirmed": data.get("insurance_confirmed", False),
         "insurance_expiry_date": data.get("insurance_expiry_date"),
+        "emergency_contact_name": data.get("emergency_contact_name"),
+        "emergency_contact_phone": data.get("emergency_contact_phone"),
     }
 
 
@@ -663,7 +975,7 @@ def run_tenant_onboarding_reminders(
             tenant,
             user,
             session,
-            f"reminder:{reminder_key}",
+            f"reminder:{reminder_key[0]}:{reminder_key[1]}",
         )
         audit_log(
             session,
@@ -673,7 +985,7 @@ def run_tenant_onboarding_reminders(
             action="reminder",
             target_table="tenant_onboarding",
             target_id=onboarding.id,
-            tool_input={"reminder_key": reminder_key},
+            tool_input={"reminder_section": reminder_key[0], "reminder_key": reminder_key[1]},
             outcome=AuditOutcome.success,
         )
         sent += 1
@@ -766,6 +1078,41 @@ async def record_sendgrid_delivery_events(
         )
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch("/{onboarding_id}/reminders", response_model=TenantOnboardingRead)
+def update_tenant_onboarding_reminders(
+    onboarding_id: UUID,
+    payload: TenantOnboardingReminderUpdate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantOnboardingRead:
+    onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)
+    if onboarding.status != TenantOnboardingStatus.sent:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only sent onboarding reminders can be edited.",
+        )
+    onboarding.delivery_data = _apply_reminder_update(
+        onboarding.delivery_data or {},
+        payload,
+        user.id,
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=onboarding.entity_id,
+        action="update",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+        tool_name="tenant_onboarding.reminders",
+        tool_input=payload.model_dump(mode="json", exclude_unset=True),
+        tool_output_summary="Updated tenant onboarding reminder schedule.",
+    )
+    session.commit()
+    session.refresh(onboarding)
+    return _read(onboarding)
 
 
 @router.post("/{onboarding_id}/cancel", response_model=TenantOnboardingRead)
@@ -861,8 +1208,16 @@ def review_tenant_onboarding(
             status_code=status.HTTP_409_CONFLICT,
             detail="Only submitted onboarding can be reviewed.",
         )
+    tenant = session.get(Tenant, onboarding.tenant_id)
+    if tenant is None or tenant.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")
 
-    onboarding.review_data = payload.model_dump(mode="json")
+    changes = tenant_submission_changes(tenant, onboarding.submitted_data)
+    onboarding.review_data = {
+        **payload.model_dump(mode="json"),
+        "changes": changes,
+        "change_count": len(changes),
+    }
     onboarding.reviewed_at = utcnow()
     onboarding.reviewed_by_user_id = user.id
     if payload.approved:
@@ -901,11 +1256,19 @@ def apply_tenant_onboarding(
     if tenant is None or tenant.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")
 
+    changes = []
+    if isinstance(onboarding.review_data, dict) and isinstance(
+        onboarding.review_data.get("changes"), list
+    ):
+        changes = list(onboarding.review_data.get("changes") or [])
+    if not changes:
+        changes = tenant_submission_changes(tenant, onboarding.submitted_data)
     _apply_submission(onboarding, tenant)
     onboarding.status = TenantOnboardingStatus.applied
     onboarding.applied_at = utcnow()
     onboarding.applied_by_user_id = user.id
     onboarding.delivery_data = _complete_reminders(onboarding.delivery_data or {}, "applied")
+    append_tenant_reviewed_change_history(tenant, onboarding, changes)
     audit_log(
         session,
         actor=user.actor,

@@ -13,7 +13,9 @@ from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
     BillingDraft,
+    BillingDraftLine,
     BillingDraftStatus,
+    DocumentCategory,
     Entity,
     InvoiceDraft,
     InvoiceDraftLine,
@@ -21,6 +23,7 @@ from stewart.core.models import (
     Lease,
     Property,
     RentChargeRule,
+    StoredDocument,
     TenancyUnit,
     Tenant,
     UserRole,
@@ -30,6 +33,8 @@ from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get
 from apps.api.schemas.register import (
     BillingDraftRead,
     BillingDraftUpdate,
+    InvoiceDraftDeliverySendRecord,
+    InvoiceDraftPaymentStatusUpdate,
     InvoiceDraftRead,
     InvoiceDraftUpdate,
     RentChargeRuleCreate,
@@ -195,20 +200,279 @@ def _invoice_money(cents: int, currency: str) -> str:
     return f"{currency} {amount:,.2f}"
 
 
-def _invoice_email_preview(draft: InvoiceDraft) -> dict[str, str | None]:
+def _invoice_brand_metadata(draft: InvoiceDraft) -> dict[str, str | None]:
+    sender_name = draft.issuer_name or "Leasium Billing"
+    return {
+        "template": "leasium_invoice_v1",
+        "sender_name": sender_name,
+        "reply_to": None,
+        "footer": "Prepared in Leasium. External delivery requires approval.",
+    }
+
+
+def _invoice_email_preview(draft: InvoiceDraft) -> dict[str, object]:
     subject_number = draft.invoice_number or str(draft.id)[:8].upper()
     due = draft.due_date.isoformat() if draft.due_date else "the due date shown on the invoice"
+    brand = _invoice_brand_metadata(draft)
     body = (
         f"Hi {draft.recipient_name or 'there'},\n\n"
         f"Please find invoice {subject_number} for "
         f"{_invoice_money(draft.total_cents, draft.currency)} attached for review. "
         f"Payment is due {due}.\n\n"
-        "This is a Leasium draft email preview only. No email has been sent."
+        "This email draft uses the Leasium invoice template and is ready for approval. "
+        "No email has been sent."
     )
     return {
         "to": draft.recipient_email,
+        "from_name": brand["sender_name"],
+        "reply_to": brand["reply_to"],
         "subject": f"Invoice {subject_number} from {draft.issuer_name or 'Leasium'}",
         "body": body,
+        "brand": brand,
+    }
+
+
+def _invoice_rent_period_metadata(
+    draft: BillingDraft,
+    source_lines: list[BillingDraftLine],
+) -> dict[str, object]:
+    existing = (draft.billing_metadata or {}).get("rent_period")
+    if isinstance(existing, dict):
+        return existing
+
+    period_start = draft.issue_date or draft.due_date
+    period_end = draft.due_date or draft.issue_date
+    frequencies = []
+    for line in source_lines:
+        metadata = line.line_metadata or {}
+        frequency = metadata.get("frequency")
+        if isinstance(frequency, str) and frequency and frequency not in frequencies:
+            frequencies.append(frequency)
+
+    if period_start and period_end and period_start != period_end:
+        label = f"{period_start.isoformat()} to {period_end.isoformat()}"
+    elif period_end:
+        label = f"Due {period_end.isoformat()}"
+    else:
+        label = "Period to confirm"
+
+    return {
+        "period_start": period_start.isoformat() if period_start else None,
+        "period_end": period_end.isoformat() if period_end else None,
+        "label": label,
+        "basis": "billing_draft_issue_due_dates",
+        "source": "billing_draft",
+        "frequency": frequencies[0] if frequencies else None,
+        "line_count": len(source_lines),
+        "requires_review": True,
+    }
+
+
+def _initial_payment_status(total_cents: int, updated_at: str) -> dict[str, object]:
+    return {
+        "status": "unpaid",
+        "paid_cents": 0,
+        "outstanding_cents": total_cents,
+        "updated_at": updated_at,
+        "source": "invoice_draft_created",
+    }
+
+
+def _pdf_text(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _invoice_pdf_filename(draft: InvoiceDraft) -> str:
+    safe_number = (draft.invoice_number or str(draft.id)).replace("/", "-")
+    return f"{safe_number}.pdf"
+
+
+def _invoice_pdf_bytes(draft: InvoiceDraft) -> bytes:
+    text_lines = [
+        "Leasium invoice draft",
+        f"Invoice: {draft.invoice_number or str(draft.id)}",
+        f"Issuer: {draft.issuer_name or 'Issuer to confirm'}",
+        f"Recipient: {draft.recipient_name or 'Recipient to confirm'}",
+        f"Due: {draft.due_date.isoformat() if draft.due_date else 'To confirm'}",
+        f"Total: {_invoice_money(draft.total_cents, draft.currency)}",
+        "This artifact is internal until approval. No Xero sync has run.",
+        "",
+        "Line items:",
+    ]
+    for line in draft.lines:
+        if line.deleted_at is None:
+            text_lines.append(
+                f"- {line.description}: {_invoice_money(line.amount_cents, line.currency)}"
+            )
+
+    content_lines = ["BT", "/F1 11 Tf", "14 TL", "50 760 Td"]
+    for index, text in enumerate(text_lines[:42]):
+        if index:
+            content_lines.append("T*")
+        content_lines.append(f"({_pdf_text(text[:120])}) Tj")
+    content_lines.append("ET")
+    stream = "\n".join(content_lines).encode("latin-1", errors="replace")
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+        ),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length "
+        + str(len(stream)).encode()
+        + b" >>\nstream\n"
+        + stream
+        + b"\nendstream",
+    ]
+    pdf = b"%PDF-1.4\n"
+    offsets: list[int] = []
+    for index, obj in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf += f"{index} 0 obj\n".encode() + obj + b"\nendobj\n"
+    xref_offset = len(pdf)
+    pdf += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for offset in offsets:
+        pdf += f"{offset:010d} 00000 n \n".encode()
+    pdf += (
+        f"trailer\n<< /Root 1 0 R /Size {len(objects) + 1} >>\n"
+        f"startxref\n{xref_offset}\n%%EOF\n"
+    ).encode()
+    return pdf
+
+
+def _uuid_from_metadata(value: object) -> UUID | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return UUID(value)
+    except ValueError:
+        return None
+
+
+def _upsert_invoice_pdf_artifact(
+    draft: InvoiceDraft,
+    metadata: dict[str, object],
+    user: CurrentUser,
+    session: Session,
+    generated_at: str,
+) -> dict[str, object]:
+    pdf_bytes = _invoice_pdf_bytes(draft)
+    filename = _invoice_pdf_filename(draft)
+    document: StoredDocument | None = None
+    existing_artifact = metadata.get("pdf_artifact")
+    if isinstance(existing_artifact, dict):
+        document_id = _uuid_from_metadata(existing_artifact.get("document_id"))
+        if document_id is not None:
+            existing_document = session.get(StoredDocument, document_id)
+            if (
+                existing_document is not None
+                and existing_document.deleted_at is None
+                and existing_document.entity_id == draft.entity_id
+            ):
+                document = existing_document
+
+    document_metadata = {
+        "source": "invoice_draft_pdf_artifact",
+        "invoice_draft_id": str(draft.id),
+        "billing_draft_id": str(draft.billing_draft_id),
+        "generated_at": generated_at,
+        "generated_by_user_id": str(user.id),
+        "external_posting_status": "not_posted",
+        "xero_synced": False,
+    }
+
+    if document is None:
+        document = StoredDocument(
+            entity_id=draft.entity_id,
+            property_id=draft.property_id,
+            tenancy_unit_id=draft.tenancy_unit_id,
+            tenant_id=draft.tenant_id,
+            lease_id=draft.lease_id,
+            filename=filename,
+            content_type="application/pdf",
+            byte_size=len(pdf_bytes),
+            file_data=pdf_bytes,
+            category=DocumentCategory.invoice,
+            notes=(
+                "Invoice PDF artifact generated from an internal draft. "
+                "It has not been emailed, posted, or synced to Xero."
+            ),
+            document_metadata=document_metadata,
+        )
+        session.add(document)
+        session.flush()
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=draft.entity_id,
+            action="create",
+            target_table="stored_document",
+            target_id=document.id,
+            tool_output_summary=(
+                "Created invoice PDF artifact record from invoice draft; no email "
+                "or Xero sync was run."
+            ),
+        )
+    else:
+        document.filename = filename
+        document.content_type = "application/pdf"
+        document.byte_size = len(pdf_bytes)
+        document.file_data = pdf_bytes
+        document.category = DocumentCategory.invoice
+        document.notes = (
+            "Invoice PDF artifact refreshed from an internal draft. "
+            "It has not been emailed, posted, or synced to Xero."
+        )
+        document.document_metadata = {
+            **(document.document_metadata or {}),
+            **document_metadata,
+        }
+        session.flush()
+
+    return {
+        "document_id": str(document.id),
+        "filename": document.filename,
+        "content_type": document.content_type,
+        "byte_size": document.byte_size,
+        "generated_at": generated_at,
+        "generated_by_user_id": str(user.id),
+        "download_path": f"/api/v1/documents/{document.id}/download",
+        "preview_path": f"/api/v1/invoice-drafts/{draft.id}/preview",
+        "storage_status": "stored",
+        "external_posting_status": "not_posted",
+    }
+
+
+def _invoice_posting_preparation(
+    draft: InvoiceDraft,
+    blockers: list[str],
+    prepared_at: str,
+    user: CurrentUser,
+    pdf_artifact: dict[str, object],
+) -> dict[str, object]:
+    ready = len(blockers) == 0
+    return {
+        "status": "ready_for_approval" if ready else "blocked",
+        "prepared_at": prepared_at,
+        "prepared_by_user_id": str(user.id),
+        "approval_required": True,
+        "approved": draft.status == InvoiceDraftStatus.approved,
+        "approval_status": draft.status.value,
+        "posting_ready": ready,
+        "blockers": blockers,
+        "invoice_number": draft.invoice_number,
+        "total_cents": draft.total_cents,
+        "currency": draft.currency,
+        "pdf_document_id": pdf_artifact.get("document_id"),
+        "tenant_email_required": True,
+        "xero_sync_allowed": False,
+        "xero_sync_requested": False,
+        "xero_synced": False,
+        "external_posting_status": "not_started",
+        "guardrail": "No Xero sync runs unless a future explicit sync action is approved.",
     }
 
 
@@ -221,6 +485,14 @@ def _invoice_preview_html(draft: InvoiceDraft) -> str:
         "</tr>"
         for line in draft.lines
         if line.deleted_at is None
+    )
+    pdf_artifact = (draft.invoice_metadata or {}).get("pdf_artifact")
+    pdf_notice = (
+        "A PDF artifact record has been stored for approval. No tenant email has been "
+        "sent, and no Xero sync has run."
+        if isinstance(pdf_artifact, dict) and pdf_artifact.get("document_id")
+        else "No PDF artifact record has been stored yet, no tenant email has been sent, "
+        "and no Xero sync has run."
     )
     return f"""<!doctype html>
 <html lang="en">
@@ -290,8 +562,7 @@ def _invoice_preview_html(draft: InvoiceDraft) -> str:
     </table>
     <p class="amount total">Total {escape(_invoice_money(draft.total_cents, draft.currency))}</p>
     <div class="notice">
-      Preview only. No PDF file has been stored, no tenant email has been sent,
-      and no Xero sync has run.
+      {escape(pdf_notice)}
     </div>
   </main>
 </body>
@@ -301,36 +572,84 @@ def _invoice_preview_html(draft: InvoiceDraft) -> str:
 def _prepare_invoice_delivery_metadata(
     draft: InvoiceDraft,
     user: CurrentUser,
+    session: Session,
 ) -> tuple[dict[str, object], list[str]]:
     metadata = dict(draft.invoice_metadata or {})
     blockers = _invoice_draft_delivery_blockers(draft)
     prepared_at = utcnow().isoformat()
+    pdf_artifact = _upsert_invoice_pdf_artifact(draft, metadata, user, session, prepared_at)
+    email_preview = _invoice_email_preview(draft)
+    existing_delivery_state = metadata.get("delivery_state")
     delivery_state = dict(metadata.get("delivery_state") or {})
     delivery_state.update(
         {
-            "pdf_generated": False,
+            "pdf_generated": True,
+            "pdf_artifact_stored": True,
             "pdf_preview_generated": True,
             "tenant_email_prepared": len(blockers) == 0,
-            "tenant_email_sent": False,
-            "xero_synced": False,
+            "tenant_email_sent": (
+                isinstance(existing_delivery_state, dict)
+                and existing_delivery_state.get("tenant_email_sent") is True
+            ),
+            "xero_synced": (
+                isinstance(existing_delivery_state, dict)
+                and existing_delivery_state.get("xero_synced") is True
+            ),
             "delivery_ready": len(blockers) == 0,
+            "posting_prepared": len(blockers) == 0,
         }
     )
+    delivery_email = dict(metadata.get("delivery_email") or {})
+    delivery_email["draft"] = {
+        "status": "drafted" if not blockers else "blocked",
+        "prepared_at": prepared_at,
+        "prepared_by_user_id": str(user.id),
+        "template": "leasium_invoice_v1",
+        "to": email_preview["to"],
+        "from_name": email_preview["from_name"],
+        "reply_to": email_preview["reply_to"],
+        "subject": email_preview["subject"],
+        "body": email_preview["body"],
+        "brand": email_preview["brand"],
+        "pdf_document_id": pdf_artifact["document_id"],
+    }
+    delivery_email.setdefault(
+        "send",
+        {
+            "status": "not_sent",
+            "provider": None,
+            "sent_at": None,
+            "provider_message_id": None,
+        },
+    )
+    metadata["pdf_artifact"] = pdf_artifact
     metadata["delivery_state"] = delivery_state
     metadata["delivery_blockers"] = blockers
+    metadata["delivery_email"] = delivery_email
     metadata["delivery_preview"] = {
         "prepared_at": prepared_at,
         "prepared_by_user_id": str(user.id),
         "preview_path": f"/api/v1/invoice-drafts/{draft.id}/preview",
-        "email": _invoice_email_preview(draft),
+        "pdf_artifact": pdf_artifact,
+        "email": email_preview,
     }
+    metadata["posting_preparation"] = _invoice_posting_preparation(
+        draft,
+        blockers,
+        prepared_at,
+        user,
+        pdf_artifact,
+    )
+    metadata.setdefault("payment_status", _initial_payment_status(draft.total_cents, prepared_at))
     history = list(metadata.get("delivery_history") or [])
     history.append(
         {
-            "event": "prepared_delivery_preview",
+            "event": "prepared_delivery",
             "at": prepared_at,
             "user_id": str(user.id),
             "blockers": blockers,
+            "pdf_document_id": pdf_artifact["document_id"],
+            "email_draft_status": delivery_email["draft"]["status"],
             "sent": False,
             "xero_synced": False,
         }
@@ -341,7 +660,114 @@ def _prepare_invoice_delivery_metadata(
 
 def _invoice_delivery_ready(metadata: dict[str, object]) -> bool:
     delivery_state = metadata.get("delivery_state")
-    return isinstance(delivery_state, dict) and delivery_state.get("delivery_ready") is True
+    return (
+        isinstance(delivery_state, dict)
+        and delivery_state.get("delivery_ready") is True
+        and delivery_state.get("pdf_generated") is True
+        and delivery_state.get("pdf_artifact_stored") is True
+    )
+
+
+def _record_invoice_manual_delivery(
+    draft: InvoiceDraft,
+    metadata: dict[str, object],
+    payload: InvoiceDraftDeliverySendRecord,
+    user: CurrentUser,
+) -> dict[str, object]:
+    sent_at = (payload.sent_at or utcnow()).isoformat()
+    delivery_state = dict(metadata.get("delivery_state") or {})
+    delivery_state.update(
+        {
+            "tenant_email_sent": True,
+            "tenant_email_sent_at": sent_at,
+            "tenant_email_sent_by_user_id": str(user.id),
+            "tenant_email_delivery_method": payload.method,
+            "xero_synced": False,
+        }
+    )
+    delivery_email = dict(metadata.get("delivery_email") or {})
+    delivery_email["send"] = {
+        "status": "sent",
+        "provider": payload.method,
+        "sent_at": sent_at,
+        "sent_by_user_id": str(user.id),
+        "provider_message_id": None,
+        "recipient_email": draft.recipient_email,
+        "notes": payload.notes,
+        "xero_synced": False,
+    }
+    receipts = list(metadata.get("delivery_receipts") or [])
+    receipts.insert(
+        0,
+        {
+            "received_at": sent_at,
+            "channel": "email",
+            "status": "sent",
+            "provider": payload.method,
+            "recipient_email": draft.recipient_email,
+            "notes": payload.notes,
+        },
+    )
+    history = list(metadata.get("delivery_history") or [])
+    history.append(
+        {
+            "event": "recorded_manual_delivery",
+            "at": sent_at,
+            "user_id": str(user.id),
+            "method": payload.method,
+            "recipient_email": draft.recipient_email,
+            "xero_synced": False,
+        }
+    )
+    metadata["delivery_state"] = delivery_state
+    metadata["delivery_email"] = delivery_email
+    metadata["delivery_receipts"] = receipts[:20]
+    metadata["delivery_history"] = history
+    return metadata
+
+
+def _normalise_payment_status(
+    draft: InvoiceDraft,
+    payload: InvoiceDraftPaymentStatusUpdate,
+    user: CurrentUser,
+) -> dict[str, object]:
+    now = utcnow().isoformat()
+    paid_cents = payload.paid_cents
+    if payload.status == "unpaid":
+        paid_cents = 0
+    elif payload.status == "paid" and paid_cents is None:
+        paid_cents = draft.total_cents
+    elif payload.status == "partially_paid" and paid_cents is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Partial payment needs a paid amount.",
+        )
+
+    assert paid_cents is not None
+    if paid_cents > draft.total_cents:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Paid amount cannot exceed the invoice total.",
+        )
+    if payload.status == "partially_paid" and paid_cents in {0, draft.total_cents}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Partial payment must be greater than zero and less than the invoice total.",
+        )
+
+    paid_at = payload.paid_at.isoformat() if payload.paid_at else None
+    if payload.status in {"partially_paid", "paid"}:
+        paid_at = paid_at or now
+    return {
+        "status": payload.status,
+        "paid_cents": paid_cents,
+        "outstanding_cents": max(draft.total_cents - paid_cents, 0),
+        "paid_at": paid_at,
+        "updated_at": now,
+        "updated_by_user_id": str(user.id),
+        "notes": payload.notes,
+        "source": "manual_review",
+    }
 
 
 def _property_billing_blockers(
@@ -515,6 +941,8 @@ def create_invoice_draft_from_billing_draft(
     subtotal_cents = sum(line.amount_cents for line in source_lines)
     blockers = _invoice_draft_blockers(draft, prop, tenant, entity, len(source_lines))
     created_at = utcnow().isoformat()
+    rent_period = _invoice_rent_period_metadata(draft, source_lines)
+    total_cents = draft.total_cents or subtotal_cents
     invoice = InvoiceDraft(
         entity_id=draft.entity_id,
         billing_draft_id=draft.id,
@@ -532,7 +960,7 @@ def create_invoice_draft_from_billing_draft(
         due_date=draft.due_date,
         subtotal_cents=subtotal_cents,
         gst_cents=0,
-        total_cents=draft.total_cents or subtotal_cents,
+        total_cents=total_cents,
         issuer_name=issuer_name,
         issuer_abn=prop.owner_abn if prop is not None else None,
         recipient_name=tenant.legal_name if tenant is not None else None,
@@ -548,10 +976,36 @@ def create_invoice_draft_from_billing_draft(
             "created_from_billing_draft_at": created_at,
             "created_by_user_id": str(user.id),
             "readiness_blockers": blockers,
+            "rent_period": rent_period,
+            "payment_status": _initial_payment_status(total_cents, created_at),
             "delivery_state": {
                 "pdf_generated": False,
+                "pdf_artifact_stored": False,
+                "pdf_preview_generated": False,
+                "tenant_email_prepared": False,
                 "tenant_email_sent": False,
+                "delivery_ready": False,
                 "xero_synced": False,
+            },
+            "delivery_email": {
+                "draft": {"status": "not_prepared", "template": "leasium_invoice_v1"},
+                "send": {
+                    "status": "not_sent",
+                    "provider": None,
+                    "sent_at": None,
+                    "provider_message_id": None,
+                },
+            },
+            "posting_preparation": {
+                "status": "not_prepared",
+                "approval_required": True,
+                "approved": False,
+                "posting_ready": False,
+                "xero_sync_allowed": False,
+                "xero_sync_requested": False,
+                "xero_synced": False,
+                "external_posting_status": "not_started",
+                "guardrail": "No Xero sync runs unless a future explicit sync action is approved.",
             },
         },
     )
@@ -686,6 +1140,29 @@ def update_invoice_draft(
         if draft.status == InvoiceDraftStatus.approved:
             metadata["approved_at"] = status_entry["changed_at"]
             metadata["approved_by_user_id"] = str(user.id)
+            posting_preparation = dict(metadata.get("posting_preparation") or {})
+            posting_preparation.update(
+                {
+                    "status": "approved_for_posting_preparation",
+                    "approved": True,
+                    "approval_status": "approved",
+                    "approved_at": status_entry["changed_at"],
+                    "approved_by_user_id": str(user.id),
+                    "external_posting_status": "not_started",
+                    "xero_sync_allowed": False,
+                    "xero_sync_requested": False,
+                    "xero_synced": False,
+                    "guardrail": (
+                        "No Xero sync runs unless a future explicit sync action is "
+                        "approved."
+                    ),
+                }
+            )
+            metadata["posting_preparation"] = posting_preparation
+            metadata.setdefault(
+                "payment_status",
+                _initial_payment_status(draft.total_cents, status_entry["changed_at"]),
+            )
         if draft.status == InvoiceDraftStatus.void:
             metadata["voided_at"] = status_entry["changed_at"]
             metadata["voided_by_user_id"] = str(user.id)
@@ -726,14 +1203,14 @@ def prepare_invoice_draft_delivery(
             detail="Void invoice drafts cannot be prepared for delivery.",
         )
 
-    metadata, blockers = _prepare_invoice_delivery_metadata(draft, user)
+    metadata, blockers = _prepare_invoice_delivery_metadata(draft, user, session)
     draft.invoice_metadata = metadata
     if not blockers and draft.status == InvoiceDraftStatus.draft:
         draft.status = InvoiceDraftStatus.ready_for_approval
     if not draft.notes:
         draft.notes = (
-            "Delivery preview prepared only. No PDF file stored, tenant email sent, "
-            "or Xero sync run."
+            "Delivery metadata prepared with a PDF artifact record and branded "
+            "email draft. No tenant email or Xero sync run."
         )
     audit_log(
         session,
@@ -744,8 +1221,8 @@ def prepare_invoice_draft_delivery(
         target_table="invoice_draft",
         target_id=draft.id,
         tool_output_summary=(
-            "Prepared invoice draft delivery preview; no PDF file, tenant email, "
-            "or Xero sync was run."
+            "Prepared invoice draft PDF artifact and branded email draft metadata; "
+            "no tenant email or Xero sync was run."
         ),
     )
     session.commit()
@@ -761,6 +1238,92 @@ def preview_invoice_draft(
 ) -> HTMLResponse:
     draft = _invoice_draft_for_access(invoice_draft_id, user, session, READ_ROLES)
     return HTMLResponse(_invoice_preview_html(draft))
+
+
+@router.post(
+    "/invoice-drafts/{invoice_draft_id}/record-delivery",
+    response_model=InvoiceDraftRead,
+)
+def record_invoice_draft_delivery(
+    invoice_draft_id: UUID,
+    payload: InvoiceDraftDeliverySendRecord,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> InvoiceDraft:
+    draft = _invoice_draft_for_access(invoice_draft_id, user, session, WRITE_ROLES)
+    metadata = dict(draft.invoice_metadata or {})
+    if draft.status != InvoiceDraftStatus.approved:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Approve the invoice draft before recording tenant delivery.",
+        )
+    if not _invoice_delivery_ready(metadata):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Prepare invoice delivery before recording tenant delivery.",
+        )
+    if not draft.recipient_email:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tenant billing email missing.",
+        )
+
+    draft.invoice_metadata = _record_invoice_manual_delivery(draft, metadata, payload, user)
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=draft.entity_id,
+        action="deliver",
+        target_table="invoice_draft",
+        target_id=draft.id,
+        tool_name="invoice.manual_delivery",
+        tool_input=payload.model_dump(mode="json", exclude_unset=True),
+        tool_output_summary="Recorded tenant invoice delivery manually; no Xero sync was run.",
+    )
+    session.commit()
+    session.refresh(draft)
+    return draft
+
+
+@router.patch(
+    "/invoice-drafts/{invoice_draft_id}/payment-status",
+    response_model=InvoiceDraftRead,
+)
+def update_invoice_draft_payment_status(
+    invoice_draft_id: UUID,
+    payload: InvoiceDraftPaymentStatusUpdate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> InvoiceDraft:
+    draft = _invoice_draft_for_access(invoice_draft_id, user, session, WRITE_ROLES)
+    if draft.status == InvoiceDraftStatus.void:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Void invoice drafts cannot receive payment status updates.",
+        )
+    metadata = dict(draft.invoice_metadata or {})
+    payment_status = _normalise_payment_status(draft, payload, user)
+    history = list(metadata.get("payment_history") or [])
+    history.append(payment_status)
+    metadata["payment_status"] = payment_status
+    metadata["payment_history"] = history[-20:]
+    draft.invoice_metadata = metadata
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=draft.entity_id,
+        action="update",
+        target_table="invoice_draft",
+        target_id=draft.id,
+        tool_name="invoice.payment_status",
+        tool_input=payload.model_dump(mode="json", exclude_unset=True),
+        tool_output_summary=f"Updated invoice payment status to {payload.status}.",
+    )
+    session.commit()
+    session.refresh(draft)
+    return draft
 
 
 @router.get("/charge-rules", response_model=list[RentChargeRuleRead])

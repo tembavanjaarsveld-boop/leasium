@@ -1,6 +1,7 @@
 """Tenant CRUD routes with entity-scoped access checks."""
 
-from typing import Annotated
+from datetime import date, datetime
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,15 +9,178 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
-from stewart.core.models import Tenant, UserRole
+from stewart.core.models import (
+    DocumentIntake,
+    Lease,
+    Property,
+    StoredDocument,
+    TenancyUnit,
+    Tenant,
+    TenantOnboarding,
+    TenantOnboardingStatus,
+    UserRole,
+)
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
-from apps.api.schemas.register import TenantCreate, TenantRead, TenantUpdate
+from apps.api.schemas.register import (
+    TenantActivityItemRead,
+    TenantCreate,
+    TenantDetailRead,
+    TenantLeaseContextRead,
+    TenantRead,
+    TenantReviewedChangeRead,
+    TenantReviewedFieldChangeRead,
+    TenantUpdate,
+)
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
 
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
+
+TENANT_PROFILE_FIELDS: tuple[tuple[str, str], ...] = (
+    ("legal_name", "Legal name"),
+    ("trading_name", "Trading as"),
+    ("abn", "ABN"),
+    ("contact_name", "Primary contact"),
+    ("contact_email", "Contact email"),
+    ("contact_phone", "Phone"),
+    ("billing_email", "Billing email"),
+    ("notes", "Notes"),
+)
+TENANT_METADATA_FIELDS: tuple[tuple[str, str], ...] = (
+    ("insurance_confirmed", "Insurance confirmed"),
+    ("insurance_expiry_date", "Insurance expiry"),
+    ("emergency_contact_name", "Emergency contact"),
+    ("emergency_contact_phone", "Emergency phone"),
+)
+
+
+def _property_address(prop: Property) -> str | None:
+    parts = [prop.street_address, prop.suburb, prop.state, prop.postcode]
+    address = ", ".join(part for part in parts if part)
+    return address or None
+
+
+def _json_value(value: Any) -> Any:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if value == "":
+        return None
+    return value
+
+
+def tenant_submission_changes(
+    tenant: Tenant,
+    submitted_data: dict[str, Any],
+) -> list[dict[str, Any]]:
+    changes: list[dict[str, Any]] = []
+    for field, label in TENANT_PROFILE_FIELDS:
+        before = _json_value(getattr(tenant, field))
+        after = _json_value(submitted_data.get(field))
+        if field == "billing_email":
+            after = _json_value(
+                submitted_data.get("billing_email") or submitted_data.get("contact_email")
+            )
+        if before != after:
+            changes.append({"field": field, "label": label, "before": before, "after": after})
+
+    metadata = tenant.tenant_metadata or {}
+    for field, label in TENANT_METADATA_FIELDS:
+        before = _json_value(metadata.get(field))
+        after = _json_value(submitted_data.get(field))
+        if field == "insurance_confirmed":
+            before = bool(before)
+            after = bool(after)
+        if before != after:
+            changes.append({"field": field, "label": label, "before": before, "after": after})
+    return changes
+
+
+def _change_rows(changes: Any) -> list[TenantReviewedFieldChangeRead]:
+    if not isinstance(changes, list):
+        return []
+    rows: list[TenantReviewedFieldChangeRead] = []
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        field = change.get("field")
+        if not isinstance(field, str) or not field:
+            continue
+        label = change.get("label")
+        rows.append(
+            TenantReviewedFieldChangeRead(
+                field=field,
+                label=label if isinstance(label, str) and label else field.replace("_", " "),
+                before=change.get("before"),
+                after=change.get("after"),
+            )
+        )
+    return rows
+
+
+def append_tenant_reviewed_change_history(
+    tenant: Tenant,
+    onboarding: TenantOnboarding,
+    changes: list[dict[str, Any]],
+) -> None:
+    if not changes:
+        return
+    metadata = dict(tenant.tenant_metadata or {})
+    history = metadata.get("reviewed_change_history")
+    if not isinstance(history, list):
+        history = []
+    history.append(
+        {
+            "source": "tenant_onboarding",
+            "tenant_onboarding_id": str(onboarding.id),
+            "status": str(onboarding.status),
+            "reviewed_at": onboarding.reviewed_at.isoformat() if onboarding.reviewed_at else None,
+            "applied_at": onboarding.applied_at.isoformat() if onboarding.applied_at else None,
+            "notes": (
+                onboarding.review_data.get("notes")
+                if isinstance(onboarding.review_data, dict)
+                else None
+            ),
+            "changes": changes,
+        }
+    )
+    metadata["reviewed_change_history"] = history[-20:]
+    tenant.tenant_metadata = metadata
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _activity(
+    occurred_at: datetime | None,
+    *,
+    kind: str,
+    label: str,
+    source: str,
+    detail: str | None = None,
+    related_id: UUID | None = None,
+    tone: str = "neutral",
+) -> TenantActivityItemRead | None:
+    if occurred_at is None:
+        return None
+    return TenantActivityItemRead(
+        occurred_at=occurred_at,
+        kind=kind,
+        label=label,
+        detail=detail,
+        source=source,
+        related_id=related_id,
+        tone=tone,
+    )
 
 
 @router.get("", response_model=list[TenantRead])
@@ -79,6 +243,331 @@ def get_tenant(
     session: Annotated[Session, Depends(get_session)],
 ) -> Tenant:
     return _get_tenant_for_user(tenant_id, user, session, READ_ROLES)
+
+
+def _tenant_lease_contexts(session: Session, tenant: Tenant) -> list[TenantLeaseContextRead]:
+    leases = session.scalars(
+        select(Lease)
+        .where(Lease.tenant_id == tenant.id, Lease.deleted_at.is_(None))
+        .order_by(Lease.expiry_date, Lease.created_at)
+    ).all()
+    contexts: list[TenantLeaseContextRead] = []
+    for lease in leases:
+        unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+        if unit is None or unit.deleted_at is not None:
+            continue
+        prop = session.get(Property, unit.property_id)
+        if prop is None or prop.deleted_at is not None or prop.entity_id != tenant.entity_id:
+            continue
+        contexts.append(
+            TenantLeaseContextRead(
+                lease_id=lease.id,
+                status=lease.status,
+                property_id=prop.id,
+                property_name=prop.name,
+                property_address=_property_address(prop),
+                tenancy_unit_id=unit.id,
+                unit_label=unit.unit_label,
+                commencement_date=lease.commencement_date,
+                expiry_date=lease.expiry_date,
+                annual_rent_cents=lease.annual_rent_cents,
+                rent_frequency=lease.rent_frequency,
+                outgoings_recoverable=lease.outgoings_recoverable,
+                next_review_date=lease.next_review_date,
+            )
+        )
+    return contexts
+
+
+def _tenant_documents(session: Session, tenant: Tenant) -> list[StoredDocument]:
+    return list(
+        session.scalars(
+            select(StoredDocument)
+            .where(StoredDocument.tenant_id == tenant.id)
+            .order_by(StoredDocument.created_at.desc())
+        )
+    )
+
+
+def _tenant_onboardings(session: Session, tenant: Tenant) -> list[TenantOnboarding]:
+    return list(
+        session.scalars(
+            select(TenantOnboarding)
+            .where(
+                TenantOnboarding.tenant_id == tenant.id,
+                TenantOnboarding.deleted_at.is_(None),
+            )
+            .order_by(TenantOnboarding.created_at.desc())
+        )
+    )
+
+
+def _tenant_document_intakes(
+    session: Session,
+    documents: list[StoredDocument],
+) -> list[DocumentIntake]:
+    document_ids = [document.id for document in documents]
+    if not document_ids:
+        return []
+    return list(
+        session.scalars(
+            select(DocumentIntake)
+            .where(
+                DocumentIntake.document_id.in_(document_ids),
+                DocumentIntake.deleted_at.is_(None),
+            )
+            .order_by(DocumentIntake.updated_at.desc())
+        )
+    )
+
+
+def _tenant_activity(
+    tenant: Tenant,
+    leases: list[TenantLeaseContextRead],
+    documents: list[StoredDocument],
+    intakes: list[DocumentIntake],
+    onboardings: list[TenantOnboarding],
+) -> list[TenantActivityItemRead]:
+    items: list[TenantActivityItemRead] = []
+    tenant_created = _activity(
+        tenant.created_at,
+        kind="tenant",
+        label="Tenant profile created",
+        source="Tenant profile",
+        related_id=tenant.id,
+    )
+    if tenant_created is not None:
+        items.append(tenant_created)
+    if tenant.updated_at > tenant.created_at:
+        tenant_updated = _activity(
+            tenant.updated_at,
+            kind="tenant",
+            label="Tenant profile updated",
+            source="Tenant profile",
+            related_id=tenant.id,
+            tone="primary",
+        )
+        if tenant_updated is not None:
+            items.append(tenant_updated)
+
+    for lease in leases:
+        lease_item = _activity(
+            _parse_datetime(lease.commencement_date.isoformat())
+            if lease.commencement_date
+            else tenant.created_at,
+            kind="lease",
+            label=f"Lease {lease.status.value.replace('_', ' ')}",
+            detail=f"{lease.property_name} - {lease.unit_label}",
+            source="Lease register",
+            related_id=lease.lease_id,
+            tone="success" if lease.status.value == "active" else "neutral",
+        )
+        if lease_item is not None:
+            items.append(lease_item)
+
+    for onboarding in onboardings:
+        onboarding_created = _activity(
+            onboarding.last_sent_at or onboarding.created_at,
+            kind="onboarding",
+            label="Onboarding link sent",
+            source="Tenant onboarding",
+            related_id=onboarding.id,
+            tone="primary",
+        )
+        if onboarding_created is not None:
+            items.append(onboarding_created)
+        onboarding_resent = _activity(
+            onboarding.resent_at,
+            kind="onboarding",
+            label="Onboarding link resent",
+            source="Tenant onboarding",
+            related_id=onboarding.id,
+            tone="primary",
+        )
+        if onboarding_resent is not None:
+            items.append(onboarding_resent)
+        onboarding_submitted = _activity(
+            onboarding.submitted_at,
+            kind="onboarding",
+            label="Tenant submitted details",
+            source="Tenant onboarding",
+            related_id=onboarding.id,
+            tone="warning",
+        )
+        if onboarding_submitted is not None:
+            items.append(onboarding_submitted)
+        onboarding_reviewed = _activity(
+            onboarding.reviewed_at,
+            kind="review",
+            label="Submitted details reviewed",
+            source="Tenant onboarding",
+            related_id=onboarding.id,
+            tone="primary",
+        )
+        if onboarding_reviewed is not None:
+            items.append(onboarding_reviewed)
+        onboarding_applied = _activity(
+            onboarding.applied_at,
+            kind="apply",
+            label="Reviewed details applied",
+            source="Tenant onboarding",
+            related_id=onboarding.id,
+            tone="success",
+        )
+        if onboarding_applied is not None:
+            items.append(onboarding_applied)
+        if onboarding.status == TenantOnboardingStatus.cancelled:
+            onboarding_cancelled = _activity(
+                onboarding.updated_at,
+                kind="onboarding",
+                label="Onboarding cancelled",
+                detail=onboarding.cancel_reason,
+                source="Tenant onboarding",
+                related_id=onboarding.id,
+            )
+            if onboarding_cancelled is not None:
+                items.append(onboarding_cancelled)
+
+    document_names = {document.id: document.filename for document in documents}
+    for document in documents:
+        uploaded = _activity(
+            document.created_at,
+            kind="document",
+            label="Document uploaded",
+            detail=document.filename,
+            source="Documents",
+            related_id=document.id,
+            tone="primary" if document.tenant_onboarding_id else "neutral",
+        )
+        if uploaded is not None:
+            items.append(uploaded)
+        deleted = _activity(
+            document.deleted_at,
+            kind="document",
+            label="Document deleted",
+            detail=document.filename,
+            source="Documents",
+            related_id=document.id,
+        )
+        if deleted is not None:
+            items.append(deleted)
+
+    for intake in intakes:
+        filename = document_names.get(intake.document_id)
+        if intake.reviewed_at is not None:
+            reviewed = _activity(
+                intake.reviewed_at,
+                kind="review",
+                label="Document reviewed",
+                detail=filename,
+                source="Smart Intake",
+                related_id=intake.id,
+                tone="primary",
+            )
+            if reviewed is not None:
+                items.append(reviewed)
+        if intake.applied_at is not None:
+            applied = _activity(
+                intake.applied_at,
+                kind="apply",
+                label="Document changes applied",
+                detail=filename,
+                source="Smart Intake",
+                related_id=intake.id,
+                tone="success",
+            )
+            if applied is not None:
+                items.append(applied)
+        if intake.status.value in {"failed", "needs_attention"}:
+            attention = _activity(
+                intake.updated_at,
+                kind="review",
+                label="Document needs attention",
+                detail=filename,
+                source="Smart Intake",
+                related_id=intake.id,
+                tone="warning" if intake.status.value == "needs_attention" else "danger",
+            )
+            if attention is not None:
+                items.append(attention)
+
+    return sorted(items, key=lambda item: item.occurred_at, reverse=True)[:24]
+
+
+def _reviewed_change_history(
+    tenant: Tenant,
+    onboardings: list[TenantOnboarding],
+) -> list[TenantReviewedChangeRead]:
+    rows: list[TenantReviewedChangeRead] = []
+    seen_onboardings: set[str] = set()
+    history = (tenant.tenant_metadata or {}).get("reviewed_change_history")
+    if isinstance(history, list):
+        for entry in history:
+            if not isinstance(entry, dict):
+                continue
+            source = entry.get("source")
+            source_id = entry.get("tenant_onboarding_id")
+            occurred_at = _parse_datetime(entry.get("applied_at")) or _parse_datetime(
+                entry.get("reviewed_at")
+            )
+            if occurred_at is None:
+                continue
+            if isinstance(source_id, str):
+                seen_onboardings.add(source_id)
+            notes = entry.get("notes")
+            rows.append(
+                TenantReviewedChangeRead(
+                    occurred_at=occurred_at,
+                    source=str(source or "tenant_onboarding"),
+                    source_label="Tenant onboarding",
+                    source_id=UUID(source_id) if isinstance(source_id, str) else None,
+                    status=str(entry.get("status") or "applied"),
+                    notes=notes if isinstance(notes, str) else None,
+                    changes=_change_rows(entry.get("changes")),
+                )
+            )
+
+    for onboarding in onboardings:
+        if str(onboarding.id) in seen_onboardings or not isinstance(onboarding.review_data, dict):
+            continue
+        changes = _change_rows(onboarding.review_data.get("changes"))
+        if not changes:
+            continue
+        occurred_at = onboarding.applied_at or onboarding.reviewed_at or onboarding.submitted_at
+        if occurred_at is None:
+            continue
+        notes = onboarding.review_data.get("notes")
+        rows.append(
+            TenantReviewedChangeRead(
+                occurred_at=occurred_at,
+                source="tenant_onboarding",
+                source_label="Tenant onboarding",
+                source_id=onboarding.id,
+                status=onboarding.status.value,
+                notes=notes if isinstance(notes, str) else None,
+                changes=changes,
+            )
+        )
+    return sorted(rows, key=lambda row: row.occurred_at, reverse=True)[:12]
+
+
+@router.get("/{tenant_id}/detail", response_model=TenantDetailRead)
+def get_tenant_detail(
+    tenant_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantDetailRead:
+    tenant = _get_tenant_for_user(tenant_id, user, session, READ_ROLES)
+    leases = _tenant_lease_contexts(session, tenant)
+    documents = _tenant_documents(session, tenant)
+    intakes = _tenant_document_intakes(session, documents)
+    onboardings = _tenant_onboardings(session, tenant)
+    return TenantDetailRead(
+        tenant=TenantRead.model_validate(tenant),
+        leases=leases,
+        activity=_tenant_activity(tenant, leases, documents, intakes, onboardings),
+        reviewed_changes=_reviewed_change_history(tenant, onboardings),
+    )
 
 
 @router.patch("/{tenant_id}", response_model=TenantRead)
