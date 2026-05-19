@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-5.4-mini"
     lease_intake_max_bytes: int = 15_000_000
+    document_max_bytes: int = 15_000_000
     xero_client_id: str = ""
     xero_client_secret: str = ""
     postmark_server_token: str = ""

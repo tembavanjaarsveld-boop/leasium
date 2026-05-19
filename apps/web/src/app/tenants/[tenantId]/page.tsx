@@ -5,12 +5,15 @@ import {
   ArrowLeft,
   Check,
   ClipboardCopy,
+  Download,
   Edit3,
   FileText,
   Link2,
   Plus,
   Save,
   ShieldCheck,
+  Trash2,
+  UploadCloud,
   X,
   UserRound,
 } from "lucide-react";
@@ -27,19 +30,25 @@ import {
   Input,
   SecondaryButton,
   SectionPanel,
+  Select,
   StatusBadge,
 } from "@/components/ui";
 import {
   cancelTenantOnboarding,
   applyTenantOnboarding,
   createTenantOnboarding,
+  deleteDocument,
+  documentDownloadUrl,
+  DocumentCategory,
   getTenant,
+  listDocuments,
   listLeasesByTenant,
   listTenantOnboardings,
   resendTenantOnboarding,
   reviewTenantOnboarding,
   TenantPayload,
   TenantRecord,
+  uploadDocument,
   updateTenant,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -105,6 +114,13 @@ function formatMoney(cents: number | null | undefined) {
   }).format(cents / 100);
 }
 
+function formatBytes(bytes: number) {
+  if (bytes < 1_000_000) {
+    return `${Math.max(1, Math.round(bytes / 1_000))} KB`;
+  }
+  return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
 function dateOnly(value: Date) {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");
@@ -134,12 +150,28 @@ function statusTone(status: string, dueDate?: string | null) {
   return status === "sent" ? ("primary" as const) : ("warning" as const);
 }
 
+const documentCategories: Array<{ value: DocumentCategory; label: string }> = [
+  { value: "insurance", label: "Insurance" },
+  { value: "bank_guarantee", label: "Bank guarantee" },
+  { value: "lease", label: "Signed lease" },
+  { value: "onboarding", label: "Onboarding" },
+  { value: "invoice", label: "Invoice" },
+  { value: "other", label: "Other" },
+];
+
+function documentCategoryLabel(value: DocumentCategory) {
+  return documentCategories.find((item) => item.value === value)?.label ?? value;
+}
+
 function TenantDetail() {
   const params = useParams<{ tenantId: string }>();
   const tenantId = params.tenantId;
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<TenantForm | null>(null);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentCategory, setDocumentCategory] = useState<DocumentCategory>("insurance");
+  const [documentNotes, setDocumentNotes] = useState("");
 
   const tenantQuery = useQuery({
     queryKey: ["tenant", tenantId],
@@ -160,6 +192,17 @@ function TenantDetail() {
   });
 
   const tenant = tenantQuery.data;
+
+  const documentsQuery = useQuery({
+    queryKey: ["tenant-documents", tenant?.entity_id, tenantId],
+    queryFn: () =>
+      listDocuments({
+        entity_id: tenant!.entity_id,
+        tenant_id: tenantId,
+      }),
+    enabled: Boolean(tenant?.entity_id && tenantId),
+  });
+
   const tenantOnboardings = (onboardingQuery.data ?? [])
     .filter((item) => item.tenant_id === tenantId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -229,6 +272,37 @@ function TenantDetail() {
     },
   });
 
+  const uploadDocumentMutation = useMutation({
+    mutationFn: () => {
+      if (!tenant || !documentFile) {
+        throw new Error("Choose a document first.");
+      }
+      return uploadDocument({
+        entityId: tenant.entity_id,
+        tenantId,
+        category: documentCategory,
+        notes: documentNotes,
+        file: documentFile,
+      });
+    },
+    onSuccess: () => {
+      setDocumentFile(null);
+      setDocumentNotes("");
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-documents", tenant?.entity_id, tenantId],
+      });
+    },
+  });
+
+  const deleteDocumentMutation = useMutation({
+    mutationFn: deleteDocument,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-documents", tenant?.entity_id, tenantId],
+      });
+    },
+  });
+
   function startEdit() {
     if (!tenant) {
       return;
@@ -247,6 +321,11 @@ function TenantDetail() {
       return;
     }
     updateMutation.mutate(form);
+  }
+
+  function submitDocument(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    uploadDocumentMutation.mutate();
   }
 
   if (tenantQuery.isLoading) {
@@ -374,10 +453,103 @@ function TenantDetail() {
             </SectionPanel>
 
             <SectionPanel title="Documents" icon={<FileText size={17} />}>
-              <EmptyState
-                title="Document storage is next"
-                description="Insurance certificates, guarantees, signed leases, and onboarding uploads will live here."
-              />
+              <form className="grid gap-3 border-b border-border p-4" onSubmit={submitDocument}>
+                <label className="grid min-h-28 cursor-pointer place-items-center rounded-md border border-dashed border-border bg-muted/40 px-4 py-5 text-center transition hover:border-primary hover:bg-primary/5">
+                  <input
+                    type="file"
+                    className="sr-only"
+                    onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)}
+                  />
+                  <span className="grid justify-items-center gap-2">
+                    <UploadCloud size={22} className="text-primary" />
+                    <span className="text-sm font-semibold">
+                      {documentFile ? documentFile.name : "Drop in a tenant document"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      PDF, image, Word, or text file up to 15 MB
+                    </span>
+                  </span>
+                </label>
+                <div className="grid gap-3 sm:grid-cols-[150px_minmax(0,1fr)]">
+                  <Field label="Type">
+                    <Select
+                      value={documentCategory}
+                      onChange={(event) =>
+                        setDocumentCategory(event.target.value as DocumentCategory)
+                      }
+                    >
+                      {documentCategories.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Notes">
+                    <Input
+                      value={documentNotes}
+                      onChange={(event) => setDocumentNotes(event.target.value)}
+                      placeholder="Optional"
+                    />
+                  </Field>
+                </div>
+                <Button type="submit" disabled={!documentFile || uploadDocumentMutation.isPending}>
+                  <UploadCloud size={16} />
+                  Upload document
+                </Button>
+                {uploadDocumentMutation.error ? (
+                  <p className="text-sm text-danger">
+                    {friendlyError(uploadDocumentMutation.error)}
+                  </p>
+                ) : null}
+              </form>
+
+              <div className="divide-y divide-border">
+                {(documentsQuery.data ?? []).map((document) => (
+                  <div key={document.id} className="grid gap-3 p-4 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{document.filename}</div>
+                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <span>{documentCategoryLabel(document.category)}</span>
+                          <span>{formatBytes(document.byte_size)}</span>
+                          <span>{formatDate(document.created_at)}</span>
+                        </div>
+                        {document.notes ? (
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {document.notes}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <a
+                          className={cn(
+                            "inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted",
+                          )}
+                          href={documentDownloadUrl(document.id)}
+                          aria-label={`Download ${document.filename}`}
+                        >
+                          <Download size={15} />
+                        </a>
+                        <SecondaryButton
+                          type="button"
+                          className="h-8 w-8 px-0"
+                          onClick={() => deleteDocumentMutation.mutate(document.id)}
+                          aria-label={`Delete ${document.filename}`}
+                        >
+                          <Trash2 size={15} />
+                        </SecondaryButton>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {!documentsQuery.isLoading && (documentsQuery.data ?? []).length === 0 ? (
+                  <EmptyState
+                    title="No documents yet"
+                    description="Upload insurance certificates, guarantees, signed leases, or tenant files here."
+                  />
+                ) : null}
+              </div>
             </SectionPanel>
           </div>
 

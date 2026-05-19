@@ -143,6 +143,15 @@ class TenantOnboardingStatus(enum.StrEnum):
     cancelled = "cancelled"
 
 
+class DocumentCategory(enum.StrEnum):
+    lease = "lease"
+    insurance = "insurance"
+    bank_guarantee = "bank_guarantee"
+    onboarding = "onboarding"
+    invoice = "invoice"
+    other = "other"
+
+
 class AuditOutcome(enum.StrEnum):
     success = "success"
     error = "error"
@@ -189,6 +198,7 @@ class Entity(Base):
     obligations: Mapped[list["Obligation"]] = relationship(back_populates="entity")
     lease_intakes: Mapped[list["LeaseIntake"]] = relationship(back_populates="entity")
     tenant_onboardings: Mapped[list["TenantOnboarding"]] = relationship(back_populates="entity")
+    documents: Mapped[list["StoredDocument"]] = relationship(back_populates="entity")
 
 
 Index("entity_org_idx", Entity.organisation_id, postgresql_where=Entity.deleted_at.is_(None))
@@ -260,6 +270,7 @@ class Property(Base):
     entity: Mapped[Entity] = relationship(back_populates="properties")
     tenancy_units: Mapped[list["TenancyUnit"]] = relationship(back_populates="property")
     obligations: Mapped[list["Obligation"]] = relationship(back_populates="property")
+    documents: Mapped[list["StoredDocument"]] = relationship(back_populates="property")
 
 
 Index("property_entity_idx", Property.entity_id, postgresql_where=Property.deleted_at.is_(None))
@@ -324,6 +335,7 @@ class Tenant(Base):
     entity: Mapped[Entity] = relationship(back_populates="tenants")
     leases: Mapped[list["Lease"]] = relationship(back_populates="tenant")
     tenant_onboardings: Mapped[list["TenantOnboarding"]] = relationship(back_populates="tenant")
+    documents: Mapped[list["StoredDocument"]] = relationship(back_populates="tenant")
 
 
 Index("tenant_entity_idx", Tenant.entity_id, postgresql_where=Tenant.deleted_at.is_(None))
@@ -369,6 +381,7 @@ class Lease(Base):
     charge_rules: Mapped[list["RentChargeRule"]] = relationship(back_populates="lease")
     obligations: Mapped[list["Obligation"]] = relationship(back_populates="lease")
     tenant_onboardings: Mapped[list["TenantOnboarding"]] = relationship(back_populates="lease")
+    documents: Mapped[list["StoredDocument"]] = relationship(back_populates="lease")
 
 
 Index("lease_tenancy_unit_idx", Lease.tenancy_unit_id, postgresql_where=Lease.deleted_at.is_(None))
@@ -587,6 +600,7 @@ class TenantOnboarding(Base):
     entity: Mapped[Entity] = relationship(back_populates="tenant_onboardings")
     lease: Mapped[Lease] = relationship(back_populates="tenant_onboardings")
     tenant: Mapped[Tenant] = relationship(back_populates="tenant_onboardings")
+    documents: Mapped[list["StoredDocument"]] = relationship(back_populates="tenant_onboarding")
 
 
 Index(
@@ -605,6 +619,73 @@ Index(
     postgresql_where=TenantOnboarding.deleted_at.is_(None),
 )
 Index("tenant_onboarding_token_idx", TenantOnboarding.token, unique=True)
+
+
+class StoredDocument(Base):
+    __tablename__ = "stored_document"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    property_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("property.id"))
+    tenancy_unit_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenancy_unit.id")
+    )
+    tenant_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenant.id"))
+    lease_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("lease.id"))
+    tenant_onboarding_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenant_onboarding.id")
+    )
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str | None] = mapped_column(Text)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    file_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    category: Mapped[DocumentCategory] = mapped_column(
+        Enum(DocumentCategory, name="document_category"),
+        nullable=False,
+        default=DocumentCategory.other,
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    document_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="documents")
+    property: Mapped[Property | None] = relationship(back_populates="documents")
+    tenancy_unit: Mapped[TenancyUnit | None] = relationship()
+    tenant: Mapped[Tenant | None] = relationship(back_populates="documents")
+    lease: Mapped[Lease | None] = relationship(back_populates="documents")
+    tenant_onboarding: Mapped[TenantOnboarding | None] = relationship(
+        back_populates="documents"
+    )
+
+
+Index(
+    "stored_document_entity_idx",
+    StoredDocument.entity_id,
+    postgresql_where=StoredDocument.deleted_at.is_(None),
+)
+Index(
+    "stored_document_property_idx",
+    StoredDocument.property_id,
+    postgresql_where=StoredDocument.deleted_at.is_(None),
+)
+Index(
+    "stored_document_tenant_idx",
+    StoredDocument.tenant_id,
+    postgresql_where=StoredDocument.deleted_at.is_(None),
+)
+Index(
+    "stored_document_lease_idx",
+    StoredDocument.lease_id,
+    postgresql_where=StoredDocument.deleted_at.is_(None),
+)
+Index("stored_document_category_idx", StoredDocument.category)
 
 
 class AuditAction(Base):

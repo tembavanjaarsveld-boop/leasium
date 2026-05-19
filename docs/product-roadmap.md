@@ -25,6 +25,8 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Tenant workspace upgrade: onboarding command center, status filters, prioritized queue, and tenant profile route.
 - [x] Managed onboarding backend workflow: expiry, resend, cancel reason, review, apply, and audit-friendly timestamps.
 - [x] Public tenant onboarding refresh: property/unit context, guided sections, notes field, clearer reset/submit states, and next-step reassurance.
+- [x] Stable hosted demo path: Vercel frontend, Render API, Neon Postgres, CORS, seeded data, and no temporary tunnel dependency.
+- [x] MVP tenant document storage: upload, list, download, soft-delete, and tenant profile UI for insurance, guarantees, leases, invoices, and onboarding files.
 
 ## Next Build Order
 
@@ -32,8 +34,6 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [ ] Deepen tenant detail: property/lease context labels, document uploads, richer activity history, and cleaner submitted-change review UI.
 - [ ] Expand billing from readiness into invoice generation: rent periods, line items, invoice drafts, approval, PDF/email delivery, and payment status.
 - [ ] Add Xero connection status, chart of accounts/tax mapping, contact sync, invoice sync, and payment reconciliation.
-- [ ] Add document storage for leases, insurance certificates, guarantees, onboarding attachments, and generated invoices.
-- [ ] Replace temporary tunnels with a stable demo environment and production deployment path.
 
 ## Re-Leased Benchmark
 

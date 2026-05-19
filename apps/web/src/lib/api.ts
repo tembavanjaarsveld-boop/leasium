@@ -150,6 +150,32 @@ export type TenantOnboardingSubmitPayload = {
   accepted: boolean;
 };
 
+export type DocumentCategory =
+  | "lease"
+  | "insurance"
+  | "bank_guarantee"
+  | "onboarding"
+  | "invoice"
+  | "other";
+
+export type DocumentRecord = {
+  id: string;
+  entity_id: string;
+  property_id: string | null;
+  tenancy_unit_id: string | null;
+  tenant_id: string | null;
+  lease_id: string | null;
+  tenant_onboarding_id: string | null;
+  filename: string;
+  content_type: string | null;
+  byte_size: number;
+  category: DocumentCategory;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  deleted_at: string | null;
+};
+
 export type ObligationRecord = {
   id: string;
   entity_id: string;
@@ -559,6 +585,79 @@ export function updateObligation(
 
 export function deleteObligation(obligationId: string) {
   return request<void>(`/obligations/${obligationId}`, {
+    method: "DELETE",
+  });
+}
+
+export function listDocuments(filters: {
+  entity_id: string;
+  property_id?: string;
+  tenancy_unit_id?: string;
+  tenant_id?: string;
+  lease_id?: string;
+  category?: DocumentCategory;
+}) {
+  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  if (filters.property_id) {
+    params.set("property_id", filters.property_id);
+  }
+  if (filters.tenancy_unit_id) {
+    params.set("tenancy_unit_id", filters.tenancy_unit_id);
+  }
+  if (filters.tenant_id) {
+    params.set("tenant_id", filters.tenant_id);
+  }
+  if (filters.lease_id) {
+    params.set("lease_id", filters.lease_id);
+  }
+  if (filters.category) {
+    params.set("category", filters.category);
+  }
+  return request<DocumentRecord[]>(`/documents?${params.toString()}`);
+}
+
+export function uploadDocument(payload: {
+  entityId: string;
+  propertyId?: string;
+  tenancyUnitId?: string;
+  tenantId?: string;
+  leaseId?: string;
+  tenantOnboardingId?: string;
+  category: DocumentCategory;
+  notes?: string | null;
+  file: File;
+}) {
+  const formData = new FormData();
+  formData.append("entity_id", payload.entityId);
+  if (payload.propertyId) {
+    formData.append("property_id", payload.propertyId);
+  }
+  if (payload.tenancyUnitId) {
+    formData.append("tenancy_unit_id", payload.tenancyUnitId);
+  }
+  if (payload.tenantId) {
+    formData.append("tenant_id", payload.tenantId);
+  }
+  if (payload.leaseId) {
+    formData.append("lease_id", payload.leaseId);
+  }
+  if (payload.tenantOnboardingId) {
+    formData.append("tenant_onboarding_id", payload.tenantOnboardingId);
+  }
+  formData.append("category", payload.category);
+  if (payload.notes?.trim()) {
+    formData.append("notes", payload.notes.trim());
+  }
+  formData.append("file", payload.file);
+  return requestForm<DocumentRecord>("/documents", formData);
+}
+
+export function documentDownloadUrl(documentId: string) {
+  return `${API_BASE}/documents/${documentId}/download`;
+}
+
+export function deleteDocument(documentId: string) {
+  return request<void>(`/documents/${documentId}`, {
     method: "DELETE",
   });
 }
