@@ -8,7 +8,7 @@ Last updated: 2026-05-19
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed Vercel production deployment before this handover: `5bd80bc Add invoice draft staging workflow`, state `READY`.
+- Latest confirmed feature Vercel production deployment before this handover: `e60ee68 Surface property provenance in Smart Intake`, state `READY`.
 - Product source of truth: `docs/product-roadmap.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
 
@@ -75,6 +75,9 @@ Last updated: 2026-05-19
   - Next dev server loaded `/billing-readiness` on `127.0.0.1:3010` and returned `200`.
   - Next dev server loaded `/properties` on `127.0.0.1:3011`, returned `200`, and the in-app browser reported no console errors.
 - Vercel production deployment passed:
+  - Commit `e60ee68 Surface property provenance in Smart Intake`
+  - Deployment `dpl_4DNDh781bqpqL4cVCPqfbHWncQk4`, state `READY`
+  - Deployment URL `/properties` and production alias `/properties` returned `200`.
   - Commit `5bd80bc Add invoice draft staging workflow`
   - Deployment `dpl_3SCqotaeA7AzCyRscJJZHq5zV88c`, state `READY`
   - Deployment URL `/billing-readiness` returned `200`.
