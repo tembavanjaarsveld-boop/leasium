@@ -1146,6 +1146,11 @@ def _tenancy_schedule_snapshot(row: dict[str, Any]) -> dict[str, Any]:
         "lease_expiry": (
             _date(row.get("lease_expiry")).isoformat() if _date(row.get("lease_expiry")) else None
         ),
+        "next_review_date": (
+            _date(row.get("next_review_date")).isoformat()
+            if _date(row.get("next_review_date"))
+            else None
+        ),
         "annual_rent_cents": _money_cents(row.get("annual_rent")),
         "rent_frequency": _str(row.get("rent_frequency")),
         "outgoings": _str(row.get("outgoings")),
@@ -1277,6 +1282,79 @@ def _has_overlapping_unit_lease(
     )
 
 
+def _create_schedule_lease_obligations(
+    intake: DocumentIntake,
+    unit: TenancyUnit,
+    lease: Lease,
+    row: dict[str, Any],
+    session: Session,
+) -> list[Obligation]:
+    candidates: list[dict[str, Any]] = []
+    review_date = _date(row.get("next_review_date"))
+    if review_date is not None:
+        candidates.append(
+            {
+                "title": f"Rent review - {unit.unit_label}",
+                "category": ObligationCategory.rent_review,
+                "due_date": review_date,
+                "owner_role": UserRole.finance,
+                "notes": "Review rent from acquisition tenancy schedule.",
+            }
+        )
+    if lease.expiry_date is not None:
+        candidates.append(
+            {
+                "title": f"Lease expiry - {unit.unit_label}",
+                "category": ObligationCategory.lease_expiry,
+                "due_date": lease.expiry_date,
+                "owner_role": UserRole.ops,
+                "notes": "Track lease expiry from acquisition tenancy schedule.",
+            }
+        )
+
+    obligations: list[Obligation] = []
+    for index, candidate in enumerate(candidates):
+        existing = session.scalar(
+            select(Obligation).where(
+                Obligation.lease_id == lease.id,
+                Obligation.category == candidate["category"],
+                Obligation.due_date == candidate["due_date"],
+                Obligation.deleted_at.is_(None),
+            )
+        )
+        if existing is not None:
+            obligations.append(existing)
+            continue
+        obligation = Obligation(
+            entity_id=intake.entity_id,
+            property_id=unit.property_id,
+            tenancy_unit_id=unit.id,
+            lease_id=lease.id,
+            title=candidate["title"],
+            category=candidate["category"],
+            status=ObligationStatus.upcoming,
+            due_date=candidate["due_date"],
+            priority=1,
+            owner_role=candidate["owner_role"],
+            notes=(
+                f"{candidate['notes']} Source document: {intake.document.filename}."
+            ),
+            obligation_metadata={
+                "source": "document_intake",
+                "document_intake_id": str(intake.id),
+                "document_id": str(intake.document_id),
+                "document_type": "purchase_contract",
+                "source_hint": _str(row.get("source_hint")),
+                "lease_id": str(lease.id),
+                "review_index": index,
+            },
+        )
+        session.add(obligation)
+        obligations.append(obligation)
+    session.flush()
+    return obligations
+
+
 def _apply_purchase_schedule_leases(
     intake: DocumentIntake,
     units: list[TenancyUnit],
@@ -1289,6 +1367,7 @@ def _apply_purchase_schedule_leases(
     created_tenants = 0
     linked_tenants = 0
     created_leases = 0
+    schedule_obligation_ids: list[str] = []
     skipped_rows: list[dict[str, Any]] = []
 
     for unit in units:
@@ -1353,6 +1432,7 @@ def _apply_purchase_schedule_leases(
             annual_rent_cents=annual_rent_cents,
             rent_frequency=rent_frequency,
             outgoings_recoverable=_schedule_outgoings_recoverable(row.get("outgoings")),
+            next_review_date=_date(row.get("next_review_date")),
             option_summary=_str(row.get("option_summary")),
             security_summary=_str(row.get("security_summary")),
             notes="Created from reviewed purchase contract tenancy schedule.",
@@ -1383,6 +1463,29 @@ def _apply_purchase_schedule_leases(
                 f"Created pending lease {lease.id} from purchase contract tenancy schedule."
             ),
         )
+        schedule_obligations = _create_schedule_lease_obligations(
+            intake,
+            unit,
+            lease,
+            row,
+            session,
+        )
+        for obligation in schedule_obligations:
+            schedule_obligation_ids.append(str(obligation.id))
+            audit_log(
+                session,
+                actor=user.actor,
+                user_id=user.id,
+                entity_id=intake.entity_id,
+                action="create",
+                target_table="obligation",
+                target_id=obligation.id,
+                tool_name="smart_intake_apply",
+                tool_input={"document_intake_id": str(intake.id), "lease_id": str(lease.id)},
+                tool_output_summary=(
+                    f"Created {obligation.category.value} task from acquisition schedule."
+                ),
+            )
 
     return {
         "tenant_ids": tenant_ids,
@@ -1390,6 +1493,8 @@ def _apply_purchase_schedule_leases(
         "created_tenant_count": created_tenants,
         "linked_tenant_count": linked_tenants,
         "created_lease_count": created_leases,
+        "lease_obligation_ids": schedule_obligation_ids,
+        "lease_obligation_count": len(schedule_obligation_ids),
         "skipped_tenancy_schedule_rows": skipped_rows,
     }
 
@@ -1503,15 +1608,6 @@ def _apply_purchase_contract_intake(
     )
     intake.document.property_id = prop.id
     intake.document.tenancy_unit_id = units[0].id if len(units) == 1 else None
-    schedule_apply = _apply_purchase_schedule_leases(
-        intake,
-        units,
-        _records(data.get("tenancy_schedule")),
-        user,
-        session,
-    )
-    if len(schedule_apply["lease_ids"]) == 1:
-        intake.document.lease_id = UUID(schedule_apply["lease_ids"][0])
 
     obligation_payloads = _obligation_payloads_from_review(data, "purchase_contract")
     obligations: list[Obligation] = []
@@ -1529,6 +1625,16 @@ def _apply_purchase_contract_intake(
             user,
             session,
         )
+
+    schedule_apply = _apply_purchase_schedule_leases(
+        intake,
+        units,
+        _records(data.get("tenancy_schedule")),
+        user,
+        session,
+    )
+    if len(schedule_apply["lease_ids"]) == 1:
+        intake.document.lease_id = UUID(schedule_apply["lease_ids"][0])
 
     summary = {
         "action": property_action,
@@ -1550,9 +1656,11 @@ def _apply_purchase_contract_intake(
         "tenant_lease_records_created": (
             schedule_apply["created_tenant_count"] + schedule_apply["created_lease_count"]
         ),
+        "lease_obligation_ids": schedule_apply["lease_obligation_ids"],
+        "lease_obligation_count": schedule_apply["lease_obligation_count"],
         "skipped_tenancy_schedule_rows": schedule_apply["skipped_tenancy_schedule_rows"],
         "obligation_ids": [str(obligation.id) for obligation in obligations],
-        "obligation_count": len(obligations),
+        "obligation_count": len(obligations) + schedule_apply["lease_obligation_count"],
     }
     return prop, units, obligations, summary
 
@@ -2223,7 +2331,10 @@ def apply_document_intake(
             "applied_tenancy_unit_ids": [str(unit.id) for unit in units],
             "applied_tenant_ids": applied.get("tenant_ids") or [],
             "applied_lease_ids": applied.get("lease_ids") or [],
-            "applied_obligation_ids": [str(obligation.id) for obligation in obligations],
+            "applied_obligation_ids": [
+                *[str(obligation.id) for obligation in obligations],
+                *(applied.get("lease_obligation_ids") or []),
+            ],
             "applied_document_type": document_type,
         }
         audit_log(
@@ -2237,7 +2348,7 @@ def apply_document_intake(
             tool_output_summary=(
                 f"Applied purchase contract to property {prop.id}; "
                 f"{len(units)} unit(s), {applied.get('created_lease_count', 0)} "
-                f"lease(s), {len(obligations)} task(s)."
+                f"lease(s), {applied.get('obligation_count', len(obligations))} task(s)."
             ),
         )
         property_changes = list(applied.get("property_changes") or [])

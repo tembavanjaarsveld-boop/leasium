@@ -170,6 +170,7 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
                     "tenant_abn",
                     "lease_start",
                     "lease_expiry",
+                    "next_review_date",
                     "annual_rent",
                     "rent_frequency",
                     "outgoings",
@@ -186,6 +187,7 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
                     "tenant_abn": {"type": ["string", "null"]},
                     "lease_start": {"type": ["string", "null"]},
                     "lease_expiry": {"type": ["string", "null"]},
+                    "next_review_date": {"type": ["string", "null"]},
                     "annual_rent": {"type": ["number", "null"]},
                     "rent_frequency": {"type": ["string", "null"]},
                     "outgoings": {"type": ["string", "null"]},
@@ -259,10 +261,10 @@ def extract_document_file(
         "intake summary. Classify the document cautiously. Use only facts present in "
         "the file. Do not give legal advice. Nothing will be applied automatically, "
         "so focus on facts a property manager should review: parties, properties, "
-        "ownership or trust billing identity, acquisition tenancy schedule rows, key "
-        "dates, money, obligations, warnings, missing information, and proposed "
-        "actions. Use ISO dates where possible and mark uncertainty with lower "
-        "confidence and warnings."
+        "ownership or trust billing identity, acquisition tenancy schedule rows, rent "
+        "review dates, key dates, money, obligations, warnings, missing information, "
+        "and proposed actions. Use ISO dates where possible and mark uncertainty with "
+        "lower confidence and warnings."
     )
     content: list[dict[str, str]] = [{"type": "input_text", "text": prompt}]
     try:

@@ -366,6 +366,7 @@ def _fake_purchase_contract_with_tenancy_schedule() -> dict[str, Any]:
             "tenant_abn": "11 222 333 444",
             "lease_start": "2026-07-01",
             "lease_expiry": "2029-06-30",
+            "next_review_date": "2027-07-01",
             "annual_rent": 240000,
             "rent_frequency": "monthly",
             "outgoings": "Recoverable",
@@ -382,6 +383,7 @@ def _fake_purchase_contract_with_tenancy_schedule() -> dict[str, Any]:
             "tenant_abn": None,
             "lease_start": "2026-08-01",
             "lease_expiry": "2028-07-31",
+            "next_review_date": None,
             "annual_rent": 180000,
             "rent_frequency": "monthly",
             "outgoings": "Recoverable subject to annual budget",
@@ -1104,6 +1106,8 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
     assert applied["created_tenant_count"] == 2
     assert applied["created_lease_count"] == 2
     assert applied["tenant_lease_records_created"] == 4
+    assert applied["lease_obligation_count"] == 3
+    assert applied["obligation_count"] == 4
     assert applied["skipped_tenancy_schedule_rows"] == []
     assert applied["tenancy_schedule_rows"][0]["tenant_name"] == "Harbour Logistics Pty Ltd"
     assert applied["tenancy_schedule_rows"][0]["annual_rent_cents"] == 24000000
@@ -1147,9 +1151,29 @@ def test_document_intake_apply_purchase_contract_captures_tenancy_schedule(
     assert first_lease.commencement_date.isoformat() == "2026-07-01"
     assert first_lease.expiry_date is not None
     assert first_lease.expiry_date.isoformat() == "2029-06-30"
+    assert first_lease.next_review_date is not None
+    assert first_lease.next_review_date.isoformat() == "2027-07-01"
     assert first_lease.annual_rent_cents == 24000000
     assert first_lease.rent_frequency == "monthly"
     assert first_lease.lease_metadata["document_type"] == "purchase_contract"
+
+    lease_obligations = list(
+        session.scalars(
+            select(Obligation).where(
+                Obligation.id.in_([UUID(item) for item in applied["lease_obligation_ids"]])
+            )
+        )
+    )
+    assert len(lease_obligations) == 3
+    assert {obligation.category for obligation in lease_obligations} == {
+        "lease_expiry",
+        "rent_review",
+    }
+    assert any(
+        obligation.title == "Rent review - Warehouse 1"
+        and obligation.due_date.isoformat() == "2027-07-01"
+        for obligation in lease_obligations
+    )
 
 
 def test_document_intake_apply_purchase_contract_reuses_selected_property(
