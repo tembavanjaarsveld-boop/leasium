@@ -8,7 +8,7 @@ Last updated: 2026-05-19
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed Vercel production deployment before this handover: `f845a69 Add temporary access password gate`, state `READY`.
+- Latest confirmed Vercel production deployment before this handover: `5bd80bc Add invoice draft staging workflow`, state `READY`.
 - Product source of truth: `docs/product-roadmap.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
 
@@ -68,6 +68,10 @@ Last updated: 2026-05-19
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
 - Local route smoke passed:
   - Next dev server loaded `/billing-readiness` on `127.0.0.1:3010` and returned `200`.
+- Vercel production deployment passed:
+  - Commit `5bd80bc Add invoice draft staging workflow`
+  - Deployment `dpl_3SCqotaeA7AzCyRscJJZHq5zV88c`, state `READY`
+  - Deployment URL `/billing-readiness` returned `200`.
 - Password gate checks from the prior implementation passed:
   - Access middleware/page/API lint
   - TypeScript no-emit
