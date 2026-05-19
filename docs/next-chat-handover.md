@@ -34,7 +34,8 @@ Last updated: 2026-05-19
 - Smart Intake billing drafts v1 is built on this branch.
   - `invoice_admin` apply still creates the source-linked billing review task.
   - It now also creates `billing_draft` and `billing_draft_line` records from reviewed money amounts.
-  - Drafts are review-only: no invoice approval, posting, email/PDF delivery, numbering, or Xero sync.
+  - Drafts support reviewed status updates such as approved or void.
+  - Drafts are still no-posting/no-PDF/no-email/no-Xero-sync.
 - AI enrichment for missing fields is in the backlog, not built yet.
   - Target examples: ABN, postcode, suburb/state, registered business details, registered address.
   - Must remain review-first with source citation and confidence before applying.
@@ -68,7 +69,7 @@ Last updated: 2026-05-19
 1. Enable the temporary Vercel password gate and verify production access behavior.
 2. Surface stored property source citations and before/after apply history in the Smart Intake/property UI.
 3. Add richer acquisition schedule blockers, broader non-rent charge draft creation from reviewed rows, and UI surfacing for created pending leases.
-4. Add billing draft UI review surfaces and move toward invoice approval/PDF/email delivery without Xero sync until approval.
+4. Add billing draft UI review surfaces and move approved drafts toward invoice PDF/email delivery without Xero sync until approval.
 5. Finish tenant onboarding delivery polish: branded templates, editable reminder schedules, expiry reminders, and failure recovery.
 6. Start Xero connection status and mapping surfaces before full invoice sync.
 7. Deepen Insights dashboards for portfolio health, exceptions, automation activity, billing risk, and owner/entity snapshots.

@@ -24,6 +24,7 @@ from stewart.core.models import (
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.register import (
     BillingDraftRead,
+    BillingDraftUpdate,
     RentChargeRuleCreate,
     RentChargeRuleRead,
     RentChargeRuleUpdate,
@@ -179,6 +180,50 @@ def get_billing_draft(
     session: Annotated[Session, Depends(get_session)],
 ) -> BillingDraft:
     return _billing_draft_for_access(billing_draft_id, user, session, READ_ROLES)
+
+
+@router.patch("/billing-drafts/{billing_draft_id}", response_model=BillingDraftRead)
+def update_billing_draft(
+    billing_draft_id: UUID,
+    payload: BillingDraftUpdate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> BillingDraft:
+    draft = _billing_draft_for_access(billing_draft_id, user, session, WRITE_ROLES)
+    data = payload.model_dump(exclude_unset=True)
+    metadata = dict(draft.billing_metadata or {})
+    if "status" in data and data["status"] is not None:
+        draft.status = data["status"]
+        history = list(metadata.get("status_history") or [])
+        status_entry = {
+            "status": draft.status.value,
+            "changed_at": utcnow().isoformat(),
+            "user_id": str(user.id),
+        }
+        history.append(status_entry)
+        metadata["status_history"] = history
+        if draft.status == BillingDraftStatus.approved:
+            metadata["approved_at"] = status_entry["changed_at"]
+            metadata["approved_by_user_id"] = str(user.id)
+        if draft.status == BillingDraftStatus.void:
+            metadata["voided_at"] = status_entry["changed_at"]
+            metadata["voided_by_user_id"] = str(user.id)
+    if "notes" in data:
+        draft.notes = data["notes"]
+    draft.billing_metadata = metadata
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=draft.entity_id,
+        action="update",
+        target_table="billing_draft",
+        target_id=draft.id,
+        tool_output_summary=f"Updated billing draft status to {draft.status.value}.",
+    )
+    session.commit()
+    session.refresh(draft)
+    return draft
 
 
 @router.get("/charge-rules", response_model=list[RentChargeRuleRead])

@@ -965,6 +965,29 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert list_response.json()[0]["id"] == str(billing_draft.id)
     assert list_response.json()[0]["lines"][0]["amount_cents"] == 275050
 
+    approve_response = client.patch(
+        f"/api/v1/billing-drafts/{billing_draft.id}",
+        json={
+            "status": "approved",
+            "notes": "Approved for invoice drafting; no Xero sync yet.",
+        },
+    )
+    assert approve_response.status_code == 200
+    approved_body = approve_response.json()
+    assert approved_body["status"] == "approved"
+    assert approved_body["notes"] == "Approved for invoice drafting; no Xero sync yet."
+    assert approved_body["metadata"]["approved_by_user_id"]
+    assert approved_body["metadata"]["status_history"][0]["status"] == "approved"
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "billing_draft",
+            AuditAction.target_id == billing_draft.id,
+            AuditAction.action == "update",
+        )
+    )
+    assert audit is not None
+
     document = session.get(StoredDocument, UUID(document_id))
     assert document is not None
     assert document.category == "invoice"

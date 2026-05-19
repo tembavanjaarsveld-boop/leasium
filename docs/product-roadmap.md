@@ -35,7 +35,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Smart Intake billing prep: reviewed invoice/admin documents prepare source-linked billing review tasks with money context and clear no-invoice/no-Xero-sync guardrails.
 - [x] Smart Intake acquisition apply: reviewed purchase contracts can create or link property records, optionally create/link reviewed units, attach the source document, and create milestone tasks without posting financials.
 - [x] Smart Intake acquisition tenancy schedule v1: purchase contracts can extract reviewed schedule rows, create/link multiple units, preserve tenant/rent/lease facts on unit provenance metadata, create pending tenant/lease records for complete reviewed rows after Apply, generate lease expiry/rent review/option/security tasks, and seed draft-marked base rent/outgoings charge rules from reviewed rows.
-- [x] Smart Intake billing drafts v1: reviewed invoice/admin documents now create source-linked draft billing documents and lines while preserving the no-approval/no-posting/no-Xero-sync guardrail.
+- [x] Smart Intake billing drafts v1: reviewed invoice/admin documents now create source-linked draft billing documents and lines, support reviewed draft status updates, and preserve the no-posting/no-Xero-sync guardrail.
 - [x] Smart Intake naming pass: global navigation and workspace copy now reflect the broader document-first workflow instead of lease-only inbox wording.
 - [x] Smart Intake task queue: open document reviews, match issues, processing states, and failed reads now appear in Tasks with a dedicated filter and deep links back to Smart Intake.
 - [x] Tenant onboarding delivery foundation: Twilio SendGrid email and Twilio SMS delivery are wired into create/resend with channel status, audit logs, and safe skipped states when a channel is not configured.
@@ -46,7 +46,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Next Build Order
 
-- [ ] Continue AI apply beyond first-pass register workflows: add richer acquisition schedule blockers, broader non-rent charge draft creation from reviewed rows, and expand billing drafts toward approval-ready invoice generation.
+- [ ] Continue AI apply beyond first-pass register workflows: add richer acquisition schedule blockers, broader non-rent charge draft creation from reviewed rows, and expand approved billing drafts toward invoice PDF/email generation.
 - [ ] Add AI enrichment for missing fields: when reviewed records are missing safe public facts like ABN, postcode, suburb/state, business names, or registered addresses, Leasium can search trusted online sources, suggest the value with citation/confidence, and require review before applying.
 - [ ] Finish tenant onboarding delivery: hosted provider webhook configuration, branded template management, editable reminder schedules, expiry reminders, and deeper delivery failure recovery.
 - [ ] Deepen tenant detail: property/lease context labels, richer activity history, safer document provenance/actions, and reviewed-change history.

@@ -400,6 +400,11 @@ class BillingDraftLineRead(ApiModel):
     deleted_at: datetime | None
 
 
+class BillingDraftUpdate(BaseModel):
+    status: BillingDraftStatus | None = None
+    notes: str | None = None
+
+
 class BillingDraftRead(ApiModel):
     id: UUID
     entity_id: UUID
