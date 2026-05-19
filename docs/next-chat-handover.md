@@ -8,7 +8,7 @@ Last updated: 2026-05-19
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed feature Vercel production deployment before this handover: `e60ee68 Surface property provenance in Smart Intake`, state `READY`.
+- Latest confirmed feature Vercel production deployment before this handover: `6ff7c0b Expand acquisition schedule apply`, state `READY`.
 - Product source of truth: `docs/product-roadmap.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
 
@@ -84,6 +84,9 @@ Last updated: 2026-05-19
   - Next dev server loaded `/properties` on `127.0.0.1:3011`, returned `200`, and the in-app browser reported no console errors.
   - Next dev server loaded `/intake` on `127.0.0.1:3012`, returned `200`, showed `Smart Intake` and `Review queue`, and the in-app browser reported no console errors.
 - Vercel production deployment passed:
+  - Commit `6ff7c0b Expand acquisition schedule apply`
+  - Deployment `dpl_51Y9Jq9FKDvRMuGpnYtetq7f8uNR`, state `READY`
+  - Deployment URL `/intake` and production alias `/intake` returned `200`.
   - Commit `e60ee68 Surface property provenance in Smart Intake`
   - Deployment `dpl_4DNDh781bqpqL4cVCPqfbHWncQk4`, state `READY`
   - Deployment URL `/properties` and production alias `/properties` returned `200`.
