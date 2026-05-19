@@ -2,18 +2,22 @@
 
 import secrets
 from datetime import UTC
+from pathlib import Path
 from typing import Annotated
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
     AuditOutcome,
+    DocumentCategory,
     Lease,
     Property,
+    StoredDocument,
     TenancyUnit,
     Tenant,
     TenantOnboarding,
@@ -23,6 +27,7 @@ from stewart.core.models import (
 from stewart.core.settings import get_settings
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.schemas.documents import DocumentRead
 from apps.api.schemas.tenant_onboarding import (
     TenantOnboardingCancel,
     TenantOnboardingCreate,
@@ -130,6 +135,40 @@ def _get_onboarding_for_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onboarding not found.")
     assert_entity_role(session, user, onboarding.entity_id, roles)
     return onboarding
+
+
+def _get_public_onboarding(token: str, session: Session) -> TenantOnboarding:
+    onboarding = session.scalar(
+        select(TenantOnboarding).where(
+            TenantOnboarding.token == token,
+            TenantOnboarding.deleted_at.is_(None),
+        )
+    )
+    if (
+        onboarding is None
+        or onboarding.status == TenantOnboardingStatus.cancelled
+        or _is_expired(onboarding)
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onboarding not found.")
+    return onboarding
+
+
+def _public_document(
+    token: str,
+    document_id: UUID,
+    session: Session,
+) -> tuple[TenantOnboarding, StoredDocument]:
+    onboarding = _get_public_onboarding(token, session)
+    document = session.get(StoredDocument, document_id)
+    if (
+        document is None
+        or document.deleted_at is not None
+        or document.tenant_onboarding_id != onboarding.id
+        or document.tenant_id != onboarding.tenant_id
+        or document.entity_id != onboarding.entity_id
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+    return onboarding, document
 
 
 @router.get("", response_model=list[TenantOnboardingRead])
@@ -346,18 +385,7 @@ def get_public_tenant_onboarding(
     token: str,
     session: Annotated[Session, Depends(get_session)],
 ) -> TenantOnboardingPublicRead:
-    onboarding = session.scalar(
-        select(TenantOnboarding).where(
-            TenantOnboarding.token == token,
-            TenantOnboarding.deleted_at.is_(None),
-        )
-    )
-    if (
-        onboarding is None
-        or onboarding.status == TenantOnboardingStatus.cancelled
-        or _is_expired(onboarding)
-    ):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onboarding not found.")
+    onboarding = _get_public_onboarding(token, session)
     lease, prop, tenant = _lease_scope(onboarding.lease_id, session)
     unit = session.get(TenancyUnit, lease.tenancy_unit_id)
     if unit is None or unit.deleted_at is not None:
@@ -382,24 +410,143 @@ def get_public_tenant_onboarding(
     )
 
 
+@router.get("/public/{token}/documents", response_model=list[DocumentRead])
+def list_public_onboarding_documents(
+    token: str,
+    session: Annotated[Session, Depends(get_session)],
+) -> list[StoredDocument]:
+    onboarding = _get_public_onboarding(token, session)
+    rows = session.scalars(
+        select(StoredDocument)
+        .where(
+            StoredDocument.entity_id == onboarding.entity_id,
+            StoredDocument.tenant_id == onboarding.tenant_id,
+            StoredDocument.tenant_onboarding_id == onboarding.id,
+            StoredDocument.deleted_at.is_(None),
+        )
+        .order_by(StoredDocument.created_at.desc())
+    ).all()
+    return list(rows)
+
+
+@router.post(
+    "/public/{token}/documents",
+    response_model=DocumentRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_public_onboarding_document(
+    token: str,
+    session: Annotated[Session, Depends(get_session)],
+    file: Annotated[UploadFile, File()],
+    category: Annotated[DocumentCategory, Form()] = DocumentCategory.onboarding,
+    notes: Annotated[str | None, Form()] = None,
+) -> StoredDocument:
+    onboarding = _get_public_onboarding(token, session)
+    if onboarding.status in {
+        TenantOnboardingStatus.submitted,
+        TenantOnboardingStatus.reviewed,
+        TenantOnboardingStatus.applied,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Submitted onboarding documents cannot be changed.",
+        )
+    lease, prop, _tenant = _lease_scope(onboarding.lease_id, session)
+    data = await file.read()
+    max_bytes = get_settings().document_max_bytes
+    if not data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File is empty.")
+    if len(data) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Document is too large. Max size is {max_bytes // 1_000_000}MB.",
+        )
+
+    document = StoredDocument(
+        entity_id=onboarding.entity_id,
+        property_id=prop.id,
+        tenancy_unit_id=lease.tenancy_unit_id,
+        tenant_id=onboarding.tenant_id,
+        lease_id=onboarding.lease_id,
+        tenant_onboarding_id=onboarding.id,
+        filename=Path(file.filename or "document").name,
+        content_type=file.content_type,
+        byte_size=len(data),
+        file_data=data,
+        category=category,
+        notes=notes.strip() if notes and notes.strip() else None,
+        document_metadata={"source": "tenant_onboarding"},
+    )
+    session.add(document)
+    session.flush()
+    audit_log(
+        session,
+        actor=f"tenant-onboarding:{token[:8]}",
+        entity_id=onboarding.entity_id,
+        action="upload",
+        target_table="stored_document",
+        target_id=document.id,
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(document)
+    return document
+
+
+@router.get("/public/{token}/documents/{document_id}/download")
+def download_public_onboarding_document(
+    token: str,
+    document_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    _onboarding, document = _public_document(token, document_id, session)
+    return Response(
+        content=document.file_data,
+        media_type=document.content_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(document.filename)}"
+        },
+    )
+
+
+@router.delete("/public/{token}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_public_onboarding_document(
+    token: str,
+    document_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+) -> None:
+    onboarding, document = _public_document(token, document_id, session)
+    if onboarding.status in {
+        TenantOnboardingStatus.submitted,
+        TenantOnboardingStatus.reviewed,
+        TenantOnboardingStatus.applied,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Submitted onboarding documents cannot be changed.",
+        )
+    document.deleted_at = utcnow()
+    audit_log(
+        session,
+        actor=f"tenant-onboarding:{token[:8]}",
+        entity_id=onboarding.entity_id,
+        action="delete",
+        target_table="stored_document",
+        target_id=document.id,
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    session.commit()
+
+
 @router.post("/public/{token}/submit", response_model=TenantOnboardingPublicRead)
 def submit_public_tenant_onboarding(
     token: str,
     payload: TenantOnboardingSubmit,
     session: Annotated[Session, Depends(get_session)],
 ) -> TenantOnboardingPublicRead:
-    onboarding = session.scalar(
-        select(TenantOnboarding).where(
-            TenantOnboarding.token == token,
-            TenantOnboarding.deleted_at.is_(None),
-        )
-    )
-    if (
-        onboarding is None
-        or onboarding.status == TenantOnboardingStatus.cancelled
-        or _is_expired(onboarding)
-    ):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onboarding not found.")
+    onboarding = _get_public_onboarding(token, session)
     if not payload.accepted:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -413,7 +560,6 @@ def submit_public_tenant_onboarding(
     onboarding.status = TenantOnboardingStatus.submitted
     onboarding.submitted_data = data
     onboarding.submitted_at = utcnow()
-    _apply_submission(onboarding, tenant)
     audit_log(
         session,
         actor=f"tenant-onboarding:{token[:8]}",

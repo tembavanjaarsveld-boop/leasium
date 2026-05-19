@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.models import Entity, Tenant, TenantOnboarding
+from stewart.core.models import Entity, StoredDocument, Tenant, TenantOnboarding
 
 
 def _entity_id(session: Session) -> str:
@@ -54,7 +54,7 @@ def _lease_id(client: TestClient, session: Session) -> str:
     return str(lease_response.json()["id"])
 
 
-def test_tenant_onboarding_link_public_submit_updates_tenant(
+def test_tenant_onboarding_link_public_submit_waits_for_review_before_apply(
     client: TestClient,
     session: Session,
 ) -> None:
@@ -113,9 +113,63 @@ def test_tenant_onboarding_link_public_submit_updates_tenant(
     assert onboarding is not None
     tenant = session.get(Tenant, onboarding.tenant_id)
     assert tenant is not None
+    assert tenant.legal_name == "Onboarding Tenant Pty Ltd"
+
+    apply_response = client.post(f"/api/v1/tenant-onboarding/{body['id']}/apply")
+    assert apply_response.status_code == 200
+    session.refresh(tenant)
     assert tenant.legal_name == "Submitted Tenant Pty Ltd"
     assert tenant.billing_email == "accounts@exampletenant.com.au"
     assert tenant.tenant_metadata["insurance_confirmed"] is True
+
+
+def test_public_onboarding_uploads_documents_for_staff_review(
+    client: TestClient,
+    session: Session,
+) -> None:
+    lease_id = _lease_id(client, session)
+    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    assert create_response.status_code == 201
+    onboarding_id = create_response.json()["id"]
+    token = create_response.json()["token"]
+    tenant_id = create_response.json()["tenant_id"]
+
+    upload_response = client.post(
+        f"/api/v1/tenant-onboarding/public/{token}/documents",
+        data={"category": "insurance", "notes": "Certificate of currency."},
+        files={"file": ("certificate.txt", b"insurance bytes", "text/plain")},
+    )
+    assert upload_response.status_code == 201
+    document_body = upload_response.json()
+    assert document_body["tenant_id"] == tenant_id
+    assert document_body["lease_id"] == lease_id
+    assert document_body["tenant_onboarding_id"] == onboarding_id
+    assert document_body["category"] == "insurance"
+
+    public_list_response = client.get(f"/api/v1/tenant-onboarding/public/{token}/documents")
+    assert public_list_response.status_code == 200
+    assert [item["id"] for item in public_list_response.json()] == [document_body["id"]]
+
+    staff_list_response = client.get(
+        "/api/v1/documents",
+        params={"entity_id": _entity_id(session), "tenant_onboarding_id": onboarding_id},
+    )
+    assert staff_list_response.status_code == 200
+    assert [item["id"] for item in staff_list_response.json()] == [document_body["id"]]
+
+    download_response = client.get(
+        f"/api/v1/tenant-onboarding/public/{token}/documents/{document_body['id']}/download"
+    )
+    assert download_response.status_code == 200
+    assert download_response.content == b"insurance bytes"
+
+    delete_response = client.delete(
+        f"/api/v1/tenant-onboarding/public/{token}/documents/{document_body['id']}"
+    )
+    assert delete_response.status_code == 204
+    document = session.get(StoredDocument, UUID(document_body["id"]))
+    assert document is not None
+    assert document.deleted_at is not None
 
 
 def test_tenant_onboarding_resend_review_and_apply_workflow(

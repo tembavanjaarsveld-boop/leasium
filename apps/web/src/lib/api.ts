@@ -595,6 +595,7 @@ export function listDocuments(filters: {
   tenancy_unit_id?: string;
   tenant_id?: string;
   lease_id?: string;
+  tenant_onboarding_id?: string;
   category?: DocumentCategory;
 }) {
   const params = new URLSearchParams({ entity_id: filters.entity_id });
@@ -609,6 +610,9 @@ export function listDocuments(filters: {
   }
   if (filters.lease_id) {
     params.set("lease_id", filters.lease_id);
+  }
+  if (filters.tenant_onboarding_id) {
+    params.set("tenant_onboarding_id", filters.tenant_onboarding_id);
   }
   if (filters.category) {
     params.set("category", filters.category);
@@ -658,6 +662,38 @@ export function documentDownloadUrl(documentId: string) {
 
 export function deleteDocument(documentId: string) {
   return request<void>(`/documents/${documentId}`, {
+    method: "DELETE",
+  });
+}
+
+export function listPublicOnboardingDocuments(token: string) {
+  return request<DocumentRecord[]>(`/tenant-onboarding/public/${token}/documents`);
+}
+
+export function uploadPublicOnboardingDocument(payload: {
+  token: string;
+  category: DocumentCategory;
+  notes?: string | null;
+  file: File;
+}) {
+  const formData = new FormData();
+  formData.append("category", payload.category);
+  if (payload.notes?.trim()) {
+    formData.append("notes", payload.notes.trim());
+  }
+  formData.append("file", payload.file);
+  return requestForm<DocumentRecord>(
+    `/tenant-onboarding/public/${payload.token}/documents`,
+    formData,
+  );
+}
+
+export function publicOnboardingDocumentDownloadUrl(token: string, documentId: string) {
+  return `${API_BASE}/tenant-onboarding/public/${token}/documents/${documentId}/download`;
+}
+
+export function deletePublicOnboardingDocument(token: string, documentId: string) {
+  return request<void>(`/tenant-onboarding/public/${token}/documents/${documentId}`, {
     method: "DELETE",
   });
 }

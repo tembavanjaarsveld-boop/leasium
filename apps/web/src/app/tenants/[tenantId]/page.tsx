@@ -163,6 +163,37 @@ function documentCategoryLabel(value: DocumentCategory) {
   return documentCategories.find((item) => item.value === value)?.label ?? value;
 }
 
+const submittedFields: Array<{
+  key: keyof TenantForm | "insurance_confirmed" | "insurance_expiry_date" | "emergency_contact_name" | "emergency_contact_phone";
+  label: string;
+}> = [
+  { key: "legal_name", label: "Legal name" },
+  { key: "trading_name", label: "Trading as" },
+  { key: "abn", label: "ABN" },
+  { key: "contact_name", label: "Primary contact" },
+  { key: "contact_email", label: "Contact email" },
+  { key: "contact_phone", label: "Phone" },
+  { key: "billing_email", label: "Billing email" },
+  { key: "insurance_confirmed", label: "Insurance confirmed" },
+  { key: "insurance_expiry_date", label: "Insurance expiry" },
+  { key: "emergency_contact_name", label: "Emergency contact" },
+  { key: "emergency_contact_phone", label: "Emergency phone" },
+  { key: "notes", label: "Notes" },
+];
+
+function reviewValue(value: unknown) {
+  if (value === true) {
+    return "Yes";
+  }
+  if (value === false) {
+    return "No";
+  }
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  return String(value);
+}
+
 function TenantDetail() {
   const params = useParams<{ tenantId: string }>();
   const tenantId = params.tenantId;
@@ -172,6 +203,7 @@ function TenantDetail() {
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentCategory, setDocumentCategory] = useState<DocumentCategory>("insurance");
   const [documentNotes, setDocumentNotes] = useState("");
+  const [reviewNotesById, setReviewNotesById] = useState<Record<string, string>>({});
 
   const tenantQuery = useQuery({
     queryKey: ["tenant", tenantId],
@@ -257,7 +289,7 @@ function TenantDetail() {
     mutationFn: (onboardingId: string) =>
       reviewTenantOnboarding(onboardingId, {
         approved: true,
-        notes: "Reviewed in Leasium tenant workspace.",
+        notes: cleanText(reviewNotesById[onboardingId] ?? ""),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", tenant?.entity_id] });
@@ -556,7 +588,12 @@ function TenantDetail() {
           <div className="grid gap-5">
             <SectionPanel title="Onboarding workflow" icon={<ShieldCheck size={17} />}>
               <div className="divide-y divide-border">
-                {tenantOnboardings.map((item) => (
+                {tenantOnboardings.map((item) => {
+                  const onboardingDocuments = (documentsQuery.data ?? []).filter(
+                    (document) => document.tenant_onboarding_id === item.id,
+                  );
+                  const submittedData = item.submitted_data ?? {};
+                  return (
                   <div key={item.id} className="grid gap-3 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
@@ -573,25 +610,25 @@ function TenantDetail() {
                           Copy link
                         </SecondaryButton>
                         {item.status === "sent" ? (
-                          <SecondaryButton type="button" onClick={() => cancelOnboardingMutation.mutate(item.id)}>
+                          <SecondaryButton type="button" onClick={() => cancelOnboardingMutation.mutate(item.id)} disabled={cancelOnboardingMutation.isPending}>
                             <X size={15} />
                             Cancel
                           </SecondaryButton>
                         ) : null}
                         {item.status === "sent" ? (
-                          <SecondaryButton type="button" onClick={() => resendOnboardingMutation.mutate(item.id)}>
+                          <SecondaryButton type="button" onClick={() => resendOnboardingMutation.mutate(item.id)} disabled={resendOnboardingMutation.isPending}>
                             <Link2 size={15} />
                             Resend
                           </SecondaryButton>
                         ) : null}
                         {item.status === "submitted" ? (
-                          <Button type="button" onClick={() => reviewOnboardingMutation.mutate(item.id)}>
+                          <Button type="button" onClick={() => reviewOnboardingMutation.mutate(item.id)} disabled={reviewOnboardingMutation.isPending}>
                             <Check size={16} />
                             Review
                           </Button>
                         ) : null}
                         {item.status === "submitted" || item.status === "reviewed" ? (
-                          <Button type="button" onClick={() => applyOnboardingMutation.mutate(item.id)}>
+                          <Button type="button" onClick={() => applyOnboardingMutation.mutate(item.id)} disabled={applyOnboardingMutation.isPending}>
                             <Save size={16} />
                             Apply
                           </Button>
@@ -604,15 +641,77 @@ function TenantDetail() {
                       <div>Applied {formatDate(item.applied_at)}</div>
                     </div>
                     {item.status === "submitted" ? (
-                      <div className="rounded-md border border-border bg-muted p-3 text-xs">
-                        <div className="mb-2 font-semibold">Submitted details</div>
-                        <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words">
-                          {JSON.stringify(item.submitted_data, null, 2)}
-                        </pre>
+                      <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs">
+                        <div className="font-semibold">Submitted for review</div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {submittedFields.map((field) => {
+                            const submittedValue = reviewValue(submittedData[field.key]);
+                            const currentValue = reviewValue(
+                              field.key in tenant ? tenant[field.key as keyof TenantRecord] : undefined,
+                            );
+                            const changed =
+                              field.key in tenant && submittedValue !== currentValue;
+                            return (
+                              <div
+                                key={field.key}
+                                className={cn(
+                                  "rounded border border-border bg-white px-3 py-2",
+                                  changed && "border-primary/30 bg-primary/5",
+                                )}
+                              >
+                                <div className="flex items-center justify-between gap-2 text-muted-foreground">
+                                  <span>{field.label}</span>
+                                  {changed ? (
+                                    <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                                      changed
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-1 font-medium">{submittedValue}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="grid gap-2">
+                          <div className="font-semibold">Uploaded documents</div>
+                          {onboardingDocuments.map((document) => (
+                            <a
+                              key={document.id}
+                              href={documentDownloadUrl(document.id)}
+                              className="flex items-center justify-between gap-3 rounded border border-border bg-white px-3 py-2 hover:bg-muted"
+                            >
+                              <span className="min-w-0 truncate">
+                                {document.filename}
+                              </span>
+                              <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+                                {documentCategoryLabel(document.category)}
+                                <Download size={14} />
+                              </span>
+                            </a>
+                          ))}
+                          {onboardingDocuments.length === 0 ? (
+                            <div className="rounded border border-border bg-white px-3 py-2 text-muted-foreground">
+                              No documents uploaded with this onboarding.
+                            </div>
+                          ) : null}
+                        </div>
+                        <Field label="Review notes">
+                          <Input
+                            value={reviewNotesById[item.id] ?? ""}
+                            placeholder="Optional note before marking reviewed"
+                            onChange={(event) =>
+                              setReviewNotesById((current) => ({
+                                ...current,
+                                [item.id]: event.target.value,
+                              }))
+                            }
+                          />
+                        </Field>
                       </div>
                     ) : null}
                   </div>
-                ))}
+                  );
+                })}
                 {tenantOnboardings.length === 0 ? (
                   <EmptyState
                     title="No onboarding has been sent"

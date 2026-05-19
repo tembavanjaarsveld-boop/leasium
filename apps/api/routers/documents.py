@@ -111,6 +111,7 @@ def list_documents(
     tenancy_unit_id: UUID | None = None,
     tenant_id: UUID | None = None,
     lease_id: UUID | None = None,
+    tenant_onboarding_id: UUID | None = None,
     category: DocumentCategory | None = None,
 ) -> list[StoredDocument]:
     assert_entity_role(session, user, entity_id, READ_ROLES)
@@ -131,6 +132,9 @@ def list_documents(
     if lease_id is not None:
         _lease_for_entity(lease_id, entity_id, session)
         statement = statement.where(StoredDocument.lease_id == lease_id)
+    if tenant_onboarding_id is not None:
+        _onboarding_for_entity(tenant_onboarding_id, entity_id, session)
+        statement = statement.where(StoredDocument.tenant_onboarding_id == tenant_onboarding_id)
     if category is not None:
         statement = statement.where(StoredDocument.category == category)
     return list(session.scalars(statement.order_by(StoredDocument.created_at.desc())))

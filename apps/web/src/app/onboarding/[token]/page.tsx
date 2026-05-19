@@ -6,9 +6,13 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardCheck,
+  Download,
+  FileText,
   Loader2,
   Phone,
   ShieldCheck,
+  Trash2,
+  UploadCloud,
   UserRound,
 } from "lucide-react";
 import { useParams } from "next/navigation";
@@ -16,12 +20,17 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { LeasiumMark } from "@/components/brand";
 import { QueryProvider } from "@/components/query-provider";
-import { Button, Field, Input, SecondaryButton } from "@/components/ui";
+import { Button, Field, Input, SecondaryButton, Select } from "@/components/ui";
 import {
+  deletePublicOnboardingDocument,
+  DocumentCategory,
   getPublicTenantOnboarding,
+  listPublicOnboardingDocuments,
+  publicOnboardingDocumentDownloadUrl,
   submitPublicTenantOnboarding,
   TenantOnboardingPublicRecord,
   TenantOnboardingSubmitPayload,
+  uploadPublicOnboardingDocument,
 } from "@/lib/api";
 
 export default function TenantOnboardingPage() {
@@ -111,6 +120,24 @@ function formatDateTime(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
+function formatBytes(bytes: number) {
+  if (bytes < 1_000_000) {
+    return `${Math.max(1, Math.round(bytes / 1_000))} KB`;
+  }
+  return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+const documentCategories: Array<{ value: DocumentCategory; label: string }> = [
+  { value: "insurance", label: "Insurance certificate" },
+  { value: "bank_guarantee", label: "Bank guarantee" },
+  { value: "lease", label: "Signed lease" },
+  { value: "onboarding", label: "Other onboarding file" },
+];
+
+function documentCategoryLabel(value: DocumentCategory) {
+  return documentCategories.find((item) => item.value === value)?.label ?? "Document";
+}
+
 function OnboardingShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-background">
@@ -138,6 +165,15 @@ function TenantOnboardingContent() {
   });
   const onboarding = onboardingQuery.data;
   const [form, setForm] = useState<TenantOnboardingSubmitPayload>(emptyForm);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentCategory, setDocumentCategory] = useState<DocumentCategory>("insurance");
+  const [documentNotes, setDocumentNotes] = useState("");
+
+  const documentsQuery = useQuery({
+    queryKey: ["public-onboarding-documents", token],
+    queryFn: () => listPublicOnboardingDocuments(token),
+    enabled: Boolean(token && onboarding),
+  });
 
   useEffect(() => {
     if (!onboarding) {
@@ -151,6 +187,30 @@ function TenantOnboardingContent() {
     onSuccess: () => onboardingQuery.refetch(),
   });
 
+  const uploadDocumentMutation = useMutation({
+    mutationFn: () => {
+      if (!documentFile) {
+        throw new Error("Choose a file first.");
+      }
+      return uploadPublicOnboardingDocument({
+        token,
+        category: documentCategory,
+        notes: documentNotes,
+        file: documentFile,
+      });
+    },
+    onSuccess: () => {
+      setDocumentFile(null);
+      setDocumentNotes("");
+      documentsQuery.refetch();
+    },
+  });
+
+  const deleteDocumentMutation = useMutation({
+    mutationFn: (documentId: string) => deletePublicOnboardingDocument(token, documentId),
+    onSuccess: () => documentsQuery.refetch(),
+  });
+
   function setField<K extends keyof TenantOnboardingSubmitPayload>(
     field: K,
     value: TenantOnboardingSubmitPayload[K],
@@ -161,6 +221,11 @@ function TenantOnboardingContent() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     submitMutation.mutate();
+  }
+
+  function submitDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    uploadDocumentMutation.mutate();
   }
 
   if (onboardingQuery.isLoading) {
@@ -188,6 +253,7 @@ function TenantOnboardingContent() {
   }
 
   const submitted = onboarding.status === "submitted";
+  const documents = documentsQuery.data ?? [];
   const canSubmit =
     form.legal_name.trim() &&
     form.contact_name.trim() &&
@@ -202,13 +268,30 @@ function TenantOnboardingContent() {
             <CheckCircle2 className="mx-auto text-primary" size={38} />
             <h2 className="mt-3 text-2xl font-semibold">Thanks, all received</h2>
             <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
-              The property team can now review your onboarding details. They will
-              contact you if anything else is needed.
+              Your details and documents are with the property team for review.
+              They will contact you if anything else is needed.
             </p>
             {onboarding.submitted_at ? (
               <p className="mt-4 text-xs text-muted-foreground">
                 Submitted {formatDateTime(onboarding.submitted_at)}
               </p>
+            ) : null}
+            {documents.length ? (
+              <div className="mx-auto mt-5 grid max-w-xl gap-2 text-left">
+                {documents.map((document) => (
+                  <a
+                    key={document.id}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm hover:bg-muted"
+                    href={publicOnboardingDocumentDownloadUrl(token, document.id)}
+                  >
+                    <span className="min-w-0 truncate">{document.filename}</span>
+                    <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                      {documentCategoryLabel(document.category)}
+                      <Download size={14} />
+                    </span>
+                  </a>
+                ))}
+              </div>
             ) : null}
           </section>
         ) : (
@@ -393,6 +476,119 @@ function TenantOnboardingContent() {
                       />
                       <span>Current insurance details are available if requested.</span>
                     </label>
+                  </div>
+                </section>
+
+                <section className="rounded-md border border-border bg-white p-5">
+                  <div className="flex items-center gap-2">
+                    <FileText size={18} className="text-primary" />
+                    <h3 className="text-lg font-semibold">Upload documents</h3>
+                  </div>
+                  <form className="mt-4 grid gap-4" onSubmit={submitDocument}>
+                    <label className="grid min-h-28 cursor-pointer place-items-center rounded-md border border-dashed border-border bg-muted/30 px-4 py-5 text-center transition hover:border-primary hover:bg-primary/5">
+                      <input
+                        type="file"
+                        className="sr-only"
+                        onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)}
+                      />
+                      <span className="grid justify-items-center gap-2">
+                        <UploadCloud size={22} className="text-primary" />
+                        <span className="text-sm font-semibold">
+                          {documentFile ? documentFile.name : "Choose a document"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Insurance, guarantees, signed files, PDF or image up to 15 MB
+                        </span>
+                      </span>
+                    </label>
+                    <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
+                      <Field label="Type">
+                        <Select
+                          value={documentCategory}
+                          onChange={(event) =>
+                            setDocumentCategory(event.target.value as DocumentCategory)
+                          }
+                        >
+                          {documentCategories.map((item) => (
+                            <option key={item.value} value={item.value}>
+                              {item.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field label="Notes">
+                        <Input
+                          placeholder="Optional"
+                          value={documentNotes}
+                          onChange={(event) => setDocumentNotes(event.target.value)}
+                        />
+                      </Field>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="submit"
+                        disabled={!documentFile || uploadDocumentMutation.isPending}
+                      >
+                        {uploadDocumentMutation.isPending ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <UploadCloud size={16} />
+                        )}
+                        Upload file
+                      </Button>
+                      {documentFile ? (
+                        <SecondaryButton
+                          type="button"
+                          onClick={() => setDocumentFile(null)}
+                        >
+                          Remove
+                        </SecondaryButton>
+                      ) : null}
+                    </div>
+                    {uploadDocumentMutation.error ? (
+                      <p className="rounded-md border border-danger/20 bg-danger/5 px-3 py-2 text-sm text-danger">
+                        {uploadDocumentMutation.error.message}
+                      </p>
+                    ) : null}
+                  </form>
+                  <div className="mt-4 grid gap-2">
+                    {documents.map((document) => (
+                      <div
+                        key={document.id}
+                        className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{document.filename}</div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            {documentCategoryLabel(document.category)} -{" "}
+                            {formatBytes(document.byte_size)}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <a
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-muted"
+                            href={publicOnboardingDocumentDownloadUrl(token, document.id)}
+                            aria-label={`Download ${document.filename}`}
+                          >
+                            <Download size={15} />
+                          </a>
+                          <SecondaryButton
+                            type="button"
+                            className="h-8 w-8 px-0 text-danger"
+                            aria-label={`Delete ${document.filename}`}
+                            onClick={() => deleteDocumentMutation.mutate(document.id)}
+                            disabled={deleteDocumentMutation.isPending}
+                          >
+                            <Trash2 size={15} />
+                          </SecondaryButton>
+                        </div>
+                      </div>
+                    ))}
+                    {!documentsQuery.isLoading && documents.length === 0 ? (
+                      <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                        No files uploaded yet.
+                      </div>
+                    ) : null}
                   </div>
                 </section>
 
