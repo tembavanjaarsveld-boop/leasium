@@ -19,7 +19,6 @@ import {
   RefreshCw,
   Trash2,
   UploadCloud,
-  UserRound,
   X,
 } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
@@ -658,6 +657,9 @@ function Workspace() {
     null,
   );
   const [editingLease, setEditingLease] = useState<LeaseRecord | null>(null);
+  const [leaseEditorOpen, setLeaseEditorOpen] = useState(false);
+  const [leaseMoreOpen, setLeaseMoreOpen] = useState(false);
+  const [unitEditorOpen, setUnitEditorOpen] = useState(false);
   const [activeLeaseIntakeId, setActiveLeaseIntakeId] = useState<string>("");
   const [leaseReviewDraftId, setLeaseReviewDraftId] = useState<string>("");
   const [leaseReviewDraft, setLeaseReviewDraft] =
@@ -939,6 +941,8 @@ function Workspace() {
         window.history.replaceState(null, "", url);
         setEditingUnit(null);
         setEditingLease(null);
+        setLeaseEditorOpen(false);
+        setUnitEditorOpen(false);
         unitForm.reset(defaultUnitFormValues);
         leaseForm.reset(defaultLeaseFormValues);
         chargeRuleForm.reset(defaultChargeRuleFormValues);
@@ -963,6 +967,8 @@ function Workspace() {
       window.history.replaceState(null, "", url);
       setEditingUnit(null);
       setEditingLease(null);
+      setLeaseEditorOpen(false);
+      setUnitEditorOpen(false);
       unitForm.reset(defaultUnitFormValues);
       leaseForm.reset(defaultLeaseFormValues);
       chargeRuleForm.reset(defaultChargeRuleFormValues);
@@ -1038,10 +1044,12 @@ function Workspace() {
       });
       if (editingUnit?.id === unitId) {
         setEditingUnit(null);
+        setUnitEditorOpen(false);
         unitForm.reset(defaultUnitFormValues);
       }
       if (leaseForm.getValues("tenancy_unit_id") === unitId) {
         setEditingLease(null);
+        setLeaseEditorOpen(false);
         leaseForm.reset(defaultLeaseFormValues);
       }
     },
@@ -1095,6 +1103,8 @@ function Workspace() {
         queryKey: ["tenants", selectedEntityId],
       });
       setEditingLease(null);
+      setLeaseEditorOpen(false);
+      setLeaseMoreOpen(false);
       leaseForm.reset(defaultLeaseFormValues);
     },
   });
@@ -1106,6 +1116,8 @@ function Workspace() {
         queryKey: ["leases", selectedPropertyId],
       });
       setEditingLease(null);
+      setLeaseEditorOpen(false);
+      setLeaseMoreOpen(false);
       leaseForm.reset(defaultLeaseFormValues);
     },
   });
@@ -1279,6 +1291,8 @@ function Workspace() {
     window.history.replaceState(null, "", url);
     setEditingUnit(null);
     setEditingLease(null);
+    setLeaseEditorOpen(false);
+    setUnitEditorOpen(false);
     unitForm.reset(defaultUnitFormValues);
     leaseForm.reset(defaultLeaseFormValues);
     chargeRuleForm.reset(defaultChargeRuleFormValues);
@@ -1303,6 +1317,7 @@ function Workspace() {
 
   function startUnitEdit(unit: TenancyUnitRecord) {
     setEditingUnit(unit);
+    setUnitEditorOpen(true);
     unitForm.reset({
       unit_label: unit.unit_label,
       sqm: unit.sqm ?? undefined,
@@ -1310,8 +1325,22 @@ function Workspace() {
     });
   }
 
+  function startUnitCreate() {
+    setEditingUnit(null);
+    setUnitEditorOpen(true);
+    unitForm.reset(defaultUnitFormValues);
+  }
+
+  function closeUnitEditor() {
+    setEditingUnit(null);
+    setUnitEditorOpen(false);
+    unitForm.reset(defaultUnitFormValues);
+  }
+
   function startLeaseEdit(unit: TenancyUnitRecord, lease?: LeaseRecord) {
     setEditingLease(lease ?? null);
+    setLeaseEditorOpen(true);
+    setLeaseMoreOpen(false);
     chargeRuleForm.reset({
       ...defaultChargeRuleFormValues,
       lease_id: lease?.id ?? "",
@@ -1351,6 +1380,13 @@ function Workspace() {
             tenancy_unit_id: unit.id,
           },
     );
+  }
+
+  function closeLeaseEditor() {
+    setEditingLease(null);
+    setLeaseEditorOpen(false);
+    setLeaseMoreOpen(false);
+    leaseForm.reset(defaultLeaseFormValues);
   }
 
   function requestDeleteUnit(unit: TenancyUnitRecord) {
@@ -1561,6 +1597,21 @@ function Workspace() {
     activeLeaseIntake?.filename ??
     leaseIntakeMutation.variables?.name ??
     "Lease file";
+  const leaseEditorUnitId = leaseForm.watch("tenancy_unit_id");
+  const leaseEditorTenantId = leaseForm.watch("tenant_id");
+  const leaseEditorUnit = leaseEditorUnitId
+    ? unitsById.get(leaseEditorUnitId)
+    : undefined;
+  const leaseEditorExistingLease =
+    editingLease ??
+    (leaseEditorUnit
+      ? pickUnitLease(leasesQuery.data, leaseEditorUnit.id)
+      : undefined);
+  const leaseEditorTenant = leaseEditorExistingLease
+    ? tenantsById.get(leaseEditorExistingLease.tenant_id)
+    : leaseEditorTenantId
+      ? tenantsById.get(leaseEditorTenantId)
+      : undefined;
 
   return (
     <main className="min-h-screen">
@@ -2849,22 +2900,32 @@ function Workspace() {
                     : ""}
                 </p>
               </div>
-              <SecondaryButton
-                type="button"
-                onClick={() => {
-                  tenancyUnitsQuery.refetch();
-                  tenantsQuery.refetch();
-                  leasesQuery.refetch();
-                }}
-                disabled={!selectedPropertyId}
-              >
-                <RefreshCw size={16} />
-                Refresh
-              </SecondaryButton>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  onClick={startUnitCreate}
+                  disabled={!selectedPropertyId}
+                >
+                  <Plus size={16} />
+                  Add unit
+                </Button>
+                <SecondaryButton
+                  type="button"
+                  onClick={() => {
+                    tenancyUnitsQuery.refetch();
+                    tenantsQuery.refetch();
+                    leasesQuery.refetch();
+                  }}
+                  disabled={!selectedPropertyId}
+                >
+                  <RefreshCw size={16} />
+                  Refresh
+                </SecondaryButton>
+              </div>
             </div>
 
             {selectedProperty ? (
-              <div className="grid lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div>
                 <div className="min-w-0 overflow-x-auto">
                   <table className="w-full border-collapse text-left text-sm">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
@@ -3001,23 +3062,31 @@ function Workspace() {
                                     <Ban size={15} />
                                   </SecondaryButton>
                                 ) : null}
+                                {lease ? (
+                                  <SecondaryButton
+                                    type="button"
+                                    onClick={() => startLeaseEdit(unit, lease)}
+                                    className="h-8 px-2"
+                                  >
+                                    <Pencil size={15} />
+                                    Edit lease
+                                  </SecondaryButton>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    onClick={() => startLeaseEdit(unit)}
+                                    className="h-8 px-2"
+                                  >
+                                    <Plus size={15} />
+                                    Add lease
+                                  </Button>
+                                )}
                                 <SecondaryButton
                                   type="button"
-                                  aria-label={
-                                    lease
-                                      ? `Edit lease for ${unit.unit_label}`
-                                      : `Add lease for ${unit.unit_label}`
-                                  }
-                                  onClick={() => startLeaseEdit(unit, lease)}
-                                  className="h-8 w-8 px-0"
-                                >
-                                  <UserRound size={15} />
-                                </SecondaryButton>
-                                <SecondaryButton
-                                  type="button"
+                                  title={`Edit ${unit.unit_label}`}
                                   aria-label={`Edit ${unit.unit_label}`}
-                                  onClick={() => startUnitEdit(unit)}
                                   className="h-8 w-8 px-0"
+                                  onClick={() => startUnitEdit(unit)}
                                 >
                                   <Pencil size={15} />
                                 </SecondaryButton>
@@ -3050,61 +3119,126 @@ function Workspace() {
                   </table>
                 </div>
 
-                <div className="grid gap-5 border-t border-border p-4 lg:border-l lg:border-t-0">
-                  <form
-                    className="grid gap-3"
-                    onSubmit={leaseForm.handleSubmit((values) =>
-                      leaseMutation.mutate(values),
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-semibold">
-                        {editingLease ? "Edit lease" : "Quick lease"}
-                      </h3>
-                      {editingLease || leaseForm.watch("tenancy_unit_id") ? (
-                        <SecondaryButton
-                          type="button"
-                          aria-label="Clear lease form"
-                          onClick={() => {
-                            setEditingLease(null);
-                            leaseForm.reset(defaultLeaseFormValues);
-                          }}
-                          className="h-8 w-8 px-0"
-                        >
-                          <X size={15} />
-                        </SecondaryButton>
-                      ) : null}
+              </div>
+            ) : (
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                Select a property.
+              </div>
+            )}
+          </section>
+        </section>
+
+        {leaseEditorOpen ? (
+          <div
+            className="fixed inset-0 z-50 grid bg-foreground/20 backdrop-blur-[1px] lg:justify-items-end"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lease-editor-title"
+          >
+            <button
+              type="button"
+              className="absolute inset-0 cursor-default"
+              aria-label="Close lease editor"
+              onClick={closeLeaseEditor}
+            />
+            <form
+              className="relative grid h-full w-full max-w-xl grid-rows-[auto_1fr_auto] border-l border-border bg-white shadow-xl"
+              onSubmit={leaseForm.handleSubmit((values) =>
+                leaseMutation.mutate(values),
+              )}
+            >
+              <div className="border-b border-border px-5 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="mb-1 inline-flex items-center gap-1.5 rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                      <CalendarClock size={13} />
+                      {editingLease ? "Lease update" : "New lease"}
                     </div>
-                    <Field
-                      label="Unit"
-                      error={
-                        leaseForm.formState.errors.tenancy_unit_id?.message
-                      }
-                    >
-                      <Select {...leaseForm.register("tenancy_unit_id")}>
-                        <option value="">Select unit</option>
-                        {tenancyUnitsQuery.data?.map((unit) => (
-                          <option key={unit.id} value={unit.id}>
-                            {unit.unit_label}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                    <Field
-                      label="Tenant"
-                      error={leaseForm.formState.errors.tenant_id?.message}
-                    >
-                      <Select {...leaseForm.register("tenant_id")}>
-                        <option value="">New tenant</option>
-                        {tenantsQuery.data?.map((tenant) => (
-                          <option key={tenant.id} value={tenant.id}>
-                            {tenantDisplayName(tenant)}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                    {!leaseForm.watch("tenant_id") ? (
-                      <div className="grid grid-cols-2 gap-3">
+                    <h3 id="lease-editor-title" className="text-lg font-semibold">
+                      {editingLease ? "Edit lease" : "Add lease"}
+                      {leaseEditorUnit ? ` for ${leaseEditorUnit.unit_label}` : ""}
+                    </h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {selectedProperty?.name ?? "Selected property"}
+                    </p>
+                  </div>
+                  <SecondaryButton
+                    type="button"
+                    aria-label="Close lease editor"
+                    onClick={closeLeaseEditor}
+                    className="h-8 w-8 px-0"
+                  >
+                    <X size={15} />
+                  </SecondaryButton>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto px-5 py-4">
+                <div className="mb-4 grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Unit</div>
+                    <div className="font-medium">
+                      {leaseEditorUnit?.unit_label ?? "Choose a unit"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Current tenant</div>
+                    <div className="font-medium">
+                      {leaseEditorTenant
+                        ? tenantDisplayName(leaseEditorTenant)
+                        : "Vacant"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Rent</div>
+                    <div className="font-medium">
+                      {formatRent(
+                        leaseEditorExistingLease?.annual_rent_cents,
+                        leaseEditorExistingLease?.rent_frequency,
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Expiry</div>
+                    <div className="font-medium">
+                      {formatDate(leaseEditorExistingLease?.expiry_date)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-5">
+                  <section className="grid gap-3">
+                    <h4 className="text-sm font-semibold">Tenant</h4>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field
+                        label="Unit"
+                        error={leaseForm.formState.errors.tenancy_unit_id?.message}
+                      >
+                        <Select {...leaseForm.register("tenancy_unit_id")}>
+                          <option value="">Select unit</option>
+                          {tenancyUnitsQuery.data?.map((unit) => (
+                            <option key={unit.id} value={unit.id}>
+                              {unit.unit_label}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field
+                        label="Tenant"
+                        error={leaseForm.formState.errors.tenant_id?.message}
+                      >
+                        <Select {...leaseForm.register("tenant_id")}>
+                          <option value="">New tenant</option>
+                          {tenantsQuery.data?.map((tenant) => (
+                            <option key={tenant.id} value={tenant.id}>
+                              {tenantDisplayName(tenant)}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    </div>
+                    {!leaseEditorTenantId ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
                         <Field
                           label="Legal name"
                           error={
@@ -3125,26 +3259,11 @@ function Workspace() {
                         </Field>
                       </div>
                     ) : null}
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Status">
-                        <Select {...leaseForm.register("status")}>
-                          {leaseStatuses.map((status) => (
-                            <option key={status.value} value={status.value}>
-                              {status.label}
-                            </option>
-                          ))}
-                        </Select>
-                      </Field>
-                      <Field label="Rent">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          {...leaseForm.register("annual_rent")}
-                        />
-                      </Field>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
+                  </section>
+
+                  <section className="grid gap-3">
+                    <h4 className="text-sm font-semibold">Lease dates</h4>
+                    <div className="grid gap-3 sm:grid-cols-3">
                       <Field label="Start">
                         <Input
                           type="date"
@@ -3157,6 +3276,39 @@ function Workspace() {
                           {...leaseForm.register("expiry_date")}
                         />
                       </Field>
+                      <Field label="Status">
+                        <Select {...leaseForm.register("status")}>
+                          {leaseStatuses.map((status) => (
+                            <option key={status.value} value={status.value}>
+                              {status.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    </div>
+                  </section>
+
+                  <section className="grid gap-3">
+                    <h4 className="text-sm font-semibold">Rent and review</h4>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <Field label="Rent">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="180000"
+                          {...leaseForm.register("annual_rent")}
+                        />
+                      </Field>
+                      <Field label="Frequency">
+                        <Select {...leaseForm.register("rent_frequency")}>
+                          {rentFrequencies.map((frequency) => (
+                            <option key={frequency.value} value={frequency.value}>
+                              {frequency.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
                       <Field label="Review">
                         <Input
                           type="date"
@@ -3164,185 +3316,190 @@ function Workspace() {
                         />
                       </Field>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Frequency">
-                        <Select {...leaseForm.register("rent_frequency")}>
-                          {rentFrequencies.map((frequency) => (
-                            <option
-                              key={frequency.value}
-                              value={frequency.value}
-                            >
-                              {frequency.label}
-                            </option>
-                          ))}
-                        </Select>
-                      </Field>
-                      <label className="mt-6 flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 accent-primary"
-                          {...leaseForm.register("outgoings_recoverable")}
-                        />
-                        Outgoings
-                      </label>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Options">
-                        <Input
-                          placeholder="2 x 3 years"
-                          {...leaseForm.register("option_summary")}
-                        />
-                      </Field>
-                      <Field label="Security">
-                        <Input
-                          placeholder="Bank guarantee"
-                          {...leaseForm.register("security_summary")}
-                        />
-                      </Field>
-                    </div>
-                    <Field label="Notes">
-                      <Input
-                        placeholder="Lease notes"
-                        {...leaseForm.register("notes")}
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        {...leaseForm.register("outgoings_recoverable")}
                       />
-                    </Field>
-                    <div className="flex gap-2">
-                      <Button
-                        type="submit"
-                        disabled={
-                          !selectedEntityId ||
-                          !selectedPropertyId ||
-                          leaseMutation.isPending
-                        }
-                        className="flex-1"
-                      >
-                        {editingLease ? (
-                          <Check size={16} />
-                        ) : (
-                          <CalendarClock size={16} />
-                        )}
-                        {editingLease ? "Save lease" : "Add lease"}
-                      </Button>
-                      {editingLease ? (
-                        <SecondaryButton
-                          type="button"
-                          aria-label="Delete lease"
-                          onClick={requestDeleteLease}
-                          disabled={deleteLeaseMutation.isPending}
-                          className="h-9 w-9 px-0 text-danger"
-                        >
-                          <Trash2 size={15} />
-                        </SecondaryButton>
-                      ) : null}
-                    </div>
-                    {leaseMutation.error ? (
-                      <p className="text-sm text-danger">
-                        {leaseMutation.error.message}
-                      </p>
-                    ) : null}
-                    {deleteLeaseMutation.error ? (
-                      <p className="text-sm text-danger">
-                        {deleteLeaseMutation.error.message}
-                      </p>
-                    ) : null}
-                    {tenantsQuery.error ? (
-                      <p className="text-sm text-danger">
-                        {tenantsQuery.error.message}
-                      </p>
-                    ) : null}
-                    {leasesQuery.error ? (
-                      <p className="text-sm text-danger">
-                        {leasesQuery.error.message}
-                      </p>
-                    ) : null}
-                  </form>
+                      Outgoings recoverable
+                    </label>
+                  </section>
 
-                  <form
-                    className="grid gap-3 border-t border-border pt-4"
-                    onSubmit={unitForm.handleSubmit((values) =>
-                      unitMutation.mutate(values),
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-semibold">
-                        {editingUnit ? "Edit unit" : "New unit"}
-                      </h3>
-                      {editingUnit ? (
-                        <SecondaryButton
-                          type="button"
-                          aria-label="Clear unit form"
-                          onClick={() => {
-                            setEditingUnit(null);
-                            unitForm.reset(defaultUnitFormValues);
-                          }}
-                          className="h-8 w-8 px-0"
-                        >
-                          <X size={15} />
-                        </SecondaryButton>
-                      ) : null}
-                    </div>
-                    <Field
-                      label="Unit label"
-                      error={unitForm.formState.errors.unit_label?.message}
+                  <section className="grid gap-3">
+                    <button
+                      type="button"
+                      className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2 text-sm font-medium transition hover:bg-muted"
+                      onClick={() => setLeaseMoreOpen((value) => !value)}
                     >
-                      <Input
-                        placeholder="Suite 1.02"
-                        {...unitForm.register("unit_label")}
-                      />
-                    </Field>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field
-                        label="Sqm"
-                        error={unitForm.formState.errors.sqm?.message}
-                      >
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          {...unitForm.register("sqm")}
-                        />
-                      </Field>
-                      <Field
-                        label="Parking"
-                        error={
-                          unitForm.formState.errors.parking_spaces?.message
-                        }
-                      >
-                        <Input
-                          type="number"
-                          min="0"
-                          step="1"
-                          {...unitForm.register("parking_spaces")}
-                        />
-                      </Field>
-                    </div>
-                    <Button
-                      type="submit"
-                      disabled={!selectedPropertyId || unitMutation.isPending}
-                    >
-                      {editingUnit ? <Check size={16} /> : <Plus size={16} />}
-                      {editingUnit ? "Save unit" : "Add unit"}
-                    </Button>
-                    {unitMutation.error ? (
-                      <p className="text-sm text-danger">
-                        {unitMutation.error.message}
-                      </p>
+                      More lease details
+                      <span className="text-xs text-muted-foreground">
+                        {leaseMoreOpen ? "Hide" : "Show"}
+                      </span>
+                    </button>
+                    {leaseMoreOpen ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Options">
+                          <Input
+                            placeholder="2 x 3 years"
+                            {...leaseForm.register("option_summary")}
+                          />
+                        </Field>
+                        <Field label="Security">
+                          <Input
+                            placeholder="Bank guarantee"
+                            {...leaseForm.register("security_summary")}
+                          />
+                        </Field>
+                        <div className="sm:col-span-2">
+                          <Field label="Notes">
+                            <Input
+                              placeholder="Lease notes"
+                              {...leaseForm.register("notes")}
+                            />
+                          </Field>
+                        </div>
+                      </div>
                     ) : null}
-                    {deleteUnitMutation.error ? (
-                      <p className="text-sm text-danger">
-                        {deleteUnitMutation.error.message}
-                      </p>
-                    ) : null}
-                  </form>
+                  </section>
+
+                  {leaseMutation.error ||
+                  deleteLeaseMutation.error ||
+                  tenantsQuery.error ||
+                  leasesQuery.error ? (
+                    <p className="text-sm text-danger">
+                      {friendlyError(
+                        leaseMutation.error ??
+                          deleteLeaseMutation.error ??
+                          tenantsQuery.error ??
+                          leasesQuery.error,
+                      )}
+                    </p>
+                  ) : null}
                 </div>
               </div>
-            ) : (
-              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                Select a property.
+
+              <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-4">
+                {editingLease ? (
+                  <SecondaryButton
+                    type="button"
+                    onClick={requestDeleteLease}
+                    disabled={deleteLeaseMutation.isPending}
+                    className="text-danger"
+                  >
+                    <Trash2 size={15} />
+                    Delete
+                  </SecondaryButton>
+                ) : (
+                  <SecondaryButton type="button" onClick={closeLeaseEditor}>
+                    Cancel
+                  </SecondaryButton>
+                )}
+                <Button
+                  type="submit"
+                  disabled={
+                    !selectedEntityId ||
+                    !selectedPropertyId ||
+                    leaseMutation.isPending
+                  }
+                >
+                  {editingLease ? <Check size={16} /> : <Plus size={16} />}
+                  {editingLease ? "Save lease" : "Add lease"}
+                </Button>
               </div>
-            )}
-          </section>
-        </section>
+            </form>
+          </div>
+        ) : null}
+
+        {unitEditorOpen ? (
+          <div
+            className="fixed inset-0 z-50 grid place-items-center bg-foreground/20 px-4 backdrop-blur-[1px]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unit-editor-title"
+          >
+            <button
+              type="button"
+              className="absolute inset-0 cursor-default"
+              aria-label="Close unit editor"
+              onClick={closeUnitEditor}
+            />
+            <form
+              className="relative w-full max-w-md rounded-md border border-border bg-white shadow-xl"
+              onSubmit={unitForm.handleSubmit((values) =>
+                unitMutation.mutate(values),
+              )}
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+                <div>
+                  <h3 id="unit-editor-title" className="text-lg font-semibold">
+                    {editingUnit ? "Edit unit" : "Add unit"}
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {selectedProperty?.name ?? "Selected property"}
+                  </p>
+                </div>
+                <SecondaryButton
+                  type="button"
+                  aria-label="Close unit editor"
+                  onClick={closeUnitEditor}
+                  className="h-8 w-8 px-0"
+                >
+                  <X size={15} />
+                </SecondaryButton>
+              </div>
+              <div className="grid gap-3 px-5 py-4">
+                <Field
+                  label="Unit label"
+                  error={unitForm.formState.errors.unit_label?.message}
+                >
+                  <Input
+                    placeholder="Suite 1.02"
+                    {...unitForm.register("unit_label")}
+                  />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Sqm" error={unitForm.formState.errors.sqm?.message}>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      {...unitForm.register("sqm")}
+                    />
+                  </Field>
+                  <Field
+                    label="Parking"
+                    error={unitForm.formState.errors.parking_spaces?.message}
+                  >
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      {...unitForm.register("parking_spaces")}
+                    />
+                  </Field>
+                </div>
+                {unitMutation.error || deleteUnitMutation.error ? (
+                  <p className="text-sm text-danger">
+                    {friendlyError(unitMutation.error ?? deleteUnitMutation.error)}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+                <SecondaryButton type="button" onClick={closeUnitEditor}>
+                  Cancel
+                </SecondaryButton>
+                <Button
+                  type="submit"
+                  disabled={!selectedPropertyId || unitMutation.isPending}
+                >
+                  {editingUnit ? <Check size={16} /> : <Plus size={16} />}
+                  {editingUnit ? "Save unit" : "Add unit"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        ) : null}
 
         <aside className="rounded-md border border-border bg-white p-4">
           <div className="mb-4 flex items-center justify-between">
