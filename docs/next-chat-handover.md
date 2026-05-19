@@ -8,7 +8,7 @@ Last updated: 2026-05-19
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed Vercel production deployment in this handover: `1f282c0 Build invoice delivery enrichment and tenant polish`, deployment `dpl_6XxrmNKEanx1mx3BDCFe6bgUF7J9`, state `READY`.
+- Latest confirmed Vercel production deployment in this handover: `9fbadb5 Add Xero readiness and mapping surface`, deployment `dpl_72LoYjVEiVEHsfzuQkzUZz1Yv234`, state `READY`.
 - Product source of truth: `docs/product-roadmap.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
 
@@ -122,11 +122,13 @@ Last updated: 2026-05-19
   - Next dev server loaded `/billing-readiness`, `/properties`, and `/tenants` on `127.0.0.1:3014`.
   - Each route returned `200`, showed expected Leasium screen text, and the in-app browser reported no console errors.
 - Production deployment verification passed:
-  - Commit `1f282c0 Build invoice delivery enrichment and tenant polish`
-  - Vercel deployment `dpl_6XxrmNKEanx1mx3BDCFe6bgUF7J9`, state `READY`
-  - Production alias routes `/billing-readiness`, `/properties`, and `/tenants` returned `200` with expected Leasium screen text.
+  - Commit `9fbadb5 Add Xero readiness and mapping surface`
+  - Vercel deployment `dpl_72LoYjVEiVEHsfzuQkzUZz1Yv234`, state `READY`
+  - Production alias route `/settings` returned `200` with the Xero readiness bundle deployed.
   - Production API health returned `{"status":"ok","app":"Leasium"}`.
-  - Production OpenAPI exposes the new public enrichment, invoice delivery/payment, onboarding reminder, and tenant detail routes.
+  - Production OpenAPI exposes `/api/v1/xero/status` and `/api/v1/xero/connection/{entity_id}`.
+  - Earlier production alias routes `/billing-readiness`, `/properties`, and `/tenants` returned `200` with expected Leasium screen text.
+  - Earlier production OpenAPI verification exposed the public enrichment, invoice delivery/payment, onboarding reminder, and tenant detail routes.
 - Previous verification before this branch:
   - Backend focused test passed:
     - `.venv/bin/python -m pytest tests/integration/test_document_intake_api.py -q`
