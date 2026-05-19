@@ -26,6 +26,7 @@ Set the API host environment from `.env.example`, with production values for:
 
 - `DATABASE_URL`
 - `REDIS_URL`
+- `PUBLIC_API_URL`
 - `FRONTEND_URL`
 - `CORS_ALLOWED_ORIGINS`
 - `CORS_ALLOWED_ORIGIN_REGEX`
@@ -41,11 +42,17 @@ Set the API host environment from `.env.example`, with production values for:
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_MESSAGING_SERVICE_SID` or `TWILIO_FROM_PHONE`
+- `COMMUNICATIONS_WEBHOOK_SECRET`
 
 `FRONTEND_URL` must match the Vercel domain so browser requests pass CORS.
+`PUBLIC_API_URL` must match the hosted API origin so Twilio SMS callbacks can
+report delivery status back into Leasium.
 Use `CORS_ALLOWED_ORIGINS` for extra explicit domains, separated by commas. Use
 `CORS_ALLOWED_ORIGIN_REGEX` only for controlled preview URL patterns.
 
 Tenant onboarding delivery uses Twilio SendGrid for email and Twilio Messaging
 for SMS. If any channel is not configured, Leasium records the channel as
 skipped rather than blocking onboarding link creation.
+Set Twilio SMS status callbacks and SendGrid Event Webhook URLs to the hosted
+`/api/v1/tenant-onboarding/webhooks/...` endpoints using the shared webhook
+secret so Leasium can show sent, delivered, opened, and failed receipts.

@@ -8,6 +8,7 @@
     "build": "NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs next build",
     "start": "next start",
     "lint": "eslint .",
+    "test:smoke": "playwright test",
     "format": "prettier --write ."
   },
   "dependencies": {
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@next/swc-wasm-nodejs": "15.5.18",
+    "@playwright/test": "^1.51.1",
     "@types/node": "^22.5.4",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

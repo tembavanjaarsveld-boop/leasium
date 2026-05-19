@@ -25,6 +25,13 @@ class TenantOnboardingReview(BaseModel):
     notes: str | None = None
 
 
+class TenantOnboardingReminderRunRead(BaseModel):
+    checked: int
+    sent: int
+    skipped: int
+    onboarding_ids: list[UUID] = Field(default_factory=list)
+
+
 class TenantOnboardingRead(ApiModel):
     id: UUID
     entity_id: UUID

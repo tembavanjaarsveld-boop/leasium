@@ -33,11 +33,19 @@ import {
   listEntities,
   listTenantOnboardings,
   listTenants,
+  runTenantOnboardingReminders,
   TenantOnboardingRecord,
   TenantPayload,
   TenantRecord,
 } from "@/lib/api";
-import { onboardingDeliveryLabel, onboardingDeliveryTone } from "@/lib/delivery";
+import {
+  onboardingDeliveryDetail,
+  onboardingDeliveryLabel,
+  onboardingDeliveryTone,
+  onboardingNeedsContactFix,
+  onboardingReminderLabel,
+  onboardingReminderTone,
+} from "@/lib/delivery";
 import { cn } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -155,6 +163,7 @@ function TenantWorkspace() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<TenantForm>(emptyForm);
+  const [reminderRunSummary, setReminderRunSummary] = useState("");
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -273,6 +282,18 @@ function TenantWorkspace() {
     },
   });
 
+  const runRemindersMutation = useMutation({
+    mutationFn: () => runTenantOnboardingReminders(selectedEntityId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", selectedEntityId] });
+      setReminderRunSummary(
+        result.sent
+          ? `${result.sent} reminder${result.sent === 1 ? "" : "s"} sent.`
+          : "No reminders due right now.",
+      );
+    },
+  });
+
   function updateField(field: keyof TenantForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -321,6 +342,14 @@ function TenantWorkspace() {
             >
               <RefreshCw size={15} />
               Refresh
+            </SecondaryButton>
+            <SecondaryButton
+              type="button"
+              onClick={() => runRemindersMutation.mutate()}
+              disabled={!selectedEntityId || runRemindersMutation.isPending}
+            >
+              <Clock3 size={15} />
+              Run reminders
             </SecondaryButton>
             <Button type="button" onClick={() => setShowCreate(true)}>
               <Plus size={16} />
@@ -432,6 +461,11 @@ function TenantWorkspace() {
           </div>
 
           <div className="overflow-x-auto">
+            {reminderRunSummary ? (
+              <div className="border-b border-border px-3 py-2 text-sm text-muted-foreground">
+                {reminderRunSummary}
+              </div>
+            ) : null}
             <table className="w-full border-collapse text-left text-sm">
               <thead className="bg-muted text-xs uppercase text-muted-foreground">
                 <tr>
@@ -460,6 +494,14 @@ function TenantWorkspace() {
                           <StatusBadge tone={onboardingDeliveryTone(onboarding.delivery_data)}>
                             {onboardingDeliveryLabel(onboarding.delivery_data)}
                           </StatusBadge>
+                          <StatusBadge tone={onboardingReminderTone(onboarding.delivery_data)}>
+                            {onboardingReminderLabel(onboarding.delivery_data)}
+                          </StatusBadge>
+                          {onboardingNeedsContactFix(onboarding.delivery_data) ? (
+                            <div className="max-w-xs text-xs text-muted-foreground">
+                              {onboardingDeliveryDetail(onboarding.delivery_data)}
+                            </div>
+                          ) : null}
                         </div>
                       ) : (
                         <StatusBadge tone="warning">not started</StatusBadge>
@@ -479,7 +521,7 @@ function TenantWorkspace() {
                         <Link href={`/tenants/${tenant.id}`}>
                           <SecondaryButton type="button">
                             <UserRound size={15} />
-                            Open
+                            {onboardingNeedsContactFix(onboarding?.delivery_data) ? "Fix contact" : "Open"}
                           </SecondaryButton>
                         </Link>
                         {onboarding?.onboarding_url ? (

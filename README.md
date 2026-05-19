@@ -23,7 +23,9 @@ Lease intake extraction reads `OPENAI_API_KEY` from `.env.local` or `.env` and u
 `OPENAI_MODEL` for the direct Responses API call.
 Tenant onboarding delivery reads `SENDGRID_*` and `TWILIO_*` settings for email
 and SMS. Missing communication credentials are recorded as skipped delivery
-states so local development can still create onboarding links.
+states so local development can still create onboarding links. `PUBLIC_API_URL`
+and `COMMUNICATIONS_WEBHOOK_SECRET` enable delivery receipts from Twilio SMS
+callbacks and SendGrid Event Webhooks.
 
 ## Deployment
 

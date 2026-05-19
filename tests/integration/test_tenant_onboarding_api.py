@@ -3,10 +3,13 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from apps.api.routers import tenant_onboarding as tenant_onboarding_router
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from stewart.core.db import utcnow
 from stewart.core.models import Entity, StoredDocument, Tenant, TenantOnboarding
+from stewart.integrations.communications import DeliveryResult
 
 
 def _entity_id(session: Session) -> str:
@@ -109,6 +112,9 @@ def test_tenant_onboarding_link_public_submit_waits_for_review_before_apply(
     )
     assert submit_response.status_code == 200
     assert submit_response.json()["status"] == "submitted"
+    onboarding_after_submit = session.get(TenantOnboarding, UUID(body["id"]))
+    assert onboarding_after_submit is not None
+    assert onboarding_after_submit.delivery_data["reminders"]["completed_reason"] == "submitted"
 
     onboarding = session.get(TenantOnboarding, UUID(body["id"]))
     assert onboarding is not None
@@ -276,3 +282,97 @@ def test_tenant_onboarding_expired_link_blocks_public_access(
         },
     )
     assert submit_response.status_code == 404
+
+
+def test_tenant_onboarding_sendgrid_receipt_updates_delivery_data(
+    client: TestClient,
+    session: Session,
+) -> None:
+    lease_id = _lease_id(client, session)
+    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    assert create_response.status_code == 201
+    onboarding_id = create_response.json()["id"]
+
+    receipt_response = client.post(
+        "/api/v1/tenant-onboarding/webhooks/sendgrid-events",
+        json=[
+            {
+                "tenant_onboarding_id": onboarding_id,
+                "sg_message_id": "sendgrid-message-1",
+                "event": "delivered",
+                "email": "tenant@example.com",
+            }
+        ],
+    )
+    assert receipt_response.status_code == 204
+
+    onboarding = session.get(TenantOnboarding, UUID(onboarding_id))
+    assert onboarding is not None
+    assert onboarding.delivery_data["channels"]["email"]["status"] == "delivered"
+    assert onboarding.delivery_data["channels"]["email"]["last_event"] == "delivered"
+    assert onboarding.delivery_data["receipts"][0]["status"] == "delivered"
+
+
+def test_tenant_onboarding_reminder_run_is_due_and_idempotent(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    sends: list[str] = []
+
+    def fake_send(invite, settings):  # noqa: ANN001, ARG001
+        sends.append(str(invite.onboarding_id))
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+                provider_message_id=f"email-{len(sends)}",
+            ),
+            DeliveryResult(channel="sms", status="skipped", provider="twilio"),
+        ]
+
+    monkeypatch.setattr(tenant_onboarding_router, "send_tenant_onboarding_invite", fake_send)
+    lease_id = _lease_id(client, session)
+    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    assert create_response.status_code == 201
+    entity_id = _entity_id(session)
+    onboarding_id = create_response.json()["id"]
+    onboarding = session.get(TenantOnboarding, UUID(onboarding_id))
+    assert onboarding is not None
+    reminder_due_at = (utcnow() - timedelta(minutes=1)).isoformat()
+    delivery_data = onboarding.delivery_data
+    reminders = delivery_data["reminders"]
+    schedule = list(reminders["schedule"])
+    schedule[0] = {**schedule[0], "scheduled_at": reminder_due_at}
+    onboarding.delivery_data = {
+        **delivery_data,
+        "reminders": {
+            **reminders,
+            "next_reminder_at": reminder_due_at,
+            "schedule": schedule,
+        },
+    }
+    session.commit()
+    sends.clear()
+
+    run_response = client.post(
+        "/api/v1/tenant-onboarding/reminders/run",
+        params={"entity_id": entity_id},
+    )
+    assert run_response.status_code == 200
+    assert run_response.json()["sent"] == 1
+    assert sends == [onboarding_id]
+
+    second_run_response = client.post(
+        "/api/v1/tenant-onboarding/reminders/run",
+        params={"entity_id": entity_id},
+    )
+    assert second_run_response.status_code == 200
+    assert second_run_response.json()["sent"] == 0
+
+    session.refresh(onboarding)
+    reminders = onboarding.delivery_data["reminders"]
+    assert reminders["schedule"][0]["status"] == "sent"
+    assert reminders["next_reminder_at"] == reminders["schedule"][1]["scheduled_at"]

@@ -121,9 +121,32 @@ export type DeliveryChannelRecord = {
   status?: string;
   provider?: string;
   attempted_at?: string | null;
+  receipt_at?: string | null;
+  last_event?: string | null;
   recipient?: string | null;
   provider_message_id?: string | null;
   error?: string | null;
+};
+
+export type OnboardingReminderStep = {
+  key?: string;
+  label?: string;
+  after_days?: number;
+  scheduled_at?: string | null;
+  status?: string | null;
+  sent_at?: string | null;
+  channels?: Record<string, DeliveryChannelRecord>;
+};
+
+export type OnboardingReminderData = {
+  enabled?: boolean;
+  paused?: boolean;
+  paused_reason?: string | null;
+  schedule?: OnboardingReminderStep[];
+  next_reminder_at?: string | null;
+  last_reminder_sent_at?: string | null;
+  completed_at?: string | null;
+  completed_reason?: string | null;
 };
 
 export type OnboardingDeliveryData = {
@@ -134,6 +157,8 @@ export type OnboardingDeliveryData = {
     sms?: DeliveryChannelRecord;
   };
   history?: Array<Record<string, unknown>>;
+  receipts?: Array<Record<string, unknown>>;
+  reminders?: OnboardingReminderData;
 };
 
 export type TenantOnboardingPublicRecord = {
@@ -573,6 +598,18 @@ export function resendTenantOnboarding(onboardingId: string) {
       method: "POST",
     },
   );
+}
+
+export function runTenantOnboardingReminders(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<{
+    checked: number;
+    sent: number;
+    skipped: number;
+    onboarding_ids: string[];
+  }>(`/tenant-onboarding/reminders/run?${params.toString()}`, {
+    method: "POST",
+  });
 }
 
 export function reviewTenantOnboarding(

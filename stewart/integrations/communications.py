@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from html import escape
 from typing import Literal
+from urllib.parse import urlencode
 from uuid import UUID
 
 import httpx
@@ -14,7 +15,7 @@ from stewart.core.db import utcnow
 from stewart.core.settings import Settings
 
 DeliveryChannel = Literal["email", "sms"]
-DeliveryStatus = Literal["queued", "skipped", "failed"]
+DeliveryStatus = Literal["queued", "sent", "delivered", "opened", "skipped", "failed", "attention"]
 
 
 @dataclass(frozen=True)
@@ -147,6 +148,15 @@ def _sms_body(invite: TenantOnboardingInvite) -> str:
         f"Leasium: please complete tenant onboarding for {invite.property_name} "
         f"({invite.unit_label}) by {due}: {invite.onboarding_url}"
     )
+
+
+def _twilio_status_callback_url(settings: Settings) -> str | None:
+    if not settings.public_api_url:
+        return None
+    url = f"{settings.public_api_url.rstrip('/')}/api/v1/tenant-onboarding/webhooks/twilio-status"
+    if settings.communications_webhook_secret:
+        return f"{url}?{urlencode({'token': settings.communications_webhook_secret})}"
+    return url
 
 
 def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryResult:
@@ -282,6 +292,9 @@ def _send_sms(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryRes
         data["MessagingServiceSid"] = settings.twilio_messaging_service_sid
     else:
         data["From"] = settings.twilio_from_phone
+    status_callback_url = _twilio_status_callback_url(settings)
+    if status_callback_url:
+        data["StatusCallback"] = status_callback_url
 
     url = (
         f"{settings.twilio_api_base_url.rstrip('/')}/2010-04-01/Accounts/"

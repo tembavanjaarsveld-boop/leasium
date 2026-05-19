@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     app_env: str = "local"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    public_api_url: str = ""
     frontend_url: str = "http://localhost:3000"
     cors_allowed_origins: str = ""
     cors_allowed_origin_regex: str | None = None
@@ -58,6 +59,7 @@ class Settings(BaseSettings):
     twilio_messaging_service_sid: str = ""
     twilio_from_phone: str = ""
     twilio_api_base_url: str = "https://api.twilio.com"
+    communications_webhook_secret: str = ""
     communications_timeout_seconds: float = 10.0
     tenant_onboarding_email_enabled: bool = True
     tenant_onboarding_sms_enabled: bool = True

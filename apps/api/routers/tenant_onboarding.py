@@ -1,13 +1,23 @@
 """Tenant onboarding link routes."""
 
 import secrets
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated
-from urllib.parse import quote
+from typing import Annotated, Any
+from urllib.parse import parse_qs, quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
@@ -38,6 +48,7 @@ from apps.api.schemas.tenant_onboarding import (
     TenantOnboardingCreate,
     TenantOnboardingPublicRead,
     TenantOnboardingRead,
+    TenantOnboardingReminderRunRead,
     TenantOnboardingReview,
     TenantOnboardingSubmit,
 )
@@ -46,6 +57,13 @@ router = APIRouter(prefix="/tenant-onboarding", tags=["tenant-onboarding"])
 
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
+
+REMINDER_STEPS = (
+    ("first", "First reminder", 2),
+    ("second", "Second reminder", 5),
+    ("final", "Final reminder", 10),
+)
+ACTIVE_DELIVERY_STATUSES = {"queued", "sent", "delivered", "opened"}
 
 
 def _onboarding_url(token: str) -> str:
@@ -82,6 +100,272 @@ def _delivery_data(
             *history[:9],
         ],
     }
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def _normalise_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _channel_results_need_attention(results: list[DeliveryResult]) -> bool:
+    return not any(result.status in ACTIVE_DELIVERY_STATUSES for result in results)
+
+
+def _reset_reminders(
+    current: dict[str, object],
+    sent_at: datetime,
+    results: list[DeliveryResult],
+) -> dict[str, object]:
+    base = _normalise_datetime(sent_at)
+    paused = _channel_results_need_attention(results)
+    schedule = [
+        {
+            "key": key,
+            "label": label,
+            "after_days": days,
+            "scheduled_at": (base + timedelta(days=days)).isoformat(),
+            "status": "paused" if paused else "scheduled",
+            "sent_at": None,
+        }
+        for key, label, days in REMINDER_STEPS
+    ]
+    return {
+        **current,
+        "reminders": {
+            "enabled": True,
+            "paused": paused,
+            "paused_reason": "contact_issue" if paused else None,
+            "schedule": schedule,
+            "next_reminder_at": None if paused else schedule[0]["scheduled_at"],
+            "last_reminder_sent_at": None,
+            "completed_at": None,
+        },
+    }
+
+
+def _reminder_state(current: dict[str, object]) -> dict[str, Any]:
+    reminders = current.get("reminders", {})
+    return reminders if isinstance(reminders, dict) else {}
+
+
+def _reminder_schedule(reminders: dict[str, Any]) -> list[dict[str, Any]]:
+    schedule = reminders.get("schedule", [])
+    return schedule if isinstance(schedule, list) else []
+
+
+def _mark_reminder_attempt(
+    current: dict[str, object],
+    reminder_key: str,
+    results: list[DeliveryResult],
+) -> dict[str, object]:
+    now = utcnow().isoformat()
+    reminders = _reminder_state(current)
+    schedule = []
+    any_active = not _channel_results_need_attention(results)
+    for step in _reminder_schedule(reminders):
+        if not isinstance(step, dict):
+            continue
+        next_step = {**step}
+        if next_step.get("key") == reminder_key:
+            next_step["status"] = "sent" if any_active else "needs_attention"
+            next_step["sent_at"] = now
+            next_step["channels"] = {result.channel: result.to_dict() for result in results}
+        schedule.append(next_step)
+
+    next_reminder_at = None
+    paused = not any_active
+    if not paused:
+        for step in schedule:
+            if step.get("status") == "scheduled":
+                next_reminder_at = step.get("scheduled_at")
+                break
+
+    return {
+        **current,
+        "reminders": {
+            **reminders,
+            "enabled": True,
+            "paused": paused,
+            "paused_reason": "contact_issue" if paused else None,
+            "schedule": schedule,
+            "next_reminder_at": next_reminder_at,
+            "last_reminder_sent_at": now,
+        },
+    }
+
+
+def _complete_reminders(current: dict[str, object], reason: str) -> dict[str, object]:
+    reminders = _reminder_state(current)
+    if not reminders:
+        return current
+    return {
+        **current,
+        "reminders": {
+            **reminders,
+            "enabled": False,
+            "paused": False,
+            "paused_reason": None,
+            "completed_at": utcnow().isoformat(),
+            "completed_reason": reason,
+            "next_reminder_at": None,
+        },
+    }
+
+
+def _next_due_reminder(row: TenantOnboarding, now: datetime) -> str | None:
+    reminders = _reminder_state(row.delivery_data or {})
+    if reminders.get("enabled") is False or reminders.get("paused") is True:
+        return None
+    next_at = _parse_datetime(reminders.get("next_reminder_at"))
+    if next_at is None or next_at > now:
+        return None
+    for step in _reminder_schedule(reminders):
+        if step.get("scheduled_at") == reminders.get("next_reminder_at"):
+            return str(step.get("key"))
+    return None
+
+
+def _ensure_reminder_plan(row: TenantOnboarding) -> None:
+    if _reminder_state(row.delivery_data or {}) or row.last_sent_at is None:
+        return
+    row.delivery_data = _reset_reminders(row.delivery_data or {}, row.last_sent_at, [])
+
+
+def _receipt_status(channel: str, raw_status: str) -> str:
+    value = raw_status.lower()
+    if channel == "sms":
+        if value in {"accepted", "queued", "sending"}:
+            return "queued"
+        if value == "sent":
+            return "sent"
+        if value == "delivered":
+            return "delivered"
+        if value in {"undelivered", "failed"}:
+            return "failed"
+        return "attention"
+    if value in {"processed", "deferred"}:
+        return "sent" if value == "processed" else "attention"
+    if value == "delivered":
+        return "delivered"
+    if value in {"open", "click"}:
+        return "opened"
+    if value in {"bounce", "dropped", "spamreport", "unsubscribe", "group_unsubscribe"}:
+        return "failed"
+    return "attention"
+
+
+def _apply_delivery_receipt(
+    onboarding: TenantOnboarding,
+    channel: str,
+    raw_status: str,
+    provider_message_id: str | None,
+    event: dict[str, Any],
+) -> None:
+    now = utcnow().isoformat()
+    data = onboarding.delivery_data or {}
+    channels = data.get("channels", {})
+    if not isinstance(channels, dict):
+        channels = {}
+    channel_data = channels.get(channel, {})
+    if not isinstance(channel_data, dict):
+        channel_data = {}
+    status_value = _receipt_status(channel, raw_status)
+    next_channel = {
+        **channel_data,
+        "channel": channel,
+        "status": status_value,
+        "provider_message_id": provider_message_id or channel_data.get("provider_message_id"),
+        "receipt_at": now,
+        "last_event": raw_status,
+    }
+    if status_value == "failed":
+        next_channel["error"] = (
+            str(
+                event.get("ErrorCode")
+                or event.get("reason")
+                or event.get("response")
+                or raw_status
+            )
+        )
+    channels[channel] = next_channel
+    receipts = data.get("receipts", [])
+    if not isinstance(receipts, list):
+        receipts = []
+    onboarding.delivery_data = {
+        **data,
+        "channels": channels,
+        "last_receipt_at": now,
+        "receipts": [
+            {
+                "received_at": now,
+                "channel": channel,
+                "status": status_value,
+                "event": raw_status,
+                "provider_message_id": provider_message_id,
+            },
+            *receipts[:19],
+        ],
+    }
+
+
+def _find_onboarding_by_message_id(
+    session: Session,
+    channel: str,
+    provider_message_id: str,
+) -> TenantOnboarding | None:
+    rows = session.scalars(
+        select(TenantOnboarding).where(TenantOnboarding.deleted_at.is_(None))
+    ).all()
+    for row in rows:
+        data = row.delivery_data or {}
+        channels = data.get("channels", {})
+        if isinstance(channels, dict):
+            current = channels.get(channel, {})
+            if (
+                isinstance(current, dict)
+                and current.get("provider_message_id") == provider_message_id
+            ):
+                return row
+        history = data.get("history", [])
+        if isinstance(history, list):
+            for attempt in history:
+                if not isinstance(attempt, dict):
+                    continue
+                attempt_channels = attempt.get("channels", {})
+                if not isinstance(attempt_channels, dict):
+                    continue
+                current = attempt_channels.get(channel, {})
+                if (
+                    isinstance(current, dict)
+                    and current.get("provider_message_id") == provider_message_id
+                ):
+                    return row
+    return None
+
+
+def _assert_webhook_secret(request: Request) -> None:
+    secret = get_settings().communications_webhook_secret
+    if not secret:
+        return
+    provided = request.headers.get("x-leasium-webhook-secret") or request.query_params.get("token")
+    if not provided or not secrets.compare_digest(provided, secret):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook token.",
+        )
 
 
 def _masked_recipient(value: str | None) -> str | None:
@@ -121,7 +405,20 @@ def _deliver_onboarding_link(
         expires_at=onboarding.expires_at,
     )
     results = send_tenant_onboarding_invite(invite, settings)
-    onboarding.delivery_data = _delivery_data(onboarding.delivery_data or {}, results, reason)
+    next_delivery_data = _delivery_data(onboarding.delivery_data or {}, results, reason)
+    if reason in {"send", "resend"}:
+        next_delivery_data = _reset_reminders(
+            next_delivery_data,
+            onboarding.last_sent_at or utcnow(),
+            results,
+        )
+    elif reason.startswith("reminder:"):
+        next_delivery_data = _mark_reminder_attempt(
+            next_delivery_data,
+            reason.split(":", 1)[1],
+            results,
+        )
+    onboarding.delivery_data = next_delivery_data
     for result in results:
         audit_log(
             session,
@@ -327,6 +624,150 @@ def create_tenant_onboarding(
     return _read(onboarding)
 
 
+@router.post("/reminders/run", response_model=TenantOnboardingReminderRunRead)
+def run_tenant_onboarding_reminders(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    entity_id: UUID,
+) -> TenantOnboardingReminderRunRead:
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    now = utcnow()
+    rows = session.scalars(
+        select(TenantOnboarding)
+        .where(
+            TenantOnboarding.entity_id == entity_id,
+            TenantOnboarding.status == TenantOnboardingStatus.sent,
+            TenantOnboarding.deleted_at.is_(None),
+        )
+        .order_by(TenantOnboarding.created_at.asc())
+    ).all()
+    checked = 0
+    sent = 0
+    skipped = 0
+    onboarding_ids: list[UUID] = []
+    for onboarding in rows:
+        checked += 1
+        if _is_expired(onboarding):
+            skipped += 1
+            continue
+        _ensure_reminder_plan(onboarding)
+        reminder_key = _next_due_reminder(onboarding, now)
+        if reminder_key is None:
+            skipped += 1
+            continue
+        lease, prop, tenant = _lease_scope(onboarding.lease_id, session)
+        _deliver_onboarding_link(
+            onboarding,
+            lease,
+            prop,
+            tenant,
+            user,
+            session,
+            f"reminder:{reminder_key}",
+        )
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=entity_id,
+            action="reminder",
+            target_table="tenant_onboarding",
+            target_id=onboarding.id,
+            tool_input={"reminder_key": reminder_key},
+            outcome=AuditOutcome.success,
+        )
+        sent += 1
+        onboarding_ids.append(onboarding.id)
+    session.commit()
+    return TenantOnboardingReminderRunRead(
+        checked=checked,
+        sent=sent,
+        skipped=skipped,
+        onboarding_ids=onboarding_ids,
+    )
+
+
+@router.post("/webhooks/twilio-status", status_code=status.HTTP_204_NO_CONTENT)
+async def record_twilio_delivery_status(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    _assert_webhook_secret(request)
+    body = (await request.body()).decode()
+    payload = {key: values[0] for key, values in parse_qs(body).items() if values}
+    message_sid = payload.get("MessageSid") or payload.get("SmsSid")
+    message_status = payload.get("MessageStatus") or payload.get("SmsStatus")
+    if not message_sid or not message_status:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    onboarding = _find_onboarding_by_message_id(session, "sms", message_sid)
+    if onboarding is not None:
+        _apply_delivery_receipt(onboarding, "sms", message_status, message_sid, payload)
+        audit_log(
+            session,
+            actor="provider:twilio",
+            entity_id=onboarding.entity_id,
+            action="receipt",
+            target_table="tenant_onboarding",
+            target_id=onboarding.id,
+            tool_name="twilio.status_callback",
+            tool_input={"channel": "sms", "status": message_status},
+            outcome=AuditOutcome.success,
+            data_classification="confidential",
+        )
+        session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/webhooks/sendgrid-events", status_code=status.HTTP_204_NO_CONTENT)
+async def record_sendgrid_delivery_events(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    _assert_webhook_secret(request)
+    payload = await request.json()
+    events = payload if isinstance(payload, list) else [payload]
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        raw_status = str(event.get("event") or "")
+        if not raw_status:
+            continue
+        onboarding = None
+        onboarding_id = event.get("tenant_onboarding_id")
+        if isinstance(onboarding_id, str):
+            try:
+                onboarding = session.get(TenantOnboarding, UUID(onboarding_id))
+            except ValueError:
+                onboarding = None
+        message_id = event.get("sg_message_id") or event.get("sg-message-id")
+        if onboarding is None and isinstance(message_id, str):
+            onboarding = _find_onboarding_by_message_id(session, "email", message_id)
+        if onboarding is None or onboarding.deleted_at is not None:
+            continue
+        _apply_delivery_receipt(
+            onboarding,
+            "email",
+            raw_status,
+            str(message_id) if message_id else None,
+            event,
+        )
+        audit_log(
+            session,
+            actor="provider:sendgrid",
+            entity_id=onboarding.entity_id,
+            action="receipt",
+            target_table="tenant_onboarding",
+            target_id=onboarding.id,
+            tool_name="sendgrid.event_webhook",
+            tool_input={"channel": "email", "status": raw_status},
+            outcome=AuditOutcome.success,
+            data_classification="confidential",
+        )
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/{onboarding_id}/cancel", response_model=TenantOnboardingRead)
 def cancel_tenant_onboarding(
     onboarding_id: UUID,
@@ -347,6 +788,7 @@ def cancel_tenant_onboarding(
     onboarding.status = TenantOnboardingStatus.cancelled
     if payload is not None:
         onboarding.cancel_reason = payload.reason
+    onboarding.delivery_data = _complete_reminders(onboarding.delivery_data or {}, "cancelled")
     audit_log(
         session,
         actor=user.actor,
@@ -463,6 +905,7 @@ def apply_tenant_onboarding(
     onboarding.status = TenantOnboardingStatus.applied
     onboarding.applied_at = utcnow()
     onboarding.applied_by_user_id = user.id
+    onboarding.delivery_data = _complete_reminders(onboarding.delivery_data or {}, "applied")
     audit_log(
         session,
         actor=user.actor,
@@ -655,6 +1098,7 @@ def submit_public_tenant_onboarding(
     onboarding.status = TenantOnboardingStatus.submitted
     onboarding.submitted_data = data
     onboarding.submitted_at = utcnow()
+    onboarding.delivery_data = _complete_reminders(onboarding.delivery_data or {}, "submitted")
     audit_log(
         session,
         actor=f"tenant-onboarding:{token[:8]}",

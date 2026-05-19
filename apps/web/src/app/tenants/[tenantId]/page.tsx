@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Check,
   ClipboardCopy,
+  Clock3,
   Download,
   Edit3,
   FileText,
@@ -59,6 +60,10 @@ import {
   onboardingDeliveryDetail,
   onboardingDeliveryLabel,
   onboardingDeliveryTone,
+  onboardingNeedsContactFix,
+  onboardingReminderLabel,
+  onboardingReminderSteps,
+  onboardingReminderTone,
 } from "@/lib/delivery";
 import { cn } from "@/lib/utils";
 
@@ -112,6 +117,18 @@ function formatDate(value: string | null | undefined) {
   }).format(new Date(`${value.slice(0, 10)}T00:00:00`));
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "-";
+  }
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function formatMoney(cents: number | null | undefined) {
   if (cents === null || cents === undefined) {
     return "-";
@@ -157,6 +174,23 @@ function statusTone(status: string, dueDate?: string | null) {
     return "danger" as const;
   }
   return status === "sent" ? ("primary" as const) : ("warning" as const);
+}
+
+function reminderStepTone(statusValue: string | null | undefined) {
+  if (statusValue === "sent") {
+    return "success" as const;
+  }
+  if (statusValue === "needs_attention" || statusValue === "paused") {
+    return "warning" as const;
+  }
+  return "neutral" as const;
+}
+
+function reminderStepLabel(statusValue: string | null | undefined) {
+  if (statusValue === "needs_attention") {
+    return "Needs attention";
+  }
+  return statusValue?.replaceAll("_", " ") ?? "scheduled";
 }
 
 const documentCategories: Array<{ value: DocumentCategory; label: string }> = [
@@ -791,6 +825,12 @@ function TenantDetail() {
                           <ClipboardCopy size={15} />
                           Copy link
                         </SecondaryButton>
+                        {onboardingNeedsContactFix(item.delivery_data) ? (
+                          <SecondaryButton type="button" onClick={startEdit}>
+                            <Edit3 size={15} />
+                            Fix contact
+                          </SecondaryButton>
+                        ) : null}
                         {item.status === "sent" ? (
                           <SecondaryButton type="button" onClick={() => cancelOnboardingMutation.mutate(item.id)} disabled={cancelOnboardingMutation.isPending}>
                             <X size={15} />
@@ -825,12 +865,69 @@ function TenantDetail() {
                           {onboardingDeliveryLabel(item.delivery_data)}
                         </StatusBadge>
                       </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span>Reminders</span>
+                        <StatusBadge tone={onboardingReminderTone(item.delivery_data)}>
+                          {onboardingReminderLabel(item.delivery_data)}
+                        </StatusBadge>
+                      </div>
                       <div>Expires {formatDate(item.expires_at)}</div>
                       <div>Applied {formatDate(item.applied_at)}</div>
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {onboardingDeliveryDetail(item.delivery_data)}
                     </div>
+                    {onboardingReminderSteps(item.delivery_data).length ? (
+                      <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-xs">
+                        <div className="flex items-center gap-2 font-semibold">
+                          <Clock3 size={14} />
+                          Reminder schedule
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {onboardingReminderSteps(item.delivery_data).map((step) => (
+                            <div
+                              key={step.key ?? step.label}
+                              className="rounded border border-border bg-white px-3 py-2"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium">
+                                  {step.label ?? "Reminder"}
+                                </span>
+                                <StatusBadge tone={reminderStepTone(step.status)}>
+                                  {reminderStepLabel(step.status)}
+                                </StatusBadge>
+                              </div>
+                              <div className="mt-1 text-muted-foreground">
+                                {step.sent_at
+                                  ? `Sent ${formatDateTime(step.sent_at)}`
+                                  : `If incomplete after ${step.after_days ?? "-"} days`}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {item.delivery_data.reminders?.paused ? (
+                          <div className="text-muted-foreground">
+                            Reminder paused until contact is fixed.
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {(item.delivery_data.receipts ?? []).length ? (
+                      <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-xs">
+                        <div className="font-semibold">Delivery timeline</div>
+                        {(item.delivery_data.receipts ?? []).slice(0, 3).map((receipt, index) => (
+                          <div
+                            key={`${String(receipt.channel)}-${String(receipt.received_at)}-${index}`}
+                            className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground"
+                          >
+                            <span className="capitalize">
+                              {String(receipt.channel ?? "message")} {String(receipt.status ?? "updated").replaceAll("_", " ")}
+                            </span>
+                            <span>{formatDateTime(String(receipt.received_at ?? ""))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     {item.status === "submitted" ? (
                       <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs">
                         <div className="font-semibold">Submitted for review</div>

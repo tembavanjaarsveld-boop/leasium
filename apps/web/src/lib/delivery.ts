@@ -1,4 +1,4 @@
-import { OnboardingDeliveryData } from "@/lib/api";
+import { OnboardingDeliveryData, OnboardingReminderStep } from "@/lib/api";
 
 type Tone = "neutral" | "success" | "warning" | "danger" | "primary";
 
@@ -8,6 +8,16 @@ function channels(data: OnboardingDeliveryData | null | undefined) {
 
 function channelLabel(channel: string | undefined) {
   return channel === "sms" ? "SMS" : "Email";
+}
+
+function formatShortDate(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+  }).format(new Date(value));
 }
 
 function humanError(error: string | null | undefined, channel: string | undefined) {
@@ -41,7 +51,13 @@ export function onboardingDeliveryTone(
   if (rows.some((row) => row.status === "failed")) {
     return "danger";
   }
-  if (rows.some((row) => row.status === "queued")) {
+  if (rows.some((row) => row.status === "attention")) {
+    return "warning";
+  }
+  if (rows.some((row) => row.status === "delivered" || row.status === "opened")) {
+    return "success";
+  }
+  if (rows.some((row) => row.status === "queued" || row.status === "sent")) {
     return "primary";
   }
   if (rows.some((row) => row.status === "skipped")) {
@@ -59,7 +75,19 @@ export function onboardingDeliveryLabel(
   }
   const failed = rows.filter((row) => row.status === "failed");
   if (failed.length) {
-    return "Could not send";
+    return onboardingNeedsContactFix(data) ? "Contact issue" : "Delivery failed";
+  }
+  if (rows.some((row) => row.status === "attention")) {
+    return "Needs attention";
+  }
+  if (rows.some((row) => row.status === "opened")) {
+    return "Opened";
+  }
+  if (rows.some((row) => row.status === "delivered")) {
+    return "Delivered";
+  }
+  if (rows.some((row) => row.status === "sent")) {
+    return "Sent";
   }
   const queued = rows.filter((row) => row.status === "queued");
   if (queued.length) {
@@ -82,6 +110,22 @@ export function onboardingDeliveryDetail(
   if (failed) {
     return humanError(failed.error, failed.channel);
   }
+  const attention = rows.find((row) => row.status === "attention");
+  if (attention) {
+    return "Provider has not confirmed delivery yet.";
+  }
+  const opened = rows.find((row) => row.status === "opened");
+  if (opened) {
+    return `${channelLabel(opened.channel)} opened by tenant.`;
+  }
+  const delivered = rows.find((row) => row.status === "delivered");
+  if (delivered) {
+    return `${channelLabel(delivered.channel)} delivered.`;
+  }
+  const sent = rows.find((row) => row.status === "sent");
+  if (sent) {
+    return `${channelLabel(sent.channel)} sent.`;
+  }
   const skipped = rows
     .filter((row) => row.status === "skipped")
     .map((row) => `${channelLabel(row.channel)}: ${humanError(row.error, row.channel)}`);
@@ -92,4 +136,53 @@ export function onboardingDeliveryDetail(
     return "Queued through Twilio. No profile details change until review.";
   }
   return "Delivery has not been attempted yet.";
+}
+
+export function onboardingNeedsContactFix(
+  data: OnboardingDeliveryData | null | undefined,
+) {
+  return channels(data).some((row) => {
+    const error = row.error ?? "";
+    return (
+      row.status === "failed" ||
+      /no .* recipient/i.test(error) ||
+      /e\.164/i.test(error)
+    );
+  });
+}
+
+export function onboardingReminderLabel(
+  data: OnboardingDeliveryData | null | undefined,
+) {
+  const reminders = data?.reminders;
+  if (!reminders) {
+    return "No reminders scheduled";
+  }
+  if (reminders.completed_at) {
+    return "Reminders complete";
+  }
+  if (reminders.paused) {
+    return "Reminder paused";
+  }
+  const nextDate = formatShortDate(reminders.next_reminder_at);
+  return nextDate ? `Next reminder ${nextDate}` : "No reminders scheduled";
+}
+
+export function onboardingReminderTone(
+  data: OnboardingDeliveryData | null | undefined,
+): Tone {
+  const reminders = data?.reminders;
+  if (!reminders || reminders.completed_at) {
+    return "neutral";
+  }
+  if (reminders.paused) {
+    return "warning";
+  }
+  return reminders.next_reminder_at ? "primary" : "neutral";
+}
+
+export function onboardingReminderSteps(
+  data: OnboardingDeliveryData | null | undefined,
+): OnboardingReminderStep[] {
+  return data?.reminders?.schedule ?? [];
 }
