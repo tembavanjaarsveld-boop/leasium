@@ -38,6 +38,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Smart Intake billing drafts v1: reviewed invoice/admin documents now create source-linked draft billing documents and lines, support reviewed draft status updates, and preserve the no-posting/no-Xero-sync guardrail.
 - [x] Smart Intake naming pass: global navigation and workspace copy now reflect the broader document-first workflow instead of lease-only inbox wording.
 - [x] Smart Intake task queue: open document reviews, match issues, processing states, and failed reads now appear in Tasks with a dedicated filter and deep links back to Smart Intake.
+- [x] Smart Intake applied outcome counts: the applied outcome panel now surfaces returned billing draft, pending lease, and draft charge counts from the backend apply result.
 - [x] Tenant onboarding delivery foundation: Twilio SendGrid email and Twilio SMS delivery are wired into create/resend with channel status, audit logs, and safe skipped states when a channel is not configured.
 - [x] Tenant onboarding reminders and receipts v1: reminder schedules, manual due-reminder runner, SendGrid/Twilio receipt ingestion, delivery timeline, and contact-fix actions.
 - [x] Property ownership and billing identity: owner/trust/split profile fields, quiet property-level chips, collapsible setup, billing-readiness blockers, and Smart Intake extraction/apply support.

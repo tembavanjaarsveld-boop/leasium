@@ -71,6 +71,10 @@ type DocumentApplyOutcome = {
   documentName: string;
   workflowType: string | null;
   obligationCount: number;
+  billingDraftCount?: number;
+  billingDraftId?: string | null;
+  leaseCount?: number;
+  chargeRuleCount?: number;
   targetLabel: string;
   dueDate: string | null;
   ignoredCount: number;
@@ -234,6 +238,17 @@ function safeCurrency(value: unknown) {
 
 function fieldText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function fieldNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function appliedReviewData(record: DocumentIntakeRecord) {
+  const applied = record.review_data?.applied;
+  return applied && typeof applied === "object"
+    ? (applied as Record<string, unknown>)
+    : {};
 }
 
 function firstField(
@@ -1097,6 +1112,36 @@ function DocumentIntakeApplyOutcomeCard({
                 out.
               </div>
             </div>
+            {isBilling ? (
+              <div>
+                <div className="text-xs font-semibold uppercase text-muted-foreground">
+                  Billing draft
+                </div>
+                <div>
+                  {outcome.billingDraftCount
+                    ? `${outcome.billingDraftCount} draft${
+                        outcome.billingDraftCount === 1 ? "" : "s"
+                      } waiting for review`
+                    : "No draft created"}
+                </div>
+              </div>
+            ) : null}
+            {isPropertySetup ? (
+              <>
+                <div>
+                  <div className="text-xs font-semibold uppercase text-muted-foreground">
+                    Pending leases
+                  </div>
+                  <div>{outcome.leaseCount ?? 0}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase text-muted-foreground">
+                    Draft charges
+                  </div>
+                  <div>{outcome.chargeRuleCount ?? 0}</div>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
@@ -2005,8 +2050,23 @@ export function Dashboard({
       setIntakeError(null);
       setIntakeNotice(null);
     },
-    onSuccess: (_result, payload) => {
-      setLastApplyOutcome(payload.outcome);
+    onSuccess: (result, payload) => {
+      const applied = appliedReviewData(result);
+      setLastApplyOutcome({
+        ...payload.outcome,
+        obligationCount:
+          fieldNumber(applied.obligation_count) ?? payload.outcome.obligationCount,
+        billingDraftCount:
+          fieldNumber(applied.billing_draft_count) ??
+          payload.outcome.billingDraftCount,
+        billingDraftId:
+          fieldText(applied.billing_draft_id) ?? payload.outcome.billingDraftId,
+        leaseCount:
+          fieldNumber(applied.created_lease_count) ?? payload.outcome.leaseCount,
+        chargeRuleCount:
+          fieldNumber(applied.created_charge_rule_count) ??
+          payload.outcome.chargeRuleCount,
+      });
       setIntakeNotice("Document workflow applied.");
       queryClient.invalidateQueries({
         queryKey: ["dashboard-document-intakes", selectedEntityId],

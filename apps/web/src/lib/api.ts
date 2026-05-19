@@ -359,6 +359,44 @@ export type ChargeRulePayload = Omit<
   metadata?: Record<string, unknown>;
 };
 
+export type BillingDraftStatus = "draft" | "needs_review" | "approved" | "void";
+
+export type BillingDraftLineRecord = {
+  id: string;
+  billing_draft_id: string;
+  description: string;
+  amount_cents: number;
+  currency: string;
+  source_hint: string | null;
+  confidence: number | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type BillingDraftRecord = {
+  id: string;
+  entity_id: string;
+  property_id: string | null;
+  tenancy_unit_id: string | null;
+  tenant_id: string | null;
+  lease_id: string | null;
+  document_id: string;
+  document_intake_id: string | null;
+  status: BillingDraftStatus;
+  title: string;
+  currency: string;
+  issue_date: string | null;
+  due_date: string | null;
+  total_cents: number;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  lines: BillingDraftLineRecord[];
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
 export type LeaseIntakeExtraction = {
   property?: (Partial<PropertyPayload> & { address?: string | null }) | null;
   tenancy_unit?:
@@ -937,6 +975,39 @@ export function updateChargeRule(
 export function deleteChargeRule(chargeRuleId: string) {
   return request<void>(`/charge-rules/${chargeRuleId}`, {
     method: "DELETE",
+  });
+}
+
+export function listBillingDrafts(filters: {
+  entity_id: string;
+  property_id?: string;
+  lease_id?: string;
+  document_intake_id?: string;
+  draft_status?: BillingDraftStatus;
+}) {
+  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  if (filters.property_id) {
+    params.set("property_id", filters.property_id);
+  }
+  if (filters.lease_id) {
+    params.set("lease_id", filters.lease_id);
+  }
+  if (filters.document_intake_id) {
+    params.set("document_intake_id", filters.document_intake_id);
+  }
+  if (filters.draft_status) {
+    params.set("draft_status", filters.draft_status);
+  }
+  return request<BillingDraftRecord[]>(`/billing-drafts?${params.toString()}`);
+}
+
+export function updateBillingDraft(
+  billingDraftId: string,
+  payload: { status?: BillingDraftStatus; notes?: string | null },
+) {
+  return request<BillingDraftRecord>(`/billing-drafts/${billingDraftId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
   });
 }
 

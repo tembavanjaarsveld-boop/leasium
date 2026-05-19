@@ -36,6 +36,8 @@ Last updated: 2026-05-19
   - It now also creates `billing_draft` and `billing_draft_line` records from reviewed money amounts.
   - Drafts support reviewed status updates such as approved or void.
   - Drafts are still no-posting/no-PDF/no-email/no-Xero-sync.
+- Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
+  - This is design-facing and still needs Remba review.
 - AI enrichment for missing fields is in the backlog, not built yet.
   - Target examples: ABN, postcode, suburb/state, registered business details, registered address.
   - Must remain review-first with source citation and confidence before applying.
