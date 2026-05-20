@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production deployment: `438eedc Add maintenance work order detail history`, Vercel deployment `dpl_2ne5GwU5gFd6LmUNujsdWwCBrucg`, state `READY`; Render API health is live and production OpenAPI exposes tenant-portal maintenance history plus the Xero approval/draft-create schemas and routes.
+- Latest confirmed production deployment before the current tenant-account slice: `544d997 Add Xero operator approval UI`, Vercel deployment `dpl_9ozndYVkq4U8cEZ1ZMCWv1FVt9a5`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal/not-a-real-token` remains public, and Render API health is live.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -200,8 +200,21 @@ Last updated: 2026-05-20
   - Xero draft creation remains a separate action and returns created/skipped/blocked/failed outcome panels with provider IDs/status where available.
   - The copy keeps tenant email delivery and payment reconciliation separate from Xero draft creation.
   - This is design-facing and still needs Remba review.
+- Tenant portal account foundation v1 is built on this branch.
+  - New `tenant_portal_account` model and migration `20260520_0019_tenant_portal_accounts` store tenant-linked bearer identities without using operator `app_user` or entity-role access.
+  - `POST /api/v1/tenant-portal/account/claim` requires a valid bearer identity plus an existing portal token before linking the signed tenant identity.
+  - `GET /api/v1/tenant-portal/account/session` is bearer-only and returns the existing tenant portal read shape with `auth.mode = tenant_portal_account`.
+  - Existing public `/tenant-portal/[token]`, `/api/v1/tenant-portal/session`, document, maintenance, and onboarding token paths remain available.
+  - This is backend-first; the tenant-facing claim/link UI is still next.
 ## Verification
 
+- Tenant portal account foundation checks passed:
+  - `.venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py tests/integration/test_tenant_onboarding_api.py -q` (`14 passed`)
+  - `.venv/bin/python -m pytest -q` (`94 passed`, `1 skipped`; migration smoke skipped because `TEST_DATABASE_URL` is not configured)
+  - `.venv/bin/python -m ruff check migrations/versions/20260520_0019_tenant_portal_accounts.py tests/integration/test_tenant_portal_api.py apps/api/routers/tenant_portal.py apps/api/schemas/tenant_portal.py stewart/core/models.py`
+  - `./node_modules/.bin/eslint tests/smoke/clerk-guard.spec.ts`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `git diff --check`
 - Xero operator approval UI checks passed:
   - `.venv/bin/python -m pytest tests/integration/test_xero_api.py -q` (`14 passed`)
   - `./node_modules/.bin/eslint src/app/settings/page.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
@@ -416,23 +429,23 @@ Last updated: 2026-05-20
     restored, downgraded, or stamped back to a revision present in that artifact.
 - Vercel has no exposed env-var mutation tool in this session.
   - To actually hide the public app, set `LEASIUM_ACCESS_PASSWORD` in the Vercel project environment settings and redeploy.
-  - After redeploy, verify `/properties` redirects to `/access`, while `/setup`, `/accept-invite`, and `/onboarding/<token>` remain public.
+  - After redeploy, verify `/properties` redirects to `/access`, while `/setup`, `/accept-invite`, `/onboarding/<token>`, and `/tenant-portal/<token>` remain public.
   - To enforce operator login, set both `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` on the Vercel web app and redeploy.
-  - After the Clerk redeploy, verify `/settings` redirects to `/sign-in`, while `/setup`, `/accept-invite`, `/sign-in`, `/sign-up`, `/access`, and `/onboarding/<token>` remain public.
+  - After the Clerk redeploy, verify `/settings` redirects to `/sign-in`, while `/setup`, `/accept-invite`, `/sign-in`, `/sign-up`, `/access`, `/onboarding/<token>`, and `/tenant-portal/<token>` remain public.
 - Neon production was previously confirmed migrated through `20260520_0016` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
   - Verified earlier: `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
   - Verified now: the live public snapshot endpoint can query `insights_snapshot` and returns a clean not-found response for an invalid token.
-- The overnight bundle adds `20260520_0018_maintenance_arrears_foundations`. Render's documented start command runs `.venv/bin/alembic upgrade head` before the API starts, so production should apply this migration during backend deploy. If Render does not pick up the deploy, run the same Alembic command against the hosted API environment before using maintenance or arrears endpoints.
+- The overnight bundle adds `20260520_0018_maintenance_arrears_foundations`, and the tenant account slice adds `20260520_0019_tenant_portal_accounts`. Render's documented start command runs `.venv/bin/alembic upgrade head` before the API starts, so production should apply these migrations during backend deploy. If Render does not pick up the deploy, run the same Alembic command against the hosted API environment before using maintenance, arrears, or tenant portal account endpoints.
 - Xero readiness v1 uses existing columns only and does not need a new database migration.
 - Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still needs to be configured outside the codebase.
 - Public enrichment requires `OPENAI_API_KEY` on the API service. Without it, preview returns a clear 503 and does not mutate records.
 
 ## Recommended Next Tickets
 
-1. Verify the overnight production deploy and confirm Neon has advanced through `20260520_0018`.
+1. Verify the tenant account production deploy and confirm Neon has advanced through `20260520_0019`.
 2. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, and Operations workspace.
 3. Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
-4. Continue tenant portal from token-scoped v1 to authenticated tenant accounts, inline maintenance photo upload, notification preference verification, and safer invite/link lifecycle.
+4. Continue tenant portal from backend account claim to the frontend claim/link UI, authenticated portal shell, inline maintenance photo upload, notification preference verification, and safer invite/link lifecycle.
 5. Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 

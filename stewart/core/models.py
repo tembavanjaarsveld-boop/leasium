@@ -166,6 +166,11 @@ class TenantOnboardingStatus(enum.StrEnum):
     cancelled = "cancelled"
 
 
+class TenantPortalAccountStatus(enum.StrEnum):
+    active = "active"
+    revoked = "revoked"
+
+
 class DocumentCategory(enum.StrEnum):
     lease = "lease"
     insurance = "insurance"
@@ -293,6 +298,9 @@ class Entity(Base):
     obligations: Mapped[list["Obligation"]] = relationship(back_populates="entity")
     lease_intakes: Mapped[list["LeaseIntake"]] = relationship(back_populates="entity")
     tenant_onboardings: Mapped[list["TenantOnboarding"]] = relationship(back_populates="entity")
+    tenant_portal_accounts: Mapped[list["TenantPortalAccount"]] = relationship(
+        back_populates="entity"
+    )
     documents: Mapped[list["StoredDocument"]] = relationship(back_populates="entity")
     document_intakes: Mapped[list["DocumentIntake"]] = relationship(back_populates="entity")
     billing_drafts: Mapped[list["BillingDraft"]] = relationship(back_populates="entity")
@@ -572,6 +580,9 @@ class Tenant(Base):
     entity: Mapped[Entity] = relationship(back_populates="tenants")
     leases: Mapped[list["Lease"]] = relationship(back_populates="tenant")
     tenant_onboardings: Mapped[list["TenantOnboarding"]] = relationship(back_populates="tenant")
+    tenant_portal_accounts: Mapped[list["TenantPortalAccount"]] = relationship(
+        back_populates="tenant"
+    )
     documents: Mapped[list["StoredDocument"]] = relationship(back_populates="tenant")
 
 
@@ -836,6 +847,9 @@ class TenantOnboarding(Base):
     entity: Mapped[Entity] = relationship(back_populates="tenant_onboardings")
     lease: Mapped[Lease] = relationship(back_populates="tenant_onboardings")
     tenant: Mapped[Tenant] = relationship(back_populates="tenant_onboardings")
+    tenant_portal_accounts: Mapped[list["TenantPortalAccount"]] = relationship(
+        back_populates="tenant_onboarding"
+    )
     documents: Mapped[list["StoredDocument"]] = relationship(back_populates="tenant_onboarding")
 
 
@@ -855,6 +869,78 @@ Index(
     postgresql_where=TenantOnboarding.deleted_at.is_(None),
 )
 Index("tenant_onboarding_token_idx", TenantOnboarding.token, unique=True)
+
+
+class TenantPortalAccount(Base):
+    __tablename__ = "tenant_portal_account"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenant.id"), nullable=False
+    )
+    tenant_onboarding_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenant_onboarding.id")
+    )
+    auth_provider: Mapped[str] = mapped_column(Text, nullable=False, default="clerk")
+    auth_provider_id: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[TenantPortalAccountStatus] = mapped_column(
+        Enum(TenantPortalAccountStatus, name="tenant_portal_account_status"),
+        nullable=False,
+        default=TenantPortalAccountStatus.active,
+    )
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    account_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="tenant_portal_accounts")
+    tenant: Mapped[Tenant] = relationship(back_populates="tenant_portal_accounts")
+    tenant_onboarding: Mapped[TenantOnboarding | None] = relationship(
+        back_populates="tenant_portal_accounts"
+    )
+
+
+Index(
+    "tenant_portal_account_auth_provider_active_idx",
+    TenantPortalAccount.auth_provider,
+    TenantPortalAccount.auth_provider_id,
+    unique=True,
+    postgresql_where=(
+        (TenantPortalAccount.status == TenantPortalAccountStatus.active)
+        & TenantPortalAccount.revoked_at.is_(None)
+        & TenantPortalAccount.deleted_at.is_(None)
+    ),
+    sqlite_where=(
+        (TenantPortalAccount.status == TenantPortalAccountStatus.active)
+        & TenantPortalAccount.revoked_at.is_(None)
+        & TenantPortalAccount.deleted_at.is_(None)
+    ),
+)
+Index(
+    "tenant_portal_account_entity_idx",
+    TenantPortalAccount.entity_id,
+    postgresql_where=TenantPortalAccount.deleted_at.is_(None),
+)
+Index(
+    "tenant_portal_account_tenant_idx",
+    TenantPortalAccount.tenant_id,
+    postgresql_where=TenantPortalAccount.deleted_at.is_(None),
+)
 
 
 class StoredDocument(Base):

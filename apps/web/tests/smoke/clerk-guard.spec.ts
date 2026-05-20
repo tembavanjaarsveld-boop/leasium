@@ -28,6 +28,7 @@ test.describe("Clerk middleware guard", () => {
       "/__clerk/v1/client",
       "/accept-invite?token=example",
       "/onboarding/example-token",
+      "/tenant-portal/example-token",
       "/api/access",
     ]) {
       const response = await request.get(path, {

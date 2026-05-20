@@ -22,9 +22,9 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
 
 `LEASIUM_ACCESS_PASSWORD` enables the temporary app-level password gate for the
 main Leasium workspace. It is a light private-beta screen only; public tenant
-onboarding links under `/onboarding/...`, operator login pages, invite
-acceptance, and first workspace setup under `/setup` remain accessible without
-the password.
+onboarding links under `/onboarding/...`, tenant portal links under
+`/tenant-portal/...`, operator login pages, invite acceptance, and first
+workspace setup under `/setup` remain accessible without the password.
 
 The web app is only the frontend. The FastAPI backend still needs a separate host.
 
@@ -89,8 +89,9 @@ the web app, middleware redirects signed-out protected workspace requests to
 `/sign-in` before page data loads. If only the publishable key is present, the
 client still shows a friendly signed-out fallback, but middleware cannot verify
 the session boundary. `/setup`, `/accept-invite`, `/sign-in`, `/sign-up`,
-`/access`, and `/onboarding/...` stay public so first setup, invite acceptance,
-and tenant onboarding still work.
+`/access`, `/onboarding/...`, and `/tenant-portal/...` stay public so first
+setup, invite acceptance, tenant onboarding, and token-scoped tenant portal
+links still work.
 
 Xero provider connection needs the Xero OAuth redirect URI registered in the
 Xero developer app exactly as configured in `XERO_REDIRECT_URI`. Generate

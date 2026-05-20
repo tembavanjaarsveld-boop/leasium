@@ -8,9 +8,27 @@ from pydantic import BaseModel, Field, field_validator
 from stewart.core.models import DocumentCategory, MaintenancePriority
 
 
+class TenantPortalAccountClaimCreate(BaseModel):
+    portal_token: str
+
+    @field_validator("portal_token", mode="before")
+    @classmethod
+    def _required_token(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Portal token is required.")
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Portal token is required.")
+        return cleaned
+
+
 class TenantPortalAuthRead(BaseModel):
-    mode: Literal["tenant_portal_token", "tenant_portal_token_dev_fallback"]
-    token_source: Literal["header", "query", "form"]
+    mode: Literal[
+        "tenant_portal_token",
+        "tenant_portal_token_dev_fallback",
+        "tenant_portal_account",
+    ]
+    token_source: Literal["header", "query", "form", "bearer"]
     tenant_auth_configured: bool = False
     dev_fallback: bool
     boundary: str

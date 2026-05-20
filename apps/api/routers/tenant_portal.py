@@ -19,9 +19,10 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
+from stewart.core.auth import _clerk_provider_id
 from stewart.core.db import utcnow
 from stewart.core.models import (
     AuditOutcome,
@@ -37,11 +38,14 @@ from stewart.core.models import (
     Tenant,
     TenantOnboarding,
     TenantOnboardingStatus,
+    TenantPortalAccount,
+    TenantPortalAccountStatus,
 )
-from stewart.core.settings import get_settings
+from stewart.core.settings import Settings, get_settings
 
 from apps.api.deps import get_session
 from apps.api.schemas.tenant_portal import (
+    TenantPortalAccountClaimCreate,
     TenantPortalAuthRead,
     TenantPortalComplianceItemRead,
     TenantPortalComplianceRead,
@@ -107,8 +111,35 @@ class PortalAuth:
 
 
 @dataclass(frozen=True)
+class PortalAccountAuth:
+    account: TenantPortalAccount
+
+    @property
+    def mode(self) -> Literal["tenant_portal_account"]:
+        return "tenant_portal_account"
+
+    @property
+    def source(self) -> Literal["bearer"]:
+        return "bearer"
+
+    @property
+    def actor(self) -> str:
+        return f"tenant-portal-account:{self.account.id}"
+
+    def read(self) -> TenantPortalAuthRead:
+        return TenantPortalAuthRead(
+            mode=self.mode,
+            token_source="bearer",
+            tenant_auth_configured=True,
+            dev_fallback=False,
+            boundary="tenant_portal_account",
+            detail="Access is scoped to the tenant linked to this tenant portal account.",
+        )
+
+
+@dataclass(frozen=True)
 class PortalScope:
-    auth: PortalAuth
+    auth: PortalAuth | PortalAccountAuth
     onboarding: TenantOnboarding
     lease: Lease
     property: Property
@@ -242,6 +273,108 @@ def _portal_scope(
 
     return PortalScope(
         auth=auth,
+        onboarding=onboarding,
+        lease=lease,
+        property=prop,
+        unit=unit,
+        tenant=tenant,
+    )
+
+
+def _tenant_portal_provider_id(
+    authorization: str | None,
+    settings: Settings,
+) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Tenant portal account bearer token required.",
+        )
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Tenant portal account bearer token required.",
+        )
+    return _clerk_provider_id(token, settings)
+
+
+def _active_tenant_portal_account(
+    provider_id: str,
+    session: Session,
+) -> TenantPortalAccount:
+    account = session.scalar(
+        select(TenantPortalAccount).where(
+            TenantPortalAccount.auth_provider == "clerk",
+            TenantPortalAccount.auth_provider_id == provider_id,
+            TenantPortalAccount.status == TenantPortalAccountStatus.active,
+            TenantPortalAccount.revoked_at.is_(None),
+            TenantPortalAccount.deleted_at.is_(None),
+        )
+    )
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Tenant portal account not found.",
+        )
+    return account
+
+
+def _latest_account_onboarding(
+    account: TenantPortalAccount,
+    session: Session,
+) -> TenantOnboarding | None:
+    if account.tenant_onboarding_id is not None:
+        onboarding = session.get(TenantOnboarding, account.tenant_onboarding_id)
+        if onboarding is not None:
+            return onboarding
+    return session.scalar(
+        select(TenantOnboarding)
+        .where(
+            TenantOnboarding.entity_id == account.entity_id,
+            TenantOnboarding.tenant_id == account.tenant_id,
+            TenantOnboarding.status != TenantOnboardingStatus.cancelled,
+            TenantOnboarding.deleted_at.is_(None),
+        )
+        .order_by(TenantOnboarding.created_at.desc())
+    )
+
+
+def _account_scope(
+    account: TenantPortalAccount,
+    session: Session,
+) -> PortalScope:
+    tenant = session.get(Tenant, account.tenant_id)
+    if (
+        tenant is None
+        or tenant.deleted_at is not None
+        or tenant.entity_id != account.entity_id
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portal not found.")
+
+    onboarding = _latest_account_onboarding(account, session)
+    if (
+        onboarding is None
+        or onboarding.deleted_at is not None
+        or onboarding.status == TenantOnboardingStatus.cancelled
+        or onboarding.entity_id != account.entity_id
+        or onboarding.tenant_id != tenant.id
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portal not found.")
+
+    lease, prop, unit = _lease_scope(onboarding.lease_id, session)
+    if (
+        lease.tenant_id != tenant.id
+        or prop.entity_id != account.entity_id
+        or tenant.entity_id != prop.entity_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Portal scope is inconsistent.",
+        )
+
+    return PortalScope(
+        auth=PortalAccountAuth(account=account),
         onboarding=onboarding,
         lease=lease,
         property=prop,
@@ -638,6 +771,23 @@ def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
     documents = _tenant_documents(scope, session)
     invoices = _portal_invoices(scope, session)
     maintenance_requests = _portal_work_orders(scope, session)
+    if scope.auth.mode == "tenant_portal_account":
+        guardrails = [
+            (
+                "Tenant portal responses are scoped to the tenant linked to this "
+                "tenant portal account."
+            ),
+            "Only approved invoice drafts are visible to tenants.",
+            "Maintenance requests only include tenant portal submissions for this tenant account.",
+            "Notification preference updates do not send email or SMS.",
+        ]
+    else:
+        guardrails = [
+            "Tenant portal responses are scoped to the tenant attached to the onboarding token.",
+            "Only approved invoice drafts are visible to tenants.",
+            "Maintenance requests only include tenant portal submissions for this token.",
+            "Notification preference updates do not send email or SMS.",
+        ]
     return TenantPortalRead(
         auth=scope.auth.read(),
         tenant=TenantPortalTenantRead(
@@ -675,12 +825,7 @@ def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
             _maintenance_request_read(work_order) for work_order in maintenance_requests
         ],
         notification_preferences=_notification_preferences(scope.tenant),
-        guardrails=[
-            "Tenant portal responses are scoped to the tenant attached to the onboarding token.",
-            "Only approved invoice drafts are visible to tenants.",
-            "Maintenance requests only include tenant portal submissions for this token.",
-            "Notification preference updates do not send email or SMS.",
-        ],
+        guardrails=guardrails,
     )
 
 
@@ -739,6 +884,123 @@ def _portal_document_id_strings(
         seen.add(document_id)
         validated.append(str(_portal_document(scope, document_id, session).id))
     return validated
+
+
+@router.post("/account/claim", response_model=TenantPortalRead)
+def claim_tenant_portal_account(
+    payload: TenantPortalAccountClaimCreate,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> TenantPortalRead:
+    provider_id = _tenant_portal_provider_id(authorization, settings)
+    token_scope = _portal_scope(
+        request,
+        session,
+        header_token=payload.portal_token,
+    )
+    revoked_account = session.scalar(
+        select(TenantPortalAccount).where(
+            TenantPortalAccount.auth_provider == "clerk",
+            TenantPortalAccount.auth_provider_id == provider_id,
+            TenantPortalAccount.tenant_id == token_scope.tenant.id,
+            or_(
+                TenantPortalAccount.status == TenantPortalAccountStatus.revoked,
+                TenantPortalAccount.revoked_at.is_not(None),
+            ),
+            TenantPortalAccount.deleted_at.is_(None),
+        )
+    )
+    if revoked_account is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant portal account is revoked.",
+        )
+
+    account = session.scalar(
+        select(TenantPortalAccount).where(
+            TenantPortalAccount.auth_provider == "clerk",
+            TenantPortalAccount.auth_provider_id == provider_id,
+            TenantPortalAccount.status == TenantPortalAccountStatus.active,
+            TenantPortalAccount.revoked_at.is_(None),
+            TenantPortalAccount.deleted_at.is_(None),
+        )
+    )
+    if account is not None and account.tenant_id != token_scope.tenant.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This tenant portal login is already linked to another tenant.",
+        )
+    now = utcnow()
+    if account is None:
+        account = TenantPortalAccount(
+            entity_id=token_scope.onboarding.entity_id,
+            tenant_id=token_scope.tenant.id,
+            tenant_onboarding_id=token_scope.onboarding.id,
+            auth_provider="clerk",
+            auth_provider_id=provider_id,
+            email=token_scope.tenant.billing_email or token_scope.tenant.contact_email,
+            status=TenantPortalAccountStatus.active,
+            linked_at=now,
+            last_seen_at=now,
+            account_metadata={
+                "source": "tenant_portal_claim",
+                "tenant_onboarding_id": str(token_scope.onboarding.id),
+            },
+        )
+        session.add(account)
+        session.flush()
+        audit_action = "claim"
+    else:
+        if account.entity_id != token_scope.onboarding.entity_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Tenant portal account scope is inconsistent.",
+            )
+        account.tenant_onboarding_id = token_scope.onboarding.id
+        account.email = (
+            account.email
+            or token_scope.tenant.billing_email
+            or token_scope.tenant.contact_email
+        )
+        account.last_seen_at = now
+        account.account_metadata = {
+            **(account.account_metadata or {}),
+            "last_claimed_at": now.isoformat(),
+            "tenant_onboarding_id": str(token_scope.onboarding.id),
+        }
+        audit_action = "refresh"
+    audit_log(
+        session,
+        actor=f"tenant-portal-account:{account.id}",
+        entity_id=token_scope.onboarding.entity_id,
+        action=audit_action,
+        target_table="tenant_portal_account",
+        target_id=account.id,
+        outcome=AuditOutcome.success,
+        tool_name="tenant_portal.account_claim",
+        tool_input={"tenant_id": str(token_scope.tenant.id)},
+        tool_output_summary="Tenant portal account linked without operator role access.",
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(account)
+    return _portal_read(_account_scope(account, session), session)
+
+
+@router.get("/account/session", response_model=TenantPortalRead)
+def get_tenant_portal_account_session(
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> TenantPortalRead:
+    provider_id = _tenant_portal_provider_id(authorization, settings)
+    account = _active_tenant_portal_account(provider_id, session)
+    account.last_seen_at = utcnow()
+    session.commit()
+    session.refresh(account)
+    return _portal_read(_account_scope(account, session), session)
 
 
 @router.get("/session", response_model=TenantPortalRead)

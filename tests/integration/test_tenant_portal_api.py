@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from apps.api.main import app
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,13 +26,20 @@ from stewart.core.models import (
     Tenant,
     TenantOnboarding,
     TenantOnboardingStatus,
+    TenantPortalAccount,
+    TenantPortalAccountStatus,
 )
+from stewart.core.settings import Settings, get_settings
 
 
 def _entity(session: Session) -> Entity:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
     return entity
+
+
+def _tenant_account_settings() -> Settings:
+    return get_settings().model_copy(update={"clerk_allow_legacy_token_mapping": True})
 
 
 def _seed_portal_scope(session: Session) -> dict[str, str]:
@@ -333,6 +341,114 @@ def test_tenant_portal_query_token_is_labelled_dev_fallback(
         headers={"x-tenant-portal-token": "not-a-real-token"},
     )
     assert invalid_response.status_code == 404
+
+
+def test_tenant_portal_account_claim_and_bearer_session_are_scoped(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+
+    assert claim_response.status_code == 200
+    body = claim_response.json()
+    assert body["auth"] == {
+        "mode": "tenant_portal_account",
+        "token_source": "bearer",
+        "tenant_auth_configured": True,
+        "dev_fallback": False,
+        "boundary": "tenant_portal_account",
+        "detail": "Access is scoped to the tenant linked to this tenant portal account.",
+    }
+    assert body["tenant"]["id"] == scope["tenant_id"]
+    assert body["invoices"][0]["id"] == scope["invoice_id"]
+
+    account = session.scalar(
+        select(TenantPortalAccount).where(
+            TenantPortalAccount.auth_provider == "clerk",
+            TenantPortalAccount.auth_provider_id == "tenant-subject-one",
+        )
+    )
+    assert account is not None
+    assert account.entity_id == UUID(scope["entity_id"])
+    assert account.tenant_id == UUID(scope["tenant_id"])
+    assert account.tenant_onboarding_id == UUID(scope["onboarding_id"])
+    assert account.status == TenantPortalAccountStatus.active
+    assert account.email == "accounts@portal-one.example"
+    assert account.linked_at is not None
+    assert account.last_seen_at is not None
+    assert account.account_metadata["source"] == "tenant_portal_claim"
+
+    bearer_response = client.get(
+        "/api/v1/tenant-portal/account/session",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+    assert bearer_response.status_code == 200
+    assert bearer_response.json()["auth"]["mode"] == "tenant_portal_account"
+    assert bearer_response.json()["tenant"]["id"] == scope["tenant_id"]
+
+    token_response = client.get(
+        "/api/v1/tenant-portal/session",
+        headers={"x-tenant-portal-token": scope["token"]},
+    )
+    assert token_response.status_code == 200
+    assert token_response.json()["auth"]["mode"] == "tenant_portal_token"
+    assert token_response.json()["auth"]["tenant_auth_configured"] is False
+
+
+def test_tenant_portal_account_blocks_conflicting_and_revoked_logins(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+
+    conflict_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["other_token"]},
+    )
+    assert conflict_response.status_code == 409
+    assert conflict_response.json()["detail"] == (
+        "This tenant portal login is already linked to another tenant."
+    )
+
+    account = session.scalar(
+        select(TenantPortalAccount).where(
+            TenantPortalAccount.auth_provider_id == "tenant-subject-one"
+        )
+    )
+    assert account is not None
+    account.status = TenantPortalAccountStatus.revoked
+    account.revoked_at = datetime.now(UTC)
+    session.commit()
+
+    session_response = client.get(
+        "/api/v1/tenant-portal/account/session",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+    assert session_response.status_code == 401
+
+    reclaim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+    assert reclaim_response.status_code == 403
+    assert reclaim_response.json()["detail"] == "Tenant portal account is revoked."
 
 
 def test_tenant_portal_upload_download_and_preferences_stay_scoped(

@@ -212,7 +212,7 @@ Status: pending Remba review. Portfolio QA remains a cleanup workspace at `/port
 
 ## Tenant Portal Surface
 
-Status: pending Remba review. `/tenant-portal/[token]` now gives tenants a scoped self-service surface for onboarding status, lease context, approved invoices/payment summary, compliance/document upload and download, maintenance request submission/status, and notification preferences. Current auth is scoped to the existing onboarding token boundary and labels query/form token use as a development fallback; true tenant account auth remains future work. Remba should review first-viewport tenant context, portal trust language, upload/request density, invoice/payment clarity, and whether maintenance belongs before or after compliance for tenants.
+Status: pending Remba review. `/tenant-portal/[token]` now gives tenants a scoped self-service surface for onboarding status, lease context, approved invoices/payment summary, compliance/document upload and download, maintenance request submission/status, and notification preferences. Current public access is still scoped to the existing onboarding token boundary and labels query/form token use as a development fallback. A backend account-claim foundation now also lets a signed tenant identity claim the portal with an existing token and read the same scoped data through bearer auth; the tenant-facing claim/link UI is still future work. Remba should review first-viewport tenant context, portal trust language, upload/request density, invoice/payment clarity, and whether maintenance belongs before or after compliance for tenants.
 
 ## Maintenance And Arrears Foundations
 
