@@ -160,7 +160,7 @@ Status: pending Remba review. Tenant onboarding delivery now includes brand/temp
 
 ## Tenant Detail Deepening
 
-Status: pending Remba review. Tenant detail now surfaces property/unit/lease context, richer activity history, safer document provenance/actions, and reviewed-change history. Keep the page focused on the tenant record and avoid duplicating the full property workspace.
+Status: pending Remba review. Tenant detail now surfaces property/unit/lease context, richer activity history, safer document provenance/actions, reviewed-change history, and compact tenant portal account access controls for revoke/unlink recovery. Keep the page focused on the tenant record and avoid duplicating the full property workspace or turning access recovery into a broad security page.
 
 ## Xero Readiness Surface
 
@@ -213,6 +213,10 @@ Status: pending Remba review. Portfolio QA remains a cleanup workspace at `/port
 ## Tenant Portal Surface
 
 Status: pending Remba review. `/tenant-portal/[token]` now gives tenants a scoped self-service surface for onboarding status, lease context, approved invoices/payment summary, compliance/document upload and download, maintenance request submission/status, inline maintenance photo upload, and notification preferences with timestamped save receipts. Tenant document rows now show category, size, source, received timestamp, notes, and an explicit download action. The page now includes an Account Access panel when Clerk is configured, allowing a signed-in tenant to link the portal once, reload matching portal data through bearer auth, and continue maintenance requests, uploads, notification preferences, and protected document downloads through the tenant account boundary while the original token link remains available. Linked tenants can also return through `/tenant-portal` or `/tenant-portal/account` without the original token URL, and signed-in account status now distinguishes unlinked, revoked, and wrong-tenant recovery states with plain guidance. Remba should review first-viewport tenant context, portal trust language, account-link placement, account-only entry copy, invite-expiry/recovery tone, upload/request density, document provenance density, preference receipt tone, invoice/payment clarity, and whether maintenance belongs before or after compliance for tenants.
+
+## Tenant Portal Account Lifecycle
+
+Status: pending Remba review. Operators can now see linked tenant portal accounts from tenant detail and choose revoke for blocked access or unlink when the tenant should reconnect with the same login. Keep the action language plain and calm, keep the distinction between revoke and unlink obvious, and review whether future restore/relink receipts should stay in tenant detail or move into a dedicated account recovery panel.
 
 ## Maintenance And Arrears Foundations
 

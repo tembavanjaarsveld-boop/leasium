@@ -153,6 +153,22 @@ test("tenant workspace supports search and the add tenant form", async ({
   await expect(page.getByLabel("Contact email")).toBeVisible();
 });
 
+test("tenant detail shows portal access recovery actions", async ({ page }) => {
+  await page.goto("/tenants/tenant-1");
+
+  await expect(
+    page.getByRole("heading", { name: /Bright Cafe/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Portal access" }),
+  ).toBeVisible();
+  await expect(page.getByText("tenant-subject-one")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Revoke" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Unlink" }).click();
+  await expect(page.getByText("No tenant login linked")).toBeVisible();
+});
+
 test("tenant portal shows scoped self-service data", async ({ page }) => {
   await page.goto("/tenant-portal/tenant-token-1");
 

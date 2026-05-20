@@ -52,12 +52,16 @@ import {
   listDocumentIntakes,
   listDocuments,
   listLeasesByTenant,
+  listTenantPortalAccounts,
   listTenantOnboardings,
   previewPublicEnrichment,
   resendTenantOnboarding,
   reviewTenantOnboarding,
+  revokeTenantPortalAccount,
+  TenantPortalAccountRecord,
   TenantPayload,
   TenantRecord,
+  unlinkTenantPortalAccount,
   uploadDocument,
   updateTenant,
 } from "@/lib/api";
@@ -179,6 +183,32 @@ function statusTone(status: string, dueDate?: string | null) {
     return "danger" as const;
   }
   return status === "sent" ? ("primary" as const) : ("warning" as const);
+}
+
+function portalAccountTone(status: TenantPortalAccountRecord["status"]) {
+  if (status === "active") {
+    return "success" as const;
+  }
+  if (status === "revoked") {
+    return "danger" as const;
+  }
+  return "neutral" as const;
+}
+
+function portalAccountLabel(status: TenantPortalAccountRecord["status"]) {
+  return status.replaceAll("_", " ");
+}
+
+function portalAccountDetail(account: TenantPortalAccountRecord) {
+  if (account.status === "revoked") {
+    return `Revoked ${formatDateTime(account.revoked_at)}`;
+  }
+  if (account.status === "unlinked") {
+    return `Unlinked ${formatDateTime(account.deleted_at)}`;
+  }
+  return `Linked ${formatDateTime(account.linked_at)} - Last seen ${formatDateTime(
+    account.last_seen_at,
+  )}`;
 }
 
 function reminderStepTone(statusValue: string | null | undefined) {
@@ -362,6 +392,12 @@ function TenantDetail() {
     enabled: Boolean(tenantId),
   });
 
+  const portalAccountsQuery = useQuery({
+    queryKey: ["tenant-portal-accounts", tenantId],
+    queryFn: () => listTenantPortalAccounts(tenantId),
+    enabled: Boolean(tenantId),
+  });
+
   const leasesQuery = useQuery({
     queryKey: ["tenant-leases", tenantId],
     queryFn: () => listLeasesByTenant(tenantId),
@@ -408,6 +444,7 @@ function TenantDetail() {
   const tenantOnboardings = (onboardingQuery.data ?? [])
     .filter((item) => item.tenant_id === tenantId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const portalAccounts = portalAccountsQuery.data ?? [];
   const linkedLeases = tenantLeaseContexts.length
     ? tenantLeaseContexts
     : (leasesQuery.data ?? []).map((lease) => ({
@@ -440,6 +477,28 @@ function TenantDetail() {
       queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
       setEditing(false);
+    },
+  });
+
+  const revokePortalAccountMutation = useMutation({
+    mutationFn: (accountId: string) =>
+      revokeTenantPortalAccount(tenantId, accountId, {
+        reason: "Operator revoked access from the tenant profile.",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenant-portal-accounts", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
+    },
+  });
+
+  const unlinkPortalAccountMutation = useMutation({
+    mutationFn: (accountId: string) =>
+      unlinkTenantPortalAccount(tenantId, accountId, {
+        reason: "Operator unlinked access so the tenant can reconnect.",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenant-portal-accounts", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
     },
   });
 
@@ -699,6 +758,75 @@ function TenantDetail() {
                   <dd>{tenant.billing_email ?? tenant.contact_email ?? "-"}</dd>
                 </div>
               </dl>
+            </SectionPanel>
+
+            <SectionPanel title="Portal access" icon={<ShieldCheck size={17} />}>
+              <div className="grid gap-3 p-4 text-sm">
+                {portalAccounts.map((account) => (
+                  <div
+                    key={account.id}
+                    className="grid gap-3 rounded-md border border-border bg-white p-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">
+                            {account.email ?? "Tenant login"}
+                          </span>
+                          <StatusBadge tone={portalAccountTone(account.status)}>
+                            {portalAccountLabel(account.status)}
+                          </StatusBadge>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {portalAccountDetail(account)}
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {account.auth_provider} account {account.auth_provider_id}
+                        </div>
+                      </div>
+                      {account.status === "active" ? (
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <SecondaryButton
+                            type="button"
+                            className="h-8"
+                            onClick={() => unlinkPortalAccountMutation.mutate(account.id)}
+                            disabled={unlinkPortalAccountMutation.isPending}
+                          >
+                            <Link2 size={15} />
+                            Unlink
+                          </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            className="h-8 border-danger/30 text-danger hover:bg-danger/5"
+                            onClick={() => revokePortalAccountMutation.mutate(account.id)}
+                            disabled={revokePortalAccountMutation.isPending}
+                          >
+                            <X size={15} />
+                            Revoke
+                          </SecondaryButton>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+                {!portalAccountsQuery.isLoading && portalAccounts.length === 0 ? (
+                  <EmptyState
+                    title="No tenant login linked"
+                    description="The tenant can connect a login from their onboarding link."
+                  />
+                ) : null}
+                {portalAccountsQuery.error ||
+                revokePortalAccountMutation.error ||
+                unlinkPortalAccountMutation.error ? (
+                  <p className="text-sm text-danger">
+                    {friendlyError(
+                      portalAccountsQuery.error ??
+                        revokePortalAccountMutation.error ??
+                        unlinkPortalAccountMutation.error,
+                    )}
+                  </p>
+                ) : null}
+              </div>
             </SectionPanel>
 
             <SectionPanel
@@ -1295,6 +1423,7 @@ function TenantDetail() {
 
         {tenantQuery.error ||
         tenantDetailQuery.error ||
+        portalAccountsQuery.error ||
         leasesQuery.error ||
         onboardingQuery.error ||
         documentsQuery.error ||
@@ -1303,6 +1432,7 @@ function TenantDetail() {
             {friendlyError(
               tenantQuery.error ??
                 tenantDetailQuery.error ??
+                portalAccountsQuery.error ??
                 leasesQuery.error ??
                 onboardingQuery.error ??
                 documentsQuery.error ??

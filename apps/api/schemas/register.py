@@ -283,6 +283,26 @@ class TenantReviewedChangeRead(BaseModel):
     changes: list[TenantReviewedFieldChangeRead] = Field(default_factory=list)
 
 
+class TenantPortalAccountRead(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    tenant_onboarding_id: UUID | None = None
+    auth_provider: str
+    auth_provider_id: str
+    email: str | None = None
+    status: str
+    linked_at: datetime
+    created_at: datetime
+    updated_at: datetime
+    last_seen_at: datetime | None = None
+    revoked_at: datetime | None = None
+    deleted_at: datetime | None = None
+
+
+class TenantPortalAccountAction(BaseModel):
+    reason: str | None = None
+
+
 class TenantDetailRead(BaseModel):
     tenant: TenantRead
     leases: list[TenantLeaseContextRead] = Field(default_factory=list)

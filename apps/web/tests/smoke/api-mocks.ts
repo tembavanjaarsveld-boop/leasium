@@ -139,6 +139,24 @@ const tenantOnboardings = [
   },
 ];
 
+const initialOperatorTenantPortalAccounts = [
+  {
+    id: "portal-account-1",
+    tenant_id: tenantId,
+    tenant_onboarding_id: "onboarding-1",
+    auth_provider: "clerk",
+    auth_provider_id: "tenant-subject-one",
+    email: "mia@example.com",
+    status: "active",
+    linked_at: "2026-05-19T09:00:00.000Z",
+    created_at: "2026-05-19T09:00:00.000Z",
+    updated_at: "2026-05-19T09:30:00.000Z",
+    last_seen_at: "2026-05-19T09:30:00.000Z",
+    revoked_at: null,
+    deleted_at: null,
+  },
+];
+
 const obligations = [
   {
     id: "obligation-1",
@@ -865,6 +883,9 @@ export async function mockLeasiumApi(
   let snapshotCount = 0;
   let insightSnapshots: JsonBody[] = [];
   let tenantPortalDocumentCount = initialTenantPortalDocuments.length;
+  let operatorTenantPortalAccounts = initialOperatorTenantPortalAccounts.map(
+    (account) => ({ ...account }),
+  );
   tenantPortalDocuments = initialTenantPortalDocuments.map((document) => ({
     ...document,
   }));
@@ -1674,6 +1695,82 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === `/tenants/${tenantId}/detail`) {
+      await fulfillJson(route, {
+        tenant: tenants[0],
+        leases: [
+          {
+            lease_id: leaseId,
+            status: "active",
+            property_id: propertyId,
+            property_name: "Queen Street Retail Centre",
+            property_address: "12 Queen Street, Brisbane City, QLD, 4000",
+            tenancy_unit_id: unitId,
+            unit_label: "Shop 3",
+            commencement_date: "2025-07-01",
+            expiry_date: "2028-06-30",
+            annual_rent_cents: 9600000,
+            rent_frequency: "monthly",
+            outgoings_recoverable: true,
+            next_review_date: "2026-07-01",
+          },
+        ],
+        activity: [
+          {
+            occurred_at: "2026-05-19T09:00:00.000Z",
+            kind: "tenant_portal_account",
+            label: "Portal account linked",
+            detail: "mia@example.com",
+            source: "tenant_portal_account",
+            related_id: "portal-account-1",
+            tone: "success",
+          },
+        ],
+        reviewed_changes: [],
+      });
+      return;
+    }
+
+    if (method === "GET" && path === `/tenants/${tenantId}/portal-accounts`) {
+      await fulfillJson(route, operatorTenantPortalAccounts);
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === `/tenants/${tenantId}/portal-accounts/portal-account-1/revoke`
+    ) {
+      operatorTenantPortalAccounts = operatorTenantPortalAccounts.map(
+        (account) =>
+          account.id === "portal-account-1"
+            ? {
+                ...account,
+                status: "revoked",
+                revoked_at: "2026-05-20T00:00:00.000Z",
+                updated_at: "2026-05-20T00:00:00.000Z",
+              }
+            : account,
+      );
+      await fulfillJson(route, operatorTenantPortalAccounts[0]);
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === `/tenants/${tenantId}/portal-accounts/portal-account-1/unlink`
+    ) {
+      const account =
+        operatorTenantPortalAccounts[0] ?? initialOperatorTenantPortalAccounts[0];
+      operatorTenantPortalAccounts = [];
+      await fulfillJson(route, {
+        ...account,
+        status: "unlinked",
+        deleted_at: "2026-05-20T00:00:00.000Z",
+        updated_at: "2026-05-20T00:00:00.000Z",
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/tenant-onboarding") {
       await fulfillJson(route, tenantOnboardings);
       return;
@@ -1983,6 +2080,11 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/document-intakes") {
       await fulfillJson(route, documentIntakes);
+      return;
+    }
+
+    if (method === "GET" && path === "/documents") {
+      await fulfillJson(route, []);
       return;
     }
 

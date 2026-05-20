@@ -42,6 +42,18 @@ def _tenant_account_settings() -> Settings:
     return get_settings().model_copy(update={"clerk_allow_legacy_token_mapping": True})
 
 
+def _account_by_provider(session: Session, provider_id: str) -> TenantPortalAccount:
+    account = session.scalar(
+        select(TenantPortalAccount).where(
+            TenantPortalAccount.auth_provider == "clerk",
+            TenantPortalAccount.auth_provider_id == provider_id,
+            TenantPortalAccount.deleted_at.is_(None),
+        )
+    )
+    assert account is not None
+    return account
+
+
 def _seed_portal_scope(session: Session) -> dict[str, str]:
     entity = _entity(session)
     prop = Property(
@@ -523,6 +535,143 @@ def test_tenant_portal_account_blocks_conflicting_and_revoked_logins(
     )
     assert reclaim_response.status_code == 403
     assert reclaim_response.json()["detail"] == "Tenant portal account is revoked."
+
+
+def test_operator_can_list_tenant_portal_accounts_for_tenant(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    other_provider_id = "tenant-subject-two"
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+    other_claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {other_provider_id}"},
+        json={"portal_token": scope["other_token"]},
+    )
+    assert other_claim_response.status_code == 200
+
+    response = client.get(f"/api/v1/tenants/{scope['tenant_id']}/portal-accounts")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [account["tenant_id"] for account in body] == [scope["tenant_id"]]
+    assert body[0]["auth_provider"] == "clerk"
+    assert body[0]["auth_provider_id"] == "tenant-subject-one"
+    assert body[0]["status"] == "active"
+    assert body[0]["email"] == "accounts@portal-one.example"
+    assert body[0]["tenant_onboarding_id"] == scope["onboarding_id"]
+    assert body[0]["linked_at"] is not None
+    assert body[0]["last_seen_at"] is not None
+    assert body[0]["revoked_at"] is None
+
+
+def test_operator_can_revoke_tenant_portal_account(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    provider_id = "tenant-subject-one"
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+    account = _account_by_provider(session, provider_id)
+
+    response = client.post(
+        f"/api/v1/tenants/{scope['tenant_id']}/portal-accounts/{account.id}/revoke",
+        json={"reason": "Tenant contact changed."},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(account.id)
+    assert body["tenant_id"] == scope["tenant_id"]
+    assert body["status"] == "revoked"
+    assert body["revoked_at"] is not None
+    session.refresh(account)
+    assert account.status == TenantPortalAccountStatus.revoked
+    assert account.revoked_at is not None
+    assert account.deleted_at is None
+    assert account.account_metadata["revoked_reason"] == "Tenant contact changed."
+
+    session_response = client.get(
+        "/api/v1/tenant-portal/account/session",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+    assert session_response.status_code == 401
+    status_response = client.get(
+        "/api/v1/tenant-portal/account/status",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "revoked"
+    assert status_response.json()["tenant_id"] == scope["tenant_id"]
+
+
+def test_operator_can_unlink_tenant_portal_account_without_blocking_relink(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    provider_id = "tenant-subject-one"
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+    account = _account_by_provider(session, provider_id)
+
+    response = client.post(
+        f"/api/v1/tenants/{scope['tenant_id']}/portal-accounts/{account.id}/unlink",
+        json={"reason": "Tenant will relink with a new contact."},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(account.id)
+    assert body["tenant_id"] == scope["tenant_id"]
+    assert body["status"] == "unlinked"
+    assert body["deleted_at"] is not None
+    session.refresh(account)
+    assert account.status == TenantPortalAccountStatus.active
+    assert account.revoked_at is None
+    assert account.deleted_at is not None
+    assert account.account_metadata["unlinked_reason"] == (
+        "Tenant will relink with a new contact."
+    )
+
+    status_response = client.get(
+        "/api/v1/tenant-portal/account/status",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "unlinked"
+
+    relink_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["token"]},
+    )
+    assert relink_response.status_code == 200
+    relinked_account = _account_by_provider(session, provider_id)
+    assert relinked_account.id != account.id
+    assert relinked_account.status == TenantPortalAccountStatus.active
+    assert relinked_account.deleted_at is None
 
 
 def test_tenant_portal_upload_download_and_preferences_stay_scoped(

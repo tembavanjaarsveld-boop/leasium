@@ -18,6 +18,8 @@ from stewart.core.models import (
     Tenant,
     TenantOnboarding,
     TenantOnboardingStatus,
+    TenantPortalAccount,
+    TenantPortalAccountStatus,
     UserRole,
 )
 
@@ -27,6 +29,8 @@ from apps.api.schemas.register import (
     TenantCreate,
     TenantDetailRead,
     TenantLeaseContextRead,
+    TenantPortalAccountAction,
+    TenantPortalAccountRead,
     TenantRead,
     TenantReviewedChangeRead,
     TenantReviewedFieldChangeRead,
@@ -236,6 +240,44 @@ def _get_tenant_for_user(
     return tenant
 
 
+def _account_status(account: TenantPortalAccount) -> str:
+    if account.deleted_at is not None:
+        return "unlinked"
+    return account.status.value
+
+
+def _tenant_portal_account_read(account: TenantPortalAccount) -> TenantPortalAccountRead:
+    return TenantPortalAccountRead(
+        id=account.id,
+        tenant_id=account.tenant_id,
+        tenant_onboarding_id=account.tenant_onboarding_id,
+        auth_provider=account.auth_provider,
+        auth_provider_id=account.auth_provider_id,
+        email=account.email,
+        status=_account_status(account),
+        linked_at=account.linked_at,
+        created_at=account.created_at,
+        updated_at=account.updated_at,
+        last_seen_at=account.last_seen_at,
+        revoked_at=account.revoked_at,
+        deleted_at=account.deleted_at,
+    )
+
+
+def _tenant_portal_account_for_user(
+    tenant: Tenant,
+    account_id: UUID,
+    session: Session,
+) -> TenantPortalAccount:
+    account = session.get(TenantPortalAccount, account_id)
+    if account is None or account.tenant_id != tenant.id or account.entity_id != tenant.entity_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant portal account not found.",
+        )
+    return account
+
+
 @router.get("/{tenant_id}", response_model=TenantRead)
 def get_tenant(
     tenant_id: UUID,
@@ -243,6 +285,111 @@ def get_tenant(
     session: Annotated[Session, Depends(get_session)],
 ) -> Tenant:
     return _get_tenant_for_user(tenant_id, user, session, READ_ROLES)
+
+
+@router.get("/{tenant_id}/portal-accounts", response_model=list[TenantPortalAccountRead])
+def list_tenant_portal_accounts(
+    tenant_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> list[TenantPortalAccountRead]:
+    tenant = _get_tenant_for_user(tenant_id, user, session, READ_ROLES)
+    accounts = session.scalars(
+        select(TenantPortalAccount)
+        .where(
+            TenantPortalAccount.tenant_id == tenant.id,
+            TenantPortalAccount.entity_id == tenant.entity_id,
+            TenantPortalAccount.deleted_at.is_(None),
+        )
+        .order_by(TenantPortalAccount.updated_at.desc())
+    ).all()
+    return [_tenant_portal_account_read(account) for account in accounts]
+
+
+@router.post(
+    "/{tenant_id}/portal-accounts/{account_id}/revoke",
+    response_model=TenantPortalAccountRead,
+)
+def revoke_tenant_portal_account(
+    tenant_id: UUID,
+    account_id: UUID,
+    payload: TenantPortalAccountAction,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantPortalAccountRead:
+    tenant = _get_tenant_for_user(tenant_id, user, session, WRITE_ROLES)
+    account = _tenant_portal_account_for_user(tenant, account_id, session)
+    now = utcnow()
+    if account.deleted_at is None:
+        account.status = TenantPortalAccountStatus.revoked
+        account.revoked_at = account.revoked_at or now
+    metadata = dict(account.account_metadata or {})
+    if payload.reason:
+        metadata["revoked_reason"] = payload.reason
+    metadata["revoked_at"] = (account.revoked_at or now).isoformat()
+    metadata["revoked_by_user_id"] = str(user.id)
+    account.account_metadata = metadata
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=tenant.entity_id,
+        action="revoke",
+        target_table="tenant_portal_account",
+        target_id=account.id,
+        tool_name="tenant.portal_account_revoke",
+        tool_input={
+            "tenant_id": str(tenant.id),
+            "reason": payload.reason,
+        },
+        tool_output_summary="Tenant portal account revoked by operator.",
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(account)
+    return _tenant_portal_account_read(account)
+
+
+@router.post(
+    "/{tenant_id}/portal-accounts/{account_id}/unlink",
+    response_model=TenantPortalAccountRead,
+)
+def unlink_tenant_portal_account(
+    tenant_id: UUID,
+    account_id: UUID,
+    payload: TenantPortalAccountAction,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantPortalAccountRead:
+    tenant = _get_tenant_for_user(tenant_id, user, session, WRITE_ROLES)
+    account = _tenant_portal_account_for_user(tenant, account_id, session)
+    now = utcnow()
+    account.deleted_at = account.deleted_at or now
+    metadata = dict(account.account_metadata or {})
+    if payload.reason:
+        metadata["unlinked_reason"] = payload.reason
+    metadata["unlinked_at"] = account.deleted_at.isoformat()
+    metadata["unlinked_by_user_id"] = str(user.id)
+    account.account_metadata = metadata
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=tenant.entity_id,
+        action="unlink",
+        target_table="tenant_portal_account",
+        target_id=account.id,
+        tool_name="tenant.portal_account_unlink",
+        tool_input={
+            "tenant_id": str(tenant.id),
+            "reason": payload.reason,
+        },
+        tool_output_summary="Tenant portal account unlinked by operator.",
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(account)
+    return _tenant_portal_account_read(account)
 
 
 def _tenant_lease_contexts(session: Session, tenant: Tenant) -> list[TenantLeaseContextRead]:

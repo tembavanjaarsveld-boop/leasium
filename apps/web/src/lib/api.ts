@@ -285,6 +285,22 @@ export type TenantReviewedChangeRecord = {
   changes: TenantReviewedFieldChangeRecord[];
 };
 
+export type TenantPortalAccountRecord = {
+  id: string;
+  tenant_id: string;
+  tenant_onboarding_id: string | null;
+  auth_provider: string;
+  auth_provider_id: string;
+  email: string | null;
+  status: "active" | "revoked" | "unlinked" | string;
+  linked_at: string;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string | null;
+  revoked_at: string | null;
+  deleted_at: string | null;
+};
+
 export type TenantDetailRecord = {
   tenant: TenantRecord;
   leases: TenantLeaseContextRecord[];
@@ -2006,6 +2022,40 @@ export function getTenant(tenantId: string) {
 
 export function getTenantDetail(tenantId: string) {
   return request<TenantDetailRecord>(`/tenants/${tenantId}/detail`);
+}
+
+export function listTenantPortalAccounts(tenantId: string) {
+  return request<TenantPortalAccountRecord[]>(
+    `/tenants/${tenantId}/portal-accounts`,
+  );
+}
+
+export function revokeTenantPortalAccount(
+  tenantId: string,
+  accountId: string,
+  payload: { reason?: string | null } = {},
+) {
+  return request<TenantPortalAccountRecord>(
+    `/tenants/${tenantId}/portal-accounts/${accountId}/revoke`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function unlinkTenantPortalAccount(
+  tenantId: string,
+  accountId: string,
+  payload: { reason?: string | null } = {},
+) {
+  return request<TenantPortalAccountRecord>(
+    `/tenants/${tenantId}/portal-accounts/${accountId}/unlink`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function createTenant(payload: TenantPayload) {
