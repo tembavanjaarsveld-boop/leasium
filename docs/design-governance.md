@@ -220,7 +220,7 @@ Status: pending Remba review. Smart Intake now includes a spreadsheet import rev
 
 ## Portfolio QA IA
 
-Status: pending Remba review. Portfolio QA remains a cleanup workspace at `/portfolio-qa` and is now surfaced from Insights as the IA entry point for portfolio cleanup rather than being added to the already-wide top navigation. Remba should confirm whether cleanup belongs under Insights long term, needs a secondary nav, or should graduate into its own module once operators use it repeatedly.
+Status: pending Remba review. Portfolio QA remains a cleanup workspace at `/portfolio-qa` and now has a primary navigation entry for pre-production cleanup work. The header must wrap cleanly rather than clipping the right-side search/settings controls, because the primary nav is now intentionally fuller. Remba should confirm whether cleanup belongs as a top-level item long term, should move back under Insights, needs a secondary nav, or should graduate into its own module once operators use it repeatedly.
 
 ## Tenant Portal Surface
 

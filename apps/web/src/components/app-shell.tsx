@@ -17,6 +17,7 @@ const navItems = [
   { href: "/operations", label: "Operations" },
   { href: "/billing-readiness", label: "Billing Readiness" },
   { href: "/insights", label: "Insights" },
+  { href: "/portfolio-qa", label: "Portfolio QA" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -140,7 +141,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         </div>
         <nav
           aria-label="Primary"
-          className="no-scrollbar order-3 flex max-w-full min-w-0 items-center gap-1 overflow-x-auto rounded-2xl border border-border bg-white p-1 shadow-leasiumXs md:col-span-2 min-[1600px]:order-none min-[1600px]:col-span-1"
+          className="order-3 flex max-w-full min-w-0 flex-wrap items-center gap-1 rounded-2xl border border-border bg-white p-1 shadow-leasiumXs md:col-span-2 min-[1600px]:order-none min-[1600px]:col-span-1"
         >
           {navItems.map((item) => {
             const active =

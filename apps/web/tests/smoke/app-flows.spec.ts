@@ -50,6 +50,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByText("Queen Street Retail Centre").first(),
   ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Portfolio QA" })).toBeVisible();
   await expect(
     page.getByText("Insurance certificate renewal").first(),
   ).toBeVisible();
