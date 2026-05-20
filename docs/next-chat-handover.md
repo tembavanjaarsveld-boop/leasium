@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed app-code production deployment: `d7dd20c Add tenant portal preference receipts`, Vercel deployment `dpl_9hX7tigJxMpe7mqrwj1pgu46DwEC`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal` and `/tenant-portal/account` return `200`, and Render API health is live.
+- Latest confirmed app-code production deployment: `96be2b8 Add tenant portal document provenance`, Vercel deployment `dpl_DJsy7MzUuwc8oaSKpgodjauvYFwH`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal` and `/tenant-portal/account` return `200`, and Render API health is live.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -224,9 +224,22 @@ Last updated: 2026-05-20
     - Saving notification preferences shows a timestamped receipt with the resulting preferred channel.
     - The receipt keeps the existing guardrail clear: saving preferences does not send an email or SMS.
     - The smoke mock now persists returned portal preference state for token and account paths.
+  - Tenant portal document provenance/actions v1 is now built too.
+    - Tenant-facing document rows show filename, category, size, source, received timestamp, and notes.
+    - The download action is explicit for both token-scoped links and account-scoped bearer downloads.
+    - A local visual pass confirmed the document row fits in the compliance panel without crowding the upload controls.
   - This is design-facing and still needs Remba review.
 ## Verification
 
+- Tenant portal document provenance/action checks passed:
+  - `./node_modules/.bin/eslint src/app/tenant-portal/tenant-portal-content.tsx tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant portal shows scoped self-service data"` (`1 passed`)
+  - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`7 passed`, `3 skipped`)
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  - `git diff --check`
+  - Production Vercel deployment `dpl_DJsy7MzUuwc8oaSKpgodjauvYFwH` is `READY`.
+  - Production Vercel `/tenant-portal` and `/tenant-portal/account` returned `200`, `/settings` returned `307` to `/sign-in`, and Render `/health` returned `200`.
 - Tenant portal notification preference receipt checks passed:
   - `./node_modules/.bin/eslint src/app/tenant-portal/tenant-portal-content.tsx tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
   - `./node_modules/.bin/tsc --noEmit`
@@ -498,7 +511,7 @@ Last updated: 2026-05-20
 1. Verify the tenant account production deploy and confirm Neon has advanced through `20260520_0019`.
 2. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, and Operations workspace.
 3. Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
-4. Continue tenant portal with safer invite/link lifecycle and clearer tenant document provenance/actions.
+4. Continue tenant portal with safer invite/link lifecycle, revoke/relink handling, link expiry guidance, and tenant-facing account recovery.
 5. Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 
