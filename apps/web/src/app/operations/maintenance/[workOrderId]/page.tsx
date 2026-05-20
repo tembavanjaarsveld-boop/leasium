@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  ArrowUpRight,
   Ban,
   CheckCircle2,
   Download,
@@ -112,14 +113,20 @@ function statusTone(workOrder: MaintenanceWorkOrderRecord): Tone {
   if (workOrder.status === "cancelled") {
     return "neutral";
   }
-  if (workOrder.priority === "urgent" || workOrder.approval_status === "pending") {
+  if (
+    workOrder.priority === "urgent" ||
+    workOrder.approval_status === "pending"
+  ) {
     return "warning";
   }
   return "primary";
 }
 
 function propertyName(properties: PropertyRecord[], propertyId: string | null) {
-  return properties.find((property) => property.id === propertyId)?.name ?? "Portfolio";
+  return (
+    properties.find((property) => property.id === propertyId)?.name ??
+    "Portfolio"
+  );
 }
 
 function tenantName(tenants: TenantRecord[], tenantId: string | null) {
@@ -155,6 +162,10 @@ function metadataStringList(value: unknown) {
     : [];
 }
 
+function metadataRecordList(value: unknown) {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
 function invoiceStatusTone(status: InvoiceDraftRecord["status"]): Tone {
   if (status === "approved") {
     return "success";
@@ -186,6 +197,164 @@ function invoicePdfArtifact(draft: InvoiceDraftRecord) {
 
 function invoicePaymentStatus(draft: InvoiceDraftRecord) {
   return metadataRecord(draft.metadata.payment_status);
+}
+
+function invoiceDeliverySend(draft: InvoiceDraftRecord) {
+  const email = metadataRecord(draft.metadata.delivery_email);
+  return metadataRecord(email.send);
+}
+
+function invoiceXeroSync(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.xero_sync);
+}
+
+function invoicePostingPreparation(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.posting_preparation);
+}
+
+function invoiceXeroPostingApproval(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.xero_posting_approval);
+}
+
+function invoiceProviderDispatch(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.provider_dispatch);
+}
+
+function invoiceProviderReceipts(draft: InvoiceDraftRecord) {
+  return metadataRecordList(draft.metadata.provider_status_receipts);
+}
+
+function latestContractorComment(workOrder: MaintenanceWorkOrderRecord) {
+  const comments = metadataRecordList(workOrder.metadata.comments);
+  return (
+    comments
+      .filter((entry) => metadataText(entry.visibility) === "contractor")
+      .sort(
+        (a, b) =>
+          new Date(metadataText(b.timestamp) ?? "").getTime() -
+          new Date(metadataText(a.timestamp) ?? "").getTime(),
+      )[0] ?? null
+  );
+}
+
+function contractorHandoffSummary(workOrder: MaintenanceWorkOrderRecord) {
+  if (!workOrder.contractor_name) {
+    return "Assign a contractor before the job leaves Operations.";
+  }
+  if (!workOrder.contractor_email && !workOrder.contractor_phone) {
+    return "Add contractor contact details before sending updates.";
+  }
+  const latestComment = latestContractorComment(workOrder);
+  if (latestComment) {
+    return `Latest contractor note: ${metadataText(latestComment.body) ?? "recorded"}`;
+  }
+  return "Contractor is assigned; use the activity comment form for the next update.";
+}
+
+function invoiceBillingHandoff(
+  workOrder: MaintenanceWorkOrderRecord,
+  draft: InvoiceDraftRecord,
+) {
+  const deliveryState = invoiceDeliveryState(draft);
+  const sendState = invoiceDeliverySend(draft);
+  const paymentStatus = invoicePaymentStatus(draft);
+  const xeroSync = invoiceXeroSync(draft);
+  const postingPreparation = invoicePostingPreparation(draft);
+  const xeroApproval = invoiceXeroPostingApproval(draft);
+  const providerDispatch = invoiceProviderDispatch(draft);
+  const providerDispatchXero = metadataRecord(providerDispatch.xero);
+  const providerReceipts = invoiceProviderReceipts(draft);
+  const latestXeroReceipt =
+    providerReceipts.find(
+      (receipt) => metadataText(receipt.provider) === "xero",
+    ) ?? null;
+  const xeroApproved = metadataText(xeroApproval.state) === "approved";
+  const xeroSynced = xeroSync.xero_synced === true;
+  const deliveryReady = deliveryState.delivery_ready === true;
+  const emailSent =
+    deliveryState.tenant_email_sent === true ||
+    ["queued", "sent", "delivered", "opened"].includes(
+      metadataText(sendState.status) ?? "",
+    );
+  const emailFailed = metadataText(sendState.status) === "failed";
+  const xeroFailed =
+    metadataText(postingPreparation.external_posting_status) ===
+      "provider_failed" ||
+    metadataText(providerDispatchXero.status) === "failed" ||
+    metadataText(latestXeroReceipt?.status) === "failed";
+  const paymentLabel = metadataText(paymentStatus.status) ?? "unpaid";
+  const params = new URLSearchParams({
+    entity_id: workOrder.entity_id,
+    invoice_id: draft.id,
+    tab: "delivery",
+    filter: "needs_action",
+  });
+
+  let tone: Tone = "warning";
+  let label = "Billing handoff";
+  let message =
+    "Billing Readiness owns invoice delivery, Xero dispatch, and payment follow-up.";
+  let action = "Open billing handoff";
+
+  if (draft.status !== "approved") {
+    params.set("tab", "invoice-prep");
+    message =
+      "Approve the internal invoice draft before tenant delivery or Xero dispatch.";
+    action = "Open invoice approval";
+  } else if (!deliveryReady) {
+    params.set("tab", "invoice-prep");
+    message =
+      "Prepare the invoice preview, PDF artifact, and tenant email draft before dispatch.";
+    action = "Open invoice prep";
+  } else if (!xeroApproved) {
+    message =
+      "Approve Xero posting in Settings, then dispatch from Billing Readiness.";
+    action = "Review billing handoff";
+  } else if (xeroFailed || emailFailed) {
+    message =
+      "The latest provider attempt needs recovery in Billing Readiness.";
+    action = "Recover dispatch";
+  } else if (!xeroSynced || !emailSent) {
+    params.set("filter", "ready_dispatch");
+    tone = "primary";
+    label = "Ready for dispatch";
+    message =
+      "Billing can create or reuse the Xero draft, then send the approved tenant email.";
+    action = "Dispatch invoice";
+  } else if (paymentLabel !== "paid") {
+    params.set("filter", "unpaid");
+    tone = "primary";
+    label = "Payment follow-up";
+    message =
+      "Provider delivery is recorded; Billing owns payment reconciliation.";
+    action = "Review payment";
+  } else {
+    params.set("filter", "complete");
+    tone = "success";
+    label = "Billing complete";
+    message =
+      "Invoice dispatch and payment status are complete for this work order.";
+  }
+
+  const invoiceLinked = Boolean(
+    draft.id || workOrder.invoice_reference || workOrder.invoice_amount_cents,
+  );
+  const operationsReady =
+    invoiceLinked &&
+    (workOrder.status === "completed" ||
+      workOrder.approval_status !== "pending");
+
+  return {
+    tone,
+    label,
+    message,
+    action,
+    href: `/billing-readiness?${params.toString()}`,
+    xeroApproved,
+    deliveryReady,
+    operationsReady,
+    contractorSummary: contractorHandoffSummary(workOrder),
+  };
 }
 
 function activityRows(workOrder: MaintenanceWorkOrderRecord) {
@@ -224,11 +393,13 @@ function linkedDocuments(
   workOrder: MaintenanceWorkOrderRecord,
   documents: DocumentRecord[],
 ) {
-  const linkedIds = new Set([
-    workOrder.source_document_id,
-    ...workOrder.document_ids,
-    ...workOrder.photo_document_ids,
-  ].filter(Boolean));
+  const linkedIds = new Set(
+    [
+      workOrder.source_document_id,
+      ...workOrder.document_ids,
+      ...workOrder.photo_document_ids,
+    ].filter(Boolean),
+  );
   return documents.filter((document) => linkedIds.has(document.id));
 }
 
@@ -239,24 +410,25 @@ function quoteDocumentRows(
   const rawQuoteDocuments = Array.isArray(workOrder.metadata.quote_documents)
     ? workOrder.metadata.quote_documents
     : [];
-  const rows = rawQuoteDocuments
-    .filter(isRecord)
-    .map((entry) => {
-      const documentId = metadataText(entry.document_id);
-      const document = documents.find((item) => item.id === documentId);
-      return {
-        id:
-          documentId ??
-          `${metadataText(entry.filename) ?? "quote"}-${metadataText(entry.uploaded_at) ?? ""}`,
-        documentId,
-        filename:
-          metadataText(entry.filename) ?? document?.filename ?? "Contractor quote",
-        notes: metadataText(entry.notes) ?? document?.notes ?? null,
-        uploadedAt: metadataText(entry.uploaded_at) ?? document?.created_at ?? null,
-        category: document?.category ?? null,
-        byteSize: document?.byte_size ?? null,
-      };
-    });
+  const rows = rawQuoteDocuments.filter(isRecord).map((entry) => {
+    const documentId = metadataText(entry.document_id);
+    const document = documents.find((item) => item.id === documentId);
+    return {
+      id:
+        documentId ??
+        `${metadataText(entry.filename) ?? "quote"}-${metadataText(entry.uploaded_at) ?? ""}`,
+      documentId,
+      filename:
+        metadataText(entry.filename) ??
+        document?.filename ??
+        "Contractor quote",
+      notes: metadataText(entry.notes) ?? document?.notes ?? null,
+      uploadedAt:
+        metadataText(entry.uploaded_at) ?? document?.created_at ?? null,
+      category: document?.category ?? null,
+      byteSize: document?.byte_size ?? null,
+    };
+  });
   if (rows.length) {
     return rows;
   }
@@ -316,17 +488,23 @@ function MaintenanceDetailRoute() {
   const tenants = tenantsQuery.data ?? [];
   const invoiceDrafts = invoiceDraftsQuery.data ?? [];
   const documents = documentsQuery.data ?? [];
-  const quoteDocuments = workOrder ? quoteDocumentRows(workOrder, documents) : [];
+  const quoteDocuments = workOrder
+    ? quoteDocumentRows(workOrder, documents)
+    : [];
   const timeline = workOrder ? activityRows(workOrder) : [];
-  const linkedInvoiceDraft =
-    workOrder?.invoice_draft_id
-      ? invoiceDrafts.find((draft) => draft.id === workOrder.invoice_draft_id) ?? null
-      : null;
+  const linkedInvoiceDraft = workOrder?.invoice_draft_id
+    ? (invoiceDrafts.find((draft) => draft.id === workOrder.invoice_draft_id) ??
+      null)
+    : null;
   const matchingInvoiceDrafts = invoiceDrafts.filter((draft) => {
     if (!workOrder) {
       return false;
     }
-    if (workOrder.tenant_id && draft.tenant_id && draft.tenant_id !== workOrder.tenant_id) {
+    if (
+      workOrder.tenant_id &&
+      draft.tenant_id &&
+      draft.tenant_id !== workOrder.tenant_id
+    ) {
       return false;
     }
     if (
@@ -336,7 +514,9 @@ function MaintenanceDetailRoute() {
     ) {
       return false;
     }
-    return draft.status === "approved" || draft.id === workOrder.invoice_draft_id;
+    return (
+      draft.status === "approved" || draft.id === workOrder.invoice_draft_id
+    );
   });
   const selectedInvoiceDraft = matchingInvoiceDrafts.find(
     (draft) => draft.id === invoiceDraftId,
@@ -349,9 +529,12 @@ function MaintenanceDetailRoute() {
   const linkedInvoicePdfArtifact = linkedInvoiceDraft
     ? invoicePdfArtifact(linkedInvoiceDraft)
     : {};
-  const linkedInvoicePdfDocumentId = metadataText(linkedInvoicePdfArtifact.document_id);
+  const linkedInvoicePdfDocumentId = metadataText(
+    linkedInvoicePdfArtifact.document_id,
+  );
   const linkedInvoicePaymentStatus = linkedInvoiceDraft
-    ? metadataText(invoicePaymentStatus(linkedInvoiceDraft).status) ?? "unpaid"
+    ? (metadataText(invoicePaymentStatus(linkedInvoiceDraft).status) ??
+      "unpaid")
     : null;
   const linkedInvoiceBlockers = linkedInvoiceDraft
     ? [
@@ -359,6 +542,10 @@ function MaintenanceDetailRoute() {
         ...invoiceDeliveryBlockers(linkedInvoiceDraft),
       ]
     : [];
+  const linkedInvoiceHandoff =
+    linkedInvoiceDraft && workOrder
+      ? invoiceBillingHandoff(workOrder, linkedInvoiceDraft)
+      : null;
 
   const refresh = () => {
     workOrderQuery.refetch();
@@ -370,8 +557,12 @@ function MaintenanceDetailRoute() {
     mutationFn: (payload: Partial<MaintenanceWorkOrderPayload>) =>
       updateMaintenanceWorkOrder(workOrderId, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["maintenance-work-order", workOrderId] });
-      queryClient.invalidateQueries({ queryKey: ["operations-maintenance", entityId] });
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-work-order", workOrderId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", entityId],
+      });
     },
   });
 
@@ -385,7 +576,8 @@ function MaintenanceDetailRoute() {
   });
 
   const approveInvoiceMutation = useMutation({
-    mutationFn: (draftId: string) => updateInvoiceDraft(draftId, { status: "approved" }),
+    mutationFn: (draftId: string) =>
+      updateInvoiceDraft(draftId, { status: "approved" }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["maintenance-detail-invoice-drafts", entityId],
@@ -412,7 +604,9 @@ function MaintenanceDetailRoute() {
         ? workOrder.metadata.quote_documents
         : [];
       await updateMaintenanceWorkOrder(workOrder.id, {
-        document_ids: Array.from(new Set([...workOrder.document_ids, document.id])),
+        document_ids: Array.from(
+          new Set([...workOrder.document_ids, document.id]),
+        ),
         metadata: {
           quote_documents: [
             ...quoteDocuments,
@@ -430,9 +624,15 @@ function MaintenanceDetailRoute() {
     onSuccess: () => {
       setQuoteFile(null);
       setQuoteNotes("");
-      queryClient.invalidateQueries({ queryKey: ["maintenance-work-order", workOrderId] });
-      queryClient.invalidateQueries({ queryKey: ["maintenance-detail-documents", entityId] });
-      queryClient.invalidateQueries({ queryKey: ["operations-maintenance", entityId] });
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-work-order", workOrderId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-detail-documents", entityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", entityId],
+      });
     },
   });
 
@@ -450,8 +650,12 @@ function MaintenanceDetailRoute() {
     onSuccess: () => {
       setCommentBody("");
       setCommentVisibility("internal");
-      queryClient.invalidateQueries({ queryKey: ["maintenance-work-order", workOrderId] });
-      queryClient.invalidateQueries({ queryKey: ["operations-maintenance", entityId] });
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-work-order", workOrderId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", entityId],
+      });
     },
   });
 
@@ -576,7 +780,11 @@ function MaintenanceDetailRoute() {
                   </div>
                   <div>
                     <dt className="text-muted-foreground">Contact</dt>
-                    <dd>{workOrder.contractor_email ?? workOrder.contractor_phone ?? "-"}</dd>
+                    <dd>
+                      {workOrder.contractor_email ??
+                        workOrder.contractor_phone ??
+                        "-"}
+                    </dd>
                   </div>
                 </dl>
               </SectionPanel>
@@ -602,18 +810,25 @@ function MaintenanceDetailRoute() {
                     <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-xs">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-foreground">
-                          {linkedInvoiceDraft.invoice_number ?? linkedInvoiceDraft.title}
+                          {linkedInvoiceDraft.invoice_number ??
+                            linkedInvoiceDraft.title}
                         </span>
-                        <StatusBadge tone={invoiceStatusTone(linkedInvoiceDraft.status)}>
+                        <StatusBadge
+                          tone={invoiceStatusTone(linkedInvoiceDraft.status)}
+                        >
                           {label(linkedInvoiceDraft.status)}
                         </StatusBadge>
                       </div>
                       <div className="grid gap-1 text-muted-foreground">
-                        <span>Amount {formatMoney(linkedInvoiceDraft.total_cents)}</span>
+                        <span>
+                          Amount {formatMoney(linkedInvoiceDraft.total_cents)}
+                        </span>
                         <span>Payment {label(linkedInvoicePaymentStatus)}</span>
                         <span>
                           Delivery{" "}
-                          {linkedInvoiceDeliveryReady ? "ready" : "needs preparation"}
+                          {linkedInvoiceDeliveryReady
+                            ? "ready"
+                            : "needs preparation"}
                         </span>
                       </div>
                       {linkedInvoiceBlockers.length ? (
@@ -623,6 +838,39 @@ function MaintenanceDetailRoute() {
                           ))}
                         </div>
                       ) : null}
+                      {linkedInvoiceHandoff ? (
+                        <div className="grid gap-2 rounded-md border border-border bg-white p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge tone={linkedInvoiceHandoff.tone}>
+                              {linkedInvoiceHandoff.label}
+                            </StatusBadge>
+                            <StatusBadge
+                              tone={
+                                linkedInvoiceHandoff.operationsReady
+                                  ? "success"
+                                  : "warning"
+                              }
+                            >
+                              {linkedInvoiceHandoff.operationsReady
+                                ? "Operations ready"
+                                : "Operations still active"}
+                            </StatusBadge>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {linkedInvoiceHandoff.message}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {linkedInvoiceHandoff.contractorSummary}
+                          </div>
+                          <Link
+                            href={linkedInvoiceHandoff.href}
+                            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                          >
+                            <ArrowUpRight size={14} />
+                            {linkedInvoiceHandoff.action}
+                          </Link>
+                        </div>
+                      ) : null}
                       <div className="flex flex-wrap gap-2">
                         {linkedInvoiceDraft.status !== "approved" &&
                         linkedInvoiceDraft.status !== "void" ? (
@@ -630,7 +878,9 @@ function MaintenanceDetailRoute() {
                             type="button"
                             className="min-h-9 rounded-lg px-3"
                             onClick={() =>
-                              prepareInvoiceMutation.mutate(linkedInvoiceDraft.id)
+                              prepareInvoiceMutation.mutate(
+                                linkedInvoiceDraft.id,
+                              )
                             }
                             disabled={prepareInvoiceMutation.isPending}
                             title="Prepare the invoice preview, PDF artifact, and email draft. Nothing is sent or synced."
@@ -654,7 +904,9 @@ function MaintenanceDetailRoute() {
                         </a>
                         {linkedInvoicePdfDocumentId ? (
                           <a
-                            href={documentDownloadUrl(linkedInvoicePdfDocumentId)}
+                            href={documentDownloadUrl(
+                              linkedInvoicePdfDocumentId,
+                            )}
                             className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                           >
                             <Download size={14} />
@@ -667,7 +919,9 @@ function MaintenanceDetailRoute() {
                             type="button"
                             className="min-h-9 rounded-lg px-3"
                             onClick={() =>
-                              approveInvoiceMutation.mutate(linkedInvoiceDraft.id)
+                              approveInvoiceMutation.mutate(
+                                linkedInvoiceDraft.id,
+                              )
                             }
                             disabled={approveInvoiceMutation.isPending}
                             title="Approve the internal invoice draft only. No tenant email or Xero sync is run."
@@ -730,11 +984,16 @@ function MaintenanceDetailRoute() {
                 description="Attach contractor quotes or supporting evidence to this work order."
                 icon={<FileUp size={17} />}
               >
-                <form className="grid gap-3 border-b border-border p-4" onSubmit={handleQuoteUpload}>
+                <form
+                  className="grid gap-3 border-b border-border p-4"
+                  onSubmit={handleQuoteUpload}
+                >
                   <Field label="Quote document">
                     <Input
                       type="file"
-                      onChange={(event) => setQuoteFile(event.target.files?.[0] ?? null)}
+                      onChange={(event) =>
+                        setQuoteFile(event.target.files?.[0] ?? null)
+                      }
                     />
                   </Field>
                   <Field label="Notes">
@@ -778,10 +1037,12 @@ function MaintenanceDetailRoute() {
                         ) : null}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {document.category ? label(document.category) : "Quote"} -{" "}
-                        {document.notes ?? "No notes"} -{" "}
+                        {document.category ? label(document.category) : "Quote"}{" "}
+                        - {document.notes ?? "No notes"} -{" "}
                         {formatDateTime(document.uploadedAt)}
-                        {document.byteSize ? ` - ${Math.round(document.byteSize / 1000)} KB` : ""}
+                        {document.byteSize
+                          ? ` - ${Math.round(document.byteSize / 1000)} KB`
+                          : ""}
                       </div>
                     </div>
                   ))}
@@ -803,7 +1064,9 @@ function MaintenanceDetailRoute() {
                 <div className="grid gap-3 p-4">
                   <form className="grid gap-3" onSubmit={handleCommentSubmit}>
                     <label className="grid gap-1.5 text-sm">
-                      <span className="font-medium text-foreground">Comment</span>
+                      <span className="font-medium text-foreground">
+                        Comment
+                      </span>
                       <textarea
                         value={commentBody}
                         onChange={(event) => setCommentBody(event.target.value)}
@@ -818,7 +1081,10 @@ function MaintenanceDetailRoute() {
                         value={commentVisibility}
                         onChange={(event) =>
                           setCommentVisibility(
-                            event.target.value as "internal" | "contractor" | "tenant",
+                            event.target.value as
+                              | "internal"
+                              | "contractor"
+                              | "tenant",
                           )
                         }
                       >
@@ -828,7 +1094,9 @@ function MaintenanceDetailRoute() {
                       </Select>
                       <Button
                         type="submit"
-                        disabled={!commentBody.trim() || commentMutation.isPending}
+                        disabled={
+                          !commentBody.trim() || commentMutation.isPending
+                        }
                       >
                         {commentMutation.isPending ? (
                           <Loader2 size={16} className="animate-spin" />
@@ -846,12 +1114,17 @@ function MaintenanceDetailRoute() {
                   </form>
 
                   {timeline.map((entry, index) => (
-                    <div key={`${entry.at}-${entry.label}-${index}`} className="grid gap-1 text-sm">
+                    <div
+                      key={`${entry.at}-${entry.label}-${index}`}
+                      className="grid gap-1 text-sm"
+                    >
                       <div className="font-medium">{entry.label}</div>
                       <div className="text-xs text-muted-foreground">
                         {formatDateTime(entry.at)}
                       </div>
-                      <div className="text-muted-foreground">{entry.detail}</div>
+                      <div className="text-muted-foreground">
+                        {entry.detail}
+                      </div>
                     </div>
                   ))}
                   {timeline.length === 0 ? (

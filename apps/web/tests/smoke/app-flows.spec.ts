@@ -165,6 +165,15 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await page.getByRole("button", { name: "Link" }).click();
   await expect(page.getByText("Payment Unpaid")).toBeVisible();
   await expect(page.getByText("Delivery ready")).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Billing handoff$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Approve Xero posting in Settings"),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Preview" })).toBeVisible();
   await expect(page.getByRole("link", { name: "PDF" })).toBeVisible();
   await page
@@ -174,6 +183,12 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await page.getByRole("button", { name: "Add comment" }).click();
   await expect(
     page.getByText("Owner approved attendance tomorrow morning. (Tenant)"),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Review billing handoff" }).click();
+  await expect(page).toHaveURL(/\/billing-readiness\?/);
+  await expect(page.getByText("Operations handoff")).toBeVisible();
+  await expect(
+    page.getByText("Maintenance: Air conditioning fault"),
   ).toBeVisible();
 });
 

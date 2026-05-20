@@ -37,7 +37,9 @@ import {
   listBillingDrafts,
   listEntities,
   listInvoiceDrafts,
+  listMaintenanceWorkOrders,
   listRentRoll,
+  type MaintenanceWorkOrderRecord,
   prepareInvoiceDraftDelivery,
   recordInvoiceDraftDelivery,
   sendInvoiceDraftDeliveryEmail,
@@ -54,6 +56,7 @@ import {
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_RENT_ROWS: RentRollRow[] = [];
 const EMPTY_INVOICE_DRAFTS: InvoiceDraftRecord[] = [];
+const EMPTY_MAINTENANCE_WORK_ORDERS: MaintenanceWorkOrderRecord[] = [];
 
 type BlockerKind = "invoice" | "xero" | "gst";
 
@@ -119,6 +122,18 @@ const deliveryFilters: Array<{ id: DeliveryFilter; label: string }> = [
   { id: "complete", label: "Complete" },
   { id: "unpaid", label: "Unpaid" },
 ];
+
+function billingTabFromQuery(value: string | null): BillingWorkspaceTab | null {
+  return billingWorkspaceTabs.some((tab) => tab.id === value)
+    ? (value as BillingWorkspaceTab)
+    : null;
+}
+
+function deliveryFilterFromQuery(value: string | null): DeliveryFilter | null {
+  return deliveryFilters.some((filter) => filter.id === value)
+    ? (value as DeliveryFilter)
+    : null;
+}
 
 type BlockerAction = {
   label: string;
@@ -320,7 +335,10 @@ function invoiceProviderReceipts(draft: InvoiceDraftRecord) {
   return metadataRecordList(draft.metadata.provider_status_receipts);
 }
 
-function xeroStatusTone(statusValue: string | null, approved: boolean): StatusTone {
+function xeroStatusTone(
+  statusValue: string | null,
+  approved: boolean,
+): StatusTone {
   if (statusValue === "draft_created" || statusValue === "DRAFT") {
     return "success";
   }
@@ -341,7 +359,9 @@ function xeroStatusLabel(
   if (syncState.xero_synced === true) {
     return `Xero ${metadataText(syncState.xero_status) ?? "draft"}`;
   }
-  const externalStatus = metadataText(postingPreparation.external_posting_status);
+  const externalStatus = metadataText(
+    postingPreparation.external_posting_status,
+  );
   if (externalStatus === "provider_failed") {
     return "Xero failed";
   }
@@ -364,8 +384,9 @@ function invoiceDeliveryReview(draft: InvoiceDraftRecord) {
   const providerDispatchXero = metadataRecord(providerDispatch.xero);
   const providerReceipts = invoiceProviderReceipts(draft);
   const latestProviderReceipt =
-    providerReceipts.find((receipt) => metadataText(receipt.provider) === "xero") ??
-    null;
+    providerReceipts.find(
+      (receipt) => metadataText(receipt.provider) === "xero",
+    ) ?? null;
   const latestProviderRetryCount =
     typeof latestProviderReceipt?.retry_count === "number"
       ? latestProviderReceipt.retry_count
@@ -432,7 +453,10 @@ function invoiceDeliveryReview(draft: InvoiceDraftRecord) {
   };
 }
 
-function deliveryFilterMatches(draft: InvoiceDraftRecord, filter: DeliveryFilter) {
+function deliveryFilterMatches(
+  draft: InvoiceDraftRecord,
+  filter: DeliveryFilter,
+) {
   const review = invoiceDeliveryReview(draft);
   switch (filter) {
     case "needs_action":
@@ -636,11 +660,26 @@ function BillingReadinessWorkspace() {
   const [activeBillingTab, setActiveBillingTab] =
     useState<BillingWorkspaceTab>("readiness");
   const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>("all");
+  const [highlightInvoiceDraftId, setHighlightInvoiceDraftId] = useState("");
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
     queryFn: listEntities,
   });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = billingTabFromQuery(params.get("tab"));
+    const filter = deliveryFilterFromQuery(params.get("filter"));
+    if (tab) {
+      setActiveBillingTab(tab);
+    }
+    if (filter) {
+      setDeliveryFilter(filter);
+    }
+    setSelectedEntityId(params.get("entity_id") ?? "");
+    setHighlightInvoiceDraftId(params.get("invoice_id") ?? "");
+  }, []);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
@@ -675,6 +714,11 @@ function BillingReadinessWorkspace() {
   const invoiceDraftsQuery = useQuery({
     queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
     queryFn: () => listInvoiceDrafts({ entity_id: selectedEntityId }),
+    enabled: Boolean(selectedEntityId),
+  });
+  const maintenanceQuery = useQuery({
+    queryKey: ["billing-readiness-maintenance", selectedEntityId],
+    queryFn: () => listMaintenanceWorkOrders({ entity_id: selectedEntityId }),
     enabled: Boolean(selectedEntityId),
   });
   const entitiesLoading =
@@ -877,6 +921,29 @@ function BillingReadinessWorkspace() {
     };
   }, [rentRows, rowsWithBlockers.length]);
   const invoiceDrafts = invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS;
+  const maintenanceWorkOrders =
+    maintenanceQuery.data ?? EMPTY_MAINTENANCE_WORK_ORDERS;
+  const maintenanceByInvoiceDraftId = useMemo(() => {
+    const rows = new Map<string, MaintenanceWorkOrderRecord>();
+    for (const workOrder of maintenanceWorkOrders) {
+      if (workOrder.invoice_draft_id && !rows.has(workOrder.invoice_draft_id)) {
+        rows.set(workOrder.invoice_draft_id, workOrder);
+      }
+    }
+    return rows;
+  }, [maintenanceWorkOrders]);
+  const highlightedInvoiceDraft = useMemo(
+    () =>
+      highlightInvoiceDraftId
+        ? (invoiceDrafts.find(
+            (draft) => draft.id === highlightInvoiceDraftId,
+          ) ?? null)
+        : null,
+    [highlightInvoiceDraftId, invoiceDrafts],
+  );
+  const highlightedMaintenanceWorkOrder = highlightedInvoiceDraft
+    ? (maintenanceByInvoiceDraftId.get(highlightedInvoiceDraft.id) ?? null)
+    : null;
   const approvedInvoiceDrafts = useMemo(
     () => invoiceDrafts.filter((draft) => draft.status === "approved"),
     [invoiceDrafts],
@@ -950,6 +1017,7 @@ function BillingReadinessWorkspace() {
                   rentRollQuery.refetch();
                   billingDraftsQuery.refetch();
                   invoiceDraftsQuery.refetch();
+                  maintenanceQuery.refetch();
                 }}
                 disabled={
                   !selectedEntityId ||
@@ -1189,6 +1257,34 @@ function BillingReadinessWorkspace() {
                 );
               })}
             </div>
+
+            {highlightedInvoiceDraft ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm shadow-leasiumXs">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge tone="primary">Operations handoff</StatusBadge>
+                    <span className="font-semibold text-foreground">
+                      {highlightedInvoiceDraft.invoice_number ??
+                        `Invoice ${shortId(highlightedInvoiceDraft.id)}`}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-muted-foreground">
+                    Review this linked maintenance invoice here; provider
+                    dispatch, tenant email, and payment reconciliation still
+                    require explicit approval.
+                  </div>
+                </div>
+                {highlightedMaintenanceWorkOrder ? (
+                  <Link
+                    href={`/operations/maintenance/${highlightedMaintenanceWorkOrder.id}`}
+                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                  >
+                    <ArrowUpRight size={15} />
+                    Open work order
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
 
             {activeBillingTab === "billing-drafts" ? (
               <SectionPanel
@@ -1473,10 +1569,17 @@ function BillingReadinessWorkspace() {
                           draft.status === "ready_for_approval" &&
                           deliveryReady;
                         const canVoid = draft.status !== "void";
+                        const linkedWorkOrder = maintenanceByInvoiceDraftId.get(
+                          draft.id,
+                        );
+                        const isHighlighted =
+                          highlightInvoiceDraftId === draft.id;
                         return (
                           <tr
                             key={draft.id}
-                            className="border-t border-border align-top"
+                            className={`border-t border-border align-top ${
+                              isHighlighted ? "bg-primary/5" : ""
+                            }`}
                           >
                             <td className="min-w-72 px-3 py-3">
                               <div className="font-medium">
@@ -1490,6 +1593,15 @@ function BillingReadinessWorkspace() {
                                 Source billing draft{" "}
                                 {shortId(draft.billing_draft_id)}
                               </div>
+                              {linkedWorkOrder ? (
+                                <Link
+                                  href={`/operations/maintenance/${linkedWorkOrder.id}`}
+                                  className="mt-2 inline-flex min-h-8 items-center gap-2 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                                >
+                                  <ArrowUpRight size={13} />
+                                  Maintenance: {linkedWorkOrder.title}
+                                </Link>
+                              ) : null}
                             </td>
                             <td className="min-w-52 px-3 py-3 text-xs">
                               <div className="font-medium text-foreground">
@@ -1814,10 +1926,17 @@ function BillingReadinessWorkspace() {
                         const canDispatchProviders =
                           deliveryReady && xeroApproved && !providerComplete;
                         const canMarkPaid = paymentLabel !== "paid";
+                        const linkedWorkOrder = maintenanceByInvoiceDraftId.get(
+                          draft.id,
+                        );
+                        const isHighlighted =
+                          highlightInvoiceDraftId === draft.id;
                         return (
                           <tr
                             key={draft.id}
-                            className="border-t border-border align-top"
+                            className={`border-t border-border align-top ${
+                              isHighlighted ? "bg-primary/5" : ""
+                            }`}
                           >
                             <td className="min-w-72 px-3 py-3">
                               <div className="font-medium">
@@ -1827,6 +1946,15 @@ function BillingReadinessWorkspace() {
                               <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                                 {draft.title}
                               </div>
+                              {linkedWorkOrder ? (
+                                <Link
+                                  href={`/operations/maintenance/${linkedWorkOrder.id}`}
+                                  className="mt-2 inline-flex min-h-8 items-center gap-2 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                                >
+                                  <ArrowUpRight size={13} />
+                                  Maintenance: {linkedWorkOrder.title}
+                                </Link>
+                              ) : null}
                               <div className="mt-2 flex flex-wrap gap-2">
                                 <StatusBadge tone="success">
                                   Approved
@@ -1901,9 +2029,10 @@ function BillingReadinessWorkspace() {
                               </div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 {xeroFailed
-                                  ? metadataText(
+                                  ? (metadataText(
                                       postingPreparation.last_provider_reason,
-                                    ) ?? "Xero provider failed. Retry when ready."
+                                    ) ??
+                                    "Xero provider failed. Retry when ready.")
                                   : providerComplete
                                     ? "Xero draft and tenant email are recorded."
                                     : xeroApproved
@@ -1920,7 +2049,8 @@ function BillingReadinessWorkspace() {
                                     const provider =
                                       metadataText(receipt.provider) ?? "xero";
                                     const statusValue =
-                                      metadataText(receipt.status) ?? "recorded";
+                                      metadataText(receipt.status) ??
+                                      "recorded";
                                     const retryCount =
                                       typeof receipt.retry_count === "number"
                                         ? receipt.retry_count
