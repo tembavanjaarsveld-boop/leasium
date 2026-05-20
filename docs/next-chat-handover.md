@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed app-code production deployment: `e6a07ac Add tenant portal operator access controls`, Vercel deployment `dpl_AWhdu3DHxeBc9Qem39Pdy6tionjC`, state `READY`; Render deploy `dep-d86suksrp5ls739konv0` is live for the same commit. `/tenants` and `/settings` redirect signed-out operators to `/sign-in`, `/tenant-portal` and `/tenant-portal/account` return `200`, and Render API health is live.
+- Latest confirmed app-code production deployment: `e6a07ac Add tenant portal operator access controls`, Vercel deployment `dpl_AWhdu3DHxeBc9Qem39Pdy6tionjC`, state `READY`; Render deploy `dep-d86suksrp5ls739konv0` went live for the same app-code commit, and later handover-only redeploys do not change runtime behavior. `/tenants` and `/settings` redirect signed-out operators to `/sign-in`, `/tenant-portal` and `/tenant-portal/account` return `200`, and Render API health is live.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -522,7 +522,7 @@ Last updated: 2026-05-20
 - Neon production was previously confirmed migrated through `20260520_0016` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
   - Verified earlier: `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
   - Verified now: the live public snapshot endpoint can query `insights_snapshot` and returns a clean not-found response for an invalid token.
-- The overnight bundle adds `20260520_0018_maintenance_arrears_foundations`, and the tenant account slice adds `20260520_0019_tenant_portal_accounts`. Render's documented start command runs `.venv/bin/alembic upgrade head` before the API starts. Current production Render deploy `dep-d86suksrp5ls739konv0` is live for `e6a07ac` and exposes tenant portal operator access endpoints, so the API runtime has picked up the current code.
+- The overnight bundle adds `20260520_0018_maintenance_arrears_foundations`, and the tenant account slice adds `20260520_0019_tenant_portal_accounts`. Render's documented start command runs `.venv/bin/alembic upgrade head` before the API starts. Render deploy `dep-d86suksrp5ls739konv0` went live for `e6a07ac` and exposed tenant portal operator access endpoints; subsequent handover-only redeploys kept the same runtime behavior.
 - Xero readiness v1 uses existing columns only and does not need a new database migration.
 - Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still needs to be configured outside the codebase.
 - Public enrichment requires `OPENAI_API_KEY` on the API service. Without it, preview returns a clear 503 and does not mutate records.
