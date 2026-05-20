@@ -43,6 +43,7 @@ import {
   listEntities,
   previewXeroChartTaxValidation,
   previewXeroContactSync,
+  previewXeroInvoicePosting,
   resendSecurityMemberInvite,
   startXeroOAuth,
   updateSecurityMember,
@@ -53,6 +54,8 @@ import {
   type XeroChartTaxValidationResultRecord,
   type XeroContactMatchRecord,
   type XeroContactSyncPreviewRecord,
+  type XeroInvoicePostingPreviewRecord,
+  type XeroInvoicePostingPreviewResultRecord,
   type SecurityMemberRecord,
   type SecurityRole,
   type SecurityRoleAssignment,
@@ -100,6 +103,13 @@ function formatDateTime(value: string | null | undefined) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatCurrencyCents(value: number, currency = "AUD") {
+  return new Intl.NumberFormat("en-AU", {
+    currency,
+    style: "currency",
+  }).format(value / 100);
 }
 
 function issueTone(issue: XeroMappingIssueRecord): StatusTone {
@@ -154,6 +164,12 @@ function chartTaxStatusLabel(status: XeroChartTaxValidationResultRecord["status"
     return "Not found";
   }
   return "Ready";
+}
+
+function invoicePostingStatusTone(
+  status: XeroInvoicePostingPreviewResultRecord["status"],
+): StatusTone {
+  return status === "ready" ? "success" : "danger";
 }
 
 function roleForEntity(member: SecurityMemberRecord, entityId: string) {
@@ -262,6 +278,8 @@ function SettingsWorkspace() {
     useState<XeroContactApplyPreviewRecord | null>(null);
   const [xeroChartTaxPreview, setXeroChartTaxPreview] =
     useState<XeroChartTaxValidationPreviewRecord | null>(null);
+  const [xeroInvoicePostingPreview, setXeroInvoicePostingPreview] =
+    useState<XeroInvoicePostingPreviewRecord | null>(null);
   const [selectedXeroContactMatches, setSelectedXeroContactMatches] = useState<
     Record<string, boolean>
   >({});
@@ -307,6 +325,7 @@ function SettingsWorkspace() {
     setXeroContactPreview(null);
     setXeroContactApplyResult(null);
     setXeroChartTaxPreview(null);
+    setXeroInvoicePostingPreview(null);
     setSelectedXeroContactMatches({});
   }, [selectedEntityId]);
 
@@ -335,6 +354,7 @@ function SettingsWorkspace() {
     onSuccess: () => {
       setXeroContactPreview(null);
       setXeroChartTaxPreview(null);
+      setXeroInvoicePostingPreview(null);
       queryClient.invalidateQueries({ queryKey: ["entities"] });
       queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
@@ -397,6 +417,15 @@ function SettingsWorkspace() {
     mutationFn: () => previewXeroChartTaxValidation(selectedEntityId),
     onSuccess: (result) => {
       setXeroChartTaxPreview(result);
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
+    },
+  });
+
+  const xeroInvoicePostingMutation = useMutation({
+    mutationFn: () => previewXeroInvoicePosting(selectedEntityId),
+    onSuccess: (result) => {
+      setXeroInvoicePostingPreview(result);
       queryClient.invalidateQueries({ queryKey: ["entities"] });
       queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
@@ -591,6 +620,13 @@ function SettingsWorkspace() {
             {xeroChartTaxMutation.error instanceof Error
               ? xeroChartTaxMutation.error.message
               : "Could not preview Xero chart and tax validation."}
+          </div>
+        ) : null}
+        {xeroInvoicePostingMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {xeroInvoicePostingMutation.error instanceof Error
+              ? xeroInvoicePostingMutation.error.message
+              : "Could not preview Xero invoice posting."}
           </div>
         ) : null}
         {mappingMutation.error ? (
@@ -1261,6 +1297,28 @@ function SettingsWorkspace() {
                       Preview chart/tax
                     </SecondaryButton>
                   </div>
+                  <div className="grid gap-2 rounded-md border border-border bg-white p-3">
+                    <div className="text-sm font-semibold">Invoice posting preview</div>
+                    <p className="text-sm text-muted-foreground">
+                      Prepare Xero invoice payloads from approved drafts without
+                      posting, emailing, or reconciling payments.
+                    </p>
+                    <SecondaryButton
+                      type="button"
+                      disabled={
+                        xeroInvoicePostingMutation.isPending ||
+                        status.connection.connection_source !== "provider"
+                      }
+                      onClick={() => xeroInvoicePostingMutation.mutate()}
+                    >
+                      {xeroInvoicePostingMutation.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <SearchCheck size={15} />
+                      )}
+                      Preview invoice posting
+                    </SecondaryButton>
+                  </div>
                   <Field label="Xero tenant ID">
                     <Input
                       value={xeroTenantId}
@@ -1608,6 +1666,143 @@ function SettingsWorkspace() {
                       ) : null}
                     </tbody>
                   </table>
+                </div>
+              </SectionPanel>
+            ) : null}
+
+            {xeroInvoicePostingPreview ? (
+              <SectionPanel
+                title="Xero invoice posting preview"
+                description="Inspect the provider payload shape for approved invoice drafts before any posting approval is available."
+                icon={<CircleDollarSign size={17} className="text-primary" />}
+                actions={
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge tone="success">
+                      {xeroInvoicePostingPreview.ready_count} ready
+                    </StatusBadge>
+                    <StatusBadge
+                      tone={
+                        xeroInvoicePostingPreview.blocked_count
+                          ? "danger"
+                          : "neutral"
+                      }
+                    >
+                      {xeroInvoicePostingPreview.blocked_count} blocked
+                    </StatusBadge>
+                  </div>
+                }
+              >
+                <div className="grid gap-3 p-4 md:grid-cols-4">
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Checked drafts
+                    </div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {xeroInvoicePostingPreview.checked_invoices}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Ready
+                    </div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {xeroInvoicePostingPreview.ready_count}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Blocked
+                    </div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {xeroInvoicePostingPreview.blocked_count}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Prepared
+                    </div>
+                    <div className="mt-1 font-semibold">
+                      {formatDateTime(xeroInvoicePostingPreview.prepared_at)}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid gap-3 border-t border-border px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge tone="warning">Preview only</StatusBadge>
+                    <span className="font-medium">
+                      No Xero posting, email, or payment mutation is performed.
+                    </span>
+                  </div>
+                  <ul className="grid gap-1 text-xs text-muted-foreground">
+                    {xeroInvoicePostingPreview.guardrails.map((guardrail) => (
+                      <li key={guardrail} className="flex gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                        <span>{guardrail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="divide-y divide-border border-t border-border">
+                  {xeroInvoicePostingPreview.results.map((result) => (
+                    <div
+                      key={result.invoice_draft_id}
+                      className="grid gap-3 px-4 py-3 text-sm lg:grid-cols-[170px_1fr_260px]"
+                    >
+                      <div className="flex flex-wrap items-start gap-2">
+                        <StatusBadge tone={invoicePostingStatusTone(result.status)}>
+                          {result.status}
+                        </StatusBadge>
+                        <div className="text-xs text-muted-foreground">
+                          {result.invoice_number ?? result.invoice_draft_id}
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="font-medium">{result.title}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {result.contact_name ?? "No contact"} /{" "}
+                            {formatCurrencyCents(
+                              result.total_cents,
+                              result.currency,
+                            )}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Issue {result.issue_date ?? "-"} / Due{" "}
+                          {result.due_date ?? "-"} / {result.line_count} line
+                          {result.line_count === 1 ? "" : "s"}
+                        </div>
+                        {result.blockers.length ? (
+                          <p className="mt-2 text-xs text-danger">
+                            {result.blockers.join("; ")}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="grid gap-1 text-xs text-muted-foreground">
+                        {result.line_items.map((line, index) => (
+                          <div
+                            key={line.source_line_id ?? `${result.invoice_draft_id}-${index}`}
+                            className="rounded-md border border-border bg-muted/25 p-2"
+                          >
+                            <div className="font-medium text-foreground">
+                              {line.description}
+                            </div>
+                            <div className="mt-1">
+                              Qty {line.quantity} x {line.unit_amount} / acct{" "}
+                              {line.account_code ?? "-"} / tax{" "}
+                              {line.tax_type ?? "-"} / {line.line_amount}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {xeroInvoicePostingPreview.results.length === 0 ? (
+                    <EmptyState
+                      title="No invoice drafts checked"
+                      description="The posting preview completed, but there were no approved unsynced drafts to inspect."
+                    />
+                  ) : null}
                 </div>
               </SectionPanel>
             ) : null}

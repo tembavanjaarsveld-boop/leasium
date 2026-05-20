@@ -731,6 +731,45 @@ export type XeroChartTaxValidationPreviewRecord = {
   guardrails: string[];
 };
 
+export type XeroInvoicePostingPreviewLineItemRecord = {
+  description: string;
+  quantity: number;
+  unit_amount: number;
+  account_code: string | null;
+  tax_type: string | null;
+  line_amount: number;
+  source_line_id: string | null;
+};
+
+export type XeroInvoicePostingPreviewResultRecord = {
+  invoice_draft_id: string;
+  invoice_number: string | null;
+  title: string;
+  status: "ready" | "blocked";
+  xero_contact_id: string | null;
+  contact_name: string | null;
+  issue_date: string | null;
+  due_date: string | null;
+  currency: string;
+  total_cents: number;
+  line_count: number;
+  line_items: XeroInvoicePostingPreviewLineItemRecord[];
+  blockers: string[];
+  payload_preview: Record<string, unknown>;
+};
+
+export type XeroInvoicePostingPreviewRecord = {
+  entity_id: string;
+  xero_tenant_id: string;
+  tenant_name: string | null;
+  checked_invoices: number;
+  ready_count: number;
+  blocked_count: number;
+  results: XeroInvoicePostingPreviewResultRecord[];
+  prepared_at: string;
+  guardrails: string[];
+};
+
 export type InsightsEntityRecord = {
   id: string;
   name: string;
@@ -1261,6 +1300,15 @@ export function applyXeroContactPreview(
 export function previewXeroChartTaxValidation(entityId: string) {
   return request<XeroChartTaxValidationPreviewRecord>(
     `/xero/chart-tax/validate-preview/${entityId}`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function previewXeroInvoicePosting(entityId: string) {
+  return request<XeroInvoicePostingPreviewRecord>(
+    `/xero/invoices/posting-preview/${entityId}`,
     {
       method: "POST",
     },

@@ -170,6 +170,17 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("1/1 ready").first()).toBeVisible();
   await expect(page.getByText("Rental Income")).toBeVisible();
   await expect(page.getByText("GST on Income")).toBeVisible();
+
+  await page.getByRole("button", { name: "Preview invoice posting" }).click();
+  await expect(page.getByText("Xero invoice posting preview")).toBeVisible();
+  await expect(page.getByText("1 ready").first()).toBeVisible();
+  await expect(page.getByText("0 blocked").first()).toBeVisible();
+  await expect(
+    page.getByText(
+      "No Xero posting, email, or payment mutation is performed by this preview.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("acct 401 / tax OUTPUT")).toBeVisible();
 });
 
 test("insights shows overview, exceptions, activity, and owner snapshot", async ({

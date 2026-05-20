@@ -1,7 +1,7 @@
 """Schemas for Xero readiness and pre-sync mapping surfaces."""
 
-from datetime import datetime
-from typing import Literal
+from datetime import date, datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -188,4 +188,43 @@ class XeroChartTaxValidationPreviewRead(BaseModel):
     checked_rules: int
     results: list[XeroChartTaxValidationResultRead]
     validated_at: datetime
+    guardrails: list[str]
+
+
+class XeroInvoicePostingPreviewLineRead(BaseModel):
+    description: str
+    quantity: float
+    unit_amount: float
+    account_code: str | None
+    tax_type: str | None
+    line_amount: float
+    source_line_id: UUID | None
+
+
+class XeroInvoicePostingPreviewResultRead(BaseModel):
+    invoice_draft_id: UUID
+    invoice_number: str | None
+    title: str
+    status: Literal["ready", "blocked"]
+    xero_contact_id: str | None
+    contact_name: str | None
+    issue_date: date | None
+    due_date: date | None
+    currency: str
+    total_cents: int
+    line_count: int
+    line_items: list[XeroInvoicePostingPreviewLineRead]
+    blockers: list[str]
+    payload_preview: dict[str, Any]
+
+
+class XeroInvoicePostingPreviewRead(BaseModel):
+    entity_id: UUID
+    xero_tenant_id: str
+    tenant_name: str | None
+    checked_invoices: int
+    ready_count: int
+    blocked_count: int
+    results: list[XeroInvoicePostingPreviewResultRead]
+    prepared_at: datetime
     guardrails: list[str]

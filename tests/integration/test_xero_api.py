@@ -10,9 +10,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.models import (
     AuditAction,
+    BillingDraft,
+    BillingDraftLine,
+    BillingDraftStatus,
+    DocumentCategory,
     Entity,
+    InvoiceDraft,
+    InvoiceDraftLine,
+    InvoiceDraftStatus,
     Property,
     PropertyType,
+    RentChargeRule,
+    StoredDocument,
     Tenant,
     XeroConnection,
 )
@@ -674,4 +683,221 @@ def test_xero_chart_tax_validation_preview_requires_provider_connection(
     assert response.status_code == 422
     assert response.json()["detail"] == (
         "Connect Xero through OAuth before validating chart and tax mappings."
+    )
+
+
+def test_xero_invoice_posting_preview_builds_payload_without_posting(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    charge_rule_id = _create_charge_rule_fixture(
+        client,
+        entity_id,
+        charge_type="base_rent",
+        xero_account_code="200",
+        xero_tax_type="OUTPUT",
+    )
+    charge_rule = session.get(RentChargeRule, UUID(charge_rule_id))
+    assert charge_rule is not None
+    tenant = charge_rule.lease.tenant
+    tenant.tenant_metadata = {"xero_contact_id": "xero-contact-bright"}
+    document = StoredDocument(
+        entity_id=UUID(entity_id),
+        property_id=charge_rule.lease.tenancy_unit.property_id,
+        tenancy_unit_id=charge_rule.lease.tenancy_unit_id,
+        tenant_id=tenant.id,
+        lease_id=charge_rule.lease_id,
+        filename="invoice.pdf",
+        content_type="application/pdf",
+        byte_size=7,
+        file_data=b"invoice",
+        category=DocumentCategory.invoice,
+    )
+    session.add(document)
+    session.flush()
+    billing_draft = BillingDraft(
+        entity_id=UUID(entity_id),
+        property_id=charge_rule.lease.tenancy_unit.property_id,
+        tenancy_unit_id=charge_rule.lease.tenancy_unit_id,
+        tenant_id=tenant.id,
+        lease_id=charge_rule.lease_id,
+        document_id=document.id,
+        status=BillingDraftStatus.approved,
+        title="June base rent",
+        currency="AUD",
+        issue_date=charge_rule.next_due_date,
+        due_date=charge_rule.next_due_date,
+        total_cents=charge_rule.amount_cents,
+        billing_metadata={"source": "test"},
+    )
+    session.add(billing_draft)
+    session.flush()
+    billing_line = BillingDraftLine(
+        billing_draft_id=billing_draft.id,
+        description="Base rent",
+        amount_cents=charge_rule.amount_cents,
+        currency="AUD",
+        source_hint="Rent schedule",
+        confidence=0.98,
+        line_metadata={"source": "test", "charge_rule_id": charge_rule_id},
+    )
+    session.add(billing_line)
+    session.flush()
+    invoice_draft = InvoiceDraft(
+        entity_id=UUID(entity_id),
+        billing_draft_id=billing_draft.id,
+        property_id=billing_draft.property_id,
+        tenancy_unit_id=billing_draft.tenancy_unit_id,
+        tenant_id=tenant.id,
+        lease_id=charge_rule.lease_id,
+        document_id=document.id,
+        status=InvoiceDraftStatus.approved,
+        invoice_number="INV-20260601",
+        title="June base rent",
+        currency="AUD",
+        issue_date=charge_rule.next_due_date,
+        due_date=charge_rule.next_due_date,
+        subtotal_cents=charge_rule.amount_cents,
+        gst_cents=0,
+        total_cents=charge_rule.amount_cents,
+        issuer_name="SKJ Property Pty Ltd",
+        recipient_name=tenant.legal_name,
+        recipient_email=tenant.billing_email or tenant.contact_email,
+        invoice_metadata={
+            "posting_preparation": {
+                "approved": True,
+                "xero_sync_allowed": False,
+                "xero_synced": False,
+            }
+        },
+    )
+    session.add(invoice_draft)
+    session.flush()
+    session.add(
+        InvoiceDraftLine(
+            invoice_draft_id=invoice_draft.id,
+            billing_draft_line_id=billing_line.id,
+            description="Base rent",
+            amount_cents=charge_rule.amount_cents,
+            gst_cents=0,
+            currency="AUD",
+            source_hint="Rent schedule",
+            line_metadata={"source": "test", "charge_rule_id": charge_rule_id},
+        )
+    )
+    session.commit()
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    def fake_refresh_xero_tokens(
+        refresh_token: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> dict[str, object]:
+        assert refresh_token == "raw-refresh-token"
+        return {
+            "access_token": "raw-access-token-invoice",
+            "refresh_token": "raw-refresh-token-invoice",
+            "expires_in": 1800,
+            "scope": "offline_access accounting.contacts.read accounting.settings.read",
+        }
+
+    def fake_fetch_xero_contacts(
+        access_token: str,
+        xero_tenant_id: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        assert access_token == "raw-access-token-invoice"
+        assert xero_tenant_id == "tenant-provider-123"
+        return [
+            {
+                "ContactID": "xero-contact-bright",
+                "Name": "Base Rent Tenant Pty Ltd",
+                "ContactStatus": "ACTIVE",
+            }
+        ]
+
+    def fake_fetch_xero_accounts(
+        access_token: str,
+        xero_tenant_id: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        assert access_token == "raw-access-token-invoice"
+        assert xero_tenant_id == "tenant-provider-123"
+        return [{"Code": "200", "Name": "Rental Income", "Status": "ACTIVE"}]
+
+    def fake_fetch_xero_tax_rates(
+        access_token: str,
+        xero_tenant_id: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        assert access_token == "raw-access-token-invoice"
+        assert xero_tenant_id == "tenant-provider-123"
+        return [{"TaxType": "OUTPUT", "Name": "GST on Income", "Status": "ACTIVE"}]
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fake_refresh_xero_tokens)
+    monkeypatch.setattr(xero_router, "fetch_xero_contacts", fake_fetch_xero_contacts)
+    monkeypatch.setattr(xero_router, "fetch_xero_accounts", fake_fetch_xero_accounts)
+    monkeypatch.setattr(xero_router, "fetch_xero_tax_rates", fake_fetch_xero_tax_rates)
+
+    response = client.post(f"/api/v1/xero/invoices/posting-preview/{entity_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["checked_invoices"] == 1
+    assert body["ready_count"] == 1
+    assert body["blocked_count"] == 0
+    assert "No invoices are posted" in body["guardrails"][2]
+
+    result = body["results"][0]
+    assert result["status"] == "ready"
+    assert result["invoice_number"] == "INV-20260601"
+    assert result["xero_contact_id"] == "xero-contact-bright"
+    assert result["line_items"][0]["account_code"] == "200"
+    assert result["line_items"][0]["tax_type"] == "OUTPUT"
+    assert result["payload_preview"]["Type"] == "ACCREC"
+    assert result["payload_preview"]["Status"] == "DRAFT"
+    assert result["payload_preview"]["Contact"]["ContactID"] == "xero-contact-bright"
+    assert result["payload_preview"]["LineItems"][0]["AccountCode"] == "200"
+    assert result["payload_preview"]["LineItems"][0]["TaxType"] == "OUTPUT"
+
+    session.refresh(invoice_draft)
+    assert invoice_draft.invoice_metadata["posting_preparation"]["xero_sync_allowed"] is False
+    assert "xero_sync" not in invoice_draft.invoice_metadata
+    connection = session.scalar(
+        select(XeroConnection).where(XeroConnection.entity_id == UUID(entity_id))
+    )
+    assert connection is not None
+    assert connection.connection_metadata["last_invoice_posting_preview"]["ready"] == 1
+    assert connection.connection_metadata["last_invoice_posting_preview"]["mode"] == (
+        "preview_only"
+    )
+    assert decrypt_xero_token(connection.refresh_token_ciphertext, settings) == (
+        "raw-refresh-token-invoice"
+    )
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "xero_connection",
+            AuditAction.tool_name == "xero.invoice_posting_preview",
+        )
+    )
+    assert audit is not None
+    assert "no invoice posting" in audit.tool_output_summary
+
+
+def test_xero_invoice_posting_preview_requires_provider_connection(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    response = client.post(f"/api/v1/xero/invoices/posting-preview/{entity_id}")
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Connect Xero through OAuth before previewing invoice posting."
     )

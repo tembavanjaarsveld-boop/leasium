@@ -590,8 +590,8 @@ export async function mockLeasiumApi(page: Page) {
         missing: chargeTaxType ? 0 : 1,
       },
       invoice_sync: {
-        total_invoice_drafts: 0,
-        approved_unsynced: 0,
+        total_invoice_drafts: 1,
+        approved_unsynced: 1,
         synced: 0,
         blocked: 0,
       },
@@ -663,6 +663,53 @@ export async function mockLeasiumApi(page: Page) {
       ],
     };
   };
+
+  const xeroInvoicePostingPreview = () => ({
+    entity_id: entityId,
+    xero_tenant_id: xeroTenantId ?? "tenant-smoke",
+    tenant_name: "Demo Xero Org",
+    checked_invoices: 1,
+    ready_count: 1,
+    blocked_count: 0,
+    results: [
+      {
+        invoice_draft_id: "invoice-draft-1",
+        invoice_number: "INV-1001",
+        title: "May rent and outgoings",
+        status: "ready",
+        xero_contact_id: "contact-bright-cafe",
+        contact_name: "Bright Cafe",
+        issue_date: "2026-05-01",
+        due_date: "2026-05-15",
+        currency: "AUD",
+        total_cents: 880000,
+        line_count: 1,
+        line_items: [
+          {
+            description: "Base rent",
+            quantity: 1,
+            unit_amount: 8000,
+            account_code: "401",
+            tax_type: "OUTPUT",
+            line_amount: 8000,
+            source_line_id: "invoice-draft-line-1",
+          },
+        ],
+        blockers: [],
+        payload_preview: {
+          Type: "ACCREC",
+          Contact: { ContactID: "contact-bright-cafe" },
+          LineItems: [{ Description: "Base rent", AccountCode: "401" }],
+        },
+      },
+    ],
+    prepared_at: "2026-05-19T10:20:00.000Z",
+    guardrails: [
+      "No Xero posting, email, or payment mutation is performed by this preview.",
+      "The preview builds local payloads only and does not create Xero invoices.",
+      "Payment reconciliation remains manual until a separate approval path exists.",
+    ],
+  });
 
   const insightsOverview = () => {
     const xero = xeroStatus();
@@ -1115,6 +1162,17 @@ export async function mockLeasiumApi(page: Page) {
       xeroConnectedAt = xeroConnectedAt ?? "2026-05-19T10:00:00.000Z";
       xeroProviderConnected = true;
       await fulfillJson(route, xeroChartTaxValidationPreview());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === `/xero/invoices/posting-preview/${entityId}`
+    ) {
+      xeroTenantId = xeroTenantId ?? "tenant-smoke";
+      xeroConnectedAt = xeroConnectedAt ?? "2026-05-19T10:00:00.000Z";
+      xeroProviderConnected = true;
+      await fulfillJson(route, xeroInvoicePostingPreview());
       return;
     }
 

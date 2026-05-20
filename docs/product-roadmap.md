@@ -64,12 +64,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Xero provider connection foundation v1: Settings can start a Xero OAuth connection, the API stores encrypted provider tokens in a per-entity connection record, records the selected Xero organisation, and can run a provider-backed contact sync preview that suggests tenant/property matches without applying mappings, posting invoices, or reconciling payments.
 - [x] Reviewed local Xero contact mapping apply: provider contact preview suggestions can now be applied locally after review through an explicit apply-preview contract, with skipped mappings and no invoice posting, tenant email, or payment reconciliation side effects. Pending Remba review.
 - [x] Provider-backed Xero chart/tax validation preview: `/api/v1/xero/chart-tax/validate-preview/{entity_id}` can validate local charge-rule account and tax mappings against provider chart/tax settings, returning checked-rule totals, per-rule results, and guardrails without invoice posting or payment reconciliation. Pending Remba review.
+- [x] Provider-backed Xero invoice posting preview: `/api/v1/xero/invoices/posting-preview/{entity_id}` prepares reviewed Xero draft invoice payloads and blocker lists for approved unsynced invoice drafts, with provider contact/chart/tax checks and no invoice posting, tenant email, Xero mutation, or payment reconciliation. Pending Remba review.
 - [x] Insights overview v1: the Insights workspace now has a read-only backend overview for portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots, with no record mutation, invoice posting, or Xero sync.
 - [x] Shareable Insights snapshots v1: operators can freeze owner, finance, and lease-event snapshots from the live Insights overview into revocable public links with hashed tokens, expiry, public read-only rendering, and no live portfolio mutation.
 
 ## Next Build Order
 
-- [ ] Continue provider-backed Xero from chart/tax validation preview into reviewed invoice posting approvals and payment reconciliation on top of the readiness queue.
+- [ ] Continue provider-backed Xero from invoice posting preview into explicit posting approval, idempotent Xero draft creation, and then payment reconciliation.
 - [ ] Add provider-backed invoice email delivery and Xero posting approvals on top of the internal invoice draft/PDF/payment workflow.
 - [ ] Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
 - [ ] Add maintenance work orders with tenant requests, photos, priorities, contractor assignment, approvals, invoices, and status tracking.

@@ -62,6 +62,9 @@ from apps.api.schemas.xero import (
     XeroContactMappingApplyResultRead,
     XeroContactMatchRead,
     XeroContactSyncPreviewRead,
+    XeroInvoicePostingPreviewLineRead,
+    XeroInvoicePostingPreviewRead,
+    XeroInvoicePostingPreviewResultRead,
     XeroInvoiceSyncSummaryRead,
     XeroMappingIssueRead,
     XeroOAuthStartRead,
@@ -630,6 +633,238 @@ def _validate_xero_chart_tax(
     return results
 
 
+def _active_xero_contact(contact: dict[str, Any] | None) -> bool:
+    status_value = _xero_text(contact, "ContactStatus")
+    return status_value is None or status_value.upper() == "ACTIVE"
+
+
+def _tenant_xero_contact_id(tenant: Tenant | None) -> str | None:
+    metadata = tenant.tenant_metadata if tenant is not None else None
+    if not isinstance(metadata, dict):
+        return None
+    value = metadata.get("xero_contact_id")
+    return str(value).strip() if value is not None and str(value).strip() else None
+
+
+def _invoice_draft_xero_synced(draft: InvoiceDraft) -> bool:
+    metadata = draft.invoice_metadata or {}
+    for key in ("xero_sync", "posting_preparation", "delivery_state"):
+        state = metadata.get(key)
+        if isinstance(state, dict) and state.get("xero_synced") is True:
+            return True
+    return False
+
+
+def _approved_unsynced_invoice_drafts(
+    session: Session,
+    entity_id: UUID,
+) -> list[InvoiceDraft]:
+    drafts = list(
+        session.scalars(
+            select(InvoiceDraft)
+            .where(
+                InvoiceDraft.entity_id == entity_id,
+                InvoiceDraft.status == InvoiceDraftStatus.approved,
+                InvoiceDraft.deleted_at.is_(None),
+            )
+            .order_by(InvoiceDraft.due_date, InvoiceDraft.created_at)
+        )
+    )
+    return [draft for draft in drafts if not _invoice_draft_xero_synced(draft)]
+
+
+def _charge_rule_lookup_for_invoice(
+    session: Session,
+    draft: InvoiceDraft,
+) -> dict[UUID, RentChargeRule]:
+    if draft.lease_id is None:
+        return {}
+    rules = session.scalars(
+        select(RentChargeRule).where(
+            RentChargeRule.lease_id == draft.lease_id,
+            RentChargeRule.deleted_at.is_(None),
+        )
+    )
+    return {rule.id: rule for rule in rules}
+
+
+def _metadata_uuid(metadata: dict[str, Any], *keys: str) -> UUID | None:
+    for key in keys:
+        value = metadata.get(key)
+        if value is None:
+            continue
+        try:
+            return UUID(str(value))
+        except ValueError:
+            continue
+    return None
+
+
+def _charge_rule_for_invoice_line(
+    *,
+    line: Any,
+    charge_rules: dict[UUID, RentChargeRule],
+) -> RentChargeRule | None:
+    metadata = line.line_metadata or {}
+    rule_id = _metadata_uuid(metadata, "charge_rule_id", "rent_charge_rule_id")
+    if rule_id is None:
+        raw = metadata.get("raw")
+        if isinstance(raw, dict):
+            rule_id = _metadata_uuid(raw, "charge_rule_id", "rent_charge_rule_id")
+    if rule_id is not None and rule_id in charge_rules:
+        return charge_rules[rule_id]
+    if len(charge_rules) == 1:
+        return next(iter(charge_rules.values()))
+    return None
+
+
+def _line_metadata_text(line: Any, *keys: str) -> str | None:
+    metadata = line.line_metadata or {}
+    raw = metadata.get("raw") if isinstance(metadata.get("raw"), dict) else {}
+    for source in (metadata, raw):
+        for key in keys:
+            value = source.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+    return None
+
+
+def _invoice_line_amount(amount_cents: int) -> float:
+    return round(amount_cents / 100, 2)
+
+
+def _invoice_line_posting_preview(
+    *,
+    line: Any,
+    index: int,
+    charge_rules: dict[UUID, RentChargeRule],
+    accounts_by_code: dict[str, dict[str, Any]],
+    tax_rates_by_type: dict[str, dict[str, Any]],
+) -> tuple[XeroInvoicePostingPreviewLineRead, dict[str, Any], list[str]]:
+    rule = _charge_rule_for_invoice_line(line=line, charge_rules=charge_rules)
+    account_code = _line_metadata_text(line, "xero_account_code", "account_code")
+    tax_type = _line_metadata_text(line, "xero_tax_type", "tax_type")
+    if rule is not None:
+        account_code = account_code or rule.xero_account_code
+        tax_type = tax_type or rule.xero_tax_type
+
+    blockers: list[str] = []
+    label = f"Line {index + 1}"
+    if not account_code:
+        blockers.append(f"{label} is missing a Xero account code.")
+    elif account_code not in accounts_by_code:
+        blockers.append(f"{label} account code {account_code} was not found in Xero.")
+    elif not _active_xero_status(accounts_by_code[account_code]):
+        blockers.append(f"{label} account code {account_code} is not active in Xero.")
+
+    taxable_rule = rule is None or rule.gst_treatment.value == "taxable" or line.gst_cents > 0
+    if taxable_rule and not tax_type:
+        blockers.append(f"{label} needs a Xero tax type before posting.")
+    elif tax_type and tax_type.upper() not in tax_rates_by_type:
+        blockers.append(f"{label} tax type {tax_type} was not found in Xero.")
+    elif tax_type and not _active_xero_status(tax_rates_by_type[tax_type.upper()]):
+        blockers.append(f"{label} tax type {tax_type} is not active in Xero.")
+
+    line_amount = _invoice_line_amount(line.amount_cents)
+    line_preview = XeroInvoicePostingPreviewLineRead(
+        description=line.description,
+        quantity=1.0,
+        unit_amount=line_amount,
+        account_code=account_code,
+        tax_type=tax_type,
+        line_amount=line_amount,
+        source_line_id=line.id,
+    )
+    payload_line: dict[str, Any] = {
+        "Description": line.description,
+        "Quantity": 1,
+        "UnitAmount": line_amount,
+        "LineAmount": line_amount,
+    }
+    if account_code:
+        payload_line["AccountCode"] = account_code
+    if tax_type:
+        payload_line["TaxType"] = tax_type
+    return line_preview, payload_line, blockers
+
+
+def _xero_invoice_posting_result(
+    *,
+    draft: InvoiceDraft,
+    session: Session,
+    contacts_by_id: dict[str, dict[str, Any]],
+    accounts_by_code: dict[str, dict[str, Any]],
+    tax_rates_by_type: dict[str, dict[str, Any]],
+) -> XeroInvoicePostingPreviewResultRead:
+    tenant = session.get(Tenant, draft.tenant_id) if draft.tenant_id else None
+    xero_contact_id = _tenant_xero_contact_id(tenant)
+    contact = contacts_by_id.get(xero_contact_id or "")
+    contact_name = _contact_name(contact) if contact is not None else _tenant_name(tenant)
+    blockers: list[str] = []
+    if not xero_contact_id:
+        blockers.append("Tenant Xero contact mapping missing.")
+    elif contact is None:
+        blockers.append(f"Tenant Xero contact {xero_contact_id} was not found in Xero.")
+    elif not _active_xero_contact(contact):
+        blockers.append(f"Tenant Xero contact {xero_contact_id} is not active in Xero.")
+    if not draft.invoice_number:
+        blockers.append("Invoice number missing.")
+    if draft.issue_date is None:
+        blockers.append("Invoice issue date missing.")
+    if draft.due_date is None:
+        blockers.append("Invoice due date missing.")
+    active_lines = [line for line in draft.lines if line.deleted_at is None]
+    if not active_lines:
+        blockers.append("Invoice draft has no line items.")
+    if draft.total_cents <= 0:
+        blockers.append("Invoice amount missing.")
+
+    charge_rules = _charge_rule_lookup_for_invoice(session, draft)
+    line_items: list[XeroInvoicePostingPreviewLineRead] = []
+    payload_lines: list[dict[str, Any]] = []
+    for index, line in enumerate(active_lines):
+        line_preview, payload_line, line_blockers = _invoice_line_posting_preview(
+            line=line,
+            index=index,
+            charge_rules=charge_rules,
+            accounts_by_code=accounts_by_code,
+            tax_rates_by_type=tax_rates_by_type,
+        )
+        line_items.append(line_preview)
+        payload_lines.append(payload_line)
+        blockers.extend(line_blockers)
+
+    payload_preview: dict[str, Any] = {
+        "Type": "ACCREC",
+        "Status": "DRAFT",
+        "Contact": {"ContactID": xero_contact_id} if xero_contact_id else {},
+        "Date": draft.issue_date.isoformat() if draft.issue_date else None,
+        "DueDate": draft.due_date.isoformat() if draft.due_date else None,
+        "InvoiceNumber": draft.invoice_number,
+        "Reference": draft.title,
+        "CurrencyCode": draft.currency,
+        "LineAmountTypes": "Exclusive",
+        "LineItems": payload_lines,
+    }
+    status_label: Literal["ready", "blocked"] = "blocked" if blockers else "ready"
+    return XeroInvoicePostingPreviewResultRead(
+        invoice_draft_id=draft.id,
+        invoice_number=draft.invoice_number,
+        title=draft.title,
+        status=status_label,
+        xero_contact_id=xero_contact_id,
+        contact_name=contact_name,
+        issue_date=draft.issue_date,
+        due_date=draft.due_date,
+        currency=draft.currency,
+        total_cents=draft.total_cents,
+        line_count=len(active_lines),
+        line_items=line_items,
+        blockers=blockers,
+        payload_preview=payload_preview,
+    )
+
+
 @router.get("/oauth/start", response_model=XeroOAuthStartRead)
 def start_xero_oauth(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -1122,6 +1357,121 @@ def validate_xero_chart_tax_preview(
             "This is a provider-backed validation preview only.",
             "Leasium only checks whether local account codes and tax types exist in Xero.",
             "No invoice posting, Xero mutation, tenant email, or payment reconciliation was run.",
+        ],
+    )
+
+
+@router.post(
+    "/invoices/posting-preview/{entity_id}",
+    response_model=XeroInvoicePostingPreviewRead,
+)
+def preview_xero_invoice_posting(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> XeroInvoicePostingPreviewRead:
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+    provider_connection = _active_xero_connection(session, entity.id)
+    if provider_connection is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Connect Xero through OAuth before previewing invoice posting.",
+        )
+
+    try:
+        access_token = _refresh_provider_access_token(provider_connection, settings)
+        contacts = fetch_xero_contacts(access_token, provider_connection.xero_tenant_id, settings)
+        accounts = fetch_xero_accounts(access_token, provider_connection.xero_tenant_id, settings)
+        tax_rates = fetch_xero_tax_rates(
+            access_token,
+            provider_connection.xero_tenant_id,
+            settings,
+        )
+    except XeroIntegrationError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    contacts_by_id = {
+        contact_id: contact
+        for contact in contacts
+        if (contact_id := _contact_id(contact)) is not None
+    }
+    accounts_by_code = {
+        code: account
+        for account in accounts
+        if (code := _xero_account_code(account)) is not None
+    }
+    tax_rates_by_type = {
+        tax_type.upper(): tax_rate
+        for tax_rate in tax_rates
+        if (tax_type := _xero_tax_type(tax_rate)) is not None
+    }
+    invoice_drafts = _approved_unsynced_invoice_drafts(session, entity.id)
+    results = [
+        _xero_invoice_posting_result(
+            draft=draft,
+            session=session,
+            contacts_by_id=contacts_by_id,
+            accounts_by_code=accounts_by_code,
+            tax_rates_by_type=tax_rates_by_type,
+        )
+        for draft in invoice_drafts
+    ]
+    prepared_at = utcnow()
+    provider_connection.updated_by_user_id = user.id
+    connection_metadata = dict(provider_connection.connection_metadata or {})
+    connection_metadata["last_invoice_posting_preview"] = {
+        "prepared_at": prepared_at.isoformat(),
+        "checked_invoices": len(results),
+        "ready": sum(1 for result in results if result.status == "ready"),
+        "blocked": sum(1 for result in results if result.status == "blocked"),
+        "fetched_contacts": len(contacts),
+        "fetched_accounts": len(accounts),
+        "fetched_tax_rates": len(tax_rates),
+        "mode": "preview_only",
+    }
+    provider_connection.connection_metadata = connection_metadata
+    entity.xero_last_sync_at = prepared_at
+
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="read",
+        target_table="xero_connection",
+        target_id=provider_connection.id,
+        tool_name="xero.invoice_posting_preview",
+        tool_input={"entity_id": str(entity.id)},
+        tool_output_summary=(
+            f"Prepared Xero posting preview for {len(results)} approved invoice draft(s); "
+            "no invoice posting, Xero mutation, tenant email, or payment reconciliation was run."
+        ),
+    )
+    session.commit()
+    return XeroInvoicePostingPreviewRead(
+        entity_id=entity.id,
+        xero_tenant_id=provider_connection.xero_tenant_id,
+        tenant_name=provider_connection.tenant_name,
+        checked_invoices=len(results),
+        ready_count=sum(1 for result in results if result.status == "ready"),
+        blocked_count=sum(1 for result in results if result.status == "blocked"),
+        results=results,
+        prepared_at=prepared_at,
+        guardrails=[
+            "This is a provider-backed invoice posting preview only.",
+            "Leasium builds the draft Xero payload and blocker list for approved invoice drafts.",
+            (
+                "No invoices are posted, no Xero records are mutated, no tenant email is "
+                "sent, and no payment reconciliation is run."
+            ),
         ],
     )
 
