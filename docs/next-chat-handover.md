@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production deployment: `f4f4386 Add tenant portal account foundation`, Vercel deployment `dpl_HDsPBnhPpLimaKEx1V49ZXNQHUtN`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal/not-a-real-token` remains public, and Render API health/OpenAPI are live with the tenant portal account endpoints.
+- Latest confirmed production deployment: `01d24e1 Add tenant portal account UI`, Vercel deployment `dpl_EZUjAdCB87dAoJhD74h5sdRnUe8P`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal/not-a-real-token` remains public, and Render API health/OpenAPI are live with tenant account bearer support on portal session/actions.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -218,6 +218,9 @@ Last updated: 2026-05-20
   - `./node_modules/.bin/eslint 'src/app/tenant-portal/[token]/page.tsx' src/lib/api.ts tests/smoke/api-mocks.ts --ext .ts,.tsx`
   - `./node_modules/.bin/tsc --noEmit`
   - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant portal shows scoped self-service data"` (`1 passed`)
+  - Production Vercel deployment `dpl_EZUjAdCB87dAoJhD74h5sdRnUe8P` is `READY`.
+  - Production Vercel `/settings` returned `307` to `/sign-in`, and `/tenant-portal/not-a-real-token` returned `200`.
+  - Production Render `/health` returned `200`, and OpenAPI now lists `authorization` on tenant portal account session/claim plus portal maintenance, preference, upload, and download actions.
 - Tenant portal account foundation checks passed:
   - `.venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py tests/integration/test_tenant_onboarding_api.py -q` (`14 passed`)
   - `.venv/bin/python -m pytest -q` (`94 passed`, `1 skipped`; migration smoke skipped because `TEST_DATABASE_URL` is not configured)
