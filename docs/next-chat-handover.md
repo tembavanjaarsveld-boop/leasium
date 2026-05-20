@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed app-code production deployment: `e6a07ac Add tenant portal operator access controls`, Vercel deployment `dpl_AWhdu3DHxeBc9Qem39Pdy6tionjC`, state `READY`; Render deploy `dep-d86suksrp5ls739konv0` went live for the same app-code commit, and later handover-only redeploys do not change runtime behavior. `/tenants` and `/settings` redirect signed-out operators to `/sign-in`, `/tenant-portal` and `/tenant-portal/account` return `200`, and Render API health is live.
+- Latest confirmed app-code production deployment: `1ae960a Persist provider dispatch receipts`, Vercel deployment `dpl_6X5tx8GvZLYxZhaNwhKwUJE2G3KQ`, state `READY`; Render API health is live and OpenAPI includes the invoice SendGrid webhook, `XeroProviderStatusReceiptRead`, `provider_receipts`, and `next_action`. `/billing-readiness` redirects signed-out operators to `/sign-in`, and `/tenant-portal/account` returns `200`.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
