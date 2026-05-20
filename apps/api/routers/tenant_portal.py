@@ -194,6 +194,20 @@ def _parse_iso_datetime(value: object) -> datetime | None:
     return parsed
 
 
+def _account_recovery_receipt(account: TenantPortalAccount) -> dict[str, object]:
+    receipt = (account.account_metadata or {}).get("last_recovery_receipt")
+    return receipt if isinstance(receipt, dict) else {}
+
+
+def _account_recovery_at(account: TenantPortalAccount) -> datetime | None:
+    return _parse_iso_datetime(_account_recovery_receipt(account).get("at"))
+
+
+def _account_recovery_action(account: TenantPortalAccount) -> str | None:
+    action = _account_recovery_receipt(account).get("action")
+    return action if isinstance(action, str) else None
+
+
 def _clean_token(value: str | None) -> str | None:
     token = value.strip() if value else ""
     return token or None
@@ -1053,6 +1067,7 @@ def get_tenant_portal_account_status(
     )
     if account is not None:
         tenant = session.get(Tenant, account.tenant_id)
+        recovery_action = _account_recovery_action(account)
         return TenantPortalAccountLifecycleRead(
             status="active",
             tenant_id=account.tenant_id,
@@ -1061,10 +1076,17 @@ def get_tenant_portal_account_status(
             linked_at=account.linked_at,
             last_seen_at=account.last_seen_at,
             revoked_at=account.revoked_at,
+            recovery_action=recovery_action,
+            recovery_at=_account_recovery_at(account),
             recovery_hint=(
-                "This tenant login can open the portal without the original link. "
-                "If it is linked to the wrong tenant, ask the property team to unlink "
-                "and relink the account."
+                "The property team restored this tenant login. It can open the portal "
+                "without the original link again."
+                if recovery_action == "restored"
+                else (
+                    "This tenant login can open the portal without the original link. "
+                    "If it is linked to the wrong tenant, ask the property team to unlink "
+                    "and relink the account."
+                )
             ),
         )
 
@@ -1089,9 +1111,38 @@ def get_tenant_portal_account_status(
             linked_at=revoked_account.linked_at,
             last_seen_at=revoked_account.last_seen_at,
             revoked_at=revoked_account.revoked_at,
+            recovery_action=_account_recovery_action(revoked_account),
+            recovery_at=_account_recovery_at(revoked_account),
             recovery_hint=(
                 "This tenant login was revoked by the property team. Ask them to "
                 "restore access or send a fresh tenant portal link before trying again."
+            ),
+        )
+
+    unlinked_account = session.scalar(
+        select(TenantPortalAccount)
+        .where(
+            TenantPortalAccount.auth_provider == "clerk",
+            TenantPortalAccount.auth_provider_id == provider_id,
+            TenantPortalAccount.deleted_at.is_not(None),
+        )
+        .order_by(TenantPortalAccount.updated_at.desc())
+    )
+    if unlinked_account is not None:
+        tenant = session.get(Tenant, unlinked_account.tenant_id)
+        return TenantPortalAccountLifecycleRead(
+            status="unlinked",
+            tenant_id=unlinked_account.tenant_id,
+            tenant_name=_tenant_name(tenant),
+            email=unlinked_account.email,
+            linked_at=unlinked_account.linked_at,
+            last_seen_at=unlinked_account.last_seen_at,
+            revoked_at=unlinked_account.revoked_at,
+            recovery_action=_account_recovery_action(unlinked_account),
+            recovery_at=_account_recovery_at(unlinked_account),
+            recovery_hint=(
+                "The property team unlinked this tenant login so it can be safely "
+                "reconnected. Open a fresh tenant portal link once to relink this account."
             ),
         )
 

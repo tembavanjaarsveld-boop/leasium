@@ -297,6 +297,9 @@ class TenantPortalAccountRead(BaseModel):
     last_seen_at: datetime | None = None
     revoked_at: datetime | None = None
     deleted_at: datetime | None = None
+    recovery_action: str | None = None
+    recovery_reason: str | None = None
+    recovery_at: datetime | None = None
 
 
 class TenantPortalAccountAction(BaseModel):

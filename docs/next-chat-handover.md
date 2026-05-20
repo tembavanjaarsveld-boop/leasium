@@ -235,20 +235,24 @@ Last updated: 2026-05-20
     - Tenant detail lists linked tenant portal accounts with status, provider subject, linked time, last seen time, and action buttons.
     - Operators can revoke access when a login should stay blocked or unlink access when the tenant should reconnect cleanly.
     - Revoke/unlink actions are entity-scoped, audit logged, store operator reason metadata, and the unlink path allows relink with a valid portal token.
+  - Tenant portal account recovery receipts v1 is now built too.
+    - Operator revoke/unlink/restore actions store compact recovery receipts on the account metadata.
+    - Tenant detail shows the latest recovery receipt and lets staff restore a revoked login without a fresh link.
+    - Tenant account status now confirms unlinked/restored recovery state with tenant-facing copy.
   - This is design-facing and still needs Remba review.
 
 ## Verification
 
 - Tenant portal operator access checks passed:
-  - `.venv/bin/python -m ruff check apps/api/routers/tenants.py apps/api/schemas/register.py tests/integration/test_tenant_portal_api.py`
+  - `.venv/bin/python -m ruff check apps/api/routers/tenants.py apps/api/routers/tenant_portal.py apps/api/schemas/register.py apps/api/schemas/tenant_portal.py tests/integration/test_tenant_portal_api.py`
   - `.venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py -q` (`10 passed`)
   - `.venv/bin/python -m pytest -q` (`97 passed`, `1 skipped`; migration smoke skipped because `TEST_DATABASE_URL` is not configured)
-  - `./node_modules/.bin/eslint 'src/app/tenants/[tenantId]/page.tsx' src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
+  - `./node_modules/.bin/eslint 'src/app/tenants/[tenantId]/page.tsx' src/app/tenant-portal/tenant-portal-content.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
   - `./node_modules/.bin/tsc --noEmit`
-  - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`8 passed`, `5 skipped`)
+  - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "tenant detail shows portal access recovery actions"` (`1 passed`)
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
   - `git diff --check`
-  - Local browser pass loaded `/tenants/tenant-1` against a throwaway API, showed the Portal access panel, and confirmed Unlink moves the panel to the empty linked-login state.
+  - Local smoke pass loaded `/tenants/tenant-1`, showed the Portal access panel, and confirmed Revoke records a recovery receipt before Restore returns the login to active.
   - Production Vercel deployment `dpl_AWhdu3DHxeBc9Qem39Pdy6tionjC` is `READY`.
   - Production Render deploy `dep-d86suksrp5ls739konv0` is live for `e6a07ac`, OpenAPI lists `/api/v1/tenants/{tenant_id}/portal-accounts`, `/revoke`, and `/unlink`, and the protected no-auth route returns `401 Missing Clerk bearer token`.
   - Production Vercel `/tenant-portal/account` returned `200`, `/tenants` returned `307` to `/sign-in`, and Render `/health` returned `200`.
@@ -530,7 +534,7 @@ Last updated: 2026-05-20
 ## Recommended Next Tickets
 
 1. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, tenant detail portal access controls, and Operations workspace.
-2. Add tenant portal account restore/relink receipts, tenant-facing confirmation after staff recovery, and clearer invite expiry renewal handling.
+2. Add clearer tenant portal invite expiry renewal handling and staff-triggered fresh-link flows.
 3. Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
 4. Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 5. Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.

@@ -57,6 +57,7 @@ import {
   previewPublicEnrichment,
   resendTenantOnboarding,
   reviewTenantOnboarding,
+  restoreTenantPortalAccount,
   revokeTenantPortalAccount,
   TenantPortalAccountRecord,
   TenantPayload,
@@ -209,6 +210,16 @@ function portalAccountDetail(account: TenantPortalAccountRecord) {
   return `Linked ${formatDateTime(account.linked_at)} - Last seen ${formatDateTime(
     account.last_seen_at,
   )}`;
+}
+
+function portalAccountRecoveryDetail(account: TenantPortalAccountRecord) {
+  if (!account.recovery_action) {
+    return null;
+  }
+  const action = portalAccountLabel(account.recovery_action);
+  const at = formatDateTime(account.recovery_at);
+  const reason = account.recovery_reason ? ` - ${account.recovery_reason}` : "";
+  return `${action} by staff ${at}${reason}`;
 }
 
 function reminderStepTone(statusValue: string | null | undefined) {
@@ -484,6 +495,17 @@ function TenantDetail() {
     mutationFn: (accountId: string) =>
       revokeTenantPortalAccount(tenantId, accountId, {
         reason: "Operator revoked access from the tenant profile.",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenant-portal-accounts", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
+    },
+  });
+
+  const restorePortalAccountMutation = useMutation({
+    mutationFn: (accountId: string) =>
+      restoreTenantPortalAccount(tenantId, accountId, {
+        reason: "Operator restored access from the tenant profile.",
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenant-portal-accounts", tenantId] });
@@ -780,6 +802,11 @@ function TenantDetail() {
                         <div className="mt-1 text-xs text-muted-foreground">
                           {portalAccountDetail(account)}
                         </div>
+                        {portalAccountRecoveryDetail(account) ? (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Recovery receipt: {portalAccountRecoveryDetail(account)}
+                          </div>
+                        ) : null}
                         <div className="mt-1 truncate text-xs text-muted-foreground">
                           {account.auth_provider} account {account.auth_provider_id}
                         </div>
@@ -805,6 +832,18 @@ function TenantDetail() {
                             Revoke
                           </SecondaryButton>
                         </div>
+                      ) : account.status === "revoked" ? (
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <SecondaryButton
+                            type="button"
+                            className="h-8"
+                            onClick={() => restorePortalAccountMutation.mutate(account.id)}
+                            disabled={restorePortalAccountMutation.isPending}
+                          >
+                            <Check size={15} />
+                            Restore
+                          </SecondaryButton>
+                        </div>
                       ) : null}
                     </div>
                   </div>
@@ -817,11 +856,13 @@ function TenantDetail() {
                 ) : null}
                 {portalAccountsQuery.error ||
                 revokePortalAccountMutation.error ||
+                restorePortalAccountMutation.error ||
                 unlinkPortalAccountMutation.error ? (
                   <p className="text-sm text-danger">
                     {friendlyError(
                       portalAccountsQuery.error ??
                         revokePortalAccountMutation.error ??
+                        restorePortalAccountMutation.error ??
                         unlinkPortalAccountMutation.error,
                     )}
                   </p>

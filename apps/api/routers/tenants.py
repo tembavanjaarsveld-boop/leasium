@@ -164,6 +164,36 @@ def _parse_datetime(value: Any) -> datetime | None:
         return None
 
 
+def _account_recovery_receipt(account: TenantPortalAccount) -> dict[str, Any]:
+    receipt = (account.account_metadata or {}).get("last_recovery_receipt")
+    return receipt if isinstance(receipt, dict) else {}
+
+
+def _record_account_recovery(
+    account: TenantPortalAccount,
+    *,
+    action: str,
+    at: datetime,
+    user: CurrentUser,
+    reason: str | None,
+) -> None:
+    metadata = dict(account.account_metadata or {})
+    receipt: dict[str, Any] = {
+        "action": action,
+        "at": at.isoformat(),
+        "by_user_id": str(user.id),
+    }
+    if reason:
+        receipt["reason"] = reason
+    receipts = metadata.get("recovery_receipts")
+    if not isinstance(receipts, list):
+        receipts = []
+    receipts.append(receipt)
+    metadata["recovery_receipts"] = receipts[-10:]
+    metadata["last_recovery_receipt"] = receipt
+    account.account_metadata = metadata
+
+
 def _activity(
     occurred_at: datetime | None,
     *,
@@ -247,6 +277,9 @@ def _account_status(account: TenantPortalAccount) -> str:
 
 
 def _tenant_portal_account_read(account: TenantPortalAccount) -> TenantPortalAccountRead:
+    receipt = _account_recovery_receipt(account)
+    action = receipt.get("action")
+    reason = receipt.get("reason")
     return TenantPortalAccountRead(
         id=account.id,
         tenant_id=account.tenant_id,
@@ -261,6 +294,9 @@ def _tenant_portal_account_read(account: TenantPortalAccount) -> TenantPortalAcc
         last_seen_at=account.last_seen_at,
         revoked_at=account.revoked_at,
         deleted_at=account.deleted_at,
+        recovery_action=action if isinstance(action, str) else None,
+        recovery_reason=reason if isinstance(reason, str) else None,
+        recovery_at=_parse_datetime(receipt.get("at")),
     )
 
 
@@ -299,7 +335,6 @@ def list_tenant_portal_accounts(
         .where(
             TenantPortalAccount.tenant_id == tenant.id,
             TenantPortalAccount.entity_id == tenant.entity_id,
-            TenantPortalAccount.deleted_at.is_(None),
         )
         .order_by(TenantPortalAccount.updated_at.desc())
     ).all()
@@ -329,6 +364,13 @@ def revoke_tenant_portal_account(
     metadata["revoked_at"] = (account.revoked_at or now).isoformat()
     metadata["revoked_by_user_id"] = str(user.id)
     account.account_metadata = metadata
+    _record_account_recovery(
+        account,
+        action="revoked",
+        at=account.revoked_at or now,
+        user=user,
+        reason=payload.reason,
+    )
     audit_log(
         session,
         actor=user.actor,
@@ -343,6 +385,70 @@ def revoke_tenant_portal_account(
             "reason": payload.reason,
         },
         tool_output_summary="Tenant portal account revoked by operator.",
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(account)
+    return _tenant_portal_account_read(account)
+
+
+@router.post(
+    "/{tenant_id}/portal-accounts/{account_id}/restore",
+    response_model=TenantPortalAccountRead,
+)
+def restore_tenant_portal_account(
+    tenant_id: UUID,
+    account_id: UUID,
+    payload: TenantPortalAccountAction,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantPortalAccountRead:
+    tenant = _get_tenant_for_user(tenant_id, user, session, WRITE_ROLES)
+    account = _tenant_portal_account_for_user(tenant, account_id, session)
+    if account.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Unlinked tenant portal accounts must be relinked from a fresh portal link.",
+        )
+    conflicting = session.scalar(
+        select(TenantPortalAccount).where(
+            TenantPortalAccount.id != account.id,
+            TenantPortalAccount.auth_provider == account.auth_provider,
+            TenantPortalAccount.auth_provider_id == account.auth_provider_id,
+            TenantPortalAccount.status == TenantPortalAccountStatus.active,
+            TenantPortalAccount.revoked_at.is_(None),
+            TenantPortalAccount.deleted_at.is_(None),
+        )
+    )
+    if conflicting is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Another active tenant portal account already uses this login.",
+        )
+    now = utcnow()
+    account.status = TenantPortalAccountStatus.active
+    account.revoked_at = None
+    _record_account_recovery(
+        account,
+        action="restored",
+        at=now,
+        user=user,
+        reason=payload.reason,
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=tenant.entity_id,
+        action="restore",
+        target_table="tenant_portal_account",
+        target_id=account.id,
+        tool_name="tenant.portal_account_restore",
+        tool_input={
+            "tenant_id": str(tenant.id),
+            "reason": payload.reason,
+        },
+        tool_output_summary="Tenant portal account restored by operator.",
         data_classification="confidential",
     )
     session.commit()
@@ -371,6 +477,13 @@ def unlink_tenant_portal_account(
     metadata["unlinked_at"] = account.deleted_at.isoformat()
     metadata["unlinked_by_user_id"] = str(user.id)
     account.account_metadata = metadata
+    _record_account_recovery(
+        account,
+        action="unlinked",
+        at=account.deleted_at,
+        user=user,
+        reason=payload.reason,
+    )
     audit_log(
         session,
         actor=user.actor,

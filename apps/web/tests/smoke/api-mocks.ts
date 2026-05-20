@@ -154,6 +154,9 @@ const initialOperatorTenantPortalAccounts = [
     last_seen_at: "2026-05-19T09:30:00.000Z",
     revoked_at: null,
     deleted_at: null,
+    recovery_action: null,
+    recovery_reason: null,
+    recovery_at: null,
   },
 ];
 
@@ -1748,6 +1751,31 @@ export async function mockLeasiumApi(
                 status: "revoked",
                 revoked_at: "2026-05-20T00:00:00.000Z",
                 updated_at: "2026-05-20T00:00:00.000Z",
+                recovery_action: "revoked",
+                recovery_reason: "Operator revoked access from the tenant profile.",
+                recovery_at: "2026-05-20T00:00:00.000Z",
+              }
+            : account,
+      );
+      await fulfillJson(route, operatorTenantPortalAccounts[0]);
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === `/tenants/${tenantId}/portal-accounts/portal-account-1/restore`
+    ) {
+      operatorTenantPortalAccounts = operatorTenantPortalAccounts.map(
+        (account) =>
+          account.id === "portal-account-1"
+            ? {
+                ...account,
+                status: "active",
+                revoked_at: null,
+                updated_at: "2026-05-20T00:05:00.000Z",
+                recovery_action: "restored",
+                recovery_reason: "Operator restored access from the tenant profile.",
+                recovery_at: "2026-05-20T00:05:00.000Z",
               }
             : account,
       );
@@ -1761,12 +1789,25 @@ export async function mockLeasiumApi(
     ) {
       const account =
         operatorTenantPortalAccounts[0] ?? initialOperatorTenantPortalAccounts[0];
-      operatorTenantPortalAccounts = [];
+      operatorTenantPortalAccounts = [
+        {
+          ...account,
+          status: "unlinked",
+          deleted_at: "2026-05-20T00:00:00.000Z",
+          updated_at: "2026-05-20T00:00:00.000Z",
+          recovery_action: "unlinked",
+          recovery_reason: "Operator unlinked access so the tenant can reconnect.",
+          recovery_at: "2026-05-20T00:00:00.000Z",
+        },
+      ];
       await fulfillJson(route, {
         ...account,
         status: "unlinked",
         deleted_at: "2026-05-20T00:00:00.000Z",
         updated_at: "2026-05-20T00:00:00.000Z",
+        recovery_action: "unlinked",
+        recovery_reason: "Operator unlinked access so the tenant can reconnect.",
+        recovery_at: "2026-05-20T00:00:00.000Z",
       });
       return;
     }
@@ -1791,8 +1832,10 @@ export async function mockLeasiumApi(
           linked_at: null,
           last_seen_at: null,
           revoked_at: null,
+          recovery_action: "unlinked",
+          recovery_at: "2026-05-20T00:00:00.000Z",
           recovery_hint:
-            "Open your original tenant portal link once to connect this login. If the link expired or was lost, ask the property team for a fresh tenant portal link.",
+            "The property team unlinked this tenant login so it can be safely reconnected. Open a fresh tenant portal link once to relink this account.",
         });
         return;
       }
@@ -1808,6 +1851,8 @@ export async function mockLeasiumApi(
         linked_at: "2026-05-19T09:00:00.000Z",
         last_seen_at: "2026-05-19T09:30:00.000Z",
         revoked_at: null,
+        recovery_action: null,
+        recovery_at: null,
         recovery_hint:
           "This tenant login can open the portal without the original link. If it is linked to the wrong tenant, ask the property team to unlink and relink the account.",
       });

@@ -30,6 +30,8 @@ class TenantPortalAccountLifecycleRead(BaseModel):
     linked_at: datetime | None = None
     last_seen_at: datetime | None = None
     revoked_at: datetime | None = None
+    recovery_action: str | None = None
+    recovery_at: datetime | None = None
     recovery_hint: str
 
 

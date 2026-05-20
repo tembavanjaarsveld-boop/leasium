@@ -600,11 +600,15 @@ def test_operator_can_revoke_tenant_portal_account(
     assert body["tenant_id"] == scope["tenant_id"]
     assert body["status"] == "revoked"
     assert body["revoked_at"] is not None
+    assert body["recovery_action"] == "revoked"
+    assert body["recovery_reason"] == "Tenant contact changed."
+    assert body["recovery_at"] is not None
     session.refresh(account)
     assert account.status == TenantPortalAccountStatus.revoked
     assert account.revoked_at is not None
     assert account.deleted_at is None
     assert account.account_metadata["revoked_reason"] == "Tenant contact changed."
+    assert account.account_metadata["last_recovery_receipt"]["action"] == "revoked"
 
     session_response = client.get(
         "/api/v1/tenant-portal/account/session",
@@ -618,6 +622,38 @@ def test_operator_can_revoke_tenant_portal_account(
     assert status_response.status_code == 200
     assert status_response.json()["status"] == "revoked"
     assert status_response.json()["tenant_id"] == scope["tenant_id"]
+    assert status_response.json()["recovery_action"] == "revoked"
+    assert status_response.json()["recovery_at"] is not None
+
+    restore_response = client.post(
+        f"/api/v1/tenants/{scope['tenant_id']}/portal-accounts/{account.id}/restore",
+        json={"reason": "Tenant confirmed the login."},
+    )
+    assert restore_response.status_code == 200
+    restored = restore_response.json()
+    assert restored["status"] == "active"
+    assert restored["revoked_at"] is None
+    assert restored["recovery_action"] == "restored"
+    assert restored["recovery_reason"] == "Tenant confirmed the login."
+    session.refresh(account)
+    assert account.status == TenantPortalAccountStatus.active
+    assert account.revoked_at is None
+    assert account.account_metadata["last_recovery_receipt"]["action"] == "restored"
+
+    restored_status = client.get(
+        "/api/v1/tenant-portal/account/status",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+    assert restored_status.status_code == 200
+    assert restored_status.json()["status"] == "active"
+    assert restored_status.json()["recovery_action"] == "restored"
+    assert "restored this tenant login" in restored_status.json()["recovery_hint"]
+
+    restored_session = client.get(
+        "/api/v1/tenant-portal/account/session",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+    assert restored_session.status_code == 200
 
 
 def test_operator_can_unlink_tenant_portal_account_without_blocking_relink(
@@ -647,6 +683,9 @@ def test_operator_can_unlink_tenant_portal_account_without_blocking_relink(
     assert body["tenant_id"] == scope["tenant_id"]
     assert body["status"] == "unlinked"
     assert body["deleted_at"] is not None
+    assert body["recovery_action"] == "unlinked"
+    assert body["recovery_reason"] == "Tenant will relink with a new contact."
+    assert body["recovery_at"] is not None
     session.refresh(account)
     assert account.status == TenantPortalAccountStatus.active
     assert account.revoked_at is None
@@ -661,6 +700,9 @@ def test_operator_can_unlink_tenant_portal_account_without_blocking_relink(
     )
     assert status_response.status_code == 200
     assert status_response.json()["status"] == "unlinked"
+    assert status_response.json()["tenant_id"] == scope["tenant_id"]
+    assert status_response.json()["recovery_action"] == "unlinked"
+    assert "unlinked this tenant login" in status_response.json()["recovery_hint"]
 
     relink_response = client.post(
         "/api/v1/tenant-portal/account/claim",

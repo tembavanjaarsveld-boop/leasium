@@ -90,13 +90,14 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Tenant portal document provenance/actions v1: tenant-facing document rows now show filename, category, size, source, received timestamp, notes, and an explicit download action for both token and account-scoped portal sessions. Pending Remba review.
 - [x] Tenant portal account lifecycle guidance v1: signed-in tenant accounts now have a bearer-backed lifecycle status check, clearer unlinked/revoked/wrong-tenant recovery copy, durable-access guidance after invite expiry, and smoke coverage for relink guidance. Pending Remba review.
 - [x] Tenant portal operator access controls v1: tenant detail now lists linked tenant portal accounts, lets operators revoke blocked access or unlink for clean relinking, stores reason/audit metadata, and keeps the unlink path relink-safe. Pending Remba review.
+- [x] Tenant portal account recovery receipts v1: operator revoke/unlink/restore actions now keep compact recovery receipts, tenant detail shows the latest staff recovery receipt, revoked accounts can be restored without a fresh link, and tenant account status confirms unlinked/restored recovery state. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations` and `20260520_0019_tenant_portal_accounts` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, Portfolio QA IA link, tenant portal, invoice email action, and Operations workspace before treating them as UX complete.
 - [ ] Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
-- [ ] Add tenant portal account restore/relink receipts, tenant-facing confirmation after staff recovery, and clearer invite expiry renewal handling.
+- [ ] Add clearer tenant portal invite expiry renewal handling and staff-triggered fresh-link flows.
 - [ ] Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 - [ ] Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
@@ -127,7 +128,7 @@ Official Re-Leased pages position their product around a few mature modules that
 
 - [ ] Maintenance and arrears workflow depth: tenant-submitted requests, contractor coordination, approval history, invoice linking, legal/escalation notes, and portal-visible status where appropriate.
 - [ ] Compliance and inspections: recurring checks, certifications, document expiry, fire/safety obligations, delegated owners, and audit trail.
-- [ ] Tenant portal account lifecycle: restore flows, recovery receipts, invite renewal handling, and tenant-facing account recovery.
+- [ ] Tenant portal account lifecycle: invite renewal handling, tenant-side account recovery, multi-login management, and change-email support.
 - [ ] Portfolio Insights: rent roll health, lease events, arrears, invoice status, maintenance aging, compliance expiry, owner/entity dashboards, and shareable snapshots.
 - [ ] Communications hub: email templates, outbound logs, tenant/contractor threads, and record-linked correspondence.
 - [ ] Approvals and workflow: invoice approval, maintenance spend approval, delegated tasks, reminders, escalation rules, and activity history.

@@ -564,6 +564,11 @@ function TenantAccountPanel({
               Revoked {formatDateTime(accountStatus.revoked_at)}
             </p>
           ) : null}
+          {accountStatus.recovery_at ? (
+            <p className="text-xs text-muted-foreground">
+              Staff recovery updated {formatDateTime(accountStatus.recovery_at)}
+            </p>
+          ) : null}
         </div>
       </Panel>
     );
@@ -611,6 +616,13 @@ function TenantAccountPanel({
             Future portal sessions can use this tenant account boundary, even
             after the original portal link expires.
           </p>
+          {accountStatus?.recovery_action === "restored" &&
+          accountStatus.recovery_at ? (
+            <p className="text-xs text-muted-foreground">
+              Access restored by the property team{" "}
+              {formatDateTime(accountStatus.recovery_at)}.
+            </p>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             If this account should move to another tenant, ask the property team
             to unlink it before relinking.
@@ -636,6 +648,11 @@ function TenantAccountPanel({
             {accountStatus?.recovery_hint ??
               "If the link expired or was lost, ask the property team for a fresh tenant portal link."}
           </p>
+          {accountStatus?.recovery_at ? (
+            <p className="text-xs text-muted-foreground">
+              Staff recovery updated {formatDateTime(accountStatus.recovery_at)}
+            </p>
+          ) : null}
         </div>
       </Panel>
     );

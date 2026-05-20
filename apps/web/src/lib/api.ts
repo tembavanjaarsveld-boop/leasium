@@ -299,6 +299,9 @@ export type TenantPortalAccountRecord = {
   last_seen_at: string | null;
   revoked_at: string | null;
   deleted_at: string | null;
+  recovery_action: string | null;
+  recovery_reason: string | null;
+  recovery_at: string | null;
 };
 
 export type TenantDetailRecord = {
@@ -478,6 +481,8 @@ export type TenantPortalAccountLifecycleRecord = {
   linked_at: string | null;
   last_seen_at: string | null;
   revoked_at: string | null;
+  recovery_action: string | null;
+  recovery_at: string | null;
   recovery_hint: string;
 };
 
@@ -2037,6 +2042,20 @@ export function revokeTenantPortalAccount(
 ) {
   return request<TenantPortalAccountRecord>(
     `/tenants/${tenantId}/portal-accounts/${accountId}/revoke`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function restoreTenantPortalAccount(
+  tenantId: string,
+  accountId: string,
+  payload: { reason?: string | null } = {},
+) {
+  return request<TenantPortalAccountRecord>(
+    `/tenants/${tenantId}/portal-accounts/${accountId}/restore`,
     {
       method: "POST",
       body: JSON.stringify(payload),
