@@ -1353,6 +1353,53 @@ export type XeroInvoiceProviderDispatchRecord = {
   guardrails: string[];
 };
 
+export type XeroPaymentReconciliationStatus = "unpaid" | "partially_paid" | "paid";
+
+export type XeroPaymentReconciliationItemPayload = {
+  invoice_draft_id?: string | null;
+  invoice_number?: string | null;
+  xero_invoice_id?: string | null;
+  status: XeroPaymentReconciliationStatus;
+  paid_cents?: number | null;
+  paid_at?: string | null;
+  provider_payment_id?: string | null;
+  source?: "imported" | "provider";
+  idempotency_key?: string | null;
+};
+
+export type XeroPaymentReconciliationPayload = {
+  source?: "imported" | "provider";
+  payments?: XeroPaymentReconciliationItemPayload[];
+};
+
+export type XeroPaymentReconciliationResultRecord = {
+  invoice_draft_id: string | null;
+  invoice_number: string | null;
+  status: "ready" | "applied" | "skipped" | "blocked";
+  reason: string;
+  current_status: string | null;
+  proposed_status: XeroPaymentReconciliationStatus | null;
+  current_paid_cents: number | null;
+  proposed_paid_cents: number | null;
+  outstanding_cents: number | null;
+  idempotency_key: string | null;
+};
+
+export type XeroPaymentReconciliationRecord = {
+  entity_id: string;
+  source: "imported" | "provider";
+  provider_configured: boolean;
+  provider_connection_id: string | null;
+  checked_payments: number;
+  ready_count: number;
+  applied_count: number;
+  skipped_count: number;
+  blocked_count: number;
+  results: XeroPaymentReconciliationResultRecord[];
+  reconciled_at: string;
+  guardrails: string[];
+};
+
 export type InsightsEntityRecord = {
   id: string;
   name: string;
@@ -1974,6 +2021,32 @@ export function dispatchXeroInvoiceProviders(
 ) {
   return request<XeroInvoiceProviderDispatchRecord>(
     `/xero/invoices/provider-dispatch/${entityId}`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function previewXeroPaymentReconciliation(
+  entityId: string,
+  payload: XeroPaymentReconciliationPayload,
+) {
+  return request<XeroPaymentReconciliationRecord>(
+    `/xero/payments/reconciliation-preview/${entityId}`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function applyXeroPaymentReconciliation(
+  entityId: string,
+  payload: XeroPaymentReconciliationPayload,
+) {
+  return request<XeroPaymentReconciliationRecord>(
+    `/xero/payments/reconciliation-apply/${entityId}`,
     {
       method: "POST",
       body: JSON.stringify(payload),

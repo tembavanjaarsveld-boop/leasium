@@ -37,6 +37,7 @@ import {
 } from "@/components/ui";
 import {
   applyXeroContactPreview,
+  applyXeroPaymentReconciliation,
   approveXeroInvoicePosting,
   createSecurityMember,
   createXeroInvoiceDrafts,
@@ -46,6 +47,7 @@ import {
   previewXeroChartTaxValidation,
   previewXeroContactSync,
   previewXeroInvoicePosting,
+  previewXeroPaymentReconciliation,
   resendSecurityMemberInvite,
   startXeroOAuth,
   updateSecurityMember,
@@ -61,6 +63,8 @@ import {
   type XeroInvoicePostingApprovalRecord,
   type XeroInvoicePostingPreviewRecord,
   type XeroInvoicePostingPreviewResultRecord,
+  type XeroPaymentReconciliationRecord,
+  type XeroPaymentReconciliationResultRecord,
   type SecurityMemberRecord,
   type SecurityRole,
   type SecurityRoleAssignment,
@@ -189,6 +193,18 @@ function xeroDraftCreateTone(
   return "warning";
 }
 
+function paymentReconciliationTone(
+  status: XeroPaymentReconciliationResultRecord["status"],
+): StatusTone {
+  if (status === "ready" || status === "applied") {
+    return "success";
+  }
+  if (status === "blocked") {
+    return "danger";
+  }
+  return "neutral";
+}
+
 function roleForEntity(member: SecurityMemberRecord, entityId: string) {
   return member.roles.find((role) => role.entity_id === entityId);
 }
@@ -302,6 +318,10 @@ function SettingsWorkspace() {
   >({});
   const [xeroDraftCreateResult, setXeroDraftCreateResult] =
     useState<XeroInvoiceDraftCreateRecord | null>(null);
+  const [xeroPaymentPreview, setXeroPaymentPreview] =
+    useState<XeroPaymentReconciliationRecord | null>(null);
+  const [xeroPaymentApplyResult, setXeroPaymentApplyResult] =
+    useState<XeroPaymentReconciliationRecord | null>(null);
   const [selectedXeroContactMatches, setSelectedXeroContactMatches] = useState<
     Record<string, boolean>
   >({});
@@ -350,6 +370,8 @@ function SettingsWorkspace() {
     setXeroInvoicePostingPreview(null);
     setXeroInvoiceApprovalResults({});
     setXeroDraftCreateResult(null);
+    setXeroPaymentPreview(null);
+    setXeroPaymentApplyResult(null);
     setSelectedXeroContactMatches({});
   }, [selectedEntityId]);
 
@@ -381,6 +403,8 @@ function SettingsWorkspace() {
       setXeroInvoicePostingPreview(null);
       setXeroInvoiceApprovalResults({});
       setXeroDraftCreateResult(null);
+      setXeroPaymentPreview(null);
+      setXeroPaymentApplyResult(null);
       queryClient.invalidateQueries({ queryKey: ["entities"] });
       queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
@@ -454,6 +478,8 @@ function SettingsWorkspace() {
       setXeroInvoicePostingPreview(result);
       setXeroInvoiceApprovalResults({});
       setXeroDraftCreateResult(null);
+      setXeroPaymentPreview(null);
+      setXeroPaymentApplyResult(null);
       queryClient.invalidateQueries({ queryKey: ["entities"] });
       queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
@@ -493,6 +519,35 @@ function SettingsWorkspace() {
       }),
     onSuccess: (result) => {
       setXeroDraftCreateResult(result);
+      setXeroPaymentPreview(null);
+      setXeroPaymentApplyResult(null);
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
+    },
+  });
+
+  const xeroPaymentPreviewMutation = useMutation({
+    mutationFn: () =>
+      previewXeroPaymentReconciliation(selectedEntityId, {
+        source: "provider",
+        payments: [],
+      }),
+    onSuccess: (result) => {
+      setXeroPaymentPreview(result);
+      setXeroPaymentApplyResult(null);
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
+    },
+  });
+
+  const xeroPaymentApplyMutation = useMutation({
+    mutationFn: () =>
+      applyXeroPaymentReconciliation(selectedEntityId, {
+        source: "provider",
+        payments: [],
+      }),
+    onSuccess: (result) => {
+      setXeroPaymentApplyResult(result);
       queryClient.invalidateQueries({ queryKey: ["entities"] });
       queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
@@ -589,6 +644,11 @@ function SettingsWorkspace() {
     (invoiceDraftId) =>
       xeroInvoiceApprovalResults[invoiceDraftId]?.approval_state === "approved",
   ).length;
+  const readyPaymentReconciliationCount =
+    xeroPaymentPreview?.results.filter((result) => result.status === "ready")
+      .length ?? 0;
+  const displayedPaymentReconciliation =
+    xeroPaymentApplyResult ?? xeroPaymentPreview;
 
   return (
     <main className="min-h-screen">
@@ -1411,6 +1471,28 @@ function SettingsWorkspace() {
                       Preview invoice posting
                     </SecondaryButton>
                   </div>
+                  <div className="grid gap-2 rounded-md border border-border bg-white p-3">
+                    <div className="text-sm font-semibold">Payment reconciliation</div>
+                    <p className="text-sm text-muted-foreground">
+                      Compare provider invoice payment status with Leasium
+                      invoice metadata before applying any local payment update.
+                    </p>
+                    <SecondaryButton
+                      type="button"
+                      disabled={
+                        xeroPaymentPreviewMutation.isPending ||
+                        status.connection.connection_source !== "provider"
+                      }
+                      onClick={() => xeroPaymentPreviewMutation.mutate()}
+                    >
+                      {xeroPaymentPreviewMutation.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <SearchCheck size={15} />
+                      )}
+                      Preview payments
+                    </SecondaryButton>
+                  </div>
                   <Field label="Xero tenant ID">
                     <Input
                       value={xeroTenantId}
@@ -2069,6 +2151,167 @@ function SettingsWorkspace() {
                     </div>
                   </div>
                 ) : null}
+              </SectionPanel>
+            ) : null}
+
+            {displayedPaymentReconciliation ? (
+              <SectionPanel
+                title="Payment reconciliation review"
+                description="Review provider payment status against Leasium invoice metadata before applying local payment updates."
+                icon={<CircleDollarSign size={17} className="text-primary" />}
+                actions={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      tone={
+                        displayedPaymentReconciliation.blocked_count
+                          ? "warning"
+                          : "success"
+                      }
+                    >
+                      {displayedPaymentReconciliation.ready_count +
+                        displayedPaymentReconciliation.applied_count}{" "}
+                      actionable
+                    </StatusBadge>
+                    <StatusBadge
+                      tone={
+                        displayedPaymentReconciliation.blocked_count
+                          ? "danger"
+                          : "neutral"
+                      }
+                    >
+                      {displayedPaymentReconciliation.blocked_count} blocked
+                    </StatusBadge>
+                    <Button
+                      type="button"
+                      disabled={
+                        readyPaymentReconciliationCount === 0 ||
+                        xeroPaymentApplyMutation.isPending ||
+                        Boolean(xeroPaymentApplyResult)
+                      }
+                      onClick={() => xeroPaymentApplyMutation.mutate()}
+                    >
+                      {xeroPaymentApplyMutation.isPending ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )}
+                      Apply provider payments
+                    </Button>
+                  </div>
+                }
+              >
+                <div className="grid gap-3 p-4 md:grid-cols-4">
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Checked payments
+                    </div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {displayedPaymentReconciliation.checked_payments}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Ready
+                    </div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {displayedPaymentReconciliation.ready_count}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Applied
+                    </div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {displayedPaymentReconciliation.applied_count}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Reviewed
+                    </div>
+                    <div className="mt-1 font-semibold">
+                      {formatDateTime(displayedPaymentReconciliation.reconciled_at)}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid gap-3 border-t border-border px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge tone="warning">Local metadata only</StatusBadge>
+                    <span className="font-medium">
+                      Provider payments are compared against Leasium invoices;
+                      Apply updates Leasium payment metadata only.
+                    </span>
+                  </div>
+                  <ul className="grid gap-1 text-xs text-muted-foreground">
+                    {displayedPaymentReconciliation.guardrails.map((guardrail) => (
+                      <li key={guardrail} className="flex gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                        <span>{guardrail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="divide-y divide-border border-t border-border">
+                  {displayedPaymentReconciliation.results.map((result, index) => (
+                    <div
+                      key={
+                        result.idempotency_key ??
+                        result.invoice_draft_id ??
+                        `${result.invoice_number}-${index}`
+                      }
+                      className="grid gap-3 px-4 py-3 text-sm lg:grid-cols-[170px_1fr_300px]"
+                    >
+                      <div className="flex flex-wrap items-start gap-2">
+                        <StatusBadge tone={paymentReconciliationTone(result.status)}>
+                          {result.status}
+                        </StatusBadge>
+                        <span className="text-xs text-muted-foreground">
+                          {result.invoice_number ??
+                            result.invoice_draft_id ??
+                            "Unmatched payment"}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="font-medium">{result.reason}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Current {result.current_status ?? "unknown"} / Proposed{" "}
+                          {result.proposed_status ?? "unknown"}
+                        </div>
+                        {result.idempotency_key ? (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Key {result.idempotency_key}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="grid gap-1 text-xs text-muted-foreground">
+                        <div>
+                          Current paid:{" "}
+                          {result.current_paid_cents === null
+                            ? "-"
+                            : formatCurrencyCents(result.current_paid_cents)}
+                        </div>
+                        <div>
+                          Proposed paid:{" "}
+                          {result.proposed_paid_cents === null
+                            ? "-"
+                            : formatCurrencyCents(result.proposed_paid_cents)}
+                        </div>
+                        <div>
+                          Outstanding:{" "}
+                          {result.outstanding_cents === null
+                            ? "-"
+                            : formatCurrencyCents(result.outstanding_cents)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {displayedPaymentReconciliation.results.length === 0 ? (
+                    <EmptyState
+                      title="No provider payment changes"
+                      description="The provider pull completed, but no invoice payment status changes were ready to review."
+                    />
+                  ) : null}
+                </div>
               </SectionPanel>
             ) : null}
 

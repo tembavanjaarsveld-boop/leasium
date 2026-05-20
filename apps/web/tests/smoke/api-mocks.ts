@@ -917,6 +917,7 @@ export async function mockLeasiumApi(
   let chargeTaxType: string | null = null;
   let xeroDraftApproved = false;
   let xeroDraftCreated = false;
+  let xeroPaymentApplied = false;
   let localInvoiceDrafts = jsonClone(invoiceDrafts);
   let tenantAccountLinked = options.tenantAccountLinked ?? false;
   const tenantAccountLinkedToDifferentTenant =
@@ -1049,10 +1050,10 @@ export async function mockLeasiumApi(
         blocked: 0,
       },
       payment_reconciliation: {
-        unpaid: 0,
+        unpaid: xeroPaymentApplied ? 0 : 1,
         partially_paid: 0,
-        paid: 0,
-        reconciliation_ready: 0,
+        paid: xeroPaymentApplied ? 1 : 0,
+        reconciliation_ready: xeroPaymentApplied ? 1 : 0,
       },
       issues,
       guardrails: [
@@ -1144,6 +1145,68 @@ export async function mockLeasiumApi(
       },
     };
   };
+
+  const markInvoicePaymentReconciled = (reconciledAt: string) => {
+    xeroPaymentApplied = true;
+    const metadata = activeInvoiceMetadata();
+    const paymentStatus = {
+      status: "paid",
+      paid_cents: 880000,
+      outstanding_cents: 0,
+      paid_at: null,
+      updated_at: reconciledAt,
+      source: "xero_payment_reconciliation_provider",
+    };
+    metadata.payment_status = paymentStatus;
+    metadata.payment_history = [paymentStatus];
+    metadata.xero_payment_reconciliation = {
+      idempotency_key: "xero-payment-smoke-1",
+      invoice_draft_id: "invoice-draft-1",
+      invoice_number: "INV-1001",
+      xero_invoice_id: "xero-invoice-smoke-1",
+      provider_payment_id: "provider-payment-smoke-1",
+      source: "provider",
+      status: "paid",
+      paid_cents: 880000,
+      reconciled_at: reconciledAt,
+    };
+  };
+
+  const xeroPaymentReconciliationResult = (applied: boolean) => ({
+    entity_id: entityId,
+    source: "provider",
+    provider_configured: true,
+    provider_connection_id: "xero-connection-1",
+    checked_payments: 1,
+    ready_count: applied ? 0 : 1,
+    applied_count: applied ? 1 : 0,
+    skipped_count: 0,
+    blocked_count: 0,
+    reconciled_at: applied
+      ? "2026-05-19T10:42:00.000Z"
+      : "2026-05-19T10:40:00.000Z",
+    results: [
+      {
+        invoice_draft_id: "invoice-draft-1",
+        invoice_number: "INV-1001",
+        status: applied ? "applied" : "ready",
+        reason: applied
+          ? "Payment status was reconciled locally."
+          : "Payment status can be reconciled locally.",
+        current_status: applied ? "unpaid" : "unpaid",
+        proposed_status: "paid",
+        current_paid_cents: 0,
+        proposed_paid_cents: 880000,
+        outstanding_cents: 0,
+        idempotency_key: "xero-payment-smoke-1",
+      },
+    ],
+    guardrails: [
+      "Payment reconciliation preview does not change local invoice payment status.",
+      "Apply only updates Leasium invoice payment metadata; it never mutates Xero payments.",
+      "Duplicate payment idempotency keys are skipped.",
+    ],
+  });
 
   const xeroChartTaxValidationPreview = () => {
     const chartReady =
@@ -1880,6 +1943,23 @@ export async function mockLeasiumApi(
           "Payment reconciliation remains a separate reviewed action.",
         ],
       });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === `/xero/payments/reconciliation-preview/${entityId}`
+    ) {
+      await fulfillJson(route, xeroPaymentReconciliationResult(false));
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === `/xero/payments/reconciliation-apply/${entityId}`
+    ) {
+      markInvoicePaymentReconciled("2026-05-19T10:42:00.000Z");
+      await fulfillJson(route, xeroPaymentReconciliationResult(true));
       return;
     }
 

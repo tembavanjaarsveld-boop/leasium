@@ -1,6 +1,6 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-05-20
+Last updated: 2026-05-21
 
 ## Current State
 
@@ -242,6 +242,11 @@ Last updated: 2026-05-20
   - Billing Readiness Delivery & payments now has per-invoice Dispatch/Retry actions plus Xero receipt/retry and provider-complete messaging.
   - `POST /api/v1/invoice-drafts/webhooks/sendgrid-events` records SendGrid invoice delivery events by draft ID or provider message ID, preserving the current Xero sync state.
   - This is design-facing and still needs Remba review.
+- Xero payment reconciliation review surface v1 is built on this branch.
+  - Settings can call provider-backed payment reconciliation preview, showing checked/ready/applied/blocked counts plus current/proposed paid status and outstanding amount by invoice.
+  - Apply provider payments runs a fresh provider pull through the existing backend endpoint and updates Leasium invoice payment metadata only.
+  - The UI keeps Xero/bank mutation guardrails visible and treats reconciliation as separate from Xero draft creation and tenant email delivery.
+  - This is design-facing and still needs Remba review.
 - Tenant portal account foundation v1 is built on this branch.
   - New `tenant_portal_account` model and migration `20260520_0019_tenant_portal_accounts` store tenant-linked bearer identities without using operator `app_user` or entity-role access.
   - `POST /api/v1/tenant-portal/account/claim` requires a valid bearer identity plus an existing portal token before linking the signed tenant identity.
@@ -362,6 +367,13 @@ Last updated: 2026-05-20
   - `./node_modules/.bin/tsc --noEmit`
   - `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "dashboard shows the mocked portfolio and opens billing readiness"` (`1 passed`)
   - `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "settings shows Xero"` (`1 passed`)
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+- Xero payment reconciliation review checks passed:
+  - `.venv/bin/python -m ruff check tests/integration/test_xero_api.py apps/api/routers/xero.py apps/api/schemas/xero.py`
+  - `.venv/bin/python -m pytest tests/integration/test_xero_api.py -q`
+  - `./node_modules/.bin/eslint src/app/settings/page.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "settings shows Xero"`
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
 - Spreadsheet import plan durability checks passed:
   - `.venv/bin/python -m ruff check stewart/core/models.py apps/api/routers/register_imports.py apps/api/schemas/register_import.py tests/integration/test_register_import_api.py migrations/versions/20260521_0020_register_import_plans.py`
@@ -609,7 +621,7 @@ Last updated: 2026-05-20
 ## Recommended Next Tickets
 
 1. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, tenant fresh-link recovery, tenant detail portal access controls, and Operations workspace.
-2. Continue Xero from provider dispatch receipts into full accounting reconciliation guardrails, explicit retry history filters, contact/invoice sync exception queues, and payment reconciliation review surfaces.
+2. Continue Xero from provider payment review into explicit retry history filters, contact/invoice sync exception queues, bank-feed reconciliation depth, and accounting snapshot guardrails.
 3. Deepen Operations with contractor communications, maintenance invoice exception recovery, and clearer handoff rules between Operations and Billing Readiness.
 4. Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 5. Add branded template management, delivery preview/versioning, and provider receipt configuration for invoice delivery and tenant portal communications.

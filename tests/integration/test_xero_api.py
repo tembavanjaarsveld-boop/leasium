@@ -557,7 +557,7 @@ def test_xero_contact_sync_preview_suggests_matches_without_applying(
         refresh_token: str,
         settings: Settings,  # noqa: ARG001
     ) -> dict[str, object]:
-        assert refresh_token == "raw-refresh-token"
+        assert refresh_token in {"raw-refresh-token", "raw-refresh-token-created"}
         return {
             "access_token": "raw-access-token-2",
             "refresh_token": "raw-refresh-token-2",
@@ -792,7 +792,7 @@ def test_xero_chart_tax_validation_preview_checks_provider_accounts_and_tax_rate
         refresh_token: str,
         settings: Settings,  # noqa: ARG001
     ) -> dict[str, object]:
-        assert refresh_token == "raw-refresh-token"
+        assert refresh_token in {"raw-refresh-token", "raw-refresh-token-created"}
         return {
             "access_token": "raw-access-token-validation",
             "refresh_token": "raw-refresh-token-validation",
@@ -1513,3 +1513,97 @@ def test_xero_payment_reconciliation_preview_and_apply_are_idempotent(
 
     session.refresh(invoice_draft)
     assert len(invoice_draft.invoice_metadata["payment_history"]) == 1
+
+
+def test_xero_provider_payment_reconciliation_fetches_xero_invoices(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    invoice_draft = _create_approved_invoice_fixture(
+        client,
+        session,
+        entity_id,
+        invoice_number="INV-PROVIDER-PAID-1",
+        total_cents=550000,
+        xero_invoice_id="xero-invoice-provider-paid-1",
+    )
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    fetch_calls: list[str] = []
+
+    def fake_refresh_xero_tokens(
+        refresh_token: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> dict[str, object]:
+        assert refresh_token in {"raw-refresh-token", "raw-refresh-token-created"}
+        return {
+            "access_token": "raw-access-token-payments",
+            "refresh_token": "raw-refresh-token-created",
+            "expires_in": 1800,
+            "scope": "offline_access accounting.transactions.read",
+        }
+
+    def fake_fetch_xero_invoices(
+        access_token: str,
+        xero_tenant_id: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        assert access_token == "raw-access-token-payments"
+        assert xero_tenant_id == "tenant-provider-123"
+        fetch_calls.append(xero_tenant_id)
+        return [
+            {
+                "InvoiceID": "xero-invoice-provider-paid-1",
+                "InvoiceNumber": "INV-PROVIDER-PAID-1",
+                "Status": "PAID",
+                "Total": 5500,
+                "AmountPaid": 5500,
+                "AmountDue": 0,
+                "UpdatedDateUTC": "2026-05-20T00:00:00Z",
+            }
+        ]
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fake_refresh_xero_tokens)
+    monkeypatch.setattr(xero_router, "fetch_xero_invoices", fake_fetch_xero_invoices)
+
+    preview_response = client.post(
+        f"/api/v1/xero/payments/reconciliation-preview/{entity_id}",
+        json={"source": "provider", "payments": []},
+    )
+    assert preview_response.status_code == 200
+    preview_body = preview_response.json()
+    assert preview_body["source"] == "provider"
+    assert preview_body["checked_payments"] == 1
+    assert preview_body["ready_count"] == 1
+    assert preview_body["results"][0]["invoice_number"] == "INV-PROVIDER-PAID-1"
+    assert preview_body["results"][0]["proposed_status"] == "paid"
+    assert preview_body["results"][0]["proposed_paid_cents"] == 550000
+
+    session.refresh(invoice_draft)
+    assert invoice_draft.invoice_metadata["payment_status"]["status"] == "unpaid"
+
+    apply_response = client.post(
+        f"/api/v1/xero/payments/reconciliation-apply/{entity_id}",
+        json={"source": "provider", "payments": []},
+    )
+    assert apply_response.status_code == 200
+    apply_body = apply_response.json()
+    assert apply_body["applied_count"] == 1
+    assert apply_body["results"][0]["status"] == "applied"
+    assert fetch_calls == ["tenant-provider-123", "tenant-provider-123"]
+
+    session.refresh(invoice_draft)
+    metadata = invoice_draft.invoice_metadata
+    assert metadata["payment_status"]["status"] == "paid"
+    assert metadata["payment_status"]["paid_cents"] == 550000
+    assert metadata["xero_payment_reconciliation"]["source"] == "provider"
+    assert metadata["xero_payment_reconciliation"]["xero_invoice_id"] == (
+        "xero-invoice-provider-paid-1"
+    )

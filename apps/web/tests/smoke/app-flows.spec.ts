@@ -477,6 +477,17 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("xero-invoice-smoke-1")).toBeVisible();
 
+  await page.getByRole("button", { name: "Preview payments" }).click();
+  await expect(page.getByText("Payment reconciliation review")).toBeVisible();
+  await expect(
+    page.getByText("Payment status can be reconciled locally."),
+  ).toBeVisible();
+  await expect(page.getByText("Current unpaid / Proposed paid")).toBeVisible();
+  await page.getByRole("button", { name: "Apply provider payments" }).click();
+  await expect(
+    page.getByText("Payment status was reconciled locally."),
+  ).toBeVisible();
+
   await page.goto("/billing-readiness");
   await page.getByRole("tab", { name: /Delivery & payments/ }).click();
   await expect(page.getByText("Xero DRAFT").first()).toBeVisible();
