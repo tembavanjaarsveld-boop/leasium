@@ -145,6 +145,14 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Attach quote" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Approve quote" })).toBeVisible();
   await page
+    .getByLabel("Linked maintenance invoice")
+    .selectOption("invoice-draft-1");
+  await page.getByRole("button", { name: "Link" }).click();
+  await expect(page.getByText("Payment Unpaid")).toBeVisible();
+  await expect(page.getByText("Delivery ready")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Preview" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "PDF" })).toBeVisible();
+  await page
     .getByRole("textbox", { name: "Comment" })
     .fill("Owner approved attendance tomorrow morning.");
   await page.getByLabel("Comment visibility").selectOption("tenant");

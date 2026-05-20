@@ -209,6 +209,11 @@ Last updated: 2026-05-20
   - Internal and contractor-only operator activity remains available in operator work-order history but is hidden from tenant portal responses.
   - Tenant-visible comments render as `Team update` in the portal timeline.
   - This is design-facing and still needs Remba review.
+- Maintenance invoice handoff polish v1 is built on this branch.
+  - Work-order detail now reads `metadata.quote_documents` as the first quote/evidence source and falls back to linked work-order documents.
+  - Linked invoice drafts now show status, payment state, delivery readiness, blockers, preview, PDF download, prepare delivery, and internal approve actions from the existing invoice draft APIs.
+  - No new migration or persistence shape was added.
+  - This is design-facing and still needs Remba review.
 - Spreadsheet import plan durability v1 is built on this branch.
   - Dry-run now creates a persisted `register_import_plan` row and returns `plan_id` with the review payload.
   - Smart Intake and `/intake/spreadsheet` send `plan_id` on Apply, so the API applies the stored server-generated action list instead of trusting the browser copy.
@@ -394,6 +399,10 @@ Last updated: 2026-05-20
   - `./node_modules/.bin/eslint src/app/tenant-portal/tenant-portal-content.tsx tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
   - `./node_modules/.bin/tsc --noEmit`
   - `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant portal shows scoped self-service data"` (`1 passed`)
+- Maintenance invoice handoff polish checks passed:
+  - `./node_modules/.bin/eslint 'src/app/operations/maintenance/[workOrderId]/page.tsx' tests/smoke/app-flows.spec.ts`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "maintenance detail route"` (`1 passed`)
 - Insights overview focused checks passed:
   - Dashboard/Insights loading-state polish checks passed:
     - `./node_modules/.bin/eslint src/components/dashboard.tsx src/app/insights/page.tsx`

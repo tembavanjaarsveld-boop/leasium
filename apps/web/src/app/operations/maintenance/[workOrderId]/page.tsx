@@ -6,10 +6,12 @@ import {
   Ban,
   CheckCircle2,
   Download,
+  Eye,
   FileUp,
   History,
   Link2,
   Loader2,
+  Mail,
   ReceiptText,
   RefreshCw,
   Send,
@@ -40,15 +42,18 @@ import {
   type DocumentRecord,
   getMaintenanceWorkOrder,
   type InvoiceDraftRecord,
+  invoiceDraftPreviewUrl,
   listDocuments,
   listInvoiceDrafts,
   listProperties,
   listTenants,
   type MaintenanceWorkOrderPayload,
   type MaintenanceWorkOrderRecord,
+  prepareInvoiceDraftDelivery,
   type PropertyRecord,
   type TenantRecord,
   updateMaintenanceWorkOrder,
+  updateInvoiceDraft,
   uploadDocument,
 } from "@/lib/api";
 
@@ -132,6 +137,57 @@ function invoiceDraftLabel(draft: InvoiceDraftRecord) {
     .join(" - ");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function metadataRecord(value: unknown) {
+  return isRecord(value) ? value : {};
+}
+
+function metadataText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function metadataStringList(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function invoiceStatusTone(status: InvoiceDraftRecord["status"]): Tone {
+  if (status === "approved") {
+    return "success";
+  }
+  if (status === "ready_for_approval") {
+    return "primary";
+  }
+  if (status === "void") {
+    return "danger";
+  }
+  return "neutral";
+}
+
+function invoiceReadinessBlockers(draft: InvoiceDraftRecord) {
+  return metadataStringList(draft.metadata.readiness_blockers);
+}
+
+function invoiceDeliveryState(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.delivery_state);
+}
+
+function invoiceDeliveryBlockers(draft: InvoiceDraftRecord) {
+  return metadataStringList(draft.metadata.delivery_blockers);
+}
+
+function invoicePdfArtifact(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.pdf_artifact);
+}
+
+function invoicePaymentStatus(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.payment_status);
+}
+
 function activityRows(workOrder: MaintenanceWorkOrderRecord) {
   const rawHistory = workOrder.metadata.activity_history;
   if (!Array.isArray(rawHistory)) {
@@ -174,6 +230,45 @@ function linkedDocuments(
     ...workOrder.photo_document_ids,
   ].filter(Boolean));
   return documents.filter((document) => linkedIds.has(document.id));
+}
+
+function quoteDocumentRows(
+  workOrder: MaintenanceWorkOrderRecord,
+  documents: DocumentRecord[],
+) {
+  const rawQuoteDocuments = Array.isArray(workOrder.metadata.quote_documents)
+    ? workOrder.metadata.quote_documents
+    : [];
+  const rows = rawQuoteDocuments
+    .filter(isRecord)
+    .map((entry) => {
+      const documentId = metadataText(entry.document_id);
+      const document = documents.find((item) => item.id === documentId);
+      return {
+        id:
+          documentId ??
+          `${metadataText(entry.filename) ?? "quote"}-${metadataText(entry.uploaded_at) ?? ""}`,
+        documentId,
+        filename:
+          metadataText(entry.filename) ?? document?.filename ?? "Contractor quote",
+        notes: metadataText(entry.notes) ?? document?.notes ?? null,
+        uploadedAt: metadataText(entry.uploaded_at) ?? document?.created_at ?? null,
+        category: document?.category ?? null,
+        byteSize: document?.byte_size ?? null,
+      };
+    });
+  if (rows.length) {
+    return rows;
+  }
+  return linkedDocuments(workOrder, documents).map((document) => ({
+    id: document.id,
+    documentId: document.id,
+    filename: document.filename,
+    notes: document.notes,
+    uploadedAt: document.created_at,
+    category: document.category,
+    byteSize: document.byte_size,
+  }));
 }
 
 function MaintenanceDetailRoute() {
@@ -221,8 +316,12 @@ function MaintenanceDetailRoute() {
   const tenants = tenantsQuery.data ?? [];
   const invoiceDrafts = invoiceDraftsQuery.data ?? [];
   const documents = documentsQuery.data ?? [];
-  const visibleDocuments = workOrder ? linkedDocuments(workOrder, documents) : [];
+  const quoteDocuments = workOrder ? quoteDocumentRows(workOrder, documents) : [];
   const timeline = workOrder ? activityRows(workOrder) : [];
+  const linkedInvoiceDraft =
+    workOrder?.invoice_draft_id
+      ? invoiceDrafts.find((draft) => draft.id === workOrder.invoice_draft_id) ?? null
+      : null;
   const matchingInvoiceDrafts = invoiceDrafts.filter((draft) => {
     if (!workOrder) {
       return false;
@@ -242,6 +341,24 @@ function MaintenanceDetailRoute() {
   const selectedInvoiceDraft = matchingInvoiceDrafts.find(
     (draft) => draft.id === invoiceDraftId,
   );
+  const linkedInvoiceDeliveryState = linkedInvoiceDraft
+    ? invoiceDeliveryState(linkedInvoiceDraft)
+    : {};
+  const linkedInvoiceDeliveryReady =
+    linkedInvoiceDeliveryState.delivery_ready === true;
+  const linkedInvoicePdfArtifact = linkedInvoiceDraft
+    ? invoicePdfArtifact(linkedInvoiceDraft)
+    : {};
+  const linkedInvoicePdfDocumentId = metadataText(linkedInvoicePdfArtifact.document_id);
+  const linkedInvoicePaymentStatus = linkedInvoiceDraft
+    ? metadataText(invoicePaymentStatus(linkedInvoiceDraft).status) ?? "unpaid"
+    : null;
+  const linkedInvoiceBlockers = linkedInvoiceDraft
+    ? [
+        ...invoiceReadinessBlockers(linkedInvoiceDraft),
+        ...invoiceDeliveryBlockers(linkedInvoiceDraft),
+      ]
+    : [];
 
   const refresh = () => {
     workOrderQuery.refetch();
@@ -255,6 +372,24 @@ function MaintenanceDetailRoute() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["maintenance-work-order", workOrderId] });
       queryClient.invalidateQueries({ queryKey: ["operations-maintenance", entityId] });
+    },
+  });
+
+  const prepareInvoiceMutation = useMutation({
+    mutationFn: (draftId: string) => prepareInvoiceDraftDelivery(draftId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-detail-invoice-drafts", entityId],
+      });
+    },
+  });
+
+  const approveInvoiceMutation = useMutation({
+    mutationFn: (draftId: string) => updateInvoiceDraft(draftId, { status: "approved" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-detail-invoice-drafts", entityId],
+      });
     },
   });
 
@@ -447,7 +582,7 @@ function MaintenanceDetailRoute() {
               </SectionPanel>
 
               <SectionPanel title="Invoice" icon={<ReceiptText size={17} />}>
-                <div className="grid gap-2 p-4 text-sm">
+                <div className="grid gap-3 p-4 text-sm">
                   <Select
                     aria-label="Linked maintenance invoice"
                     value={invoiceDraftId || workOrder.invoice_draft_id || ""}
@@ -463,6 +598,91 @@ function MaintenanceDetailRoute() {
                   <div className="text-xs text-muted-foreground">
                     {workOrder.invoice_reference ?? "No invoice reference yet."}
                   </div>
+                  {linkedInvoiceDraft ? (
+                    <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-foreground">
+                          {linkedInvoiceDraft.invoice_number ?? linkedInvoiceDraft.title}
+                        </span>
+                        <StatusBadge tone={invoiceStatusTone(linkedInvoiceDraft.status)}>
+                          {label(linkedInvoiceDraft.status)}
+                        </StatusBadge>
+                      </div>
+                      <div className="grid gap-1 text-muted-foreground">
+                        <span>Amount {formatMoney(linkedInvoiceDraft.total_cents)}</span>
+                        <span>Payment {label(linkedInvoicePaymentStatus)}</span>
+                        <span>
+                          Delivery{" "}
+                          {linkedInvoiceDeliveryReady ? "ready" : "needs preparation"}
+                        </span>
+                      </div>
+                      {linkedInvoiceBlockers.length ? (
+                        <div className="grid gap-1 text-danger">
+                          {linkedInvoiceBlockers.slice(0, 2).map((blocker) => (
+                            <span key={blocker}>{blocker}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="flex flex-wrap gap-2">
+                        {linkedInvoiceDraft.status !== "approved" &&
+                        linkedInvoiceDraft.status !== "void" ? (
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-9 rounded-lg px-3"
+                            onClick={() =>
+                              prepareInvoiceMutation.mutate(linkedInvoiceDraft.id)
+                            }
+                            disabled={prepareInvoiceMutation.isPending}
+                            title="Prepare the invoice preview, PDF artifact, and email draft. Nothing is sent or synced."
+                          >
+                            {prepareInvoiceMutation.isPending ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Mail size={14} />
+                            )}
+                            Prepare
+                          </SecondaryButton>
+                        ) : null}
+                        <a
+                          href={invoiceDraftPreviewUrl(linkedInvoiceDraft.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                        >
+                          <Eye size={14} />
+                          Preview
+                        </a>
+                        {linkedInvoicePdfDocumentId ? (
+                          <a
+                            href={documentDownloadUrl(linkedInvoicePdfDocumentId)}
+                            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                          >
+                            <Download size={14} />
+                            PDF
+                          </a>
+                        ) : null}
+                        {linkedInvoiceDraft.status === "ready_for_approval" &&
+                        linkedInvoiceDeliveryReady ? (
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-9 rounded-lg px-3"
+                            onClick={() =>
+                              approveInvoiceMutation.mutate(linkedInvoiceDraft.id)
+                            }
+                            disabled={approveInvoiceMutation.isPending}
+                            title="Approve the internal invoice draft only. No tenant email or Xero sync is run."
+                          >
+                            {approveInvoiceMutation.isPending ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <CheckCircle2 size={14} />
+                            )}
+                            Approve invoice
+                          </SecondaryButton>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
                     <SecondaryButton
                       type="button"
@@ -538,30 +758,34 @@ function MaintenanceDetailRoute() {
                 </form>
 
                 <div className="grid gap-3 p-4">
-                  {visibleDocuments.map((document) => (
+                  {quoteDocuments.map((document) => (
                     <div
                       key={document.id}
                       className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="font-medium">{document.filename}</div>
-                        <a
-                          href={documentDownloadUrl(document.id)}
-                          className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <Download size={15} />
-                          Download
-                        </a>
+                        {document.documentId ? (
+                          <a
+                            href={documentDownloadUrl(document.documentId)}
+                            className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <Download size={15} />
+                            Download
+                          </a>
+                        ) : null}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {label(document.category)} - {document.notes ?? "No notes"} -{" "}
-                        {formatDateTime(document.created_at)}
+                        {document.category ? label(document.category) : "Quote"} -{" "}
+                        {document.notes ?? "No notes"} -{" "}
+                        {formatDateTime(document.uploadedAt)}
+                        {document.byteSize ? ` - ${Math.round(document.byteSize / 1000)} KB` : ""}
                       </div>
                     </div>
                   ))}
-                  {!documentsQuery.isLoading && visibleDocuments.length === 0 ? (
+                  {!documentsQuery.isLoading && quoteDocuments.length === 0 ? (
                     <EmptyState
                       title="No quote documents"
                       description="Upload a contractor quote or evidence file before approval."
