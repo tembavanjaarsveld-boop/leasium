@@ -1,6 +1,12 @@
 "use client";
 
-import { SignInButton, SignUpButton, UserButton, useAuth, useUser } from "@clerk/nextjs";
+import {
+  SignInButton,
+  SignUpButton,
+  UserButton,
+  useAuth,
+  useUser,
+} from "@clerk/nextjs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Bell,
@@ -8,6 +14,7 @@ import {
   CheckCircle2,
   Download,
   FileText,
+  ImagePlus,
   Link2,
   Loader2,
   LogIn,
@@ -17,6 +24,7 @@ import {
   UploadCloud,
   UserRound,
   Wrench,
+  X,
 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -141,7 +149,11 @@ function maintenanceTone(status: string) {
   if (status === "cancelled") {
     return "danger" as const;
   }
-  if (["awaiting_approval", "approved", "assigned", "in_progress"].includes(status)) {
+  if (
+    ["awaiting_approval", "approved", "assigned", "in_progress"].includes(
+      status,
+    )
+  ) {
     return "primary" as const;
   }
   return "warning" as const;
@@ -188,9 +200,13 @@ function Metric({
 }) {
   return (
     <div className="rounded-md border border-border bg-white px-4 py-3">
-      <div className="text-xs font-semibold uppercase text-muted-foreground">{label}</div>
+      <div className="text-xs font-semibold uppercase text-muted-foreground">
+        {label}
+      </div>
       <div className="mt-1 text-xl font-semibold">{value}</div>
-      {detail ? <div className="mt-1 text-xs text-muted-foreground">{detail}</div> : null}
+      {detail ? (
+        <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
+      ) : null}
     </div>
   );
 }
@@ -284,7 +300,9 @@ function PreferencesForm({
               className="h-4 w-4 accent-primary"
               type="checkbox"
               checked={Boolean(
-                preferences[key as keyof TenantPortalNotificationPreferencesPayload],
+                preferences[
+                  key as keyof TenantPortalNotificationPreferencesPayload
+                ],
               )}
               onChange={(event) =>
                 setField(
@@ -297,7 +315,9 @@ function PreferencesForm({
         ))}
         <div className="flex flex-wrap items-center justify-end gap-2">
           {saveMutation.error ? (
-            <span className="text-sm text-danger">{saveMutation.error.message}</span>
+            <span className="text-sm text-danger">
+              {saveMutation.error.message}
+            </span>
           ) : null}
           <Button
             type="button"
@@ -347,7 +367,8 @@ function TenantAccountPanel({
   });
   const accountPortal = accountQuery.data?.portal ?? null;
   const accountTenantMatches =
-    Boolean(accountPortal) && (!tokenTenantId || accountPortal?.tenant.id === tokenTenantId);
+    Boolean(accountPortal) &&
+    (!tokenTenantId || accountPortal?.tenant.id === tokenTenantId);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) {
@@ -458,7 +479,9 @@ function TenantAccountPanel({
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge tone="success">Account linked</StatusBadge>
             <span className="text-muted-foreground">
-              {user?.primaryEmailAddress?.emailAddress ?? user?.fullName ?? "Signed in"}
+              {user?.primaryEmailAddress?.emailAddress ??
+                user?.fullName ??
+                "Signed in"}
             </span>
           </div>
           <p className="text-muted-foreground">
@@ -480,7 +503,9 @@ function TenantAccountPanel({
           Link this portal to your signed-in tenant account.
         </p>
         {claimMutation.error ? (
-          <span className="text-sm text-danger">{claimMutation.error.message}</span>
+          <span className="text-sm text-danger">
+            {claimMutation.error.message}
+          </span>
         ) : null}
         <Button
           type="button"
@@ -507,7 +532,9 @@ function TenantPortalContent() {
     queryFn: () => getTenantPortal(token),
     enabled: Boolean(token),
   });
-  const [accountPortal, setAccountPortal] = useState<TenantPortalRecord | null>(null);
+  const [accountPortal, setAccountPortal] = useState<TenantPortalRecord | null>(
+    null,
+  );
   const [accountAuthToken, setAccountAuthToken] = useState<string | null>(null);
   const handleAccountPortal = useCallback(
     (nextPortal: TenantPortalRecord | null, nextAuthToken: string | null) => {
@@ -519,21 +546,32 @@ function TenantPortalContent() {
   const tokenPortal = portalQuery.data;
   const portal = accountPortal ?? tokenPortal;
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadCategory, setUploadCategory] = useState<DocumentCategory>("insurance");
+  const [uploadCategory, setUploadCategory] =
+    useState<DocumentCategory>("insurance");
   const [uploadNotes, setUploadNotes] = useState("");
   const [maintenanceTitle, setMaintenanceTitle] = useState("");
   const [maintenancePriority, setMaintenancePriority] =
     useState<MaintenancePriority>("normal");
   const [maintenanceDescription, setMaintenanceDescription] = useState("");
-  const [maintenanceSourceReference, setMaintenanceSourceReference] = useState("");
-  const tenantAccountAuthEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+  const [maintenanceSourceReference, setMaintenanceSourceReference] =
+    useState("");
+  const [maintenancePhotoFile, setMaintenancePhotoFile] = useState<File | null>(
+    null,
+  );
+  const [maintenancePhotoInputKey, setMaintenancePhotoInputKey] = useState(0);
+  const tenantAccountAuthEnabled = Boolean(
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  );
 
   useEffect(() => {
     handleAccountPortal(null, null);
   }, [handleAccountPortal, token]);
 
   const refreshPortal = useCallback(() => {
-    if (accountAuthToken && accountPortal?.auth.mode === "tenant_portal_account") {
+    if (
+      accountAuthToken &&
+      accountPortal?.auth.mode === "tenant_portal_account"
+    ) {
       return getTenantPortalAccountSession(accountAuthToken)
         .then((nextPortal) => setAccountPortal(nextPortal))
         .catch(() => portalQuery.refetch());
@@ -542,7 +580,10 @@ function TenantPortalContent() {
   }, [accountAuthToken, accountPortal?.auth.mode, portalQuery]);
 
   useEffect(() => {
-    if (!portal || portal.compliance.accepted_categories.includes(uploadCategory)) {
+    if (
+      !portal ||
+      portal.compliance.accepted_categories.includes(uploadCategory)
+    ) {
       return;
     }
     setUploadCategory(portal.compliance.accepted_categories[0] ?? "insurance");
@@ -576,18 +617,43 @@ function TenantPortalContent() {
   });
 
   const maintenanceMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
+      const title = maintenanceTitle.trim();
+      const description = maintenanceDescription.trim();
       const payload: TenantPortalMaintenanceRequestPayload = {
-        title: maintenanceTitle.trim(),
-        description: maintenanceDescription.trim(),
+        title,
+        description,
         priority: maintenancePriority,
         source_reference: maintenanceSourceReference.trim() || null,
       };
       if (!payload.title || !payload.description) {
         throw new Error("Add a title and details before submitting.");
       }
+
+      if (maintenancePhotoFile) {
+        const notes = `Maintenance photo: ${title}`;
+        const document =
+          accountAuthToken && portal?.auth.mode === "tenant_portal_account"
+            ? await uploadTenantPortalAccountDocument({
+                category: "other",
+                notes,
+                file: maintenancePhotoFile,
+                authToken: accountAuthToken,
+              })
+            : await uploadTenantPortalDocument({
+                token,
+                category: "other",
+                notes,
+                file: maintenancePhotoFile,
+              });
+        payload.photo_document_ids = [document.id];
+      }
+
       if (accountAuthToken && portal?.auth.mode === "tenant_portal_account") {
-        return createTenantPortalAccountMaintenanceRequest(payload, accountAuthToken);
+        return createTenantPortalAccountMaintenanceRequest(
+          payload,
+          accountAuthToken,
+        );
       }
       return createTenantPortalMaintenanceRequest(token, payload);
     },
@@ -596,6 +662,8 @@ function TenantPortalContent() {
       setMaintenancePriority("normal");
       setMaintenanceDescription("");
       setMaintenanceSourceReference("");
+      setMaintenancePhotoFile(null);
+      setMaintenancePhotoInputKey((current) => current + 1);
       refreshPortal();
     },
   });
@@ -654,7 +722,9 @@ function TenantPortalContent() {
               </p>
             </div>
             <div className="grid gap-2 text-right">
-              <StatusBadge tone={portal.auth.dev_fallback ? "warning" : "primary"}>
+              <StatusBadge
+                tone={portal.auth.dev_fallback ? "warning" : "primary"}
+              >
                 {portal.auth.dev_fallback ? "Token fallback" : "Token scoped"}
               </StatusBadge>
               <span className="text-xs text-muted-foreground">
@@ -722,7 +792,11 @@ function TenantPortalContent() {
                         <div className="truncate font-semibold">
                           {invoice.invoice_number ?? invoice.title}
                         </div>
-                        <StatusBadge tone={invoice.outstanding_cents ? "warning" : "success"}>
+                        <StatusBadge
+                          tone={
+                            invoice.outstanding_cents ? "warning" : "success"
+                          }
+                        >
                           {label(invoice.payment_status)}
                         </StatusBadge>
                       </div>
@@ -740,7 +814,9 @@ function TenantPortalContent() {
                               key={line.id}
                               className="flex items-center justify-between gap-3"
                             >
-                              <span className="truncate">{line.description}</span>
+                              <span className="truncate">
+                                {line.description}
+                              </span>
                               <span className="shrink-0">
                                 {formatMoney(
                                   line.amount_cents + line.gst_cents,
@@ -754,7 +830,10 @@ function TenantPortalContent() {
                     </div>
                     <div className="grid content-start justify-items-end gap-2 text-sm">
                       <div className="font-semibold">
-                        {formatMoney(invoice.outstanding_cents, invoice.currency)}
+                        {formatMoney(
+                          invoice.outstanding_cents,
+                          invoice.currency,
+                        )}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {formatMoney(invoice.paid_cents, invoice.currency)} paid
@@ -799,7 +878,9 @@ function TenantPortalContent() {
                     <Field label="Request title">
                       <Input
                         value={maintenanceTitle}
-                        onChange={(event) => setMaintenanceTitle(event.target.value)}
+                        onChange={(event) =>
+                          setMaintenanceTitle(event.target.value)
+                        }
                         placeholder="Air conditioning fault"
                       />
                     </Field>
@@ -807,7 +888,9 @@ function TenantPortalContent() {
                       <Select
                         value={maintenancePriority}
                         onChange={(event) =>
-                          setMaintenancePriority(event.target.value as MaintenancePriority)
+                          setMaintenancePriority(
+                            event.target.value as MaintenancePriority,
+                          )
                         }
                       >
                         <option value="low">Low</option>
@@ -821,7 +904,9 @@ function TenantPortalContent() {
                     <textarea
                       className="min-h-28 w-full resize-y rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
                       value={maintenanceDescription}
-                      onChange={(event) => setMaintenanceDescription(event.target.value)}
+                      onChange={(event) =>
+                        setMaintenanceDescription(event.target.value)
+                      }
                       placeholder="What is happening, where is it, and when did it start?"
                     />
                   </Field>
@@ -833,6 +918,45 @@ function TenantPortalContent() {
                       }
                       placeholder="Front counter, rear entry, invoice reference..."
                     />
+                  </Field>
+                  <Field label="Photo">
+                    <div className="grid gap-2">
+                      <Input
+                        key={maintenancePhotoInputKey}
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) =>
+                          setMaintenancePhotoFile(
+                            event.target.files?.[0] ?? null,
+                          )
+                        }
+                      />
+                      {maintenancePhotoFile ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <ImagePlus
+                              size={15}
+                              className="shrink-0 text-primary"
+                            />
+                            <span className="truncate">
+                              {maintenancePhotoFile.name}
+                            </span>
+                          </span>
+                          <SecondaryButton
+                            type="button"
+                            onClick={() => {
+                              setMaintenancePhotoFile(null);
+                              setMaintenancePhotoInputKey(
+                                (current) => current + 1,
+                              );
+                            }}
+                          >
+                            <X size={15} />
+                            Clear
+                          </SecondaryButton>
+                        </div>
+                      ) : null}
+                    </div>
                   </Field>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     {maintenanceMutation.error ? (
@@ -863,7 +987,9 @@ function TenantPortalContent() {
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="truncate font-semibold">{request.title}</div>
+                          <div className="truncate font-semibold">
+                            {request.title}
+                          </div>
                           <StatusBadge tone={maintenanceTone(request.status)}>
                             {label(request.status)}
                           </StatusBadge>
@@ -889,9 +1015,13 @@ function TenantPortalContent() {
                                 className="grid gap-1 text-xs"
                               >
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-semibold">{label(entry.event)}</span>
+                                  <span className="font-semibold">
+                                    {label(entry.event)}
+                                  </span>
                                   {entry.status ? (
-                                    <StatusBadge tone={maintenanceTone(entry.status)}>
+                                    <StatusBadge
+                                      tone={maintenanceTone(entry.status)}
+                                    >
                                       {label(entry.status)}
                                     </StatusBadge>
                                   ) : null}
@@ -899,22 +1029,31 @@ function TenantPortalContent() {
                                     {formatDateTime(entry.timestamp)}
                                   </span>
                                 </div>
-                                <div className="text-muted-foreground">{entry.summary}</div>
+                                <div className="text-muted-foreground">
+                                  {entry.summary}
+                                </div>
                               </div>
                             ))}
                           </div>
                         ) : null}
                       </div>
                       <div className="grid content-start justify-items-end gap-1 text-xs text-muted-foreground">
-                        <span>Requested {formatDateTime(request.requested_at)}</span>
+                        <span>
+                          Requested {formatDateTime(request.requested_at)}
+                        </span>
                         {request.completed_at ? (
-                          <span>Completed {formatDateTime(request.completed_at)}</span>
-                        ) : null}
-                        {request.document_ids.length || request.photo_document_ids.length ? (
                           <span>
-                            {request.document_ids.length + request.photo_document_ids.length}{" "}
+                            Completed {formatDateTime(request.completed_at)}
+                          </span>
+                        ) : null}
+                        {request.document_ids.length ||
+                        request.photo_document_ids.length ? (
+                          <span>
+                            {request.document_ids.length +
+                              request.photo_document_ids.length}{" "}
                             file
-                            {request.document_ids.length + request.photo_document_ids.length ===
+                            {request.document_ids.length +
+                              request.photo_document_ids.length ===
                             1
                               ? ""
                               : "s"}
@@ -936,7 +1075,10 @@ function TenantPortalContent() {
               <div className="grid gap-3 p-4">
                 <div className="grid gap-3 md:grid-cols-3">
                   {portal.compliance.items.map((item) => (
-                    <div key={item.key} className="rounded-md border border-border p-3">
+                    <div
+                      key={item.key}
+                      className="rounded-md border border-border p-3"
+                    >
                       <div className="flex items-center justify-between gap-2">
                         <div className="font-semibold">{item.label}</div>
                         <StatusBadge tone={complianceTone(item.status)}>
@@ -944,7 +1086,8 @@ function TenantPortalContent() {
                         </StatusBadge>
                       </div>
                       <div className="mt-2 text-sm text-muted-foreground">
-                        {item.document_count} file{item.document_count === 1 ? "" : "s"}
+                        {item.document_count} file
+                        {item.document_count === 1 ? "" : "s"}
                         {item.due_date ? ` - ${formatDate(item.due_date)}` : ""}
                       </div>
                     </div>
@@ -955,7 +1098,9 @@ function TenantPortalContent() {
                   <Field label="Document">
                     <Input
                       type="file"
-                      onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
+                      onChange={(event) =>
+                        setUploadFile(event.target.files?.[0] ?? null)
+                      }
                     />
                   </Field>
                   <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
@@ -963,7 +1108,9 @@ function TenantPortalContent() {
                       <Select
                         value={uploadCategory}
                         onChange={(event) =>
-                          setUploadCategory(event.target.value as DocumentCategory)
+                          setUploadCategory(
+                            event.target.value as DocumentCategory,
+                          )
                         }
                       >
                         {visibleCategories.map((category) => (
@@ -1013,7 +1160,8 @@ function TenantPortalContent() {
                         <span className="truncate">{document.filename}</span>
                       </span>
                       <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                        {categoryLabels[document.category]} - {formatBytes(document.byte_size)}
+                        {categoryLabels[document.category]} -{" "}
+                        {formatBytes(document.byte_size)}
                         <Download size={14} />
                       </span>
                     </a>
@@ -1035,7 +1183,9 @@ function TenantPortalContent() {
                   <dt className="text-muted-foreground">Property</dt>
                   <dd className="font-medium">{portal.lease.property_name}</dd>
                   {portal.lease.property_address ? (
-                    <dd className="text-muted-foreground">{portal.lease.property_address}</dd>
+                    <dd className="text-muted-foreground">
+                      {portal.lease.property_address}
+                    </dd>
                   ) : null}
                 </div>
                 <div>
@@ -1070,7 +1220,9 @@ function TenantPortalContent() {
               token={token}
               portal={portal}
               accountAuthToken={
-                portal.auth.mode === "tenant_portal_account" ? accountAuthToken : null
+                portal.auth.mode === "tenant_portal_account"
+                  ? accountAuthToken
+                  : null
               }
               onSaved={refreshPortal}
             />
@@ -1079,7 +1231,9 @@ function TenantPortalContent() {
               title="Access Boundary"
               icon={<ShieldCheck size={18} />}
               actions={
-                <StatusBadge tone={portal.auth.dev_fallback ? "warning" : "primary"}>
+                <StatusBadge
+                  tone={portal.auth.dev_fallback ? "warning" : "primary"}
+                >
                   {label(portal.auth.mode)}
                 </StatusBadge>
               }

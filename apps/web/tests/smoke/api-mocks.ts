@@ -190,8 +190,8 @@ const maintenanceWorkOrders = [
     due_date: "2026-05-20",
     completed_at: null,
     notes: "Needs owner approval before work proceeds.",
-    document_ids: [],
-    photo_document_ids: [],
+    document_ids: ["portal-document-1"],
+    photo_document_ids: ["portal-photo-1"],
     metadata: {
       activity_history: [
         {
@@ -217,6 +217,39 @@ const maintenanceWorkOrders = [
     deleted_at: null,
   },
 ];
+
+const initialTenantPortalDocuments = [
+  {
+    id: "portal-document-1",
+    filename: "bright-cafe-insurance.pdf",
+    content_type: "application/pdf",
+    byte_size: 45000,
+    category: "insurance",
+    notes: "Current certificate.",
+    source: "tenant_onboarding",
+    created_at: "2026-05-18T09:35:00.000Z",
+  },
+  {
+    id: "portal-photo-1",
+    filename: "shopfront-ac-photo.jpg",
+    content_type: "image/jpeg",
+    byte_size: 128000,
+    category: "other",
+    notes: "Photo attached to the maintenance request.",
+    source: "tenant_portal",
+    created_at: "2026-05-19T01:00:00.000Z",
+  },
+];
+
+let tenantPortalDocuments = initialTenantPortalDocuments.map((document) => ({
+  ...document,
+}));
+
+function tenantPortalDocumentsByCategory(category: string) {
+  return tenantPortalDocuments.filter(
+    (document) => document.category === category,
+  );
+}
 
 const arrearsCases = [
   {
@@ -504,7 +537,8 @@ const tenantPortalSession = (authMode: "token" | "account" = "token") => ({
           tenant_auth_configured: true,
           dev_fallback: false,
           boundary: "tenant_portal_account",
-          detail: "Access is scoped to the tenant linked to this tenant portal account.",
+          detail:
+            "Access is scoped to the tenant linked to this tenant portal account.",
         }
       : {
           mode: "tenant_portal_token",
@@ -545,23 +579,23 @@ const tenantPortalSession = (authMode: "token" | "account" = "token") => ({
   },
   compliance: {
     uploads_enabled: true,
-    accepted_categories: ["insurance", "bank_guarantee", "lease", "onboarding", "other"],
+    accepted_categories: [
+      "insurance",
+      "bank_guarantee",
+      "lease",
+      "onboarding",
+      "other",
+    ],
     items: [
       {
         key: "insurance",
         label: "Insurance",
-        status: "received",
-        document_count: 1,
-        latest_document: {
-          id: "portal-document-1",
-          filename: "bright-cafe-insurance.pdf",
-          content_type: "application/pdf",
-          byte_size: 45000,
-          category: "insurance",
-          notes: "Current certificate.",
-          source: "tenant_onboarding",
-          created_at: "2026-05-18T09:35:00.000Z",
-        },
+        status: tenantPortalDocumentsByCategory("insurance").length
+          ? "received"
+          : "not_on_file",
+        document_count: tenantPortalDocumentsByCategory("insurance").length,
+        latest_document:
+          tenantPortalDocumentsByCategory("insurance")[0] ?? null,
         due_date: "2027-06-30",
       },
       {
@@ -575,24 +609,16 @@ const tenantPortalSession = (authMode: "token" | "account" = "token") => ({
       {
         key: "onboarding",
         label: "Onboarding files",
-        status: "not_on_file",
-        document_count: 0,
-        latest_document: null,
+        status: tenantPortalDocumentsByCategory("onboarding").length
+          ? "received"
+          : "not_on_file",
+        document_count: tenantPortalDocumentsByCategory("onboarding").length,
+        latest_document:
+          tenantPortalDocumentsByCategory("onboarding")[0] ?? null,
         due_date: null,
       },
     ],
-    uploaded_documents: [
-      {
-        id: "portal-document-1",
-        filename: "bright-cafe-insurance.pdf",
-        content_type: "application/pdf",
-        byte_size: 45000,
-        category: "insurance",
-        notes: "Current certificate.",
-        source: "tenant_onboarding",
-        created_at: "2026-05-18T09:35:00.000Z",
-      },
-    ],
+    uploaded_documents: tenantPortalDocuments,
   },
   invoices: [
     {
@@ -772,6 +798,25 @@ async function fulfillJson(route: Route, body: JsonBody, status = 200) {
   });
 }
 
+function jsonStringArray(value: JsonBody | undefined) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function multipartField(body: string, name: string) {
+  const match = body.match(
+    new RegExp(`name="${name}"\\r?\\n\\r?\\n([^\\r\\n]*)`),
+  );
+  return match?.[1]?.trim() ?? null;
+}
+
+function multipartFilename(body: string) {
+  const match = body.match(/name="file"; filename="([^"]+)"/);
+  return match?.[1] ?? "tenant-portal-upload";
+}
+
 export async function mockLeasiumApi(page: Page) {
   let xeroTenantId: string | null = null;
   let xeroConnectedAt: string | null = null;
@@ -784,6 +829,10 @@ export async function mockLeasiumApi(page: Page) {
   let appliedContactMappings: XeroContactMapping[] = [];
   let snapshotCount = 0;
   let insightSnapshots: JsonBody[] = [];
+  let tenantPortalDocumentCount = initialTenantPortalDocuments.length;
+  tenantPortalDocuments = initialTenantPortalDocuments.map((document) => ({
+    ...document,
+  }));
 
   const xeroConnection = () => ({
     entity_id: entityId,
@@ -797,7 +846,11 @@ export async function mockLeasiumApi(page: Page) {
     last_contact_sync_at: null,
     provider_configured: true,
     provider_connection_id: xeroProviderConnected ? "xero-connection-1" : null,
-    connection_source: xeroProviderConnected ? "provider" : xeroTenantId ? "manual" : "none",
+    connection_source: xeroProviderConnected
+      ? "provider"
+      : xeroTenantId
+        ? "manual"
+        : "none",
     status_label: xeroProviderConnected
       ? "Provider connected"
       : xeroTenantId
@@ -903,10 +956,15 @@ export async function mockLeasiumApi(page: Page) {
   };
 
   const xeroChartTaxValidationPreview = () => {
-    const chartReady = chargeAccountCode === "401" || chargeAccountCode === "200";
+    const chartReady =
+      chargeAccountCode === "401" || chargeAccountCode === "200";
     const taxReady = chargeTaxType === "OUTPUT";
     const resultStatus =
-      chartReady && taxReady ? "ready" : chargeTaxType ? "not_found" : "needs_mapping";
+      chartReady && taxReady
+        ? "ready"
+        : chargeTaxType
+          ? "not_found"
+          : "needs_mapping";
     const blockers = [
       ...(chartReady
         ? []
@@ -1152,7 +1210,8 @@ export async function mockLeasiumApi(page: Page) {
           {
             id: `rent-review-${leaseId}`,
             kind: "rent_review",
-            title: "Bright Cafe Pty Ltd rent review - Queen Street Retail Centre, Shop 3",
+            title:
+              "Bright Cafe Pty Ltd rent review - Queen Street Retail Centre, Shop 3",
             date: "2026-07-01",
             chip: "01 Jul 2026",
             href: "/properties",
@@ -1284,7 +1343,11 @@ export async function mockLeasiumApi(page: Page) {
         | { [key: string]: JsonBody }
         | undefined;
       if (!snapshot || snapshot.revoked_at) {
-        await fulfillJson(route, { detail: "Insights snapshot not found." }, 404);
+        await fulfillJson(
+          route,
+          { detail: "Insights snapshot not found." },
+          404,
+        );
         return;
       }
       await fulfillJson(route, {
@@ -1316,9 +1379,13 @@ export async function mockLeasiumApi(page: Page) {
         return row;
       });
       const revoked = insightSnapshots.find(
-        (snapshot) => (snapshot as { [key: string]: JsonBody }).id === snapshotId,
+        (snapshot) =>
+          (snapshot as { [key: string]: JsonBody }).id === snapshotId,
       );
-      await fulfillJson(route, revoked ?? { detail: "Insights snapshot not found." });
+      await fulfillJson(
+        route,
+        revoked ?? { detail: "Insights snapshot not found." },
+      );
       return;
     }
 
@@ -1340,7 +1407,10 @@ export async function mockLeasiumApi(page: Page) {
       return;
     }
 
-    if (method === "POST" && path === `/xero/contacts/sync-preview/${entityId}`) {
+    if (
+      method === "POST" &&
+      path === `/xero/contacts/sync-preview/${entityId}`
+    ) {
       xeroTenantId = xeroTenantId ?? "tenant-smoke";
       xeroConnectedAt = xeroConnectedAt ?? "2026-05-19T10:00:00.000Z";
       xeroProviderConnected = true;
@@ -1375,7 +1445,10 @@ export async function mockLeasiumApi(page: Page) {
       return;
     }
 
-    if (method === "POST" && path === `/xero/contacts/apply-preview/${entityId}`) {
+    if (
+      method === "POST" &&
+      path === `/xero/contacts/apply-preview/${entityId}`
+    ) {
       const payload = request.postDataJSON() as {
         mappings?: Partial<XeroContactMapping>[];
       };
@@ -1385,7 +1458,8 @@ export async function mockLeasiumApi(page: Page) {
 
       for (const mapping of payload.mappings ?? []) {
         if (
-          (mapping.target_type === "tenant" || mapping.target_type === "property") &&
+          (mapping.target_type === "tenant" ||
+            mapping.target_type === "property") &&
           mapping.target_id &&
           mapping.xero_contact_id
         ) {
@@ -1394,7 +1468,8 @@ export async function mockLeasiumApi(page: Page) {
             target_id: mapping.target_id,
             target_name: mapping.target_name ?? mapping.target_id,
             xero_contact_id: mapping.xero_contact_id,
-            xero_contact_name: mapping.xero_contact_name ?? mapping.xero_contact_id,
+            xero_contact_name:
+              mapping.xero_contact_name ?? mapping.xero_contact_id,
             xero_email: mapping.xero_email ?? null,
           };
           appliedMappings.push(appliedMapping);
@@ -1402,7 +1477,8 @@ export async function mockLeasiumApi(page: Page) {
         }
         skippedMappings.push({
           target_type:
-            mapping.target_type === "tenant" || mapping.target_type === "property"
+            mapping.target_type === "tenant" ||
+            mapping.target_type === "property"
               ? mapping.target_type
               : "tenant",
           target_id: mapping.target_id ?? "unknown",
@@ -1486,7 +1562,9 @@ export async function mockLeasiumApi(page: Page) {
           ? "approved_pending_xero_draft"
           : "approval_revoked",
         approved_at: xeroDraftApproved ? "2026-05-19T10:25:00.000Z" : null,
-        idempotency_key: xeroDraftApproved ? "xero-draft-invoice-draft-1" : null,
+        idempotency_key: xeroDraftApproved
+          ? "xero-draft-invoice-draft-1"
+          : null,
         reason: xeroDraftApproved
           ? "Xero draft posting was explicitly approved locally."
           : "Xero draft posting approval was revoked locally.",
@@ -1499,7 +1577,10 @@ export async function mockLeasiumApi(page: Page) {
       return;
     }
 
-    if (method === "POST" && path === `/xero/invoices/draft-create/${entityId}`) {
+    if (
+      method === "POST" &&
+      path === `/xero/invoices/draft-create/${entityId}`
+    ) {
       if (xeroDraftApproved) {
         xeroDraftCreated = true;
       }
@@ -1567,7 +1648,11 @@ export async function mockLeasiumApi(page: Page) {
 
     if (method === "GET" && path === "/tenant-portal/account/session") {
       if (!tenantAccountLinked) {
-        await fulfillJson(route, { detail: "Tenant portal account not found." }, 401);
+        await fulfillJson(
+          route,
+          { detail: "Tenant portal account not found." },
+          401,
+        );
         return;
       }
       await fulfillJson(route, tenantPortalSession("account"));
@@ -1580,8 +1665,31 @@ export async function mockLeasiumApi(page: Page) {
       return;
     }
 
+    if (method === "POST" && path === "/tenant-portal/documents") {
+      const body = request.postDataBuffer()?.toString("utf8") ?? "";
+      const uploaded = {
+        id: `portal-document-upload-${++tenantPortalDocumentCount}`,
+        filename: multipartFilename(body),
+        content_type: request
+          .headers()
+          ["content-type"]?.includes("multipart/form-data")
+          ? null
+          : (request.headers()["content-type"] ?? null),
+        byte_size: request.postDataBuffer()?.byteLength ?? 0,
+        category: multipartField(body, "category") ?? "other",
+        notes: multipartField(body, "notes"),
+        source: "tenant_portal",
+        created_at: "2026-05-20T03:00:00.000Z",
+      };
+      tenantPortalDocuments.unshift(uploaded);
+      await fulfillJson(route, uploaded, 201);
+      return;
+    }
+
     if (method === "POST" && path === "/tenant-portal/maintenance-requests") {
       const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const documentIds = jsonStringArray(payload.document_ids);
+      const photoDocumentIds = jsonStringArray(payload.photo_document_ids);
       const created = {
         ...maintenanceWorkOrders[0],
         ...payload,
@@ -1616,10 +1724,12 @@ export async function mockLeasiumApi(page: Page) {
         due_date: null,
         completed_at: null,
         notes: null,
-        document_ids: [],
-        photo_document_ids: [],
+        document_ids: documentIds,
+        photo_document_ids: photoDocumentIds,
         metadata: {
           source: "tenant_portal",
+          attached_document_ids: documentIds,
+          attached_photo_document_ids: photoDocumentIds,
           activity_history: [
             {
               timestamp: "2026-05-20T03:00:00.000Z",
@@ -1673,7 +1783,10 @@ export async function mockLeasiumApi(page: Page) {
       return;
     }
 
-    if (method === "PATCH" && path === "/maintenance/work-orders/work-order-1") {
+    if (
+      method === "PATCH" &&
+      path === "/maintenance/work-orders/work-order-1"
+    ) {
       const payload = request.postDataJSON() as Record<string, JsonBody>;
       Object.assign(maintenanceWorkOrders[0], payload, {
         updated_at: "2026-05-20T01:00:00.000Z",

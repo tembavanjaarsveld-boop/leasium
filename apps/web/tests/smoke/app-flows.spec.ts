@@ -34,7 +34,9 @@ test("workspace guard asks signed-out operators to sign in when Clerk is configu
   await expect(
     page.getByRole("heading", { name: "Sign in to open the workspace" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "First workspace setup" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "First workspace setup" }),
+  ).toBeVisible();
 });
 
 test("dashboard shows the mocked portfolio and opens billing readiness", async ({
@@ -102,18 +104,32 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await page.getByRole("button", { name: "Detail" }).click();
   await expect(page.getByText("Approval", { exact: true })).toBeVisible();
   await expect(page.getByText("$640").first()).toBeVisible();
-  await expect(page.getByText("Tenant submitted maintenance request.")).toBeVisible();
-  await page.getByLabel("Invoice draft for Air conditioning fault").selectOption("invoice-draft-1");
+  await expect(
+    page.getByText("Tenant submitted maintenance request."),
+  ).toBeVisible();
+  await page
+    .getByLabel("Invoice draft for Air conditioning fault")
+    .selectOption("invoice-draft-1");
   await page.getByRole("button", { name: "Link invoice" }).click();
   await expect(page.getByText("INV-1001").first()).toBeVisible();
   await page.getByRole("button", { exact: true, name: "Approve" }).click();
-  await expect(page.locator("span").filter({ hasText: /^approved$/ }).first()).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^approved$/ })
+      .first(),
+  ).toBeVisible();
 
   await page.getByRole("tab", { name: /Arrears/ }).click();
   await expect(page.getByText("$8,800").first()).toBeVisible();
   await expect(page.getByText("raised").first()).toBeVisible();
   await page.getByRole("button", { name: "Escalate" }).click();
-  await expect(page.locator("span").filter({ hasText: /^queued$/ }).first()).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^queued$/ })
+      .first(),
+  ).toBeVisible();
 });
 
 test("tenant workspace supports search and the add tenant form", async ({
@@ -140,25 +156,39 @@ test("tenant workspace supports search and the add tenant form", async ({
 test("tenant portal shows scoped self-service data", async ({ page }) => {
   await page.goto("/tenant-portal/tenant-token-1");
 
-  await expect(page.getByRole("heading", { name: "Bright Cafe" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Bright Cafe" }),
+  ).toBeVisible();
   await expect(page.getByText("Token scoped")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible();
   await expect(page.getByText("INV-1001")).toBeVisible();
   await expect(page.getByText("May rent and outgoings")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Maintenance" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Maintenance" }),
+  ).toBeVisible();
   await expect(page.getByText("Air conditioning fault")).toBeVisible();
-  await expect(page.getByText("Tenant submitted maintenance request.")).toBeVisible();
+  await expect(
+    page.getByText("Tenant submitted maintenance request."),
+  ).toBeVisible();
+  await expect(page.getByText("2 files")).toBeVisible();
   await page.getByLabel("Request title").fill("Shopfront light fault");
   await page.getByLabel("Priority").selectOption("high");
   await page
     .getByLabel("Details")
     .fill("Entry light is flickering during trading hours.");
   await page.getByLabel("Location or reference").fill("Front entry");
+  await page.getByLabel("Photo").setInputFiles({
+    name: "shopfront-light.jpg",
+    mimeType: "image/jpeg",
+    buffer: Buffer.from("mock image bytes"),
+  });
   await page.getByRole("button", { name: "Submit request" }).click();
   await expect(page.getByText("Shopfront light fault")).toBeVisible();
   await expect(page.getByText("Front entry")).toBeVisible();
+  await expect(page.getByText("1 file", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Compliance" })).toBeVisible();
   await expect(page.getByText("bright-cafe-insurance.pdf")).toBeVisible();
+  await expect(page.getByText("shopfront-light.jpg")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Notification Preferences" }),
   ).toBeVisible();
@@ -199,7 +229,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
 
   await page.getByLabel("Xero tenant ID").fill("tenant-smoke");
   await page.getByRole("button", { name: "Save status" }).click();
-  await expect(page.getByText("Connected", { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText("Connected", { exact: true }).first(),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Connect with Xero" }).click();
   await expect(page.getByText("Provider connected").first()).toBeVisible();
@@ -218,7 +250,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("1 applied")).toBeVisible();
   await expect(page.getByText("0 skipped")).toBeVisible();
   await expect(
-    page.getByText("No invoice posting, tenant email, or payment reconciliation"),
+    page.getByText(
+      "No invoice posting, tenant email, or payment reconciliation",
+    ),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Preview chart/tax" }).click();
@@ -273,7 +307,9 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
   await expect(
     page.getByRole("heading", { exact: true, name: "Insights" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Live Exceptions" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Live Exceptions" }),
+  ).toBeVisible();
   await expect(page.getByText("Insurance certificate renewal")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Automation Activity" }),
@@ -283,9 +319,13 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
     page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
   ).toBeVisible();
   await expect(page.getByText("Trust", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Finance Snapshot" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Finance Snapshot" }),
+  ).toBeVisible();
   await expect(page.getByText("Approved not synced").first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Lease Events" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Lease Events" }),
+  ).toBeVisible();
   await expect(page.getByText("Bright Cafe Pty Ltd rent review")).toBeVisible();
 
   await page.getByRole("button", { name: "Generate link" }).click();
