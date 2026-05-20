@@ -69,7 +69,49 @@ const properties = [
     owner_gst_registered: true,
     xero_contact_id: "xero-owner-1",
     xero_tracking_category: "Queen Street",
-    metadata: {},
+    metadata: {
+      source_citations: {
+        owner_abn: {
+          source_hint: "Purchase contract vendor schedule",
+          citation: "Vendor details",
+          confidence: 0.91,
+        },
+        street_address: {
+          source_hint: "Purchase contract property schedule",
+          citation: "Property address",
+          confidence: 0.88,
+        },
+      },
+      apply_change_history: [
+        {
+          document_intake_id: "intake-1",
+          document_id: "document-1",
+          document_type: "purchase_contract",
+          changes: [
+            {
+              field: "street_address",
+              before: "12 Queen St",
+              after: "12 Queen Street",
+              source: {
+                source_hint: "Purchase contract property schedule",
+                citation: "Property address",
+                confidence: 0.88,
+              },
+            },
+            {
+              field: "owner_abn",
+              before: null,
+              after: "22123456789",
+              source: {
+                source_hint: "Purchase contract vendor schedule",
+                citation: "Vendor details",
+                confidence: 0.91,
+              },
+            },
+          ],
+        },
+      ],
+    },
   },
 ];
 

@@ -50,15 +50,19 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByText("Queen Street Retail Centre").first(),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Portfolio QA" })).toBeVisible();
   await expect(
     page.getByText("Insurance certificate renewal").first(),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Open search" }).click();
-  await page
-    .getByPlaceholder("Search tenants, leases, actions...")
-    .fill("billing");
+  const commandSearch = page.getByPlaceholder(
+    "Search tenants, leases, actions...",
+  );
+  await commandSearch.fill("portfolio qa");
+  await expect(
+    page.getByRole("link", { name: /Data cleanup \/ Portfolio QA/ }),
+  ).toBeVisible();
+  await commandSearch.fill("billing");
   await page.getByText("Review billing blockers").click();
 
   await expect(page).toHaveURL(/\/billing-readiness$/);
@@ -68,23 +72,23 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByText("Xero mapping needs review").first(),
   ).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Readiness/ })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Billing drafts/ })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Invoice prep/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Fix blockers/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Review drafts/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Approve invoices/ })).toBeVisible();
   await expect(
-    page.getByRole("tab", { name: /Delivery & payments/ }),
+    page.getByRole("tab", { name: /Dispatch & reconcile/ }),
   ).toBeVisible();
 
-  await page.getByRole("tab", { name: /Billing drafts/ }).click();
+  await page.getByRole("tab", { name: /Review drafts/ }).click();
   await expect(page.getByText("May rent and outgoings")).toBeVisible();
 
-  await page.getByRole("tab", { name: /Invoice prep/ }).click();
+  await page.getByRole("tab", { name: /Approve invoices/ }).click();
   await expect(
     page.getByRole("heading", { name: "Invoice preparation" }),
   ).toBeVisible();
   await expect(page.getByText("INV-1001").first()).toBeVisible();
 
-  await page.getByRole("tab", { name: /Delivery & payments/ }).click();
+  await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
   await expect(page.getByText("Needs Xero approval").first()).toBeVisible();
   await expect(
     page.getByRole("button", { exact: true, name: "Dispatch" }),
@@ -184,6 +188,24 @@ test("tenant workspace supports search and the add tenant form", async ({
   await page.getByRole("button", { name: "Add tenant" }).click();
   await expect(page.getByLabel("Legal name")).toBeVisible();
   await expect(page.getByLabel("Contact email")).toBeVisible();
+});
+
+test("property workspace shows the evidence source trail", async ({ page }) => {
+  await page.goto("/properties");
+
+  await expect(
+    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+  ).toBeVisible();
+  await expect(page.getByText("Queen Street Retail Centre").first()).toBeVisible();
+
+  await page.getByRole("tab", { name: /Documents/ }).click();
+
+  await expect(page.getByRole("heading", { name: "Evidence drawer" })).toBeVisible();
+  await expect(page.getByText("Purchase contract").first()).toBeVisible();
+  await expect(page.getByText("Street address").first()).toBeVisible();
+  await expect(page.getByText("12 Queen St").first()).toBeVisible();
+  await expect(page.getByText("12 Queen Street").first()).toBeVisible();
+  await expect(page.getByText("Citation stored for Owner ABN")).toBeVisible();
 });
 
 test("tenant detail shows portal access recovery actions", async ({ page }) => {
@@ -505,7 +527,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("No Xero sync exceptions")).toBeVisible();
 
   await page.goto("/billing-readiness");
-  await page.getByRole("tab", { name: /Delivery & payments/ }).click();
+  await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
   await expect(page.getByText("Xero DRAFT").first()).toBeVisible();
   await page.getByRole("button", { exact: true, name: "Dispatch" }).click();
   await expect(page.getByText("Xero receipt created #1")).toBeVisible();

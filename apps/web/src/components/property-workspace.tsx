@@ -36,6 +36,12 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { AppHeader } from "@/components/app-shell";
+import {
+  EvidenceSourceTrail,
+  type EvidenceFieldChange,
+  type EvidenceHistoryRow,
+  type EvidenceSourceLocation,
+} from "@/components/evidence-drawer";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -157,8 +163,8 @@ const propertyWorkspaceTabs: Array<{
   },
   {
     id: "operations",
-    label: "Operations",
-    description: "Dates, units, leases",
+    label: "Leases & units",
+    description: "Dates and occupancy",
   },
   {
     id: "billing",
@@ -725,6 +731,79 @@ function sourceCaption(source: PropertySourceCitation | null | undefined) {
   ]
     .filter(Boolean)
     .join(" - ");
+}
+
+function propertyEvidenceSourceLocation(
+  source: PropertySourceCitation | null | undefined,
+): EvidenceSourceLocation | null {
+  if (!source) {
+    return null;
+  }
+  const label = source.source_hint ?? source.citation;
+  if (!label) {
+    return null;
+  }
+  return {
+    label,
+    detail:
+      source.source_hint && source.citation ? source.citation : undefined,
+  };
+}
+
+function propertyEvidenceChanges(
+  entry: PropertyApplyHistoryEntry | null,
+): EvidenceFieldChange[] {
+  if (!entry) {
+    return [];
+  }
+  return entry.changes.map((change, index) => ({
+    id: `${change.field}-${index}`,
+    field: change.field,
+    label: propertyFieldLabel(change.field),
+    before: change.before,
+    after: change.after,
+    sourceLocation: propertyEvidenceSourceLocation(change.source),
+    confidence: change.source?.confidence,
+  }));
+}
+
+function propertyEvidenceConfidence(
+  entry: PropertyApplyHistoryEntry | null,
+  sources: Array<{ source: PropertySourceCitation }>,
+) {
+  const changeConfidence = entry?.changes.find(
+    (change) => typeof change.source?.confidence === "number",
+  )?.source?.confidence;
+  if (changeConfidence !== undefined) {
+    return changeConfidence;
+  }
+  return sources.find((item) => typeof item.source.confidence === "number")
+    ?.source.confidence;
+}
+
+function propertyEvidenceHistory(
+  history: PropertyApplyHistoryEntry[],
+  sources: Array<{ field: string; source: PropertySourceCitation }>,
+): EvidenceHistoryRow[] {
+  return [
+    ...history
+      .slice()
+      .reverse()
+      .map((entry, index) => ({
+        id: `apply-${entry.document_intake_id ?? index}`,
+        label: `Applied ${propertyDocumentTypeLabel(entry.document_type)}`,
+        description: `${entry.changes.length} field change${
+          entry.changes.length === 1 ? "" : "s"
+        } stored against this property.`,
+        tone: "success" as const,
+      })),
+    ...sources.slice(0, 8).map((item) => ({
+      id: `citation-${item.field}`,
+      label: `Citation stored for ${propertyFieldLabel(item.field)}`,
+      description: sourceCaption(item.source) ?? "Source citation stored.",
+      tone: "primary" as const,
+    })),
+  ];
 }
 
 function shortId(value: string | null | undefined) {
@@ -4064,82 +4143,38 @@ function Workspace() {
                   </Link>
                 ) : null}
               </div>
-              <div className="grid gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold">
-                      Latest applied changes
-                    </h3>
-                    {latestPropertyApply ? (
-                      <span className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover">
-                        {propertyDocumentTypeLabel(
-                          latestPropertyApply.document_type,
-                        )}
-                      </span>
-                    ) : null}
-                  </div>
-                  {latestPropertyApply?.changes.length ? (
-                    <div className="mt-3 divide-y divide-border text-sm">
-                      {latestPropertyApply.changes
-                        .slice(0, 6)
-                        .map((change, index) => {
-                          const source = sourceCaption(change.source);
-                          return (
-                            <div
-                              key={`${change.field}-${index}`}
-                              className="grid gap-1 py-2"
-                            >
-                              <div className="font-medium">
-                                {propertyFieldLabel(change.field)}
-                              </div>
-                              <div className="text-muted-foreground">
-                                {presentValue(change.before)} to{" "}
-                                {presentValue(change.after)}
-                              </div>
-                              {source ? (
-                                <div className="text-xs text-muted-foreground">
-                                  {source}
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        })}
-                    </div>
-                  ) : (
-                    <div className="mt-3 text-sm text-muted-foreground">
-                      No before/after changes have been recorded yet.
-                    </div>
+              <div className="p-4">
+                <EvidenceSourceTrail
+                  title="Evidence drawer"
+                  description="Source document, before/after changes, field citations, and apply history for this property."
+                  sourceDocument={
+                    latestPropertyApply
+                      ? {
+                          label: propertyDocumentTypeLabel(
+                            latestPropertyApply.document_type,
+                          ),
+                          href: latestPropertyApply.document_intake_id
+                            ? `/intake?review=${latestPropertyApply.document_intake_id}`
+                            : undefined,
+                          detail:
+                            shortId(latestPropertyApply.document_intake_id) ??
+                            shortId(latestPropertyApply.document_id) ??
+                            undefined,
+                        }
+                      : null
+                  }
+                  confidence={propertyEvidenceConfidence(
+                    latestPropertyApply,
+                    selectedPropertySources,
                   )}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold">Field citations</h3>
-                    {selectedPropertyApplyHistory.length ? (
-                      <span className="text-xs font-medium text-muted-foreground">
-                        {selectedPropertyApplyHistory.length} apply run
-                        {selectedPropertyApplyHistory.length === 1 ? "" : "s"}
-                      </span>
-                    ) : null}
-                  </div>
-                  {selectedPropertySources.length ? (
-                    <div className="mt-3 divide-y divide-border text-sm">
-                      {selectedPropertySources.slice(0, 6).map((item) => (
-                        <div key={item.field} className="grid gap-1 py-2">
-                          <div className="font-medium">
-                            {propertyFieldLabel(item.field)}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {sourceCaption(item.source)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-3 text-sm text-muted-foreground">
-                      No field citations stored yet.
-                    </div>
+                  changes={propertyEvidenceChanges(latestPropertyApply)}
+                  history={propertyEvidenceHistory(
+                    selectedPropertyApplyHistory,
+                    selectedPropertySources,
                   )}
-                </div>
+                  emptyMessage="No source evidence has been recorded for this property yet."
+                  className="shadow-none"
+                />
               </div>
             </section>
           ) : null}

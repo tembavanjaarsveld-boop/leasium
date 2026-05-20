@@ -231,6 +231,14 @@ Status: pending Remba review. Smart Intake now includes a spreadsheet import rev
 
 Status: pending Remba review. Portfolio QA remains a cleanup workspace at `/portfolio-qa` and now has a primary navigation entry for pre-production cleanup work. The header must wrap cleanly rather than clipping the right-side search/settings controls, because the primary nav is now intentionally fuller. Remba should confirm whether cleanup belongs as a top-level item long term, should move back under Insights, needs a secondary nav, or should graduate into its own module once operators use it repeatedly.
 
+2026-05-21 update: the primary navigation has been simplified to Dashboard, Smart Intake, Portfolio, Work, Billing, Insights, and Settings. Portfolio QA is no longer a top-level nav item; it remains reachable through command search as Data cleanup / Portfolio QA and still appears contextually from supporting workspaces. Remba should review whether this improves laptop fit and whether Portfolio QA should stay as command/search only, sit under Portfolio, or appear under Insights.
+
+## Dashboard Command Center
+
+Status: pending Remba review. Dashboard now has a first-viewport daily command center that ranks Smart Intake reviews/failed reads, billing blockers, submitted or due onboarding, and urgent operations/key dates before the metric cards. Keep it action-routing only: it should explain what needs attention, why it matters, and where to go next without applying data, posting invoices, or mutating records from the dashboard.
+
+Related 2026-05-21 IA copy cleanup: the Property workspace tab previously labelled Operations is now Leases & units so it does not compete with the global Work destination. Billing Readiness tabs now read like a billing run: Fix blockers, Review drafts, Approve invoices, and Dispatch & reconcile. Remba should review whether the labels are clearer for non-technical operators before beta.
+
 ## Tenant Portal Surface
 
 Status: pending Remba review. `/tenant-portal/[token]` now gives tenants a scoped self-service surface for onboarding status, lease context, approved invoices/payment summary, compliance/document upload and download, maintenance request submission/status, inline maintenance photo upload, and notification preferences with timestamped save receipts. Tenant document rows now show category, size, source, received timestamp, notes, and an explicit download action. The page now includes an Account Access panel when Clerk is configured, allowing a signed-in tenant to link the portal once, reload matching portal data through bearer auth, and continue maintenance requests, uploads, notification preferences, and protected document downloads through the tenant account boundary while the original token link remains available. Linked tenants can also return through `/tenant-portal` or `/tenant-portal/account` without the original token URL, and signed-in account status now distinguishes unlinked, revoked, restored, and wrong-tenant recovery states with plain guidance. Remba should review first-viewport tenant context, portal trust language, account-link placement, account-only entry copy, invite-expiry/recovery tone, upload/request density, document provenance density, preference receipt tone, invoice/payment clarity, and whether maintenance belongs before or after compliance for tenants.
@@ -256,6 +264,8 @@ The dedicated maintenance work-order route now also surfaces quote/evidence rows
 ## Property Provenance Surface
 
 Status: pending Remba review. Smart Intake apply outcomes and the Property workspace now expose purchase-contract source history, field citations, confidence, and before/after property changes. Keep this review-first and factual: show what changed and where it came from, without implying the document source is automatically authoritative.
+
+2026-05-21 update: property source history now uses a reusable Evidence Source Trail pattern that can carry source document, source location, confidence, before/after field changes, field citations, and audit history. Remba should review the density, labels, and whether this pattern should become the standard evidence drawer across Smart Intake, tenant detail, invoices, maintenance, and Portfolio QA.
 
 ## Acquisition Schedule Outcome Surface
 

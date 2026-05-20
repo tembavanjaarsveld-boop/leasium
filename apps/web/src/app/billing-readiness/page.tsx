@@ -92,23 +92,23 @@ const billingWorkspaceTabs: Array<{
 }> = [
   {
     id: "readiness",
-    label: "Readiness",
-    description: "Fix blockers first",
+    label: "Fix blockers",
+    description: "Clear invoice, GST, Xero",
   },
   {
     id: "billing-drafts",
-    label: "Billing drafts",
-    description: "Review source work",
+    label: "Review drafts",
+    description: "Source-linked billing work",
   },
   {
     id: "invoice-prep",
-    label: "Invoice prep",
-    description: "Prepare approval",
+    label: "Approve invoices",
+    description: "Preview and approve",
   },
   {
     id: "delivery",
-    label: "Delivery & payments",
-    description: "Record after approval",
+    label: "Dispatch & reconcile",
+    description: "Send, sync, record payment",
   },
 ];
 

@@ -110,6 +110,26 @@ type DocumentApplyOutcome = {
   dueDate: string | null;
   ignoredCount: number;
 };
+type CommandCenterItem = {
+  id: string;
+  area: string;
+  title: string;
+  why: string;
+  href: string;
+  nextStep: string;
+  chip: string;
+  tone: StatusTone;
+  score: number;
+  date: string | null;
+  dateLabel: string;
+  icon: ReactNode;
+};
+type CommandCenterCounts = {
+  intake: number;
+  billing: number;
+  onboarding: number;
+  operations: number;
+};
 
 const propertyFieldLabels: Record<string, string> = {
   name: "Property name",
@@ -214,6 +234,26 @@ function dueLabel(value: string | null | undefined) {
   return formatDate(value);
 }
 
+function urgencyWeight(value: string | null | undefined) {
+  const days = dueRank(value);
+  if (days < 0) {
+    return 0;
+  }
+  if (days === 0) {
+    return 1;
+  }
+  if (days <= 7) {
+    return 2;
+  }
+  if (days <= 14) {
+    return 4;
+  }
+  if (days <= 30) {
+    return 7;
+  }
+  return 10;
+}
+
 function obligationTone(obligation: ObligationRecord): StatusTone {
   const days = dueRank(obligation.due_date);
   if (days < 0) {
@@ -223,6 +263,18 @@ function obligationTone(obligation: ObligationRecord): StatusTone {
     return "warning";
   }
   return "neutral";
+}
+
+function commandCenterSort(a: CommandCenterItem, b: CommandCenterItem) {
+  const scoreDelta = a.score - b.score;
+  if (scoreDelta !== 0) {
+    return scoreDelta;
+  }
+  const dateDelta = dueRank(a.date) - dueRank(b.date);
+  if (dateDelta !== 0) {
+    return dateDelta;
+  }
+  return a.title.localeCompare(b.title);
 }
 
 function blockers(row: RentRollRow) {
@@ -536,6 +588,163 @@ function DashboardMetricCard({
         {nextAction}
       </p>
     </Link>
+  );
+}
+
+function DashboardCommandCenter({
+  items,
+  loading,
+  refreshing,
+  counts,
+}: {
+  items: CommandCenterItem[];
+  loading: boolean;
+  refreshing: boolean;
+  counts: CommandCenterCounts;
+}) {
+  const shownItems = items.slice(0, 6);
+  const totalCount =
+    counts.intake + counts.billing + counts.onboarding + counts.operations;
+  const summaryRows = [
+    {
+      label: "Smart Intake",
+      count: counts.intake,
+      detail: "Reviews and failed reads",
+      href: "/intake",
+      tone: counts.intake ? ("primary" as const) : ("success" as const),
+    },
+    {
+      label: "Billing",
+      count: counts.billing,
+      detail: "Readiness blockers",
+      href: "/billing-readiness",
+      tone: counts.billing ? ("danger" as const) : ("success" as const),
+    },
+    {
+      label: "Onboarding",
+      count: counts.onboarding,
+      detail: "Submitted or due",
+      href: "/tenants",
+      tone: counts.onboarding ? ("primary" as const) : ("success" as const),
+    },
+    {
+      label: "Operations",
+      count: counts.operations,
+      detail: "Urgent key dates",
+      href: "/operations",
+      tone: counts.operations ? ("warning" as const) : ("success" as const),
+    },
+  ];
+
+  return (
+    <SectionPanel
+      title="Daily command center"
+      description="Ranked operator actions across reviews, billing, onboarding, and key dates."
+      icon={<ClipboardList size={17} className="text-primary" />}
+      actions={
+        <StatusBadge
+          tone={
+            loading
+              ? "neutral"
+              : totalCount
+                ? (shownItems[0]?.tone ?? "warning")
+                : "success"
+          }
+        >
+          {loading
+            ? "Loading"
+            : refreshing
+              ? "Refreshing"
+              : totalCount
+                ? "Act today"
+                : "Clear"}
+        </StatusBadge>
+      }
+      className="border-primary/20"
+    >
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="divide-y divide-border lg:border-r lg:border-border">
+          {loading && shownItems.length === 0 ? (
+            <EmptyState
+              title="Loading today's command center."
+              description="Checking Smart Intake, billing readiness, onboarding, and key dates."
+            />
+          ) : shownItems.length ? (
+            shownItems.map((item, index) => (
+              <Link
+                key={item.id}
+                href={item.href}
+                className={[
+                  "group grid gap-3 px-4 py-4 transition hover:bg-muted/55 md:grid-cols-[3rem_minmax(0,1fr)_auto] md:items-center",
+                  index === 0 ? "bg-leasium-blue-soft/45" : "",
+                ].join(" ")}
+              >
+                <div className="flex items-center gap-2 md:grid md:justify-items-center">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    #{index + 1}
+                  </span>
+                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-white text-primary shadow-leasiumXs transition group-hover:bg-primary group-hover:text-white">
+                    {item.icon}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <StatusBadge tone={item.tone}>{item.chip}</StatusBadge>
+                    <span>{item.area}</span>
+                    <span>{item.dateLabel}</span>
+                  </div>
+                  <div className="mt-2 font-semibold">{item.title}</div>
+                  <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">
+                    {item.why}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between gap-2 md:justify-end">
+                  <span className="text-sm font-semibold text-primary">
+                    {item.nextStep}
+                  </span>
+                  <span className="grid h-8 w-8 place-items-center rounded-xl border border-border bg-white text-primary transition group-hover:border-primary/35 group-hover:bg-primary group-hover:text-white">
+                    <Link2 size={15} />
+                  </span>
+                </div>
+              </Link>
+            ))
+          ) : (
+            <EmptyState
+              title="No operator actions need attention."
+              description="Smart Intake, billing readiness, onboarding, and urgent dates are clear for now."
+            />
+          )}
+        </div>
+        <aside className="grid content-start gap-4 p-4">
+          <div className="rounded-xl bg-leasium-blue-soft px-3 py-3 text-sm text-leasium-blue-hover">
+            <div className="font-semibold">Review-first guardrail</div>
+            <p className="mt-1 leading-5">
+              Smart Intake is the gate. This surface routes work only; applying
+              stays inside reviewed workflows.
+            </p>
+          </div>
+          <div className="grid gap-3">
+            {summaryRows.map((row) => (
+              <Link
+                key={row.label}
+                href={row.href}
+                className="flex items-center justify-between gap-3 border-b border-border pb-3 text-sm transition last:border-b-0 last:pb-0 hover:text-primary"
+              >
+                <span>
+                  <span className="block font-semibold">{row.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {row.detail}
+                  </span>
+                </span>
+                <StatusBadge tone={row.tone}>
+                  {loading && row.count === 0 ? "..." : row.count}
+                </StatusBadge>
+              </Link>
+            ))}
+          </div>
+        </aside>
+      </div>
+    </SectionPanel>
   );
 }
 
@@ -2560,6 +2769,188 @@ export function Dashboard({
   const failedIntakeCount = documentIntakes.filter(
     (item) => item.status === "failed",
   ).length;
+  const smartReviewIntakes = documentIntakes
+    .filter((item) =>
+      ["ready_for_review", "needs_attention"].includes(item.status),
+    )
+    .sort((a, b) => {
+      const aRank = a.status === "needs_attention" ? 0 : 1;
+      const bRank = b.status === "needs_attention" ? 0 : 1;
+      if (aRank !== bRank) {
+        return aRank - bRank;
+      }
+      return a.created_at.localeCompare(b.created_at);
+    });
+  const failedIntakes = documentIntakes
+    .filter((item) => item.status === "failed")
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const rankedBillingIssues = [...billingIssues].sort((a, b) => {
+    const aHardBlocker = [
+      ...(a.row.invoice_readiness_blockers ?? []),
+      ...(a.row.xero_readiness_blockers ?? []),
+    ].length;
+    const bHardBlocker = [
+      ...(b.row.invoice_readiness_blockers ?? []),
+      ...(b.row.xero_readiness_blockers ?? []),
+    ].length;
+    if (aHardBlocker !== bHardBlocker) {
+      return bHardBlocker - aHardBlocker;
+    }
+    return dueRank(a.row.next_due_date) - dueRank(b.row.next_due_date);
+  });
+  const rankedSubmittedOnboardings = [...submittedOnboardings].sort(
+    (a, b) => dueRank(a.due_date) - dueRank(b.due_date),
+  );
+  const urgentOnboardingFollowUps = activeOnboardings
+    .filter((item) => dueRank(item.due_date) <= 7)
+    .sort((a, b) => dueRank(a.due_date) - dueRank(b.due_date));
+  const commandCenterItems: CommandCenterItem[] = [];
+  const topSmartReview = smartReviewIntakes[0];
+  if (topSmartReview) {
+    commandCenterItems.push({
+      id: "smart-intake-review",
+      area: "Smart Intake",
+      title: `${smartReviewIntakes.length} Smart Intake ${
+        smartReviewIntakes.length === 1 ? "review" : "reviews"
+      } waiting`,
+      why:
+        topSmartReview.status === "needs_attention"
+          ? `${topSmartReview.filename} needs a human match before Leasium can turn it into reviewed workflow data.`
+          : `${topSmartReview.filename} has extracted terms waiting for approval before lease, billing, or task work is created.`,
+      href: `/intake?review=${topSmartReview.id}`,
+      nextStep: "Review document",
+      chip: "Review first",
+      tone: "primary",
+      score: 0,
+      date: topSmartReview.created_at,
+      dateLabel: `Waiting since ${formatDateTime(topSmartReview.created_at)}`,
+      icon: <Sparkles size={16} />,
+    });
+  }
+  const topFailedIntake = failedIntakes[0];
+  if (topFailedIntake) {
+    commandCenterItems.push({
+      id: "smart-intake-failed",
+      area: "Smart Intake",
+      title: `${failedIntakes.length} document ${
+        failedIntakes.length === 1 ? "read" : "reads"
+      } failed`,
+      why: `${topFailedIntake.filename} could not become source-backed review data, so downstream workflow should wait until it is fixed or cleared.`,
+      href: `/intake?review=${topFailedIntake.id}`,
+      nextStep: "Fix intake",
+      chip: "Could not read",
+      tone: "danger",
+      score: 6,
+      date: topFailedIntake.created_at,
+      dateLabel: formatDateTime(topFailedIntake.created_at),
+      icon: <FileText size={16} />,
+    });
+  }
+  const topBillingIssue = rankedBillingIssues[0];
+  if (topBillingIssue) {
+    const hardBlocker = [
+      ...(topBillingIssue.row.invoice_readiness_blockers ?? []),
+      ...(topBillingIssue.row.xero_readiness_blockers ?? []),
+    ].length;
+    const nextCharge = topBillingIssue.row.next_due_date
+      ? ` Next charge is ${dueLabel(topBillingIssue.row.next_due_date).toLowerCase()}.`
+      : "";
+    commandCenterItems.push({
+      id: "billing-readiness",
+      area: "Billing",
+      title: `${rankedBillingIssues.length} billing ${
+        rankedBillingIssues.length === 1 ? "blocker" : "blockers"
+      } before invoices`,
+      why: `${topBillingIssue.row.unit_label} has ${topBillingIssue.blockers[0]}.${nextCharge}`,
+      href: "/billing-readiness",
+      nextStep: "Open billing readiness",
+      chip: hardBlocker ? "Blocked" : "Check GST",
+      tone: hardBlocker ? "danger" : "warning",
+      score: 18 + urgencyWeight(topBillingIssue.row.next_due_date),
+      date: topBillingIssue.row.next_due_date,
+      dateLabel: topBillingIssue.row.next_due_date
+        ? dueLabel(topBillingIssue.row.next_due_date)
+        : "No charge date",
+      icon: <ReceiptText size={16} />,
+    });
+  }
+  const topSubmittedOnboarding = rankedSubmittedOnboardings[0];
+  if (topSubmittedOnboarding) {
+    commandCenterItems.push({
+      id: "submitted-onboarding",
+      area: "Onboarding",
+      title: `${rankedSubmittedOnboardings.length} submitted onboarding ${
+        rankedSubmittedOnboardings.length === 1 ? "item" : "items"
+      } need review`,
+      why: "Tenant data has arrived; review it before relying on contact, billing, portal, or lease setup details.",
+      href: "/tenants",
+      nextStep: "Review submissions",
+      chip: "Submitted",
+      tone:
+        dueRank(topSubmittedOnboarding.due_date) < 0 ? "warning" : "primary",
+      score: 28 + urgencyWeight(topSubmittedOnboarding.due_date),
+      date: topSubmittedOnboarding.due_date,
+      dateLabel: dueLabel(topSubmittedOnboarding.due_date),
+      icon: <UserRound size={16} />,
+    });
+  }
+  const topUrgentObligation = urgentObligations[0];
+  if (topUrgentObligation) {
+    const notes = topUrgentObligation.notes
+      ? ` ${topUrgentObligation.notes}`
+      : "";
+    commandCenterItems.push({
+      id: "urgent-operations",
+      area: "Operations",
+      title: `${urgentObligations.length} urgent ${
+        urgentObligations.length === 1 ? "date" : "dates"
+      } or task${urgentObligations.length === 1 ? "" : "s"}`,
+      why: `${topUrgentObligation.title} is ${dueLabel(
+        topUrgentObligation.due_date,
+      ).toLowerCase()}.${notes}`,
+      href: "/operations",
+      nextStep: "Open operations",
+      chip: dueLabel(topUrgentObligation.due_date),
+      tone: obligationTone(topUrgentObligation),
+      score: 34 + urgencyWeight(topUrgentObligation.due_date),
+      date: topUrgentObligation.due_date,
+      dateLabel: formatDate(topUrgentObligation.due_date),
+      icon: <AlertTriangle size={16} />,
+    });
+  }
+  const topOnboardingFollowUp = urgentOnboardingFollowUps[0];
+  if (topOnboardingFollowUp) {
+    commandCenterItems.push({
+      id: "onboarding-follow-up",
+      area: "Onboarding",
+      title: `${urgentOnboardingFollowUps.length} tenant onboarding follow-up${
+        urgentOnboardingFollowUps.length === 1 ? "" : "s"
+      } due`,
+      why: "Tenant details are still outstanding and may block contact, billing, and portal readiness.",
+      href: "/tenants",
+      nextStep: "Open tenant queue",
+      chip: dueRank(topOnboardingFollowUp.due_date) < 0 ? "Overdue" : "Waiting",
+      tone: dueRank(topOnboardingFollowUp.due_date) < 0 ? "warning" : "primary",
+      score: 45 + urgencyWeight(topOnboardingFollowUp.due_date),
+      date: topOnboardingFollowUp.due_date,
+      dateLabel: dueLabel(topOnboardingFollowUp.due_date),
+      icon: <CalendarClock size={16} />,
+    });
+  }
+  commandCenterItems.sort(commandCenterSort);
+  const commandCenterCounts = {
+    intake: smartReviewIntakes.length + failedIntakes.length,
+    billing: rankedBillingIssues.length,
+    onboarding:
+      rankedSubmittedOnboardings.length + urgentOnboardingFollowUps.length,
+    operations: urgentObligations.length,
+  };
+  const commandCenterLoading =
+    !demoMode &&
+    (documentIntakesLoading ||
+      rentRollLoading ||
+      onboardingLoading ||
+      obligationsLoading);
 
   function uploadSmartIntake(file: File | null | undefined) {
     if (!file || !selectedEntityId || documentIntakeMutation.isPending) {
@@ -2727,6 +3118,15 @@ export function Dashboard({
               </div>
             </div>
           </SectionPanel>
+        ) : null}
+
+        {!isIntakeWorkspace ? (
+          <DashboardCommandCenter
+            items={commandCenterItems}
+            loading={commandCenterLoading}
+            refreshing={dashboardRefreshing}
+            counts={commandCenterCounts}
+          />
         ) : null}
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">

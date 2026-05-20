@@ -9,19 +9,33 @@ import { useEffect, useMemo, useState } from "react";
 import { LeasiumMark } from "@/components/brand";
 import { cn } from "@/lib/utils";
 
-const navItems = [
+type NavItem = {
+  href: string;
+  label: string;
+  matchPaths?: string[];
+};
+
+type CommandAction = {
+  href: string;
+  label: string;
+  meta: string;
+};
+
+const navItems: NavItem[] = [
   { href: "/", label: "Dashboard" },
   { href: "/intake", label: "Smart Intake" },
-  { href: "/properties", label: "Properties" },
-  { href: "/tenants", label: "Tenants" },
-  { href: "/operations", label: "Operations" },
-  { href: "/billing-readiness", label: "Billing Readiness" },
+  {
+    href: "/properties",
+    label: "Portfolio",
+    matchPaths: ["/properties", "/tenants", "/portfolio-qa"],
+  },
+  { href: "/operations", label: "Work" },
+  { href: "/billing-readiness", label: "Billing" },
   { href: "/insights", label: "Insights" },
-  { href: "/portfolio-qa", label: "Portfolio QA" },
   { href: "/settings", label: "Settings" },
 ];
 
-const commandActions = [
+const frequentActions: CommandAction[] = [
   {
     href: "/intake",
     label: "Upload document",
@@ -30,49 +44,59 @@ const commandActions = [
   {
     href: "/properties",
     label: "Add property",
-    meta: "Properties",
+    meta: "Portfolio",
   },
   {
     href: "/tenants",
     label: "Add tenant",
-    meta: "Tenants",
+    meta: "Portfolio",
   },
   {
     href: "/billing-readiness",
     label: "Review billing blockers",
-    meta: "Billing Readiness",
+    meta: "Billing",
   },
   {
     href: "/operations",
     label: "View operations queue",
-    meta: "Operations",
+    meta: "Work",
   },
   {
     href: "/operations",
     label: "Open maintenance work orders",
-    meta: "Operations",
+    meta: "Work",
   },
   {
     href: "/operations",
     label: "Open arrears cases",
-    meta: "Operations",
+    meta: "Work",
   },
   {
     href: "/portfolio-qa",
-    label: "Open portfolio QA",
-    meta: "Data cleanup",
+    label: "Data cleanup / Portfolio QA",
+    meta: "Portfolio",
   },
   {
     href: "/insights",
     label: "Open portfolio insights",
     meta: "Insights",
   },
+];
+
+const moduleJumpActions: CommandAction[] = [
   ...navItems.map((item) => ({
     href: item.href,
-    label: `Go to ${item.label}`,
-    meta: "Navigation",
+    label: `Open ${item.label}`,
+    meta: "Module",
   })),
+  {
+    href: "/tenants",
+    label: "Open tenant directory",
+    meta: "Portfolio",
+  },
 ];
+
+const commandActions: CommandAction[] = [...frequentActions, ...moduleJumpActions];
 
 function OperatorUserControl() {
   const { isLoaded, isSignedIn } = useUser();
@@ -106,7 +130,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       .filter(
         (action) =>
           action.label.toLowerCase().includes(needle) ||
-          action.meta.toLowerCase().includes(needle),
+          action.meta.toLowerCase().includes(needle) ||
+          action.href.toLowerCase().includes(needle),
       )
       .slice(0, 8);
   }, [query]);
@@ -145,7 +170,11 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         >
           {navItems.map((item) => {
             const active =
-              item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+              item.href === "/"
+                ? pathname === "/"
+                : (item.matchPaths ?? [item.href]).some((path) =>
+                    pathname.startsWith(path),
+                  );
             return (
               <Link
                 key={item.href}
