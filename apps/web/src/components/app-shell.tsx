@@ -111,8 +111,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
 
   return (
     <header className="border-b border-border bg-white/95 backdrop-blur">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-3 px-5 py-3 md:grid-cols-[minmax(220px,1fr)_minmax(220px,auto)] xl:grid-cols-[220px_minmax(0,1fr)_auto]">
-        <div className="min-w-0 justify-self-start">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-3 px-5 py-3 md:grid-cols-[minmax(280px,1fr)_minmax(220px,auto)] xl:grid-cols-[minmax(270px,max-content)_minmax(0,1fr)_auto]">
+        <div className="min-w-0 justify-self-start xl:min-w-[270px]">
           <Link href="/" className="flex min-w-0 items-center gap-3">
             <LeasiumMark className="h-11 w-11" />
             <div className="min-w-0">

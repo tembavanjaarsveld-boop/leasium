@@ -111,14 +111,31 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.goto("/settings");
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  const brandSubtitle = page
+    .getByText("Lease operations, automated", { exact: true })
+    .first();
+  const primaryNav = page.getByRole("navigation", { name: "Primary" });
   const settingsNavLink = page.getByRole("link", { name: "Settings" }).first();
   const searchButton = page.getByRole("button", { name: "Open search" });
+  await expect(brandSubtitle).toBeVisible();
+  await expect(primaryNav).toBeVisible();
   await expect(settingsNavLink).toBeVisible();
   await expect(searchButton).toBeVisible();
+  const brandSubtitleFits = await brandSubtitle.evaluate(
+    (node) => node.scrollWidth <= node.clientWidth + 1,
+  );
+  expect(brandSubtitleFits).toBe(true);
+  const brandSubtitleBox = await brandSubtitle.boundingBox();
+  const primaryNavBox = await primaryNav.boundingBox();
   const settingsNavBox = await settingsNavLink.boundingBox();
   const searchBox = await searchButton.boundingBox();
+  expect(brandSubtitleBox).not.toBeNull();
+  expect(primaryNavBox).not.toBeNull();
   expect(settingsNavBox).not.toBeNull();
   expect(searchBox).not.toBeNull();
+  expect(brandSubtitleBox!.x + brandSubtitleBox!.width).toBeLessThanOrEqual(
+    primaryNavBox!.x - 4,
+  );
   expect(settingsNavBox!.x + settingsNavBox!.width).toBeLessThanOrEqual(
     searchBox!.x - 4,
   );
