@@ -111,8 +111,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
 
   return (
     <header className="border-b border-border bg-white/95 backdrop-blur">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-3 px-5 py-3 md:grid-cols-[minmax(280px,1fr)_minmax(220px,auto)] xl:grid-cols-[minmax(270px,max-content)_minmax(0,1fr)_auto]">
-        <div className="min-w-0 justify-self-start xl:min-w-[270px]">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-3 px-5 py-3 md:grid-cols-[minmax(280px,1fr)_minmax(220px,auto)] min-[1600px]:max-w-none min-[1600px]:grid-cols-[minmax(270px,max-content)_minmax(0,1fr)_auto]">
+        <div className="min-w-0 justify-self-start min-[1600px]:min-w-[270px]">
           <Link href="/" className="flex min-w-0 items-center gap-3">
             <LeasiumMark className="h-11 w-11" />
             <div className="min-w-0">
@@ -125,7 +125,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         </div>
         <nav
           aria-label="Primary"
-          className="no-scrollbar order-3 flex max-w-full min-w-0 items-center gap-1 overflow-x-auto rounded-2xl border border-border bg-white p-1 shadow-leasiumXs md:col-span-2 xl:order-none xl:col-span-1"
+          className="no-scrollbar order-3 flex max-w-full min-w-0 items-center gap-1 overflow-x-auto rounded-2xl border border-border bg-white p-1 shadow-leasiumXs md:col-span-2 min-[1600px]:order-none min-[1600px]:col-span-1"
         >
           {navItems.map((item) => {
             const active =

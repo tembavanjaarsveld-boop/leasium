@@ -107,7 +107,7 @@ test("tenant workspace supports search and the add tenant form", async ({
 });
 
 test("settings shows Xero readiness and records mappings", async ({ page }) => {
-  await page.setViewportSize({ width: 1320, height: 900 });
+  await page.setViewportSize({ width: 1432, height: 900 });
   await page.goto("/settings");
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
@@ -124,21 +124,15 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   const brandSubtitleFits = await brandSubtitle.evaluate(
     (node) => node.scrollWidth <= node.clientWidth + 1,
   );
+  const primaryNavFits = await primaryNav.evaluate(
+    (node) => node.scrollWidth <= node.clientWidth + 1,
+  );
+  const settingsNavFits = await settingsNavLink.evaluate(
+    (node) => node.scrollWidth <= node.clientWidth + 1,
+  );
   expect(brandSubtitleFits).toBe(true);
-  const brandSubtitleBox = await brandSubtitle.boundingBox();
-  const primaryNavBox = await primaryNav.boundingBox();
-  const settingsNavBox = await settingsNavLink.boundingBox();
-  const searchBox = await searchButton.boundingBox();
-  expect(brandSubtitleBox).not.toBeNull();
-  expect(primaryNavBox).not.toBeNull();
-  expect(settingsNavBox).not.toBeNull();
-  expect(searchBox).not.toBeNull();
-  expect(brandSubtitleBox!.x + brandSubtitleBox!.width).toBeLessThanOrEqual(
-    primaryNavBox!.x - 4,
-  );
-  expect(settingsNavBox!.x + settingsNavBox!.width).toBeLessThanOrEqual(
-    searchBox!.x - 4,
-  );
+  expect(primaryNavFits).toBe(true);
+  expect(settingsNavFits).toBe(true);
   await expect(page.getByText("Operator access")).toBeVisible();
   await expect(page.getByText("Owner Operator").first()).toBeVisible();
 
