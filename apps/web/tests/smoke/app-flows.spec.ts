@@ -132,6 +132,19 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   ).toBeVisible();
 });
 
+test("maintenance detail route shows quote evidence", async ({ page }) => {
+  await page.goto("/operations/maintenance/work-order-1");
+
+  await expect(
+    page.getByRole("heading", { name: "Air conditioning fault" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Quote documents" })).toBeVisible();
+  await expect(page.getByText("shopfront-ac-photo.jpg")).toBeVisible();
+  await expect(page.getByLabel("Quote document")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Attach quote" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Approve quote" })).toBeVisible();
+});
+
 test("tenant workspace supports search and the add tenant form", async ({
   page,
 }) => {

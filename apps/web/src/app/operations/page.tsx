@@ -1583,7 +1583,12 @@ function OperationsWorkspace() {
                       >
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold">{workOrder.title}</span>
+                            <Link
+                              href={`/operations/maintenance/${workOrder.id}`}
+                              className="font-semibold text-foreground hover:text-primary"
+                            >
+                              {workOrder.title}
+                            </Link>
                             <StatusBadge tone={maintenanceTone(workOrder)}>
                               {label(workOrder.status)}
                             </StatusBadge>

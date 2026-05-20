@@ -194,6 +194,11 @@ Last updated: 2026-05-20
   - `/operations` maintenance rows can expand to show approval/quote, contractor, invoice, attachments, notes, and activity detail.
   - Operators can link/unlink approved invoice drafts to work orders through the Operations detail panel; the API already validates invoice drafts by entity.
   - This is design-facing and still needs Remba review.
+- Operations work-order detail route v1 is built on this branch.
+  - Maintenance rows now link to `/operations/maintenance/<work_order_id>`.
+  - The route loads one work order through the existing detail API, shows status, contractor, quote approval, invoice context, activity history, and linked evidence downloads.
+  - Operators can attach contractor quote/evidence documents through the existing document store; the work order stores the uploaded document ID and quote-document metadata.
+  - This is design-facing and still needs Remba review.
 - Xero operator approval UI v1 is built on this branch.
   - Settings now turns the provider invoice posting preview into an operator workflow.
   - Ready invoice drafts can be explicitly approved or revoked for Xero posting from the preview result.
@@ -342,6 +347,10 @@ Last updated: 2026-05-20
 - Operations workspace focused checks passed:
   - `./node_modules/.bin/tsc --noEmit`
   - `./node_modules/.bin/eslint src/app/operations/page.tsx src/app/tasks/page.tsx src/components/app-shell.tsx src/components/dashboard.tsx src/app/portfolio-qa/page.tsx src/app/insights/page.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
+- Operations work-order detail route checks passed:
+  - `./node_modules/.bin/eslint src/app/operations/page.tsx 'src/app/operations/maintenance/[workOrderId]/page.tsx' src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "maintenance detail route"` (`1 passed`)
 - Insights overview focused checks passed:
   - Dashboard/Insights loading-state polish checks passed:
     - `./node_modules/.bin/eslint src/components/dashboard.tsx src/app/insights/page.tsx`
@@ -535,7 +544,7 @@ Last updated: 2026-05-20
 
 1. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, tenant detail portal access controls, and Operations workspace.
 2. Add clearer tenant portal invite expiry renewal handling and staff-triggered fresh-link flows.
-3. Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
+3. Deepen Operations with richer work-order comments, contractor quote preview polish, and maintenance invoice approval handoff.
 4. Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 5. Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.

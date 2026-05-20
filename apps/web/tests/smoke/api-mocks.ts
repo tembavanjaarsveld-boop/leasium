@@ -266,6 +266,20 @@ let tenantPortalDocuments = initialTenantPortalDocuments.map((document) => ({
   ...document,
 }));
 
+function operatorDocumentRecords() {
+  return tenantPortalDocuments.map((document) => ({
+    ...document,
+    entity_id: entityId,
+    property_id: propertyId,
+    tenancy_unit_id: unitId,
+    tenant_id: tenantId,
+    lease_id: leaseId,
+    tenant_onboarding_id: "onboarding-1",
+    metadata: { source: document.source },
+    deleted_at: null,
+  }));
+}
+
 const initialTenantPortalNotificationPreferences = {
   email_enabled: true,
   sms_enabled: true,
@@ -2042,6 +2056,11 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/maintenance/work-orders/work-order-1") {
+      await fulfillJson(route, maintenanceWorkOrders[0]);
+      return;
+    }
+
     if (
       method === "PATCH" &&
       path === "/maintenance/work-orders/work-order-1"
@@ -2129,7 +2148,7 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/documents") {
-      await fulfillJson(route, []);
+      await fulfillJson(route, operatorDocumentRecords());
       return;
     }
 

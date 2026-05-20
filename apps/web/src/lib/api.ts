@@ -2322,6 +2322,12 @@ export function listMaintenanceWorkOrders(filters: {
   );
 }
 
+export function getMaintenanceWorkOrder(workOrderId: string) {
+  return request<MaintenanceWorkOrderRecord>(
+    `/maintenance/work-orders/${workOrderId}`,
+  );
+}
+
 export function createMaintenanceWorkOrder(payload: MaintenanceWorkOrderPayload) {
   return request<MaintenanceWorkOrderRecord>("/maintenance/work-orders", {
     method: "POST",
