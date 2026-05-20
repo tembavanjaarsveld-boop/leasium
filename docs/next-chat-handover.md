@@ -8,7 +8,7 @@ Last updated: 2026-05-21
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed app-code production deployment: `8ce1cee Add Xero sync exception queue`, Vercel deployment `dpl_Ck1qkyPxZcwFwXfqPep7NXnDA3ky`, state `READY`; Render API health is live and OpenAPI includes `/api/v1/xero/exception-queue` plus the `XeroExceptionQueue*` schemas. The unauthenticated exception queue route returns `401 Missing Clerk bearer token`, `/settings` redirects signed-out operators to `/sign-in`, and `/tenant-portal/account` returns `200`.
+- Latest confirmed app-code production deployment: `5a69dbf Add guided Xero exception actions`, Vercel deployment `dpl_BPjD9kVgzUdviQjZK3Qkgd9FYYy5`, state `READY`; Render API health is live and the unauthenticated Xero exception queue route returns `401 Missing Clerk bearer token`, `/settings` redirects signed-out operators to `/sign-in`, and `/tenant-portal/account` returns `200`.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -257,6 +257,11 @@ Last updated: 2026-05-21
   - The endpoint deliberately avoids Xero provider calls, token refreshes, audits, invoice posting, tenant email, and payment mutation.
   - Settings now surfaces the queue near the top of the Xero workspace with severity counts, next-action hints, affected invoice/property/tenant context, and local-only guardrails.
   - This is design-facing and still needs Remba review.
+- Xero sync exception guided actions v1 is built on this branch.
+  - Settings exception rows now expose explicit actions for connection setup, visible charge-rule mapping suggestions, invoice posting preview, provider delivery recovery, and payment reconciliation review.
+  - The actions reuse existing review-first Xero, Billing Readiness, and charge-rule flows; no new backend mutation or background sync was added.
+  - Mapping rows show current/suggested account and tax values before the operator applies the suggestion.
+  - This is design-facing and still needs Remba review.
 - Tenant portal account foundation v1 is built on this branch.
   - New `tenant_portal_account` model and migration `20260520_0019_tenant_portal_accounts` store tenant-linked bearer identities without using operator `app_user` or entity-role access.
   - `POST /api/v1/tenant-portal/account/claim` requires a valid bearer identity plus an existing portal token before linking the signed tenant identity.
@@ -400,6 +405,14 @@ Last updated: 2026-05-21
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
   - Production Vercel deployment `dpl_Ck1qkyPxZcwFwXfqPep7NXnDA3ky` is `READY` for `8ce1cee`.
   - Production Render `/health` returned `200`, OpenAPI exposes `/api/v1/xero/exception-queue`, and the route returns `401 Missing Clerk bearer token` without auth.
+- Xero sync exception guided action checks passed:
+  - `./node_modules/.bin/eslint src/app/settings/page.tsx tests/smoke/app-flows.spec.ts`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "settings shows Xero"` (`1 passed`)
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  - `git diff --check`
+  - Production Vercel deployment `dpl_BPjD9kVgzUdviQjZK3Qkgd9FYYy5` is `READY` for `5a69dbf`.
+  - Production Vercel `/settings` returned `307` to `/sign-in`, `/tenant-portal/account` returned `200`, Render `/health` returned `200`, and unauthenticated `/api/v1/xero/exception-queue` returned `401 Missing Clerk bearer token`.
 - Spreadsheet import plan durability checks passed:
   - `.venv/bin/python -m ruff check stewart/core/models.py apps/api/routers/register_imports.py apps/api/schemas/register_import.py tests/integration/test_register_import_api.py migrations/versions/20260521_0020_register_import_plans.py`
   - `.venv/bin/python -m pytest tests/integration/test_register_import_api.py -q` (`2 passed`)
@@ -646,7 +659,7 @@ Last updated: 2026-05-21
 ## Recommended Next Tickets
 
 1. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, tenant fresh-link recovery, tenant detail portal access controls, and Operations workspace.
-2. Continue Xero from the sync exception queue into guided exception actions, bank-feed reconciliation depth, and accounting snapshot guardrails.
+2. Continue Xero from guided sync exceptions into bank-feed reconciliation depth, accounting snapshot guardrails, and clearer per-invoice handoff between Settings and Billing Readiness.
 3. Deepen Operations with contractor communications, maintenance invoice exception recovery, and clearer handoff rules between Operations and Billing Readiness.
 4. Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 5. Add branded template management, delivery preview/versioning, and provider receipt configuration for invoice delivery and tenant portal communications.
