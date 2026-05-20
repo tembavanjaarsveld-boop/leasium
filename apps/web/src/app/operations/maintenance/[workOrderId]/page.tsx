@@ -278,6 +278,30 @@ function contractorEmailReceipts(workOrder: MaintenanceWorkOrderRecord) {
   return metadataRecordList(contractorDeliveryEmail(workOrder).receipts);
 }
 
+function closeoutRecord(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecord(workOrder.metadata.closeout);
+}
+
+function closeoutPhotoDocumentIds(workOrder: MaintenanceWorkOrderRecord) {
+  const closeout = closeoutRecord(workOrder);
+  return Array.from(
+    new Set(
+      [
+        metadataText(closeout.photo_document_id),
+        ...metadataStringList(closeout.photo_document_ids),
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  );
+}
+
+function closeoutPhotoRows(
+  workOrder: MaintenanceWorkOrderRecord,
+  documents: DocumentRecord[],
+) {
+  const linkedIds = new Set(closeoutPhotoDocumentIds(workOrder));
+  return documents.filter((document) => linkedIds.has(document.id));
+}
+
 function contractorEmailTone(statusValue: string | null): Tone {
   if (["queued", "sent", "delivered", "opened"].includes(statusValue ?? "")) {
     return "success";
@@ -769,6 +793,8 @@ function MaintenanceDetailRoute() {
     useState<ContractorEmailTemplateKey>("custom");
   const [contractorEmailSubject, setContractorEmailSubject] = useState("");
   const [contractorEmailBody, setContractorEmailBody] = useState("");
+  const [closeoutNoteDraft, setCloseoutNoteDraft] = useState("");
+  const [closeoutPhoto, setCloseoutPhoto] = useState<File | null>(null);
   const [commentBody, setCommentBody] = useState("");
   const [commentVisibility, setCommentVisibility] = useState<
     "internal" | "contractor" | "tenant"
@@ -809,6 +835,12 @@ function MaintenanceDetailRoute() {
   const documents = documentsQuery.data ?? [];
   const quoteDocuments = workOrder
     ? quoteDocumentRows(workOrder, documents)
+    : [];
+  const closeout = workOrder ? closeoutRecord(workOrder) : {};
+  const savedCloseoutNote = metadataText(closeout.note);
+  const savedCloseoutAt = metadataText(closeout.completed_at);
+  const closeoutPhotos = workOrder
+    ? closeoutPhotoRows(workOrder, documents)
     : [];
   const timeline = workOrder ? activityRows(workOrder) : [];
   const linkedInvoiceDraft = workOrder?.invoice_draft_id
@@ -1085,6 +1117,82 @@ function MaintenanceDetailRoute() {
       return;
     }
     contractorEmailMutation.mutate();
+  };
+
+  const closeoutMutation = useMutation({
+    mutationFn: async () => {
+      if (!workOrder) {
+        throw new Error("Work order is still loading.");
+      }
+      const closeoutNote = closeoutNoteDraft.trim();
+      const completedAt = new Date().toISOString();
+      let uploadedDocument: DocumentRecord | null = null;
+      if (closeoutPhoto) {
+        uploadedDocument = await uploadDocument({
+          entityId: workOrder.entity_id,
+          propertyId: workOrder.property_id ?? undefined,
+          tenancyUnitId: workOrder.tenancy_unit_id ?? undefined,
+          tenantId: workOrder.tenant_id ?? undefined,
+          leaseId: workOrder.lease_id ?? undefined,
+          category: "other",
+          notes: closeoutNote || "Maintenance closeout photo",
+          file: closeoutPhoto,
+        });
+      }
+      const existingCloseout = closeoutRecord(workOrder);
+      const closeoutPhotoIds = uploadedDocument
+        ? Array.from(
+            new Set([
+              ...closeoutPhotoDocumentIds(workOrder),
+              uploadedDocument.id,
+            ]),
+          )
+        : closeoutPhotoDocumentIds(workOrder);
+      const payload: Partial<MaintenanceWorkOrderPayload> = {
+        status: "completed",
+        completed_at: workOrder.completed_at ?? completedAt,
+      };
+      if (uploadedDocument) {
+        payload.photo_document_ids = Array.from(
+          new Set([...workOrder.photo_document_ids, uploadedDocument.id]),
+        );
+      }
+      if (closeoutNote || uploadedDocument) {
+        payload.metadata = {
+          closeout: {
+            ...existingCloseout,
+            note: closeoutNote || metadataText(existingCloseout.note),
+            completed_at: workOrder.completed_at ?? completedAt,
+            photo_document_id:
+              uploadedDocument?.id ??
+              metadataText(existingCloseout.photo_document_id),
+            photo_document_ids: closeoutPhotoIds,
+          },
+        };
+      }
+      return updateMaintenanceWorkOrder(workOrder.id, payload);
+    },
+    onSuccess: () => {
+      setCloseoutNoteDraft("");
+      setCloseoutPhoto(null);
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-work-order", workOrderId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-detail-documents", entityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", entityId],
+      });
+    },
+  });
+
+  const handleCloseoutSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!completionReadiness?.canComplete) {
+      return;
+    }
+    closeoutMutation.mutate();
   };
 
   return (
@@ -1591,14 +1699,18 @@ function MaintenanceDetailRoute() {
                       {completionReadiness.handoff}
                     </div>
                   </div>
-                  <div className="grid content-start gap-3 rounded-md border border-border bg-muted/30 p-3">
+                  <form
+                    className="grid content-start gap-3 rounded-md border border-border bg-muted/30 p-3"
+                    onSubmit={handleCloseoutSubmit}
+                  >
                     <div className="flex flex-wrap gap-2">
                       <SecondaryButton
                         type="button"
                         className="min-h-9 rounded-lg px-3"
                         disabled={
                           !completionReadiness.canStart ||
-                          updateMutation.isPending
+                          updateMutation.isPending ||
+                          closeoutMutation.isPending
                         }
                         onClick={() =>
                           updateMutation.mutate({ status: "in_progress" })
@@ -1608,19 +1720,13 @@ function MaintenanceDetailRoute() {
                         Start job
                       </SecondaryButton>
                       <Button
-                        type="button"
+                        type="submit"
                         disabled={
                           !completionReadiness.canComplete ||
-                          updateMutation.isPending
-                        }
-                        onClick={() =>
-                          updateMutation.mutate({
-                            status: "completed",
-                            completed_at: new Date().toISOString(),
-                          })
+                          closeoutMutation.isPending
                         }
                       >
-                        {updateMutation.isPending ? (
+                        {closeoutMutation.isPending ? (
                           <Loader2 size={16} className="animate-spin" />
                         ) : (
                           <CheckCircle2 size={16} />
@@ -1628,12 +1734,80 @@ function MaintenanceDetailRoute() {
                         Complete job
                       </Button>
                     </div>
+                    <label className="grid gap-1.5 text-sm">
+                      <span className="font-medium text-foreground">
+                        Closeout note
+                      </span>
+                      <textarea
+                        aria-label="Closeout note"
+                        value={closeoutNoteDraft}
+                        onChange={(event) =>
+                          setCloseoutNoteDraft(event.target.value)
+                        }
+                        rows={3}
+                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        placeholder={
+                          savedCloseoutNote ??
+                          "Record final attendance, evidence, or handoff notes."
+                        }
+                      />
+                    </label>
+                    <Field label="Closeout photo">
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) =>
+                          setCloseoutPhoto(event.target.files?.[0] ?? null)
+                        }
+                      />
+                    </Field>
+                    {savedCloseoutNote || savedCloseoutAt ? (
+                      <div className="grid gap-1 rounded-md border border-border bg-white px-3 py-2 text-xs">
+                        <div className="font-semibold text-foreground">
+                          Closeout recorded
+                        </div>
+                        {savedCloseoutNote ? (
+                          <div className="text-muted-foreground">
+                            {savedCloseoutNote}
+                          </div>
+                        ) : null}
+                        {savedCloseoutAt ? (
+                          <div className="text-muted-foreground">
+                            {formatDateTime(savedCloseoutAt)}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {closeoutPhotos.length ? (
+                      <div className="grid gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs">
+                        <div className="font-semibold text-foreground">
+                          Closeout photos
+                        </div>
+                        {closeoutPhotos.map((document) => (
+                          <a
+                            key={document.id}
+                            href={documentDownloadUrl(document.id)}
+                            className="inline-flex items-center gap-2 font-semibold text-primary hover:text-leasium-blue-hover"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <FileUp size={13} />
+                            {document.filename}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
                     <div className="text-xs text-muted-foreground">
                       {linkedInvoiceDraft
                         ? "The linked invoice remains in Billing Readiness for dispatch and reconciliation."
                         : "Billing can be linked later from an approved invoice draft."}
                     </div>
-                  </div>
+                    {closeoutMutation.error ? (
+                      <p className="text-sm text-danger">
+                        {friendlyError(closeoutMutation.error)}
+                      </p>
+                    ) : null}
+                  </form>
                 </div>
               </SectionPanel>
             ) : null}

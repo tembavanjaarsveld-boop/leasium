@@ -226,9 +226,24 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await page.getByRole("button", { name: "Approve quote" }).click();
   await expect(page.getByText("Operations completion ready")).toBeVisible();
   await expect(page.getByText("Approval still pending")).toHaveCount(0);
+  await page
+    .getByRole("textbox", { name: "Closeout note" })
+    .fill("Contractor completed repairs and supplied final photo.");
+  await page.getByLabel("Closeout photo").setInputFiles({
+    name: "closeout-ac-photo.jpg",
+    mimeType: "image/jpeg",
+    buffer: Buffer.from("closeout image bytes"),
+  });
   await page.getByRole("button", { name: "Complete job" }).click();
   await expect(page.getByText("Job complete")).toBeVisible();
   await expect(page.getByText("Job completion not recorded")).toHaveCount(0);
+  await expect(page.getByText("Closeout recorded")).toBeVisible();
+  await expect(
+    page
+      .getByText("Contractor completed repairs and supplied final photo.")
+      .first(),
+  ).toBeVisible();
+  await expect(page.getByText("closeout-ac-photo.jpg").first()).toBeVisible();
   await page
     .getByRole("textbox", { name: "Comment" })
     .fill("Owner approved attendance tomorrow morning.");

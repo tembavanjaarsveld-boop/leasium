@@ -1004,6 +1004,13 @@ function jsonStringArray(value: JsonBody | undefined) {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+function jsonRecord(value: JsonBody | undefined) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+  return value;
+}
+
 function multipartField(body: string, name: string) {
   const match = body.match(
     new RegExp(`name="${name}"\\r?\\n\\r?\\n([^\\r\\n]*)`),
@@ -2840,7 +2847,14 @@ export async function mockLeasiumApi(
       path === "/maintenance/work-orders/work-order-1"
     ) {
       const payload = request.postDataJSON() as Record<string, JsonBody>;
-      Object.assign(maintenanceWorkOrders[0], payload, {
+      const nextPayload = { ...payload };
+      if ("metadata" in nextPayload) {
+        nextPayload.metadata = {
+          ...jsonRecord(maintenanceWorkOrders[0].metadata),
+          ...jsonRecord(nextPayload.metadata),
+        };
+      }
+      Object.assign(maintenanceWorkOrders[0], nextPayload, {
         updated_at: "2026-05-20T01:00:00.000Z",
       });
       await fulfillJson(route, maintenanceWorkOrders[0]);
@@ -2923,6 +2937,27 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/documents") {
       await fulfillJson(route, operatorDocumentRecords());
+      return;
+    }
+
+    if (method === "POST" && path === "/documents") {
+      const body = request.postDataBuffer()?.toString("utf8") ?? "";
+      const uploaded = {
+        id: `operator-document-upload-${++tenantPortalDocumentCount}`,
+        filename: multipartFilename(body),
+        content_type: request
+          .headers()
+          ["content-type"]?.includes("multipart/form-data")
+          ? null
+          : (request.headers()["content-type"] ?? null),
+        byte_size: request.postDataBuffer()?.byteLength ?? 0,
+        category: multipartField(body, "category") ?? "other",
+        notes: multipartField(body, "notes"),
+        source: "operator_upload",
+        created_at: "2026-05-20T03:30:00.000Z",
+      };
+      tenantPortalDocuments.unshift(uploaded);
+      await fulfillJson(route, operatorDocumentRecords()[0], 201);
       return;
     }
 

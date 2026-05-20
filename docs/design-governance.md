@@ -269,6 +269,8 @@ Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry
 
 2026-05-21 update: the Contractor card now includes a contractor update template selector for attendance windows, quote follow-up, completion evidence, and billing documents. The templates prefill subject and message only; the operator still reviews the copy and explicitly sends or retries the provider-backed email. Remba should review template wording, whether the selector belongs above the subject field, and whether template use should be shown in provider history.
 
+2026-05-21 update: the Job completion handoff panel now lets operators record a closeout note and attach an optional closeout photo at the moment they complete a maintenance job. The note is stored as closeout metadata rather than overwriting the general work-order note, and photo evidence stays source-linked through the document store. Remba should review whether closeout capture belongs inside the completion panel, whether the optional photo control is too prominent for simple jobs, and whether saved closeout evidence needs a stronger audit/history treatment.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface
