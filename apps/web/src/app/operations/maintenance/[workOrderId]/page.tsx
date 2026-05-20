@@ -338,6 +338,24 @@ function closeoutPhotoRows(
   return documents.filter((document) => linkedIds.has(document.id));
 }
 
+function closeoutHistoryRows(workOrder: MaintenanceWorkOrderRecord) {
+  const closeout = closeoutRecord(workOrder);
+  return metadataRecordList(closeout.history)
+    .map((entry) => {
+      const photoIds = metadataStringList(entry.photo_document_ids);
+      return {
+        at: metadataText(entry.at) ?? metadataText(entry.completed_at),
+        note: metadataText(entry.note),
+        status: metadataText(entry.status) ?? "completed",
+        photoCount: photoIds.length,
+      };
+    })
+    .sort(
+      (a, b) => new Date(b.at ?? "").getTime() - new Date(a.at ?? "").getTime(),
+    )
+    .slice(0, 5);
+}
+
 function contractorEmailTone(statusValue: string | null): Tone {
   if (["queued", "sent", "delivered", "opened"].includes(statusValue ?? "")) {
     return "success";
@@ -878,6 +896,7 @@ function MaintenanceDetailRoute() {
   const closeoutPhotos = workOrder
     ? closeoutPhotoRows(workOrder, documents)
     : [];
+  const closeoutHistory = workOrder ? closeoutHistoryRows(workOrder) : [];
   const timeline = workOrder ? activityRows(workOrder) : [];
   const linkedInvoiceDraft = workOrder?.invoice_draft_id
     ? (invoiceDrafts.find((draft) => draft.id === workOrder.invoice_draft_id) ??
@@ -1187,28 +1206,39 @@ function MaintenanceDetailRoute() {
             ]),
           )
         : closeoutPhotoDocumentIds(workOrder);
+      const closeoutNoteValue =
+        closeoutNote || metadataText(existingCloseout.note);
+      const closeoutPhotoId =
+        uploadedDocument?.id ??
+        metadataText(existingCloseout.photo_document_id);
+      const closeoutCompletedAt = workOrder.completed_at ?? completedAt;
+      const existingHistory = metadataRecordList(existingCloseout.history);
+      const closeoutHistoryEntry = {
+        at: closeoutCompletedAt,
+        status: "completed",
+        note: closeoutNoteValue,
+        photo_document_id: closeoutPhotoId,
+        photo_document_ids: closeoutPhotoIds,
+      };
       const payload: Partial<MaintenanceWorkOrderPayload> = {
         status: "completed",
-        completed_at: workOrder.completed_at ?? completedAt,
+        completed_at: closeoutCompletedAt,
       };
       if (uploadedDocument) {
         payload.photo_document_ids = Array.from(
           new Set([...workOrder.photo_document_ids, uploadedDocument.id]),
         );
       }
-      if (closeoutNote || uploadedDocument) {
-        payload.metadata = {
-          closeout: {
-            ...existingCloseout,
-            note: closeoutNote || metadataText(existingCloseout.note),
-            completed_at: workOrder.completed_at ?? completedAt,
-            photo_document_id:
-              uploadedDocument?.id ??
-              metadataText(existingCloseout.photo_document_id),
-            photo_document_ids: closeoutPhotoIds,
-          },
-        };
-      }
+      payload.metadata = {
+        closeout: {
+          ...existingCloseout,
+          note: closeoutNoteValue,
+          completed_at: closeoutCompletedAt,
+          photo_document_id: closeoutPhotoId,
+          photo_document_ids: closeoutPhotoIds,
+          history: [...existingHistory, closeoutHistoryEntry],
+        },
+      };
       return updateMaintenanceWorkOrder(workOrder.id, payload);
     },
     onSuccess: () => {
@@ -1863,6 +1893,36 @@ function MaintenanceDetailRoute() {
                             <FileUp size={13} />
                             {document.filename}
                           </a>
+                        ))}
+                      </div>
+                    ) : null}
+                    {closeoutHistory.length ? (
+                      <div className="grid gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs">
+                        <div className="font-semibold text-foreground">
+                          Closeout history
+                        </div>
+                        {closeoutHistory.map((entry, index) => (
+                          <div
+                            key={`${entry.at ?? "closeout"}-${index}`}
+                            className="grid gap-1 border-t border-border pt-2 first:border-t-0 first:pt-0"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge tone="success">
+                                {label(entry.status)}
+                              </StatusBadge>
+                              <span className="text-muted-foreground">
+                                {formatDateTime(entry.at)}
+                              </span>
+                            </div>
+                            <div className="text-muted-foreground">
+                              {entry.note ?? "No closeout note recorded."}
+                            </div>
+                            <div className="text-muted-foreground">
+                              {entry.photoCount
+                                ? `${entry.photoCount} closeout photo${entry.photoCount === 1 ? "" : "s"}`
+                                : "No closeout photo attached."}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     ) : null}

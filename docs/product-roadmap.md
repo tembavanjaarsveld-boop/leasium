@@ -112,12 +112,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Contractor update templates v1: maintenance work-order detail now offers reusable attendance-window, quote follow-up, completion-evidence, and billing-document email templates that prefill the explicit provider send form while keeping dispatch operator-controlled. Pending Remba review.
 - [x] Maintenance closeout notes/photos v1: work-order completion can now capture a final closeout note and optional closeout photo, store photo evidence through the document store, preserve existing operational notes, and keep the completion action explicit. Pending Remba review.
 - [x] Contractor provider history v1: maintenance work-order detail now surfaces recent SendGrid contractor delivery attempts and receipts with status, attempt number, timestamp, and provider detail beside the explicit send/retry form. Pending Remba review.
+- [x] Maintenance closeout history v1: each completion now stores a compact closeout history entry with status, timestamp, note, and closeout photo count, and the work-order completion panel surfaces recent closeout history for audit context. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, and `20260521_0020_register_import_plans` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, simplified navigation/command center, Portfolio QA command-search placement, reusable evidence/source-trail pattern across Properties/Smart Intake/Tenants, tenant portal, tenant fresh-link recovery, invoice email action, and Operations workspace before treating them as UX complete.
-- [ ] Continue Operations polish with contractor message templates/version history, closeout history/audit depth, and deeper maintenance invoice exception recovery beyond the first retry guidance.
+- [ ] Continue Operations polish with contractor message templates/version history, richer closeout audit/source links, and deeper maintenance invoice exception recovery beyond the first retry guidance.
 - [ ] Continue Xero from guided sync exceptions into bank-feed reconciliation depth, accounting snapshot guardrails, and clearer per-invoice handoff between Settings and Billing Readiness.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 - [ ] Add branded template management, delivery preview/versioning, and provider receipt configuration for invoice delivery and tenant portal communications.

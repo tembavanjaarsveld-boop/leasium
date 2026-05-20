@@ -269,6 +269,8 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       .first(),
   ).toBeVisible();
   await expect(page.getByText("closeout-ac-photo.jpg").first()).toBeVisible();
+  await expect(page.getByText("Closeout history")).toBeVisible();
+  await expect(page.getByText("1 closeout photo")).toBeVisible();
   await page
     .getByRole("textbox", { name: "Comment" })
     .fill("Owner approved attendance tomorrow morning.");
