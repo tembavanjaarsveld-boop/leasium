@@ -176,6 +176,12 @@ Last updated: 2026-05-20
   - Tenant portal self-service v1 is available at `/tenant-portal/[token]` for token-scoped onboarding status, documents, approved invoices/payment summary, compliance uploads, and notification preferences. True tenant identity-provider auth is still future work.
   - Maintenance work orders and arrears/credit-control cases now have migration-backed APIs and audit-friendly metadata. Operator UI workspaces are next.
   - New migration: `20260520_0018_maintenance_arrears_foundations`.
+- Operations workspace v1 is built on this branch.
+  - The top-nav Tasks entry is now Operations and points to `/operations`; `/tasks` redirects to `/operations`.
+  - The original triage queue remains, with maintenance and arrears added into the prioritized operational queue.
+  - Maintenance tab lists work orders, supports quick creation, filtering by status/priority, and approval/start/complete status actions.
+  - Arrears tab lists ageing, reminders, disputes, promise-to-pay, and escalation state, with reminder/escalate/resolve actions.
+  - This is design-facing and still needs Remba review.
 ## Verification
 
 - Overnight build bundle checks passed:
@@ -185,6 +191,9 @@ Last updated: 2026-05-20
   - `.venv/bin/python -m pytest -q` (`90 passed`, `1 skipped`; migration smoke skipped because `TEST_DATABASE_URL` is not configured)
   - `./node_modules/.bin/eslint src --ext .ts,.tsx`
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+- Operations workspace focused checks passed:
+  - `./node_modules/.bin/tsc --noEmit`
+  - `./node_modules/.bin/eslint src/app/operations/page.tsx src/app/tasks/page.tsx src/components/app-shell.tsx src/components/dashboard.tsx src/app/portfolio-qa/page.tsx src/app/insights/page.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
 - Insights overview focused checks passed:
   - Dashboard/Insights loading-state polish checks passed:
     - `./node_modules/.bin/eslint src/components/dashboard.tsx src/app/insights/page.tsx`
@@ -377,8 +386,8 @@ Last updated: 2026-05-20
 ## Recommended Next Tickets
 
 1. Verify the overnight production deploy and confirm Neon has advanced through `20260520_0018`.
-2. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, and the future maintenance/arrears operator surfaces.
-3. Add operator UI workspaces for maintenance work orders and arrears/credit control on top of the new APIs.
+2. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, and Operations workspace.
+3. Deepen Operations with tenant-submitted maintenance requests, tenant portal photo/document upload, contractor quote approval detail, invoice linking, and activity history.
 4. Continue tenant portal from token-scoped v1 to authenticated tenant accounts, maintenance requests, notification preference verification, and safer invite/link lifecycle.
 5. Continue Xero from draft invoice creation/reconciliation metadata into operator UI approvals, webhook/provider status receipts, and full accounting reconciliation guardrails.
 6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.

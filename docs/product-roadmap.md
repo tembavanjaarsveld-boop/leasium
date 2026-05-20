@@ -78,12 +78,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Tenant portal self-service v1: `/tenant-portal/[token]` exposes token-scoped tenant onboarding status, lease context, approved invoices/payment summary, document download/upload, compliance status, and notification preferences without operator-only metadata. True tenant identity-provider auth remains future work.
 - [x] Maintenance work orders v1: migration-backed work orders now track tenant/property/lease scope, priority, status, contractor assignment, approvals, photos/documents, invoice/source references, soft delete, and audit history.
 - [x] Arrears and credit-control v1: migration-backed arrears cases now track aged balances, reminder cadence, dispute status, promise-to-pay notes, escalation queue/status, soft delete, and audit history.
+- [x] Operations workspace v1: the former Tasks entry now opens `/operations`, preserving the triage queue while adding Maintenance and Arrears tabs, KPI cards, quick-create panels, approval/start/complete actions for work orders, and reminder/escalation/resolve actions for arrears. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations` migration in hosted Neon/Render if auto-migrations do not run.
-- [ ] Remba review the new Smart Intake spreadsheet import panel, Portfolio QA IA link, tenant portal, invoice email action, and maintenance/arrears API surfaces before treating them as UX complete.
-- [ ] Add operator UI workspaces for maintenance work orders and arrears/credit control so the new APIs are usable from the platform.
+- [ ] Remba review the new Smart Intake spreadsheet import panel, Portfolio QA IA link, tenant portal, invoice email action, and Operations workspace before treating them as UX complete.
+- [ ] Deepen Operations with tenant-submitted maintenance requests, photo/document upload from the tenant portal, contractor quote approval detail, invoice linking, and activity history.
 - [ ] Continue tenant portal from token-scoped v1 to authenticated tenant accounts, maintenance requests, notification preference verification, and safer invite/link lifecycle.
 - [ ] Continue Xero from draft invoice creation/reconciliation metadata into operator UI approvals, webhook/provider status receipts, and full accounting reconciliation guardrails.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
@@ -113,8 +114,7 @@ Official Re-Leased pages position their product around a few mature modules that
 
 ## Later Modules
 
-- [ ] Arrears and credit control UI: aged balances, reminder schedules, promise-to-pay notes, dispute status, and escalation queues on top of the new API.
-- [ ] Maintenance work orders UI: tenant requests, photos, priorities, contractor assignment, quotes, approvals, invoices, and status updates on top of the new API.
+- [ ] Maintenance and arrears workflow depth: tenant-submitted requests, contractor coordination, approval history, invoice linking, legal/escalation notes, and portal-visible status where appropriate.
 - [ ] Compliance and inspections: recurring checks, certifications, document expiry, fire/safety obligations, delegated owners, and audit trail.
 - [ ] Tenant portal account auth: authenticated self-service for onboarding, documents, invoices, maintenance, compliance uploads, and notification preferences.
 - [ ] Portfolio Insights: rent roll health, lease events, arrears, invoice status, maintenance aging, compliance expiry, owner/entity dashboards, and shareable snapshots.

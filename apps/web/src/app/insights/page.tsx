@@ -908,7 +908,7 @@ function InsightsWorkspace() {
                 {[
                   ["Smart Intake", "/intake"],
                   ["Portfolio QA", "/portfolio-qa"],
-                  ["Tasks", "/tasks"],
+                  ["Operations", "/operations"],
                   ["Billing Readiness", "/billing-readiness"],
                   ["Properties", "/properties"],
                   ["Xero Settings", "/settings"],

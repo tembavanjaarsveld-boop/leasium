@@ -37,7 +37,7 @@ tenant workspace rather than being added to the crowded property workspace.
 Status: conditional pass with priority fixes.
 
 Scope: live production desktop/laptop scan of Dashboard, Smart Intake,
-Properties, Tenants, Tenant Detail, Tasks, Billing Readiness, Insights,
+Properties, Tenants, Tenant Detail, Tasks/Operations, Billing Readiness, Insights,
 Settings, and one public tenant onboarding link. The scan confirmed the live
 API data is reachable and visible in the platform, and no browser console
 errors appeared during the reviewed flows.
@@ -45,11 +45,11 @@ errors appeared during the reviewed flows.
 What is working:
 
 - The global navigation labels now match the document-first product model.
-- Dashboard, Tasks, Tenants, Billing Readiness, Settings, and Insights all load
+- Dashboard, Tasks/Operations, Tenants, Billing Readiness, Settings, and Insights all load
   the seeded live portfolio once the entity query settles.
 - Tenant workspace and tenant detail are much calmer than the old property
   workspace approach and should remain the home for onboarding/contact work.
-- Tasks is correctly acting as a triage surface, not a second review workflow.
+- Operations is correctly acting as a triage surface, not a second review workflow.
 - Insights is read-only and links users back toward the owning workspaces.
 - Billing Readiness keeps the no-posting/no-Xero-sync guardrails visible.
 
@@ -104,7 +104,8 @@ Remba decision:
 
 The platform is coherent enough for private pre-production work, but the
 current design-facing surfaces should remain marked `pending Remba review`
-until the priority fixes above are resolved. Tenant workspace and Tasks remain
+until the priority fixes above are resolved. Tenant workspace and the original task
+queue direction remain
 directionally approved.
 
 Required fixes before major new feature work:
@@ -215,7 +216,11 @@ Status: pending Remba review. `/tenant-portal/[token]` now gives tenants a scope
 
 ## Maintenance And Arrears Foundations
 
-Status: pending Remba review before UI work. The backend now has migration-backed maintenance work orders and arrears/credit-control cases. No operator UI workspace is complete yet. Future screens should avoid crowding Properties or Tenants by deciding whether maintenance and arrears live as dedicated module pages, task queues, tenant-detail panels, or a combination.
+Status: pending Remba review. The backend now has migration-backed maintenance work orders and arrears/credit-control cases, and the first operator surface lives in `/operations`. Future screens should avoid crowding Properties or Tenants by deciding which work stays in the shared Operations queue and which work earns dedicated detail pages.
+
+## Operations Workspace
+
+Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry while preserving `/tasks` as a redirect. It keeps the original triage queue and adds Maintenance and Arrears tabs with KPI cards, quick-create panels, and status actions for approvals, work starts, completion, reminders, escalation, and resolution. Remba should review whether Operations is the right long-term IA home, whether the first viewport is too dense on laptops, and how tenant-submitted maintenance and arrears escalation detail should split between queue rows and dedicated detail pages.
 
 ## Property Provenance Surface
 

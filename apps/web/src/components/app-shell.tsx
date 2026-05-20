@@ -14,7 +14,7 @@ const navItems = [
   { href: "/intake", label: "Smart Intake" },
   { href: "/properties", label: "Properties" },
   { href: "/tenants", label: "Tenants" },
-  { href: "/tasks", label: "Tasks" },
+  { href: "/operations", label: "Operations" },
   { href: "/billing-readiness", label: "Billing Readiness" },
   { href: "/insights", label: "Insights" },
   { href: "/settings", label: "Settings" },
@@ -42,9 +42,19 @@ const commandActions = [
     meta: "Billing Readiness",
   },
   {
-    href: "/tasks",
-    label: "View attention items",
-    meta: "Tasks",
+    href: "/operations",
+    label: "View operations queue",
+    meta: "Operations",
+  },
+  {
+    href: "/operations",
+    label: "Open maintenance work orders",
+    meta: "Operations",
+  },
+  {
+    href: "/operations",
+    label: "Open arrears cases",
+    meta: "Operations",
   },
   {
     href: "/portfolio-qa",

@@ -158,6 +158,89 @@ const obligations = [
   },
 ];
 
+const maintenanceWorkOrders = [
+  {
+    id: "work-order-1",
+    entity_id: entityId,
+    property_id: propertyId,
+    tenancy_unit_id: unitId,
+    tenant_id: tenantId,
+    lease_id: leaseId,
+    title: "Air conditioning fault",
+    description: "Tenant reported warm air from the shopfront unit.",
+    status: "awaiting_approval",
+    priority: "urgent",
+    requested_at: "2026-05-19T01:00:00.000Z",
+    contractor_name: "Cool Air Services",
+    contractor_email: "service@coolair.example",
+    contractor_phone: "07 3000 1111",
+    contractor_assigned_at: "2026-05-19T02:00:00.000Z",
+    approval_required: true,
+    approval_status: "pending",
+    approval_limit_cents: 50000,
+    quote_amount_cents: 64000,
+    approved_by_user_id: null,
+    approved_at: null,
+    approval_notes: null,
+    source_document_id: null,
+    invoice_draft_id: null,
+    invoice_reference: null,
+    invoice_amount_cents: null,
+    source_reference: "Tenant email",
+    due_date: "2026-05-20",
+    completed_at: null,
+    notes: "Needs owner approval before work proceeds.",
+    document_ids: [],
+    photo_document_ids: [],
+    metadata: {},
+    created_at: "2026-05-19T01:00:00.000Z",
+    updated_at: "2026-05-19T02:00:00.000Z",
+    deleted_at: null,
+  },
+];
+
+const arrearsCases = [
+  {
+    id: "arrears-1",
+    entity_id: entityId,
+    property_id: propertyId,
+    tenancy_unit_id: unitId,
+    tenant_id: tenantId,
+    lease_id: leaseId,
+    status: "active",
+    currency: "AUD",
+    as_of: "2026-05-20",
+    balance_current_cents: 0,
+    balance_1_30_cents: 880000,
+    balance_31_60_cents: 0,
+    balance_61_90_cents: 0,
+    balance_90_plus_cents: 0,
+    total_balance_cents: 880000,
+    oldest_unpaid_invoice_date: "2026-05-01",
+    last_invoice_date: "2026-05-01",
+    source_reference: "May invoice run",
+    reminder_stage: 1,
+    reminder_frequency_days: 7,
+    next_reminder_on: "2026-05-20",
+    last_reminder_at: null,
+    reminder_paused_until: null,
+    dispute_status: "raised",
+    dispute_notes: "Tenant queried outgoings allocation.",
+    promise_to_pay_date: "2026-05-27",
+    promise_to_pay_amount_cents: 880000,
+    promise_to_pay_notes: "Tenant expects to clear after statement review.",
+    escalation_status: "none",
+    escalation_queue: null,
+    escalated_at: null,
+    assigned_user_id: operatorId,
+    notes: "Follow up after statement pack is sent.",
+    metadata: {},
+    created_at: "2026-05-18T00:00:00.000Z",
+    updated_at: "2026-05-19T00:00:00.000Z",
+    deleted_at: null,
+  },
+];
+
 const rentRoll = [
   {
     entity_id: entityId,
@@ -1344,6 +1427,74 @@ export async function mockLeasiumApi(page: Page) {
 
     if (method === "GET" && path === "/obligations") {
       await fulfillJson(route, obligations);
+      return;
+    }
+
+    if (method === "GET" && path === "/maintenance/work-orders") {
+      await fulfillJson(route, maintenanceWorkOrders);
+      return;
+    }
+
+    if (method === "PATCH" && path === "/maintenance/work-orders/work-order-1") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      Object.assign(maintenanceWorkOrders[0], payload, {
+        updated_at: "2026-05-20T01:00:00.000Z",
+      });
+      await fulfillJson(route, maintenanceWorkOrders[0]);
+      return;
+    }
+
+    if (method === "POST" && path === "/maintenance/work-orders") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const created = {
+        ...maintenanceWorkOrders[0],
+        ...payload,
+        id: "work-order-created",
+        requested_at: "2026-05-20T02:00:00.000Z",
+        created_at: "2026-05-20T02:00:00.000Z",
+        updated_at: "2026-05-20T02:00:00.000Z",
+        document_ids: [],
+        photo_document_ids: [],
+        deleted_at: null,
+      };
+      maintenanceWorkOrders.unshift(created);
+      await fulfillJson(route, created, 201);
+      return;
+    }
+
+    if (method === "GET" && path === "/arrears/cases") {
+      await fulfillJson(route, arrearsCases);
+      return;
+    }
+
+    if (method === "PATCH" && path === "/arrears/cases/arrears-1") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      Object.assign(arrearsCases[0], payload, {
+        updated_at: "2026-05-20T01:00:00.000Z",
+      });
+      await fulfillJson(route, arrearsCases[0]);
+      return;
+    }
+
+    if (method === "POST" && path === "/arrears/cases") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const total =
+        Number(payload.balance_current_cents ?? 0) +
+        Number(payload.balance_1_30_cents ?? 0) +
+        Number(payload.balance_31_60_cents ?? 0) +
+        Number(payload.balance_61_90_cents ?? 0) +
+        Number(payload.balance_90_plus_cents ?? 0);
+      const created = {
+        ...arrearsCases[0],
+        ...payload,
+        id: "arrears-created",
+        total_balance_cents: total,
+        created_at: "2026-05-20T02:00:00.000Z",
+        updated_at: "2026-05-20T02:00:00.000Z",
+        deleted_at: null,
+      };
+      arrearsCases.unshift(created);
+      await fulfillJson(route, created, 201);
       return;
     }
 

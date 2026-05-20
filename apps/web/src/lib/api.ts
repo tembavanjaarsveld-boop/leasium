@@ -574,6 +574,195 @@ export type TenantPortalRecord = {
   guardrails: string[];
 };
 
+export type MaintenancePriority = "low" | "normal" | "high" | "urgent";
+
+export type MaintenanceWorkOrderStatus =
+  | "requested"
+  | "triaged"
+  | "assigned"
+  | "awaiting_approval"
+  | "approved"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
+
+export type MaintenanceApprovalStatus =
+  | "not_required"
+  | "pending"
+  | "approved"
+  | "declined";
+
+export type MaintenanceWorkOrderRecord = {
+  id: string;
+  entity_id: string;
+  property_id: string | null;
+  tenancy_unit_id: string | null;
+  tenant_id: string | null;
+  lease_id: string | null;
+  title: string;
+  description: string | null;
+  status: MaintenanceWorkOrderStatus;
+  priority: MaintenancePriority;
+  requested_at: string;
+  contractor_name: string | null;
+  contractor_email: string | null;
+  contractor_phone: string | null;
+  contractor_assigned_at: string | null;
+  approval_required: boolean;
+  approval_status: MaintenanceApprovalStatus;
+  approval_limit_cents: number | null;
+  quote_amount_cents: number | null;
+  approved_by_user_id: string | null;
+  approved_at: string | null;
+  approval_notes: string | null;
+  source_document_id: string | null;
+  invoice_draft_id: string | null;
+  invoice_reference: string | null;
+  invoice_amount_cents: number | null;
+  source_reference: string | null;
+  due_date: string | null;
+  completed_at: string | null;
+  notes: string | null;
+  document_ids: string[];
+  photo_document_ids: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type MaintenanceWorkOrderPayload = {
+  entity_id: string;
+  title: string;
+  description?: string | null;
+  property_id?: string | null;
+  tenancy_unit_id?: string | null;
+  tenant_id?: string | null;
+  lease_id?: string | null;
+  status?: MaintenanceWorkOrderStatus;
+  priority?: MaintenancePriority;
+  requested_at?: string | null;
+  contractor_name?: string | null;
+  contractor_email?: string | null;
+  contractor_phone?: string | null;
+  contractor_assigned_at?: string | null;
+  approval_required?: boolean;
+  approval_status?: MaintenanceApprovalStatus;
+  approval_limit_cents?: number | null;
+  quote_amount_cents?: number | null;
+  approved_by_user_id?: string | null;
+  approved_at?: string | null;
+  approval_notes?: string | null;
+  source_document_id?: string | null;
+  invoice_draft_id?: string | null;
+  invoice_reference?: string | null;
+  invoice_amount_cents?: number | null;
+  source_reference?: string | null;
+  due_date?: string | null;
+  completed_at?: string | null;
+  notes?: string | null;
+  document_ids?: string[];
+  photo_document_ids?: string[];
+  metadata?: Record<string, unknown>;
+};
+
+export type ArrearsCaseStatus =
+  | "monitoring"
+  | "active"
+  | "resolved"
+  | "written_off"
+  | "closed";
+
+export type ArrearsDisputeStatus =
+  | "none"
+  | "raised"
+  | "under_review"
+  | "resolved"
+  | "escalated";
+
+export type ArrearsEscalationStatus =
+  | "none"
+  | "queued"
+  | "in_progress"
+  | "referred"
+  | "closed";
+
+export type ArrearsCaseRecord = {
+  id: string;
+  entity_id: string;
+  property_id: string | null;
+  tenancy_unit_id: string | null;
+  tenant_id: string;
+  lease_id: string | null;
+  status: ArrearsCaseStatus;
+  currency: string;
+  as_of: string;
+  balance_current_cents: number;
+  balance_1_30_cents: number;
+  balance_31_60_cents: number;
+  balance_61_90_cents: number;
+  balance_90_plus_cents: number;
+  total_balance_cents: number;
+  oldest_unpaid_invoice_date: string | null;
+  last_invoice_date: string | null;
+  source_reference: string | null;
+  reminder_stage: number;
+  reminder_frequency_days: number | null;
+  next_reminder_on: string | null;
+  last_reminder_at: string | null;
+  reminder_paused_until: string | null;
+  dispute_status: ArrearsDisputeStatus;
+  dispute_notes: string | null;
+  promise_to_pay_date: string | null;
+  promise_to_pay_amount_cents: number | null;
+  promise_to_pay_notes: string | null;
+  escalation_status: ArrearsEscalationStatus;
+  escalation_queue: string | null;
+  escalated_at: string | null;
+  assigned_user_id: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type ArrearsCasePayload = {
+  entity_id: string;
+  tenant_id: string;
+  property_id?: string | null;
+  tenancy_unit_id?: string | null;
+  lease_id?: string | null;
+  status?: ArrearsCaseStatus;
+  currency?: string;
+  as_of?: string;
+  balance_current_cents?: number;
+  balance_1_30_cents?: number;
+  balance_31_60_cents?: number;
+  balance_61_90_cents?: number;
+  balance_90_plus_cents?: number;
+  total_balance_cents?: number;
+  oldest_unpaid_invoice_date?: string | null;
+  last_invoice_date?: string | null;
+  source_reference?: string | null;
+  reminder_stage?: number;
+  reminder_frequency_days?: number | null;
+  next_reminder_on?: string | null;
+  last_reminder_at?: string | null;
+  reminder_paused_until?: string | null;
+  dispute_status?: ArrearsDisputeStatus;
+  dispute_notes?: string | null;
+  promise_to_pay_date?: string | null;
+  promise_to_pay_amount_cents?: number | null;
+  promise_to_pay_notes?: string | null;
+  escalation_status?: ArrearsEscalationStatus;
+  escalation_queue?: string | null;
+  escalated_at?: string | null;
+  assigned_user_id?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
 export type DocumentIntakeExtraction = {
   document_type?: string | null;
   summary?: string | null;
@@ -1922,6 +2111,103 @@ export function updateObligation(
 
 export function deleteObligation(obligationId: string) {
   return request<void>(`/obligations/${obligationId}`, {
+    method: "DELETE",
+  });
+}
+
+export function listMaintenanceWorkOrders(filters: {
+  entity_id: string;
+  property_id?: string;
+  tenant_id?: string;
+  status?: MaintenanceWorkOrderStatus;
+  priority?: MaintenancePriority;
+}) {
+  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  if (filters.property_id) {
+    params.set("property_id", filters.property_id);
+  }
+  if (filters.tenant_id) {
+    params.set("tenant_id", filters.tenant_id);
+  }
+  if (filters.status) {
+    params.set("status", filters.status);
+  }
+  if (filters.priority) {
+    params.set("priority", filters.priority);
+  }
+  return request<MaintenanceWorkOrderRecord[]>(
+    `/maintenance/work-orders?${params.toString()}`,
+  );
+}
+
+export function createMaintenanceWorkOrder(payload: MaintenanceWorkOrderPayload) {
+  return request<MaintenanceWorkOrderRecord>("/maintenance/work-orders", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateMaintenanceWorkOrder(
+  workOrderId: string,
+  payload: Partial<MaintenanceWorkOrderPayload>,
+) {
+  return request<MaintenanceWorkOrderRecord>(
+    `/maintenance/work-orders/${workOrderId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function deleteMaintenanceWorkOrder(workOrderId: string) {
+  return request<void>(`/maintenance/work-orders/${workOrderId}`, {
+    method: "DELETE",
+  });
+}
+
+export function listArrearsCases(filters: {
+  entity_id: string;
+  tenant_id?: string;
+  status?: ArrearsCaseStatus;
+  dispute_status?: ArrearsDisputeStatus;
+  escalation_status?: ArrearsEscalationStatus;
+}) {
+  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  if (filters.tenant_id) {
+    params.set("tenant_id", filters.tenant_id);
+  }
+  if (filters.status) {
+    params.set("status", filters.status);
+  }
+  if (filters.dispute_status) {
+    params.set("dispute_status", filters.dispute_status);
+  }
+  if (filters.escalation_status) {
+    params.set("escalation_status", filters.escalation_status);
+  }
+  return request<ArrearsCaseRecord[]>(`/arrears/cases?${params.toString()}`);
+}
+
+export function createArrearsCase(payload: ArrearsCasePayload) {
+  return request<ArrearsCaseRecord>("/arrears/cases", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateArrearsCase(
+  arrearsCaseId: string,
+  payload: Partial<ArrearsCasePayload>,
+) {
+  return request<ArrearsCaseRecord>(`/arrears/cases/${arrearsCaseId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteArrearsCase(arrearsCaseId: string) {
+  return request<void>(`/arrears/cases/${arrearsCaseId}`, {
     method: "DELETE",
   });
 }

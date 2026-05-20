@@ -1182,7 +1182,7 @@ function leaseApplyPlanRows(
       tone: "primary" as const,
     },
     {
-      label: "Tasks",
+      label: "Operations",
       value:
         obligationCount > 0
           ? `Create ${obligationCount} lease task${obligationCount === 1 ? "" : "s"}`
@@ -1245,7 +1245,7 @@ function propertyApplyPlanRows(
       tone: "primary" as const,
     },
     {
-      label: "Tasks",
+      label: "Operations",
       value:
         obligationCount > 0
           ? `Create ${obligationCount} milestone task${obligationCount === 1 ? "" : "s"}`
@@ -1505,10 +1505,10 @@ function DocumentIntakeApplyOutcomeCard({
             </Link>
           ) : null}
           <Link
-            href="/tasks"
+            href="/operations"
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover"
           >
-            View Tasks
+            View Operations
           </Link>
         </div>
       </div>
@@ -2783,8 +2783,8 @@ export function Dashboard({
             icon={<UserRound size={17} />}
           />
           <DashboardMetricCard
-            href="/tasks"
-            label="Attention"
+            href="/operations"
+            label="Operations"
             count={obligationsLoading ? "..." : urgentObligations.length}
             chip={
               obligationsLoading

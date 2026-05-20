@@ -348,11 +348,11 @@ function buildIssues({
       issues.push({
         id: `obligation-${obligation.id}`,
         severity: rank < 0 ? "danger" : rank <= 14 ? "warning" : "primary",
-        area: "Task",
+        area: "Operations",
         title: obligation.title,
         detail: `${label(obligation.category)} due ${formatDate(obligation.due_date)}.`,
-        action: "Open task queue",
-        href: "/tasks",
+        action: "Open operations",
+        href: "/operations",
       });
     }
   }
@@ -420,11 +420,11 @@ function buildSources({
     if (sourceDetail(obligation.metadata) || metadataText(obligation.metadata, "portfolio_import_key")) {
       rows.push({
         id: `obligation-${obligation.id}`,
-        kind: "Task",
+        kind: "Operations",
         title: obligation.title,
         detail: sourceDetail(obligation.metadata) || formatDate(obligation.due_date),
         source: sourceLabel(obligation.metadata),
-        href: "/tasks",
+        href: "/operations",
       });
     }
   }

@@ -82,7 +82,31 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(page.getByText("INV-1001").first()).toBeVisible();
 
   await page.getByRole("tab", { name: /Delivery & payments/ }).click();
-  await expect(page.getByText("Manual receipt only")).toBeVisible();
+  await expect(page.getByText("No Xero").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Email" })).toBeVisible();
+});
+
+test("operations workspace surfaces maintenance and arrears work", async ({
+  page,
+}) => {
+  await page.goto("/operations");
+
+  await expect(
+    page.getByRole("heading", { name: "Operations", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expect(page.getByText("Bright Cafe arrears")).toBeVisible();
+
+  await page.getByRole("tab", { name: /Maintenance/ }).click();
+  await expect(page.getByText("Cool Air Services")).toBeVisible();
+  await page.getByRole("button", { name: "Approve" }).click();
+  await expect(page.locator("span").filter({ hasText: /^approved$/ }).first()).toBeVisible();
+
+  await page.getByRole("tab", { name: /Arrears/ }).click();
+  await expect(page.getByText("$8,800").first()).toBeVisible();
+  await expect(page.getByText("raised").first()).toBeVisible();
+  await page.getByRole("button", { name: "Escalate" }).click();
+  await expect(page.locator("span").filter({ hasText: /^queued$/ }).first()).toBeVisible();
 });
 
 test("tenant workspace supports search and the add tenant form", async ({
