@@ -23,6 +23,12 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/app-shell";
 import { RegisterImportPanel } from "@/app/intake/register-import-panel";
 import {
+  EvidenceSourceTrail,
+  type EvidenceFieldChange,
+  type EvidenceHistoryRow,
+  type EvidenceSourceLocation,
+} from "@/components/evidence-drawer";
+import {
   Button,
   EmptyState,
   Field,
@@ -109,6 +115,8 @@ type DocumentApplyOutcome = {
   targetLabel: string;
   dueDate: string | null;
   ignoredCount: number;
+  appliedAt?: string | null;
+  appliedBy?: string | null;
 };
 type CommandCenterItem = {
   id: string;
@@ -463,32 +471,63 @@ function propertyFieldLabel(field: string) {
   );
 }
 
-function propertyValue(value: unknown) {
-  if (value === null || value === undefined || value === "") {
-    return "-";
-  }
-  if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
-  }
-  if (typeof value === "number") {
-    return new Intl.NumberFormat("en-AU").format(value);
-  }
-  return String(value);
-}
-
-function propertySourceCaption(
+function propertyEvidenceSourceLocation(
   source: AppliedPropertySource | null | undefined,
-) {
+): EvidenceSourceLocation | null {
   if (!source) {
     return null;
   }
-  const confidence =
-    source.confidence === null || source.confidence === undefined
-      ? null
-      : `${Math.round(source.confidence * 100)}% confidence`;
-  return [source.sourceHint, source.citation, confidence]
-    .filter(Boolean)
-    .join(" - ");
+  const label = source.sourceHint ?? source.citation;
+  if (!label) {
+    return null;
+  }
+  return {
+    label,
+    detail: source.sourceHint && source.citation ? source.citation : undefined,
+  };
+}
+
+function propertyEvidenceChanges(
+  changes: AppliedPropertyChange[] | null | undefined,
+): EvidenceFieldChange[] {
+  return (changes ?? []).map((change, index) => ({
+    id: `${change.field}-${index}`,
+    field: change.field,
+    label: propertyFieldLabel(change.field),
+    before: change.before,
+    after: change.after,
+    sourceLocation: propertyEvidenceSourceLocation(change.source),
+    confidence: change.source?.confidence,
+  }));
+}
+
+function propertyEvidenceConfidence(
+  changes: AppliedPropertyChange[] | null | undefined,
+) {
+  return changes?.find(
+    (change) => typeof change.source?.confidence === "number",
+  )?.source?.confidence;
+}
+
+function propertyEvidenceHistory(
+  outcome: DocumentApplyOutcome,
+): EvidenceHistoryRow[] {
+  const changeCount = outcome.propertyChanges?.length ?? 0;
+  if (changeCount === 0) {
+    return [];
+  }
+  return [
+    {
+      id: "smart-intake-property-apply",
+      label: "Applied after Smart Intake review",
+      description: `${changeCount} reviewed property field ${
+        changeCount === 1 ? "change was" : "changes were"
+      } recorded from the acquisition source. This evidence view is read-only.`,
+      actor: outcome.appliedBy ?? undefined,
+      occurredAt: outcome.appliedAt ?? undefined,
+      tone: "success",
+    },
+  ];
 }
 
 function shortRecordId(value: string) {
@@ -1480,6 +1519,9 @@ function DocumentIntakeApplyOutcomeCard({
   const shownChargeSummaries = outcome.chargeRuleSummaries?.slice(0, 5) ?? [];
   const shownChargeIds = outcome.chargeRuleIds?.slice(0, 4) ?? [];
   const skippedScheduleRows = outcome.skippedTenancyScheduleRows ?? [];
+  const propertyEvidenceChangeRows = propertyEvidenceChanges(
+    outcome.propertyChanges,
+  );
   return (
     <SectionPanel
       title={isBilling ? "Prepared for billing" : "Applied to portfolio"}
@@ -1655,38 +1697,23 @@ function DocumentIntakeApplyOutcomeCard({
               ) : null}
             </div>
           ) : null}
-          {isPropertySetup && outcome.propertyChanges?.length ? (
-            <div className="border-t border-leasium-success/20 pt-3">
-              <div className="text-xs font-semibold uppercase text-[#027A48]">
-                Property changes
-              </div>
-              <div className="mt-2 divide-y divide-leasium-success/20">
-                {outcome.propertyChanges.slice(0, 5).map((change, index) => {
-                  const source = propertySourceCaption(change.source);
-                  return (
-                    <div
-                      key={`${change.field}-${index}`}
-                      className="grid gap-1 py-2"
-                    >
-                      <div className="font-medium">
-                        {propertyFieldLabel(change.field)}
-                      </div>
-                      <div className="text-muted-foreground">
-                        {propertyValue(change.before)} to{" "}
-                        {propertyValue(change.after)}
-                      </div>
-                      {source ? (
-                        <div className="text-xs text-muted-foreground">
-                          {source}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
         </div>
+        {isPropertySetup && propertyEvidenceChangeRows.length ? (
+          <EvidenceSourceTrail
+            title="Property evidence trail"
+            description="Review-first property changes from the acquisition source. This display is read-only and does not apply additional changes."
+            sourceDocument={{
+              label: outcome.documentName,
+              detail: "Purchase contract",
+            }}
+            confidence={propertyEvidenceConfidence(outcome.propertyChanges)}
+            appliedAt={outcome.appliedAt}
+            appliedBy={outcome.appliedBy}
+            changes={propertyEvidenceChangeRows}
+            history={propertyEvidenceHistory(outcome)}
+            className="border-leasium-success/20 shadow-none"
+          />
+        ) : null}
         <div className="flex flex-wrap justify-end gap-2">
           <SecondaryButton type="button" onClick={onDismiss}>
             Back to Smart Intake
@@ -2620,6 +2647,8 @@ export function Dashboard({
           applied.skipped_tenancy_schedule_rows,
         ),
         propertyChanges: appliedPropertyChanges(applied.property_changes),
+        appliedAt: result.applied_at,
+        appliedBy: result.applied_by_user_id,
       });
       setIntakeNotice("Document workflow applied.");
       queryClient.invalidateQueries({

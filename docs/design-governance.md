@@ -267,6 +267,8 @@ Status: pending Remba review. Smart Intake apply outcomes and the Property works
 
 2026-05-21 update: property source history now uses a reusable Evidence Source Trail pattern that can carry source document, source location, confidence, before/after field changes, field citations, and audit history. Remba should review the density, labels, and whether this pattern should become the standard evidence drawer across Smart Intake, tenant detail, invoices, maintenance, and Portfolio QA.
 
+Second 2026-05-21 update: the same source-trail pattern now appears in Smart Intake acquisition apply outcomes and tenant detail source history. The tenant version combines reviewed onboarding changes, document/Smart Intake provenance, and public enrichment citations. Remba should check whether this unified pattern reduces provenance confusion without making tenant detail feel too dense.
+
 ## Acquisition Schedule Outcome Surface
 
 Status: pending Remba review. Smart Intake purchase-contract apply outcomes now show created pending lease IDs, draft charge detail, and skipped tenancy schedule rows with blockers. Keep it compact and operational: this is a review outcome, not a completion certificate, and any skipped row should point the operator back to the specific schedule fact that needs correction.

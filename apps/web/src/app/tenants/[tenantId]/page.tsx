@@ -26,6 +26,13 @@ import { useParams, useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import {
+  EvidenceSourceTrail,
+  type EvidenceFieldChange,
+  type EvidenceHistoryRow,
+  type EvidenceSourceDocument,
+  type EvidenceSourceLocation,
+} from "@/components/evidence-drawer";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -63,6 +70,7 @@ import {
   revokeTenantPortalAccount,
   TenantPortalAccountRecord,
   TenantPayload,
+  TenantReviewedChangeRecord,
   TenantRecord,
   unlinkTenantPortalAccount,
   uploadDocument,
@@ -258,7 +266,9 @@ const documentCategories: Array<{ value: DocumentCategory; label: string }> = [
 ];
 
 function documentCategoryLabel(value: DocumentCategory) {
-  return documentCategories.find((item) => item.value === value)?.label ?? value;
+  return (
+    documentCategories.find((item) => item.value === value)?.label ?? value
+  );
 }
 
 function documentTypeLabel(value: string | null | undefined) {
@@ -269,7 +279,18 @@ function metadataString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function documentSourceLabel(document: { tenant_onboarding_id: string | null; metadata: Record<string, unknown> }) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function documentSourceLabel(document: {
+  tenant_onboarding_id: string | null;
+  metadata: Record<string, unknown>;
+}) {
   if (document.tenant_onboarding_id) {
     return "Onboarding";
   }
@@ -350,7 +371,12 @@ function intakeProvenanceNote(
 }
 
 const submittedFields: Array<{
-  key: keyof TenantForm | "insurance_confirmed" | "insurance_expiry_date" | "emergency_contact_name" | "emergency_contact_phone";
+  key:
+    | keyof TenantForm
+    | "insurance_confirmed"
+    | "insurance_expiry_date"
+    | "emergency_contact_name"
+    | "emergency_contact_phone";
   label: string;
 }> = [
   { key: "legal_name", label: "Legal name" },
@@ -386,6 +412,430 @@ function confidenceLabel(value: number | null | undefined) {
     : `${Math.round(value * 100)}% confidence`;
 }
 
+type TenantEvidenceSource = {
+  source_hint: string | null;
+  citation: string | null;
+  confidence: number | null;
+  url: string | null;
+};
+
+type TenantEnrichmentHistoryEntry = {
+  field: string;
+  label: string | null;
+  before: unknown;
+  after: unknown;
+  source: TenantEvidenceSource | null;
+  applied_at: string | null;
+  applied_by_user_id: string | null;
+};
+
+type TenantEvidenceChangeSet = {
+  sourceDocument: EvidenceSourceDocument;
+  sourceLocation?: EvidenceSourceLocation | null;
+  confidence?: number | null;
+  appliedAt?: string | null;
+  appliedBy?: string | null;
+  changes: EvidenceFieldChange[];
+};
+
+function tenantFieldLabel(field: string) {
+  const submittedLabel = submittedFields.find(
+    (item) => item.key === field,
+  )?.label;
+  if (submittedLabel) {
+    return submittedLabel;
+  }
+  if (field === "registered_address") {
+    return "Registered address";
+  }
+  return field
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function timestamp(value: string | null | undefined) {
+  if (!value) {
+    return 0;
+  }
+  const date = new Date(value).getTime();
+  return Number.isNaN(date) ? 0 : date;
+}
+
+function shortId(value: string | null | undefined) {
+  return value ? value.slice(0, 8) : null;
+}
+
+function evidenceStatusLabel(status: string) {
+  const value = status.split(".").at(-1) ?? status;
+  return value.replaceAll("_", " ");
+}
+
+function evidenceStatusIsApplied(status: string) {
+  return evidenceStatusLabel(status) === "applied";
+}
+
+function tenantMetadata(tenant: TenantRecord | null | undefined) {
+  return isRecord(tenant?.metadata) ? tenant.metadata : {};
+}
+
+function tenantPublicEnrichmentMetadata(
+  tenant: TenantRecord | null | undefined,
+) {
+  const publicEnrichment = tenantMetadata(tenant).public_enrichment;
+  return isRecord(publicEnrichment) ? publicEnrichment : {};
+}
+
+function tenantEvidenceSource(value: unknown): TenantEvidenceSource | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const source = {
+    source_hint:
+      metadataString(value.source_hint) ?? metadataString(value.hint),
+    citation: metadataString(value.citation) ?? metadataString(value.text),
+    confidence: numberValue(value.confidence),
+    url: metadataString(value.url) ?? metadataString(value.source_url),
+  };
+  return source.source_hint ||
+    source.citation ||
+    source.confidence !== null ||
+    source.url
+    ? source
+    : null;
+}
+
+function tenantSourceCitations(tenant: TenantRecord | null | undefined) {
+  const legacyCitations = tenantMetadata(tenant).source_citations;
+  const publicCitations =
+    tenantPublicEnrichmentMetadata(tenant).source_citations;
+  const citations: Record<string, unknown> = {
+    ...(isRecord(legacyCitations) ? legacyCitations : {}),
+    ...(isRecord(publicCitations) ? publicCitations : {}),
+  };
+
+  return Object.entries(citations)
+    .map(([field, value]) => ({
+      field,
+      source: tenantEvidenceSource(value),
+    }))
+    .filter(
+      (item): item is { field: string; source: TenantEvidenceSource } =>
+        item.source !== null,
+    )
+    .sort((a, b) =>
+      tenantFieldLabel(a.field).localeCompare(tenantFieldLabel(b.field)),
+    );
+}
+
+function tenantEnrichmentHistory(
+  tenant: TenantRecord | null | undefined,
+): TenantEnrichmentHistoryEntry[] {
+  const history = tenantPublicEnrichmentMetadata(tenant).apply_history;
+  if (!Array.isArray(history)) {
+    return [];
+  }
+
+  return history
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+      const field = metadataString(entry.field);
+      if (!field) {
+        return null;
+      }
+      return {
+        field,
+        label: metadataString(entry.label),
+        before: entry.before,
+        after: entry.after,
+        source: tenantEvidenceSource(entry.source),
+        applied_at: metadataString(entry.applied_at),
+        applied_by_user_id: metadataString(entry.applied_by_user_id),
+      };
+    })
+    .filter((entry): entry is TenantEnrichmentHistoryEntry => entry !== null)
+    .sort((a, b) => timestamp(b.applied_at) - timestamp(a.applied_at));
+}
+
+function confidencePercent(value: number | null | undefined) {
+  return value === null || value === undefined
+    ? null
+    : `${Math.round(value * 100)}% confidence`;
+}
+
+function sourceCaption(source: TenantEvidenceSource | null | undefined) {
+  if (!source) {
+    return null;
+  }
+  return [
+    source.source_hint,
+    source.citation,
+    confidencePercent(source.confidence),
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function tenantEvidenceSourceLocation(
+  source: TenantEvidenceSource | null | undefined,
+): EvidenceSourceLocation | null {
+  if (!source) {
+    return null;
+  }
+  const label = source.source_hint ?? source.citation;
+  if (!label) {
+    return null;
+  }
+  return {
+    label,
+    href: source.url ?? undefined,
+    detail: source.source_hint && source.citation ? source.citation : undefined,
+  };
+}
+
+function reviewedChangeEvidenceChanges(
+  entry: TenantReviewedChangeRecord | null | undefined,
+): EvidenceFieldChange[] {
+  if (!entry) {
+    return [];
+  }
+  return entry.changes.map((change, index) => ({
+    id: `${entry.source_id ?? entry.source}-${change.field}-${index}`,
+    field: change.field,
+    label: change.label || tenantFieldLabel(change.field),
+    before: change.before,
+    after: change.after,
+  }));
+}
+
+function enrichmentEvidenceChanges(
+  entry: TenantEnrichmentHistoryEntry | null | undefined,
+): EvidenceFieldChange[] {
+  if (!entry) {
+    return [];
+  }
+  return [
+    {
+      id: `public-enrichment-${entry.field}`,
+      field: entry.field,
+      label: entry.label ?? tenantFieldLabel(entry.field),
+      before: entry.before,
+      after: entry.after,
+      sourceLocation: tenantEvidenceSourceLocation(entry.source),
+      confidence: entry.source?.confidence,
+    },
+  ];
+}
+
+function reviewedSourceDocument(
+  entry: TenantReviewedChangeRecord,
+): EvidenceSourceDocument {
+  const isIntakeSource = entry.source.includes("intake");
+  return {
+    label: entry.source_label,
+    href:
+      isIntakeSource && entry.source_id
+        ? `/intake?review=${entry.source_id}`
+        : undefined,
+    detail: shortId(entry.source_id) ?? undefined,
+  };
+}
+
+function latestEvidenceChangeSet(
+  reviewedChanges: TenantReviewedChangeRecord[],
+  enrichmentHistory: TenantEnrichmentHistoryEntry[],
+): TenantEvidenceChangeSet | null {
+  const latestReviewed = reviewedChanges[0] ?? null;
+  const latestEnrichment = enrichmentHistory[0] ?? null;
+  const reviewedTime = timestamp(latestReviewed?.occurred_at);
+  const enrichmentTime = timestamp(latestEnrichment?.applied_at);
+
+  if (latestEnrichment && enrichmentTime > reviewedTime) {
+    return {
+      sourceDocument: {
+        label: "Public enrichment",
+        detail:
+          latestEnrichment.label ?? tenantFieldLabel(latestEnrichment.field),
+      },
+      sourceLocation: tenantEvidenceSourceLocation(latestEnrichment.source),
+      confidence: latestEnrichment.source?.confidence,
+      appliedAt: latestEnrichment.applied_at,
+      appliedBy: shortId(latestEnrichment.applied_by_user_id)
+        ? `Operator ${shortId(latestEnrichment.applied_by_user_id)}`
+        : null,
+      changes: enrichmentEvidenceChanges(latestEnrichment),
+    };
+  }
+
+  if (latestReviewed) {
+    return {
+      sourceDocument: reviewedSourceDocument(latestReviewed),
+      appliedAt: evidenceStatusIsApplied(latestReviewed.status)
+        ? latestReviewed.occurred_at
+        : null,
+      changes: reviewedChangeEvidenceChanges(latestReviewed),
+    };
+  }
+
+  if (latestEnrichment) {
+    return {
+      sourceDocument: {
+        label: "Public enrichment",
+        detail:
+          latestEnrichment.label ?? tenantFieldLabel(latestEnrichment.field),
+      },
+      sourceLocation: tenantEvidenceSourceLocation(latestEnrichment.source),
+      confidence: latestEnrichment.source?.confidence,
+      appliedAt: latestEnrichment.applied_at,
+      appliedBy: shortId(latestEnrichment.applied_by_user_id)
+        ? `Operator ${shortId(latestEnrichment.applied_by_user_id)}`
+        : null,
+      changes: enrichmentEvidenceChanges(latestEnrichment),
+    };
+  }
+
+  return null;
+}
+
+function documentEvidenceSource(
+  documents: Array<{
+    id: string;
+    filename: string;
+    created_at: string;
+    tenant_onboarding_id: string | null;
+  }>,
+): EvidenceSourceDocument | null {
+  const latestDocument = documents
+    .slice()
+    .sort((a, b) => timestamp(b.created_at) - timestamp(a.created_at))[0];
+  if (!latestDocument) {
+    return null;
+  }
+  return {
+    label: latestDocument.filename,
+    href: documentDownloadUrl(latestDocument.id),
+    detail: latestDocument.tenant_onboarding_id
+      ? "Onboarding document"
+      : "Tenant document",
+  };
+}
+
+function reviewedChangeHistoryRows(
+  reviewedChanges: TenantReviewedChangeRecord[],
+): EvidenceHistoryRow[] {
+  return reviewedChanges.map((entry) => ({
+    id: `reviewed-${entry.source}-${entry.source_id ?? entry.occurred_at}`,
+    label: `${entry.source_label} ${evidenceStatusLabel(entry.status)}`,
+    description: [
+      `${entry.changes.length} field change${entry.changes.length === 1 ? "" : "s"} recorded.`,
+      entry.notes,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    occurredAt: entry.occurred_at,
+    tone: evidenceStatusIsApplied(entry.status) ? "success" : "primary",
+  }));
+}
+
+function enrichmentHistoryRows(
+  history: TenantEnrichmentHistoryEntry[],
+): EvidenceHistoryRow[] {
+  return history.map((entry) => ({
+    id: `enrichment-${entry.field}-${entry.applied_at ?? ""}`,
+    label: `Applied ${entry.label ?? tenantFieldLabel(entry.field)}`,
+    description:
+      sourceCaption(entry.source) ?? "Public enrichment citation stored.",
+    actor: shortId(entry.applied_by_user_id)
+      ? `Operator ${shortId(entry.applied_by_user_id)}`
+      : undefined,
+    occurredAt: entry.applied_at,
+    tone: "success",
+  }));
+}
+
+function documentHistoryRows(
+  documents: Array<{
+    id: string;
+    filename: string;
+    category: DocumentCategory;
+    tenant_onboarding_id: string | null;
+    created_at: string;
+    metadata: Record<string, unknown>;
+  }>,
+  intakeByDocumentId: Map<string, DocumentIntakeRecord>,
+): EvidenceHistoryRow[] {
+  return documents.map((document) => {
+    const intake = intakeByDocumentId.get(document.id);
+    const documentType = intake?.document_type
+      ? documentTypeLabel(intake.document_type)
+      : documentCategoryLabel(document.category);
+    const reviewedAt = intake?.applied_at ?? intake?.reviewed_at ?? null;
+    const label = intake?.applied_at
+      ? `Applied ${documentType}`
+      : intake?.reviewed_at
+        ? `Reviewed ${documentType}`
+        : document.tenant_onboarding_id
+          ? "Onboarding document uploaded"
+          : "Tenant document uploaded";
+
+    return {
+      id: `document-${document.id}`,
+      label,
+      description: `${document.filename} - ${intakeProvenanceNote(intake, document.metadata)}`,
+      occurredAt: reviewedAt ?? document.created_at,
+      tone: intakeStatusTone(intake),
+    };
+  });
+}
+
+function citationHistoryRows(
+  citations: Array<{ field: string; source: TenantEvidenceSource }>,
+  enrichmentHistory: TenantEnrichmentHistoryEntry[],
+): EvidenceHistoryRow[] {
+  const appliedFields = new Set(enrichmentHistory.map((entry) => entry.field));
+  return citations
+    .filter((item) => !appliedFields.has(item.field))
+    .slice(0, 4)
+    .map((item) => ({
+      id: `citation-${item.field}`,
+      label: `Citation stored for ${tenantFieldLabel(item.field)}`,
+      description: sourceCaption(item.source) ?? "Source citation stored.",
+      tone: "primary",
+    }));
+}
+
+function tenantEvidenceHistoryRows(
+  reviewedChanges: TenantReviewedChangeRecord[],
+  enrichmentHistory: TenantEnrichmentHistoryEntry[],
+  citations: Array<{ field: string; source: TenantEvidenceSource }>,
+  documents: Array<{
+    id: string;
+    filename: string;
+    category: DocumentCategory;
+    tenant_onboarding_id: string | null;
+    created_at: string;
+    metadata: Record<string, unknown>;
+  }>,
+  intakeByDocumentId: Map<string, DocumentIntakeRecord>,
+) {
+  const datedRows = [
+    ...reviewedChangeHistoryRows(reviewedChanges),
+    ...enrichmentHistoryRows(enrichmentHistory),
+    ...documentHistoryRows(documents, intakeByDocumentId),
+  ]
+    .sort(
+      (a, b) =>
+        timestamp(String(b.occurredAt ?? "")) -
+        timestamp(String(a.occurredAt ?? "")),
+    )
+    .slice(0, 10);
+
+  return [...datedRows, ...citationHistoryRows(citations, enrichmentHistory)];
+}
+
 function TenantDetail() {
   const params = useParams<{ tenantId: string }>();
   const router = useRouter();
@@ -395,10 +845,15 @@ function TenantDetail() {
   const [form, setForm] = useState<TenantForm | null>(null);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const documentFileInputRef = useRef<HTMLInputElement>(null);
-  const [documentCategory, setDocumentCategory] = useState<DocumentCategory>("insurance");
+  const [documentCategory, setDocumentCategory] =
+    useState<DocumentCategory>("insurance");
   const [documentNotes, setDocumentNotes] = useState("");
-  const [reviewNotesById, setReviewNotesById] = useState<Record<string, string>>({});
-  const [enrichmentSuggestions, setEnrichmentSuggestions] = useState<EnrichmentSuggestion[]>([]);
+  const [reviewNotesById, setReviewNotesById] = useState<
+    Record<string, string>
+  >({});
+  const [enrichmentSuggestions, setEnrichmentSuggestions] = useState<
+    EnrichmentSuggestion[]
+  >([]);
   const [freshLinkNotice, setFreshLinkNotice] = useState<string | null>(null);
 
   const tenantQuery = useQuery({
@@ -462,11 +917,31 @@ function TenantDetail() {
     [documentIntakesQuery.data],
   );
 
+  const tenantDocuments = documentsQuery.data ?? [];
+  const tenantReviewedChanges = tenantDetail?.reviewed_changes ?? [];
+  const tenantEnrichmentHistoryRows = tenantEnrichmentHistory(tenant);
+  const tenantSourceCitationRows = tenantSourceCitations(tenant);
+  const latestTenantEvidence = latestEvidenceChangeSet(
+    tenantReviewedChanges,
+    tenantEnrichmentHistoryRows,
+  );
+  const firstTenantCitation = tenantSourceCitationRows[0]?.source;
+  const latestTenantDocumentSource = documentEvidenceSource(tenantDocuments);
+  const tenantEvidenceHistory = tenantEvidenceHistoryRows(
+    tenantReviewedChanges,
+    tenantEnrichmentHistoryRows,
+    tenantSourceCitationRows,
+    tenantDocuments,
+    intakeByDocumentId,
+  );
+
   const tenantOnboardings = (onboardingQuery.data ?? [])
     .filter((item) => item.tenant_id === tenantId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const portalAccounts = portalAccountsQuery.data ?? [];
-  const latestSentOnboarding = tenantOnboardings.find((item) => item.status === "sent");
+  const latestSentOnboarding = tenantOnboardings.find(
+    (item) => item.status === "sent",
+  );
   const linkedLeases = tenantLeaseContexts.length
     ? tenantLeaseContexts
     : (leasesQuery.data ?? []).map((lease) => ({
@@ -508,7 +983,9 @@ function TenantDetail() {
         reason: "Operator revoked access from the tenant profile.",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tenant-portal-accounts", tenantId] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-portal-accounts", tenantId],
+      });
       queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
     },
   });
@@ -519,7 +996,9 @@ function TenantDetail() {
         reason: "Operator restored access from the tenant profile.",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tenant-portal-accounts", tenantId] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-portal-accounts", tenantId],
+      });
       queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
     },
   });
@@ -530,7 +1009,9 @@ function TenantDetail() {
         reason: "Operator unlinked access so the tenant can reconnect.",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tenant-portal-accounts", tenantId] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-portal-accounts", tenantId],
+      });
       queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
     },
   });
@@ -542,21 +1023,27 @@ function TenantDetail() {
         due_date: dateOnly(new Date(Date.now() + 7 * 86_400_000)),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", tenant?.entity_id] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
     },
   });
 
   const cancelOnboardingMutation = useMutation({
     mutationFn: cancelTenantOnboarding,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", tenant?.entity_id] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
     },
   });
 
   const resendOnboardingMutation = useMutation({
     mutationFn: resendTenantOnboarding,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", tenant?.entity_id] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
     },
   });
 
@@ -573,10 +1060,16 @@ function TenantDetail() {
         expires_in_days: 14,
       }),
     onSuccess: async (updated) => {
-      queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", tenant?.entity_id] });
-      setFreshLinkNotice(`Fresh portal link copied. Expires ${formatDate(updated.expires_at)}.`);
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
+      setFreshLinkNotice(
+        `Fresh portal link copied. Expires ${formatDate(updated.expires_at)}.`,
+      );
       if (typeof navigator !== "undefined") {
-        await navigator.clipboard.writeText(updated.portal_url).catch(() => undefined);
+        await navigator.clipboard
+          .writeText(updated.portal_url)
+          .catch(() => undefined);
       }
     },
   });
@@ -588,14 +1081,18 @@ function TenantDetail() {
         notes: cleanText(reviewNotesById[onboardingId] ?? ""),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", tenant?.entity_id] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
     },
   });
 
   const applyOnboardingMutation = useMutation({
     mutationFn: applyTenantOnboarding,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", tenant?.entity_id] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
       queryClient.invalidateQueries({ queryKey: ["tenant", tenantId] });
       queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
     },
@@ -709,7 +1206,16 @@ function TenantDetail() {
         <AppHeader />
         <div className="mx-auto max-w-7xl px-5 py-5">
           <SectionPanel>
-            <EmptyState title="Tenant not found" action={<Link href="/tenants"><SecondaryButton type="button">Back to tenants</SecondaryButton></Link>} />
+            <EmptyState
+              title="Tenant not found"
+              action={
+                <Link href="/tenants">
+                  <SecondaryButton type="button">
+                    Back to tenants
+                  </SecondaryButton>
+                </Link>
+              }
+            />
           </SectionPanel>
         </div>
       </main>
@@ -723,7 +1229,10 @@ function TenantDetail() {
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <section className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <Link href="/tenants" className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+            <Link
+              href="/tenants"
+              className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
               <ArrowLeft size={14} />
               Tenants
             </Link>
@@ -743,43 +1252,94 @@ function TenantDetail() {
             title="Edit tenant profile"
             description="Keep admin changes focused, then return to the profile."
             actions={
-              <SecondaryButton type="button" onClick={() => setEditing(false)} className="h-8 w-8 px-0" aria-label="Close edit">
+              <SecondaryButton
+                type="button"
+                onClick={() => setEditing(false)}
+                className="h-8 w-8 px-0"
+                aria-label="Close edit"
+              >
                 <X size={15} />
               </SecondaryButton>
             }
           >
-            <form className="grid gap-3 p-4 md:grid-cols-2" onSubmit={submitForm}>
+            <form
+              className="grid gap-3 p-4 md:grid-cols-2"
+              onSubmit={submitForm}
+            >
               <Field label="Legal name">
-                <Input value={form.legal_name} onChange={(event) => updateField("legal_name", event.target.value)} />
+                <Input
+                  value={form.legal_name}
+                  onChange={(event) =>
+                    updateField("legal_name", event.target.value)
+                  }
+                />
               </Field>
               <Field label="Trading as">
-                <Input value={form.trading_name} onChange={(event) => updateField("trading_name", event.target.value)} />
+                <Input
+                  value={form.trading_name}
+                  onChange={(event) =>
+                    updateField("trading_name", event.target.value)
+                  }
+                />
               </Field>
               <Field label="ABN">
-                <Input value={form.abn} onChange={(event) => updateField("abn", event.target.value)} />
+                <Input
+                  value={form.abn}
+                  onChange={(event) => updateField("abn", event.target.value)}
+                />
               </Field>
               <Field label="Contact">
-                <Input value={form.contact_name} onChange={(event) => updateField("contact_name", event.target.value)} />
+                <Input
+                  value={form.contact_name}
+                  onChange={(event) =>
+                    updateField("contact_name", event.target.value)
+                  }
+                />
               </Field>
               <Field label="Contact email">
-                <Input type="email" value={form.contact_email} onChange={(event) => updateField("contact_email", event.target.value)} />
+                <Input
+                  type="email"
+                  value={form.contact_email}
+                  onChange={(event) =>
+                    updateField("contact_email", event.target.value)
+                  }
+                />
               </Field>
               <Field label="Billing email">
-                <Input type="email" value={form.billing_email} onChange={(event) => updateField("billing_email", event.target.value)} />
+                <Input
+                  type="email"
+                  value={form.billing_email}
+                  onChange={(event) =>
+                    updateField("billing_email", event.target.value)
+                  }
+                />
               </Field>
               <Field label="Phone">
-                <Input value={form.contact_phone} onChange={(event) => updateField("contact_phone", event.target.value)} />
+                <Input
+                  value={form.contact_phone}
+                  onChange={(event) =>
+                    updateField("contact_phone", event.target.value)
+                  }
+                />
               </Field>
               <Field label="Notes">
-                <Input value={form.notes} onChange={(event) => updateField("notes", event.target.value)} />
+                <Input
+                  value={form.notes}
+                  onChange={(event) => updateField("notes", event.target.value)}
+                />
               </Field>
               <div className="md:col-span-2">
-                <Button type="submit" disabled={!form.legal_name.trim() || updateMutation.isPending}>
+                <Button
+                  type="submit"
+                  disabled={!form.legal_name.trim() || updateMutation.isPending}
+                >
                   <Save size={16} />
                   Save profile
                 </Button>
                 {updateMutation.error ? (
-                  <p className="mt-2 text-sm text-danger">{friendlyError(updateMutation.error)}</p>
+                  <p className="mt-2 text-sm text-danger">
+                    {friendlyError(updateMutation.error)}
+                  </p>
                 ) : null}
               </div>
             </form>
@@ -803,103 +1363,125 @@ function TenantDetail() {
                   <dd>{tenant.abn ?? "-"}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted-foreground">Primary contact</dt>
+                  <dt className="text-xs text-muted-foreground">
+                    Primary contact
+                  </dt>
                   <dd>{tenant.contact_name ?? "-"}</dd>
-                  <dd className="text-muted-foreground">{tenant.contact_email ?? tenant.contact_phone ?? "-"}</dd>
+                  <dd className="text-muted-foreground">
+                    {tenant.contact_email ?? tenant.contact_phone ?? "-"}
+                  </dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted-foreground">Billing email</dt>
+                  <dt className="text-xs text-muted-foreground">
+                    Billing email
+                  </dt>
                   <dd>{tenant.billing_email ?? tenant.contact_email ?? "-"}</dd>
                 </div>
               </dl>
             </SectionPanel>
 
-            <SectionPanel title="Portal access" icon={<ShieldCheck size={17} />}>
+            <SectionPanel
+              title="Portal access"
+              icon={<ShieldCheck size={17} />}
+            >
               <div className="grid gap-3 p-4 text-sm">
                 {portalAccounts.map((account) => {
                   const accountOnboarding =
-                    tenantOnboardings.find((item) => item.id === account.tenant_onboarding_id) ??
-                    latestSentOnboarding;
+                    tenantOnboardings.find(
+                      (item) => item.id === account.tenant_onboarding_id,
+                    ) ?? latestSentOnboarding;
                   return (
-                  <div
-                    key={account.id}
-                    className="grid gap-3 rounded-md border border-border bg-white p-3"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium">
-                            {account.email ?? "Tenant login"}
-                          </span>
-                          <StatusBadge tone={portalAccountTone(account.status)}>
-                            {portalAccountLabel(account.status)}
-                          </StatusBadge>
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {portalAccountDetail(account)}
-                        </div>
-                        {portalAccountRecoveryDetail(account) ? (
+                    <div
+                      key={account.id}
+                      className="grid gap-3 rounded-md border border-border bg-white p-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium">
+                              {account.email ?? "Tenant login"}
+                            </span>
+                            <StatusBadge
+                              tone={portalAccountTone(account.status)}
+                            >
+                              {portalAccountLabel(account.status)}
+                            </StatusBadge>
+                          </div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            Recovery receipt: {portalAccountRecoveryDetail(account)}
+                            {portalAccountDetail(account)}
+                          </div>
+                          {portalAccountRecoveryDetail(account) ? (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Recovery receipt:{" "}
+                              {portalAccountRecoveryDetail(account)}
+                            </div>
+                          ) : null}
+                          <div className="mt-1 truncate text-xs text-muted-foreground">
+                            {account.auth_provider} account{" "}
+                            {account.auth_provider_id}
+                          </div>
+                        </div>
+                        {account.status === "active" ? (
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <SecondaryButton
+                              type="button"
+                              className="h-8"
+                              onClick={() =>
+                                unlinkPortalAccountMutation.mutate(account.id)
+                              }
+                              disabled={unlinkPortalAccountMutation.isPending}
+                            >
+                              <Link2 size={15} />
+                              Unlink
+                            </SecondaryButton>
+                            <SecondaryButton
+                              type="button"
+                              className="h-8 border-danger/30 text-danger hover:bg-danger/5"
+                              onClick={() =>
+                                revokePortalAccountMutation.mutate(account.id)
+                              }
+                              disabled={revokePortalAccountMutation.isPending}
+                            >
+                              <X size={15} />
+                              Revoke
+                            </SecondaryButton>
+                          </div>
+                        ) : account.status === "revoked" ? (
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <SecondaryButton
+                              type="button"
+                              className="h-8"
+                              onClick={() =>
+                                restorePortalAccountMutation.mutate(account.id)
+                              }
+                              disabled={restorePortalAccountMutation.isPending}
+                            >
+                              <Check size={15} />
+                              Restore
+                            </SecondaryButton>
+                          </div>
+                        ) : account.status === "unlinked" &&
+                          accountOnboarding?.status === "sent" ? (
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <SecondaryButton
+                              type="button"
+                              className="h-8"
+                              onClick={() =>
+                                freshLinkMutation.mutate({
+                                  onboardingId: accountOnboarding.id,
+                                  reason:
+                                    "Operator sent a fresh portal link from the tenant profile.",
+                                })
+                              }
+                              disabled={freshLinkMutation.isPending}
+                            >
+                              <RefreshCw size={15} />
+                              Fresh link
+                            </SecondaryButton>
                           </div>
                         ) : null}
-                        <div className="mt-1 truncate text-xs text-muted-foreground">
-                          {account.auth_provider} account {account.auth_provider_id}
-                        </div>
                       </div>
-                      {account.status === "active" ? (
-                        <div className="flex shrink-0 flex-wrap gap-2">
-                          <SecondaryButton
-                            type="button"
-                            className="h-8"
-                            onClick={() => unlinkPortalAccountMutation.mutate(account.id)}
-                            disabled={unlinkPortalAccountMutation.isPending}
-                          >
-                            <Link2 size={15} />
-                            Unlink
-                          </SecondaryButton>
-                          <SecondaryButton
-                            type="button"
-                            className="h-8 border-danger/30 text-danger hover:bg-danger/5"
-                            onClick={() => revokePortalAccountMutation.mutate(account.id)}
-                            disabled={revokePortalAccountMutation.isPending}
-                          >
-                            <X size={15} />
-                            Revoke
-                          </SecondaryButton>
-                        </div>
-                      ) : account.status === "revoked" ? (
-                        <div className="flex shrink-0 flex-wrap gap-2">
-                          <SecondaryButton
-                            type="button"
-                            className="h-8"
-                            onClick={() => restorePortalAccountMutation.mutate(account.id)}
-                            disabled={restorePortalAccountMutation.isPending}
-                          >
-                            <Check size={15} />
-                            Restore
-                          </SecondaryButton>
-                        </div>
-                      ) : account.status === "unlinked" && accountOnboarding?.status === "sent" ? (
-                        <div className="flex shrink-0 flex-wrap gap-2">
-                          <SecondaryButton
-                            type="button"
-                            className="h-8"
-                            onClick={() =>
-                              freshLinkMutation.mutate({
-                                onboardingId: accountOnboarding.id,
-                                reason: "Operator sent a fresh portal link from the tenant profile.",
-                              })
-                            }
-                            disabled={freshLinkMutation.isPending}
-                          >
-                            <RefreshCw size={15} />
-                            Fresh link
-                          </SecondaryButton>
-                        </div>
-                      ) : null}
                     </div>
-                  </div>
                   );
                 })}
                 {freshLinkNotice ? (
@@ -907,7 +1489,8 @@ function TenantDetail() {
                     {freshLinkNotice}
                   </div>
                 ) : null}
-                {!portalAccountsQuery.isLoading && portalAccounts.length === 0 ? (
+                {!portalAccountsQuery.isLoading &&
+                portalAccounts.length === 0 ? (
                   <EmptyState
                     title="No tenant login linked"
                     description="The tenant can connect a login from an active onboarding or portal link."
@@ -918,7 +1501,8 @@ function TenantDetail() {
                           onClick={() =>
                             freshLinkMutation.mutate({
                               onboardingId: latestSentOnboarding.id,
-                              reason: "Operator sent a fresh portal link from the tenant profile.",
+                              reason:
+                                "Operator sent a fresh portal link from the tenant profile.",
                             })
                           }
                           disabled={freshLinkMutation.isPending}
@@ -981,14 +1565,17 @@ function TenantDetail() {
                               <div className="text-xs text-muted-foreground">
                                 {suggestion.label}
                               </div>
-                              <div className="font-medium">{suggestion.value}</div>
+                              <div className="font-medium">
+                                {suggestion.value}
+                              </div>
                             </div>
                             <StatusBadge tone="primary">
                               {confidenceLabel(suggestion.confidence)}
                             </StatusBadge>
                           </div>
                           <div className="mt-2 text-xs text-muted-foreground">
-                            {suggestion.source.source_hint} - {suggestion.source.citation}
+                            {suggestion.source.source_hint} -{" "}
+                            {suggestion.source.citation}
                           </div>
                         </div>
                       ))}
@@ -1008,13 +1595,16 @@ function TenantDetail() {
                   </>
                 ) : (
                   <div className="text-muted-foreground">
-                    Missing public fields like ABN or registered address can be suggested with citations before applying.
+                    Missing public fields like ABN or registered address can be
+                    suggested with citations before applying.
                   </div>
                 )}
-                {previewEnrichmentMutation.error || applyEnrichmentMutation.error ? (
+                {previewEnrichmentMutation.error ||
+                applyEnrichmentMutation.error ? (
                   <p className="text-sm text-danger">
                     {friendlyError(
-                      previewEnrichmentMutation.error ?? applyEnrichmentMutation.error,
+                      previewEnrichmentMutation.error ??
+                        applyEnrichmentMutation.error,
                     )}
                   </p>
                 ) : null}
@@ -1022,18 +1612,25 @@ function TenantDetail() {
             </SectionPanel>
 
             <SectionPanel title="Documents" icon={<FileText size={17} />}>
-              <form className="grid gap-3 border-b border-border p-4" onSubmit={submitDocument}>
+              <form
+                className="grid gap-3 border-b border-border p-4"
+                onSubmit={submitDocument}
+              >
                 <label className="grid min-h-28 cursor-pointer place-items-center rounded-md border border-dashed border-border bg-muted/40 px-4 py-5 text-center transition hover:border-primary hover:bg-primary/5">
                   <input
                     ref={documentFileInputRef}
                     type="file"
                     className="sr-only"
-                    onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)}
+                    onChange={(event) =>
+                      setDocumentFile(event.target.files?.[0] ?? null)
+                    }
                   />
                   <span className="grid justify-items-center gap-2">
                     <UploadCloud size={22} className="text-primary" />
                     <span className="text-sm font-semibold">
-                      {documentFile ? documentFile.name : "Drop in a tenant document"}
+                      {documentFile
+                        ? documentFile.name
+                        : "Drop in a tenant document"}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       PDF, image, Word, or text file up to 15 MB
@@ -1045,7 +1642,9 @@ function TenantDetail() {
                     <Select
                       value={documentCategory}
                       onChange={(event) =>
-                        setDocumentCategory(event.target.value as DocumentCategory)
+                        setDocumentCategory(
+                          event.target.value as DocumentCategory,
+                        )
                       }
                     >
                       {documentCategories.map((item) => (
@@ -1063,7 +1662,10 @@ function TenantDetail() {
                     />
                   </Field>
                 </div>
-                <Button type="submit" disabled={!documentFile || uploadDocumentMutation.isPending}>
+                <Button
+                  type="submit"
+                  disabled={!documentFile || uploadDocumentMutation.isPending}
+                >
                   <UploadCloud size={16} />
                   Upload document
                 </Button>
@@ -1090,12 +1692,16 @@ function TenantDetail() {
                             </StatusBadge>
                           </div>
                           <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                            <span>{documentCategoryLabel(document.category)}</span>
+                            <span>
+                              {documentCategoryLabel(document.category)}
+                            </span>
                             <span>{formatBytes(document.byte_size)}</span>
                             <span>{formatDate(document.created_at)}</span>
                             <span>Source: {documentSourceLabel(document)}</span>
                             {intake?.document_type ? (
-                              <span>{documentTypeLabel(intake.document_type)}</span>
+                              <span>
+                                {documentTypeLabel(intake.document_type)}
+                              </span>
                             ) : null}
                           </div>
                           <div className="mt-2 text-xs text-muted-foreground">
@@ -1153,7 +1759,8 @@ function TenantDetail() {
                     </div>
                   );
                 })}
-                {!documentsQuery.isLoading && (documentsQuery.data ?? []).length === 0 ? (
+                {!documentsQuery.isLoading &&
+                (documentsQuery.data ?? []).length === 0 ? (
                   <EmptyState
                     title="No tenant documents yet"
                     description="Upload leases, insurance certificates, guarantees, onboarding files, or tenant correspondence. Nothing updates the tenant profile until reviewed."
@@ -1182,257 +1789,344 @@ function TenantDetail() {
           </div>
 
           <div className="grid gap-5">
-            <SectionPanel title="Onboarding workflow" icon={<ShieldCheck size={17} />}>
+            <SectionPanel
+              title="Onboarding workflow"
+              icon={<ShieldCheck size={17} />}
+            >
               <div className="divide-y divide-border">
                 {tenantOnboardings.map((item) => {
-                  const onboardingDocuments = (documentsQuery.data ?? []).filter(
+                  const onboardingDocuments = (
+                    documentsQuery.data ?? []
+                  ).filter(
                     (document) => document.tenant_onboarding_id === item.id,
                   );
                   const submittedData = item.submitted_data ?? {};
                   const linkExpired = isExpiredDateTime(item.expires_at);
                   return (
-                  <div key={item.id} className="grid gap-3 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <StatusBadge tone={statusTone(item.status, item.due_date)}>
-                          {item.status.replaceAll("_", " ")}
-                        </StatusBadge>
-                        {linkExpired && item.status === "sent" ? (
-                          <StatusBadge tone="warning">Link expired</StatusBadge>
-                        ) : null}
-                        <span className={cn("text-sm text-muted-foreground", dueRank(item.due_date) < 0 && "font-medium text-danger")}>
-                          Due {formatDate(item.due_date)}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {item.status === "sent" && !linkExpired ? (
-                          <SecondaryButton type="button" onClick={() => navigator.clipboard.writeText(item.onboarding_url)}>
-                            <ClipboardCopy size={15} />
-                            Copy link
-                          </SecondaryButton>
-                        ) : null}
-                        {item.status === "sent" && linkExpired ? (
-                          <SecondaryButton
-                            type="button"
-                            onClick={() =>
-                              freshLinkMutation.mutate({
-                                onboardingId: item.id,
-                                reason: "Operator renewed an expired onboarding link.",
-                              })
-                            }
-                            disabled={freshLinkMutation.isPending}
+                    <div key={item.id} className="grid gap-3 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <StatusBadge
+                            tone={statusTone(item.status, item.due_date)}
                           >
-                            <RefreshCw size={15} />
-                            Fresh link
-                          </SecondaryButton>
-                        ) : null}
-                        {onboardingNeedsContactFix(item.delivery_data) ? (
-                          <SecondaryButton type="button" onClick={startEdit}>
-                            <Edit3 size={15} />
-                            Fix contact
-                          </SecondaryButton>
-                        ) : null}
-                        {item.status === "sent" ? (
-                          <SecondaryButton type="button" onClick={() => cancelOnboardingMutation.mutate(item.id)} disabled={cancelOnboardingMutation.isPending}>
-                            <X size={15} />
-                            Cancel
-                          </SecondaryButton>
-                        ) : null}
-                        {item.status === "sent" ? (
-                          <SecondaryButton type="button" onClick={() => resendOnboardingMutation.mutate(item.id)} disabled={resendOnboardingMutation.isPending || linkExpired}>
-                            <Link2 size={15} />
-                            Resend
-                          </SecondaryButton>
-                        ) : null}
-                        {item.status === "submitted" ? (
-                          <Button type="button" onClick={() => reviewOnboardingMutation.mutate(item.id)} disabled={reviewOnboardingMutation.isPending}>
-                            <Check size={16} />
-                            Review
-                          </Button>
-                        ) : null}
-                        {item.status === "submitted" || item.status === "reviewed" ? (
-                          <Button type="button" onClick={() => applyOnboardingMutation.mutate(item.id)} disabled={applyOnboardingMutation.isPending}>
-                            <Save size={16} />
-                            Apply
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-                      <div>Last sent {formatDate(item.last_sent_at)}</div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span>Delivery</span>
-                        <StatusBadge tone={onboardingDeliveryTone(item.delivery_data)}>
-                          {onboardingDeliveryLabel(item.delivery_data)}
-                        </StatusBadge>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span>Reminders</span>
-                        <StatusBadge tone={onboardingReminderTone(item.delivery_data)}>
-                          {onboardingReminderLabel(item.delivery_data)}
-                        </StatusBadge>
-                      </div>
-                      <div>Expires {formatDate(item.expires_at)}</div>
-                      <div>Applied {formatDate(item.applied_at)}</div>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {onboardingDeliveryDetail(item.delivery_data)}
-                    </div>
-                    {onboardingReminderSteps(item.delivery_data).length ? (
-                      <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-xs">
-                        <div className="flex items-center gap-2 font-semibold">
-                          <Clock3 size={14} />
-                          Reminder schedule
+                            {item.status.replaceAll("_", " ")}
+                          </StatusBadge>
+                          {linkExpired && item.status === "sent" ? (
+                            <StatusBadge tone="warning">
+                              Link expired
+                            </StatusBadge>
+                          ) : null}
+                          <span
+                            className={cn(
+                              "text-sm text-muted-foreground",
+                              dueRank(item.due_date) < 0 &&
+                                "font-medium text-danger",
+                            )}
+                          >
+                            Due {formatDate(item.due_date)}
+                          </span>
                         </div>
-                        <div className="grid gap-2 sm:grid-cols-3">
-                          {onboardingReminderSteps(item.delivery_data).map((step) => (
-                            <div
-                              key={step.key ?? step.label}
-                              className="rounded border border-border bg-white px-3 py-2"
+                        <div className="flex flex-wrap gap-2">
+                          {item.status === "sent" && !linkExpired ? (
+                            <SecondaryButton
+                              type="button"
+                              onClick={() =>
+                                navigator.clipboard.writeText(
+                                  item.onboarding_url,
+                                )
+                              }
                             >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium">
-                                  {step.label ?? "Reminder"}
-                                </span>
-                                <StatusBadge tone={reminderStepTone(step.status)}>
-                                  {reminderStepLabel(step.status)}
-                                </StatusBadge>
-                              </div>
-                              <div className="mt-1 text-muted-foreground">
-                                {step.sent_at
-                                  ? `Sent ${formatDateTime(step.sent_at)}`
-                                  : `If incomplete after ${step.after_days ?? "-"} days`}
-                              </div>
-                            </div>
-                          ))}
+                              <ClipboardCopy size={15} />
+                              Copy link
+                            </SecondaryButton>
+                          ) : null}
+                          {item.status === "sent" && linkExpired ? (
+                            <SecondaryButton
+                              type="button"
+                              onClick={() =>
+                                freshLinkMutation.mutate({
+                                  onboardingId: item.id,
+                                  reason:
+                                    "Operator renewed an expired onboarding link.",
+                                })
+                              }
+                              disabled={freshLinkMutation.isPending}
+                            >
+                              <RefreshCw size={15} />
+                              Fresh link
+                            </SecondaryButton>
+                          ) : null}
+                          {onboardingNeedsContactFix(item.delivery_data) ? (
+                            <SecondaryButton type="button" onClick={startEdit}>
+                              <Edit3 size={15} />
+                              Fix contact
+                            </SecondaryButton>
+                          ) : null}
+                          {item.status === "sent" ? (
+                            <SecondaryButton
+                              type="button"
+                              onClick={() =>
+                                cancelOnboardingMutation.mutate(item.id)
+                              }
+                              disabled={cancelOnboardingMutation.isPending}
+                            >
+                              <X size={15} />
+                              Cancel
+                            </SecondaryButton>
+                          ) : null}
+                          {item.status === "sent" ? (
+                            <SecondaryButton
+                              type="button"
+                              onClick={() =>
+                                resendOnboardingMutation.mutate(item.id)
+                              }
+                              disabled={
+                                resendOnboardingMutation.isPending ||
+                                linkExpired
+                              }
+                            >
+                              <Link2 size={15} />
+                              Resend
+                            </SecondaryButton>
+                          ) : null}
+                          {item.status === "submitted" ? (
+                            <Button
+                              type="button"
+                              onClick={() =>
+                                reviewOnboardingMutation.mutate(item.id)
+                              }
+                              disabled={reviewOnboardingMutation.isPending}
+                            >
+                              <Check size={16} />
+                              Review
+                            </Button>
+                          ) : null}
+                          {item.status === "submitted" ||
+                          item.status === "reviewed" ? (
+                            <Button
+                              type="button"
+                              onClick={() =>
+                                applyOnboardingMutation.mutate(item.id)
+                              }
+                              disabled={applyOnboardingMutation.isPending}
+                            >
+                              <Save size={16} />
+                              Apply
+                            </Button>
+                          ) : null}
                         </div>
-                        {item.delivery_data.reminders?.paused ? (
-                          <div className="text-muted-foreground">
-                            Reminder paused until contact is fixed.
-                          </div>
-                        ) : null}
                       </div>
-                    ) : null}
-                    {(item.delivery_data.receipts ?? []).length ? (
-                      <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-xs">
-                        <div className="font-semibold">Delivery timeline</div>
-                        {(item.delivery_data.receipts ?? []).slice(0, 3).map((receipt, index) => (
-                          <div
-                            key={`${String(receipt.channel)}-${String(receipt.received_at)}-${index}`}
-                            className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground"
+                      <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                        <div>Last sent {formatDate(item.last_sent_at)}</div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span>Delivery</span>
+                          <StatusBadge
+                            tone={onboardingDeliveryTone(item.delivery_data)}
                           >
-                            <span className="capitalize">
-                              {String(receipt.channel ?? "message")} {String(receipt.status ?? "updated").replaceAll("_", " ")}
-                            </span>
-                            <span>{formatDateTime(String(receipt.received_at ?? ""))}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                    {item.status === "submitted" ? (
-                      <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs">
-                        <div className="font-semibold">Submitted for review</div>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {submittedFields.map((field) => {
-                            const submittedValue = reviewValue(submittedData[field.key]);
-                            const currentValue = reviewValue(
-                              field.key in tenant ? tenant[field.key as keyof TenantRecord] : undefined,
-                            );
-                            const changed =
-                              field.key in tenant && submittedValue !== currentValue;
-                            return (
-                              <div
-                                key={field.key}
-                                className={cn(
-                                  "rounded border border-border bg-white px-3 py-2",
-                                  changed && "border-primary/30 bg-primary/5",
-                                )}
-                              >
-                                <div className="flex items-center justify-between gap-2 text-muted-foreground">
-                                  <span>{field.label}</span>
-                                  {changed ? (
-                                    <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                                      changed
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <div className="mt-1 font-medium">{submittedValue}</div>
-                              </div>
-                            );
-                          })}
+                            {onboardingDeliveryLabel(item.delivery_data)}
+                          </StatusBadge>
                         </div>
-                        <div className="grid gap-2">
-                          <div className="font-semibold">Uploaded documents</div>
-                          {onboardingDocuments.map((document) => {
-                            const intake = intakeByDocumentId.get(document.id);
-                            return (
-                              <div
-                                key={document.id}
-                                className="flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-white px-3 py-2"
-                              >
-                                <span className="min-w-0 truncate">
-                                  {document.filename}
-                                </span>
-                                <span className="flex shrink-0 items-center gap-2">
-                                  <span className="text-muted-foreground">
-                                    {documentCategoryLabel(document.category)}
-                                  </span>
-                                  <StatusBadge tone={intakeStatusTone(intake)}>
-                                    {intakeStatusLabel(intake)}
-                                  </StatusBadge>
-                                  {intake ? (
-                                    <Link
-                                      href={`/intake?review=${intake.id}`}
-                                      className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span>Reminders</span>
+                          <StatusBadge
+                            tone={onboardingReminderTone(item.delivery_data)}
+                          >
+                            {onboardingReminderLabel(item.delivery_data)}
+                          </StatusBadge>
+                        </div>
+                        <div>Expires {formatDate(item.expires_at)}</div>
+                        <div>Applied {formatDate(item.applied_at)}</div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {onboardingDeliveryDetail(item.delivery_data)}
+                      </div>
+                      {onboardingReminderSteps(item.delivery_data).length ? (
+                        <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-xs">
+                          <div className="flex items-center gap-2 font-semibold">
+                            <Clock3 size={14} />
+                            Reminder schedule
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            {onboardingReminderSteps(item.delivery_data).map(
+                              (step) => (
+                                <div
+                                  key={step.key ?? step.label}
+                                  className="rounded border border-border bg-white px-3 py-2"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-medium">
+                                      {step.label ?? "Reminder"}
+                                    </span>
+                                    <StatusBadge
+                                      tone={reminderStepTone(step.status)}
                                     >
-                                      <Sparkles size={14} />
-                                      Open review
-                                    </Link>
-                                  ) : (
-                                    <SecondaryButton
-                                      type="button"
-                                      className="h-8"
-                                      onClick={() =>
-                                        prepareReviewMutation.mutate(document.id)
-                                      }
-                                      disabled={prepareReviewMutation.isPending}
-                                    >
-                                      <Sparkles size={14} />
-                                      Send to review
-                                    </SecondaryButton>
-                                  )}
-                                  <a
-                                    href={documentDownloadUrl(document.id)}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
-                                    aria-label={`Download ${document.filename}`}
-                                  >
-                                    <Download size={14} />
-                                  </a>
-                                </span>
-                              </div>
-                            );
-                          })}
-                          {onboardingDocuments.length === 0 ? (
-                            <div className="rounded border border-border bg-white px-3 py-2 text-muted-foreground">
-                              No documents uploaded with this onboarding.
+                                      {reminderStepLabel(step.status)}
+                                    </StatusBadge>
+                                  </div>
+                                  <div className="mt-1 text-muted-foreground">
+                                    {step.sent_at
+                                      ? `Sent ${formatDateTime(step.sent_at)}`
+                                      : `If incomplete after ${step.after_days ?? "-"} days`}
+                                  </div>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                          {item.delivery_data.reminders?.paused ? (
+                            <div className="text-muted-foreground">
+                              Reminder paused until contact is fixed.
                             </div>
                           ) : null}
                         </div>
-                        <Field label="Review notes">
-                          <Input
-                            value={reviewNotesById[item.id] ?? ""}
-                            placeholder="Optional note before marking reviewed"
-                            onChange={(event) =>
-                              setReviewNotesById((current) => ({
-                                ...current,
-                                [item.id]: event.target.value,
-                              }))
-                            }
-                          />
-                        </Field>
-                      </div>
-                    ) : null}
-                  </div>
+                      ) : null}
+                      {(item.delivery_data.receipts ?? []).length ? (
+                        <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-xs">
+                          <div className="font-semibold">Delivery timeline</div>
+                          {(item.delivery_data.receipts ?? [])
+                            .slice(0, 3)
+                            .map((receipt, index) => (
+                              <div
+                                key={`${String(receipt.channel)}-${String(receipt.received_at)}-${index}`}
+                                className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground"
+                              >
+                                <span className="capitalize">
+                                  {String(receipt.channel ?? "message")}{" "}
+                                  {String(
+                                    receipt.status ?? "updated",
+                                  ).replaceAll("_", " ")}
+                                </span>
+                                <span>
+                                  {formatDateTime(
+                                    String(receipt.received_at ?? ""),
+                                  )}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      ) : null}
+                      {item.status === "submitted" ? (
+                        <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs">
+                          <div className="font-semibold">
+                            Submitted for review
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {submittedFields.map((field) => {
+                              const submittedValue = reviewValue(
+                                submittedData[field.key],
+                              );
+                              const currentValue = reviewValue(
+                                field.key in tenant
+                                  ? tenant[field.key as keyof TenantRecord]
+                                  : undefined,
+                              );
+                              const changed =
+                                field.key in tenant &&
+                                submittedValue !== currentValue;
+                              return (
+                                <div
+                                  key={field.key}
+                                  className={cn(
+                                    "rounded border border-border bg-white px-3 py-2",
+                                    changed && "border-primary/30 bg-primary/5",
+                                  )}
+                                >
+                                  <div className="flex items-center justify-between gap-2 text-muted-foreground">
+                                    <span>{field.label}</span>
+                                    {changed ? (
+                                      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                                        changed
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <div className="mt-1 font-medium">
+                                    {submittedValue}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="grid gap-2">
+                            <div className="font-semibold">
+                              Uploaded documents
+                            </div>
+                            {onboardingDocuments.map((document) => {
+                              const intake = intakeByDocumentId.get(
+                                document.id,
+                              );
+                              return (
+                                <div
+                                  key={document.id}
+                                  className="flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-white px-3 py-2"
+                                >
+                                  <span className="min-w-0 truncate">
+                                    {document.filename}
+                                  </span>
+                                  <span className="flex shrink-0 items-center gap-2">
+                                    <span className="text-muted-foreground">
+                                      {documentCategoryLabel(document.category)}
+                                    </span>
+                                    <StatusBadge
+                                      tone={intakeStatusTone(intake)}
+                                    >
+                                      {intakeStatusLabel(intake)}
+                                    </StatusBadge>
+                                    {intake ? (
+                                      <Link
+                                        href={`/intake?review=${intake.id}`}
+                                        className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                                      >
+                                        <Sparkles size={14} />
+                                        Open review
+                                      </Link>
+                                    ) : (
+                                      <SecondaryButton
+                                        type="button"
+                                        className="h-8"
+                                        onClick={() =>
+                                          prepareReviewMutation.mutate(
+                                            document.id,
+                                          )
+                                        }
+                                        disabled={
+                                          prepareReviewMutation.isPending
+                                        }
+                                      >
+                                        <Sparkles size={14} />
+                                        Send to review
+                                      </SecondaryButton>
+                                    )}
+                                    <a
+                                      href={documentDownloadUrl(document.id)}
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
+                                      aria-label={`Download ${document.filename}`}
+                                    >
+                                      <Download size={14} />
+                                    </a>
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {onboardingDocuments.length === 0 ? (
+                              <div className="rounded border border-border bg-white px-3 py-2 text-muted-foreground">
+                                No documents uploaded with this onboarding.
+                              </div>
+                            ) : null}
+                          </div>
+                          <Field label="Review notes">
+                            <Input
+                              value={reviewNotesById[item.id] ?? ""}
+                              placeholder="Optional note before marking reviewed"
+                              onChange={(event) =>
+                                setReviewNotesById((current) => ({
+                                  ...current,
+                                  [item.id]: event.target.value,
+                                }))
+                              }
+                            />
+                          </Field>
+                        </div>
+                      ) : null}
+                    </div>
                   );
                 })}
                 {tenantOnboardings.length === 0 ? (
@@ -1448,18 +2142,27 @@ function TenantDetail() {
               <div className="divide-y divide-border">
                 {linkedLeases.map((lease) => {
                   const activeOnboarding = tenantOnboardings.find(
-                    (item) => item.lease_id === lease.lease_id && item.status !== "cancelled",
+                    (item) =>
+                      item.lease_id === lease.lease_id &&
+                      item.status !== "cancelled",
                   );
-                  const activeOnboardingExpired = isExpiredDateTime(activeOnboarding?.expires_at);
+                  const activeOnboardingExpired = isExpiredDateTime(
+                    activeOnboarding?.expires_at,
+                  );
                   return (
-                    <div key={lease.lease_id} className="grid gap-3 p-4 text-sm">
+                    <div
+                      key={lease.lease_id}
+                      className="grid gap-3 p-4 text-sm"
+                    >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="font-medium">
                             {lease.property_name} - {lease.unit_label}
                           </div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            Lease {lease.status} - {formatDate(lease.commencement_date)} to {formatDate(lease.expiry_date)}
+                            Lease {lease.status} -{" "}
+                            {formatDate(lease.commencement_date)} to{" "}
+                            {formatDate(lease.expiry_date)}
                           </div>
                           {lease.property_address ? (
                             <div className="mt-1 text-xs text-muted-foreground">
@@ -1467,7 +2170,11 @@ function TenantDetail() {
                             </div>
                           ) : null}
                         </div>
-                        <StatusBadge tone={lease.status === "active" ? "success" : "neutral"}>
+                        <StatusBadge
+                          tone={
+                            lease.status === "active" ? "success" : "neutral"
+                          }
+                        >
                           {formatMoney(lease.annual_rent_cents)}
                         </StatusBadge>
                       </div>
@@ -1475,17 +2182,26 @@ function TenantDetail() {
                         {activeOnboarding &&
                         activeOnboarding.status === "sent" &&
                         !activeOnboardingExpired ? (
-                          <SecondaryButton type="button" onClick={() => navigator.clipboard.writeText(activeOnboarding.onboarding_url)}>
+                          <SecondaryButton
+                            type="button"
+                            onClick={() =>
+                              navigator.clipboard.writeText(
+                                activeOnboarding.onboarding_url,
+                              )
+                            }
+                          >
                             <ClipboardCopy size={15} />
                             Copy onboarding link
                           </SecondaryButton>
-                        ) : activeOnboarding && activeOnboarding.status === "sent" ? (
+                        ) : activeOnboarding &&
+                          activeOnboarding.status === "sent" ? (
                           <SecondaryButton
                             type="button"
                             onClick={() =>
                               freshLinkMutation.mutate({
                                 onboardingId: activeOnboarding.id,
-                                reason: "Operator renewed an expired onboarding link.",
+                                reason:
+                                  "Operator renewed an expired onboarding link.",
                               })
                             }
                             disabled={freshLinkMutation.isPending}
@@ -1495,10 +2211,16 @@ function TenantDetail() {
                           </SecondaryButton>
                         ) : activeOnboarding ? (
                           <StatusBadge tone="neutral">
-                            Onboarding {activeOnboarding.status.replaceAll("_", " ")}
+                            Onboarding{" "}
+                            {activeOnboarding.status.replaceAll("_", " ")}
                           </StatusBadge>
                         ) : (
-                          <Button type="button" onClick={() => createOnboardingMutation.mutate(lease.lease_id)}>
+                          <Button
+                            type="button"
+                            onClick={() =>
+                              createOnboardingMutation.mutate(lease.lease_id)
+                            }
+                          >
                             <Plus size={16} />
                             Send onboarding
                           </Button>
@@ -1519,66 +2241,55 @@ function TenantDetail() {
             <SectionPanel title="Activity">
               <div className="grid gap-2 p-4 text-sm">
                 {(tenantDetail?.activity ?? []).slice(0, 10).map((item) => (
-                  <div key={`${item.kind}-${item.related_id}-${item.occurred_at}`} className="flex items-start justify-between gap-3">
+                  <div
+                    key={`${item.kind}-${item.related_id}-${item.occurred_at}`}
+                    className="flex items-start justify-between gap-3"
+                  >
                     <span>
                       <span className="font-medium">{item.label}</span>
                       {item.detail ? (
-                        <span className="ml-1 text-muted-foreground">{item.detail}</span>
+                        <span className="ml-1 text-muted-foreground">
+                          {item.detail}
+                        </span>
                       ) : null}
                       <span className="ml-1 text-xs text-muted-foreground">
                         {item.source}
                       </span>
                     </span>
-                    <span className="text-xs text-muted-foreground">{formatDateTime(item.occurred_at)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDateTime(item.occurred_at)}
+                    </span>
                   </div>
                 ))}
-                {!tenantDetailQuery.isLoading && (tenantDetail?.activity ?? []).length === 0 ? (
+                {!tenantDetailQuery.isLoading &&
+                (tenantDetail?.activity ?? []).length === 0 ? (
                   <div className="text-muted-foreground">No activity yet.</div>
                 ) : null}
               </div>
             </SectionPanel>
 
-            <SectionPanel title="Reviewed changes">
-              <div className="grid gap-3 p-4 text-sm">
-                {(tenantDetail?.reviewed_changes ?? []).slice(0, 6).map((entry) => (
-                  <div
-                    key={`${entry.source}-${entry.source_id}-${entry.occurred_at}`}
-                    className="rounded-md border border-border bg-white p-3"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="font-medium">{entry.source_label}</div>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDateTime(entry.occurred_at)}
-                      </span>
-                    </div>
-                    {entry.notes ? (
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {entry.notes}
-                      </div>
-                    ) : null}
-                    <div className="mt-2 grid gap-2">
-                      {entry.changes.slice(0, 4).map((change) => (
-                        <div
-                          key={`${change.field}-${reviewValue(change.after)}`}
-                          className="grid gap-1 rounded border border-border bg-muted/30 px-3 py-2 text-xs"
-                        >
-                          <div className="font-semibold">{change.label}</div>
-                          <div className="text-muted-foreground">
-                            {reviewValue(change.before)} to {reviewValue(change.after)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                {!tenantDetailQuery.isLoading &&
-                (tenantDetail?.reviewed_changes ?? []).length === 0 ? (
-                  <div className="text-muted-foreground">
-                    Reviewed onboarding and Smart Intake changes will appear here.
-                  </div>
-                ) : null}
-              </div>
-            </SectionPanel>
+            <EvidenceSourceTrail
+              title="Source history"
+              description="Reviewed onboarding changes, document provenance, and public enrichment citations."
+              sourceDocument={
+                latestTenantEvidence?.sourceDocument ??
+                latestTenantDocumentSource
+              }
+              sourceLocation={
+                latestTenantEvidence?.sourceLocation ??
+                tenantEvidenceSourceLocation(firstTenantCitation)
+              }
+              confidence={
+                latestTenantEvidence?.confidence ??
+                firstTenantCitation?.confidence
+              }
+              appliedAt={latestTenantEvidence?.appliedAt}
+              appliedBy={latestTenantEvidence?.appliedBy}
+              changes={latestTenantEvidence?.changes ?? []}
+              history={tenantEvidenceHistory}
+              emptyMessage="Reviewed onboarding changes, Smart Intake reviews, documents, and public enrichment citations will appear here."
+              className="rounded-2xl"
+            />
           </div>
         </section>
 

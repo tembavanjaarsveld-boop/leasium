@@ -127,6 +127,32 @@ const tenants = [
     contact_phone: "0400 111 222",
     billing_email: "accounts@bright.example",
     notes: "Prefers email follow-up.",
+    metadata: {
+      public_enrichment: {
+        source_citations: {
+          abn: {
+            source_hint: "Australian Business Register",
+            citation: "Bright Cafe Pty Ltd",
+            confidence: 0.94,
+          },
+        },
+        apply_history: [
+          {
+            field: "abn",
+            label: "ABN",
+            before: null,
+            after: "34123456789",
+            source: {
+              source_hint: "Australian Business Register",
+              citation: "Bright Cafe Pty Ltd",
+              confidence: 0.94,
+            },
+            applied_at: "2026-05-19T10:00:00.000Z",
+            applied_by_user_id: operatorId,
+          },
+        ],
+      },
+    },
   },
   {
     id: "tenant-2",
@@ -139,6 +165,7 @@ const tenants = [
     contact_phone: "0400 333 444",
     billing_email: null,
     notes: null,
+    metadata: {},
   },
 ];
 
@@ -799,7 +826,8 @@ const tenantPortalSession = (
                 return false;
               }
               const source = "source" in entry ? entry.source : null;
-              const visibility = "visibility" in entry ? entry.visibility : null;
+              const visibility =
+                "visibility" in entry ? entry.visibility : null;
               return source === "tenant_portal" || visibility === "tenant";
             })
             .map((entry) => ({
@@ -1244,7 +1272,8 @@ export async function mockLeasiumApi(
         contact: items.filter((item) => item.kind === "contact").length,
         chart: items.filter((item) => item.kind === "chart").length,
         tax: items.filter((item) => item.kind === "tax").length,
-        invoice_sync: items.filter((item) => item.kind === "invoice_sync").length,
+        invoice_sync: items.filter((item) => item.kind === "invoice_sync")
+          .length,
         provider: items.filter((item) => item.kind === "provider").length,
         payment: items.filter((item) => item.kind === "payment").length,
       },
@@ -2210,7 +2239,30 @@ export async function mockLeasiumApi(
             tone: "success",
           },
         ],
-        reviewed_changes: [],
+        reviewed_changes: [
+          {
+            occurred_at: "2026-05-19T09:30:00.000Z",
+            source: "tenant_onboarding",
+            source_label: "Tenant onboarding",
+            source_id: "onboarding-1",
+            status: "applied",
+            notes: "Reviewed tenant onboarding submission.",
+            changes: [
+              {
+                field: "billing_email",
+                label: "Billing email",
+                before: null,
+                after: "accounts@bright.example",
+              },
+              {
+                field: "contact_phone",
+                label: "Phone",
+                before: null,
+                after: "0400 111 222",
+              },
+            ],
+          },
+        ],
       });
       return;
     }
@@ -2233,7 +2285,8 @@ export async function mockLeasiumApi(
                 revoked_at: "2026-05-20T00:00:00.000Z",
                 updated_at: "2026-05-20T00:00:00.000Z",
                 recovery_action: "revoked",
-                recovery_reason: "Operator revoked access from the tenant profile.",
+                recovery_reason:
+                  "Operator revoked access from the tenant profile.",
                 recovery_at: "2026-05-20T00:00:00.000Z",
               }
             : account,
@@ -2255,7 +2308,8 @@ export async function mockLeasiumApi(
                 revoked_at: null,
                 updated_at: "2026-05-20T00:05:00.000Z",
                 recovery_action: "restored",
-                recovery_reason: "Operator restored access from the tenant profile.",
+                recovery_reason:
+                  "Operator restored access from the tenant profile.",
                 recovery_at: "2026-05-20T00:05:00.000Z",
               }
             : account,
@@ -2269,7 +2323,8 @@ export async function mockLeasiumApi(
       path === `/tenants/${tenantId}/portal-accounts/portal-account-1/unlink`
     ) {
       const account =
-        operatorTenantPortalAccounts[0] ?? initialOperatorTenantPortalAccounts[0];
+        operatorTenantPortalAccounts[0] ??
+        initialOperatorTenantPortalAccounts[0];
       operatorTenantPortalAccounts = [
         {
           ...account,
@@ -2277,7 +2332,8 @@ export async function mockLeasiumApi(
           deleted_at: "2026-05-20T00:00:00.000Z",
           updated_at: "2026-05-20T00:00:00.000Z",
           recovery_action: "unlinked",
-          recovery_reason: "Operator unlinked access so the tenant can reconnect.",
+          recovery_reason:
+            "Operator unlinked access so the tenant can reconnect.",
           recovery_at: "2026-05-20T00:00:00.000Z",
         },
       ];
@@ -2287,7 +2343,8 @@ export async function mockLeasiumApi(
         deleted_at: "2026-05-20T00:00:00.000Z",
         updated_at: "2026-05-20T00:00:00.000Z",
         recovery_action: "unlinked",
-        recovery_reason: "Operator unlinked access so the tenant can reconnect.",
+        recovery_reason:
+          "Operator unlinked access so the tenant can reconnect.",
         recovery_at: "2026-05-20T00:00:00.000Z",
       });
       return;
@@ -2298,7 +2355,10 @@ export async function mockLeasiumApi(
       return;
     }
 
-    if (method === "POST" && path === "/tenant-onboarding/onboarding-1/fresh-link") {
+    if (
+      method === "POST" &&
+      path === "/tenant-onboarding/onboarding-1/fresh-link"
+    ) {
       const refreshedAt = "2026-05-20T00:10:00.000Z";
       tenantOnboardings = tenantOnboardings.map((onboarding) =>
         onboarding.id === "onboarding-1"
@@ -2573,8 +2633,9 @@ export async function mockLeasiumApi(
       const metadata = {
         ...maintenanceWorkOrders[0].metadata,
         comments: [
-          ...((maintenanceWorkOrders[0].metadata.comments as JsonBody[] | undefined) ??
-            []),
+          ...((maintenanceWorkOrders[0].metadata.comments as
+            | JsonBody[]
+            | undefined) ?? []),
           {
             timestamp,
             actor: operatorId,
