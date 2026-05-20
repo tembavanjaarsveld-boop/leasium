@@ -2348,6 +2348,22 @@ export function updateMaintenanceWorkOrder(
   );
 }
 
+export function addMaintenanceWorkOrderComment(
+  workOrderId: string,
+  payload: {
+    body: string;
+    visibility?: "internal" | "contractor" | "tenant";
+  },
+) {
+  return request<MaintenanceWorkOrderRecord>(
+    `/maintenance/work-orders/${workOrderId}/comments`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export function deleteMaintenanceWorkOrder(workOrderId: string) {
   return request<void>(`/maintenance/work-orders/${workOrderId}`, {
     method: "DELETE",

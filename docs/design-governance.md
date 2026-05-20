@@ -162,6 +162,10 @@ Status: pending Remba review. Tenant onboarding delivery now includes brand/temp
 
 Status: pending Remba review. Tenant detail now surfaces property/unit/lease context, richer activity history, safer document provenance/actions, reviewed-change history, and compact tenant portal account access controls for revoke/unlink recovery. Keep the page focused on the tenant record and avoid duplicating the full property workspace or turning access recovery into a broad security page.
 
+## Operations Work-Order Detail
+
+Status: pending Remba review. The dedicated work-order page now carries quote/evidence upload, invoice linking, approval context, and structured internal/contractor/tenant comments in the activity timeline. Keep this page focused on resolving one maintenance job, with comments and evidence supporting the job rather than becoming a general message center.
+
 ## Xero Readiness Surface
 
 Status: pending Remba review. Settings now includes a Xero readiness workspace for entity connection state, contact readiness, charge-rule account/tax mapping, approved invoice sync queues, and payment reconciliation counts. Keep the boundary explicit: this is readiness and manual mapping only, not OAuth, live contact sync, invoice posting, or automatic reconciliation.

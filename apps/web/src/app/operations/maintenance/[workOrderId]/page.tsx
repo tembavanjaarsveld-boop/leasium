@@ -12,6 +12,7 @@ import {
   Loader2,
   ReceiptText,
   RefreshCw,
+  Send,
   ShieldCheck,
   UserRound,
   Wrench,
@@ -34,6 +35,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  addMaintenanceWorkOrderComment,
   documentDownloadUrl,
   type DocumentRecord,
   getMaintenanceWorkOrder,
@@ -153,7 +155,9 @@ function activityRows(workOrder: MaintenanceWorkOrderRecord) {
       ),
       detail:
         typeof entry.summary === "string"
-          ? entry.summary
+          ? typeof entry.visibility === "string"
+            ? `${entry.summary} (${label(entry.visibility)})`
+            : entry.summary
           : [entry.actor, entry.source].filter(Boolean).join(" - ") ||
             "Maintenance activity updated.",
     }))
@@ -179,6 +183,10 @@ function MaintenanceDetailRoute() {
   const [quoteFile, setQuoteFile] = useState<File | null>(null);
   const [quoteNotes, setQuoteNotes] = useState("");
   const [invoiceDraftId, setInvoiceDraftId] = useState("");
+  const [commentBody, setCommentBody] = useState("");
+  const [commentVisibility, setCommentVisibility] = useState<
+    "internal" | "contractor" | "tenant"
+  >("internal");
 
   const workOrderQuery = useQuery({
     queryKey: ["maintenance-work-order", workOrderId],
@@ -296,6 +304,28 @@ function MaintenanceDetailRoute() {
   const handleQuoteUpload = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     uploadQuoteMutation.mutate();
+  };
+
+  const commentMutation = useMutation({
+    mutationFn: () =>
+      addMaintenanceWorkOrderComment(workOrderId, {
+        body: commentBody,
+        visibility: commentVisibility,
+      }),
+    onSuccess: () => {
+      setCommentBody("");
+      setCommentVisibility("internal");
+      queryClient.invalidateQueries({ queryKey: ["maintenance-work-order", workOrderId] });
+      queryClient.invalidateQueries({ queryKey: ["operations-maintenance", entityId] });
+    },
+  });
+
+  const handleCommentSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!commentBody.trim()) {
+      return;
+    }
+    commentMutation.mutate();
   };
 
   return (
@@ -547,6 +577,50 @@ function MaintenanceDetailRoute() {
 
               <SectionPanel title="Activity" icon={<History size={17} />}>
                 <div className="grid gap-3 p-4">
+                  <form className="grid gap-3" onSubmit={handleCommentSubmit}>
+                    <label className="grid gap-1.5 text-sm">
+                      <span className="font-medium text-foreground">Comment</span>
+                      <textarea
+                        value={commentBody}
+                        onChange={(event) => setCommentBody(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        placeholder="Add an internal note, contractor update, or tenant-facing comment."
+                      />
+                    </label>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                      <Select
+                        aria-label="Comment visibility"
+                        value={commentVisibility}
+                        onChange={(event) =>
+                          setCommentVisibility(
+                            event.target.value as "internal" | "contractor" | "tenant",
+                          )
+                        }
+                      >
+                        <option value="internal">Internal</option>
+                        <option value="contractor">Contractor</option>
+                        <option value="tenant">Tenant-facing</option>
+                      </Select>
+                      <Button
+                        type="submit"
+                        disabled={!commentBody.trim() || commentMutation.isPending}
+                      >
+                        {commentMutation.isPending ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Send size={16} />
+                        )}
+                        Add comment
+                      </Button>
+                    </div>
+                    {commentMutation.error ? (
+                      <p className="text-sm text-danger">
+                        {friendlyError(commentMutation.error)}
+                      </p>
+                    ) : null}
+                  </form>
+
                   {timeline.map((entry, index) => (
                     <div key={`${entry.at}-${entry.label}-${index}`} className="grid gap-1 text-sm">
                       <div className="font-medium">{entry.label}</div>

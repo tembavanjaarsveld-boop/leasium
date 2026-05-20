@@ -143,6 +143,14 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(page.getByLabel("Quote document")).toBeVisible();
   await expect(page.getByRole("button", { name: "Attach quote" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Approve quote" })).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Comment" })
+    .fill("Owner approved attendance tomorrow morning.");
+  await page.getByLabel("Comment visibility").selectOption("tenant");
+  await page.getByRole("button", { name: "Add comment" }).click();
+  await expect(
+    page.getByText("Owner approved attendance tomorrow morning. (Tenant)"),
+  ).toBeVisible();
 });
 
 test("tenant workspace supports search and the add tenant form", async ({

@@ -175,6 +175,37 @@ def test_maintenance_work_order_tracks_documents_assignment_and_approval(
         "approval status, and approval notes."
     )
 
+    comment_response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/comments",
+        json={
+            "body": "Contractor confirmed they can attend tomorrow morning.",
+            "visibility": "contractor",
+        },
+    )
+    assert comment_response.status_code == 200
+    commented = comment_response.json()
+    assert commented["metadata"]["comments"] == [
+        {
+            "timestamp": commented["metadata"]["comments"][0]["timestamp"],
+            "actor": f"user:{get_settings().dev_user_email}",
+            "visibility": "contractor",
+            "body": "Contractor confirmed they can attend tomorrow morning.",
+        }
+    ]
+    assert [entry["event"] for entry in commented["metadata"]["activity_history"]] == [
+        "created",
+        "updated",
+        "comment_added",
+    ]
+    assert commented["metadata"]["activity_history"][2]["summary"] == (
+        "Contractor confirmed they can attend tomorrow morning."
+    )
+    blank_comment_response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/comments",
+        json={"body": "   "},
+    )
+    assert blank_comment_response.status_code == 422
+
     list_response = client.get(
         "/api/v1/maintenance/work-orders",
         params={
@@ -189,7 +220,7 @@ def test_maintenance_work_order_tracks_documents_assignment_and_approval(
     audit_rows = session.scalars(
         select(AuditAction).where(AuditAction.target_table == "maintenance_work_order")
     ).all()
-    assert [row.action for row in audit_rows] == ["create", "update"]
+    assert [row.action for row in audit_rows] == ["create", "update", "update"]
 
 
 def test_maintenance_work_order_rejects_cross_entity_document_links(

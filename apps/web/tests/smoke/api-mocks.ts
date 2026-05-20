@@ -214,6 +214,7 @@ const maintenanceWorkOrders = [
     document_ids: ["portal-document-1"],
     photo_document_ids: ["portal-photo-1"],
     metadata: {
+      comments: [],
       activity_history: [
         {
           timestamp: "2026-05-19T01:00:00.000Z",
@@ -2057,6 +2058,48 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/maintenance/work-orders/work-order-1") {
+      await fulfillJson(route, maintenanceWorkOrders[0]);
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/maintenance/work-orders/work-order-1/comments"
+    ) {
+      const payload = request.postDataJSON() as {
+        body?: string;
+        visibility?: string;
+      };
+      const body = (payload.body ?? "").trim();
+      const timestamp = "2026-05-20T01:15:00.000Z";
+      const metadata = {
+        ...maintenanceWorkOrders[0].metadata,
+        comments: [
+          ...((maintenanceWorkOrders[0].metadata.comments as JsonBody[] | undefined) ??
+            []),
+          {
+            timestamp,
+            actor: operatorId,
+            visibility: payload.visibility ?? "internal",
+            body,
+          },
+        ],
+        activity_history: [
+          ...maintenanceWorkOrders[0].metadata.activity_history,
+          {
+            timestamp,
+            actor: operatorId,
+            source: "operator_api",
+            event: "comment_added",
+            visibility: payload.visibility ?? "internal",
+            summary: body,
+          },
+        ],
+      };
+      Object.assign(maintenanceWorkOrders[0], {
+        metadata,
+        updated_at: timestamp,
+      });
       await fulfillJson(route, maintenanceWorkOrders[0]);
       return;
     }

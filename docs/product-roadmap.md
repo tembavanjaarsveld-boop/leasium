@@ -92,12 +92,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Tenant portal operator access controls v1: tenant detail now lists linked tenant portal accounts, lets operators revoke blocked access or unlink for clean relinking, stores reason/audit metadata, and keeps the unlink path relink-safe. Pending Remba review.
 - [x] Tenant portal account recovery receipts v1: operator revoke/unlink/restore actions now keep compact recovery receipts, tenant detail shows the latest staff recovery receipt, revoked accounts can be restored without a fresh link, and tenant account status confirms unlinked/restored recovery state. Pending Remba review.
 - [x] Operations work-order detail route v1: maintenance rows now open a dedicated work-order page with status, contractor, quote approval, invoice linking, activity history, linked evidence downloads, and contractor quote document upload through the existing document store. Pending Remba review.
+- [x] Operations work-order comments v1: the dedicated work-order page now supports structured internal/contractor/tenant comments, stores them in work-order metadata with activity history and audit receipts, and keeps them visible in the work-order timeline. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations` and `20260520_0019_tenant_portal_accounts` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, Portfolio QA IA link, tenant portal, invoice email action, and Operations workspace before treating them as UX complete.
-- [ ] Deepen Operations with richer work-order comments, contractor quote preview polish, and maintenance invoice approval handoff.
+- [ ] Deepen Operations with contractor quote preview polish and maintenance invoice approval handoff.
 - [ ] Add clearer tenant portal invite expiry renewal handling and staff-triggered fresh-link flows.
 - [ ] Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.

@@ -27,6 +27,7 @@ from stewart.core.models import (
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.maintenance import (
+    MaintenanceWorkOrderCommentCreate,
     MaintenanceWorkOrderCreate,
     MaintenanceWorkOrderRead,
     MaintenanceWorkOrderUpdate,
@@ -38,6 +39,7 @@ READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, Us
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 
 ACTIVITY_HISTORY_KEY = "activity_history"
+COMMENTS_KEY = "comments"
 ACTIVITY_TRACKED_FIELDS = (
     "status",
     "priority",
@@ -127,6 +129,36 @@ def _append_activity_history(
     history.append(entry)
     next_metadata[ACTIVITY_HISTORY_KEY] = history
     return next_metadata
+
+
+def _append_comment(
+    metadata: dict[str, Any] | None,
+    *,
+    actor: str,
+    body: str,
+    visibility: str,
+) -> dict[str, Any]:
+    next_metadata = dict(metadata or {})
+    existing_comments = next_metadata.get(COMMENTS_KEY)
+    comments = list(existing_comments) if isinstance(existing_comments, list) else []
+    timestamp = utcnow().isoformat()
+    comment = {
+        "timestamp": timestamp,
+        "actor": actor,
+        "visibility": visibility,
+        "body": body.strip(),
+    }
+    comments.append(comment)
+    next_metadata[COMMENTS_KEY] = comments
+    return _append_activity_history(
+        next_metadata,
+        {
+            **comment,
+            "source": "operator_api",
+            "event": "comment_added",
+            "summary": body.strip(),
+        },
+    )
 
 
 def _tracked_activity_changes(
@@ -401,6 +433,40 @@ def create_work_order(
         user_id=user.id,
         entity_id=work_order.entity_id,
         action="create",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+    )
+    session.commit()
+    session.refresh(work_order)
+    return work_order
+
+
+@router.post("/{work_order_id}/comments", response_model=MaintenanceWorkOrderRead)
+def add_work_order_comment(
+    work_order_id: UUID,
+    payload: MaintenanceWorkOrderCommentCreate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> MaintenanceWorkOrder:
+    work_order = _work_order_for_user(work_order_id, user, session, WRITE_ROLES)
+    body = payload.body.strip()
+    if not body:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Comment cannot be blank.",
+        )
+    work_order.work_order_metadata = _append_comment(
+        work_order.work_order_metadata,
+        actor=user.actor,
+        body=body,
+        visibility=payload.visibility,
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=work_order.entity_id,
+        action="update",
         target_table="maintenance_work_order",
         target_id=work_order.id,
     )

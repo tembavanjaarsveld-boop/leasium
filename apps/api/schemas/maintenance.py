@@ -1,7 +1,7 @@
 """Maintenance work order request and response schemas."""
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -12,6 +12,8 @@ from stewart.core.models import (
 )
 
 from apps.api.schemas.common import ApiModel
+
+MaintenanceCommentVisibility = Literal["internal", "contractor", "tenant"]
 
 
 class MaintenanceWorkOrderCreate(BaseModel):
@@ -81,6 +83,11 @@ class MaintenanceWorkOrderUpdate(BaseModel):
     document_ids: list[UUID] | None = None
     photo_document_ids: list[UUID] | None = None
     metadata: dict[str, Any] | None = None
+
+
+class MaintenanceWorkOrderCommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+    visibility: MaintenanceCommentVisibility = "internal"
 
 
 class MaintenanceWorkOrderRead(ApiModel):
