@@ -60,6 +60,19 @@ import {
 } from "@/lib/api";
 
 type Tone = "neutral" | "success" | "warning" | "danger" | "primary";
+type ContractorEmailTemplateKey =
+  | "custom"
+  | "attendance_window"
+  | "quote_follow_up"
+  | "completion_evidence"
+  | "billing_documents";
+
+type ContractorEmailTemplate = {
+  key: ContractorEmailTemplateKey;
+  label: string;
+  subject: string;
+  body: string;
+};
 
 function label(value: string | null | undefined) {
   if (!value) {
@@ -316,6 +329,55 @@ function contractorEmailDefaultBody(workOrder: MaintenanceWorkOrderRecord) {
     `Priority: ${label(workOrder.priority)}`,
     `Due: ${formatDate(workOrder.due_date)}`,
   ].join("\n");
+}
+
+function contractorEmailTemplates(
+  workOrder: MaintenanceWorkOrderRecord,
+): ContractorEmailTemplate[] {
+  const workOrderDetails = [
+    "",
+    `Work order: ${workOrder.title}`,
+    `Priority: ${label(workOrder.priority)}`,
+    `Due: ${formatDate(workOrder.due_date)}`,
+  ];
+  return [
+    {
+      key: "attendance_window",
+      label: "Attendance window",
+      subject: `Attendance window request: ${workOrder.title}`,
+      body: [
+        "Please confirm your first available attendance window for this maintenance job.",
+        ...workOrderDetails,
+      ].join("\n"),
+    },
+    {
+      key: "quote_follow_up",
+      label: "Quote follow-up",
+      subject: `Quote follow-up: ${workOrder.title}`,
+      body: [
+        "Please send through the quote for this maintenance job, including labour, materials, call-out fees, and any approval deadline.",
+        ...workOrderDetails,
+      ].join("\n"),
+    },
+    {
+      key: "completion_evidence",
+      label: "Completion evidence",
+      subject: `Completion evidence request: ${workOrder.title}`,
+      body: [
+        "Please confirm when this job is complete and send any completion photos, notes, or handover details.",
+        ...workOrderDetails,
+      ].join("\n"),
+    },
+    {
+      key: "billing_documents",
+      label: "Billing documents",
+      subject: `Billing documents needed: ${workOrder.title}`,
+      body: [
+        "Please send the invoice or tax invoice for this job, including the work-order reference and any completion notes.",
+        ...workOrderDetails,
+      ].join("\n"),
+    },
+  ];
 }
 
 function invoiceBillingHandoff(
@@ -703,6 +765,8 @@ function MaintenanceDetailRoute() {
   const [quoteFile, setQuoteFile] = useState<File | null>(null);
   const [quoteNotes, setQuoteNotes] = useState("");
   const [invoiceDraftId, setInvoiceDraftId] = useState("");
+  const [contractorEmailTemplate, setContractorEmailTemplate] =
+    useState<ContractorEmailTemplateKey>("custom");
   const [contractorEmailSubject, setContractorEmailSubject] = useState("");
   const [contractorEmailBody, setContractorEmailBody] = useState("");
   const [commentBody, setCommentBody] = useState("");
@@ -848,6 +912,10 @@ function MaintenanceDetailRoute() {
       ? contractorSendSubject
       : contractorEmailDefaultSubject(workOrder)
     : "";
+  const contractorTemplateOptions = useMemo(
+    () => (workOrder ? contractorEmailTemplates(workOrder) : []),
+    [workOrder],
+  );
 
   const refresh = () => {
     workOrderQuery.refetch();
@@ -982,6 +1050,7 @@ function MaintenanceDetailRoute() {
       });
     },
     onSuccess: () => {
+      setContractorEmailTemplate("custom");
       setContractorEmailSubject("");
       setContractorEmailBody("");
       queryClient.invalidateQueries({
@@ -992,6 +1061,23 @@ function MaintenanceDetailRoute() {
       });
     },
   });
+
+  const handleContractorEmailTemplateChange = (
+    templateKey: ContractorEmailTemplateKey,
+  ) => {
+    setContractorEmailTemplate(templateKey);
+    if (templateKey === "custom") {
+      return;
+    }
+    const template = contractorTemplateOptions.find(
+      (option) => option.key === templateKey,
+    );
+    if (!template) {
+      return;
+    }
+    setContractorEmailSubject(template.subject);
+    setContractorEmailBody(template.body);
+  };
 
   const handleContractorEmailSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1172,12 +1258,30 @@ function MaintenanceDetailRoute() {
                         {contractorRecoveryCopy}
                       </div>
                     ) : null}
+                    <Field label="Contractor update template">
+                      <Select
+                        value={contractorEmailTemplate}
+                        onChange={(event) =>
+                          handleContractorEmailTemplateChange(
+                            event.target.value as ContractorEmailTemplateKey,
+                          )
+                        }
+                      >
+                        <option value="custom">Custom message</option>
+                        {contractorTemplateOptions.map((template) => (
+                          <option key={template.key} value={template.key}>
+                            {template.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
                     <Field label="Email subject">
                       <Input
                         value={contractorEmailSubject}
-                        onChange={(event) =>
-                          setContractorEmailSubject(event.target.value)
-                        }
+                        onChange={(event) => {
+                          setContractorEmailTemplate("custom");
+                          setContractorEmailSubject(event.target.value);
+                        }}
                         placeholder={contractorSubjectDefault}
                       />
                     </Field>
@@ -1188,9 +1292,10 @@ function MaintenanceDetailRoute() {
                       <textarea
                         aria-label="Contractor email message"
                         value={contractorEmailBody}
-                        onChange={(event) =>
-                          setContractorEmailBody(event.target.value)
-                        }
+                        onChange={(event) => {
+                          setContractorEmailTemplate("custom");
+                          setContractorEmailBody(event.target.value);
+                        }}
                         rows={4}
                         className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
                         placeholder={contractorMessageDefault}

@@ -173,9 +173,16 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       .first(),
   ).toBeVisible();
   await expect(page.getByText("Last provider attempt failed")).toBeVisible();
+  await expect(page.getByLabel("Contractor update template")).toBeVisible();
   await page
-    .getByRole("textbox", { name: "Contractor email message" })
-    .fill("Please confirm your first available attendance window.");
+    .getByLabel("Contractor update template")
+    .selectOption("attendance_window");
+  await expect(page.getByLabel("Email subject")).toHaveValue(
+    "Attendance window request: Air conditioning fault",
+  );
+  await expect(
+    page.getByRole("textbox", { name: "Contractor email message" }),
+  ).toHaveValue(/Please confirm your first available attendance window/);
   await page.getByRole("button", { name: "Retry update" }).click();
   await expect(
     page
@@ -190,9 +197,7 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       .first(),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Please confirm your first available attendance window. (Contractor)",
-    ),
+    page.getByText(/Please confirm your first available attendance window/),
   ).toBeVisible();
   await page
     .getByLabel("Linked maintenance invoice")
