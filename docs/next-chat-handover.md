@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production feature deployment in this handover: `f15beef Add first workspace operator setup`, Vercel deployment `dpl_7f8GngXJk4NQ7PsYhFSyJPuyfmMF`, state `READY`; latest Render deploy remains `dep-d86dtfutsp3c7391n6lg`, state `Live`.
+- Latest confirmed production feature deployment in this handover: `7cfc027 Guard operator workspace with Clerk middleware`, Vercel deployment `dpl_GCM9ajy5Bk9izW4v7ENsbAY1bh6q`, state `READY`; latest Render deploy remains `dep-d86dtfutsp3c7391n6lg`, state `Live`.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -39,6 +39,8 @@ Last updated: 2026-05-20
   - If only the publishable key is present, the client shell still shows a friendly signed-out operator guard.
   - Public `/setup`, `/accept-invite`, `/sign-in`, `/sign-up`, `/access`, and `/onboarding/...` routes remain open.
   - The smoke suite includes request-level Clerk middleware coverage that is skipped unless `LEASIUM_SMOKE_CLERK_GUARD`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, and `CLERK_SECRET_KEY` are provided.
+  - Commit `7cfc027`, Vercel deployment `dpl_GCM9ajy5Bk9izW4v7ENsbAY1bh6q`, state `READY`; production alias `/setup` and `/sign-in` returned `200`.
+  - Production alias `/settings` currently returns `200`, which means the web app is not yet enforcing the server-side Clerk middleware in production. Set both Clerk web env vars and redeploy before treating production as login-protected.
   - This is design-facing and still needs Remba review.
 - Temporary private-beta password gate is built and pushed in `f845a69`.
   - `LEASIUM_ACCESS_PASSWORD` controls whether the gate is active.
@@ -300,6 +302,12 @@ Last updated: 2026-05-20
   - Ran `LEASIUM_SMOKE_CLERK_GUARD=1 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_Y2xlcmsuZXhhbXBsZS5jb20k CLERK_SECRET_KEY=sk_live_fake PLAYWRIGHT_BASE_URL=http://127.0.0.1:3004 ./node_modules/.bin/playwright test tests/smoke/clerk-guard.spec.ts` (`2 passed`)
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
   - `PORT=3003 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`5 passed`, `1 skipped` for the real-Clerk browser guard)
+- Operator workspace sign-in guard production deployment passed:
+  - Commit `7cfc027 Guard operator workspace with Clerk middleware`
+  - Vercel deployment `dpl_GCM9ajy5Bk9izW4v7ENsbAY1bh6q`, state `READY`
+  - Production alias `/setup` returned `200`.
+  - Production alias `/sign-in` returned `200`.
+  - Production alias `/settings` returned `200` because Clerk server env vars are not enabled on Vercel yet; after enabling both Clerk keys and redeploying, it should redirect signed-out users to `/sign-in`.
 
 ## Important Deployment Notes
 
@@ -320,6 +328,8 @@ Last updated: 2026-05-20
 - Vercel has no exposed env-var mutation tool in this session.
   - To actually hide the public app, set `LEASIUM_ACCESS_PASSWORD` in the Vercel project environment settings and redeploy.
   - After redeploy, verify `/properties` redirects to `/access`, while `/setup`, `/accept-invite`, and `/onboarding/<token>` remain public.
+  - To enforce operator login, set both `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` on the Vercel web app and redeploy.
+  - After the Clerk redeploy, verify `/settings` redirects to `/sign-in`, while `/setup`, `/accept-invite`, `/sign-in`, `/sign-up`, `/access`, and `/onboarding/<token>` remain public.
 - Neon production is confirmed migrated through `20260520_0015` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
   - Verified `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
 - Xero readiness v1 uses existing columns only and does not need a new database migration.
