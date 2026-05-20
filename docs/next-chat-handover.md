@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production deployment before the current tenant-account slice: `544d997 Add Xero operator approval UI`, Vercel deployment `dpl_9ozndYVkq4U8cEZ1ZMCWv1FVt9a5`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal/not-a-real-token` remains public, and Render API health is live.
+- Latest confirmed production deployment: `f4f4386 Add tenant portal account foundation`, Vercel deployment `dpl_HDsPBnhPpLimaKEx1V49ZXNQHUtN`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal/not-a-real-token` remains public, and Render API health/OpenAPI are live with the tenant portal account endpoints.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -215,6 +215,8 @@ Last updated: 2026-05-20
   - `./node_modules/.bin/eslint tests/smoke/clerk-guard.spec.ts`
   - `./node_modules/.bin/tsc --noEmit`
   - `git diff --check`
+  - Production Vercel `/settings` returned `307` to `/sign-in`, and `/tenant-portal/not-a-real-token` returned `200`.
+  - Production Render `/health` returned `200`, and OpenAPI includes `/api/v1/tenant-portal/account/claim`, `/api/v1/tenant-portal/account/session`, `TenantPortalAccountClaimCreate`, and `tenant_portal_account` auth mode.
 - Xero operator approval UI checks passed:
   - `.venv/bin/python -m pytest tests/integration/test_xero_api.py -q` (`14 passed`)
   - `./node_modules/.bin/eslint src/app/settings/page.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
