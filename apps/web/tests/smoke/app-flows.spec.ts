@@ -194,6 +194,59 @@ test("tenant portal shows scoped self-service data", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("tenant portal entry shows signed-out account access when Clerk is configured", async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    "Runs only when tenant account auth is enabled.",
+  );
+
+  const response = await page.goto("/tenant-portal");
+  test.skip(
+    response?.status() === 404,
+    "Tenant portal account entry route is not implemented yet.",
+  );
+
+  await expect(page.getByText("Account Access")).toBeVisible();
+  await expect(
+    page.getByText("Create or sign in to a tenant login"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Create login" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+});
+
+test("tenant portal entry shows linked account-scoped tenant data", async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.LEASIUM_SMOKE_TENANT_PORTAL_ACCOUNT_ENTRY_LINKED ||
+      !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    "Runs only with a signed-in tenant account smoke session.",
+  );
+
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, { tenantAccountLinked: true });
+
+  const response = await page.goto("/tenant-portal");
+  test.skip(
+    response?.status() === 404,
+    "Tenant portal account entry route is not implemented yet.",
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "Bright Cafe" }),
+  ).toBeVisible();
+  await expect(page.getByText("Account linked")).toBeVisible();
+  await expect(page.getByText("tenant_portal_account")).toBeVisible();
+  await expect(
+    page.getByText("Access is scoped to the tenant linked"),
+  ).toBeVisible();
+  await expect(page.getByText("INV-1001")).toBeVisible();
+});
+
 test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.setViewportSize({ width: 1432, height: 900 });
   await page.goto("/settings");

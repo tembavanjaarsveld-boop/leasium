@@ -817,7 +817,14 @@ function multipartFilename(body: string) {
   return match?.[1] ?? "tenant-portal-upload";
 }
 
-export async function mockLeasiumApi(page: Page) {
+type MockLeasiumApiOptions = {
+  tenantAccountLinked?: boolean;
+};
+
+export async function mockLeasiumApi(
+  page: Page,
+  options: MockLeasiumApiOptions = {},
+) {
   let xeroTenantId: string | null = null;
   let xeroConnectedAt: string | null = null;
   let xeroProviderConnected = false;
@@ -825,7 +832,7 @@ export async function mockLeasiumApi(page: Page) {
   let chargeTaxType: string | null = null;
   let xeroDraftApproved = false;
   let xeroDraftCreated = false;
-  let tenantAccountLinked = false;
+  let tenantAccountLinked = options.tenantAccountLinked ?? false;
   let appliedContactMappings: XeroContactMapping[] = [];
   let snapshotCount = 0;
   let insightSnapshots: JsonBody[] = [];

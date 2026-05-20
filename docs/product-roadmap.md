@@ -85,13 +85,14 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Tenant portal account foundation v1: tenants can claim a durable portal account with a signed bearer identity plus an existing portal token, then use bearer-only `/tenant-portal/account/session` for the same scoped self-service data while existing public token links remain available. New migration: `20260520_0019_tenant_portal_accounts`.
 - [x] Tenant portal account UI v1: `/tenant-portal/[token]` now shows a Clerk-backed Account Access panel, lets signed-in tenants link the portal once, reloads matching tenants through the account session, and uses bearer auth for account-scoped maintenance requests, document uploads, and notification preferences while preserving token fallback. Pending Remba review.
 - [x] Tenant portal maintenance photo upload v1: tenants can attach an inline photo while submitting a maintenance request; the portal stores the photo as a tenant document first, sends its source-linked document ID with the request, shows attached file counts in the portal history, and supports both token and account-scoped auth paths. Pending Remba review.
+- [x] Tenant portal account-only entry v1: linked tenants can open `/tenant-portal` or `/tenant-portal/account` without the original token URL, sign in through the tenant account boundary, load the same scoped portal data, and download account-scoped documents through bearer-backed blob downloads. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations` and `20260520_0019_tenant_portal_accounts` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, Portfolio QA IA link, tenant portal, invoice email action, and Operations workspace before treating them as UX complete.
 - [ ] Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
-- [ ] Continue tenant portal with an account-only entry path without requiring the old token URL, notification preference receipts, safer invite/link lifecycle, and clearer tenant document provenance/actions.
+- [ ] Continue tenant portal with notification preference receipts, safer invite/link lifecycle, and clearer tenant document provenance/actions.
 - [ ] Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 - [ ] Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.

@@ -28,6 +28,8 @@ test.describe("Clerk middleware guard", () => {
       "/__clerk/v1/client",
       "/accept-invite?token=example",
       "/onboarding/example-token",
+      "/tenant-portal",
+      "/tenant-portal/account",
       "/tenant-portal/example-token",
       "/api/access",
     ]) {

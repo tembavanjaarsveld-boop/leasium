@@ -215,9 +215,20 @@ Last updated: 2026-05-20
     - The portal stores the photo as a tenant document first, sends the returned document ID as `photo_document_ids`, and then creates the maintenance request.
     - The flow works for both token-scoped portal links and linked tenant account bearer sessions.
     - Portal maintenance history shows attached file counts while keeping operator-only metadata hidden.
+  - Tenant portal account-only entry v1 is now built too.
+    - `/tenant-portal` and `/tenant-portal/account` open a tenant account entry screen instead of requiring the old token URL.
+    - Signed-in linked tenants load the same account-scoped portal data through `/tenant-portal/account/session`.
+    - Account-scoped invoice/document downloads use bearer-backed blob downloads because plain links cannot send the tenant bearer token.
+    - `/tenant-portal/[token]` remains the link-and-token fallback path.
   - This is design-facing and still needs Remba review.
 ## Verification
 
+- Tenant portal account-only entry checks passed:
+  - `./node_modules/.bin/eslint 'src/app/tenant-portal/[token]/page.tsx' src/app/tenant-portal/page.tsx src/app/tenant-portal/account/page.tsx src/app/tenant-portal/tenant-portal-content.tsx src/lib/api.ts src/lib/operator-routes.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts tests/smoke/clerk-guard.spec.ts --ext .ts,.tsx`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`7 passed`, `3 skipped`)
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  - `git diff --check`
 - Tenant portal maintenance photo upload checks passed:
   - `./node_modules/.bin/eslint 'src/app/tenant-portal/[token]/page.tsx' tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
   - `./node_modules/.bin/tsc --noEmit`
@@ -473,7 +484,7 @@ Last updated: 2026-05-20
 1. Verify the tenant account production deploy and confirm Neon has advanced through `20260520_0019`.
 2. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, and Operations workspace.
 3. Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
-4. Continue tenant portal with an account-only entry path without requiring the old token URL, notification preference receipts, safer invite/link lifecycle, and clearer tenant document provenance/actions.
+4. Continue tenant portal with notification preference receipts, safer invite/link lifecycle, and clearer tenant document provenance/actions.
 5. Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 

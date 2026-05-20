@@ -2602,6 +2602,23 @@ export function tenantPortalDocumentDownloadUrl(
   return `${API_BASE}/tenant-portal/documents/${documentId}/download?${params.toString()}`;
 }
 
+export async function downloadTenantPortalAccountDocument(
+  documentId: string,
+  authToken?: string | null,
+) {
+  const headers = new Headers(
+    authToken ? tenantPortalBearerHeaders(authToken) : await authHeaders(),
+  );
+  const response = await fetch(
+    `${API_BASE}/tenant-portal/documents/${documentId}/download`,
+    { headers },
+  );
+  if (!response.ok) {
+    await parseResponse<never>(response);
+  }
+  return response.blob();
+}
+
 export function listDocumentIntakes(entityId: string) {
   return request<DocumentIntakeRecord[]>(
     `/document-intakes?entity_id=${entityId}`,
