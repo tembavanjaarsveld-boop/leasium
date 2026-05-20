@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production feature deployment in this handover: `7cfc027 Guard operator workspace with Clerk middleware`, Vercel deployment `dpl_GCM9ajy5Bk9izW4v7ENsbAY1bh6q`, state `READY`; latest Render deploy remains `dep-d86dtfutsp3c7391n6lg`, state `Live`.
+- Latest confirmed production feature deployment in this handover: `dfb4d63 Add shareable Insights snapshots`, Vercel deployment `dpl_7K8jpA5HTKATiRn9pTpT36JPxndG`, state `READY`; Render API health is live and exposes the snapshot routes.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -322,6 +322,13 @@ Last updated: 2026-05-20
   - `./node_modules/.bin/tsc --noEmit`
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
   - `PORT=3003 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`5 passed`, `1 skipped` for the real-Clerk browser guard)
+- Shareable Insights snapshots production deployment passed:
+  - Commit `dfb4d63 Add shareable Insights snapshots`
+  - Vercel deployment `dpl_7K8jpA5HTKATiRn9pTpT36JPxndG`, state `READY`
+  - Production alias `/insights` returned `200`.
+  - Production alias `/snapshots/example-token` returned `200` for the public snapshot page shell.
+  - Production API health returned `{"status":"ok","app":"Leasium"}`.
+  - Production API `/api/v1/insights/snapshots/public/not-a-real-token` returned `404` with `Insights snapshot not found.`, confirming the route is deployed and the `insights_snapshot` table is available.
 
 ## Important Deployment Notes
 
@@ -344,9 +351,9 @@ Last updated: 2026-05-20
   - After redeploy, verify `/properties` redirects to `/access`, while `/setup`, `/accept-invite`, and `/onboarding/<token>` remain public.
   - To enforce operator login, set both `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` on the Vercel web app and redeploy.
   - After the Clerk redeploy, verify `/settings` redirects to `/sign-in`, while `/setup`, `/accept-invite`, `/sign-in`, `/sign-up`, `/access`, and `/onboarding/<token>` remain public.
-- Neon production is confirmed migrated through `20260520_0015` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
-  - Verified `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
-  - New migration `20260520_0016_insights_snapshots` must be applied before shareable Insights snapshot links work on production data.
+- Neon production is confirmed migrated through `20260520_0016` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
+  - Verified earlier: `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
+  - Verified now: the live public snapshot endpoint can query `insights_snapshot` and returns a clean not-found response for an invalid token.
 - Xero readiness v1 uses existing columns only and does not need a new database migration.
 - Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still needs to be configured outside the codebase.
 - Public enrichment requires `OPENAI_API_KEY` on the API service. Without it, preview returns a clear 503 and does not mutate records.
