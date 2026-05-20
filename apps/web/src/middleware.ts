@@ -1,4 +1,8 @@
+import { clerkMiddleware } from "@clerk/nextjs/server";
+import type { NextFetchEvent } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
+
+import { isPublicOperatorPath } from "@/lib/operator-routes";
 
 const ACCESS_COOKIE = "leasium_access";
 const ACCESS_TOKEN_INPUT_PREFIX = "leasium-access-v1:";
@@ -7,16 +11,10 @@ function accessPassword() {
   return process.env.LEASIUM_ACCESS_PASSWORD?.trim() ?? "";
 }
 
-function isPublicPath(pathname: string) {
-  return (
-    pathname === "/access" ||
-    pathname.startsWith("/api/access") ||
-    pathname.startsWith("/sign-in") ||
-    pathname.startsWith("/sign-up") ||
-    pathname.startsWith("/setup") ||
-    pathname.startsWith("/accept-invite") ||
-    pathname.startsWith("/onboarding/") ||
-    pathname === "/icon.svg"
+function clerkServerConfigured() {
+  return Boolean(
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() &&
+      process.env.CLERK_SECRET_KEY?.trim(),
   );
 }
 
@@ -28,16 +26,16 @@ async function accessToken(password: string) {
     .join("");
 }
 
-export async function middleware(request: NextRequest) {
+async function enforceAccessGate(request: NextRequest) {
   const password = accessPassword();
-  if (!password || isPublicPath(request.nextUrl.pathname)) {
-    return NextResponse.next();
+  if (!password || isPublicOperatorPath(request.nextUrl.pathname)) {
+    return null;
   }
 
   const expected = await accessToken(password);
   const supplied = request.cookies.get(ACCESS_COOKIE)?.value;
   if (supplied === expected) {
-    return NextResponse.next();
+    return null;
   }
 
   const redirectUrl = request.nextUrl.clone();
@@ -47,6 +45,39 @@ export async function middleware(request: NextRequest) {
     `${request.nextUrl.pathname}${request.nextUrl.search}`,
   );
   return NextResponse.redirect(redirectUrl);
+}
+
+const clerkProtectedMiddleware = clerkMiddleware(async (auth, request) => {
+  const authState = await auth();
+  if (!authState.userId) {
+    const signInUrl = request.nextUrl.clone();
+    signInUrl.pathname = "/sign-in";
+    signInUrl.searchParams.set(
+      "redirect_url",
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    );
+    return NextResponse.redirect(signInUrl);
+  }
+
+  return NextResponse.next();
+});
+
+export async function middleware(request: NextRequest, event: NextFetchEvent) {
+  if (clerkServerConfigured()) {
+    const accessResponse = await enforceAccessGate(request);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
+    if (!isPublicOperatorPath(request.nextUrl.pathname)) {
+      return clerkProtectedMiddleware(request, event);
+    }
+
+    return NextResponse.next();
+  }
+
+  const accessResponse = await enforceAccessGate(request);
+  return accessResponse ?? NextResponse.next();
 }
 
 export const config = {

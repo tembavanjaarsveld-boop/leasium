@@ -79,6 +79,14 @@ and owner operator from a signed-in Clerk session. Keep `AUTH_MODE=dev` for an
 existing seeded workspace until at least one owner/admin operator has accepted an
 invite and is linked to a Clerk user.
 
+When both `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` are set on
+the web app, middleware redirects signed-out protected workspace requests to
+`/sign-in` before page data loads. If only the publishable key is present, the
+client still shows a friendly signed-out fallback, but middleware cannot verify
+the session boundary. `/setup`, `/accept-invite`, `/sign-in`, `/sign-up`,
+`/access`, and `/onboarding/...` stay public so first setup, invite acceptance,
+and tenant onboarding still work.
+
 ## Render And Alembic Safety
 
 Current Render API commands:

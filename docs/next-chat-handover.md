@@ -34,6 +34,12 @@ Last updated: 2026-05-20
   - New `/setup` frontend flow handles Clerk-not-configured, signed-out, unavailable, and signed-in setup states, and `/setup` stays public through the temporary password gate.
   - Commit `f15beef`, Vercel deployment `dpl_7f8GngXJk4NQ7PsYhFSyJPuyfmMF`, state `READY`; deployment URL `/setup`, production alias `/setup`, and production alias `/sign-in` returned `200`.
   - This is design-facing and still needs Remba review.
+- Operator workspace sign-in guard is built on this branch.
+  - When both `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` are set on the web app, middleware redirects signed-out protected workspace requests to `/sign-in` before workspace API calls run.
+  - If only the publishable key is present, the client shell still shows a friendly signed-out operator guard.
+  - Public `/setup`, `/accept-invite`, `/sign-in`, `/sign-up`, `/access`, and `/onboarding/...` routes remain open.
+  - The smoke suite includes request-level Clerk middleware coverage that is skipped unless `LEASIUM_SMOKE_CLERK_GUARD`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, and `CLERK_SECRET_KEY` are provided.
+  - This is design-facing and still needs Remba review.
 - Temporary private-beta password gate is built and pushed in `f845a69`.
   - `LEASIUM_ACCESS_PASSWORD` controls whether the gate is active.
   - When unset or blank, the frontend remains open for local/dev convenience.
@@ -287,6 +293,13 @@ Last updated: 2026-05-20
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
   - `LEASIUM_ACCESS_PASSWORD=secret ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "setup explains Clerk configuration"`
   - `PORT=3003 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`5 passed`)
+- Operator workspace sign-in guard checks passed locally before commit:
+  - `./node_modules/.bin/eslint src/middleware.ts src/components/operator-auth-provider.tsx src/lib/operator-routes.ts tests/smoke/app-flows.spec.ts tests/smoke/clerk-guard.spec.ts`
+  - `./node_modules/.bin/tsc --noEmit`
+  - Started a manual smoke server with `LEASIUM_SMOKE_CLERK_GUARD=1 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_Y2xlcmsuZXhhbXBsZS5jb20k CLERK_SECRET_KEY=sk_live_fake NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1 NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next dev --hostname 127.0.0.1 --port 3004`
+  - Ran `LEASIUM_SMOKE_CLERK_GUARD=1 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_Y2xlcmsuZXhhbXBsZS5jb20k CLERK_SECRET_KEY=sk_live_fake PLAYWRIGHT_BASE_URL=http://127.0.0.1:3004 ./node_modules/.bin/playwright test tests/smoke/clerk-guard.spec.ts` (`2 passed`)
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  - `PORT=3003 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`5 passed`, `1 skipped` for the real-Clerk browser guard)
 
 ## Important Deployment Notes
 

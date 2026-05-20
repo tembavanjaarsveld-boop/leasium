@@ -20,6 +20,23 @@ test("setup explains Clerk configuration before first workspace setup", async ({
   ).toBeVisible();
 });
 
+test("workspace guard asks signed-out operators to sign in when Clerk is configured", async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.LEASIUM_SMOKE_CLERK_GUARD ||
+      !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    "Runs only with a real Clerk smoke environment.",
+  );
+
+  await page.goto("/");
+
+  await expect(
+    page.getByRole("heading", { name: "Sign in to open the workspace" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "First workspace setup" })).toBeVisible();
+});
+
 test("dashboard shows the mocked portfolio and opens billing readiness", async ({
   page,
 }) => {

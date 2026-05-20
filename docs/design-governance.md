@@ -173,6 +173,10 @@ Status: pending Remba review. Settings now has Security, Organisation, and Xero 
 
 Status: pending Remba review. `/setup` now gives a clean Clerk-backed database a first-owner path to create the organisation, primary entity, and owner operator. Keep the page sparse and operational: it should only appear before workspace data exists, explain blockers plainly, and avoid becoming a general onboarding tour.
 
+## Operator Workspace Sign-In Guard
+
+Status: pending Remba review. When Clerk server and publishable keys are configured, protected workspace routes redirect signed-out visitors to operator sign-in before loading workspace data, with a friendly client fallback state if the app shell renders first. Keep the state calm and action-oriented with Sign in, Create login, and First workspace setup actions; do not block public onboarding, setup, invite acceptance, or the temporary access gate.
+
 ## Insights Overview Surface
 
 Status: pending Remba review. Insights now uses a backend overview for portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots. Keep it read-only, link users to the owning workspace for action, and leave shareable owner/finance snapshots for a later pass generated from the same data.
