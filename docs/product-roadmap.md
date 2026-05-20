@@ -67,9 +67,11 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Provider-backed Xero invoice posting preview: `/api/v1/xero/invoices/posting-preview/{entity_id}` prepares reviewed Xero draft invoice payloads and blocker lists for approved unsynced invoice drafts, with provider contact/chart/tax checks and no invoice posting, tenant email, Xero mutation, or payment reconciliation. Pending Remba review.
 - [x] Insights overview v1: the Insights workspace now has a read-only backend overview for portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots, with no record mutation, invoice posting, or Xero sync.
 - [x] Shareable Insights snapshots v1: operators can freeze owner, finance, and lease-event snapshots from the live Insights overview into revocable public links with hashed tokens, expiry, public read-only rendering, and no live portfolio mutation.
+- [x] Spreadsheet portfolio import dry-run v1: `.xlsx` source-of-truth workbooks can be parsed into a no-mutation import plan for properties, units, tenants, leases, charge rules, obligations, and operational tasks, with row-level blockers/warnings and feature-candidate flags for vendors, legal entities, head leases, security originals, arrears, and issue/action queues.
 
 ## Next Build Order
 
+- [ ] Turn spreadsheet portfolio import from backend dry-run into a Smart Intake review surface, then add reviewed Apply with source provenance and no mutation until approval.
 - [ ] Continue provider-backed Xero from invoice posting preview into explicit posting approval, idempotent Xero draft creation, and then payment reconciliation.
 - [ ] Add provider-backed invoice email delivery and Xero posting approvals on top of the internal invoice draft/PDF/payment workflow.
 - [ ] Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.

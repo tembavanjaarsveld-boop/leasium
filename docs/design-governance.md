@@ -197,6 +197,10 @@ Status: pending Remba review. When Clerk server and publishable keys are configu
 
 Status: pending Remba review. Insights now uses a backend overview for portfolio health, live exceptions, automation activity, billing risk, owner/entity snapshots, finance snapshots, and lease-event snapshots. Operators can generate revocable public links for owner, finance, and lease-event snapshot views. Keep the internal page read-only, keep public snapshot pages clearly frozen/read-only, and avoid turning shared snapshots into live portals.
 
+## Spreadsheet Portfolio Import Surface
+
+Status: pending Remba review before UI work. The backend can now produce a no-mutation dry-run plan from `.xlsx` portfolio source-of-truth workbooks, including register records, blockers, warnings, and feature candidates. Any frontend surface must stay review-first: show sheet/source row provenance, proposed creates/matches/skips, feature gaps, and explicit Apply guardrails before any records are written.
+
 ## Property Provenance Surface
 
 Status: pending Remba review. Smart Intake apply outcomes and the Property workspace now expose purchase-contract source history, field citations, confidence, and before/after property changes. Keep this review-first and factual: show what changed and where it came from, without implying the document source is automatically authoritative.

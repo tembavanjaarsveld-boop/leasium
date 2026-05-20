@@ -16,6 +16,7 @@ from apps.api.routers import (
     obligations,
     organisations,
     properties,
+    register_imports,
     security,
     tenancy_units,
     tenant_onboarding,
@@ -59,6 +60,7 @@ app.include_router(tenant_onboarding.router, prefix="/api/v1")
 app.include_router(charge_rules.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(document_intakes.router, prefix="/api/v1")
+app.include_router(register_imports.router, prefix="/api/v1")
 app.include_router(enrichment.router, prefix="/api/v1")
 app.include_router(xero.router, prefix="/api/v1")
 app.include_router(insights.router, prefix="/api/v1")
