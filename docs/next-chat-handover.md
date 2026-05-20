@@ -8,7 +8,7 @@ Last updated: 2026-05-21
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed app-code production deployment: `5b378da Add billing provider history filters`, Vercel deployment `dpl_4Cvxcuty3TyzY4ywownqHhjKw7Sp`, state `READY`; Render API health is live and OpenAPI includes the Xero payment reconciliation preview/apply endpoints, invoice SendGrid webhook, `XeroProviderStatusReceiptRead`, `provider_receipts`, and `next_action`. `/billing-readiness` redirects signed-out operators to `/sign-in`, and `/tenant-portal/account` returns `200`.
+- Latest confirmed app-code production deployment: `8ce1cee Add Xero sync exception queue`, Vercel deployment `dpl_Ck1qkyPxZcwFwXfqPep7NXnDA3ky`, state `READY`; Render API health is live and OpenAPI includes `/api/v1/xero/exception-queue` plus the `XeroExceptionQueue*` schemas. The unauthenticated exception queue route returns `401 Missing Clerk bearer token`, `/settings` redirects signed-out operators to `/sign-in`, and `/tenant-portal/account` returns `200`.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -397,6 +397,9 @@ Last updated: 2026-05-21
   - `./node_modules/.bin/eslint src/app/settings/page.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
   - `./node_modules/.bin/tsc --noEmit`
   - `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "settings shows Xero"` (`1 passed`)
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  - Production Vercel deployment `dpl_Ck1qkyPxZcwFwXfqPep7NXnDA3ky` is `READY` for `8ce1cee`.
+  - Production Render `/health` returned `200`, OpenAPI exposes `/api/v1/xero/exception-queue`, and the route returns `401 Missing Clerk bearer token` without auth.
 - Spreadsheet import plan durability checks passed:
   - `.venv/bin/python -m ruff check stewart/core/models.py apps/api/routers/register_imports.py apps/api/schemas/register_import.py tests/integration/test_register_import_api.py migrations/versions/20260521_0020_register_import_plans.py`
   - `.venv/bin/python -m pytest tests/integration/test_register_import_api.py -q` (`2 passed`)
