@@ -47,20 +47,27 @@ async function enforceAccessGate(request: NextRequest) {
   return NextResponse.redirect(redirectUrl);
 }
 
-const clerkProtectedMiddleware = clerkMiddleware(async (auth, request) => {
-  const authState = await auth();
-  if (!authState.userId) {
-    const signInUrl = request.nextUrl.clone();
-    signInUrl.pathname = "/sign-in";
-    signInUrl.searchParams.set(
-      "redirect_url",
-      `${request.nextUrl.pathname}${request.nextUrl.search}`,
-    );
-    return NextResponse.redirect(signInUrl);
-  }
+const clerkProtectedMiddleware = clerkMiddleware(
+  async (auth, request) => {
+    const authState = await auth();
+    if (!authState.userId) {
+      const signInUrl = request.nextUrl.clone();
+      signInUrl.pathname = "/sign-in";
+      signInUrl.searchParams.set(
+        "redirect_url",
+        `${request.nextUrl.pathname}${request.nextUrl.search}`,
+      );
+      return NextResponse.redirect(signInUrl);
+    }
 
-  return NextResponse.next();
-});
+    return NextResponse.next();
+  },
+  {
+    frontendApiProxy: {
+      enabled: true,
+    },
+  },
+);
 
 export async function middleware(request: NextRequest, event: NextFetchEvent) {
   if (clerkServerConfigured()) {

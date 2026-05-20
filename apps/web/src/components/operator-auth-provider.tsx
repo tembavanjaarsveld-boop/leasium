@@ -107,6 +107,7 @@ export function OperatorAuthProvider({ children }: { children: React.ReactNode }
   return (
     <ClerkProvider
       publishableKey={publishableKey}
+      proxyUrl="/__clerk"
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
     >
