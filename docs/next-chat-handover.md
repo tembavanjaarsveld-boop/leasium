@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production feature deployment in this handover: `74576ed Split billing readiness into task zones`, Vercel deployment `dpl_7EcR9WD6tmwWQHuUjVagxMt24gsj`, state `READY`; latest Render deploy remains `dep-d86dtfutsp3c7391n6lg`, state `Live`.
+- Latest confirmed production feature deployment in this handover: `f15beef Add first workspace operator setup`, Vercel deployment `dpl_7f8GngXJk4NQ7PsYhFSyJPuyfmMF`, state `READY`; latest Render deploy remains `dep-d86dtfutsp3c7391n6lg`, state `Live`.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -32,6 +32,7 @@ Last updated: 2026-05-20
   - New `/api/v1/security/bootstrap` creates the first organisation, primary entity, and owner operator only when the database has no organisations, entities, or operators.
   - Bootstrap requires `AUTH_MODE=clerk`, `CLERK_JWKS_URL`, and a signed-in Clerk bearer token; Clerk mode now fails closed without JWKS unless `CLERK_ALLOW_LEGACY_TOKEN_MAPPING=true` is explicitly set for legacy/testing use.
   - New `/setup` frontend flow handles Clerk-not-configured, signed-out, unavailable, and signed-in setup states, and `/setup` stays public through the temporary password gate.
+  - Commit `f15beef`, Vercel deployment `dpl_7f8GngXJk4NQ7PsYhFSyJPuyfmMF`, state `READY`; deployment URL `/setup`, production alias `/setup`, and production alias `/sign-in` returned `200`.
   - This is design-facing and still needs Remba review.
 - Temporary private-beta password gate is built and pushed in `f845a69`.
   - `LEASIUM_ACCESS_PASSWORD` controls whether the gate is active.
