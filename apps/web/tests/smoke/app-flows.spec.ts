@@ -408,6 +408,10 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.getByRole("tab", { name: "Xero" }).click();
   await expect(page.getByText("Xero sync exception queue")).toBeVisible();
   await expect(page.getByText("Xero is not connected")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Xero" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Apply suggestion" }),
+  ).toBeVisible();
 
   await page.getByLabel("Xero tenant ID").fill("tenant-smoke");
   await page.getByRole("button", { name: "Save status" }).click();
@@ -446,7 +450,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("No invoice posting").first()).toBeVisible();
 
   await expect(page.getByText("Base Rent tax type missing").first()).toBeVisible();
-  await page.getByRole("button", { exact: true, name: "Apply" }).click();
+  await page.getByRole("button", { name: "Apply suggestion" }).click();
   await expect(
     page.getByText("Chart and tax mappings look ready"),
   ).toBeVisible();
@@ -457,7 +461,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("Rental Income")).toBeVisible();
   await expect(page.getByText("GST on Income")).toBeVisible();
 
-  await page.getByRole("button", { name: "Preview invoice posting" }).click();
+  await page.getByRole("button", { name: "Review posting" }).click();
   await expect(page.getByText("Xero invoice posting preview")).toBeVisible();
   await expect(page.getByText("1 ready").first()).toBeVisible();
   await expect(page.getByText("0 blocked").first()).toBeVisible();
@@ -485,7 +489,10 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("xero-invoice-smoke-1").first()).toBeVisible();
   await expect(page.getByText("Xero payment status needs review")).toBeVisible();
 
-  await page.getByRole("button", { name: "Preview payments" }).click();
+  await expect(
+    page.getByRole("button", { exact: true, name: "Review payments" }),
+  ).toBeVisible();
+  await page.getByRole("button", { exact: true, name: "Review payments" }).click();
   await expect(page.getByText("Payment reconciliation review")).toBeVisible();
   await expect(
     page.getByText("Payment status can be reconciled locally."),

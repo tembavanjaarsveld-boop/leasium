@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-05-20
+Last updated: 2026-05-21
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -193,7 +193,7 @@ Status: pending Remba review. Provider invoice dispatch now combines two approve
 
 ## Xero Sync Exception Queue
 
-Status: pending Remba review. Settings now has a read-only local Xero exception queue near the top of the Xero workspace. It groups connection, contact, chart/tax, approved invoice sync, provider receipt, and payment reconciliation exceptions without refreshing Xero tokens, calling Xero APIs, posting invoices, sending email, or reconciling payments. Keep the queue compact and operator-focused: it should show the blocker, the affected invoice/property/tenant where known, the next action, and the guardrail that provider actions still require explicit review.
+Status: pending Remba review. Settings now has a local Xero exception queue near the top of the Xero workspace. It groups connection, contact, chart/tax, approved invoice sync, provider receipt, and payment reconciliation exceptions without refreshing Xero tokens, calling Xero APIs, posting invoices, sending email, or reconciling payments on load. Queue rows now expose guided operator actions that reuse existing review-first flows: connect/review provider setup, apply a visible charge-rule suggestion, open posting preview, open provider delivery recovery, or open payment reconciliation review. Keep the queue compact and operator-focused: it should show the blocker, the affected invoice/property/tenant where known, the current/suggested mapping where relevant, the next action, and the guardrail that provider actions still require explicit review.
 
 ## Xero Chart/Tax Validation Preview
 
