@@ -292,6 +292,18 @@ class XeroInvoiceProviderDispatchRequest(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=96)
 
 
+class XeroProviderStatusReceiptRead(BaseModel):
+    provider: str
+    status: str
+    reason: str | None = None
+    external_posting_status: str | None = None
+    idempotency_key: str | None = None
+    xero_invoice_id: str | None = None
+    xero_status: str | None = None
+    received_at: datetime
+    retry_count: int | None = None
+
+
 class XeroInvoiceProviderDispatchResultRead(BaseModel):
     invoice_draft_id: UUID
     invoice_number: str | None
@@ -304,6 +316,8 @@ class XeroInvoiceProviderDispatchResultRead(BaseModel):
     email_reason: str
     email_provider_status: str | None = None
     email_provider_message_id: str | None = None
+    provider_receipts: list[XeroProviderStatusReceiptRead] = Field(default_factory=list)
+    next_action: str | None = None
 
 
 class XeroInvoiceProviderDispatchRead(BaseModel):

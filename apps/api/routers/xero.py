@@ -92,6 +92,7 @@ from apps.api.schemas.xero import (
     XeroPaymentReconciliationResultRead,
     XeroPaymentSummaryRead,
     XeroProviderConfigRead,
+    XeroProviderStatusReceiptRead,
     XeroReadinessSummaryRead,
     XeroStatusRead,
 )
@@ -1060,6 +1061,115 @@ def _store_xero_draft_create_result(
     metadata["xero_sync_history"] = history[-20:]
     draft.invoice_metadata = metadata
     return xero_invoice_id, xero_status
+
+
+def _provider_status_receipts(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    receipts = metadata.get("provider_status_receipts")
+    if not isinstance(receipts, list):
+        return []
+    return [receipt for receipt in receipts if isinstance(receipt, dict)]
+
+
+def _record_xero_provider_receipt(
+    *,
+    draft: InvoiceDraft,
+    status_label: str,
+    reason: str,
+    external_posting_status: str,
+    idempotency_key: str | None,
+    attempted_at: Any,
+    user: CurrentUser,
+    provider_connection: XeroConnection | None = None,
+    xero_invoice_id: str | None = None,
+    xero_status: str | None = None,
+) -> dict[str, Any]:
+    metadata = dict(draft.invoice_metadata or {})
+    receipts = _provider_status_receipts(metadata)
+    retry_count = (
+        sum(1 for receipt in receipts if receipt.get("provider") == "xero") + 1
+    )
+    receipt = {
+        "provider": "xero",
+        "status": status_label,
+        "reason": reason,
+        "external_posting_status": external_posting_status,
+        "idempotency_key": idempotency_key,
+        "xero_invoice_id": xero_invoice_id,
+        "xero_status": xero_status,
+        "received_at": attempted_at.isoformat(),
+        "retry_count": retry_count,
+        "provider_connection_id": (
+            str(provider_connection.id) if provider_connection is not None else None
+        ),
+        "xero_tenant_id": (
+            provider_connection.xero_tenant_id if provider_connection is not None else None
+        ),
+        "recorded_by_user_id": str(user.id),
+    }
+
+    dispatch = metadata.get("provider_dispatch")
+    provider_dispatch = dict(dispatch) if isinstance(dispatch, dict) else {}
+    provider_dispatch["xero"] = receipt
+    metadata["provider_dispatch"] = provider_dispatch
+    metadata["provider_status_receipts"] = [receipt, *receipts[:19]]
+
+    posting_preparation_value = metadata.get("posting_preparation")
+    posting_preparation = (
+        dict(posting_preparation_value)
+        if isinstance(posting_preparation_value, dict)
+        else {}
+    )
+    posting_preparation.update(
+        {
+            "external_posting_status": external_posting_status,
+            "last_provider_status": status_label,
+            "last_provider_reason": reason,
+            "last_provider_attempted_at": attempted_at.isoformat(),
+            "last_provider_idempotency_key": idempotency_key,
+            "provider_retry_count": retry_count,
+        }
+    )
+    if status_label == "failed":
+        posting_preparation.update(
+            {
+                "xero_sync_allowed": True,
+                "xero_sync_requested": True,
+                "guardrail": "Provider dispatch failed; retry still requires explicit approval.",
+            }
+        )
+    metadata["posting_preparation"] = posting_preparation
+    draft.invoice_metadata = metadata
+    return receipt
+
+
+def _xero_provider_receipt_reads(
+    metadata: dict[str, Any],
+) -> list[XeroProviderStatusReceiptRead]:
+    receipts: list[XeroProviderStatusReceiptRead] = []
+    for receipt in _provider_status_receipts(metadata):
+        if receipt.get("provider") != "xero" or not receipt.get("received_at"):
+            continue
+        receipts.append(XeroProviderStatusReceiptRead.model_validate(receipt))
+    return receipts
+
+
+def _provider_dispatch_next_action(
+    xero_status: str,
+    email_status: str,
+) -> str | None:
+    if xero_status == "failed":
+        return "retry_xero_dispatch"
+    if xero_status == "blocked":
+        return "resolve_xero_blockers"
+    if xero_status == "skipped":
+        return "configure_xero_provider"
+    if email_status == "failed":
+        return "retry_email_dispatch"
+    if email_status == "blocked":
+        return "resolve_email_blockers"
+    if email_status == "skipped":
+        return "configure_email_provider"
+    return None
 
 
 EMAIL_DELIVERED_STATUSES = {"queued", "sent", "delivered", "opened"}
@@ -2309,6 +2419,16 @@ def create_approved_xero_invoice_drafts(
                     idempotency_key=idempotency_key,
                 )
             except XeroIntegrationError as exc:
+                _record_xero_provider_receipt(
+                    draft=draft,
+                    status_label="failed",
+                    reason=str(exc),
+                    external_posting_status="provider_failed",
+                    idempotency_key=idempotency_key,
+                    attempted_at=applied_at,
+                    user=user,
+                    provider_connection=provider_connection,
+                )
                 results.append(
                     _draft_create_result(
                         draft,
@@ -2326,6 +2446,18 @@ def create_approved_xero_invoice_drafts(
                 user=user,
                 idempotency_key=idempotency_key,
                 created_at=applied_at,
+            )
+            _record_xero_provider_receipt(
+                draft=draft,
+                status_label="created",
+                reason="Xero draft invoice was created after explicit approval.",
+                external_posting_status="draft_created",
+                idempotency_key=idempotency_key,
+                attempted_at=applied_at,
+                user=user,
+                provider_connection=provider_connection,
+                xero_invoice_id=xero_invoice_id,
+                xero_status=xero_status,
             )
             results.append(
                 _draft_create_result(
@@ -2580,6 +2712,16 @@ def dispatch_approved_invoice_providers(
                     idempotency_key=idempotency_key,
                 )
             except XeroIntegrationError as exc:
+                _record_xero_provider_receipt(
+                    draft=draft,
+                    status_label="failed",
+                    reason=str(exc),
+                    external_posting_status="provider_failed",
+                    idempotency_key=idempotency_key,
+                    attempted_at=dispatched_at,
+                    user=user,
+                    provider_connection=provider_connection,
+                )
                 xero_outcomes[draft.id] = (
                     "failed",
                     str(exc),
@@ -2595,6 +2737,18 @@ def dispatch_approved_invoice_providers(
                 user=user,
                 idempotency_key=idempotency_key,
                 created_at=dispatched_at,
+            )
+            _record_xero_provider_receipt(
+                draft=draft,
+                status_label="created",
+                reason="Xero draft invoice was created after explicit approval.",
+                external_posting_status="draft_created",
+                idempotency_key=idempotency_key,
+                attempted_at=dispatched_at,
+                user=user,
+                provider_connection=provider_connection,
+                xero_invoice_id=xero_invoice_id,
+                xero_status=xero_status,
             )
             xero_outcomes[draft.id] = (
                 "created",
@@ -2636,6 +2790,13 @@ def dispatch_approved_invoice_providers(
                 email_reason=email_reason,
                 email_provider_status=email_provider_status,
                 email_provider_message_id=email_message_id,
+                provider_receipts=_xero_provider_receipt_reads(
+                    dict(draft.invoice_metadata or {})
+                ),
+                next_action=_provider_dispatch_next_action(
+                    xero_status,
+                    email_status,
+                ),
             )
         )
 

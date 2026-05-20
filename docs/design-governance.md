@@ -99,6 +99,11 @@ Progress notes:
   queue lives with rent-roll readiness, while preparation/approval work is
   separated from manual delivery/payment recording. This remains pending Remba
   review.
+- 2026-05-20: Delivery & payments now includes per-invoice provider
+  Dispatch/Retry controls, Xero receipt/retry state, and provider-complete
+  messaging once both the Xero draft and tenant email are recorded. This remains
+  pending Remba review, especially around whether dispatch should live here,
+  Settings, or both during pre-production.
 
 Remba decision:
 
@@ -152,7 +157,7 @@ Status: pending Remba review. Billing Readiness now creates and lists internal i
 
 ## Invoice Delivery Prep Surface
 
-Status: pending Remba review. Billing Readiness now stores internal invoice PDF artifacts, prepares branded email draft metadata, can send explicitly approved provider-backed invoice emails through SendGrid, records manual/provider tenant delivery receipts after approval, and tracks payment status across the Invoice prep and Delivery & payments tabs. Keep the boundary explicit: Leasium is preparing and delivering approved invoice work, Xero sync remains a separate approval, and provider failures/skips must stay visible.
+Status: pending Remba review. Billing Readiness now stores internal invoice PDF artifacts, prepares branded email draft metadata, can send explicitly approved provider-backed invoice emails through SendGrid, records manual/provider tenant delivery receipts after approval, ingests SendGrid invoice delivery webhooks, and tracks payment status across the Invoice prep and Delivery & payments tabs. Keep the boundary explicit: Leasium is preparing and delivering approved invoice work, Xero sync remains a separate approval, and provider failures/skips must stay visible.
 
 ## AI Enrichment Surface
 
@@ -184,7 +189,7 @@ Status: pending Remba review. Reviewed local Xero contact mapping apply is built
 
 ## Provider Invoice Dispatch
 
-Status: pending Remba review. Provider invoice dispatch now combines two approved external actions for one invoice: create or reuse the Xero DRAFT first, then send or reuse the SendGrid tenant email. Keep the UI copy explicit that payment reconciliation is separate, retries are idempotent, and skipped/failed provider receipts need operator attention.
+Status: pending Remba review. Provider invoice dispatch now combines two approved external actions for one invoice: create or reuse the Xero DRAFT first, then send or reuse the SendGrid tenant email. Billing Readiness exposes per-invoice Dispatch/Retry actions and Xero receipt/retry state, while backend responses include next-action hints for failed or blocked dispatch. Keep the UI copy explicit that payment reconciliation is separate, retries are idempotent, and skipped/failed provider receipts need operator attention.
 
 ## Xero Chart/Tax Validation Preview
 

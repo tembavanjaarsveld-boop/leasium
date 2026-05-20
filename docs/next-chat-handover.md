@@ -236,6 +236,12 @@ Last updated: 2026-05-20
   - The endpoint requires explicit Xero posting approval before any Xero mutation, reuses existing Xero draft IDs and SendGrid receipts, and reports per-invoice Xero/email outcomes.
   - Provider email delivery now preserves `delivery_state.xero_synced` when email is sent after Xero draft creation.
   - Payment reconciliation remains a separate reviewed action.
+- Provider dispatch receipts and recovery v1 is built on this branch.
+  - Xero draft-create and combined provider dispatch now persist compact provider receipt history on invoice draft metadata.
+  - Failed Xero provider attempts store `provider_failed`, keep the explicit approval retry-safe, and return `next_action` hints for operator recovery.
+  - Billing Readiness Delivery & payments now has per-invoice Dispatch/Retry actions plus Xero receipt/retry and provider-complete messaging.
+  - `POST /api/v1/invoice-drafts/webhooks/sendgrid-events` records SendGrid invoice delivery events by draft ID or provider message ID, preserving the current Xero sync state.
+  - This is design-facing and still needs Remba review.
 - Tenant portal account foundation v1 is built on this branch.
   - New `tenant_portal_account` model and migration `20260520_0019_tenant_portal_accounts` store tenant-linked bearer identities without using operator `app_user` or entity-role access.
   - `POST /api/v1/tenant-portal/account/claim` requires a valid bearer identity plus an existing portal token before linking the signed tenant identity.
@@ -348,12 +354,14 @@ Last updated: 2026-05-20
   - `./node_modules/.bin/tsc --noEmit`
   - `PORT=3004 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "settings shows Xero"` (`1 passed`)
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
-- Provider invoice dispatch checks passed:
+- Provider dispatch receipt/recovery checks passed:
   - `.venv/bin/python -m ruff check apps/api/routers/xero.py apps/api/routers/charge_rules.py apps/api/schemas/xero.py tests/integration/test_xero_api.py`
-  - `.venv/bin/python -m pytest tests/integration/test_xero_api.py -q` (`15 passed`)
-  - `.venv/bin/python -m pytest tests/integration/test_document_intake_api.py::test_document_intake_apply_invoice_prepares_billing_work -q` (`1 passed`)
-  - `./node_modules/.bin/eslint src/lib/api.ts`
+  - `.venv/bin/python -m pytest tests/integration/test_xero_api.py -q` (`16 passed`)
+  - `.venv/bin/python -m pytest tests/integration/test_document_intake_api.py -q` (`18 passed`)
+  - `./node_modules/.bin/eslint src/app/billing-readiness/page.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
   - `./node_modules/.bin/tsc --noEmit`
+  - `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "dashboard shows the mocked portfolio and opens billing readiness"` (`1 passed`)
+  - `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "settings shows Xero"` (`1 passed`)
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
 - Spreadsheet import plan durability checks passed:
   - `.venv/bin/python -m ruff check stewart/core/models.py apps/api/routers/register_imports.py apps/api/schemas/register_import.py tests/integration/test_register_import_api.py migrations/versions/20260521_0020_register_import_plans.py`
@@ -601,10 +609,10 @@ Last updated: 2026-05-20
 ## Recommended Next Tickets
 
 1. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, tenant fresh-link recovery, tenant detail portal access controls, and Operations workspace.
-2. Continue Xero from provider dispatch into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
+2. Continue Xero from provider dispatch receipts into full accounting reconciliation guardrails, explicit retry history filters, contact/invoice sync exception queues, and payment reconciliation review surfaces.
 3. Deepen Operations with contractor communications, maintenance invoice exception recovery, and clearer handoff rules between Operations and Billing Readiness.
 4. Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
-5. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
+5. Add branded template management, delivery preview/versioning, and provider receipt configuration for invoice delivery and tenant portal communications.
 
 ## Resume Checklist
 

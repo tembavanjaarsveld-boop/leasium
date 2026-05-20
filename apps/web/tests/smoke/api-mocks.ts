@@ -878,6 +878,10 @@ async function fulfillJson(route: Route, body: JsonBody, status = 200) {
   });
 }
 
+function jsonClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 function jsonStringArray(value: JsonBody | undefined) {
   if (!Array.isArray(value)) {
     return [];
@@ -913,6 +917,7 @@ export async function mockLeasiumApi(
   let chargeTaxType: string | null = null;
   let xeroDraftApproved = false;
   let xeroDraftCreated = false;
+  let localInvoiceDrafts = jsonClone(invoiceDrafts);
   let tenantAccountLinked = options.tenantAccountLinked ?? false;
   const tenantAccountLinkedToDifferentTenant =
     options.tenantAccountLinkedToDifferentTenant ?? false;
@@ -1055,6 +1060,88 @@ export async function mockLeasiumApi(
         "Invoice posting requires explicit local approval before Xero draft creation.",
         "Payment reconciliation is manual status tracking until bank/Xero feeds are connected.",
       ],
+    };
+  };
+
+  const activeInvoiceDraft = () => localInvoiceDrafts[0];
+
+  const activeInvoiceMetadata = () =>
+    activeInvoiceDraft().metadata as unknown as Record<string, JsonBody>;
+
+  const xeroProviderReceipt = (receivedAt: string) => ({
+    provider: "xero",
+    status: "created",
+    reason: "Xero draft invoice was created after explicit approval.",
+    external_posting_status: "draft_created",
+    idempotency_key: "xero-draft-invoice-draft-1",
+    xero_invoice_id: "xero-invoice-smoke-1",
+    xero_status: "DRAFT",
+    received_at: receivedAt,
+    retry_count: 1,
+  });
+
+  const markXeroApproval = (approved: boolean) => {
+    const metadata = activeInvoiceMetadata();
+    metadata.xero_posting_approval = {
+      state: approved ? "approved" : "revoked",
+      approved,
+      approved_at: approved ? "2026-05-19T10:25:00.000Z" : null,
+      idempotency_key: approved ? "xero-draft-invoice-draft-1" : null,
+    };
+    metadata.posting_preparation = {
+      external_posting_status: approved
+        ? "approved_pending_xero_draft"
+        : "approval_revoked",
+      xero_sync_allowed: approved,
+      xero_sync_requested: approved,
+      xero_synced: false,
+    };
+  };
+
+  const markXeroDraftCreated = (createdAt: string) => {
+    const metadata = activeInvoiceMetadata();
+    const receipt = xeroProviderReceipt(createdAt);
+    metadata.xero_sync = {
+      xero_synced: true,
+      xero_invoice_id: "xero-invoice-smoke-1",
+      xero_status: "DRAFT",
+      idempotency_key: "xero-draft-invoice-draft-1",
+      synced_at: createdAt,
+    };
+    metadata.posting_preparation = {
+      external_posting_status: "draft_created",
+      xero_sync_allowed: true,
+      xero_sync_requested: true,
+      xero_synced: true,
+      last_provider_status: "created",
+      last_provider_reason:
+        "Xero draft invoice was created after explicit approval.",
+      provider_retry_count: 1,
+    };
+    metadata.provider_dispatch = { xero: receipt };
+    metadata.provider_status_receipts = [receipt];
+  };
+
+  const markInvoiceProviderEmailSent = (sentAt: string) => {
+    const metadata = activeInvoiceMetadata();
+    const deliveryState =
+      metadata.delivery_state && typeof metadata.delivery_state === "object"
+        ? { ...(metadata.delivery_state as Record<string, JsonBody>) }
+        : {};
+    deliveryState.tenant_email_sent = true;
+    deliveryState.tenant_email_sent_at = sentAt;
+    deliveryState.tenant_email_delivery_method = "sendgrid";
+    deliveryState.tenant_email_provider_status = "queued";
+    deliveryState.xero_synced = true;
+    metadata.delivery_state = deliveryState;
+    metadata.delivery_email = {
+      send: {
+        status: "queued",
+        provider: "sendgrid",
+        provider_message_id: "sg-dispatch-smoke-1",
+        sent_at: sentAt,
+        xero_synced: true,
+      },
     };
   };
 
@@ -1655,6 +1742,7 @@ export async function mockLeasiumApi(
         approved?: boolean;
       };
       xeroDraftApproved = payload.approved !== false;
+      markXeroApproval(xeroDraftApproved);
       await fulfillJson(route, {
         invoice_draft_id: "invoice-draft-1",
         invoice_number: "INV-1001",
@@ -1686,6 +1774,7 @@ export async function mockLeasiumApi(
     ) {
       if (xeroDraftApproved) {
         xeroDraftCreated = true;
+        markXeroDraftCreated("2026-05-19T10:30:00.000Z");
       }
       await fulfillJson(route, {
         entity_id: entityId,
@@ -1719,6 +1808,76 @@ export async function mockLeasiumApi(
           "Xero draft creation only runs for invoice drafts with explicit local posting approval.",
           "When provider credentials or provider connection are absent, invoices are skipped safely.",
           "Successful Xero draft references are stored locally and repeated calls are idempotent.",
+        ],
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === `/xero/invoices/provider-dispatch/${entityId}`
+    ) {
+      const dispatchedAt = "2026-05-19T10:35:00.000Z";
+      const xeroStatusValue = xeroDraftApproved
+        ? xeroDraftCreated
+          ? "reused"
+          : "created"
+        : "blocked";
+      if (xeroDraftApproved && !xeroDraftCreated) {
+        xeroDraftCreated = true;
+        markXeroDraftCreated(dispatchedAt);
+      }
+      if (xeroDraftApproved) {
+        markInvoiceProviderEmailSent(dispatchedAt);
+      }
+      const metadata = activeInvoiceMetadata();
+      const providerReceipts = Array.isArray(metadata.provider_status_receipts)
+        ? metadata.provider_status_receipts
+        : [];
+      await fulfillJson(route, {
+        entity_id: entityId,
+        provider_configured: true,
+        provider_connection_id: "xero-connection-1",
+        xero_tenant_id: xeroTenantId ?? "tenant-smoke",
+        checked_invoices: 1,
+        xero_created_count: xeroStatusValue === "created" ? 1 : 0,
+        xero_reused_count: xeroStatusValue === "reused" ? 1 : 0,
+        email_sent_count: xeroDraftApproved ? 1 : 0,
+        email_reused_count: 0,
+        blocked_count: xeroDraftApproved ? 0 : 1,
+        failed_count: 0,
+        dispatched_at: dispatchedAt,
+        results: [
+          {
+            invoice_draft_id: "invoice-draft-1",
+            invoice_number: "INV-1001",
+            xero_status: xeroStatusValue,
+            xero_reason: xeroDraftApproved
+              ? xeroStatusValue === "reused"
+                ? "Invoice draft already has a Xero draft reference."
+                : "Xero draft invoice was created after explicit approval."
+              : "Explicit Xero posting approval is required before provider dispatch.",
+            xero_invoice_id: xeroDraftApproved ? "xero-invoice-smoke-1" : null,
+            xero_provider_status: xeroDraftApproved ? "DRAFT" : null,
+            xero_idempotency_key: xeroDraftApproved
+              ? "xero-draft-invoice-draft-1"
+              : null,
+            email_status: xeroDraftApproved ? "sent" : "skipped",
+            email_reason: xeroDraftApproved
+              ? "SendGrid queued the prepared invoice email."
+              : "Tenant email waits until a Xero draft exists or is reused.",
+            email_provider_status: xeroDraftApproved ? "queued" : null,
+            email_provider_message_id: xeroDraftApproved
+              ? "sg-dispatch-smoke-1"
+              : null,
+            provider_receipts: providerReceipts,
+            next_action: xeroDraftApproved ? null : "resolve_xero_blockers",
+          },
+        ],
+        guardrails: [
+          "Provider dispatch creates or reuses an approved Xero DRAFT before tenant email.",
+          "SendGrid email is reused when a successful provider receipt already exists.",
+          "Payment reconciliation remains a separate reviewed action.",
         ],
       });
       return;
@@ -2239,7 +2398,7 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/invoice-drafts") {
-      await fulfillJson(route, invoiceDrafts);
+      await fulfillJson(route, localInvoiceDrafts);
       return;
     }
 

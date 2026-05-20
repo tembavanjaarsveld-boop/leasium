@@ -1322,6 +1322,18 @@ export type XeroInvoiceProviderDispatchResultRecord = {
   email_reason: string;
   email_provider_status: string | null;
   email_provider_message_id: string | null;
+  provider_receipts: Array<{
+    provider: string;
+    status: string;
+    reason: string | null;
+    external_posting_status: string | null;
+    idempotency_key: string | null;
+    xero_invoice_id: string | null;
+    xero_status: string | null;
+    received_at: string;
+    retry_count: number | null;
+  }>;
+  next_action: string | null;
 };
 
 export type XeroInvoiceProviderDispatchRecord = {

@@ -1151,6 +1151,26 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert provider_delivery_body["metadata"]["delivery_receipts"][0]["provider"] == "sendgrid"
     assert provider_delivery_body["metadata"]["delivery_state"]["xero_synced"] is False
 
+    provider_receipt_response = client.post(
+        "/api/v1/invoice-drafts/webhooks/sendgrid-events",
+        json=[
+            {
+                "invoice_draft_id": invoice_body["id"],
+                "sg_message_id": "sg-invoice-123",
+                "event": "delivered",
+                "email": "accounts@scope-tenant.example",
+            }
+        ],
+    )
+    assert provider_receipt_response.status_code == 204
+    session.refresh(invoice_draft)
+    assert (
+        invoice_draft.invoice_metadata["delivery_state"]["tenant_email_provider_status"]
+        == "delivered"
+    )
+    assert invoice_draft.invoice_metadata["delivery_receipts"][0]["event"] == "delivered"
+    assert invoice_draft.invoice_metadata["delivery_email"]["send"]["xero_synced"] is False
+
     delivered_invoice_response = client.post(
         f"/api/v1/invoice-drafts/{invoice_body['id']}/record-delivery",
         json={"method": "manual", "notes": "Sent from finance inbox."},

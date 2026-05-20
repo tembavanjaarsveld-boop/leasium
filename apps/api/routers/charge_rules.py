@@ -1,11 +1,12 @@
 """Rent charge rule and rent roll routes."""
 
+import secrets
 from datetime import date
 from html import escape
 from typing import Annotated, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
@@ -931,6 +932,169 @@ def _record_invoice_provider_delivery(
     return metadata
 
 
+def _assert_webhook_secret(request: Request) -> None:
+    secret = get_settings().communications_webhook_secret
+    if not secret:
+        return
+    provided = request.headers.get("x-leasium-webhook-secret") or request.query_params.get("token")
+    if not provided or not secrets.compare_digest(provided, secret):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook token.",
+        )
+
+
+def _invoice_email_receipt_status(raw_status: str) -> str:
+    value = raw_status.lower()
+    if value in {"processed", "deferred"}:
+        return "sent" if value == "processed" else "attention"
+    if value == "delivered":
+        return "delivered"
+    if value in {"open", "click"}:
+        return "opened"
+    if value in {"bounce", "dropped", "spamreport", "unsubscribe", "group_unsubscribe"}:
+        return "failed"
+    return "attention"
+
+
+def _find_invoice_draft_by_message_id(
+    session: Session,
+    provider_message_id: str,
+) -> InvoiceDraft | None:
+    rows = session.scalars(
+        select(InvoiceDraft).where(InvoiceDraft.deleted_at.is_(None))
+    ).all()
+    for draft in rows:
+        metadata = draft.invoice_metadata or {}
+        delivery_email = metadata.get("delivery_email")
+        send_state = (
+            delivery_email.get("send")
+            if isinstance(delivery_email, dict)
+            else None
+        )
+        if (
+            isinstance(send_state, dict)
+            and send_state.get("provider_message_id") == provider_message_id
+        ):
+            return draft
+        receipts = metadata.get("delivery_receipts")
+        if not isinstance(receipts, list):
+            continue
+        for receipt in receipts:
+            if (
+                isinstance(receipt, dict)
+                and receipt.get("provider_message_id") == provider_message_id
+            ):
+                return draft
+    return None
+
+
+def _apply_invoice_delivery_receipt(
+    draft: InvoiceDraft,
+    raw_status: str,
+    provider_message_id: str | None,
+    event: dict[str, object],
+) -> None:
+    now = utcnow().isoformat()
+    status_value = _invoice_email_receipt_status(raw_status)
+    metadata = dict(draft.invoice_metadata or {})
+    delivery_state_value = metadata.get("delivery_state")
+    delivery_state = (
+        dict(cast(dict[str, object], delivery_state_value))
+        if isinstance(delivery_state_value, dict)
+        else {}
+    )
+    xero_sync_value = metadata.get("xero_sync")
+    posting_preparation_value = metadata.get("posting_preparation")
+    xero_synced = (
+        delivery_state.get("xero_synced") is True
+        or (
+            isinstance(xero_sync_value, dict)
+            and cast(dict[str, object], xero_sync_value).get("xero_synced") is True
+        )
+        or (
+            isinstance(posting_preparation_value, dict)
+            and cast(dict[str, object], posting_preparation_value).get("xero_synced") is True
+        )
+    )
+    delivered = status_value in {"sent", "delivered", "opened"}
+    delivery_state.update(
+        {
+            "tenant_email_sent": delivered,
+            "tenant_email_sent_at": (
+                now if delivered else delivery_state.get("tenant_email_sent_at")
+            ),
+            "tenant_email_delivery_method": "sendgrid",
+            "tenant_email_provider_status": status_value,
+            "xero_synced": xero_synced,
+        }
+    )
+
+    delivery_email_value = metadata.get("delivery_email")
+    delivery_email = (
+        dict(cast(dict[str, object], delivery_email_value))
+        if isinstance(delivery_email_value, dict)
+        else {}
+    )
+    send_value = delivery_email.get("send")
+    send_state = dict(cast(dict[str, object], send_value)) if isinstance(send_value, dict) else {}
+    send_state.update(
+        {
+            "status": status_value,
+            "provider": "sendgrid",
+            "provider_message_id": provider_message_id
+            or send_state.get("provider_message_id"),
+            "receipt_at": now,
+            "last_event": raw_status,
+            "xero_synced": xero_synced,
+        }
+    )
+    if delivered and not send_state.get("sent_at"):
+        send_state["sent_at"] = now
+    if status_value == "failed":
+        send_state["error"] = str(
+            event.get("reason")
+            or event.get("response")
+            or event.get("event")
+            or raw_status
+        )
+    delivery_email["send"] = send_state
+
+    receipts_value = metadata.get("delivery_receipts")
+    receipts = list(cast(list[object], receipts_value)) if isinstance(receipts_value, list) else []
+    receipts.insert(
+        0,
+        {
+            "received_at": now,
+            "channel": "email",
+            "status": status_value,
+            "event": raw_status,
+            "provider": "sendgrid",
+            "recipient_email": event.get("email") or draft.recipient_email,
+            "provider_message_id": provider_message_id,
+            "xero_synced": xero_synced,
+        },
+    )
+    history_value = metadata.get("delivery_history")
+    history = list(cast(list[object], history_value)) if isinstance(history_value, list) else []
+    history.append(
+        {
+            "event": "provider_delivery_receipt",
+            "at": now,
+            "provider": "sendgrid",
+            "status": status_value,
+            "raw_event": raw_status,
+            "provider_message_id": provider_message_id,
+            "xero_synced": xero_synced,
+        }
+    )
+    metadata["delivery_state"] = delivery_state
+    metadata["delivery_email"] = delivery_email
+    metadata["delivery_receipts"] = receipts[:20]
+    metadata["delivery_history"] = history
+    draft.invoice_metadata = metadata
+
+
 def _normalise_payment_status(
     draft: InvoiceDraft,
     payload: InvoiceDraftPaymentStatusUpdate,
@@ -1795,6 +1959,54 @@ def send_invoice_draft_delivery_email(
     session.commit()
     session.refresh(draft)
     return draft
+
+
+@router.post("/invoice-drafts/webhooks/sendgrid-events", status_code=status.HTTP_204_NO_CONTENT)
+async def record_invoice_sendgrid_delivery_events(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    _assert_webhook_secret(request)
+    payload = await request.json()
+    events = payload if isinstance(payload, list) else [payload]
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        raw_status = str(event.get("event") or "")
+        if not raw_status:
+            continue
+        draft = None
+        invoice_draft_id = event.get("invoice_draft_id")
+        if isinstance(invoice_draft_id, str):
+            try:
+                draft = session.get(InvoiceDraft, UUID(invoice_draft_id))
+            except ValueError:
+                draft = None
+        message_id = event.get("sg_message_id") or event.get("sg-message-id")
+        if draft is None and isinstance(message_id, str):
+            draft = _find_invoice_draft_by_message_id(session, message_id)
+        if draft is None or draft.deleted_at is not None:
+            continue
+        _apply_invoice_delivery_receipt(
+            draft,
+            raw_status,
+            str(message_id) if message_id else None,
+            event,
+        )
+        audit_log(
+            session,
+            actor="provider:sendgrid",
+            entity_id=draft.entity_id,
+            action="receipt",
+            target_table="invoice_draft",
+            target_id=draft.id,
+            tool_name="sendgrid.invoice_event_webhook",
+            tool_input={"channel": "email", "status": raw_status},
+            tool_output_summary="Recorded SendGrid invoice delivery receipt.",
+            data_classification="confidential",
+        )
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch(

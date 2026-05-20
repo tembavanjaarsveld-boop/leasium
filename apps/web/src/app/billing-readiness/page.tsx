@@ -31,6 +31,7 @@ import {
 } from "@/components/ui";
 import {
   createInvoiceDraftFromBillingDraft,
+  dispatchXeroInvoiceProviders,
   documentDownloadUrl,
   invoiceDraftPreviewUrl,
   listBillingDrafts,
@@ -167,6 +168,10 @@ function metadataStringList(value: unknown) {
     : [];
 }
 
+function metadataRecordList(value: unknown) {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
 function billingDraftStatusLabel(status: BillingDraftStatus) {
   return status.replaceAll("_", " ");
 }
@@ -254,6 +259,57 @@ function invoiceDeliverySend(draft: InvoiceDraftRecord) {
 
 function invoicePaymentStatus(draft: InvoiceDraftRecord) {
   return metadataRecord(draft.metadata.payment_status);
+}
+
+function invoiceXeroSync(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.xero_sync);
+}
+
+function invoicePostingPreparation(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.posting_preparation);
+}
+
+function invoiceXeroPostingApproval(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.xero_posting_approval);
+}
+
+function invoiceProviderDispatch(draft: InvoiceDraftRecord) {
+  return metadataRecord(draft.metadata.provider_dispatch);
+}
+
+function invoiceProviderReceipts(draft: InvoiceDraftRecord) {
+  return metadataRecordList(draft.metadata.provider_status_receipts);
+}
+
+function xeroStatusTone(statusValue: string | null, approved: boolean): StatusTone {
+  if (statusValue === "draft_created" || statusValue === "DRAFT") {
+    return "success";
+  }
+  if (statusValue === "provider_failed") {
+    return "danger";
+  }
+  if (!approved) {
+    return "warning";
+  }
+  return "primary";
+}
+
+function xeroStatusLabel(
+  syncState: Record<string, unknown>,
+  postingPreparation: Record<string, unknown>,
+  approved: boolean,
+) {
+  if (syncState.xero_synced === true) {
+    return `Xero ${metadataText(syncState.xero_status) ?? "draft"}`;
+  }
+  const externalStatus = metadataText(postingPreparation.external_posting_status);
+  if (externalStatus === "provider_failed") {
+    return "Xero failed";
+  }
+  if (!approved) {
+    return "Needs Xero approval";
+  }
+  return "Ready for Xero";
 }
 
 function blockerItems(row: RentRollRow): BlockerItem[] {
@@ -586,6 +642,21 @@ function BillingReadinessWorkspace() {
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+      });
+    },
+  });
+
+  const dispatchInvoiceProvidersMutation = useMutation({
+    mutationFn: (draftId: string) =>
+      dispatchXeroInvoiceProviders(selectedEntityId, {
+        invoice_draft_ids: [draftId],
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-rent-roll", selectedEntityId],
       });
     },
   });
@@ -1517,6 +1588,41 @@ function BillingReadinessWorkspace() {
                         const pdfArtifact = invoicePdfArtifact(draft);
                         const sendState = invoiceDeliverySend(draft);
                         const paymentStatus = invoicePaymentStatus(draft);
+                        const xeroSync = invoiceXeroSync(draft);
+                        const postingPreparation =
+                          invoicePostingPreparation(draft);
+                        const xeroApproval =
+                          invoiceXeroPostingApproval(draft);
+                        const providerDispatch =
+                          invoiceProviderDispatch(draft);
+                        const providerDispatchXero = metadataRecord(
+                          providerDispatch.xero,
+                        );
+                        const providerReceipts =
+                          invoiceProviderReceipts(draft);
+                        const latestProviderReceipt =
+                          providerReceipts.find(
+                            (receipt) =>
+                              metadataText(receipt.provider) === "xero",
+                          ) ?? null;
+                        const latestProviderRetryCount =
+                          typeof latestProviderReceipt?.retry_count === "number"
+                            ? latestProviderReceipt.retry_count
+                            : null;
+                        const xeroApproved =
+                          metadataText(xeroApproval.state) === "approved";
+                        const xeroSynced = xeroSync.xero_synced === true;
+                        const xeroExternalStatus =
+                          metadataText(
+                            postingPreparation.external_posting_status,
+                          ) ??
+                          metadataText(
+                            providerDispatchXero.external_posting_status,
+                          );
+                        const xeroFailed =
+                          xeroExternalStatus === "provider_failed" ||
+                          metadataText(providerDispatchXero.status) ===
+                            "failed";
                         const previewReady =
                           deliveryState.pdf_preview_generated === true;
                         const pdfStored =
@@ -1531,6 +1637,9 @@ function BillingReadinessWorkspace() {
                           ["queued", "sent", "delivered", "opened"].includes(
                             metadataText(sendState.status) ?? "",
                           );
+                        const emailFailed =
+                          metadataText(sendState.status) === "failed";
+                        const providerComplete = xeroSynced && deliverySent;
                         const paymentLabel =
                           metadataText(paymentStatus.status) ?? "unpaid";
                         const isRecordingDelivery =
@@ -1540,12 +1649,18 @@ function BillingReadinessWorkspace() {
                           sendInvoiceDeliveryEmailMutation.isPending &&
                           sendInvoiceDeliveryEmailMutation.variables ===
                             draft.id;
+                        const isDispatchingProviders =
+                          dispatchInvoiceProvidersMutation.isPending &&
+                          dispatchInvoiceProvidersMutation.variables ===
+                            draft.id;
                         const isUpdatingPayment =
                           updatePaymentStatusMutation.isPending &&
                           updatePaymentStatusMutation.variables?.draftId ===
                             draft.id;
                         const canRecordDelivery =
                           deliveryReady && !deliverySent;
+                        const canDispatchProviders =
+                          deliveryReady && xeroApproved && !providerComplete;
                         const canMarkPaid = paymentLabel !== "paid";
                         return (
                           <tr
@@ -1564,10 +1679,30 @@ function BillingReadinessWorkspace() {
                                 <StatusBadge tone="success">
                                   Approved
                                 </StatusBadge>
-                                <StatusBadge tone="neutral">
-                                  No Xero
+                                <StatusBadge
+                                  tone={xeroStatusTone(
+                                    xeroExternalStatus ??
+                                      metadataText(xeroSync.xero_status),
+                                    xeroApproved,
+                                  )}
+                                >
+                                  {xeroStatusLabel(
+                                    xeroSync,
+                                    postingPreparation,
+                                    xeroApproved,
+                                  )}
                                 </StatusBadge>
                               </div>
+                              {latestProviderReceipt ? (
+                                <div className="mt-2 text-xs text-muted-foreground">
+                                  Xero receipt{" "}
+                                  {metadataText(latestProviderReceipt.status) ??
+                                    "recorded"}
+                                  {latestProviderRetryCount
+                                    ? ` #${latestProviderRetryCount}`
+                                    : ""}
+                                </div>
+                              ) : null}
                             </td>
                             <td className="min-w-52 px-3 py-3 text-xs">
                               <div className="font-medium text-foreground">
@@ -1612,6 +1747,17 @@ function BillingReadinessWorkspace() {
                                   ? `${metadataText(sendState.provider)}: ${metadataText(sendState.status) ?? "not sent"}`
                                   : "Email is only sent after explicit approval."}
                               </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {xeroFailed
+                                  ? metadataText(
+                                      postingPreparation.last_provider_reason,
+                                    ) ?? "Xero provider failed. Retry when ready."
+                                  : providerComplete
+                                    ? "Xero draft and tenant email are recorded."
+                                    : xeroApproved
+                                      ? "Dispatch creates or reuses Xero first, then sends email."
+                                      : "Approve Xero posting in Settings before provider dispatch."}
+                              </div>
                             </td>
                             <td className="px-3 py-3">
                               <StatusBadge
@@ -1654,6 +1800,32 @@ function BillingReadinessWorkspace() {
                                     PDF
                                   </a>
                                 ) : null}
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-9 rounded-lg px-3"
+                                  onClick={() =>
+                                    dispatchInvoiceProvidersMutation.mutate(
+                                      draft.id,
+                                    )
+                                  }
+                                  disabled={
+                                    !canDispatchProviders ||
+                                    isDispatchingProviders
+                                  }
+                                  title="Creates or reuses the Xero DRAFT first, then sends or reuses the tenant email. Payment reconciliation stays separate."
+                                >
+                                  {isDispatchingProviders ? (
+                                    <Loader2
+                                      size={14}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <RefreshCw size={14} />
+                                  )}
+                                  {xeroFailed || emailFailed
+                                    ? "Retry dispatch"
+                                    : "Dispatch"}
+                                </SecondaryButton>
                                 <SecondaryButton
                                   type="button"
                                   className="min-h-9 rounded-lg px-3"
