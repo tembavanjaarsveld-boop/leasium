@@ -457,6 +457,159 @@ function invoiceRecoveryReasons(draft: InvoiceDraftRecord) {
   return reasons;
 }
 
+function maintenanceCompletionReadiness(
+  workOrder: MaintenanceWorkOrderRecord,
+  linkedInvoiceDraft: InvoiceDraftRecord | null,
+  quoteDocuments: ReturnType<typeof quoteDocumentRows>,
+) {
+  const checks: Array<{
+    label: string;
+    detail: string;
+    tone: Tone;
+    blocking: boolean;
+  }> = [];
+  if (workOrder.status === "cancelled") {
+    checks.push({
+      label: "Work order cancelled",
+      detail: "Cancelled work orders need to be reopened before completion.",
+      tone: "neutral",
+      blocking: true,
+    });
+  }
+  checks.push({
+    label:
+      workOrder.status === "completed"
+        ? "Job complete"
+        : "Job completion not recorded",
+    detail: workOrder.completed_at
+      ? `Completed ${formatDateTime(workOrder.completed_at)}.`
+      : "Record completion when the contractor work is finished.",
+    tone: workOrder.status === "completed" ? "success" : "warning",
+    blocking: false,
+  });
+  checks.push({
+    label:
+      workOrder.approval_status === "pending"
+        ? "Approval still pending"
+        : "Approval clear",
+    detail:
+      workOrder.approval_status === "pending"
+        ? "Approve the quote before closing this operational job."
+        : "Quote approval is no longer blocking completion.",
+    tone: workOrder.approval_status === "pending" ? "warning" : "success",
+    blocking: workOrder.approval_status === "pending",
+  });
+  checks.push({
+    label: workOrder.contractor_name
+      ? "Contractor assigned"
+      : "No contractor assigned",
+    detail: workOrder.contractor_name
+      ? workOrder.contractor_name
+      : "Assign or record the contractor before closing the job.",
+    tone: workOrder.contractor_name ? "success" : "warning",
+    blocking: !workOrder.contractor_name,
+  });
+  if (workOrder.contractor_name) {
+    checks.push({
+      label:
+        workOrder.contractor_email || workOrder.contractor_phone
+          ? "Contractor contact recorded"
+          : "Contractor contact missing",
+      detail:
+        workOrder.contractor_email ||
+        workOrder.contractor_phone ||
+        "Add email or phone before future contractor follow-up.",
+      tone:
+        workOrder.contractor_email || workOrder.contractor_phone
+          ? "success"
+          : "warning",
+      blocking: false,
+    });
+  }
+  checks.push({
+    label: quoteDocuments.length
+      ? "Quote/evidence attached"
+      : "No quote or evidence attached",
+    detail: quoteDocuments.length
+      ? `${quoteDocuments.length} evidence item${quoteDocuments.length === 1 ? "" : "s"} linked to this job.`
+      : "Attach quote, photo, or contractor evidence if it exists.",
+    tone: quoteDocuments.length ? "success" : "warning",
+    blocking: false,
+  });
+  checks.push({
+    label: linkedInvoiceDraft ? "Invoice linked" : "No invoice linked",
+    detail: linkedInvoiceDraft
+      ? `${linkedInvoiceDraft.invoice_number ?? linkedInvoiceDraft.title} is linked for Billing Readiness.`
+      : "Billing can still be linked later from an approved invoice draft.",
+    tone: linkedInvoiceDraft ? "success" : "warning",
+    blocking: false,
+  });
+  if (linkedInvoiceDraft) {
+    const deliveryReady =
+      invoiceDeliveryState(linkedInvoiceDraft).delivery_ready === true;
+    checks.push({
+      label: deliveryReady
+        ? "Invoice delivery ready"
+        : "Invoice delivery not ready",
+      detail: deliveryReady
+        ? "Billing Readiness has the PDF/email preparation context."
+        : "Billing Readiness needs invoice preparation before dispatch.",
+      tone: deliveryReady ? "success" : "warning",
+      blocking: false,
+    });
+    const recoveryReasons = invoiceRecoveryReasons(linkedInvoiceDraft);
+    if (recoveryReasons.length) {
+      checks.push({
+        label: "Provider recovery needed in Billing",
+        detail: recoveryReasons.join(" "),
+        tone: "danger",
+        blocking: false,
+      });
+    }
+  }
+  const blockers = checks
+    .filter((check) => check.blocking)
+    .map((check) => check.label);
+  const canStart =
+    !["in_progress", "completed", "cancelled"].includes(workOrder.status) &&
+    workOrder.approval_status !== "pending";
+  const canComplete =
+    blockers.length === 0 &&
+    !["completed", "cancelled"].includes(workOrder.status);
+  const statusLabel =
+    workOrder.status === "completed"
+      ? "Operations complete"
+      : blockers.length
+        ? "Needs operations action"
+        : "Ready to close Operations";
+  const tone: Tone =
+    workOrder.status === "completed"
+      ? "success"
+      : blockers.length
+        ? "warning"
+        : "primary";
+  let handoff =
+    "No linked invoice yet; close the job once operational work is complete, then attach billing documents if needed.";
+  if (linkedInvoiceDraft) {
+    handoff =
+      workOrder.status === "completed"
+        ? "Operations is complete. Billing Readiness owns tenant email, Xero dispatch, and payment follow-up."
+        : "Mark Operations complete when the job is finished; Billing Readiness owns provider dispatch and payment follow-up.";
+  } else if (workOrder.invoice_reference || workOrder.invoice_amount_cents) {
+    handoff =
+      "Invoice details are recorded on the job, but no approved invoice draft is linked yet.";
+  }
+  return {
+    blockers,
+    checks,
+    canStart,
+    canComplete,
+    statusLabel,
+    tone,
+    handoff,
+  };
+}
+
 function activityRows(workOrder: MaintenanceWorkOrderRecord) {
   const rawHistory = workOrder.metadata.activity_history;
   if (!Array.isArray(rawHistory)) {
@@ -651,6 +804,13 @@ function MaintenanceDetailRoute() {
   const linkedInvoiceRecoveryReasons = linkedInvoiceDraft
     ? invoiceRecoveryReasons(linkedInvoiceDraft)
     : [];
+  const completionReadiness = workOrder
+    ? maintenanceCompletionReadiness(
+        workOrder,
+        linkedInvoiceDraft,
+        quoteDocuments,
+      )
+    : null;
   const contractorSendState = workOrder
     ? contractorEmailSendState(workOrder)
     : {};
@@ -904,6 +1064,11 @@ function MaintenanceDetailRoute() {
                   <div className="text-muted-foreground">
                     Due: {formatDate(workOrder.due_date)}
                   </div>
+                  {workOrder.completed_at ? (
+                    <div className="text-muted-foreground">
+                      Completed {formatDateTime(workOrder.completed_at)}
+                    </div>
+                  ) : null}
                 </div>
               </SectionPanel>
 
@@ -1273,6 +1438,100 @@ function MaintenanceDetailRoute() {
                 </div>
               </SectionPanel>
             </div>
+
+            {completionReadiness ? (
+              <SectionPanel
+                title="Job completion handoff"
+                description="Close the operational job only when contractor, approval, and billing handoff context are clear."
+                icon={<CheckCircle2 size={17} />}
+                actions={
+                  <StatusBadge tone={completionReadiness.tone}>
+                    {completionReadiness.statusLabel}
+                  </StatusBadge>
+                }
+              >
+                <div className="grid gap-4 p-4 text-sm lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+                  <div className="grid gap-3">
+                    <div className="font-semibold text-foreground">
+                      Operational readiness
+                    </div>
+                    <div className="grid gap-2">
+                      {completionReadiness.checks.map((check) => (
+                        <div
+                          key={check.label}
+                          className="grid gap-1 rounded-md border border-border bg-white px-3 py-2 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge tone={check.tone}>
+                              {check.label}
+                            </StatusBadge>
+                            {check.blocking ? (
+                              <span className="font-semibold text-warning">
+                                Blocks completion
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="text-muted-foreground">
+                            {check.detail}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {!completionReadiness.blockers.length ? (
+                      <div className="rounded-md border border-leasium-success/20 bg-leasium-success-soft px-3 py-2 text-xs text-[#027A48]">
+                        Operations completion ready
+                      </div>
+                    ) : null}
+                    <div className="text-xs text-muted-foreground">
+                      {completionReadiness.handoff}
+                    </div>
+                  </div>
+                  <div className="grid content-start gap-3 rounded-md border border-border bg-muted/30 p-3">
+                    <div className="flex flex-wrap gap-2">
+                      <SecondaryButton
+                        type="button"
+                        className="min-h-9 rounded-lg px-3"
+                        disabled={
+                          !completionReadiness.canStart ||
+                          updateMutation.isPending
+                        }
+                        onClick={() =>
+                          updateMutation.mutate({ status: "in_progress" })
+                        }
+                      >
+                        <Wrench size={14} />
+                        Start job
+                      </SecondaryButton>
+                      <Button
+                        type="button"
+                        disabled={
+                          !completionReadiness.canComplete ||
+                          updateMutation.isPending
+                        }
+                        onClick={() =>
+                          updateMutation.mutate({
+                            status: "completed",
+                            completed_at: new Date().toISOString(),
+                          })
+                        }
+                      >
+                        {updateMutation.isPending ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <CheckCircle2 size={16} />
+                        )}
+                        Complete job
+                      </Button>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {linkedInvoiceDraft
+                        ? "The linked invoice remains in Billing Readiness for dispatch and reconciliation."
+                        : "Billing can be linked later from an approved invoice draft."}
+                    </div>
+                  </div>
+                </div>
+              </SectionPanel>
+            ) : null}
 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
               <SectionPanel

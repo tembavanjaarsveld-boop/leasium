@@ -265,6 +265,8 @@ Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry
 
 2026-05-21 update: contractor delivery recovery now changes failed/skipped/attention states into a visible recovery note and `Retry update` action, with attempt numbers and no duplicate contractor comment unless the operator edits the message. Maintenance-linked invoice exceptions now show a compact recovery panel in Billing Readiness and a recovery prompt on the work-order invoice card. Remba should review whether the warning color and retry placement feel urgent enough without overwhelming the job detail page.
 
+2026-05-21 update: maintenance work-order detail now includes a Job completion handoff checklist with job completion, approval, contractor, evidence, invoice linkage, invoice delivery readiness, and provider recovery checks. The same panel carries Start job and Complete job actions, while making clear that Billing Readiness owns invoice dispatch and payment follow-up after Operations closes the job. Remba should review whether this panel belongs between the summary cards and evidence/activity, whether the checklist density is right for first-use operators, and whether Complete job should be more visually restrained.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

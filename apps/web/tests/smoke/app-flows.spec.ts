@@ -159,6 +159,13 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Approve quote" }),
   ).toBeVisible();
+  await expect(page.getByText("Job completion handoff")).toBeVisible();
+  await expect(page.getByText("Approval still pending")).toBeVisible();
+  await expect(page.getByText("Job completion not recorded")).toBeVisible();
+  await expect(page.getByText("No invoice linked")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Complete job" }),
+  ).toBeDisabled();
   await expect(
     page
       .locator("span")
@@ -191,8 +198,15 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
     .getByLabel("Linked maintenance invoice")
     .selectOption("invoice-draft-1");
   await page.getByRole("button", { name: "Link" }).click();
+  await expect(page.getByText("Invoice linked")).toBeVisible();
+  await expect(page.getByText("Invoice delivery ready")).toBeVisible();
   await expect(page.getByText("Payment Unpaid")).toBeVisible();
-  await expect(page.getByText("Delivery ready")).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Delivery ready$/ })
+      .first(),
+  ).toBeVisible();
   await expect(
     page
       .locator("span")
@@ -204,6 +218,12 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Preview" })).toBeVisible();
   await expect(page.getByRole("link", { name: "PDF" })).toBeVisible();
+  await page.getByRole("button", { name: "Approve quote" }).click();
+  await expect(page.getByText("Operations completion ready")).toBeVisible();
+  await expect(page.getByText("Approval still pending")).toHaveCount(0);
+  await page.getByRole("button", { name: "Complete job" }).click();
+  await expect(page.getByText("Job complete")).toBeVisible();
+  await expect(page.getByText("Job completion not recorded")).toHaveCount(0);
   await page
     .getByRole("textbox", { name: "Comment" })
     .fill("Owner approved attendance tomorrow morning.");
