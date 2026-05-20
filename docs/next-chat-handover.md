@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed app-code production deployment: `96be2b8 Add tenant portal document provenance`, Vercel deployment `dpl_DJsy7MzUuwc8oaSKpgodjauvYFwH`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal` and `/tenant-portal/account` return `200`, and Render API health is live.
+- Latest confirmed app-code production deployment: `e6a07ac Add tenant portal operator access controls`, Vercel deployment `dpl_AWhdu3DHxeBc9Qem39Pdy6tionjC`, state `READY`; Render deploy `dep-d86suksrp5ls739konv0` is live for the same commit. `/tenants` and `/settings` redirect signed-out operators to `/sign-in`, `/tenant-portal` and `/tenant-portal/account` return `200`, and Render API health is live.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -228,9 +228,30 @@ Last updated: 2026-05-20
     - Tenant-facing document rows show filename, category, size, source, received timestamp, and notes.
     - The download action is explicit for both token-scoped links and account-scoped bearer downloads.
     - A local visual pass confirmed the document row fits in the compliance panel without crowding the upload controls.
+  - Tenant portal account lifecycle guidance v1 is now built too.
+    - Signed-in tenant accounts have a bearer-backed lifecycle status check for active, unlinked, and revoked states.
+    - Tenant-facing copy now guides wrong-tenant relinking, expired original links, and revoked-account recovery without mutating records.
+  - Tenant portal operator access controls v1 is now built too.
+    - Tenant detail lists linked tenant portal accounts with status, provider subject, linked time, last seen time, and action buttons.
+    - Operators can revoke access when a login should stay blocked or unlink access when the tenant should reconnect cleanly.
+    - Revoke/unlink actions are entity-scoped, audit logged, store operator reason metadata, and the unlink path allows relink with a valid portal token.
   - This is design-facing and still needs Remba review.
+
 ## Verification
 
+- Tenant portal operator access checks passed:
+  - `.venv/bin/python -m ruff check apps/api/routers/tenants.py apps/api/schemas/register.py tests/integration/test_tenant_portal_api.py`
+  - `.venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py -q` (`10 passed`)
+  - `.venv/bin/python -m pytest -q` (`97 passed`, `1 skipped`; migration smoke skipped because `TEST_DATABASE_URL` is not configured)
+  - `./node_modules/.bin/eslint 'src/app/tenants/[tenantId]/page.tsx' src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`8 passed`, `5 skipped`)
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  - `git diff --check`
+  - Local browser pass loaded `/tenants/tenant-1` against a throwaway API, showed the Portal access panel, and confirmed Unlink moves the panel to the empty linked-login state.
+  - Production Vercel deployment `dpl_AWhdu3DHxeBc9Qem39Pdy6tionjC` is `READY`.
+  - Production Render deploy `dep-d86suksrp5ls739konv0` is live for `e6a07ac`, OpenAPI lists `/api/v1/tenants/{tenant_id}/portal-accounts`, `/revoke`, and `/unlink`, and the protected no-auth route returns `401 Missing Clerk bearer token`.
+  - Production Vercel `/tenant-portal/account` returned `200`, `/tenants` returned `307` to `/sign-in`, and Render `/health` returned `200`.
 - Tenant portal document provenance/action checks passed:
   - `./node_modules/.bin/eslint src/app/tenant-portal/tenant-portal-content.tsx tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
   - `./node_modules/.bin/tsc --noEmit`
@@ -501,18 +522,18 @@ Last updated: 2026-05-20
 - Neon production was previously confirmed migrated through `20260520_0016` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
   - Verified earlier: `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
   - Verified now: the live public snapshot endpoint can query `insights_snapshot` and returns a clean not-found response for an invalid token.
-- The overnight bundle adds `20260520_0018_maintenance_arrears_foundations`, and the tenant account slice adds `20260520_0019_tenant_portal_accounts`. Render's documented start command runs `.venv/bin/alembic upgrade head` before the API starts, so production should apply these migrations during backend deploy. If Render does not pick up the deploy, run the same Alembic command against the hosted API environment before using maintenance, arrears, or tenant portal account endpoints.
+- The overnight bundle adds `20260520_0018_maintenance_arrears_foundations`, and the tenant account slice adds `20260520_0019_tenant_portal_accounts`. Render's documented start command runs `.venv/bin/alembic upgrade head` before the API starts. Current production Render deploy `dep-d86suksrp5ls739konv0` is live for `e6a07ac` and exposes tenant portal operator access endpoints, so the API runtime has picked up the current code.
 - Xero readiness v1 uses existing columns only and does not need a new database migration.
 - Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still needs to be configured outside the codebase.
 - Public enrichment requires `OPENAI_API_KEY` on the API service. Without it, preview returns a clear 503 and does not mutate records.
 
 ## Recommended Next Tickets
 
-1. Verify the tenant account production deploy and confirm Neon has advanced through `20260520_0019`.
-2. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, and Operations workspace.
+1. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, tenant detail portal access controls, and Operations workspace.
+2. Add tenant portal account restore/relink receipts, tenant-facing confirmation after staff recovery, and clearer invite expiry renewal handling.
 3. Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
-4. Continue tenant portal with safer invite/link lifecycle, revoke/relink handling, link expiry guidance, and tenant-facing account recovery.
-5. Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
+4. Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
+5. Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 
 ## Resume Checklist
