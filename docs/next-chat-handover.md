@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed app-code production deployment: `991c4bb Add tenant portal account entry`, Vercel deployment `dpl_EuTmsajEMsQkKzWM1hv2RHQz2TMV`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal` and `/tenant-portal/account` return `200`, and Render API health is live.
+- Latest confirmed app-code production deployment: `d7dd20c Add tenant portal preference receipts`, Vercel deployment `dpl_9hX7tigJxMpe7mqrwj1pgu46DwEC`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal` and `/tenant-portal/account` return `200`, and Render API health is live.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -233,6 +233,8 @@ Last updated: 2026-05-20
   - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant portal shows scoped self-service data"` (`1 passed`)
   - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`7 passed`, `3 skipped`)
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  - Production Vercel deployment `dpl_9hX7tigJxMpe7mqrwj1pgu46DwEC` is `READY`.
+  - Production Vercel `/tenant-portal` and `/tenant-portal/account` returned `200`, `/settings` returned `307` to `/sign-in`, and Render `/health` returned `200`.
 - Tenant portal account-only entry checks passed:
   - `./node_modules/.bin/eslint 'src/app/tenant-portal/[token]/page.tsx' src/app/tenant-portal/page.tsx src/app/tenant-portal/account/page.tsx src/app/tenant-portal/tenant-portal-content.tsx src/lib/api.ts src/lib/operator-routes.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts tests/smoke/clerk-guard.spec.ts --ext .ts,.tsx`
   - `./node_modules/.bin/tsc --noEmit`
