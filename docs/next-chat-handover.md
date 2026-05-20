@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production deployment: `01d24e1 Add tenant portal account UI`, Vercel deployment `dpl_EZUjAdCB87dAoJhD74h5sdRnUe8P`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal/not-a-real-token` remains public, and Render API health/OpenAPI are live with tenant account bearer support on portal session/actions.
+- Latest confirmed app-code production deployment: `f63c932 Add tenant portal maintenance photo upload`, Vercel deployment `dpl_2vUVQYbi6cze9QNgQCDNqGNGs8Wf`, state `READY`; `/settings` redirects signed-out operators to `/sign-in`, `/tenant-portal/not-a-real-token` remains public, and Render API health is live.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -224,6 +224,8 @@ Last updated: 2026-05-20
   - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`7 passed`, `1 skipped`)
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
   - `git diff --check`
+  - Production Vercel deployment `dpl_2vUVQYbi6cze9QNgQCDNqGNGs8Wf` is `READY`.
+  - Production Vercel `/settings` returned `307` to `/sign-in`, `/tenant-portal/not-a-real-token` returned `200`, and Render `/health` returned `200`.
 - Tenant portal account UI checks passed:
   - `.venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py -q` (`7 passed`)
   - `./node_modules/.bin/eslint 'src/app/tenant-portal/[token]/page.tsx' src/lib/api.ts tests/smoke/api-mocks.ts --ext .ts,.tsx`
