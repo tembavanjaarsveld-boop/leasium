@@ -303,6 +303,9 @@ class Entity(Base):
     )
     documents: Mapped[list["StoredDocument"]] = relationship(back_populates="entity")
     document_intakes: Mapped[list["DocumentIntake"]] = relationship(back_populates="entity")
+    register_import_plans: Mapped[list["RegisterImportPlan"]] = relationship(
+        back_populates="entity"
+    )
     billing_drafts: Mapped[list["BillingDraft"]] = relationship(back_populates="entity")
     invoice_drafts: Mapped[list["InvoiceDraft"]] = relationship(back_populates="entity")
     xero_connections: Mapped[list["XeroConnection"]] = relationship(back_populates="entity")
@@ -1064,6 +1067,40 @@ Index(
 )
 Index("document_intake_document_idx", DocumentIntake.document_id)
 Index("document_intake_status_idx", DocumentIntake.status)
+
+
+class RegisterImportPlan(Base):
+    __tablename__ = "register_import_plan"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    plan_data: Mapped[dict[str, Any]] = mapped_column(JsonbCompat, nullable=False, default=dict)
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="register_import_plans")
+
+
+Index(
+    "register_import_plan_entity_idx",
+    RegisterImportPlan.entity_id,
+    postgresql_where=RegisterImportPlan.deleted_at.is_(None),
+)
 
 
 class BillingDraft(Base):

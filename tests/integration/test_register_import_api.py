@@ -12,6 +12,7 @@ from stewart.core.models import (
     Lease,
     Obligation,
     Property,
+    RegisterImportPlan,
     RentChargeRule,
     TenancyUnit,
     Tenant,
@@ -270,6 +271,7 @@ def test_register_import_dry_run_plans_workbook_without_mutation(
 
     assert response.status_code == 200
     body = response.json()
+    assert body["plan_id"]
     assert body["entity_id"] == entity_id
     assert body["filename"] == "portfolio.xlsx"
     assert body["totals"]["properties"] == 2
@@ -295,6 +297,12 @@ def test_register_import_dry_run_plans_workbook_without_mutation(
     unchanged = session.scalar(select(Entity).where(Entity.id == UUID(entity_id)))
     assert unchanged is not None
     assert session.scalar(select(Property).where(Property.entity_id == UUID(entity_id))) is None
+    plan = session.get(RegisterImportPlan, UUID(body["plan_id"]))
+    assert plan is not None
+    assert plan.entity_id == UUID(entity_id)
+    assert plan.filename == "portfolio.xlsx"
+    assert plan.plan_data["filename"] == "portfolio.xlsx"
+    assert plan.plan_data["action_items"][0]["id"]
 
 
 def test_register_import_apply_creates_approved_records_with_provenance(
@@ -327,7 +335,13 @@ def test_register_import_apply_creates_approved_records_with_provenance(
         json={
             "entity_id": entity_id,
             "filename": dry_run["filename"],
-            "action_items": dry_run["action_items"],
+            "plan_id": dry_run["plan_id"],
+            "action_items": [
+                {
+                    **dry_run["action_items"][0],
+                    "id": "tampered-client-copy",
+                }
+            ],
             "approved_action_ids": approved_action_ids,
             "ignored_action_ids": [
                 item["id"]
@@ -347,6 +361,26 @@ def test_register_import_apply_creates_approved_records_with_provenance(
     assert body["created"]["leases"] == 1
     assert body["created"]["rent_charge_rules"] == 2
     assert body["created"]["obligations"] == 2
+    plan = session.get(RegisterImportPlan, UUID(dry_run["plan_id"]))
+    assert plan is not None
+    assert plan.applied_at is not None
+    assert plan.applied_by_user_id is not None
+    assert plan.plan_data["approved_action_ids"] == approved_action_ids
+    assert plan.plan_data["apply_result"]["applied"] == body["applied"]
+
+    repeated_apply_response = client.post(
+        "/api/v1/register-imports/apply",
+        json={
+            "entity_id": entity_id,
+            "filename": dry_run["filename"],
+            "plan_id": dry_run["plan_id"],
+            "approved_action_ids": approved_action_ids,
+        },
+    )
+    assert repeated_apply_response.status_code == 409
+    assert repeated_apply_response.json()["detail"] == (
+        "Register import plan has already been applied."
+    )
 
     properties = list(
         session.scalars(select(Property).where(Property.entity_id == UUID(entity_id)))

@@ -204,6 +204,11 @@ Last updated: 2026-05-20
   - Comments are appended to `metadata.comments`, mirrored into `metadata.activity_history`, and audit logged as work-order updates without a new migration.
   - `/operations/maintenance/<work_order_id>` now has a comment form and shows comment entries in the activity timeline.
   - This is design-facing and still needs Remba review.
+- Spreadsheet import plan durability v1 is built on this branch.
+  - Dry-run now creates a persisted `register_import_plan` row and returns `plan_id` with the review payload.
+  - Smart Intake and `/intake/spreadsheet` send `plan_id` on Apply, so the API applies the stored server-generated action list instead of trusting the browser copy.
+  - Applied plans store approved/ignored action IDs and the JSON-mode apply result; repeated Apply on the same plan is blocked.
+  - New migration: `20260521_0020_register_import_plans`.
 - Xero operator approval UI v1 is built on this branch.
   - Settings now turns the provider invoice posting preview into an operator workflow.
   - Ready invoice drafts can be explicitly approved or revoked for Xero posting from the preview result.
@@ -334,6 +339,11 @@ Last updated: 2026-05-20
   - `./node_modules/.bin/eslint src/lib/api.ts`
   - `./node_modules/.bin/tsc --noEmit`
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+- Spreadsheet import plan durability checks passed:
+  - `.venv/bin/python -m ruff check stewart/core/models.py apps/api/routers/register_imports.py apps/api/schemas/register_import.py tests/integration/test_register_import_api.py migrations/versions/20260521_0020_register_import_plans.py`
+  - `.venv/bin/python -m pytest tests/integration/test_register_import_api.py -q` (`2 passed`)
+  - `./node_modules/.bin/eslint src/lib/api.ts src/app/intake/register-import-panel.tsx src/app/intake/spreadsheet/page.tsx`
+  - `./node_modules/.bin/tsc --noEmit`
 - Operations maintenance detail checks passed:
   - `.venv/bin/python -m pytest tests/integration/test_maintenance_arrears_api.py tests/integration/test_tenant_portal_api.py -q` (`8 passed`)
   - `.venv/bin/python -m ruff check apps/api/routers/maintenance.py apps/api/routers/tenant_portal.py apps/api/schemas/tenant_portal.py tests/integration/test_maintenance_arrears_api.py tests/integration/test_tenant_portal_api.py`
@@ -557,7 +567,7 @@ Last updated: 2026-05-20
 - Neon production was previously confirmed migrated through `20260520_0016` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
   - Verified earlier: `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
   - Verified now: the live public snapshot endpoint can query `insights_snapshot` and returns a clean not-found response for an invalid token.
-- The overnight bundle adds `20260520_0018_maintenance_arrears_foundations`, and the tenant account slice adds `20260520_0019_tenant_portal_accounts`. Render's documented start command runs `.venv/bin/alembic upgrade head` before the API starts. Render deploy `dep-d86suksrp5ls739konv0` went live for `e6a07ac` and exposed tenant portal operator access endpoints; subsequent handover-only redeploys kept the same runtime behavior.
+- The overnight bundle adds `20260520_0018_maintenance_arrears_foundations`, the tenant account slice adds `20260520_0019_tenant_portal_accounts`, and spreadsheet plan durability adds `20260521_0020_register_import_plans`. Render's documented start command runs `.venv/bin/alembic upgrade head` before the API starts.
 - Xero readiness v1 uses existing columns only and does not need a new database migration.
 - Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still needs to be configured outside the codebase.
 - Public enrichment requires `OPENAI_API_KEY` on the API service. Without it, preview returns a clear 503 and does not mutate records.

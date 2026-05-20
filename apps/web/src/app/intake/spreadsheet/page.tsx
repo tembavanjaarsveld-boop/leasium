@@ -126,6 +126,7 @@ function SpreadsheetImportWorkspace() {
       return applyRegisterImportPlan({
         entityId: selectedEntityId,
         filename: plan.filename,
+        planId: plan.plan_id,
         actionItems: plan.action_items,
         approvedActionIds,
         ignoredActionIds: plan.action_items

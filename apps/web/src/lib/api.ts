@@ -945,6 +945,7 @@ export type RegisterImportActionItem = {
 };
 
 export type RegisterImportDryRunRecord = {
+  plan_id: string | null;
   entity_id: string;
   filename: string;
   sheets: RegisterImportSheetSummary[];
@@ -2801,6 +2802,7 @@ export function dryRunRegisterImport(payload: {
 export function applyRegisterImportPlan(payload: {
   entityId: string;
   filename: string;
+  planId?: string | null;
   actionItems: RegisterImportActionItem[];
   approvedActionIds: string[];
   ignoredActionIds?: string[];
@@ -2811,6 +2813,7 @@ export function applyRegisterImportPlan(payload: {
     body: JSON.stringify({
       entity_id: payload.entityId,
       filename: payload.filename,
+      plan_id: payload.planId ?? undefined,
       action_items: payload.actionItems,
       approved_action_ids: payload.approvedActionIds,
       ignored_action_ids: payload.ignoredActionIds ?? [],

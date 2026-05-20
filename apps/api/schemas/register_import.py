@@ -76,6 +76,7 @@ class RegisterImportActionItem(BaseModel):
 
 
 class RegisterImportDryRunRead(BaseModel):
+    plan_id: UUID | None = None
     entity_id: UUID
     filename: str
     sheets: list[RegisterImportSheetSummary]
@@ -91,7 +92,8 @@ class RegisterImportDryRunRead(BaseModel):
 class RegisterImportApplyRequest(BaseModel):
     entity_id: UUID
     filename: str
-    action_items: list[RegisterImportActionItem]
+    plan_id: UUID | None = None
+    action_items: list[RegisterImportActionItem] = Field(default_factory=list)
     approved_action_ids: list[str] = Field(default_factory=list)
     ignored_action_ids: list[str] = Field(default_factory=list)
     notes: str | None = None

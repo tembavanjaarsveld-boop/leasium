@@ -69,6 +69,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Shareable Insights snapshots v1: operators can freeze owner, finance, and lease-event snapshots from the live Insights overview into revocable public links with hashed tokens, expiry, public read-only rendering, and no live portfolio mutation.
 - [x] Spreadsheet portfolio import dry-run v1: `.xlsx` source-of-truth workbooks can be parsed into a no-mutation import plan for properties, units, tenants, leases, charge rules, obligations, and operational tasks, with row-level blockers/warnings and feature-candidate flags for vendors, legal entities, head leases, security originals, arrears, and issue/action queues.
 - [x] Spreadsheet portfolio Smart Intake review/apply v1: spreadsheet import plans now surface reviewable row actions in Smart Intake, require explicit approved action IDs before Apply, and store workbook filename, sheet, row, action ID, source hint, confidence, and before/after provenance on created/updated records. Pending Remba review.
+- [x] Spreadsheet import plan durability v1: dry-runs now persist a server-side review plan ID, Smart Intake Apply can use the stored plan instead of trusting browser-sent action rows, and applied plans keep the approved/ignored IDs plus apply result for audit. New migration: `20260521_0020_register_import_plans`.
 - [x] One-off SKJ portfolio workbook production import: the current source-of-truth workbook has been loaded into the hosted register with real properties, units, tenants, leases, charge rules, and obligations, while demo seed rows were archived.
 - [x] Post-import Portfolio QA workspace v1: `/portfolio-qa` brings together missing-field checks, tenant contact cleanup, source/import history, batch onboarding readiness, and internal billing draft preparation from the imported portfolio. Insights now links to Portfolio QA as the IA home for cleanup. Pending Remba review.
 - [x] Charge-rule billing draft batch v1: reviewed rent/outgoings charge rules can generate source-linked internal billing drafts and line items with idempotent same-period reuse, synthetic prep source documents, and explicit no-PDF/no-email/no-Xero guardrails.
@@ -97,7 +98,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Next Build Order
 
-- [ ] Apply the new `20260520_0018_maintenance_arrears_foundations` and `20260520_0019_tenant_portal_accounts` migrations in hosted Neon/Render if auto-migrations do not run.
+- [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, and `20260521_0020_register_import_plans` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, Portfolio QA IA link, tenant portal, invoice email action, and Operations workspace before treating them as UX complete.
 - [ ] Deepen Operations with contractor quote preview polish and maintenance invoice approval handoff.
 - [ ] Add clearer tenant portal invite expiry renewal handling and staff-triggered fresh-link flows.

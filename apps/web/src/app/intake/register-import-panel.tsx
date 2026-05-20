@@ -148,6 +148,7 @@ export function RegisterImportPanel({
       return applyRegisterImportPlan({
         entityId,
         filename: dryRun.filename,
+        planId: dryRun.plan_id,
         actionItems: dryRun.action_items,
         approvedActionIds: selectedActionIds,
         ignoredActionIds: dryRun.action_items
