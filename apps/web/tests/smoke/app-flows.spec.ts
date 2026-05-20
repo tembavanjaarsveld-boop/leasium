@@ -192,6 +192,11 @@ test("tenant portal shows scoped self-service data", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Notification Preferences" }),
   ).toBeVisible();
+  await page.getByLabel("SMS updates").uncheck();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(
+    page.getByText(/Saved .*Preferred channel: email/),
+  ).toBeVisible();
 });
 
 test("tenant portal entry shows signed-out account access when Clerk is configured", async ({

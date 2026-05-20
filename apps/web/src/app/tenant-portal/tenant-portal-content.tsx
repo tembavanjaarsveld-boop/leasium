@@ -49,6 +49,7 @@ import {
   MaintenancePriority,
   tenantPortalDocumentDownloadUrl,
   TenantPortalMaintenanceRequestPayload,
+  TenantPortalNotificationPreferencesRecord,
   TenantPortalNotificationPreferencesPayload,
   TenantPortalRecord,
   updateTenantPortalAccountNotificationPreferences,
@@ -285,6 +286,12 @@ function PreferencesForm({
     setPreferences((current) => ({ ...current, [field]: value }));
   }
 
+  const savedReceipt: TenantPortalNotificationPreferencesRecord | null =
+    saveMutation.data ??
+    (portal.notification_preferences.updated_at
+      ? portal.notification_preferences
+      : null);
+
   return (
     <Panel
       title="Notification Preferences"
@@ -324,6 +331,16 @@ function PreferencesForm({
             />
           </label>
         ))}
+        {savedReceipt ? (
+          <div className="rounded-md border border-success/25 bg-success/5 px-3 py-2 text-sm text-success">
+            Saved {formatDateTime(savedReceipt.updated_at)}. Preferred channel:{" "}
+            {label(savedReceipt.preferred_channel)}. No message sent.
+          </div>
+        ) : (
+          <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            No preference receipt yet.
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-end gap-2">
           {saveMutation.error ? (
             <span className="text-sm text-danger">

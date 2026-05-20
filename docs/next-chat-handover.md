@@ -220,9 +220,19 @@ Last updated: 2026-05-20
     - Signed-in linked tenants load the same account-scoped portal data through `/tenant-portal/account/session`.
     - Account-scoped invoice/document downloads use bearer-backed blob downloads because plain links cannot send the tenant bearer token.
     - `/tenant-portal/[token]` remains the link-and-token fallback path.
+  - Tenant portal notification preference receipts v1 is now built too.
+    - Saving notification preferences shows a timestamped receipt with the resulting preferred channel.
+    - The receipt keeps the existing guardrail clear: saving preferences does not send an email or SMS.
+    - The smoke mock now persists returned portal preference state for token and account paths.
   - This is design-facing and still needs Remba review.
 ## Verification
 
+- Tenant portal notification preference receipt checks passed:
+  - `./node_modules/.bin/eslint src/app/tenant-portal/tenant-portal-content.tsx tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant portal shows scoped self-service data"` (`1 passed`)
+  - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`7 passed`, `3 skipped`)
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
 - Tenant portal account-only entry checks passed:
   - `./node_modules/.bin/eslint 'src/app/tenant-portal/[token]/page.tsx' src/app/tenant-portal/page.tsx src/app/tenant-portal/account/page.tsx src/app/tenant-portal/tenant-portal-content.tsx src/lib/api.ts src/lib/operator-routes.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts tests/smoke/clerk-guard.spec.ts --ext .ts,.tsx`
   - `./node_modules/.bin/tsc --noEmit`
@@ -486,7 +496,7 @@ Last updated: 2026-05-20
 1. Verify the tenant account production deploy and confirm Neon has advanced through `20260520_0019`.
 2. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, and Operations workspace.
 3. Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
-4. Continue tenant portal with notification preference receipts, safer invite/link lifecycle, and clearer tenant document provenance/actions.
+4. Continue tenant portal with safer invite/link lifecycle and clearer tenant document provenance/actions.
 5. Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 

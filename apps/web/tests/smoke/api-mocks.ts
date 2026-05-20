@@ -245,10 +245,39 @@ let tenantPortalDocuments = initialTenantPortalDocuments.map((document) => ({
   ...document,
 }));
 
+const initialTenantPortalNotificationPreferences = {
+  email_enabled: true,
+  sms_enabled: true,
+  billing_email_enabled: true,
+  compliance_reminders_enabled: true,
+  preferred_channel: "both",
+  updated_at: null,
+};
+
+let tenantPortalNotificationPreferences = {
+  ...initialTenantPortalNotificationPreferences,
+};
+
 function tenantPortalDocumentsByCategory(category: string) {
   return tenantPortalDocuments.filter(
     (document) => document.category === category,
   );
+}
+
+function tenantPortalPreferredChannel(
+  emailEnabled: boolean,
+  smsEnabled: boolean,
+) {
+  if (emailEnabled && smsEnabled) {
+    return "both";
+  }
+  if (emailEnabled) {
+    return "email";
+  }
+  if (smsEnabled) {
+    return "sms";
+  }
+  return "none";
 }
 
 const arrearsCases = [
@@ -693,14 +722,7 @@ const tenantPortalSession = (authMode: "token" | "account" = "token") => ({
           }))
         : [],
     })),
-  notification_preferences: {
-    email_enabled: true,
-    sms_enabled: true,
-    billing_email_enabled: true,
-    compliance_reminders_enabled: true,
-    preferred_channel: "both",
-    updated_at: null,
-  },
+  notification_preferences: tenantPortalNotificationPreferences,
   guardrails: [
     "Tenant portal responses are scoped to the tenant attached to the onboarding token.",
     "Only approved invoice drafts are visible to tenants.",
@@ -840,6 +862,9 @@ export async function mockLeasiumApi(
   tenantPortalDocuments = initialTenantPortalDocuments.map((document) => ({
     ...document,
   }));
+  tenantPortalNotificationPreferences = {
+    ...initialTenantPortalNotificationPreferences,
+  };
 
   const xeroConnection = () => ({
     entity_id: entityId,
@@ -1669,6 +1694,41 @@ export async function mockLeasiumApi(
     if (method === "POST" && path === "/tenant-portal/account/claim") {
       tenantAccountLinked = true;
       await fulfillJson(route, tenantPortalSession("account"));
+      return;
+    }
+
+    if (
+      method === "PATCH" &&
+      path === "/tenant-portal/notification-preferences"
+    ) {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const emailEnabled =
+        typeof payload.email_enabled === "boolean"
+          ? payload.email_enabled
+          : tenantPortalNotificationPreferences.email_enabled;
+      const smsEnabled =
+        typeof payload.sms_enabled === "boolean"
+          ? payload.sms_enabled
+          : tenantPortalNotificationPreferences.sms_enabled;
+      tenantPortalNotificationPreferences = {
+        ...tenantPortalNotificationPreferences,
+        email_enabled: emailEnabled,
+        sms_enabled: smsEnabled,
+        billing_email_enabled:
+          typeof payload.billing_email_enabled === "boolean"
+            ? payload.billing_email_enabled
+            : tenantPortalNotificationPreferences.billing_email_enabled,
+        compliance_reminders_enabled:
+          typeof payload.compliance_reminders_enabled === "boolean"
+            ? payload.compliance_reminders_enabled
+            : tenantPortalNotificationPreferences.compliance_reminders_enabled,
+        preferred_channel: tenantPortalPreferredChannel(
+          emailEnabled,
+          smsEnabled,
+        ),
+        updated_at: "2026-05-20T03:15:00.000Z",
+      };
+      await fulfillJson(route, tenantPortalNotificationPreferences);
       return;
     }
 
