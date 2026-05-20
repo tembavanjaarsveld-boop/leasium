@@ -52,22 +52,40 @@ function AcceptInviteContent() {
   return <ClerkInviteLinker token={token} />;
 }
 
+function inviteErrorMessage(err: unknown) {
+  const message = err instanceof Error ? err.message : "Could not accept this invite.";
+  if (message === "Invite not found.") {
+    return "This invite link is no longer active. Open the latest invite email or ask an owner/admin to resend it.";
+  }
+  return message;
+}
+
 function ClerkInviteLinker({ token }: { token: string }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const [result, setResult] = useState<SecurityInviteAcceptRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [acceptAttempted, setAcceptAttempted] = useState(false);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !user || !token || result || submitting) {
+    setResult(null);
+    setError(null);
+    setSubmitting(false);
+    setAcceptAttempted(false);
+  }, [token]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !user || !token || result || submitting || acceptAttempted) {
       return;
     }
     const email = user.primaryEmailAddress?.emailAddress;
     if (!email) {
       setError("Your Clerk account needs a primary email address before this invite can be linked.");
+      setAcceptAttempted(true);
       return;
     }
     setSubmitting(true);
+    setAcceptAttempted(true);
     acceptSecurityInvitation({
       token,
       auth_provider_id: user.id,
@@ -79,10 +97,10 @@ function ClerkInviteLinker({ token }: { token: string }) {
         setError(null);
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Could not accept this invite.");
+        setError(inviteErrorMessage(err));
       })
       .finally(() => setSubmitting(false));
-  }, [isLoaded, isSignedIn, result, submitting, token, user]);
+  }, [acceptAttempted, isLoaded, isSignedIn, result, submitting, token, user]);
 
   if (!isLoaded || submitting) {
     return (
@@ -143,6 +161,24 @@ function ClerkInviteLinker({ token }: { token: string }) {
       <p className="text-sm text-muted-foreground">
         {error ?? "This invite could not be accepted yet."}
       </p>
+      <div className="flex flex-wrap gap-3">
+        <button
+          className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white"
+          onClick={() => {
+            setError(null);
+            setAcceptAttempted(false);
+          }}
+          type="button"
+        >
+          Try again
+        </button>
+        <Link
+          className="rounded-md border border-border px-4 py-2 text-center text-sm font-semibold"
+          href="/"
+        >
+          Open workspace
+        </Link>
+      </div>
     </>
   );
 }
