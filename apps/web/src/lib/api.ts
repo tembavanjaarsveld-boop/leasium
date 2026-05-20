@@ -1013,17 +1013,31 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestWithAuthOption<T>(
+  path: string,
+  init: RequestInit | undefined,
+  includeAuth: boolean,
+): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
-  for (const [key, value] of Object.entries(await authHeaders())) {
-    headers.set(key, value);
+  if (includeAuth) {
+    for (const [key, value] of Object.entries(await authHeaders())) {
+      headers.set(key, value);
+    }
   }
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
   });
   return parseResponse<T>(response);
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return requestWithAuthOption<T>(path, init, true);
+}
+
+async function publicRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  return requestWithAuthOption<T>(path, init, false);
 }
 
 async function requestForm<T>(path: string, formData: FormData): Promise<T> {
@@ -1071,11 +1085,23 @@ export function resendSecurityMemberInvite(memberId: string) {
   });
 }
 
-export function acceptSecurityInvitation(payload: SecurityInviteAcceptPayload) {
-  return request<SecurityInviteAcceptRecord>("/security/invitations/accept", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+export async function acceptSecurityInvitation(payload: SecurityInviteAcceptPayload) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    return await publicRequest<SecurityInviteAcceptRecord>("/security/invitations/accept", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Invite linking timed out. Refresh the page and try again.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export function getSecurityBootstrapStatus() {
