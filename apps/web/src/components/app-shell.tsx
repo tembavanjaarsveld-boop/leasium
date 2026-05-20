@@ -110,7 +110,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
 
   return (
     <header className="border-b border-border bg-white/95 backdrop-blur">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-3 px-5 py-3 md:grid-cols-[minmax(220px,1fr)_minmax(220px,auto)] xl:grid-cols-[minmax(240px,1fr)_auto_minmax(240px,1fr)]">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-3 px-5 py-3 md:grid-cols-[minmax(220px,1fr)_minmax(220px,auto)] xl:grid-cols-[220px_minmax(0,1fr)_auto]">
         <div className="min-w-0 justify-self-start">
           <Link href="/" className="flex min-w-0 items-center gap-3">
             <LeasiumMark className="h-11 w-11" />
@@ -124,7 +124,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         </div>
         <nav
           aria-label="Primary"
-          className="no-scrollbar order-3 flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl border border-border bg-white p-1 shadow-leasiumXs md:col-span-2 xl:order-none xl:col-span-1"
+          className="no-scrollbar order-3 flex max-w-full min-w-0 items-center gap-1 overflow-x-auto rounded-2xl border border-border bg-white p-1 shadow-leasiumXs md:col-span-2 xl:order-none xl:col-span-1"
         >
           {navItems.map((item) => {
             const active =
@@ -149,13 +149,10 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             type="button"
             onClick={() => setCommandOpen(true)}
             aria-label="Open search"
-            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+            title="Search (Cmd K)"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
           >
             <Search size={15} />
-            <span className="hidden 2xl:inline">Search</span>
-            <kbd className="hidden rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground 2xl:inline">
-              Cmd K
-            </kbd>
           </button>
           {children ? <div className="min-w-40 flex-1 sm:max-w-xs">{children}</div> : null}
           {clerkConfigured ? (

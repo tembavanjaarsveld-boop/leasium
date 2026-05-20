@@ -107,9 +107,21 @@ test("tenant workspace supports search and the add tenant form", async ({
 });
 
 test("settings shows Xero readiness and records mappings", async ({ page }) => {
+  await page.setViewportSize({ width: 1320, height: 900 });
   await page.goto("/settings");
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  const settingsNavLink = page.getByRole("link", { name: "Settings" }).first();
+  const searchButton = page.getByRole("button", { name: "Open search" });
+  await expect(settingsNavLink).toBeVisible();
+  await expect(searchButton).toBeVisible();
+  const settingsNavBox = await settingsNavLink.boundingBox();
+  const searchBox = await searchButton.boundingBox();
+  expect(settingsNavBox).not.toBeNull();
+  expect(searchBox).not.toBeNull();
+  expect(settingsNavBox!.x + settingsNavBox!.width).toBeLessThanOrEqual(
+    searchBox!.x - 4,
+  );
   await expect(page.getByText("Operator access")).toBeVisible();
   await expect(page.getByText("Owner Operator").first()).toBeVisible();
 
