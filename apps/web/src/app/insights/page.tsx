@@ -1,16 +1,19 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
   Building2,
   CheckCircle2,
+  Copy,
   Clock3,
+  ExternalLink,
   Gauge,
   LineChart,
   Loader2,
   RefreshCw,
+  Share2,
   ShieldCheck,
   Sparkles,
   UserRound,
@@ -21,7 +24,9 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
 import {
+  Button,
   EmptyState,
+  Field,
   PageHeader,
   SecondaryButton,
   SectionPanel,
@@ -30,10 +35,16 @@ import {
 } from "@/components/ui";
 import {
   AutomationActivityRecord,
+  createInsightsSnapshot,
   getInsightsOverview,
   InsightsOverviewRecord,
+  InsightsSnapshotCreateRecord,
+  InsightsSnapshotRecord,
+  InsightsSnapshotType,
   listEntities,
+  listInsightsSnapshots,
   LiveExceptionRecord,
+  revokeInsightsSnapshot,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -190,8 +201,118 @@ function ownershipLabel(value: string) {
   return labels[value] ?? labelStatus(value);
 }
 
+function snapshotTypeLabel(value: InsightsSnapshotType) {
+  const labels: Record<InsightsSnapshotType, string> = {
+    owner: "Owner snapshot",
+    finance: "Finance snapshot",
+    lease_events: "Lease events",
+  };
+  return labels[value];
+}
+
+function snapshotTypeDescription(value: InsightsSnapshotType) {
+  const descriptions: Record<InsightsSnapshotType, string> = {
+    owner: "Ownership, billing identity, GST, and Xero readiness.",
+    finance: "Billing readiness, draft status, unpaid invoices, and Xero sync risk.",
+    lease_events: "Rent reviews, expiries, obligations, and onboarding follow-ups.",
+  };
+  return descriptions[value];
+}
+
+function eventKindLabel(value: string) {
+  const labels: Record<string, string> = {
+    rent_review: "Rent review",
+    lease_expiry: "Lease expiry",
+    obligation: "Obligation",
+    tenant_onboarding: "Tenant onboarding",
+  };
+  return labels[value] ?? labelStatus(value);
+}
+
+function SnapshotShareLink({
+  snapshot,
+  copied,
+  onCopy,
+}: {
+  snapshot: InsightsSnapshotCreateRecord;
+  copied: boolean;
+  onCopy: (value: string) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">Snapshot link ready</div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            This link is shown once. It expires {formatDateTime(snapshot.expires_at)}.
+          </p>
+        </div>
+        <StatusBadge tone="primary">{snapshotTypeLabel(snapshot.snapshot_type)}</StatusBadge>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <SecondaryButton type="button" onClick={() => onCopy(snapshot.share_url)}>
+          <Copy size={15} />
+          {copied ? "Copied" : "Copy link"}
+        </SecondaryButton>
+        <Link
+          href={snapshot.share_url}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+        >
+          <ExternalLink size={15} />
+          Open snapshot
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function SnapshotHistoryRow({
+  snapshot,
+  onRevoke,
+  revoking,
+}: {
+  snapshot: InsightsSnapshotRecord;
+  onRevoke: (snapshotId: string) => void;
+  revoking: boolean;
+}) {
+  const expired = snapshot.expires_at
+    ? new Date(snapshot.expires_at).getTime() < Date.now()
+    : false;
+  const inactive = Boolean(snapshot.revoked_at) || expired;
+  return (
+    <div className="grid gap-3 border-t border-border px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="font-semibold">{snapshotTypeLabel(snapshot.snapshot_type)}</div>
+          <StatusBadge tone={inactive ? "neutral" : "success"}>
+            {snapshot.revoked_at ? "Revoked" : expired ? "Expired" : "Active"}
+          </StatusBadge>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          As at {formatDate(snapshot.as_of)}. Expires {formatDateTime(snapshot.expires_at)}.
+        </p>
+      </div>
+      {!inactive ? (
+        <SecondaryButton
+          type="button"
+          onClick={() => onRevoke(snapshot.id)}
+          disabled={revoking}
+        >
+          {revoking ? <Loader2 size={15} className="animate-spin" /> : null}
+          Revoke
+        </SecondaryButton>
+      ) : null}
+    </div>
+  );
+}
+
 function InsightsWorkspace() {
+  const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
+  const [snapshotType, setSnapshotType] = useState<InsightsSnapshotType>("owner");
+  const [latestSnapshot, setLatestSnapshot] =
+    useState<InsightsSnapshotCreateRecord | null>(null);
+  const [copiedSnapshotId, setCopiedSnapshotId] = useState<string | null>(null);
   const asOf = dateOnly(new Date());
 
   const entitiesQuery = useQuery({
@@ -234,6 +355,38 @@ function InsightsWorkspace() {
     enabled: Boolean(activeEntityId),
   });
 
+  const snapshotsQuery = useQuery({
+    queryKey: ["insights-snapshots", activeEntityId],
+    queryFn: () => listInsightsSnapshots(activeEntityId),
+    enabled: Boolean(activeEntityId),
+  });
+
+  const createSnapshotMutation = useMutation({
+    mutationFn: () =>
+      createInsightsSnapshot({
+        entity_id: activeEntityId,
+        snapshot_type: snapshotType,
+        as_of: asOf,
+        expires_in_days: 30,
+      }),
+    onSuccess: (snapshot) => {
+      setLatestSnapshot(snapshot);
+      setCopiedSnapshotId(null);
+      void queryClient.invalidateQueries({
+        queryKey: ["insights-snapshots", activeEntityId],
+      });
+    },
+  });
+
+  const revokeSnapshotMutation = useMutation({
+    mutationFn: revokeInsightsSnapshot,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["insights-snapshots", activeEntityId],
+      });
+    },
+  });
+
   const overview = overviewQuery.data;
   const entityError = entitiesQuery.error;
   const overviewError = overviewQuery.error;
@@ -248,6 +401,18 @@ function InsightsWorkspace() {
   const health = overview?.portfolio_health;
   const billing = overview?.billing_risk;
   const ownerSnapshot = overview?.owner_entity_snapshot;
+  const financeSnapshot = overview?.finance_snapshot;
+  const leaseEventSnapshot = overview?.lease_event_snapshot;
+  const snapshots = snapshotsQuery.data ?? [];
+
+  async function copySnapshotLink(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      window.prompt("Copy snapshot link", value);
+    }
+    setCopiedSnapshotId(latestSnapshot?.id ?? "snapshot-link");
+  }
 
   const metricCards = overview
     ? [
@@ -434,6 +599,83 @@ function InsightsWorkspace() {
               ))}
             </section>
 
+            <SectionPanel
+              title="Shareable Snapshots"
+              description="Freeze the current owner, finance, or lease-event view into a revocable link."
+              icon={<Share2 size={17} className="text-primary" />}
+              actions={<StatusBadge tone="neutral">{snapshots.length} saved</StatusBadge>}
+            >
+              <div className="grid gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+                <div className="grid content-start gap-3">
+                  <Field label="Snapshot type">
+                    <Select
+                      value={snapshotType}
+                      onChange={(event) =>
+                        setSnapshotType(event.target.value as InsightsSnapshotType)
+                      }
+                    >
+                      <option value="owner">Owner snapshot</option>
+                      <option value="finance">Finance snapshot</option>
+                      <option value="lease_events">Lease events</option>
+                    </Select>
+                  </Field>
+                  <p className="text-sm text-muted-foreground">
+                    {snapshotTypeDescription(snapshotType)}
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={() => createSnapshotMutation.mutate()}
+                    disabled={!activeEntityId || createSnapshotMutation.isPending}
+                  >
+                    {createSnapshotMutation.isPending ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Share2 size={15} />
+                    )}
+                    Generate link
+                  </Button>
+                  {createSnapshotMutation.error ? (
+                    <div className="rounded-xl border border-danger/20 bg-leasium-danger-soft p-3 text-sm text-danger">
+                      {friendlyError(createSnapshotMutation.error)}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="grid gap-3">
+                  {latestSnapshot ? (
+                    <SnapshotShareLink
+                      snapshot={latestSnapshot}
+                      copied={copiedSnapshotId === latestSnapshot.id}
+                      onCopy={copySnapshotLink}
+                    />
+                  ) : (
+                    <div className="rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                      Generated links appear here once. Existing links can be revoked
+                      from the history below.
+                    </div>
+                  )}
+                  <div className="overflow-hidden rounded-2xl border border-border bg-white">
+                    <div className="px-4 py-3 text-sm font-semibold">Snapshot history</div>
+                    {snapshots.map((snapshot) => (
+                      <SnapshotHistoryRow
+                        key={snapshot.id}
+                        snapshot={snapshot}
+                        onRevoke={(snapshotId) => revokeSnapshotMutation.mutate(snapshotId)}
+                        revoking={
+                          revokeSnapshotMutation.isPending &&
+                          revokeSnapshotMutation.variables === snapshot.id
+                        }
+                      />
+                    ))}
+                    {!snapshots.length ? (
+                      <div className="border-t border-border px-4 py-4 text-sm text-muted-foreground">
+                        No snapshots have been generated for this entity yet.
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </SectionPanel>
+
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
               <SectionPanel
                 title="Live Exceptions"
@@ -489,6 +731,73 @@ function InsightsWorkspace() {
                       ) : null}
                     </div>
                   </div>
+                </div>
+              </SectionPanel>
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+              <SectionPanel
+                title="Finance Snapshot"
+                description="A share-ready summary of billing readiness and draft invoice risk."
+                icon={<LineChart size={17} className="text-primary" />}
+              >
+                <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <CountPill
+                    label="Configured charges"
+                    value={formatMoney(financeSnapshot?.configured_charges_cents ?? 0)}
+                  />
+                  <CountPill
+                    label="Ready to bill"
+                    value={financeSnapshot?.ready_to_bill_count ?? 0}
+                  />
+                  <CountPill
+                    label="Blocked rows"
+                    value={financeSnapshot?.blocked_row_count ?? 0}
+                  />
+                  <CountPill
+                    label="Approved not synced"
+                    value={financeSnapshot?.approved_unsynced_invoice_count ?? 0}
+                  />
+                  <CountPill
+                    label="Unpaid invoices"
+                    value={financeSnapshot?.unpaid_invoice_count ?? 0}
+                  />
+                </div>
+              </SectionPanel>
+
+              <SectionPanel
+                title="Lease Events"
+                description="Upcoming reviews, expiries, obligations, and onboarding follow-ups."
+                icon={<Clock3 size={17} className="text-primary" />}
+                actions={
+                  <StatusBadge tone={leaseEventSnapshot?.next_events.length ? "warning" : "success"}>
+                    {leaseEventSnapshot?.next_events.length ?? 0} upcoming
+                  </StatusBadge>
+                }
+              >
+                <div className="divide-y divide-border">
+                  {(leaseEventSnapshot?.next_events ?? []).map((event) => (
+                    <Link
+                      key={event.id}
+                      href={event.href}
+                      className="grid gap-2 px-4 py-3 transition hover:bg-muted/60"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-semibold">{event.title}</div>
+                        <StatusBadge tone="primary">{eventKindLabel(event.kind)}</StatusBadge>
+                        <StatusBadge tone="neutral">{event.chip}</StatusBadge>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {formatDate(event.date)}
+                      </div>
+                    </Link>
+                  ))}
+                  {(leaseEventSnapshot?.next_events.length ?? 0) === 0 ? (
+                    <EmptyState
+                      title="No upcoming lease events"
+                      description="Rent reviews, expiries, obligations, and onboarding follow-ups will appear here."
+                    />
+                  ) : null}
                 </div>
               </SectionPanel>
             </div>

@@ -235,6 +235,7 @@ class Entity(Base):
     document_intakes: Mapped[list["DocumentIntake"]] = relationship(back_populates="entity")
     billing_drafts: Mapped[list["BillingDraft"]] = relationship(back_populates="entity")
     invoice_drafts: Mapped[list["InvoiceDraft"]] = relationship(back_populates="entity")
+    insights_snapshots: Mapped[list["InsightsSnapshot"]] = relationship(back_populates="entity")
 
 
 Index("entity_org_idx", Entity.organisation_id, postgresql_where=Entity.deleted_at.is_(None))
@@ -297,6 +298,48 @@ class UserEntityRole(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
+
+
+class InsightsSnapshot(Base):
+    __tablename__ = "insights_snapshot"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id"), nullable=False
+    )
+    snapshot_type: Mapped[str] = mapped_column(Text, nullable=False)
+    token_hash: Mapped[str | None] = mapped_column(Text)
+    as_of: Mapped[date] = mapped_column(Date, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JsonbCompat, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="insights_snapshots")
+
+
+Index(
+    "insights_snapshot_entity_idx",
+    InsightsSnapshot.entity_id,
+    postgresql_where=InsightsSnapshot.deleted_at.is_(None),
+)
+Index(
+    "insights_snapshot_token_hash_idx",
+    InsightsSnapshot.token_hash,
+    unique=True,
+    postgresql_where=InsightsSnapshot.token_hash.is_not(None),
+)
+Index(
+    "insights_snapshot_expiry_idx",
+    InsightsSnapshot.expires_at,
+    postgresql_where=InsightsSnapshot.deleted_at.is_(None),
+)
 
 
 class Property(Base):

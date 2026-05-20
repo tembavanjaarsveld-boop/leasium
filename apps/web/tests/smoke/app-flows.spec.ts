@@ -145,4 +145,18 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
     page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
   ).toBeVisible();
   await expect(page.getByText("Trust", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Finance Snapshot" })).toBeVisible();
+  await expect(page.getByText("Approved not synced").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Lease Events" })).toBeVisible();
+  await expect(page.getByText("Bright Cafe Pty Ltd rent review")).toBeVisible();
+
+  await page.getByRole("button", { name: "Generate link" }).click();
+  await expect(page.getByText("Snapshot link ready")).toBeVisible();
+  await page.getByRole("link", { name: "Open snapshot" }).click();
+
+  await expect(page).toHaveURL(/\/snapshots\/snapshot-token-1$/);
+  await expect(page.getByText("Frozen view")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
+  ).toBeVisible();
 });

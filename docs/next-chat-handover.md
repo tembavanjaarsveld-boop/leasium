@@ -123,7 +123,13 @@ Last updated: 2026-05-20
   - New `/api/v1/insights/overview` returns portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots from existing register, rent-roll, Xero readiness, and audit data.
   - The endpoint is read-only and does not expose audit `tool_input`.
   - `/insights` now uses the overview API instead of stitching together many separate client-side queries.
-  - Shareable owner/finance/lease-event snapshots are still backlog work generated from this live overview data.
+  - This is design-facing and still needs Remba review.
+- Shareable Insights snapshots v1 is built on this branch.
+  - The overview payload now includes finance and lease-event snapshots alongside owner/entity snapshot data.
+  - New `/api/v1/insights/snapshots` creates hashed-token, expiring, revocable frozen snapshots from the live overview.
+  - New `/api/v1/insights/snapshots/public/{token}` serves the frozen public snapshot without recomputing live portfolio data.
+  - `/insights` can generate owner, finance, or lease-event snapshot links and revoke saved snapshots.
+  - New public `/snapshots/<token>` renders the shared snapshot as a read-only frozen view, and the operator sign-in guard leaves this public path open.
   - This is design-facing and still needs Remba review.
 - Dashboard and Insights loading-state polish is built on this branch.
   - Dashboard now shows a clear live-portfolio loading panel while entity/data
@@ -308,6 +314,14 @@ Last updated: 2026-05-20
   - Production alias `/setup` returned `200`.
   - Production alias `/sign-in` returned `200`.
   - Production alias `/settings` returned `200` because Clerk server env vars are not enabled on Vercel yet; after enabling both Clerk keys and redeploying, it should redirect signed-out users to `/sign-in`.
+- Shareable Insights snapshots v1 checks passed:
+  - `.venv/bin/python -m ruff check apps/api/routers/insights.py apps/api/schemas/insights.py stewart/core/models.py migrations/versions/20260520_0016_insights_snapshots.py tests/integration/test_insights_api.py`
+  - `.venv/bin/python -m pytest tests/integration/test_insights_api.py tests/integration/test_xero_api.py -q` (`4 passed`)
+  - `.venv/bin/python -m pytest -q` (`67 passed`, `1 skipped`; migration smoke skipped because `TEST_DATABASE_URL` is not configured)
+  - `./node_modules/.bin/eslint src/app/insights/page.tsx 'src/app/snapshots/[token]/page.tsx' src/lib/api.ts src/lib/operator-routes.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  - `PORT=3003 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`5 passed`, `1 skipped` for the real-Clerk browser guard)
 
 ## Important Deployment Notes
 
@@ -332,6 +346,7 @@ Last updated: 2026-05-20
   - After the Clerk redeploy, verify `/settings` redirects to `/sign-in`, while `/setup`, `/accept-invite`, `/sign-in`, `/sign-up`, `/access`, and `/onboarding/<token>` remain public.
 - Neon production is confirmed migrated through `20260520_0015` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
   - Verified `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
+  - New migration `20260520_0016_insights_snapshots` must be applied before shareable Insights snapshot links work on production data.
 - Xero readiness v1 uses existing columns only and does not need a new database migration.
 - Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still needs to be configured outside the codebase.
 - Public enrichment requires `OPENAI_API_KEY` on the API service. Without it, preview returns a clear 503 and does not mutate records.
@@ -341,10 +356,9 @@ Last updated: 2026-05-20
 1. Enable the temporary Vercel password gate and verify production access behavior.
 2. Complete provider-backed operator login: configure Clerk/SendGrid production env vars, run `/setup` on a clean database or send the first real owner/admin invite, verify acceptance, and switch `AUTH_MODE` to clerk.
 3. Complete provider-backed Xero OAuth/contact sync, invoice posting approvals, and payment reconciliation on top of the readiness queue.
-4. Add shareable owner, finance, and lease-event snapshots generated from the live Insights overview data.
-5. Add provider-backed invoice email delivery and Xero posting approvals on top of internal invoice drafts.
-6. Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
-7. Start maintenance work orders and arrears/credit-control queues.
+4. Add provider-backed invoice email delivery and Xero posting approvals on top of internal invoice drafts.
+5. Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
+6. Start maintenance work orders and arrears/credit-control queues.
 
 ## Resume Checklist
 

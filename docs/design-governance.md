@@ -20,7 +20,7 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
 ## Standing UX Direction
 
 - Home is a dashboard: quick adds, notifications, events, updates, and operational health.
-- Insights is the portfolio dashboard layer: live health, exceptions, automation activity, and shareable snapshots generated later from the same data.
+- Insights is the portfolio dashboard layer: live health, exceptions, automation activity, and shareable snapshots generated from the same data.
 - Property work belongs in the property workspace: lease intake, units, leases, obligations, rent roll, and property-level billing readiness.
 - Tenant work belongs in the tenant workspace: tenant search, contact/billing details, onboarding state, leases, documents, and activity.
 - New modules should earn their own page when they become repeated work, not be squeezed into an existing page.
@@ -179,7 +179,7 @@ Status: pending Remba review. When Clerk server and publishable keys are configu
 
 ## Insights Overview Surface
 
-Status: pending Remba review. Insights now uses a backend overview for portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots. Keep it read-only, link users to the owning workspace for action, and leave shareable owner/finance snapshots for a later pass generated from the same data.
+Status: pending Remba review. Insights now uses a backend overview for portfolio health, live exceptions, automation activity, billing risk, owner/entity snapshots, finance snapshots, and lease-event snapshots. Operators can generate revocable public links for owner, finance, and lease-event snapshot views. Keep the internal page read-only, keep public snapshot pages clearly frozen/read-only, and avoid turning shared snapshots into live portals.
 
 ## Property Provenance Surface
 

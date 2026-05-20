@@ -1,10 +1,15 @@
 """Schemas for the read-only Insights overview."""
 
-from datetime import date, datetime
+from __future__ import annotations
+
+from datetime import date as Date
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+InsightsSnapshotType = Literal["owner", "finance", "lease_events"]
 
 
 class InsightsEntityRead(BaseModel):
@@ -52,7 +57,7 @@ class LiveExceptionRead(BaseModel):
     title: str
     detail: str
     chip: str
-    due_date: date | None = None
+    due_date: Date | None = None
     source: str
     href: str
     target: InsightTargetRead = Field(default_factory=InsightTargetRead)
@@ -84,6 +89,16 @@ class BillingRiskRead(BaseModel):
     unpaid_invoice_count: int
 
 
+class FinanceSnapshotRead(BaseModel):
+    configured_charges_cents: int
+    ready_to_bill_count: int
+    blocked_row_count: int
+    approved_unsynced_invoice_count: int
+    unpaid_invoice_count: int
+    billing_draft_counts: dict[str, int]
+    invoice_draft_counts: dict[str, int]
+
+
 class OwnerEntitySnapshotRead(BaseModel):
     ownership_profile_counts: dict[str, int]
     missing_invoice_issuer_count: int
@@ -96,12 +111,69 @@ class OwnerEntitySnapshotRead(BaseModel):
     xero_last_sync_at: datetime | None
 
 
+class LeaseEventRead(BaseModel):
+    id: str
+    kind: Literal["rent_review", "lease_expiry", "obligation", "tenant_onboarding"]
+    title: str
+    date: Date | None = None
+    chip: str
+    href: str
+    target: InsightTargetRead = Field(default_factory=InsightTargetRead)
+    rank: int = 0
+
+
+class LeaseEventSnapshotRead(BaseModel):
+    active_lease_count: int
+    next_review_count: int
+    next_expiry_count: int
+    overdue_obligation_count: int
+    due_soon_obligation_count: int
+    tenant_onboarding_waiting_count: int
+    next_events: list[LeaseEventRead] = Field(default_factory=list)
+
+
 class InsightsOverviewRead(BaseModel):
     entity: InsightsEntityRead
-    as_of: date
+    as_of: Date
     portfolio_health: PortfolioHealthRead
     live_exceptions: list[LiveExceptionRead]
     automation_activity: list[AutomationActivityRead]
     billing_risk: BillingRiskRead
+    finance_snapshot: FinanceSnapshotRead
     owner_entity_snapshot: OwnerEntitySnapshotRead
+    lease_event_snapshot: LeaseEventSnapshotRead
     guardrails: list[str]
+
+
+class InsightsSnapshotCreate(BaseModel):
+    entity_id: UUID
+    snapshot_type: InsightsSnapshotType = "owner"
+    as_of: Date | None = None
+    expires_in_days: int = Field(default=30, ge=1, le=180)
+
+
+class InsightsSnapshotRead(BaseModel):
+    id: UUID
+    entity_id: UUID
+    snapshot_type: InsightsSnapshotType
+    as_of: Date
+    created_at: datetime
+    expires_at: datetime | None
+    revoked_at: datetime | None
+    payload: InsightsOverviewRead
+    share_url: str | None = None
+
+
+class InsightsSnapshotCreateRead(InsightsSnapshotRead):
+    token: str
+    share_url: str
+
+
+class InsightsSnapshotPublicRead(BaseModel):
+    id: UUID
+    snapshot_type: InsightsSnapshotType
+    as_of: Date
+    created_at: datetime
+    expires_at: datetime | None
+    payload: InsightsOverviewRead
+    guardrails: list[str] = Field(default_factory=list)

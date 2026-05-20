@@ -61,12 +61,12 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Operator workspace sign-in guard: when Clerk server and publishable keys are configured, middleware redirects signed-out protected workspace requests to operator sign-in before dashboard/API loading; the client shell also shows a friendly sign-in required state, while public onboarding, setup, invite, and access-gate routes remain open.
 - [x] Xero readiness and mapping v1: Settings now surfaces entity connection state, contact readiness, chart/account mapping gaps, tax mapping gaps, approved invoice sync queues, and payment reconciliation counts, with suggested charge-rule mappings and no live Xero posting.
 - [x] Insights overview v1: the Insights workspace now has a read-only backend overview for portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots, with no record mutation, invoice posting, or Xero sync.
+- [x] Shareable Insights snapshots v1: operators can freeze owner, finance, and lease-event snapshots from the live Insights overview into revocable public links with hashed tokens, expiry, public read-only rendering, and no live portfolio mutation.
 
 ## Next Build Order
 
 - [ ] Complete production operator-login rollout: configure Clerk/SendGrid env vars, run first workspace setup on a clean database or send the first real invite from an existing owner/admin, then switch `AUTH_MODE` to Clerk after acceptance is verified.
 - [ ] Complete provider-backed Xero OAuth/contact sync, invoice posting approvals, and payment reconciliation on top of the readiness queue.
-- [ ] Add shareable owner, finance, and lease-event snapshots generated from the live Insights overview data.
 - [ ] Add provider-backed invoice email delivery and Xero posting approvals on top of the internal invoice draft/PDF/payment workflow.
 - [ ] Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
 - [ ] Add maintenance work orders with tenant requests, photos, priorities, contractor assignment, approvals, invoices, and status tracking.

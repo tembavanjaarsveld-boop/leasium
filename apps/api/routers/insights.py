@@ -1,5 +1,7 @@
-"""Read-only Insights overview routes."""
+"""Insights overview and shareable snapshot routes."""
 
+import hashlib
+import secrets
 from collections import Counter
 from datetime import date, timedelta
 from typing import Annotated
@@ -8,12 +10,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
+from stewart.core.audit import audit_log
+from stewart.core.db import utcnow
 from stewart.core.models import (
     AuditAction,
     BillingDraft,
     DocumentIntake,
     DocumentIntakeStatus,
     Entity,
+    InsightsSnapshot,
     InvoiceDraft,
     Lease,
     Obligation,
@@ -25,6 +30,7 @@ from stewart.core.models import (
     TenantOnboardingStatus,
     UserRole,
 )
+from stewart.core.settings import Settings, get_settings
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.routers.charge_rules import rent_roll
@@ -32,9 +38,16 @@ from apps.api.routers.xero import xero_status
 from apps.api.schemas.insights import (
     AutomationActivityRead,
     BillingRiskRead,
+    FinanceSnapshotRead,
     InsightsEntityRead,
     InsightsOverviewRead,
+    InsightsSnapshotCreate,
+    InsightsSnapshotCreateRead,
+    InsightsSnapshotPublicRead,
+    InsightsSnapshotRead,
     InsightTargetRead,
+    LeaseEventRead,
+    LeaseEventSnapshotRead,
     LiveExceptionRead,
     OwnerEntitySnapshotRead,
     PortfolioHealthRead,
@@ -43,6 +56,7 @@ from apps.api.schemas.insights import (
 router = APIRouter(prefix="/insights", tags=["insights"])
 
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
+WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 
 OPEN_OBLIGATION_STATUSES = {
     ObligationStatus.upcoming,
@@ -114,11 +128,73 @@ def _activity_label(action: AuditAction) -> tuple[str, str]:
     return table, f"{verb.title()} {table}"
 
 
-@router.get("/overview", response_model=InsightsOverviewRead)
-def insights_overview(
-    user: Annotated[CurrentUser, Depends(get_current_user)],
-    session: Annotated[Session, Depends(get_session)],
-    entity_id: Annotated[UUID, Query()],
+def _snapshot_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _snapshot_share_url(token: str, settings: Settings) -> str:
+    return f"{settings.frontend_url.rstrip('/')}/snapshots/{token}"
+
+
+def _is_expired(value: object, now: object) -> bool:
+    if value is None:
+        return False
+    expires_at = value
+    compare_now = now
+    if (
+        getattr(expires_at, "tzinfo", None) is None
+        and getattr(compare_now, "tzinfo", None) is not None
+    ):
+        compare_now = compare_now.replace(tzinfo=None)
+    return expires_at <= compare_now
+
+
+def _snapshot_payload(snapshot: InsightsSnapshot) -> InsightsOverviewRead:
+    return InsightsOverviewRead.model_validate(snapshot.payload)
+
+
+def _snapshot_read(
+    snapshot: InsightsSnapshot,
+    *,
+    token: str | None = None,
+    settings: Settings | None = None,
+) -> InsightsSnapshotRead | InsightsSnapshotCreateRead:
+    share_url = _snapshot_share_url(token, settings) if token and settings else None
+    data = {
+        "id": snapshot.id,
+        "entity_id": snapshot.entity_id,
+        "snapshot_type": snapshot.snapshot_type,
+        "as_of": snapshot.as_of,
+        "created_at": snapshot.created_at,
+        "expires_at": snapshot.expires_at,
+        "revoked_at": snapshot.revoked_at,
+        "payload": _snapshot_payload(snapshot),
+        "share_url": share_url,
+    }
+    if token and share_url:
+        return InsightsSnapshotCreateRead(**data, token=token)
+    return InsightsSnapshotRead(**data)
+
+
+def _lease_event_title(
+    lease: Lease,
+    units_by_id: dict[UUID, TenancyUnit],
+    properties_by_id: dict[UUID, Property],
+    tenants_by_id: dict[UUID, Tenant],
+    suffix: str,
+) -> str:
+    tenant = tenants_by_id.get(lease.tenant_id)
+    unit = units_by_id.get(lease.tenancy_unit_id)
+    prop = properties_by_id.get(unit.property_id) if unit else None
+    label = tenant.legal_name if tenant else "Lease"
+    context = f" - {prop.name}, {unit.unit_label}" if prop and unit else ""
+    return f"{label} {suffix}{context}"
+
+
+def _build_insights_overview(
+    user: CurrentUser,
+    session: Session,
+    entity_id: UUID,
     as_of: date | None = None,
 ) -> InsightsOverviewRead:
     assert_entity_role(session, user, entity_id, READ_ROLES)
@@ -135,6 +211,7 @@ def insights_overview(
             .order_by(Property.name)
         )
     )
+
     property_ids = [prop.id for prop in properties]
     tenants = list(
         session.scalars(
@@ -170,6 +247,9 @@ def insights_overview(
         else []
     )
     occupied_unit_ids = {lease.tenancy_unit_id for lease in active_leases}
+    properties_by_id = {prop.id: prop for prop in properties}
+    units_by_id = {unit.id: unit for unit in units}
+    tenants_by_id = {tenant.id: tenant for tenant in tenants}
 
     obligations = list(
         session.scalars(
@@ -358,6 +438,108 @@ def insights_overview(
         )
     live_exceptions.sort(key=lambda item: (item.rank, item.kind, item.title))
 
+    lease_event_until = as_of + timedelta(days=120)
+    lease_events: list[LeaseEventRead] = []
+    next_review_count = 0
+    next_expiry_count = 0
+    for lease in active_leases:
+        if lease.next_review_date and as_of <= lease.next_review_date <= lease_event_until:
+            next_review_count += 1
+            lease_events.append(
+                LeaseEventRead(
+                    id=f"rent-review-{lease.id}",
+                    kind="rent_review",
+                    title=_lease_event_title(
+                        lease,
+                        units_by_id,
+                        properties_by_id,
+                        tenants_by_id,
+                        "rent review",
+                    ),
+                    date=lease.next_review_date,
+                    chip=_date_chip(lease.next_review_date, as_of),
+                    href="/properties",
+                    target=InsightTargetRead(
+                        property_id=units_by_id.get(lease.tenancy_unit_id).property_id
+                        if units_by_id.get(lease.tenancy_unit_id)
+                        else None,
+                        tenancy_unit_id=lease.tenancy_unit_id,
+                        lease_id=lease.id,
+                        tenant_id=lease.tenant_id,
+                    ),
+                    rank=_days_until(lease.next_review_date, as_of),
+                )
+            )
+        if lease.expiry_date and as_of <= lease.expiry_date <= lease_event_until:
+            next_expiry_count += 1
+            lease_events.append(
+                LeaseEventRead(
+                    id=f"lease-expiry-{lease.id}",
+                    kind="lease_expiry",
+                    title=_lease_event_title(
+                        lease,
+                        units_by_id,
+                        properties_by_id,
+                        tenants_by_id,
+                        "lease expiry",
+                    ),
+                    date=lease.expiry_date,
+                    chip=_date_chip(lease.expiry_date, as_of),
+                    href="/properties",
+                    target=InsightTargetRead(
+                        property_id=units_by_id.get(lease.tenancy_unit_id).property_id
+                        if units_by_id.get(lease.tenancy_unit_id)
+                        else None,
+                        tenancy_unit_id=lease.tenancy_unit_id,
+                        lease_id=lease.id,
+                        tenant_id=lease.tenant_id,
+                    ),
+                    rank=_days_until(lease.expiry_date, as_of),
+                )
+            )
+    for obligation in [item for item in open_obligations if item.due_date <= due_soon_until]:
+        lease_events.append(
+            LeaseEventRead(
+                id=f"obligation-{obligation.id}",
+                kind="obligation",
+                title=obligation.title,
+                date=obligation.due_date,
+                chip=_date_chip(obligation.due_date, as_of),
+                href="/tasks",
+                target=InsightTargetRead(
+                    property_id=obligation.property_id,
+                    tenancy_unit_id=obligation.tenancy_unit_id,
+                    lease_id=obligation.lease_id,
+                    obligation_id=obligation.id,
+                ),
+                rank=_days_until(obligation.due_date, as_of),
+            )
+        )
+    for onboarding in waiting_onboardings:
+        tenant = tenants_by_id.get(onboarding.tenant_id)
+        lease_events.append(
+            LeaseEventRead(
+                id=f"tenant-onboarding-{onboarding.id}",
+                kind="tenant_onboarding",
+                title=f"Tenant onboarding - {tenant.legal_name if tenant else 'Tenant'}",
+                date=onboarding.due_date,
+                chip=(
+                    "Needs review"
+                    if onboarding.status == TenantOnboardingStatus.submitted
+                    else _date_chip(onboarding.due_date, as_of)
+                ),
+                href="/tenants",
+                target=InsightTargetRead(
+                    lease_id=onboarding.lease_id,
+                    tenant_id=onboarding.tenant_id,
+                ),
+                rank=-2
+                if onboarding.status == TenantOnboardingStatus.submitted
+                else _days_until(onboarding.due_date, as_of),
+            )
+        )
+    lease_events.sort(key=lambda item: (item.rank, item.kind, item.title))
+
     audit_rows = list(
         session.scalars(
             select(AuditAction)
@@ -423,6 +605,15 @@ def insights_overview(
             approved_unsynced_invoice_count=xero.invoice_sync.approved_unsynced,
             unpaid_invoice_count=xero.payment_reconciliation.unpaid,
         ),
+        finance_snapshot=FinanceSnapshotRead(
+            configured_charges_cents=configured_charges_cents,
+            ready_to_bill_count=len(ready_rows),
+            blocked_row_count=len(blocked_rows),
+            approved_unsynced_invoice_count=xero.invoice_sync.approved_unsynced,
+            unpaid_invoice_count=xero.payment_reconciliation.unpaid,
+            billing_draft_counts=dict(billing_draft_status_counts),
+            invoice_draft_counts=dict(invoice_draft_status_counts),
+        ),
         owner_entity_snapshot=OwnerEntitySnapshotRead(
             ownership_profile_counts=dict(ownership_counter),
             missing_invoice_issuer_count=sum(
@@ -450,6 +641,15 @@ def insights_overview(
             xero_connected=bool(entity.xero_tenant_id),
             xero_last_sync_at=entity.xero_last_sync_at,
         ),
+        lease_event_snapshot=LeaseEventSnapshotRead(
+            active_lease_count=len(active_leases),
+            next_review_count=next_review_count,
+            next_expiry_count=next_expiry_count,
+            overdue_obligation_count=len(overdue_obligations),
+            due_soon_obligation_count=len(due_soon_obligations),
+            tenant_onboarding_waiting_count=len(waiting_onboardings),
+            next_events=lease_events[:8],
+        ),
         guardrails=[
             "Insights is read-only and does not mutate portfolio records.",
             (
@@ -459,3 +659,164 @@ def insights_overview(
             "Automation activity is summarized from audit logs without exposing tool inputs.",
         ],
     )
+
+@router.get("/overview", response_model=InsightsOverviewRead)
+def insights_overview(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    entity_id: Annotated[UUID, Query()],
+    as_of: date | None = None,
+) -> InsightsOverviewRead:
+    return _build_insights_overview(user, session, entity_id, as_of)
+
+
+@router.post(
+    "/snapshots",
+    response_model=InsightsSnapshotCreateRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_insights_snapshot(
+    payload: InsightsSnapshotCreate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> InsightsSnapshotCreateRead:
+    assert_entity_role(session, user, payload.entity_id, WRITE_ROLES)
+    as_of = payload.as_of or date.today()
+    overview = _build_insights_overview(user, session, payload.entity_id, as_of)
+    token = secrets.token_urlsafe(32)
+    snapshot = InsightsSnapshot(
+        entity_id=payload.entity_id,
+        created_by_user_id=user.id,
+        snapshot_type=payload.snapshot_type,
+        token_hash=_snapshot_token_hash(token),
+        as_of=as_of,
+        payload=overview.model_dump(mode="json"),
+        expires_at=utcnow() + timedelta(days=payload.expires_in_days),
+    )
+    session.add(snapshot)
+    session.flush()
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=payload.entity_id,
+        action="create_share_link",
+        target_table="insights_snapshot",
+        target_id=snapshot.id,
+        tool_name="insights_snapshot",
+        tool_input={
+            "snapshot_type": payload.snapshot_type,
+            "as_of": as_of.isoformat(),
+            "expires_in_days": payload.expires_in_days,
+        },
+        tool_output_summary=f"Created {payload.snapshot_type} Insights snapshot.",
+        data_classification="internal",
+    )
+    session.commit()
+    session.refresh(snapshot)
+    return _snapshot_read(snapshot, token=token, settings=settings)
+
+
+@router.get("/snapshots/public/{token}", response_model=InsightsSnapshotPublicRead)
+def get_public_insights_snapshot(
+    token: str,
+    session: Annotated[Session, Depends(get_session)],
+) -> InsightsSnapshotPublicRead:
+    snapshot = session.scalar(
+        select(InsightsSnapshot).where(
+            InsightsSnapshot.token_hash == _snapshot_token_hash(token),
+            InsightsSnapshot.deleted_at.is_(None),
+        )
+    )
+    now = utcnow()
+    if (
+        snapshot is None
+        or snapshot.revoked_at is not None
+        or _is_expired(snapshot.expires_at, now)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Insights snapshot not found.",
+        )
+    return InsightsSnapshotPublicRead(
+        id=snapshot.id,
+        snapshot_type=snapshot.snapshot_type,
+        as_of=snapshot.as_of,
+        created_at=snapshot.created_at,
+        expires_at=snapshot.expires_at,
+        payload=_snapshot_payload(snapshot),
+        guardrails=[
+            "This is a frozen snapshot, not a live portfolio connection.",
+            "The public link cannot mutate Leasium records.",
+        ],
+    )
+
+
+@router.get("/snapshots", response_model=list[InsightsSnapshotRead])
+def list_insights_snapshots(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    entity_id: Annotated[UUID, Query()],
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> list[InsightsSnapshotRead]:
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    rows = session.scalars(
+        select(InsightsSnapshot)
+        .where(
+            InsightsSnapshot.entity_id == entity_id,
+            InsightsSnapshot.deleted_at.is_(None),
+        )
+        .order_by(InsightsSnapshot.created_at.desc())
+        .limit(limit)
+    )
+    return [_snapshot_read(row) for row in rows]
+
+
+@router.get("/snapshots/{snapshot_id}", response_model=InsightsSnapshotRead)
+def get_insights_snapshot(
+    snapshot_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> InsightsSnapshotRead:
+    snapshot = session.get(InsightsSnapshot, snapshot_id)
+    if snapshot is None or snapshot.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Insights snapshot not found.",
+        )
+    assert_entity_role(session, user, snapshot.entity_id, READ_ROLES)
+    return _snapshot_read(snapshot)
+
+
+@router.post("/snapshots/{snapshot_id}/revoke", response_model=InsightsSnapshotRead)
+def revoke_insights_snapshot(
+    snapshot_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> InsightsSnapshotRead:
+    snapshot = session.get(InsightsSnapshot, snapshot_id)
+    if snapshot is None or snapshot.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Insights snapshot not found.",
+        )
+    assert_entity_role(session, user, snapshot.entity_id, WRITE_ROLES)
+    if snapshot.revoked_at is None:
+        snapshot.revoked_at = utcnow()
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=snapshot.entity_id,
+        action="revoke_share_link",
+        target_table="insights_snapshot",
+        target_id=snapshot.id,
+        tool_name="insights_snapshot",
+        tool_input={"snapshot_type": snapshot.snapshot_type},
+        tool_output_summary=f"Revoked {snapshot.snapshot_type} Insights snapshot.",
+        data_classification="internal",
+    )
+    session.commit()
+    session.refresh(snapshot)
+    return _snapshot_read(snapshot)

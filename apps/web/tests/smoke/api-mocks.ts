@@ -479,6 +479,8 @@ export async function mockLeasiumApi(page: Page) {
   let xeroConnectedAt: string | null = null;
   let chargeAccountCode: string | null = "401";
   let chargeTaxType: string | null = null;
+  let snapshotCount = 0;
+  let insightSnapshots: JsonBody[] = [];
 
   const xeroConnection = () => ({
     entity_id: entityId,
@@ -694,6 +696,15 @@ export async function mockLeasiumApi(page: Page) {
         approved_unsynced_invoice_count: 1,
         unpaid_invoice_count: 1,
       },
+      finance_snapshot: {
+        configured_charges_cents: 800000,
+        ready_to_bill_count: chargeTaxType ? 1 : 0,
+        blocked_row_count: chargeTaxType ? 0 : 1,
+        approved_unsynced_invoice_count: 1,
+        unpaid_invoice_count: 1,
+        billing_draft_counts: { approved: 1 },
+        invoice_draft_counts: { ready_for_approval: 1 },
+      },
       owner_entity_snapshot: {
         ownership_profile_counts: { trust: 1 },
         missing_invoice_issuer_count: 0,
@@ -704,6 +715,35 @@ export async function mockLeasiumApi(page: Page) {
         entity_gst_registered: true,
         xero_connected: Boolean(xeroTenantId),
         xero_last_sync_at: null,
+      },
+      lease_event_snapshot: {
+        active_lease_count: 1,
+        next_review_count: 1,
+        next_expiry_count: 0,
+        overdue_obligation_count: 0,
+        due_soon_obligation_count: 1,
+        tenant_onboarding_waiting_count: 1,
+        next_events: [
+          {
+            id: `rent-review-${leaseId}`,
+            kind: "rent_review",
+            title: "Bright Cafe Pty Ltd rent review - Queen Street Retail Centre, Shop 3",
+            date: "2026-07-01",
+            chip: "01 Jul 2026",
+            href: "/properties",
+            target: {
+              property_id: propertyId,
+              tenancy_unit_id: unitId,
+              lease_id: leaseId,
+              tenant_id: tenantId,
+              document_intake_id: null,
+              obligation_id: null,
+              billing_draft_id: null,
+              invoice_draft_id: null,
+            },
+            rank: 43,
+          },
+        ],
       },
       guardrails: [
         "Insights is read-only and does not mutate portfolio records.",
@@ -753,6 +793,87 @@ export async function mockLeasiumApi(page: Page) {
 
     if (method === "GET" && path === "/insights/overview") {
       await fulfillJson(route, insightsOverview());
+      return;
+    }
+
+    if (method === "POST" && path === "/insights/snapshots") {
+      const payload = request.postDataJSON() as {
+        snapshot_type?: string;
+        as_of?: string;
+      };
+      snapshotCount += 1;
+      const token = `snapshot-token-${snapshotCount}`;
+      const snapshot = {
+        id: `snapshot-${snapshotCount}`,
+        entity_id: entityId,
+        snapshot_type: payload.snapshot_type ?? "owner",
+        as_of: payload.as_of ?? "2026-05-19",
+        created_at: "2026-05-19T10:00:00.000Z",
+        expires_at: "2026-06-18T10:00:00.000Z",
+        revoked_at: null,
+        payload: insightsOverview(),
+        share_url: null,
+      };
+      insightSnapshots = [snapshot, ...insightSnapshots];
+      await fulfillJson(
+        route,
+        {
+          ...snapshot,
+          token,
+          share_url: `/snapshots/${token}`,
+        },
+        201,
+      );
+      return;
+    }
+
+    if (method === "GET" && path === "/insights/snapshots") {
+      await fulfillJson(route, insightSnapshots);
+      return;
+    }
+
+    if (method === "GET" && path.startsWith("/insights/snapshots/public/")) {
+      const token = path.split("/").pop();
+      const tokenIndex = Number(token?.replace("snapshot-token-", "")) - 1;
+      const snapshot = insightSnapshots[tokenIndex] as
+        | { [key: string]: JsonBody }
+        | undefined;
+      if (!snapshot || snapshot.revoked_at) {
+        await fulfillJson(route, { detail: "Insights snapshot not found." }, 404);
+        return;
+      }
+      await fulfillJson(route, {
+        id: snapshot.id,
+        snapshot_type: snapshot.snapshot_type,
+        as_of: snapshot.as_of,
+        created_at: snapshot.created_at,
+        expires_at: snapshot.expires_at,
+        payload: snapshot.payload,
+        guardrails: [
+          "This is a frozen snapshot, not a live portfolio connection.",
+          "The public link cannot mutate Leasium records.",
+        ],
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path.startsWith("/insights/snapshots/") &&
+      path.endsWith("/revoke")
+    ) {
+      const snapshotId = path.split("/").at(-2);
+      insightSnapshots = insightSnapshots.map((snapshot) => {
+        const row = snapshot as { [key: string]: JsonBody };
+        if (row.id === snapshotId) {
+          return { ...row, revoked_at: "2026-05-19T10:30:00.000Z" };
+        }
+        return row;
+      });
+      const revoked = insightSnapshots.find(
+        (snapshot) => (snapshot as { [key: string]: JsonBody }).id === snapshotId,
+      );
+      await fulfillJson(route, revoked ?? { detail: "Insights snapshot not found." });
       return;
     }
 

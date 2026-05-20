@@ -1,6 +1,6 @@
 """Insights overview API integration tests."""
 
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
@@ -17,6 +17,7 @@ from stewart.core.models import (
     DocumentIntake,
     DocumentIntakeStatus,
     Entity,
+    InsightsSnapshot,
     InvoiceDraft,
     InvoiceDraftStatus,
     StoredDocument,
@@ -85,6 +86,7 @@ def test_insights_overview_summarises_live_operations_without_leaking_tool_input
             "expiry_date": "2028-12-31",
             "annual_rent_cents": 1200000,
             "rent_frequency": "monthly",
+            "next_review_date": "2026-06-15",
         },
     )
     assert lease_response.status_code == 201
@@ -234,6 +236,8 @@ def test_insights_overview_summarises_live_operations_without_leaking_tool_input
     assert body["billing_risk"]["unpaid_invoice_count"] == 1
     assert body["billing_risk"]["billing_draft_counts"]["approved"] == 1
     assert body["billing_risk"]["invoice_draft_counts"]["approved"] == 1
+    assert body["finance_snapshot"]["configured_charges_cents"] > 0
+    assert body["finance_snapshot"]["approved_unsynced_invoice_count"] == 1
 
     snapshot = body["owner_entity_snapshot"]
     assert snapshot["ownership_profile_counts"]["trust"] == 1
@@ -241,8 +245,87 @@ def test_insights_overview_summarises_live_operations_without_leaking_tool_input
     assert snapshot["missing_trustee_count"] == 1
     assert snapshot["missing_xero_contact_count"] == 1
 
+    lease_events = body["lease_event_snapshot"]
+    assert lease_events["active_lease_count"] == 1
+    assert lease_events["next_review_count"] == 1
+    assert any(item["kind"] == "rent_review" for item in lease_events["next_events"])
+
     activity = body["automation_activity"]
     assert activity
     assert "tool_input" not in activity[0]
     assert "do-not-return" not in response.text
     assert body["guardrails"][0] == "Insights is read-only and does not mutate portfolio records."
+
+
+def test_insights_snapshots_freeze_public_payload_and_revoke(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/insights/snapshots",
+        json={
+            "entity_id": entity_id,
+            "snapshot_type": "finance",
+            "as_of": "2026-05-19",
+            "expires_in_days": 30,
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["snapshot_type"] == "finance"
+    assert created["token"]
+    assert created["share_url"].endswith(f"/snapshots/{created['token']}")
+    assert created["payload"]["entity"]["name"] == "SKJ Property Pty Ltd"
+
+    stored = session.get(InsightsSnapshot, UUID(created["id"]))
+    assert stored is not None
+    assert stored.token_hash != created["token"]
+    assert len(stored.token_hash or "") == 64
+
+    public_response = client.get(f"/api/v1/insights/snapshots/public/{created['token']}")
+    assert public_response.status_code == 200
+    public_body = public_response.json()
+    assert public_body["payload"]["entity"]["name"] == "SKJ Property Pty Ltd"
+    assert public_body["payload"]["finance_snapshot"]["ready_to_bill_count"] >= 0
+    assert "tool_input" not in public_response.text
+
+    list_response = client.get(f"/api/v1/insights/snapshots?entity_id={entity_id}")
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["id"] == created["id"]
+    assert list_response.json()[0]["share_url"] is None
+
+    revoke_response = client.post(f"/api/v1/insights/snapshots/{created['id']}/revoke")
+    assert revoke_response.status_code == 200
+    assert revoke_response.json()["revoked_at"] is not None
+    revoked_public_response = client.get(
+        f"/api/v1/insights/snapshots/public/{created['token']}"
+    )
+    assert revoked_public_response.status_code == 404
+
+
+def test_expired_insights_snapshot_public_link_is_blocked(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    create_response = client.post(
+        "/api/v1/insights/snapshots",
+        json={
+            "entity_id": entity_id,
+            "snapshot_type": "owner",
+            "as_of": "2026-05-19",
+            "expires_in_days": 1,
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+
+    snapshot = session.get(InsightsSnapshot, UUID(created["id"]))
+    assert snapshot is not None
+    snapshot.expires_at = utcnow() - timedelta(days=1)
+    session.commit()
+
+    public_response = client.get(f"/api/v1/insights/snapshots/public/{created['token']}")
+    assert public_response.status_code == 404

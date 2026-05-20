@@ -706,6 +706,16 @@ export type BillingRiskRecord = {
   unpaid_invoice_count: number;
 };
 
+export type FinanceSnapshotRecord = {
+  configured_charges_cents: number;
+  ready_to_bill_count: number;
+  blocked_row_count: number;
+  approved_unsynced_invoice_count: number;
+  unpaid_invoice_count: number;
+  billing_draft_counts: Record<string, number>;
+  invoice_draft_counts: Record<string, number>;
+};
+
 export type OwnerEntitySnapshotRecord = {
   ownership_profile_counts: Record<string, number>;
   missing_invoice_issuer_count: number;
@@ -718,6 +728,27 @@ export type OwnerEntitySnapshotRecord = {
   xero_last_sync_at: string | null;
 };
 
+export type LeaseEventRecord = {
+  id: string;
+  kind: "rent_review" | "lease_expiry" | "obligation" | "tenant_onboarding";
+  title: string;
+  date: string | null;
+  chip: string;
+  href: string;
+  target: InsightTargetRecord;
+  rank: number;
+};
+
+export type LeaseEventSnapshotRecord = {
+  active_lease_count: number;
+  next_review_count: number;
+  next_expiry_count: number;
+  overdue_obligation_count: number;
+  due_soon_obligation_count: number;
+  tenant_onboarding_waiting_count: number;
+  next_events: LeaseEventRecord[];
+};
+
 export type InsightsOverviewRecord = {
   entity: InsightsEntityRecord;
   as_of: string;
@@ -725,7 +756,38 @@ export type InsightsOverviewRecord = {
   live_exceptions: LiveExceptionRecord[];
   automation_activity: AutomationActivityRecord[];
   billing_risk: BillingRiskRecord;
+  finance_snapshot: FinanceSnapshotRecord;
   owner_entity_snapshot: OwnerEntitySnapshotRecord;
+  lease_event_snapshot: LeaseEventSnapshotRecord;
+  guardrails: string[];
+};
+
+export type InsightsSnapshotType = "owner" | "finance" | "lease_events";
+
+export type InsightsSnapshotRecord = {
+  id: string;
+  entity_id: string;
+  snapshot_type: InsightsSnapshotType;
+  as_of: string;
+  created_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  payload: InsightsOverviewRecord;
+  share_url: string | null;
+};
+
+export type InsightsSnapshotCreateRecord = InsightsSnapshotRecord & {
+  token: string;
+  share_url: string;
+};
+
+export type InsightsSnapshotPublicRecord = {
+  id: string;
+  snapshot_type: InsightsSnapshotType;
+  as_of: string;
+  created_at: string;
+  expires_at: string | null;
+  payload: InsightsOverviewRecord;
   guardrails: string[];
 };
 
@@ -1048,6 +1110,33 @@ export function getInsightsOverview(entityId: string, asOf?: string) {
     params.set("as_of", asOf);
   }
   return request<InsightsOverviewRecord>(`/insights/overview?${params.toString()}`);
+}
+
+export function createInsightsSnapshot(payload: {
+  entity_id: string;
+  snapshot_type: InsightsSnapshotType;
+  as_of?: string;
+  expires_in_days?: number;
+}) {
+  return request<InsightsSnapshotCreateRecord>("/insights/snapshots", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listInsightsSnapshots(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<InsightsSnapshotRecord[]>(`/insights/snapshots?${params.toString()}`);
+}
+
+export function revokeInsightsSnapshot(snapshotId: string) {
+  return request<InsightsSnapshotRecord>(`/insights/snapshots/${snapshotId}/revoke`, {
+    method: "POST",
+  });
+}
+
+export function getPublicInsightsSnapshot(token: string) {
+  return request<InsightsSnapshotPublicRecord>(`/insights/snapshots/public/${token}`);
 }
 
 export function listProperties(entityId: string) {
