@@ -165,6 +165,10 @@ Status: pending Remba review. Tenant detail now surfaces property/unit/lease con
 
 Status: pending Remba review. Settings now includes a Xero readiness workspace for entity connection state, contact readiness, charge-rule account/tax mapping, approved invoice sync queues, and payment reconciliation counts. Keep the boundary explicit: this is readiness and manual mapping only, not OAuth, live contact sync, invoice posting, or automatic reconciliation.
 
+## Xero Provider Connection Surface
+
+Status: pending Remba review. Settings now extends the Xero workspace with provider OAuth connect and contact sync preview controls. Keep the copy careful: provider-backed contact pulls can suggest tenant/property matches, but local mappings are not applied yet, invoices are not posted, tenant emails are not sent, and payment reconciliation is not automatic.
+
 ## Operator Security And Settings Arena
 
 Status: pending Remba review. Settings now has Security, Organisation, and Xero sections; Security shows the current auth mode, Clerk readiness, current operator, members, entity-role controls, and operator invite lifecycle. Keep the language clear that dev auth and the temporary password gate are pre-production safeguards until Clerk and SendGrid production env vars are configured and `AUTH_MODE` is switched deliberately.

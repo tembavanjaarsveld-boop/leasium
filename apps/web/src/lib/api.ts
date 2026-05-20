@@ -571,10 +571,28 @@ export type XeroConnectionStatusRecord = {
   entity_name: string;
   connected: boolean;
   xero_tenant_id: string | null;
+  tenant_name: string | null;
+  tenant_type: string | null;
   connected_at: string | null;
   last_sync_at: string | null;
+  last_contact_sync_at: string | null;
+  provider_configured: boolean;
+  provider_connection_id: string | null;
+  connection_source: "provider" | "manual" | "none";
   status_label: string;
   next_action: string;
+};
+
+export type XeroProviderConfigRecord = {
+  configured: boolean;
+  missing_config: string[];
+  redirect_uri: string;
+  scopes: string[];
+};
+
+export type XeroOAuthStartRecord = XeroProviderConfigRecord & {
+  authorization_url: string | null;
+  state_expires_at: string | null;
 };
 
 export type XeroReadinessSummaryRecord = {
@@ -620,6 +638,7 @@ export type XeroMappingIssueRecord = {
 };
 
 export type XeroStatusRecord = {
+  provider: XeroProviderConfigRecord;
   connection: XeroConnectionStatusRecord;
   contact_mapping: XeroReadinessSummaryRecord;
   chart_mapping: XeroReadinessSummaryRecord;
@@ -627,6 +646,28 @@ export type XeroStatusRecord = {
   invoice_sync: XeroInvoiceSyncSummaryRecord;
   payment_reconciliation: XeroPaymentSummaryRecord;
   issues: XeroMappingIssueRecord[];
+  guardrails: string[];
+};
+
+export type XeroContactMatchRecord = {
+  target_type: "tenant" | "property";
+  target_id: string;
+  target_name: string;
+  current_xero_contact_id: string | null;
+  xero_contact_id: string;
+  xero_contact_name: string;
+  xero_email: string | null;
+  match_reason: string;
+  confidence: number;
+};
+
+export type XeroContactSyncPreviewRecord = {
+  entity_id: string;
+  xero_tenant_id: string;
+  tenant_name: string | null;
+  fetched_contacts: number;
+  suggested_matches: XeroContactMatchRecord[];
+  last_contact_sync_at: string;
   guardrails: string[];
 };
 
@@ -1128,6 +1169,20 @@ export function updateXeroConnection(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function startXeroOAuth(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<XeroOAuthStartRecord>(`/xero/oauth/start?${params.toString()}`);
+}
+
+export function previewXeroContactSync(entityId: string) {
+  return request<XeroContactSyncPreviewRecord>(
+    `/xero/contacts/sync-preview/${entityId}`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function getInsightsOverview(entityId: string, asOf?: string) {

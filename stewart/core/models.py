@@ -235,10 +235,65 @@ class Entity(Base):
     document_intakes: Mapped[list["DocumentIntake"]] = relationship(back_populates="entity")
     billing_drafts: Mapped[list["BillingDraft"]] = relationship(back_populates="entity")
     invoice_drafts: Mapped[list["InvoiceDraft"]] = relationship(back_populates="entity")
+    xero_connections: Mapped[list["XeroConnection"]] = relationship(back_populates="entity")
     insights_snapshots: Mapped[list["InsightsSnapshot"]] = relationship(back_populates="entity")
 
 
 Index("entity_org_idx", Entity.organisation_id, postgresql_where=Entity.deleted_at.is_(None))
+
+
+class XeroConnection(Base):
+    __tablename__ = "xero_connection"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    updated_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    xero_tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
+    tenant_name: Mapped[str | None] = mapped_column(Text)
+    tenant_type: Mapped[str | None] = mapped_column(Text)
+    access_token_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scopes: Mapped[str | None] = mapped_column(Text)
+    connection_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    last_contact_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="xero_connections")
+    created_by_user: Mapped["AppUser | None"] = relationship(foreign_keys=[created_by_user_id])
+    updated_by_user: Mapped["AppUser | None"] = relationship(foreign_keys=[updated_by_user_id])
+
+
+Index(
+    "xero_connection_entity_active_idx",
+    XeroConnection.entity_id,
+    unique=True,
+    postgresql_where=(
+        XeroConnection.revoked_at.is_(None) & XeroConnection.deleted_at.is_(None)
+    ),
+    sqlite_where=(XeroConnection.revoked_at.is_(None) & XeroConnection.deleted_at.is_(None)),
+)
+Index(
+    "xero_connection_tenant_idx",
+    XeroConnection.xero_tenant_id,
+    postgresql_where=XeroConnection.deleted_at.is_(None),
+)
 
 
 class AppUser(Base):

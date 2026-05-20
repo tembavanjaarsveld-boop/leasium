@@ -57,6 +57,18 @@ class Settings(BaseSettings):
     document_max_bytes: int = 15_000_000
     xero_client_id: str = ""
     xero_client_secret: str = ""
+    xero_redirect_uri: str = ""
+    xero_state_secret: str = ""
+    xero_token_encryption_key: str = ""
+    xero_authorize_url: str = "https://login.xero.com/identity/connect/authorize"
+    xero_token_url: str = "https://identity.xero.com/connect/token"
+    xero_connections_url: str = "https://api.xero.com/connections"
+    xero_api_base_url: str = "https://api.xero.com/api.xro/2.0"
+    xero_default_scopes: str = (
+        "offline_access accounting.contacts.read accounting.settings.read "
+        "accounting.transactions"
+    )
+    xero_http_timeout_seconds: float = 15.0
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = ""
     sendgrid_from_name: str = "Leasium"

@@ -477,6 +477,7 @@ async function fulfillJson(route: Route, body: JsonBody, status = 200) {
 export async function mockLeasiumApi(page: Page) {
   let xeroTenantId: string | null = null;
   let xeroConnectedAt: string | null = null;
+  let xeroProviderConnected = false;
   let chargeAccountCode: string | null = "401";
   let chargeTaxType: string | null = null;
   let snapshotCount = 0;
@@ -487,12 +488,22 @@ export async function mockLeasiumApi(page: Page) {
     entity_name: "Acme Holdings Pty Ltd",
     connected: Boolean(xeroTenantId),
     xero_tenant_id: xeroTenantId,
+    tenant_name: xeroTenantId ? "Demo Xero Org" : null,
+    tenant_type: xeroTenantId ? "ORGANISATION" : null,
     connected_at: xeroConnectedAt,
     last_sync_at: null,
-    status_label: xeroTenantId ? "Connected" : "Not connected",
+    last_contact_sync_at: null,
+    provider_configured: true,
+    provider_connection_id: xeroProviderConnected ? "xero-connection-1" : null,
+    connection_source: xeroProviderConnected ? "provider" : xeroTenantId ? "manual" : "none",
+    status_label: xeroProviderConnected
+      ? "Provider connected"
+      : xeroTenantId
+        ? "Connected"
+        : "Not connected",
     next_action: xeroTenantId
-      ? "Review contact, chart, tax, invoice, and payment readiness before enabling sync."
-      : "Record the Xero tenant connection before any sync approval can be enabled.",
+      ? "Preview Xero contacts, then review local mappings before approving any sync."
+      : "Connect Xero or record the tenant before any sync approval can be enabled.",
   });
 
   const xeroStatus = () => {
@@ -545,6 +556,17 @@ export async function mockLeasiumApi(page: Page) {
       });
     }
     return {
+      provider: {
+        configured: true,
+        missing_config: [],
+        redirect_uri: "http://localhost:8000/api/v1/xero/oauth/callback",
+        scopes: [
+          "offline_access",
+          "accounting.contacts.read",
+          "accounting.settings.read",
+          "accounting.transactions",
+        ],
+      },
       connection: xeroConnection(),
       contact_mapping: { total: 2, ready: 2, missing: 0 },
       chart_mapping: {
@@ -571,7 +593,7 @@ export async function mockLeasiumApi(page: Page) {
       },
       issues,
       guardrails: [
-        "This surface records readiness only; it does not call Xero.",
+        "Xero provider actions only preview data until an explicit reviewed apply exists.",
         "Invoice posting remains blocked until a future explicit approval action exists.",
         "Payment reconciliation is manual status tracking until bank/Xero feeds are connected.",
       ],
@@ -791,6 +813,23 @@ export async function mockLeasiumApi(page: Page) {
       return;
     }
 
+    if (method === "GET" && path === "/xero/oauth/start") {
+      await fulfillJson(route, {
+        configured: true,
+        authorization_url: "https://login.xero.com/identity/connect/authorize?state=mock",
+        missing_config: [],
+        redirect_uri: "http://localhost:8000/api/v1/xero/oauth/callback",
+        scopes: [
+          "offline_access",
+          "accounting.contacts.read",
+          "accounting.settings.read",
+          "accounting.transactions",
+        ],
+        state_expires_at: "2026-05-19T10:15:00.000Z",
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/insights/overview") {
       await fulfillJson(route, insightsOverview());
       return;
@@ -885,11 +924,44 @@ export async function mockLeasiumApi(page: Page) {
       if (payload.connected === false) {
         xeroTenantId = null;
         xeroConnectedAt = null;
+        xeroProviderConnected = false;
       } else {
         xeroTenantId = payload.xero_tenant_id ?? "tenant-smoke";
         xeroConnectedAt = "2026-05-19T10:00:00.000Z";
+        xeroProviderConnected = false;
       }
       await fulfillJson(route, xeroConnection());
+      return;
+    }
+
+    if (method === "POST" && path === `/xero/contacts/sync-preview/${entityId}`) {
+      xeroTenantId = xeroTenantId ?? "tenant-smoke";
+      xeroConnectedAt = xeroConnectedAt ?? "2026-05-19T10:00:00.000Z";
+      xeroProviderConnected = true;
+      await fulfillJson(route, {
+        entity_id: entityId,
+        xero_tenant_id: xeroTenantId,
+        tenant_name: "Demo Xero Org",
+        fetched_contacts: 2,
+        suggested_matches: [
+          {
+            target_type: "tenant",
+            target_id: tenantId,
+            target_name: "Bright Cafe",
+            current_xero_contact_id: null,
+            xero_contact_id: "contact-bright-cafe",
+            xero_contact_name: "Bright Cafe",
+            xero_email: "accounts@bright.example",
+            match_reason: "billing/contact email matched",
+            confidence: 0.94,
+          },
+        ],
+        last_contact_sync_at: "2026-05-19T10:05:00.000Z",
+        guardrails: [
+          "This is a preview only; tenant and property Xero contact IDs were not changed.",
+          "Invoice posting and payment reconciliation are still blocked behind future approvals.",
+        ],
+      });
       return;
     }
 

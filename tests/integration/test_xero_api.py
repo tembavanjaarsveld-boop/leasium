@@ -2,16 +2,86 @@
 
 from uuid import UUID
 
+from apps.api.main import app
+from apps.api.routers import xero as xero_router
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.models import AuditAction, Entity
+from stewart.core.models import AuditAction, Entity, Tenant, XeroConnection
+from stewart.core.settings import Settings, get_settings
+from stewart.integrations.xero import decrypt_xero_token
 
 
 def _entity_id(session: Session) -> str:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
     return str(entity.id)
+
+
+def _provider_settings() -> Settings:
+    return Settings(
+        public_api_url="https://api.leasium.test",
+        frontend_url="https://app.leasium.test",
+        xero_client_id="xero-client-id",
+        xero_client_secret="xero-client-secret",
+        xero_state_secret="xero-state-secret",
+        xero_token_encryption_key=Fernet.generate_key().decode("utf-8"),
+    )
+
+
+def _override_settings(settings: Settings) -> None:
+    app.dependency_overrides[get_settings] = lambda: settings
+
+
+def _fake_xero_provider(monkeypatch, tenant_id: str = "tenant-provider-123") -> None:
+    def fake_exchange_code_for_tokens(code: str, settings: Settings) -> dict[str, object]:
+        assert code == "auth-code"
+        assert settings.xero_client_id == "xero-client-id"
+        return {
+            "access_token": "raw-access-token",
+            "refresh_token": "raw-refresh-token",
+            "expires_in": 1800,
+            "scope": "offline_access accounting.contacts.read",
+            "token_type": "Bearer",
+        }
+
+    def fake_fetch_xero_connections(
+        access_token: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        assert access_token == "raw-access-token"
+        return [
+            {
+                "id": "connection-1",
+                "tenantId": tenant_id,
+                "tenantName": "SKJ Xero Demo",
+                "tenantType": "ORGANISATION",
+            }
+        ]
+
+    monkeypatch.setattr(xero_router, "exchange_code_for_tokens", fake_exchange_code_for_tokens)
+    monkeypatch.setattr(xero_router, "fetch_xero_connections", fake_fetch_xero_connections)
+
+
+def _start_xero_oauth(client: TestClient, entity_id: str) -> str:
+    response = client.get(f"/api/v1/xero/oauth/start?entity_id={entity_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["configured"] is True
+    assert body["authorization_url"]
+    assert body["missing_config"] == []
+    return str(body["authorization_url"]).split("state=", 1)[1].split("&", 1)[0]
+
+
+def _finish_xero_oauth(client: TestClient, state: str) -> None:
+    response = client.get(
+        "/api/v1/xero/oauth/callback",
+        params={"code": "auth-code", "state": state},
+        follow_redirects=False,
+    )
+    assert response.status_code in {302, 307}
+    assert "xero_connected=1" in response.headers["location"]
 
 
 def test_xero_status_surfaces_mapping_gaps_and_manual_connection(
@@ -145,3 +215,118 @@ def test_xero_status_surfaces_mapping_gaps_and_manual_connection(
     )
     assert audit is not None
     assert audit.tool_output_summary == "Recorded Xero connection status; no sync was run."
+
+
+def test_xero_oauth_callback_records_provider_connection(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    entity = session.get(Entity, UUID(entity_id))
+    assert entity is not None
+    assert entity.xero_tenant_id == "tenant-provider-123"
+    assert entity.xero_connected_at is not None
+    connection = session.scalar(
+        select(XeroConnection).where(XeroConnection.entity_id == UUID(entity_id))
+    )
+    assert connection is not None
+    assert connection.tenant_name == "SKJ Xero Demo"
+    assert connection.access_token_ciphertext != "raw-access-token"
+    assert connection.refresh_token_ciphertext != "raw-refresh-token"
+    assert decrypt_xero_token(connection.refresh_token_ciphertext, settings) == "raw-refresh-token"
+
+    status_response = client.get(f"/api/v1/xero/status?entity_id={entity_id}")
+    assert status_response.status_code == 200
+    status_body = status_response.json()
+    assert status_body["provider"]["configured"] is True
+    assert status_body["connection"]["connection_source"] == "provider"
+    assert status_body["connection"]["tenant_name"] == "SKJ Xero Demo"
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "xero_connection",
+            AuditAction.tool_name == "xero.oauth_callback",
+        )
+    )
+    assert audit is not None
+    assert "no contacts, invoices, or payments were mutated" in audit.tool_output_summary
+
+
+def test_xero_contact_sync_preview_suggests_matches_without_applying(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    tenant = Tenant(
+        entity_id=UUID(entity_id),
+        legal_name="Bright Cafe Pty Ltd",
+        billing_email="accounts@bright.example",
+    )
+    session.add(tenant)
+    session.commit()
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    def fake_refresh_xero_tokens(
+        refresh_token: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> dict[str, object]:
+        assert refresh_token == "raw-refresh-token"
+        return {
+            "access_token": "raw-access-token-2",
+            "refresh_token": "raw-refresh-token-2",
+            "expires_in": 1800,
+            "scope": "offline_access accounting.contacts.read",
+        }
+
+    def fake_fetch_xero_contacts(
+        access_token: str,
+        xero_tenant_id: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        assert access_token == "raw-access-token-2"
+        assert xero_tenant_id == "tenant-provider-123"
+        return [
+            {
+                "ContactID": "xero-contact-bright",
+                "Name": "Bright Cafe Pty Ltd",
+                "EmailAddress": "accounts@bright.example",
+            }
+        ]
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fake_refresh_xero_tokens)
+    monkeypatch.setattr(xero_router, "fetch_xero_contacts", fake_fetch_xero_contacts)
+
+    response = client.post(f"/api/v1/xero/contacts/sync-preview/{entity_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fetched_contacts"] == 1
+    assert body["suggested_matches"][0]["target_type"] == "tenant"
+    assert body["suggested_matches"][0]["target_id"] == str(tenant.id)
+    assert body["suggested_matches"][0]["xero_contact_id"] == "xero-contact-bright"
+    assert body["suggested_matches"][0]["confidence"] == 0.94
+
+    session.refresh(tenant)
+    assert "xero_contact_id" not in tenant.tenant_metadata
+    connection = session.scalar(
+        select(XeroConnection).where(XeroConnection.entity_id == UUID(entity_id))
+    )
+    assert connection is not None
+    assert connection.last_contact_sync_at is not None
+    assert connection.connection_metadata["last_contact_sync"]["mode"] == "preview_only"
+    assert decrypt_xero_token(connection.refresh_token_ciphertext, settings) == (
+        "raw-refresh-token-2"
+    )

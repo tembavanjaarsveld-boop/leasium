@@ -7,10 +7,12 @@ import {
   Building2,
   CheckCircle2,
   CircleDollarSign,
+  ExternalLink,
   KeyRound,
   Loader2,
   PlugZap,
   RefreshCw,
+  SearchCheck,
   Send,
   Settings,
   ShieldCheck,
@@ -38,10 +40,13 @@ import {
   getSecurityWorkspace,
   getXeroStatus,
   listEntities,
+  previewXeroContactSync,
   resendSecurityMemberInvite,
+  startXeroOAuth,
   updateSecurityMember,
   updateChargeRule,
   updateXeroConnection,
+  type XeroContactSyncPreviewRecord,
   type SecurityMemberRecord,
   type SecurityRole,
   type SecurityRoleAssignment,
@@ -219,6 +224,8 @@ function SettingsWorkspace() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("security");
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [xeroTenantId, setXeroTenantId] = useState("");
+  const [xeroContactPreview, setXeroContactPreview] =
+    useState<XeroContactSyncPreviewRecord | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteDisplayName, setInviteDisplayName] = useState("");
   const [inviteRole, setInviteRole] = useState<SecurityRole>("viewer");
@@ -230,6 +237,17 @@ function SettingsWorkspace() {
     queryKey: ["entities"],
     queryFn: listEntities,
   });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "xero") {
+      setActiveTab("xero");
+    }
+    const entityId = params.get("entity_id");
+    if (entityId) {
+      setSelectedEntityId(entityId);
+    }
+  }, []);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
@@ -272,6 +290,25 @@ function SettingsWorkspace() {
     mutationFn: (payload: { connected: boolean; xero_tenant_id?: string | null }) =>
       updateXeroConnection(selectedEntityId, payload),
     onSuccess: () => {
+      setXeroContactPreview(null);
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
+    },
+  });
+
+  const xeroOAuthMutation = useMutation({
+    mutationFn: () => startXeroOAuth(selectedEntityId),
+    onSuccess: (result) => {
+      if (result.authorization_url) {
+        window.location.href = result.authorization_url;
+      }
+    },
+  });
+
+  const xeroContactSyncMutation = useMutation({
+    mutationFn: () => previewXeroContactSync(selectedEntityId),
+    onSuccess: (result) => {
+      setXeroContactPreview(result);
       queryClient.invalidateQueries({ queryKey: ["entities"] });
       queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
@@ -425,6 +462,20 @@ function SettingsWorkspace() {
             {connectionMutation.error instanceof Error
               ? connectionMutation.error.message
               : "Could not update Xero connection status."}
+          </div>
+        ) : null}
+        {xeroOAuthMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {xeroOAuthMutation.error instanceof Error
+              ? xeroOAuthMutation.error.message
+              : "Could not start the Xero connection."}
+          </div>
+        ) : null}
+        {xeroContactSyncMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {xeroContactSyncMutation.error instanceof Error
+              ? xeroContactSyncMutation.error.message
+              : "Could not preview Xero contacts."}
           </div>
         ) : null}
         {mappingMutation.error ? (
@@ -943,7 +994,7 @@ function SettingsWorkspace() {
 
             <SectionPanel
               title="Xero connection"
-              description="Record connection state before invoice sync is allowed. This does not call Xero or post invoices."
+              description="Connect the provider, preview contacts, and keep invoice posting behind explicit future approvals."
               icon={<PlugZap size={17} className="text-primary" />}
               actions={
                 <StatusBadge
@@ -964,6 +1015,36 @@ function SettingsWorkspace() {
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="rounded-md border border-border bg-muted/25 p-3">
                       <div className="text-xs uppercase text-muted-foreground">
+                        Provider setup
+                      </div>
+                      <div className="mt-1 font-medium">
+                        {status.provider.configured ? "Configured" : "Needs env vars"}
+                      </div>
+                      {!status.provider.configured ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Missing {status.provider.missing_config.join(", ")}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="rounded-md border border-border bg-muted/25 p-3">
+                      <div className="text-xs uppercase text-muted-foreground">
+                        Connection source
+                      </div>
+                      <div className="mt-1 font-medium">
+                        {status.connection.connection_source === "provider"
+                          ? "Provider OAuth"
+                          : status.connection.connection_source === "manual"
+                            ? "Manual tenant ID"
+                            : "Not connected"}
+                      </div>
+                      {status.connection.tenant_name ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {status.connection.tenant_name}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="rounded-md border border-border bg-muted/25 p-3">
+                      <div className="text-xs uppercase text-muted-foreground">
                         Connected
                       </div>
                       <div className="mt-1 font-medium">
@@ -972,10 +1053,10 @@ function SettingsWorkspace() {
                     </div>
                     <div className="rounded-md border border-border bg-muted/25 p-3">
                       <div className="text-xs uppercase text-muted-foreground">
-                        Last sync
+                        Last contact preview
                       </div>
                       <div className="mt-1 font-medium">
-                        {formatDateTime(status.connection.last_sync_at)}
+                        {formatDateTime(status.connection.last_contact_sync_at)}
                       </div>
                     </div>
                   </div>
@@ -998,6 +1079,51 @@ function SettingsWorkspace() {
                     });
                   }}
                 >
+                  <div className="grid gap-2 rounded-md border border-border bg-white p-3">
+                    <div className="text-sm font-semibold">Provider connection</div>
+                    <p className="text-sm text-muted-foreground">
+                      Xero will return the authorised organisation; Leasium stores the
+                      connection securely and only previews contact matches for now.
+                    </p>
+                    <Button
+                      type="button"
+                      disabled={
+                        xeroOAuthMutation.isPending ||
+                        !status.provider.configured ||
+                        !selectedEntityId
+                      }
+                      onClick={() => xeroOAuthMutation.mutate()}
+                    >
+                      {xeroOAuthMutation.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <ExternalLink size={15} />
+                      )}
+                      Connect with Xero
+                    </Button>
+                  </div>
+                  <div className="grid gap-2 rounded-md border border-border bg-white p-3">
+                    <div className="text-sm font-semibold">Contact sync preview</div>
+                    <p className="text-sm text-muted-foreground">
+                      Pull contacts from the connected Xero organisation and suggest
+                      tenant/property mappings without applying them.
+                    </p>
+                    <SecondaryButton
+                      type="button"
+                      disabled={
+                        xeroContactSyncMutation.isPending ||
+                        status.connection.connection_source !== "provider"
+                      }
+                      onClick={() => xeroContactSyncMutation.mutate()}
+                    >
+                      {xeroContactSyncMutation.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <SearchCheck size={15} />
+                      )}
+                      Preview contacts
+                    </SecondaryButton>
+                  </div>
                   <Field label="Xero tenant ID">
                     <Input
                       value={xeroTenantId}
@@ -1043,6 +1169,76 @@ function SettingsWorkspace() {
                 </form>
               </div>
             </SectionPanel>
+
+            {xeroContactPreview ? (
+              <SectionPanel
+                title="Xero contact preview"
+                description="Suggested matches from the latest provider pull. These are not applied to tenant or property records yet."
+                icon={<SearchCheck size={17} className="text-primary" />}
+                actions={
+                  <StatusBadge tone="primary">
+                    {xeroContactPreview.suggested_matches.length} suggestion
+                    {xeroContactPreview.suggested_matches.length === 1 ? "" : "s"}
+                  </StatusBadge>
+                }
+              >
+                <div className="grid gap-3 p-4 md:grid-cols-3">
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Contacts fetched
+                    </div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {xeroContactPreview.fetched_contacts}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Xero organisation
+                    </div>
+                    <div className="mt-1 font-semibold">
+                      {xeroContactPreview.tenant_name ?? xeroContactPreview.xero_tenant_id}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Previewed
+                    </div>
+                    <div className="mt-1 font-semibold">
+                      {formatDateTime(xeroContactPreview.last_contact_sync_at)}
+                    </div>
+                  </div>
+                </div>
+                <div className="divide-y divide-border border-t border-border">
+                  {xeroContactPreview.suggested_matches.map((match) => (
+                    <div
+                      key={`${match.target_type}-${match.target_id}-${match.xero_contact_id}`}
+                      className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[180px_1fr_220px]"
+                    >
+                      <div className="flex items-center gap-2">
+                        <StatusBadge tone="primary">{match.target_type}</StatusBadge>
+                        <span>{Math.round(match.confidence * 100)}%</span>
+                      </div>
+                      <div>
+                        <div className="font-medium">{match.target_name}</div>
+                        <p className="mt-1 text-muted-foreground">
+                          Suggested Xero contact: {match.xero_contact_name}
+                          {match.xero_email ? ` / ${match.xero_email}` : ""}
+                        </p>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {match.match_reason}
+                      </div>
+                    </div>
+                  ))}
+                  {xeroContactPreview.suggested_matches.length === 0 ? (
+                    <EmptyState
+                      title="No confident contact matches"
+                      description="The provider pull completed, but no tenant or property contacts matched by email or name."
+                    />
+                  ) : null}
+                </div>
+              </SectionPanel>
+            ) : null}
 
             <SectionPanel
               title="Chart and tax mapping"

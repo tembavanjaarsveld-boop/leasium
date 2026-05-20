@@ -315,7 +315,7 @@ def _build_insights_overview(
             )
         )
     )
-    xero = xero_status(user, session, entity_id)
+    xero = xero_status(user, session, get_settings(), entity_id)
     xero_blocker_count = sum(1 for issue in xero.issues if issue.severity == "blocker")
 
     live_exceptions: list[LiveExceptionRead] = []

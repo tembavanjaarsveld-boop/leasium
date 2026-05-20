@@ -57,6 +57,11 @@ Set the API host environment from `.env.example`, with production values for:
 - `CLERK_ISSUER`
 - `CLERK_AUDIENCE` if the Clerk JWT template uses an audience
 - `OPERATOR_INVITE_TTL_HOURS`
+- `XERO_CLIENT_ID`
+- `XERO_CLIENT_SECRET`
+- `XERO_REDIRECT_URI` set to `<PUBLIC_API_URL>/api/v1/xero/oauth/callback`
+- `XERO_STATE_SECRET`
+- `XERO_TOKEN_ENCRYPTION_KEY`
 
 `FRONTEND_URL` must match the Vercel domain so browser requests pass CORS.
 `PUBLIC_API_URL` must match the hosted API origin so Twilio SMS callbacks can
@@ -87,6 +92,13 @@ the session boundary. `/setup`, `/accept-invite`, `/sign-in`, `/sign-up`,
 `/access`, and `/onboarding/...` stay public so first setup, invite acceptance,
 and tenant onboarding still work.
 
+Xero provider connection needs the Xero OAuth redirect URI registered in the
+Xero developer app exactly as configured in `XERO_REDIRECT_URI`. Generate
+`XERO_TOKEN_ENCRYPTION_KEY` as a Fernet-compatible key and keep it stable; it is
+used to encrypt stored Xero access and refresh tokens. Provider contact sync is
+preview-only until reviewed local mapping apply and invoice posting approvals
+are built.
+
 ## Render And Alembic Safety
 
 Current Render API commands:
@@ -102,7 +114,7 @@ during instance startup.
 
 The API deploy artifact must include `alembic.ini` and the full `migrations/`
 tree. The Python wheel build is configured to force-include both so Alembic can
-resolve every revision, including `20260520_0015`, after the service is installed
+resolve every revision, including `20260520_0017`, after the service is installed
 from a wheel. Run Alembic from the repository or extracted artifact root so the
 existing `script_location = migrations` setting resolves to the bundled
 `migrations/` directory.
@@ -111,7 +123,7 @@ Treat Alembic migrations and the API runtime as one release. If Render applies a
 new migration and the deploy then falls back to an older service image or commit,
 the older code may fail on startup because the database `alembic_version` points
 at a revision that does not exist in that artifact. When production has advanced
-to `20260520_0015`, recover by redeploying the same or newer commit that contains
+to `20260520_0017`, recover by redeploying the same or newer commit that contains
 that revision. Do not intentionally start an older backend against the advanced
 database unless the database is first restored, downgraded, or explicitly stamped
 to a revision that the older artifact contains.
