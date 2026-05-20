@@ -22,6 +22,17 @@ class TenantPortalAccountClaimCreate(BaseModel):
         return cleaned
 
 
+class TenantPortalAccountLifecycleRead(BaseModel):
+    status: Literal["unlinked", "active", "revoked"]
+    tenant_id: UUID | None = None
+    tenant_name: str | None = None
+    email: str | None = None
+    linked_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    revoked_at: datetime | None = None
+    recovery_hint: str
+
+
 class TenantPortalAuthRead(BaseModel):
     mode: Literal[
         "tenant_portal_token",

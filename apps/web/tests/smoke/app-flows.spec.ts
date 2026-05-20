@@ -258,6 +258,56 @@ test("tenant portal entry shows linked account-scoped tenant data", async ({
   await expect(page.getByText("INV-1001")).toBeVisible();
 });
 
+test("tenant portal entry guides signed-in tenants to recover an unlinked portal", async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.LEASIUM_SMOKE_TENANT_PORTAL_ACCOUNT_ENTRY_UNLINKED ||
+      !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    "Runs only with a signed-in tenant account smoke session.",
+  );
+
+  const response = await page.goto("/tenant-portal");
+  test.skip(
+    response?.status() === 404,
+    "Tenant portal account entry route is not implemented yet.",
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "Open your portal" }),
+  ).toBeVisible();
+  await expect(page.getByText("No portal linked")).toBeVisible();
+  await expect(
+    page.getByText("Open your original tenant portal link once"),
+  ).toBeVisible();
+});
+
+test("tenant portal token view guides relink when the signed-in account belongs to another tenant", async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.LEASIUM_SMOKE_TENANT_PORTAL_ACCOUNT_RELINK_GUIDANCE ||
+      !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    "Runs only with a signed-in tenant account smoke session.",
+  );
+
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, {
+    tenantAccountLinked: true,
+    tenantAccountLinkedToDifferentTenant: true,
+  });
+
+  await page.goto("/tenant-portal/tenant-token-1");
+
+  await expect(page.getByText("Different tenant")).toBeVisible();
+  await expect(
+    page.getByText("This login is already linked to another tenant portal."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Bright Cafe" }),
+  ).toBeVisible();
+});
+
 test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.setViewportSize({ width: 1432, height: 900 });
   await page.goto("/settings");

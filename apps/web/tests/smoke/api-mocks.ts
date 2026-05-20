@@ -557,7 +557,10 @@ const leases = [
   },
 ];
 
-const tenantPortalSession = (authMode: "token" | "account" = "token") => ({
+const tenantPortalSession = (
+  authMode: "token" | "account" = "token",
+  options: { tenantId?: string; tradingName?: string } = {},
+) => ({
   auth:
     authMode === "account"
       ? {
@@ -579,9 +582,9 @@ const tenantPortalSession = (authMode: "token" | "account" = "token") => ({
             "Tenant identity-provider auth is not wired yet. Access is scoped to the tenant linked to this onboarding token.",
         },
   tenant: {
-    id: tenantId,
+    id: options.tenantId ?? tenantId,
     legal_name: "Bright Cafe Pty Ltd",
-    trading_name: "Bright Cafe",
+    trading_name: options.tradingName ?? "Bright Cafe",
     contact_name: "Mia Hart",
     contact_email: "mia@example.com",
     contact_phone: "0400 111 222",
@@ -841,6 +844,7 @@ function multipartFilename(body: string) {
 
 type MockLeasiumApiOptions = {
   tenantAccountLinked?: boolean;
+  tenantAccountLinkedToDifferentTenant?: boolean;
 };
 
 export async function mockLeasiumApi(
@@ -855,6 +859,8 @@ export async function mockLeasiumApi(
   let xeroDraftApproved = false;
   let xeroDraftCreated = false;
   let tenantAccountLinked = options.tenantAccountLinked ?? false;
+  const tenantAccountLinkedToDifferentTenant =
+    options.tenantAccountLinkedToDifferentTenant ?? false;
   let appliedContactMappings: XeroContactMapping[] = [];
   let snapshotCount = 0;
   let insightSnapshots: JsonBody[] = [];
@@ -1678,6 +1684,39 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/tenant-portal/account/status") {
+      if (!tenantAccountLinked) {
+        await fulfillJson(route, {
+          status: "unlinked",
+          tenant_id: null,
+          tenant_name: null,
+          email: null,
+          linked_at: null,
+          last_seen_at: null,
+          revoked_at: null,
+          recovery_hint:
+            "Open your original tenant portal link once to connect this login. If the link expired or was lost, ask the property team for a fresh tenant portal link.",
+        });
+        return;
+      }
+      await fulfillJson(route, {
+        status: "active",
+        tenant_id: tenantAccountLinkedToDifferentTenant
+          ? "tenant-linked-elsewhere"
+          : tenantId,
+        tenant_name: tenantAccountLinkedToDifferentTenant
+          ? "Riverfront Books"
+          : "Bright Cafe",
+        email: "mia@example.com",
+        linked_at: "2026-05-19T09:00:00.000Z",
+        last_seen_at: "2026-05-19T09:30:00.000Z",
+        revoked_at: null,
+        recovery_hint:
+          "This tenant login can open the portal without the original link. If it is linked to the wrong tenant, ask the property team to unlink and relink the account.",
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/tenant-portal/account/session") {
       if (!tenantAccountLinked) {
         await fulfillJson(
@@ -1687,7 +1726,18 @@ export async function mockLeasiumApi(
         );
         return;
       }
-      await fulfillJson(route, tenantPortalSession("account"));
+      await fulfillJson(
+        route,
+        tenantPortalSession(
+          "account",
+          tenantAccountLinkedToDifferentTenant
+            ? {
+                tenantId: "tenant-linked-elsewhere",
+                tradingName: "Riverfront Books",
+              }
+            : {},
+        ),
+      );
       return;
     }
 

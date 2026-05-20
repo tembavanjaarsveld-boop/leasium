@@ -454,6 +454,17 @@ export type TenantPortalAuthRecord = {
   detail: string;
 };
 
+export type TenantPortalAccountLifecycleRecord = {
+  status: "unlinked" | "active" | "revoked";
+  tenant_id: string | null;
+  tenant_name: string | null;
+  email: string | null;
+  linked_at: string | null;
+  last_seen_at: string | null;
+  revoked_at: string | null;
+  recovery_hint: string;
+};
+
 export type TenantPortalTenantRecord = {
   id: string;
   legal_name: string;
@@ -2455,6 +2466,20 @@ export function getTenantPortalAccountSession(authToken?: string | null) {
     });
   }
   return request<TenantPortalRecord>("/tenant-portal/account/session");
+}
+
+export function getTenantPortalAccountStatus(authToken?: string | null) {
+  if (authToken) {
+    return publicRequest<TenantPortalAccountLifecycleRecord>(
+      "/tenant-portal/account/status",
+      {
+        headers: tenantPortalBearerHeaders(authToken),
+      },
+    );
+  }
+  return request<TenantPortalAccountLifecycleRecord>(
+    "/tenant-portal/account/status",
+  );
 }
 
 export function claimTenantPortalAccount(

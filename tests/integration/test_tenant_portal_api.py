@@ -350,6 +350,14 @@ def test_tenant_portal_account_claim_and_bearer_session_are_scoped(
     app.dependency_overrides[get_settings] = _tenant_account_settings
     scope = _seed_portal_scope(session)
 
+    unlinked_status = client.get(
+        "/api/v1/tenant-portal/account/status",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+    assert unlinked_status.status_code == 200
+    assert unlinked_status.json()["status"] == "unlinked"
+    assert "fresh tenant portal link" in unlinked_status.json()["recovery_hint"]
+
     claim_response = client.post(
         "/api/v1/tenant-portal/account/claim",
         headers={"Authorization": "Bearer tenant-subject-one"},
@@ -384,6 +392,15 @@ def test_tenant_portal_account_claim_and_bearer_session_are_scoped(
     assert account.linked_at is not None
     assert account.last_seen_at is not None
     assert account.account_metadata["source"] == "tenant_portal_claim"
+
+    active_status = client.get(
+        "/api/v1/tenant-portal/account/status",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+    assert active_status.status_code == 200
+    assert active_status.json()["status"] == "active"
+    assert active_status.json()["tenant_id"] == scope["tenant_id"]
+    assert active_status.json()["tenant_name"] == "Portal One"
 
     bearer_response = client.get(
         "/api/v1/tenant-portal/account/session",
@@ -489,6 +506,15 @@ def test_tenant_portal_account_blocks_conflicting_and_revoked_logins(
         headers={"Authorization": "Bearer tenant-subject-one"},
     )
     assert session_response.status_code == 401
+
+    revoked_status = client.get(
+        "/api/v1/tenant-portal/account/status",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+    assert revoked_status.status_code == 200
+    assert revoked_status.json()["status"] == "revoked"
+    assert revoked_status.json()["tenant_id"] == scope["tenant_id"]
+    assert "revoked by the property team" in revoked_status.json()["recovery_hint"]
 
     reclaim_response = client.post(
         "/api/v1/tenant-portal/account/claim",

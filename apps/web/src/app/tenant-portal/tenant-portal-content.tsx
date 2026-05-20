@@ -46,6 +46,7 @@ import {
   downloadTenantPortalAccountDocument,
   getTenantPortal,
   getTenantPortalAccountSession,
+  getTenantPortalAccountStatus,
   MaintenancePriority,
   tenantPortalDocumentDownloadUrl,
   TenantPortalDocumentRecord,
@@ -179,6 +180,10 @@ function portalScopeLabel(portal: TenantPortalRecord) {
     return "Account scoped";
   }
   return portal.auth.dev_fallback ? "Token fallback" : "Token scoped";
+}
+
+function tenantDisplayName(tenant: TenantPortalRecord["tenant"]) {
+  return tenant.trading_name || tenant.legal_name;
 }
 
 function PortalShell({ children }: { children: React.ReactNode }) {
@@ -397,10 +402,14 @@ function PreferencesForm({
 function TenantAccountPanel({
   token,
   tokenTenantId,
+  tokenTenantName,
+  tokenExpiresAt,
   onAccountPortal,
 }: {
   token: string | null;
   tokenTenantId: string | null;
+  tokenTenantName: string | null;
+  tokenExpiresAt: string | null;
   onAccountPortal: (
     portal: TenantPortalRecord | null,
     authToken: string | null,
@@ -424,10 +433,26 @@ function TenantAccountPanel({
     enabled: isLoaded && isSignedIn,
     retry: false,
   });
+  const accountStatusQuery = useQuery({
+    queryKey: ["tenant-portal-account-status"],
+    queryFn: async () => {
+      const authToken = await getToken();
+      if (!authToken) {
+        throw new Error("Sign in before checking this tenant account.");
+      }
+      return getTenantPortalAccountStatus(authToken);
+    },
+    enabled: isLoaded && isSignedIn,
+    retry: false,
+  });
   const accountPortal = accountQuery.data?.portal ?? null;
+  const accountStatus = accountStatusQuery.data ?? null;
   const accountTenantMatches =
     Boolean(accountPortal) &&
     (!tokenTenantId || accountPortal?.tenant.id === tokenTenantId);
+  const tokenExpiryCopy = tokenExpiresAt
+    ? `This portal link expires ${formatDateTime(tokenExpiresAt)}.`
+    : "If the original link expired or was lost, ask the property team for a fresh portal link.";
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) {
@@ -485,8 +510,8 @@ function TenantAccountPanel({
         <div className="grid gap-3 p-4 text-sm">
           <p className="text-muted-foreground">
             {token
-              ? "Create or sign in to a tenant login, then link this portal once."
-              : "Create or sign in to a tenant login to open your linked portal."}
+              ? "Create or sign in to a tenant login, then link this portal once. Linked accounts keep working after the original link expires."
+              : "Create or sign in to a tenant login to open your linked portal. If your link expired or was lost, ask the property team for a fresh one."}
           </p>
           <div className="flex flex-wrap gap-2">
             <SignUpButton mode="redirect" fallbackRedirectUrl={returnTo}>
@@ -515,6 +540,35 @@ function TenantAccountPanel({
     );
   }
 
+  if (accountStatus?.status === "revoked" && !accountPortal) {
+    return (
+      <Panel
+        title="Account Access"
+        icon={<UserRound size={18} />}
+        actions={<UserButton />}
+      >
+        <div className="grid gap-2 p-4 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone="danger">Access revoked</StatusBadge>
+            {accountStatus.tenant_name ? (
+              <span className="text-muted-foreground">
+                {accountStatus.tenant_name}
+              </span>
+            ) : null}
+          </div>
+          <p className="text-muted-foreground">
+            {accountStatus.recovery_hint}
+          </p>
+          {accountStatus.revoked_at ? (
+            <p className="text-xs text-muted-foreground">
+              Revoked {formatDateTime(accountStatus.revoked_at)}
+            </p>
+          ) : null}
+        </div>
+      </Panel>
+    );
+  }
+
   if (accountPortal && !accountTenantMatches) {
     return (
       <Panel
@@ -527,6 +581,11 @@ function TenantAccountPanel({
           <p className="text-muted-foreground">
             This login is already linked to another tenant portal.
           </p>
+          <p className="text-muted-foreground">
+            Sign out and choose the login for {tokenTenantName ?? "this tenant"},
+            or ask the property team to unlink and relink this account.
+          </p>
+          <p className="text-xs text-muted-foreground">{tokenExpiryCopy}</p>
         </div>
       </Panel>
     );
@@ -549,7 +608,12 @@ function TenantAccountPanel({
             </span>
           </div>
           <p className="text-muted-foreground">
-            Future portal sessions can use this tenant account boundary.
+            Future portal sessions can use this tenant account boundary, even
+            after the original portal link expires.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            If this account should move to another tenant, ask the property team
+            to unlink it before relinking.
           </p>
         </div>
       </Panel>
@@ -568,6 +632,10 @@ function TenantAccountPanel({
           <p className="text-muted-foreground">
             Open your original tenant portal link once to connect this login.
           </p>
+          <p className="text-xs text-muted-foreground">
+            {accountStatus?.recovery_hint ??
+              "If the link expired or was lost, ask the property team for a fresh tenant portal link."}
+          </p>
         </div>
       </Panel>
     );
@@ -583,10 +651,19 @@ function TenantAccountPanel({
         <p className="text-muted-foreground">
           Link this portal to your signed-in tenant account.
         </p>
+        <p className="text-xs text-muted-foreground">
+          {tokenExpiryCopy} Once linked, you can come back through the tenant
+          portal entry without the original invite link.
+        </p>
         {claimMutation.error ? (
-          <span className="text-sm text-danger">
-            {claimMutation.error.message}
-          </span>
+          <div className="grid gap-1 rounded-md border border-danger/20 bg-danger/5 p-3 text-sm text-danger">
+            <span>{claimMutation.error.message}</span>
+            <span className="text-muted-foreground">
+              {accountStatus?.status === "revoked"
+                ? accountStatus.recovery_hint
+                : "If this is the wrong tenant or the link has expired, ask the property team to send a fresh portal link."}
+            </span>
+          </div>
         ) : null}
         <Button
           type="button"
@@ -824,6 +901,8 @@ function TenantPortalContent({ token }: { token: string | null }) {
             <TenantAccountPanel
               token={null}
               tokenTenantId={null}
+              tokenTenantName={null}
+              tokenExpiresAt={null}
               onAccountPortal={handleAccountPortal}
             />
           ) : (
@@ -1406,6 +1485,10 @@ function TenantPortalContent({ token }: { token: string | null }) {
               <TenantAccountPanel
                 token={token}
                 tokenTenantId={tokenPortal?.tenant.id ?? null}
+                tokenTenantName={
+                  tokenPortal ? tenantDisplayName(tokenPortal.tenant) : null
+                }
+                tokenExpiresAt={tokenPortal?.onboarding.expires_at ?? null}
                 onAccountPortal={handleAccountPortal}
               />
             ) : null}

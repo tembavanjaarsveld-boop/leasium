@@ -88,13 +88,14 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Tenant portal account-only entry v1: linked tenants can open `/tenant-portal` or `/tenant-portal/account` without the original token URL, sign in through the tenant account boundary, load the same scoped portal data, and download account-scoped documents through bearer-backed blob downloads. Pending Remba review.
 - [x] Tenant portal notification preference receipts v1: saving notification preferences now returns a visible timestamped receipt with the resulting preferred channel, while preserving the no-message-sent guardrail and account/token auth paths. Pending Remba review.
 - [x] Tenant portal document provenance/actions v1: tenant-facing document rows now show filename, category, size, source, received timestamp, notes, and an explicit download action for both token and account-scoped portal sessions. Pending Remba review.
+- [x] Tenant portal account lifecycle guidance v1: signed-in tenant accounts now have a bearer-backed lifecycle status check, clearer unlinked/revoked/wrong-tenant recovery copy, durable-access guidance after invite expiry, and smoke coverage for relink guidance. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations` and `20260520_0019_tenant_portal_accounts` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, Portfolio QA IA link, tenant portal, invoice email action, and Operations workspace before treating them as UX complete.
 - [ ] Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
-- [ ] Continue tenant portal with safer invite/link lifecycle, revoke/relink handling, link expiry guidance, and tenant-facing account recovery.
+- [ ] Add operator-facing tenant portal account revoke/unlink/relink controls, recovery receipts, and tenant-facing confirmation once access is restored.
 - [ ] Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 - [ ] Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.

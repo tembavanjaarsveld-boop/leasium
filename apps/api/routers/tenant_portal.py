@@ -46,6 +46,7 @@ from stewart.core.settings import Settings, get_settings
 from apps.api.deps import get_session
 from apps.api.schemas.tenant_portal import (
     TenantPortalAccountClaimCreate,
+    TenantPortalAccountLifecycleRead,
     TenantPortalAuthRead,
     TenantPortalComplianceItemRead,
     TenantPortalComplianceRead,
@@ -151,6 +152,12 @@ def _property_address(prop: Property) -> str | None:
     parts = [prop.street_address, prop.suburb, prop.state, prop.postcode]
     address = ", ".join(part for part in parts if part)
     return address or None
+
+
+def _tenant_name(tenant: Tenant | None) -> str | None:
+    if tenant is None or tenant.deleted_at is not None:
+        return None
+    return tenant.trading_name or tenant.legal_name
 
 
 def _is_expired(row: TenantOnboarding) -> bool:
@@ -1021,6 +1028,81 @@ def claim_tenant_portal_account(
     session.commit()
     session.refresh(account)
     return _portal_read(_account_scope(account, session), session)
+
+
+@router.get("/account/status", response_model=TenantPortalAccountLifecycleRead)
+def get_tenant_portal_account_status(
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> TenantPortalAccountLifecycleRead:
+    provider_id = _tenant_portal_provider_id(authorization, settings)
+    base_filters = (
+        TenantPortalAccount.auth_provider == "clerk",
+        TenantPortalAccount.auth_provider_id == provider_id,
+        TenantPortalAccount.deleted_at.is_(None),
+    )
+    account = session.scalar(
+        select(TenantPortalAccount)
+        .where(
+            *base_filters,
+            TenantPortalAccount.status == TenantPortalAccountStatus.active,
+            TenantPortalAccount.revoked_at.is_(None),
+        )
+        .order_by(TenantPortalAccount.updated_at.desc())
+    )
+    if account is not None:
+        tenant = session.get(Tenant, account.tenant_id)
+        return TenantPortalAccountLifecycleRead(
+            status="active",
+            tenant_id=account.tenant_id,
+            tenant_name=_tenant_name(tenant),
+            email=account.email,
+            linked_at=account.linked_at,
+            last_seen_at=account.last_seen_at,
+            revoked_at=account.revoked_at,
+            recovery_hint=(
+                "This tenant login can open the portal without the original link. "
+                "If it is linked to the wrong tenant, ask the property team to unlink "
+                "and relink the account."
+            ),
+        )
+
+    revoked_account = session.scalar(
+        select(TenantPortalAccount)
+        .where(
+            *base_filters,
+            or_(
+                TenantPortalAccount.status == TenantPortalAccountStatus.revoked,
+                TenantPortalAccount.revoked_at.is_not(None),
+            ),
+        )
+        .order_by(TenantPortalAccount.updated_at.desc())
+    )
+    if revoked_account is not None:
+        tenant = session.get(Tenant, revoked_account.tenant_id)
+        return TenantPortalAccountLifecycleRead(
+            status="revoked",
+            tenant_id=revoked_account.tenant_id,
+            tenant_name=_tenant_name(tenant),
+            email=revoked_account.email,
+            linked_at=revoked_account.linked_at,
+            last_seen_at=revoked_account.last_seen_at,
+            revoked_at=revoked_account.revoked_at,
+            recovery_hint=(
+                "This tenant login was revoked by the property team. Ask them to "
+                "restore access or send a fresh tenant portal link before trying again."
+            ),
+        )
+
+    return TenantPortalAccountLifecycleRead(
+        status="unlinked",
+        recovery_hint=(
+            "Open your original tenant portal link once to connect this login. "
+            "If the link expired or was lost, ask the property team for a fresh "
+            "tenant portal link."
+        ),
+    )
 
 
 @router.get("/account/session", response_model=TenantPortalRead)
