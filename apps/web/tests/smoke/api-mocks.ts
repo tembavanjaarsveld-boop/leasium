@@ -192,7 +192,26 @@ const maintenanceWorkOrders = [
     notes: "Needs owner approval before work proceeds.",
     document_ids: [],
     photo_document_ids: [],
-    metadata: {},
+    metadata: {
+      activity_history: [
+        {
+          timestamp: "2026-05-19T01:00:00.000Z",
+          actor: "tenant-portal:header:tenant-t",
+          source: "tenant_portal",
+          event: "tenant_submitted",
+          summary: "Tenant submitted maintenance request.",
+          status: "requested",
+        },
+        {
+          timestamp: "2026-05-19T02:00:00.000Z",
+          actor: "operator-1",
+          source: "operator_api",
+          event: "updated",
+          summary: "Updated contractor and approval status.",
+          status: "awaiting_approval",
+        },
+      ],
+    },
     created_at: "2026-05-19T01:00:00.000Z",
     updated_at: "2026-05-19T02:00:00.000Z",
     deleted_at: null,
@@ -617,6 +636,26 @@ const tenantPortalSession = () => ({
       document_ids: workOrder.document_ids,
       photo_document_ids: workOrder.photo_document_ids,
       created_at: workOrder.created_at,
+      history: Array.isArray(workOrder.metadata?.activity_history)
+        ? workOrder.metadata.activity_history.map((entry) => ({
+            timestamp:
+              typeof entry === "object" && entry && "timestamp" in entry
+                ? String(entry.timestamp)
+                : workOrder.created_at,
+            event:
+              typeof entry === "object" && entry && "event" in entry
+                ? String(entry.event)
+                : "updated",
+            summary:
+              typeof entry === "object" && entry && "summary" in entry
+                ? String(entry.summary)
+                : "Maintenance request updated.",
+            status:
+              typeof entry === "object" && entry && "status" in entry
+                ? String(entry.status)
+                : workOrder.status,
+          }))
+        : [],
     })),
   notification_preferences: {
     email_enabled: true,
@@ -1479,7 +1518,19 @@ export async function mockLeasiumApi(page: Page) {
         notes: null,
         document_ids: [],
         photo_document_ids: [],
-        metadata: { source: "tenant_portal" },
+        metadata: {
+          source: "tenant_portal",
+          activity_history: [
+            {
+              timestamp: "2026-05-20T03:00:00.000Z",
+              actor: "tenant-portal:header:tenant-t",
+              source: "tenant_portal",
+              event: "tenant_submitted",
+              summary: "Tenant submitted maintenance request.",
+              status: "requested",
+            },
+          ],
+        },
         created_at: "2026-05-20T03:00:00.000Z",
         updated_at: "2026-05-20T03:00:00.000Z",
         deleted_at: null,
@@ -1499,6 +1550,12 @@ export async function mockLeasiumApi(page: Page) {
           completed_at: created.completed_at,
           document_ids: created.document_ids,
           photo_document_ids: created.photo_document_ids,
+          history: created.metadata.activity_history.map((entry) => ({
+            timestamp: entry.timestamp,
+            event: entry.event,
+            summary: entry.summary,
+            status: entry.status,
+          })),
           created_at: created.created_at,
         },
         201,

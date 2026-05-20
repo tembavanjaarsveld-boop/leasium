@@ -574,7 +574,15 @@ export type TenantPortalMaintenanceRequestRecord = {
   completed_at: string | null;
   document_ids: string[];
   photo_document_ids: string[];
+  history: TenantPortalMaintenanceHistoryItemRecord[];
   created_at: string;
+};
+
+export type TenantPortalMaintenanceHistoryItemRecord = {
+  timestamp: string;
+  event: string;
+  summary: string;
+  status: string | null;
 };
 
 export type TenantPortalMaintenanceRequestPayload = {

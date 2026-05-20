@@ -99,7 +99,14 @@ test("operations workspace surfaces maintenance and arrears work", async ({
 
   await page.getByRole("tab", { name: /Maintenance/ }).click();
   await expect(page.getByText("Cool Air Services")).toBeVisible();
-  await page.getByRole("button", { name: "Approve" }).click();
+  await page.getByRole("button", { name: "Detail" }).click();
+  await expect(page.getByText("Approval", { exact: true })).toBeVisible();
+  await expect(page.getByText("$640").first()).toBeVisible();
+  await expect(page.getByText("Tenant submitted maintenance request.")).toBeVisible();
+  await page.getByLabel("Invoice draft for Air conditioning fault").selectOption("invoice-draft-1");
+  await page.getByRole("button", { name: "Link invoice" }).click();
+  await expect(page.getByText("INV-1001").first()).toBeVisible();
+  await page.getByRole("button", { exact: true, name: "Approve" }).click();
   await expect(page.locator("span").filter({ hasText: /^approved$/ }).first()).toBeVisible();
 
   await page.getByRole("tab", { name: /Arrears/ }).click();
@@ -140,6 +147,7 @@ test("tenant portal shows scoped self-service data", async ({ page }) => {
   await expect(page.getByText("May rent and outgoings")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Maintenance" })).toBeVisible();
   await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expect(page.getByText("Tenant submitted maintenance request.")).toBeVisible();
   await page.getByLabel("Request title").fill("Shopfront light fault");
   await page.getByLabel("Priority").selectOption("high");
   await page

@@ -424,6 +424,17 @@ def test_tenant_portal_session_lists_scoped_maintenance_requests(
         work_order_metadata={
             "source": "tenant_portal",
             "tenant_onboarding_id": scope["onboarding_id"],
+            "activity_history": [
+                {
+                    "timestamp": "2026-05-20T09:00:00+00:00",
+                    "actor": "user:ops@example.com",
+                    "source": "operator_api",
+                    "event": "updated",
+                    "summary": "Updated status.",
+                    "status": "requested",
+                    "operator_work_order_id": "hidden",
+                }
+            ],
         },
     )
     internal_same_tenant = MaintenanceWorkOrder(
@@ -476,8 +487,19 @@ def test_tenant_portal_session_lists_scoped_maintenance_requests(
         "completed_at": None,
         "document_ids": [scope["document_id"]],
         "photo_document_ids": [],
+        "history": [
+            {
+                "timestamp": "2026-05-20T09:00:00Z",
+                "event": "updated",
+                "summary": "Updated status.",
+                "status": "requested",
+            }
+        ],
         "created_at": visible.created_at.isoformat().replace("+00:00", "Z"),
     }
+    assert "actor" not in requests[0]["history"][0]
+    assert "source" not in requests[0]["history"][0]
+    assert "operator_work_order_id" not in requests[0]["history"][0]
 
     list_response = client.get(
         "/api/v1/tenant-portal/maintenance-requests",
@@ -528,6 +550,18 @@ def test_tenant_portal_can_create_maintenance_request_with_scoped_documents(
     assert work_order.work_order_metadata["source"] == "tenant_portal"
     assert work_order.work_order_metadata["tenant_onboarding_id"] == scope["onboarding_id"]
     assert work_order.work_order_metadata["auth_mode"] == "tenant_portal_token"
+    assert work_order.work_order_metadata["activity_history"][0]["event"] == "tenant_submitted"
+    assert work_order.work_order_metadata["activity_history"][0]["source"] == "tenant_portal"
+    assert body["history"] == [
+        {
+            "timestamp": work_order.work_order_metadata["activity_history"][0][
+                "timestamp"
+            ].replace("+00:00", "Z"),
+            "event": "tenant_submitted",
+            "summary": "Tenant submitted maintenance request.",
+            "status": "requested",
+        }
+    ]
 
     blank_response = client.post(
         "/api/v1/tenant-portal/maintenance-requests",

@@ -142,7 +142,10 @@ def test_maintenance_work_order_tracks_documents_assignment_and_approval(
     assert body["tenant_id"] == context["tenant_id"]
     assert body["document_ids"] == [evidence_document_id]
     assert body["photo_document_ids"] == [evidence_document_id]
-    assert body["metadata"] == {"intake": "tenant_request"}
+    assert body["metadata"]["intake"] == "tenant_request"
+    assert body["metadata"]["activity_history"][0]["event"] == "created"
+    assert body["metadata"]["activity_history"][0]["source"] == "operator_api"
+    assert body["metadata"]["activity_history"][0]["status"] == "requested"
 
     update_response = client.patch(
         f"/api/v1/maintenance/work-orders/{work_order_id}",
@@ -162,6 +165,15 @@ def test_maintenance_work_order_tracks_documents_assignment_and_approval(
     assert updated["status"] == "assigned"
     assert updated["contractor_name"] == "Rapid HVAC Pty Ltd"
     assert updated["approval_status"] == "approved"
+    assert updated["metadata"]["intake"] == "tenant_request"
+    history = updated["metadata"]["activity_history"]
+    assert [entry["event"] for entry in history] == ["created", "updated"]
+    assert history[1]["source"] == "operator_api"
+    assert history[1]["status"] == "assigned"
+    assert history[1]["summary"] == (
+        "Updated status, contractor, contractor email, contractor assigned date, "
+        "approval status, and approval notes."
+    )
 
     list_response = client.get(
         "/api/v1/maintenance/work-orders",

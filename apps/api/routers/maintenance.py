@@ -1,5 +1,7 @@
 """Maintenance work order routes."""
 
+from datetime import date, datetime
+from enum import Enum
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -35,9 +37,109 @@ router = APIRouter(prefix="/maintenance/work-orders", tags=["maintenance"])
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 
+ACTIVITY_HISTORY_KEY = "activity_history"
+ACTIVITY_TRACKED_FIELDS = (
+    "status",
+    "priority",
+    "contractor_name",
+    "contractor_email",
+    "contractor_phone",
+    "contractor_assigned_at",
+    "quote_amount_cents",
+    "approval_status",
+    "approval_notes",
+    "invoice_draft_id",
+    "invoice_reference",
+    "invoice_amount_cents",
+    "due_date",
+    "completed_at",
+    "notes",
+)
+ACTIVITY_FIELD_LABELS = {
+    "status": "status",
+    "priority": "priority",
+    "contractor_name": "contractor",
+    "contractor_email": "contractor email",
+    "contractor_phone": "contractor phone",
+    "contractor_assigned_at": "contractor assigned date",
+    "quote_amount_cents": "quote amount",
+    "approval_status": "approval status",
+    "approval_notes": "approval notes",
+    "invoice_draft_id": "invoice link",
+    "invoice_reference": "invoice reference",
+    "invoice_amount_cents": "invoice amount",
+    "due_date": "due date",
+    "completed_at": "completed date",
+    "notes": "notes",
+}
+
 
 def _not_found(name: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{name} not found.")
+
+
+def _activity_value(value: Any) -> Any:
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, datetime | date):
+        return value.isoformat()
+    return value
+
+
+def _activity_summary(changed_fields: list[str]) -> str:
+    labels = [ACTIVITY_FIELD_LABELS[field] for field in changed_fields]
+    if len(labels) == 1:
+        return f"Updated {labels[0]}."
+    if len(labels) == 2:
+        return f"Updated {labels[0]} and {labels[1]}."
+    return f"Updated {', '.join(labels[:-1])}, and {labels[-1]}."
+
+
+def _activity_entry(
+    *,
+    actor: str,
+    source: str,
+    event: str,
+    summary: str,
+    status_value: Any | None = None,
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "timestamp": utcnow().isoformat(),
+        "actor": actor,
+        "source": source,
+        "event": event,
+        "summary": summary,
+    }
+    if status_value is not None:
+        entry["status"] = _activity_value(status_value)
+    return entry
+
+
+def _append_activity_history(
+    metadata: dict[str, Any] | None,
+    entry: dict[str, Any],
+) -> dict[str, Any]:
+    next_metadata = dict(metadata or {})
+    current_history = next_metadata.get(ACTIVITY_HISTORY_KEY)
+    history = list(current_history) if isinstance(current_history, list) else []
+    history.append(entry)
+    next_metadata[ACTIVITY_HISTORY_KEY] = history
+    return next_metadata
+
+
+def _tracked_activity_changes(
+    work_order: MaintenanceWorkOrder,
+    data: dict[str, Any],
+) -> list[str]:
+    changed: list[str] = []
+    for field in ACTIVITY_TRACKED_FIELDS:
+        if field not in data:
+            continue
+        if _activity_value(getattr(work_order, field)) != _activity_value(data[field]):
+            changed.append(field)
+    return changed
 
 
 def _property_for_entity(property_id: UUID, entity_id: UUID, session: Session) -> Property:
@@ -277,7 +379,17 @@ def create_work_order(
     if data["requested_at"] is None:
         data.pop("requested_at")
     data["attachments"] = _attachments_from_payload(data, {}, entity_id, session)
-    data["work_order_metadata"] = data.pop("metadata")
+    metadata = data.pop("metadata")
+    data["work_order_metadata"] = _append_activity_history(
+        metadata,
+        _activity_entry(
+            actor=user.actor,
+            source="operator_api",
+            event="created",
+            summary="Work order created.",
+            status_value=data["status"],
+        ),
+    )
     _validate_linked_records(data, entity_id, session)
 
     work_order = MaintenanceWorkOrder(**data)
@@ -331,10 +443,26 @@ def update_work_order(
         data["attachments"] = _attachments_from_payload(
             data, work_order.attachments or {}, work_order.entity_id, session
         )
-    if "metadata" in data:
-        data["work_order_metadata"] = data.pop("metadata")
+    payload_metadata = data.pop("metadata", None) if "metadata" in data else None
     _validate_linked_records(data, work_order.entity_id, session)
 
+    changed_fields = _tracked_activity_changes(work_order, data)
+    if payload_metadata is not None:
+        work_order.work_order_metadata = {
+            **(work_order.work_order_metadata or {}),
+            **payload_metadata,
+        }
+    if changed_fields:
+        work_order.work_order_metadata = _append_activity_history(
+            work_order.work_order_metadata,
+            _activity_entry(
+                actor=user.actor,
+                source="operator_api",
+                event="updated",
+                summary=_activity_summary(changed_fields),
+                status_value=data.get("status", work_order.status),
+            ),
+        )
     for key, value in data.items():
         setattr(work_order, key, value)
     audit_log(

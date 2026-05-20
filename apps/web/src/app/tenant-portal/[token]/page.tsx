@@ -646,6 +646,29 @@ function TenantPortalContent() {
                             {request.source_reference}
                           </div>
                         ) : null}
+                        {request.history.length ? (
+                          <div className="mt-3 grid gap-2 rounded-md border border-border bg-muted/30 p-2">
+                            {request.history.map((entry, index) => (
+                              <div
+                                key={`${request.id}-${entry.event}-${entry.timestamp}-${index}`}
+                                className="grid gap-1 text-xs"
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-semibold">{label(entry.event)}</span>
+                                  {entry.status ? (
+                                    <StatusBadge tone={maintenanceTone(entry.status)}>
+                                      {label(entry.status)}
+                                    </StatusBadge>
+                                  ) : null}
+                                  <span className="text-muted-foreground">
+                                    {formatDateTime(entry.timestamp)}
+                                  </span>
+                                </div>
+                                <div className="text-muted-foreground">{entry.summary}</div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                       <div className="grid content-start justify-items-end gap-1 text-xs text-muted-foreground">
                         <span>Requested {formatDateTime(request.requested_at)}</span>

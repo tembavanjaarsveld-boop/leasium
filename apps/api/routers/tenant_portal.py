@@ -49,6 +49,7 @@ from apps.api.schemas.tenant_portal import (
     TenantPortalInvoiceLineRead,
     TenantPortalInvoiceRead,
     TenantPortalLeaseRead,
+    TenantPortalMaintenanceHistoryItemRead,
     TenantPortalMaintenanceRequestCreate,
     TenantPortalMaintenanceRequestRead,
     TenantPortalNotificationPreferencesRead,
@@ -64,6 +65,7 @@ router = APIRouter(prefix="/tenant-portal", tags=["tenant-portal"])
 PORTAL_TOKEN_HEADER = "x-tenant-portal-token"
 PORTAL_TOKEN_QUERY = "portal_token"
 PORTAL_PREFERENCES_KEY = "portal_notification_preferences"
+ACTIVITY_HISTORY_KEY = "activity_history"
 PORTAL_UPLOAD_CATEGORIES = (
     DocumentCategory.insurance,
     DocumentCategory.bank_guarantee,
@@ -443,6 +445,55 @@ def _portal_work_orders(scope: PortalScope, session: Session) -> list[Maintenanc
     return [row for row in rows if _is_portal_work_order(scope, row)]
 
 
+def _portal_activity_entry(
+    scope: PortalScope,
+    *,
+    event: str,
+    summary: str,
+    status_value: MaintenanceWorkOrderStatus | str,
+) -> dict[str, str]:
+    status_text = (
+        status_value.value if isinstance(status_value, MaintenanceWorkOrderStatus) else status_value
+    )
+    return {
+        "timestamp": utcnow().isoformat(),
+        "actor": scope.auth.actor,
+        "source": "tenant_portal",
+        "event": event,
+        "summary": summary,
+        "status": status_text,
+    }
+
+
+def _portal_safe_history(
+    work_order: MaintenanceWorkOrder,
+) -> list[TenantPortalMaintenanceHistoryItemRead]:
+    metadata = work_order.work_order_metadata or {}
+    raw_history = metadata.get(ACTIVITY_HISTORY_KEY)
+    if not isinstance(raw_history, list):
+        return []
+
+    history: list[TenantPortalMaintenanceHistoryItemRead] = []
+    for raw_entry in raw_history:
+        if not isinstance(raw_entry, dict):
+            continue
+        timestamp = _parse_iso_datetime(raw_entry.get("timestamp"))
+        event = raw_entry.get("event")
+        summary = raw_entry.get("summary")
+        status_value = raw_entry.get("status")
+        if timestamp is None or not isinstance(event, str) or not isinstance(summary, str):
+            continue
+        history.append(
+            TenantPortalMaintenanceHistoryItemRead(
+                timestamp=timestamp,
+                event=event,
+                summary=summary,
+                status=status_value if isinstance(status_value, str) else None,
+            )
+        )
+    return history
+
+
 def _maintenance_request_read(
     work_order: MaintenanceWorkOrder,
 ) -> TenantPortalMaintenanceRequestRead:
@@ -458,6 +509,7 @@ def _maintenance_request_read(
         completed_at=work_order.completed_at,
         document_ids=work_order.document_ids,
         photo_document_ids=work_order.photo_document_ids,
+        history=_portal_safe_history(work_order),
         created_at=work_order.created_at,
     )
 
@@ -759,6 +811,14 @@ def create_tenant_portal_maintenance_request(
         work_order_metadata={
             **_portal_work_order_metadata(scope),
             "submitted_at": utcnow().isoformat(),
+            ACTIVITY_HISTORY_KEY: [
+                _portal_activity_entry(
+                    scope,
+                    event="tenant_submitted",
+                    summary="Tenant submitted maintenance request.",
+                    status_value=MaintenanceWorkOrderStatus.requested,
+                )
+            ],
         },
     )
     session.add(work_order)

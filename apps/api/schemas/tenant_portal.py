@@ -157,6 +157,13 @@ class TenantPortalMaintenanceRequestCreate(BaseModel):
         return cleaned or None
 
 
+class TenantPortalMaintenanceHistoryItemRead(BaseModel):
+    timestamp: datetime
+    event: str
+    summary: str
+    status: str | None = None
+
+
 class TenantPortalMaintenanceRequestRead(BaseModel):
     id: UUID
     title: str
@@ -169,6 +176,7 @@ class TenantPortalMaintenanceRequestRead(BaseModel):
     completed_at: datetime | None
     document_ids: list[UUID]
     photo_document_ids: list[UUID]
+    history: list[TenantPortalMaintenanceHistoryItemRead] = Field(default_factory=list)
     created_at: datetime
 
 

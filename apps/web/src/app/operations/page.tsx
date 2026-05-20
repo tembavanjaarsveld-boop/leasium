@@ -9,9 +9,12 @@ import {
   Clock3,
   FileWarning,
   HandCoins,
+  History,
+  Link2,
   MailCheck,
   Plus,
   RefreshCw,
+  ReceiptText,
   Send,
   ShieldCheck,
   Sparkles,
@@ -42,9 +45,11 @@ import {
   createArrearsCase,
   createMaintenanceWorkOrder,
   type DocumentIntakeRecord,
+  type InvoiceDraftRecord,
   listArrearsCases,
   listDocumentIntakes,
   listEntities,
+  listInvoiceDrafts,
   listMaintenanceWorkOrders,
   listObligations,
   listProperties,
@@ -71,6 +76,7 @@ const EMPTY_ONBOARDINGS: TenantOnboardingRecord[] = [];
 const EMPTY_INTAKES: DocumentIntakeRecord[] = [];
 const EMPTY_MAINTENANCE: MaintenanceWorkOrderRecord[] = [];
 const EMPTY_ARREARS: ArrearsCaseRecord[] = [];
+const EMPTY_INVOICE_DRAFTS: InvoiceDraftRecord[] = [];
 
 const tabs = [
   { id: "queue", label: "Queue", description: "All operational work" },
@@ -186,8 +192,16 @@ type MaintenanceFormState = {
   status: MaintenanceWorkOrderStatus;
   due_date: string;
   contractor_name: string;
+  contractor_email: string;
+  contractor_phone: string;
   quote_amount: string;
+  approval_limit: string;
+  approval_notes: string;
   approval_required: boolean;
+  source_reference: string;
+  invoice_reference: string;
+  invoice_amount: string;
+  notes: string;
 };
 
 type ArrearsFormState = {
@@ -215,8 +229,16 @@ const emptyMaintenanceForm: MaintenanceFormState = {
   status: "requested",
   due_date: "",
   contractor_name: "",
+  contractor_email: "",
+  contractor_phone: "",
   quote_amount: "",
+  approval_limit: "",
+  approval_notes: "",
   approval_required: false,
+  source_reference: "",
+  invoice_reference: "",
+  invoice_amount: "",
+  notes: "",
 };
 
 const emptyArrearsForm: ArrearsFormState = {
@@ -332,6 +354,58 @@ function propertyName(properties: PropertyRecord[], propertyId: string | null | 
 function tenantName(tenants: TenantRecord[], tenantId: string | null | undefined) {
   const tenant = tenants.find((item) => item.id === tenantId);
   return tenant?.trading_name || tenant?.legal_name || "No tenant";
+}
+
+function invoiceDraftLabel(draft: InvoiceDraftRecord) {
+  return [
+    draft.invoice_number || draft.title,
+    draft.recipient_name,
+    formatMoney(draft.total_cents, draft.currency),
+    label(draft.status),
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function invoiceDraftName(drafts: InvoiceDraftRecord[], invoiceDraftId: string | null) {
+  if (!invoiceDraftId) {
+    return null;
+  }
+  const draft = drafts.find((item) => item.id === invoiceDraftId);
+  return draft ? invoiceDraftLabel(draft) : "Linked invoice draft";
+}
+
+type MaintenanceActivityEntry = {
+  at?: string;
+  timestamp?: string;
+  event?: string;
+  action?: string;
+  actor?: string;
+  source?: string;
+  summary?: string;
+};
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function maintenanceActivity(workOrder: MaintenanceWorkOrderRecord) {
+  const raw = workOrder.metadata?.activity_history;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter(isPlainRecord)
+    .map((entry): MaintenanceActivityEntry => ({
+      at: typeof entry.at === "string" ? entry.at : undefined,
+      timestamp: typeof entry.timestamp === "string" ? entry.timestamp : undefined,
+      event: typeof entry.event === "string" ? entry.event : undefined,
+      action: typeof entry.action === "string" ? entry.action : undefined,
+      actor: typeof entry.actor === "string" ? entry.actor : undefined,
+      source: typeof entry.source === "string" ? entry.source : undefined,
+      summary: typeof entry.summary === "string" ? entry.summary : undefined,
+    }))
+    .filter((entry) => entry.summary || entry.event || entry.action);
 }
 
 function obligationTone(obligation: ObligationRecord): Tone {
@@ -636,6 +710,7 @@ function OperationsWorkspace() {
   const [arrearsStatus, setArrearsStatus] = useState<ArrearsCaseStatus | "all">("all");
   const [maintenanceFormOpen, setMaintenanceFormOpen] = useState(false);
   const [arrearsFormOpen, setArrearsFormOpen] = useState(false);
+  const [expandedMaintenanceId, setExpandedMaintenanceId] = useState<string | null>(null);
   const [maintenanceForm, setMaintenanceForm] = useState<MaintenanceFormState>(emptyMaintenanceForm);
   const [arrearsForm, setArrearsForm] = useState<ArrearsFormState>(emptyArrearsForm);
   const queryClient = useQueryClient();
@@ -698,6 +773,12 @@ function OperationsWorkspace() {
   const maintenanceQuery = useQuery({
     queryKey: ["operations-maintenance", selectedEntityId],
     queryFn: () => listMaintenanceWorkOrders({ entity_id: selectedEntityId }),
+    enabled: Boolean(selectedEntityId),
+  });
+
+  const invoiceDraftsQuery = useQuery({
+    queryKey: ["operations-invoice-drafts", selectedEntityId],
+    queryFn: () => listInvoiceDrafts({ entity_id: selectedEntityId }),
     enabled: Boolean(selectedEntityId),
   });
 
@@ -772,6 +853,7 @@ function OperationsWorkspace() {
         onboardingQuery.isLoading ||
         documentIntakesQuery.isLoading ||
         maintenanceQuery.isLoading ||
+        invoiceDraftsQuery.isLoading ||
         arrearsQuery.isLoading));
 
   const properties = propertiesQuery.data ?? EMPTY_PROPERTIES;
@@ -781,6 +863,7 @@ function OperationsWorkspace() {
   const intakes = documentIntakesQuery.data ?? EMPTY_INTAKES;
   const maintenance = maintenanceQuery.data ?? EMPTY_MAINTENANCE;
   const arrears = arrearsQuery.data ?? EMPTY_ARREARS;
+  const invoiceDrafts = invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS;
 
   const queueItems = useMemo(
     () =>
@@ -838,6 +921,7 @@ function OperationsWorkspace() {
     onboardingQuery.error ||
     documentIntakesQuery.error ||
     maintenanceQuery.error ||
+    invoiceDraftsQuery.error ||
     arrearsQuery.error ||
     createMaintenanceMutation.error ||
     updateMaintenanceMutation.error ||
@@ -852,6 +936,7 @@ function OperationsWorkspace() {
     onboardingQuery.refetch();
     documentIntakesQuery.refetch();
     maintenanceQuery.refetch();
+    invoiceDraftsQuery.refetch();
     arrearsQuery.refetch();
   }
 
@@ -871,9 +956,17 @@ function OperationsWorkspace() {
       status: maintenanceForm.approval_required ? "awaiting_approval" : maintenanceForm.status,
       due_date: maintenanceForm.due_date || null,
       contractor_name: optionalString(maintenanceForm.contractor_name),
+      contractor_email: optionalString(maintenanceForm.contractor_email),
+      contractor_phone: optionalString(maintenanceForm.contractor_phone),
       quote_amount_cents: quoteAmount || null,
       approval_required: maintenanceForm.approval_required,
       approval_status: maintenanceForm.approval_required ? "pending" : "not_required",
+      approval_limit_cents: dollarsToCents(maintenanceForm.approval_limit) || null,
+      approval_notes: optionalString(maintenanceForm.approval_notes),
+      source_reference: optionalString(maintenanceForm.source_reference),
+      invoice_reference: optionalString(maintenanceForm.invoice_reference),
+      invoice_amount_cents: dollarsToCents(maintenanceForm.invoice_amount) || null,
+      notes: optionalString(maintenanceForm.notes),
       metadata: { source: "operator_operations_workspace" },
     });
   }
@@ -1288,6 +1381,29 @@ function OperationsWorkspace() {
                           }
                         />
                       </Field>
+                      <Field label="Contractor email">
+                        <Input
+                          type="email"
+                          value={maintenanceForm.contractor_email}
+                          onChange={(event) =>
+                            setMaintenanceForm((current) => ({
+                              ...current,
+                              contractor_email: event.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Contractor phone">
+                        <Input
+                          value={maintenanceForm.contractor_phone}
+                          onChange={(event) =>
+                            setMaintenanceForm((current) => ({
+                              ...current,
+                              contractor_phone: event.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
                       <Field label="Quote amount">
                         <Input
                           inputMode="decimal"
@@ -1296,6 +1412,52 @@ function OperationsWorkspace() {
                             setMaintenanceForm((current) => ({
                               ...current,
                               quote_amount: event.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Approval limit">
+                        <Input
+                          inputMode="decimal"
+                          value={maintenanceForm.approval_limit}
+                          onChange={(event) =>
+                            setMaintenanceForm((current) => ({
+                              ...current,
+                              approval_limit: event.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Source reference">
+                        <Input
+                          value={maintenanceForm.source_reference}
+                          onChange={(event) =>
+                            setMaintenanceForm((current) => ({
+                              ...current,
+                              source_reference: event.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Invoice reference">
+                        <Input
+                          value={maintenanceForm.invoice_reference}
+                          onChange={(event) =>
+                            setMaintenanceForm((current) => ({
+                              ...current,
+                              invoice_reference: event.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Invoice amount">
+                        <Input
+                          inputMode="decimal"
+                          value={maintenanceForm.invoice_amount}
+                          onChange={(event) =>
+                            setMaintenanceForm((current) => ({
+                              ...current,
+                              invoice_amount: event.target.value,
                             }))
                           }
                         />
@@ -1314,6 +1476,20 @@ function OperationsWorkspace() {
                         Approval required
                       </label>
                       <label className="grid gap-1.5 text-sm md:col-span-2">
+                        <span className="font-medium text-foreground">Approval notes</span>
+                        <textarea
+                          value={maintenanceForm.approval_notes}
+                          onChange={(event) =>
+                            setMaintenanceForm((current) => ({
+                              ...current,
+                              approval_notes: event.target.value,
+                            }))
+                          }
+                          rows={2}
+                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        />
+                      </label>
+                      <label className="grid gap-1.5 text-sm md:col-span-2">
                         <span className="font-medium text-foreground">Description</span>
                         <textarea
                           value={maintenanceForm.description}
@@ -1324,6 +1500,20 @@ function OperationsWorkspace() {
                             }))
                           }
                           rows={3}
+                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        />
+                      </label>
+                      <label className="grid gap-1.5 text-sm md:col-span-2">
+                        <span className="font-medium text-foreground">Internal notes</span>
+                        <textarea
+                          value={maintenanceForm.notes}
+                          onChange={(event) =>
+                            setMaintenanceForm((current) => ({
+                              ...current,
+                              notes: event.target.value,
+                            }))
+                          }
+                          rows={2}
                           className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
                         />
                       </label>
@@ -1417,6 +1607,14 @@ function OperationsWorkspace() {
                             <span>Due {dueLabel(workOrder.due_date)}</span>
                             <span>Requested {formatDateTime(workOrder.requested_at)}</span>
                             {workOrder.contractor_name ? <span>{workOrder.contractor_name}</span> : null}
+                            {workOrder.invoice_draft_id || workOrder.invoice_reference ? (
+                              <span>
+                                Invoice{" "}
+                                {invoiceDraftName(invoiceDrafts, workOrder.invoice_draft_id) ??
+                                  workOrder.invoice_reference ??
+                                  "linked"}
+                              </span>
+                            ) : null}
                             {workOrder.quote_amount_cents ? (
                               <span>{formatMoney(workOrder.quote_amount_cents)}</span>
                             ) : null}
@@ -1428,7 +1626,30 @@ function OperationsWorkspace() {
                             updateMaintenanceMutation.mutate({ id: workOrder.id, data })
                           }
                           disabled={updateMaintenanceMutation.isPending}
+                          expanded={expandedMaintenanceId === workOrder.id}
+                          onToggleDetails={() =>
+                            setExpandedMaintenanceId((current) =>
+                              current === workOrder.id ? null : workOrder.id,
+                            )
+                          }
                         />
+                        {expandedMaintenanceId === workOrder.id ? (
+                          <div className="xl:col-span-2">
+                            <MaintenanceDetailPanel
+                              workOrder={workOrder}
+                              properties={properties}
+                              tenants={tenants}
+                              invoiceDrafts={invoiceDrafts}
+                              disabled={updateMaintenanceMutation.isPending}
+                              onUpdate={(data) =>
+                                updateMaintenanceMutation.mutate({
+                                  id: workOrder.id,
+                                  data,
+                                })
+                              }
+                            />
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                     {!operationsLoading && filteredMaintenance.length === 0 ? (
@@ -1745,14 +1966,348 @@ function MetricCard({
   );
 }
 
-function MaintenanceActions({
+function maintenanceTimeline(workOrder: MaintenanceWorkOrderRecord) {
+  const backendHistory = maintenanceActivity(workOrder).map((entry) => ({
+    at: entry.at ?? entry.timestamp ?? workOrder.updated_at,
+    label: label(entry.event ?? entry.action ?? "Activity"),
+    detail:
+      entry.summary ??
+      [entry.actor, entry.source].filter(Boolean).join(" - ") ??
+      "Maintenance activity updated.",
+  }));
+  const derived = [
+    {
+      at: workOrder.requested_at,
+      label: "Requested",
+      detail: workOrder.source_reference || "Work order opened.",
+    },
+    workOrder.contractor_assigned_at
+      ? {
+          at: workOrder.contractor_assigned_at,
+          label: "Contractor assigned",
+          detail: workOrder.contractor_name || "Contractor added.",
+        }
+      : null,
+    workOrder.approval_required
+      ? {
+          at: workOrder.approved_at ?? workOrder.updated_at,
+          label: `Approval ${label(workOrder.approval_status)}`,
+          detail:
+            workOrder.approval_notes ||
+            (workOrder.quote_amount_cents
+              ? `Quote ${formatMoney(workOrder.quote_amount_cents)}`
+              : "Approval tracked."),
+        }
+      : null,
+    workOrder.invoice_draft_id || workOrder.invoice_reference || workOrder.invoice_amount_cents
+      ? {
+          at: workOrder.updated_at,
+          label: "Invoice linked",
+          detail: [
+            workOrder.invoice_reference,
+            workOrder.invoice_amount_cents
+              ? formatMoney(workOrder.invoice_amount_cents)
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" - "),
+        }
+      : null,
+    workOrder.completed_at
+      ? {
+          at: workOrder.completed_at,
+          label: "Completed",
+          detail: workOrder.notes || "Work order completed.",
+        }
+      : null,
+  ].filter(Boolean) as { at: string; label: string; detail: string }[];
+
+  const combined = backendHistory.length ? backendHistory : derived;
+  return combined
+    .filter((entry) => entry.at)
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+}
+
+function MaintenanceDetailPanel({
   workOrder,
+  properties,
+  tenants,
+  invoiceDrafts,
   onUpdate,
   disabled,
 }: {
   workOrder: MaintenanceWorkOrderRecord;
+  properties: PropertyRecord[];
+  tenants: TenantRecord[];
+  invoiceDrafts: InvoiceDraftRecord[];
   onUpdate: (data: Parameters<typeof updateMaintenanceWorkOrder>[1]) => void;
   disabled: boolean;
+}) {
+  const matchingInvoiceDrafts = invoiceDrafts.filter((draft) => {
+    if (
+      workOrder.tenant_id &&
+      draft.tenant_id &&
+      draft.tenant_id !== workOrder.tenant_id
+    ) {
+      return false;
+    }
+    if (
+      workOrder.property_id &&
+      draft.property_id &&
+      draft.property_id !== workOrder.property_id
+    ) {
+      return false;
+    }
+    return draft.status === "approved" || draft.id === workOrder.invoice_draft_id;
+  });
+  const [invoiceDraftId, setInvoiceDraftId] = useState(workOrder.invoice_draft_id ?? "");
+  const selectedInvoiceDraft = matchingInvoiceDrafts.find(
+    (draft) => draft.id === invoiceDraftId,
+  );
+  const timeline = maintenanceTimeline(workOrder);
+
+  useEffect(() => {
+    setInvoiceDraftId(workOrder.invoice_draft_id ?? "");
+  }, [workOrder.invoice_draft_id]);
+
+  return (
+    <div className="grid gap-3 rounded-xl border border-border bg-muted/30 p-3">
+      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="rounded-xl border border-border bg-white p-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <ShieldCheck size={15} className="text-primary" />
+            Approval
+          </div>
+          <dl className="mt-3 grid gap-2 text-sm">
+            <div>
+              <dt className="text-muted-foreground">Quote</dt>
+              <dd className="font-medium">
+                {workOrder.quote_amount_cents
+                  ? formatMoney(workOrder.quote_amount_cents)
+                  : "No quote"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Limit</dt>
+              <dd className="font-medium">
+                {workOrder.approval_limit_cents
+                  ? formatMoney(workOrder.approval_limit_cents)
+                  : "No limit"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Status</dt>
+              <dd className="font-medium">{label(workOrder.approval_status)}</dd>
+            </div>
+            {workOrder.approval_notes ? (
+              <div>
+                <dt className="text-muted-foreground">Notes</dt>
+                <dd>{workOrder.approval_notes}</dd>
+              </div>
+            ) : null}
+          </dl>
+          {workOrder.approval_status === "pending" ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <SecondaryButton
+                type="button"
+                className="h-9 px-3"
+                disabled={disabled}
+                onClick={() =>
+                  onUpdate({
+                    status: "approved",
+                    approval_status: "approved",
+                    approved_at: new Date().toISOString(),
+                    approval_notes:
+                      workOrder.approval_notes || "Approved from Operations.",
+                  })
+                }
+              >
+                <ShieldCheck size={15} />
+                Approve quote
+              </SecondaryButton>
+              <SecondaryButton
+                type="button"
+                className="h-9 px-3"
+                disabled={disabled}
+                onClick={() =>
+                  onUpdate({
+                    status: "triaged",
+                    approval_status: "declined",
+                    approval_notes:
+                      workOrder.approval_notes || "Declined from Operations.",
+                  })
+                }
+              >
+                <Ban size={15} className="text-danger" />
+                Decline
+              </SecondaryButton>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl border border-border bg-white p-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <UserRound size={15} className="text-primary" />
+            Contractor
+          </div>
+          <dl className="mt-3 grid gap-2 text-sm">
+            <div>
+              <dt className="text-muted-foreground">Name</dt>
+              <dd className="font-medium">{workOrder.contractor_name || "Not assigned"}</dd>
+            </div>
+            {workOrder.contractor_email ? (
+              <div>
+                <dt className="text-muted-foreground">Email</dt>
+                <dd>{workOrder.contractor_email}</dd>
+              </div>
+            ) : null}
+            {workOrder.contractor_phone ? (
+              <div>
+                <dt className="text-muted-foreground">Phone</dt>
+                <dd>{workOrder.contractor_phone}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt className="text-muted-foreground">Assigned</dt>
+              <dd>{formatDateTime(workOrder.contractor_assigned_at)}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div className="rounded-xl border border-border bg-white p-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <ReceiptText size={15} className="text-primary" />
+            Invoice
+          </div>
+          <div className="mt-3 grid gap-2">
+            <Select
+              aria-label={`Invoice draft for ${workOrder.title}`}
+              value={invoiceDraftId}
+              onChange={(event) => setInvoiceDraftId(event.target.value)}
+            >
+              <option value="">No linked invoice</option>
+              {matchingInvoiceDrafts.map((draft) => (
+                <option key={draft.id} value={draft.id}>
+                  {invoiceDraftLabel(draft)}
+                </option>
+              ))}
+            </Select>
+            <div className="text-xs text-muted-foreground">
+              {workOrder.invoice_reference
+                ? `Reference ${workOrder.invoice_reference}`
+                : "Link an approved internal invoice draft or keep a manual reference."}
+              {workOrder.invoice_amount_cents
+                ? ` - ${formatMoney(workOrder.invoice_amount_cents)}`
+                : ""}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <SecondaryButton
+                type="button"
+                className="h-9 px-3"
+                disabled={disabled || !invoiceDraftId}
+                onClick={() =>
+                  onUpdate({
+                    invoice_draft_id: invoiceDraftId || null,
+                    invoice_reference:
+                      selectedInvoiceDraft?.invoice_number ??
+                      selectedInvoiceDraft?.title ??
+                      workOrder.invoice_reference,
+                    invoice_amount_cents:
+                      selectedInvoiceDraft?.total_cents ?? workOrder.invoice_amount_cents,
+                  })
+                }
+              >
+                <Link2 size={15} />
+                Link invoice
+              </SecondaryButton>
+              {workOrder.invoice_draft_id ? (
+                <SecondaryButton
+                  type="button"
+                  className="h-9 px-3"
+                  disabled={disabled}
+                  onClick={() =>
+                    onUpdate({
+                      invoice_draft_id: null,
+                      invoice_reference: null,
+                      invoice_amount_cents: null,
+                    })
+                  }
+                >
+                  <Ban size={15} />
+                  Unlink
+                </SecondaryButton>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="rounded-xl border border-border bg-white p-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <History size={15} className="text-primary" />
+            Activity
+          </div>
+          <div className="mt-3 grid gap-2">
+            {timeline.map((entry, index) => (
+              <div key={`${entry.label}-${entry.at}-${index}`} className="grid gap-1 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{entry.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatDateTime(entry.at)}
+                  </span>
+                </div>
+                <div className="text-muted-foreground">{entry.detail}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <dl className="grid content-start gap-2 rounded-xl border border-border bg-white p-3 text-sm">
+          <div>
+            <dt className="text-muted-foreground">Scope</dt>
+            <dd className="font-medium">
+              {propertyName(properties, workOrder.property_id)} -{" "}
+              {tenantName(tenants, workOrder.tenant_id)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Source</dt>
+            <dd>{workOrder.source_reference || "No source reference"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Attachments</dt>
+            <dd>
+              {workOrder.document_ids.length + workOrder.photo_document_ids.length} file
+              {workOrder.document_ids.length + workOrder.photo_document_ids.length === 1
+                ? ""
+                : "s"}
+            </dd>
+          </div>
+          {workOrder.notes ? (
+            <div>
+              <dt className="text-muted-foreground">Notes</dt>
+              <dd>{workOrder.notes}</dd>
+            </div>
+          ) : null}
+        </dl>
+      </div>
+    </div>
+  );
+}
+
+function MaintenanceActions({
+  workOrder,
+  onUpdate,
+  disabled,
+  expanded,
+  onToggleDetails,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  onUpdate: (data: Parameters<typeof updateMaintenanceWorkOrder>[1]) => void;
+  disabled: boolean;
+  expanded?: boolean;
+  onToggleDetails?: () => void;
 }) {
   if (!maintenanceIsOpen(workOrder)) {
     return <StatusBadge tone="success">{label(workOrder.status)}</StatusBadge>;
@@ -1760,6 +2315,17 @@ function MaintenanceActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+      {onToggleDetails ? (
+        <SecondaryButton
+          type="button"
+          className="h-9 px-3"
+          disabled={disabled}
+          onClick={onToggleDetails}
+        >
+          <ClipboardList size={15} />
+          {expanded ? "Hide detail" : "Detail"}
+        </SecondaryButton>
+      ) : null}
       {workOrder.status === "requested" ? (
         <SecondaryButton
           type="button"
