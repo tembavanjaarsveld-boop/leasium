@@ -1417,6 +1417,95 @@ def test_xero_provider_dispatch_persists_failed_attempt_and_retries(
     assert metadata["delivery_email"]["send"]["provider_message_id"] == "sg-retry-1"
 
 
+def test_xero_exception_queue_surfaces_local_provider_and_payment_gaps(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    entity_id = _entity_id(session)
+    failed_invoice = _create_approved_invoice_fixture(
+        client,
+        session,
+        entity_id,
+        invoice_number="INV-XERO-FAILED",
+    )
+    payment_invoice = _create_approved_invoice_fixture(
+        client,
+        session,
+        entity_id,
+        invoice_number="INV-XERO-PAYMENT",
+        xero_invoice_id="xero-invoice-payment-gap",
+    )
+    provider_receipt = {
+        "provider": "xero",
+        "status": "failed",
+        "reason": "Xero rate limit, retry shortly.",
+        "external_posting_status": "provider_failed",
+        "idempotency_key": "xero-draft-failed",
+        "xero_invoice_id": None,
+        "xero_status": None,
+        "received_at": "2026-05-20T10:00:00+00:00",
+        "retry_count": 1,
+    }
+    failed_metadata = dict(failed_invoice.invoice_metadata or {})
+    failed_metadata["provider_status_receipts"] = [provider_receipt]
+    failed_metadata["provider_dispatch"] = {"xero": provider_receipt}
+    failed_metadata["posting_preparation"] = {
+        **dict(failed_metadata.get("posting_preparation") or {}),
+        "external_posting_status": "provider_failed",
+        "xero_sync_allowed": True,
+        "xero_sync_requested": True,
+    }
+    failed_invoice.invoice_metadata = failed_metadata
+    payment_metadata = dict(payment_invoice.invoice_metadata or {})
+    payment_metadata["payment_status"] = {
+        "status": "unpaid",
+        "paid_cents": 0,
+        "outstanding_cents": payment_invoice.total_cents,
+        "source": "test",
+    }
+    payment_invoice.invoice_metadata = payment_metadata
+    session.commit()
+
+    def fail_refresh(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("exception queue must not call the Xero provider")
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fail_refresh)
+    entity = session.get(Entity, UUID(entity_id))
+    assert entity is not None
+    last_sync_before = entity.xero_last_sync_at
+
+    response = client.get(f"/api/v1/xero/exception-queue?entity_id={entity_id}")
+    assert response.status_code == 200
+    body = response.json()
+    item_by_id = {item["id"]: item for item in body["items"]}
+
+    provider_item = item_by_id[f"xero-provider-{failed_invoice.id}"]
+    assert provider_item["kind"] == "provider"
+    assert provider_item["severity"] == "blocker"
+    assert provider_item["next_action"] == "retry_xero_dispatch"
+    assert provider_item["provider_status"] == "failed"
+    assert provider_item["external_posting_status"] == "provider_failed"
+    assert provider_item["retry_count"] == 1
+
+    payment_item = item_by_id[f"xero-payment-{payment_invoice.id}"]
+    assert payment_item["kind"] == "payment"
+    assert payment_item["next_action"] == "preview_payment_reconciliation"
+    assert payment_item["xero_invoice_id"] == "xero-invoice-payment-gap"
+    assert payment_item["provider_status"] == "unpaid"
+
+    assert body["summary"]["provider"] >= 1
+    assert body["summary"]["payment"] >= 1
+    assert "local Leasium records only" in body["guardrails"][0]
+
+    session.refresh(entity)
+    assert entity.xero_last_sync_at == last_sync_before
+    audit = session.scalar(
+        select(AuditAction).where(AuditAction.tool_name == "xero.exception_queue")
+    )
+    assert audit is None
+
+
 def test_xero_invoice_draft_create_skips_when_provider_unconfigured(
     client: TestClient,
     session: Session,

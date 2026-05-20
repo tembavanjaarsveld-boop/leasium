@@ -72,6 +72,9 @@ from apps.api.schemas.xero import (
     XeroContactMappingApplyResultRead,
     XeroContactMatchRead,
     XeroContactSyncPreviewRead,
+    XeroExceptionQueueItemRead,
+    XeroExceptionQueueRead,
+    XeroExceptionQueueSummaryRead,
     XeroInvoiceDraftCreateRead,
     XeroInvoiceDraftCreateRequest,
     XeroInvoiceDraftCreateResultRead,
@@ -113,6 +116,15 @@ SUGGESTED_CHARGE_MAPPINGS: dict[RentChargeType, tuple[str, str | None]] = {
     RentChargeType.other: ("299", "OUTPUT"),
 }
 OAUTH_STATE_TTL_MINUTES = 15
+XERO_EXCEPTION_KINDS = (
+    "connection",
+    "contact",
+    "chart",
+    "tax",
+    "invoice_sync",
+    "provider",
+    "payment",
+)
 
 
 def _tenant_name(tenant: Tenant | None) -> str | None:
@@ -1170,6 +1182,193 @@ def _provider_dispatch_next_action(
     if email_status == "skipped":
         return "configure_email_provider"
     return None
+
+
+def _exception_from_status_issue(issue: XeroMappingIssueRead) -> XeroExceptionQueueItemRead:
+    return XeroExceptionQueueItemRead(
+        id=issue.id,
+        kind=issue.kind,
+        severity=issue.severity,
+        label=issue.label,
+        detail=issue.detail,
+        action=issue.action,
+        next_action=(
+            "connect_xero"
+            if issue.kind == "connection"
+            else "review_contact_mapping"
+            if issue.kind == "contact"
+            else "review_chart_tax_mapping"
+            if issue.kind in {"chart", "tax"}
+            else "review_invoice_posting"
+            if issue.kind == "invoice_sync"
+            else "preview_payment_reconciliation"
+            if issue.kind == "payment"
+            else None
+        ),
+        source="xero_status",
+        property_id=issue.property_id,
+        property_name=issue.property_name,
+        tenancy_unit_id=issue.tenancy_unit_id,
+        unit_label=issue.unit_label,
+        lease_id=issue.lease_id,
+        tenant_id=issue.tenant_id,
+        tenant_name=issue.tenant_name,
+        charge_rule_id=issue.charge_rule_id,
+        charge_type=issue.charge_type,
+        current_account_code=issue.current_account_code,
+        current_tax_type=issue.current_tax_type,
+        suggested_account_code=issue.suggested_account_code,
+        suggested_tax_type=issue.suggested_tax_type,
+    )
+
+
+def _latest_xero_provider_receipt(metadata: dict[str, Any]) -> dict[str, Any] | None:
+    for receipt in _provider_status_receipts(metadata):
+        if receipt.get("provider") == "xero":
+            return receipt
+    return None
+
+
+def _receipt_needs_xero_exception(receipt: dict[str, Any] | None) -> bool:
+    if receipt is None:
+        return False
+    status_value = str(receipt.get("status") or "").lower()
+    external_status = str(receipt.get("external_posting_status") or "").lower()
+    return status_value in {"failed", "blocked"} or external_status in {
+        "provider_failed",
+        "preview_blocked",
+        "approval_required",
+        "provider_unconfigured",
+    }
+
+
+def _provider_exception_from_invoice(
+    draft: InvoiceDraft,
+    metadata: dict[str, Any],
+) -> XeroExceptionQueueItemRead | None:
+    receipt = _latest_xero_provider_receipt(metadata)
+    if not _receipt_needs_xero_exception(receipt):
+        return None
+    status_value = str(receipt.get("status") or "failed")
+    reason = str(receipt.get("reason") or "The latest Xero provider attempt needs review.")
+    return XeroExceptionQueueItemRead(
+        id=f"xero-provider-{draft.id}",
+        kind="provider",
+        severity="blocker" if status_value == "failed" else "warning",
+        label="Xero provider dispatch needs attention",
+        detail=f"{draft.invoice_number or draft.title}: {reason}",
+        action=(
+            "Review the latest provider receipt, then retry dispatch once the "
+            "blocker is resolved."
+        ),
+        next_action=_provider_dispatch_next_action(status_value, "skipped"),
+        source="provider_status_receipt",
+        property_id=draft.property_id,
+        tenancy_unit_id=draft.tenancy_unit_id,
+        lease_id=draft.lease_id,
+        tenant_id=draft.tenant_id,
+        invoice_draft_id=draft.id,
+        invoice_number=draft.invoice_number,
+        invoice_title=draft.title,
+        total_cents=draft.total_cents,
+        currency=draft.currency,
+        provider=str(receipt.get("provider") or "xero"),
+        provider_status=status_value,
+        external_posting_status=(
+            str(receipt.get("external_posting_status"))
+            if receipt.get("external_posting_status") is not None
+            else None
+        ),
+        idempotency_key=(
+            str(receipt.get("idempotency_key"))
+            if receipt.get("idempotency_key") is not None
+            else None
+        ),
+        xero_invoice_id=(
+            str(receipt.get("xero_invoice_id"))
+            if receipt.get("xero_invoice_id") is not None
+            else None
+        ),
+        xero_status=(
+            str(receipt.get("xero_status")) if receipt.get("xero_status") is not None else None
+        ),
+        received_at=receipt.get("received_at"),
+        retry_count=(
+            int(receipt["retry_count"])
+            if isinstance(receipt.get("retry_count"), int)
+            else None
+        ),
+    )
+
+
+def _payment_exception_from_invoice(
+    draft: InvoiceDraft,
+    metadata: dict[str, Any],
+) -> XeroExceptionQueueItemRead | None:
+    xero_invoice_id = _xero_invoice_id_from_metadata(metadata)
+    if not xero_invoice_id:
+        return None
+    payment_status = _payment_status(metadata)
+    if payment_status == "paid":
+        return None
+    due_date = draft.due_date
+    overdue = due_date is not None and due_date < utcnow().date()
+    paid_cents = _payment_paid_cents(metadata) or 0
+    outstanding_cents = max(draft.total_cents - paid_cents, 0)
+    return XeroExceptionQueueItemRead(
+        id=f"xero-payment-{draft.id}",
+        kind="payment",
+        severity="warning" if overdue else "info",
+        label="Xero payment status needs review",
+        detail=(
+            f"{draft.invoice_number or draft.title} is linked to a Xero draft "
+            f"but Leasium still shows {payment_status.replace('_', ' ')}."
+        ),
+        action=(
+            "Preview provider payments, then apply reviewed local payment metadata "
+            "if a match is found."
+        ),
+        next_action="preview_payment_reconciliation",
+        source="invoice_payment_metadata",
+        property_id=draft.property_id,
+        tenancy_unit_id=draft.tenancy_unit_id,
+        lease_id=draft.lease_id,
+        tenant_id=draft.tenant_id,
+        invoice_draft_id=draft.id,
+        invoice_number=draft.invoice_number,
+        invoice_title=draft.title,
+        total_cents=outstanding_cents,
+        currency=draft.currency,
+        provider="xero",
+        provider_status=payment_status,
+        xero_invoice_id=xero_invoice_id,
+    )
+
+
+def _xero_exception_summary(
+    items: list[XeroExceptionQueueItemRead],
+) -> XeroExceptionQueueSummaryRead:
+    severity_counts = {
+        "blocker": sum(1 for item in items if item.severity == "blocker"),
+        "warning": sum(1 for item in items if item.severity == "warning"),
+        "info": sum(1 for item in items if item.severity == "info"),
+    }
+    kind_counts = {
+        kind: sum(1 for item in items if item.kind == kind) for kind in XERO_EXCEPTION_KINDS
+    }
+    return XeroExceptionQueueSummaryRead(
+        total=len(items),
+        blockers=severity_counts["blocker"],
+        warnings=severity_counts["warning"],
+        info=severity_counts["info"],
+        connection=kind_counts["connection"],
+        contact=kind_counts["contact"],
+        chart=kind_counts["chart"],
+        tax=kind_counts["tax"],
+        invoice_sync=kind_counts["invoice_sync"],
+        provider=kind_counts["provider"],
+        payment=kind_counts["payment"],
+    )
 
 
 EMAIL_DELIVERED_STATUSES = {"queued", "sent", "delivered", "opened"}
@@ -3029,6 +3228,76 @@ def apply_xero_payment_reconciliation(
         user=user,
         session=session,
         settings=settings,
+    )
+
+
+@router.get("/exception-queue", response_model=XeroExceptionQueueRead)
+def xero_exception_queue(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    entity_id: Annotated[UUID, Query()],
+) -> XeroExceptionQueueRead:
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+
+    status_read = xero_status(
+        user=user,
+        session=session,
+        settings=settings,
+        entity_id=entity_id,
+    )
+    items = [_exception_from_status_issue(issue) for issue in status_read.issues]
+
+    invoice_drafts = list(
+        session.scalars(
+            select(InvoiceDraft)
+            .where(
+                InvoiceDraft.entity_id == entity_id,
+                InvoiceDraft.deleted_at.is_(None),
+            )
+            .order_by(InvoiceDraft.due_date, InvoiceDraft.created_at)
+        )
+    )
+    for draft in invoice_drafts:
+        metadata = dict(draft.invoice_metadata or {})
+        provider_exception = _provider_exception_from_invoice(draft, metadata)
+        if provider_exception is not None:
+            items.append(provider_exception)
+        payment_exception = _payment_exception_from_invoice(draft, metadata)
+        if payment_exception is not None:
+            items.append(payment_exception)
+
+    generated_at = utcnow()
+    severity_order = {"blocker": 0, "warning": 1, "info": 2}
+    kind_order = {kind: index for index, kind in enumerate(XERO_EXCEPTION_KINDS)}
+    items.sort(
+        key=lambda item: (
+            severity_order[item.severity],
+            kind_order[item.kind],
+            item.received_at or generated_at,
+            item.label,
+            item.id,
+        )
+    )
+    return XeroExceptionQueueRead(
+        entity_id=entity.id,
+        generated_at=generated_at,
+        summary=_xero_exception_summary(items),
+        items=items,
+        guardrails=[
+            "The exception queue is built from local Leasium records only.",
+            (
+                "Loading this queue does not refresh Xero tokens, call Xero APIs, "
+                "post invoices, send emails, or reconcile payments."
+            ),
+            (
+                "Provider actions still require explicit operator review before any "
+                "mutation is attempted."
+            ),
+        ],
     )
 
 

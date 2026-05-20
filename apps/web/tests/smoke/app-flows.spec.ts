@@ -406,6 +406,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("Owner Operator").first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Xero" }).click();
+  await expect(page.getByText("Xero sync exception queue")).toBeVisible();
   await expect(page.getByText("Xero is not connected")).toBeVisible();
 
   await page.getByLabel("Xero tenant ID").fill("tenant-smoke");
@@ -444,11 +445,12 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("No invoice posting").first()).toBeVisible();
 
-  await expect(page.getByText("Base Rent tax type missing")).toBeVisible();
+  await expect(page.getByText("Base Rent tax type missing").first()).toBeVisible();
   await page.getByRole("button", { exact: true, name: "Apply" }).click();
   await expect(
     page.getByText("Chart and tax mappings look ready"),
   ).toBeVisible();
+  await expect(page.getByText("Needs Xero approval")).toBeVisible();
 
   await page.getByRole("button", { name: "Preview chart/tax" }).click();
   await expect(page.getByText("1/1 ready").first()).toBeVisible();
@@ -471,13 +473,17 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByText("Xero draft posting was explicitly approved locally."),
   ).toBeVisible();
+  await expect(
+    page.getByText("Run idempotent Xero draft creation when ready."),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Create Xero drafts" }).click();
   await expect(page.getByText("Xero draft creation result")).toBeVisible();
   await expect(
     page.getByText("Xero draft invoice was created after explicit approval."),
   ).toBeVisible();
-  await expect(page.getByText("xero-invoice-smoke-1")).toBeVisible();
+  await expect(page.getByText("xero-invoice-smoke-1").first()).toBeVisible();
+  await expect(page.getByText("Xero payment status needs review")).toBeVisible();
 
   await page.getByRole("button", { name: "Preview payments" }).click();
   await expect(page.getByText("Payment reconciliation review")).toBeVisible();
@@ -489,6 +495,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByText("Payment status was reconciled locally."),
   ).toBeVisible();
+  await expect(page.getByText("No Xero sync exceptions")).toBeVisible();
 
   await page.goto("/billing-readiness");
   await page.getByRole("tab", { name: /Delivery & payments/ }).click();

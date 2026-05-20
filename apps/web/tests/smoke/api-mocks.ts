@@ -1064,6 +1064,157 @@ export async function mockLeasiumApi(
     };
   };
 
+  const xeroExceptionItemBase = () => ({
+    property_id: null,
+    property_name: null,
+    tenancy_unit_id: null,
+    unit_label: null,
+    lease_id: null,
+    tenant_id: null,
+    tenant_name: null,
+    charge_rule_id: null,
+    charge_type: null,
+    current_account_code: null,
+    current_tax_type: null,
+    suggested_account_code: null,
+    suggested_tax_type: null,
+    invoice_draft_id: null,
+    invoice_number: null,
+    invoice_title: null,
+    total_cents: null,
+    currency: null,
+    provider: null,
+    provider_status: null,
+    external_posting_status: null,
+    idempotency_key: null,
+    xero_invoice_id: null,
+    xero_status: null,
+    received_at: null,
+    retry_count: null,
+  });
+
+  const xeroExceptionQueue = () => {
+    const items: Array<Record<string, JsonBody>> = [];
+    if (!xeroTenantId) {
+      items.push({
+        ...xeroExceptionItemBase(),
+        id: `connection-${entityId}`,
+        kind: "connection",
+        severity: "blocker",
+        label: "Xero is not connected",
+        detail: "This entity has no Xero tenant recorded yet.",
+        action: "Record the Xero tenant before approving invoice sync.",
+        next_action: "connect_xero",
+        source: "xero_status",
+      });
+    }
+    if (!chargeTaxType) {
+      items.push({
+        ...xeroExceptionItemBase(),
+        id: "tax-charge-1",
+        kind: "tax",
+        severity: "blocker",
+        label: "Base Rent tax type missing",
+        detail:
+          "Queen Street Retail Centre / Shop 3 is taxable and needs a Xero tax type.",
+        action: "Review and apply the suggested tax mapping.",
+        next_action: "review_chart_tax_mapping",
+        source: "xero_status",
+        property_id: propertyId,
+        property_name: "Queen Street Retail Centre",
+        tenancy_unit_id: unitId,
+        unit_label: "Shop 3",
+        lease_id: leaseId,
+        tenant_id: tenantId,
+        tenant_name: "Bright Cafe",
+        charge_rule_id: "charge-1",
+        charge_type: "base_rent",
+        current_account_code: chargeAccountCode,
+        current_tax_type: chargeTaxType,
+        suggested_account_code: "200",
+        suggested_tax_type: "OUTPUT",
+      });
+    }
+    if (!xeroDraftCreated) {
+      items.push({
+        ...xeroExceptionItemBase(),
+        id: "invoice-sync-invoice-draft-1",
+        kind: "invoice_sync",
+        severity: "warning",
+        label: xeroDraftApproved
+          ? "Approved invoice not synced"
+          : "Needs Xero approval",
+        detail: "INV-1001 is approved but not posted to Xero.",
+        action: xeroDraftApproved
+          ? "Run idempotent Xero draft creation when ready."
+          : "Approve Xero posting explicitly, then run idempotent draft creation.",
+        next_action: xeroDraftApproved
+          ? "review_invoice_posting"
+          : "review_invoice_posting",
+        source: "xero_status",
+        property_id: propertyId,
+        tenancy_unit_id: unitId,
+        lease_id: leaseId,
+        tenant_id: tenantId,
+        invoice_draft_id: "invoice-draft-1",
+        invoice_number: "INV-1001",
+        invoice_title: "June 2026 Rent",
+        total_cents: 880000,
+        currency: "AUD",
+      });
+    }
+    if (xeroDraftCreated && !xeroPaymentApplied) {
+      items.push({
+        ...xeroExceptionItemBase(),
+        id: "xero-payment-invoice-draft-1",
+        kind: "payment",
+        severity: "info",
+        label: "Xero payment status needs review",
+        detail:
+          "INV-1001 is linked to a Xero draft but Leasium still shows unpaid.",
+        action:
+          "Preview provider payments, then apply reviewed local payment metadata if a match is found.",
+        next_action: "preview_payment_reconciliation",
+        source: "invoice_payment_metadata",
+        property_id: propertyId,
+        tenancy_unit_id: unitId,
+        lease_id: leaseId,
+        tenant_id: tenantId,
+        invoice_draft_id: "invoice-draft-1",
+        invoice_number: "INV-1001",
+        invoice_title: "June 2026 Rent",
+        total_cents: 880000,
+        currency: "AUD",
+        provider: "xero",
+        provider_status: "unpaid",
+        xero_invoice_id: "xero-invoice-smoke-1",
+      });
+    }
+    return {
+      entity_id: entityId,
+      generated_at: "2026-05-19T10:45:00.000Z",
+      summary: {
+        total: items.length,
+        blockers: items.filter((item) => item.severity === "blocker").length,
+        warnings: items.filter((item) => item.severity === "warning").length,
+        info: items.filter((item) => item.severity === "info").length,
+        connection: items.filter((item) => item.kind === "connection").length,
+        contact: items.filter((item) => item.kind === "contact").length,
+        chart: items.filter((item) => item.kind === "chart").length,
+        tax: items.filter((item) => item.kind === "tax").length,
+        invoice_sync: items.filter((item) => item.kind === "invoice_sync").length,
+        provider: items.filter((item) => item.kind === "provider").length,
+        payment: items.filter((item) => item.kind === "payment").length,
+      },
+      items,
+      guardrails: [
+        "The exception queue is built from local Leasium records only.",
+        "Loading this queue does not refresh Xero tokens, call Xero APIs, post invoices, send emails, or reconcile payments.",
+        "Provider actions still require explicit operator review before any mutation is attempted.",
+      ],
+    };
+  };
+
   const activeInvoiceDraft = () => localInvoiceDrafts[0];
 
   const activeInvoiceMetadata = () =>
@@ -1528,6 +1679,11 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/xero/status") {
       await fulfillJson(route, xeroStatus());
+      return;
+    }
+
+    if (method === "GET" && path === "/xero/exception-queue") {
+      await fulfillJson(route, xeroExceptionQueue());
       return;
     }
 

@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-05-20
+Last updated: 2026-05-21
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -81,6 +81,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Provider invoice dispatch v1: approved invoice drafts can run an explicit combined provider action that creates or reuses the Xero DRAFT first, sends or reuses the SendGrid invoice email second, preserves Xero sync state across email delivery, and leaves payment reconciliation separate.
 - [x] Provider dispatch receipts and recovery v1: Xero draft-create/dispatch attempts now persist provider receipts, failed attempts keep retry-safe approval state, dispatch responses include next-action hints, Billing Readiness exposes per-invoice Dispatch/Retry actions, and SendGrid invoice webhooks can record delivered/opened/failed email receipts without changing Xero sync state. Pending Remba review.
 - [x] Billing provider history filters v1: Billing Readiness Delivery & payments now filters approved invoice drafts by all/needs action/ready to dispatch/complete/unpaid and shows per-invoice provider history for Xero dispatch attempts plus local payment reconciliation receipts. Pending Remba review.
+- [x] Xero sync exception queue v1: Settings now has a read-only local exception queue for connection/mapping blockers, approved-unsynced invoice drafts, failed Xero provider receipts, and payment reconciliation candidates, with guardrails confirming the queue does not refresh tokens or mutate Xero. Pending Remba review.
 - [x] Tenant portal self-service v1: `/tenant-portal/[token]` exposes token-scoped tenant onboarding status, lease context, approved invoices/payment summary, document download/upload, compliance status, and notification preferences without operator-only metadata. True tenant identity-provider auth remains future work.
 - [x] Maintenance work orders v1: migration-backed work orders now track tenant/property/lease scope, priority, status, contractor assignment, approvals, photos/documents, invoice/source references, soft delete, and audit history.
 - [x] Arrears and credit-control v1: migration-backed arrears cases now track aged balances, reminder cadence, dispute status, promise-to-pay notes, escalation queue/status, soft delete, and audit history.
@@ -107,7 +108,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, and `20260521_0020_register_import_plans` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, Portfolio QA IA link, tenant portal, tenant fresh-link recovery, invoice email action, and Operations workspace before treating them as UX complete.
 - [ ] Continue Operations polish with contractor communications, maintenance invoice exception recovery, and clearer handoff rules between Operations and Billing Readiness.
-- [ ] Continue Xero from provider history filters into contact/invoice sync exception queues, bank-feed reconciliation depth, and accounting snapshot guardrails.
+- [ ] Continue Xero from the sync exception queue into guided exception actions, bank-feed reconciliation depth, and accounting snapshot guardrails.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 - [ ] Add branded template management, delivery preview/versioning, and provider receipt configuration for invoice delivery and tenant portal communications.
 

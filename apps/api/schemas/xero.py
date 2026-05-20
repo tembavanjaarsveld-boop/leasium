@@ -89,6 +89,65 @@ class XeroMappingIssueRead(BaseModel):
     suggested_tax_type: str | None = None
 
 
+class XeroExceptionQueueSummaryRead(BaseModel):
+    total: int
+    blockers: int
+    warnings: int
+    info: int
+    connection: int
+    contact: int
+    chart: int
+    tax: int
+    invoice_sync: int
+    provider: int
+    payment: int
+
+
+class XeroExceptionQueueItemRead(BaseModel):
+    id: str
+    kind: Literal["connection", "contact", "chart", "tax", "invoice_sync", "provider", "payment"]
+    severity: Literal["blocker", "warning", "info"]
+    label: str
+    detail: str
+    action: str
+    next_action: str | None = None
+    source: str | None = None
+    property_id: UUID | None = None
+    property_name: str | None = None
+    tenancy_unit_id: UUID | None = None
+    unit_label: str | None = None
+    lease_id: UUID | None = None
+    tenant_id: UUID | None = None
+    tenant_name: str | None = None
+    charge_rule_id: UUID | None = None
+    charge_type: str | None = None
+    current_account_code: str | None = None
+    current_tax_type: str | None = None
+    suggested_account_code: str | None = None
+    suggested_tax_type: str | None = None
+    invoice_draft_id: UUID | None = None
+    invoice_number: str | None = None
+    invoice_title: str | None = None
+    total_cents: int | None = None
+    currency: str | None = None
+    provider: str | None = None
+    provider_status: str | None = None
+    external_posting_status: str | None = None
+    idempotency_key: str | None = None
+    xero_invoice_id: str | None = None
+    xero_status: str | None = None
+    received_at: datetime | None = None
+    retry_count: int | None = None
+
+
+class XeroExceptionQueueRead(BaseModel):
+    entity_id: UUID
+    generated_at: datetime
+    summary: XeroExceptionQueueSummaryRead
+    items: list[XeroExceptionQueueItemRead]
+    guardrails: list[str]
+
+
 class XeroStatusRead(BaseModel):
     provider: XeroProviderConfigRead
     connection: XeroConnectionStatusRead

@@ -1137,6 +1137,72 @@ export type XeroMappingIssueRecord = {
   suggested_tax_type: string | null;
 };
 
+export type XeroExceptionQueueSummaryRecord = {
+  total: number;
+  blockers: number;
+  warnings: number;
+  info: number;
+  connection: number;
+  contact: number;
+  chart: number;
+  tax: number;
+  invoice_sync: number;
+  provider: number;
+  payment: number;
+};
+
+export type XeroExceptionQueueItemRecord = {
+  id: string;
+  kind:
+    | "connection"
+    | "contact"
+    | "chart"
+    | "tax"
+    | "invoice_sync"
+    | "provider"
+    | "payment";
+  severity: "blocker" | "warning" | "info";
+  label: string;
+  detail: string;
+  action: string;
+  next_action: string | null;
+  source: string | null;
+  property_id: string | null;
+  property_name: string | null;
+  tenancy_unit_id: string | null;
+  unit_label: string | null;
+  lease_id: string | null;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  charge_rule_id: string | null;
+  charge_type: string | null;
+  current_account_code: string | null;
+  current_tax_type: string | null;
+  suggested_account_code: string | null;
+  suggested_tax_type: string | null;
+  invoice_draft_id: string | null;
+  invoice_number: string | null;
+  invoice_title: string | null;
+  total_cents: number | null;
+  currency: string | null;
+  provider: string | null;
+  provider_status: string | null;
+  external_posting_status: string | null;
+  idempotency_key: string | null;
+  xero_invoice_id: string | null;
+  xero_status: string | null;
+  received_at: string | null;
+  retry_count: number | null;
+};
+
+export type XeroExceptionQueueRecord = {
+  entity_id: string;
+  generated_at: string;
+  summary: XeroExceptionQueueSummaryRecord;
+  items: XeroExceptionQueueItemRecord[];
+  guardrails: string[];
+};
+
 export type XeroStatusRecord = {
   provider: XeroProviderConfigRecord;
   connection: XeroConnectionStatusRecord;
@@ -1930,6 +1996,13 @@ export function createSecurityBootstrapWorkspace(
 export function getXeroStatus(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
   return request<XeroStatusRecord>(`/xero/status?${params.toString()}`);
+}
+
+export function getXeroExceptionQueue(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<XeroExceptionQueueRecord>(
+    `/xero/exception-queue?${params.toString()}`,
+  );
 }
 
 export function updateXeroConnection(
