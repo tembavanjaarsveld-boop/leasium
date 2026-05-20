@@ -87,6 +87,48 @@ def _clean(value: str | None) -> str | None:
     return stripped or None
 
 
+def _categories(*values: str | None) -> list[str]:
+    categories: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        category = _clean(value)
+        if category is None or category in seen:
+            continue
+        categories.append(category)
+        seen.add(category)
+    return categories
+
+
+def _sendgrid_error(response: httpx.Response) -> str:
+    detail: str | None = None
+    try:
+        body = response.json()
+    except ValueError:
+        detail = _clean(response.text)
+    else:
+        if isinstance(body, dict):
+            errors = body.get("errors")
+            messages: list[str] = []
+            if isinstance(errors, list):
+                for item in errors:
+                    if not isinstance(item, dict):
+                        continue
+                    message = item.get("message")
+                    if isinstance(message, str):
+                        cleaned = _clean(message)
+                        if cleaned and cleaned not in messages:
+                            messages.append(cleaned)
+            if messages:
+                detail = "; ".join(messages)
+            else:
+                message = body.get("message")
+                if isinstance(message, str):
+                    detail = _clean(message)
+    if detail:
+        return f"SendGrid returned {response.status_code}: {detail}"
+    return f"SendGrid returned {response.status_code}."
+
+
 def _date_label(value: date | datetime | None) -> str:
     if value is None:
         return "No due date set"
@@ -238,7 +280,7 @@ def _twilio_status_callback_url(settings: Settings) -> str | None:
 
 def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryResult:
     recipient = _clean(invite.contact_email)
-    metadata = {
+    metadata: dict[str, str | None] = {
         "template_key": invite.template_key,
         "template_version": invite.template_version,
         "brand_name": invite.brand_name,
@@ -298,7 +340,7 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
             {"type": "text/plain", "value": _email_text(invite)},
             {"type": "text/html", "value": _email_html(invite)},
         ],
-        "categories": ["tenant_onboarding", invite.template_key],
+        "categories": _categories("tenant_onboarding", invite.template_key),
     }
     try:
         with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
@@ -324,7 +366,7 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
             status="failed",
             provider="sendgrid",
             recipient=recipient,
-            error=f"SendGrid returned {response.status_code}.",
+            error=_sendgrid_error(response),
             metadata=metadata,
         )
     except httpx.HTTPError as exc:
@@ -345,7 +387,7 @@ def send_operator_invite_email(
     """Send an operator invitation email where provider credentials allow."""
 
     recipient = _clean(invite.email)
-    metadata = {
+    metadata: dict[str, str | None] = {
         "template_key": invite.template_key,
         "template_version": invite.template_version,
         "organisation_name": invite.organisation_name,
@@ -399,7 +441,7 @@ def send_operator_invite_email(
             {"type": "text/plain", "value": _operator_invite_text(invite)},
             {"type": "text/html", "value": _operator_invite_html(invite)},
         ],
-        "categories": ["operator_invite", invite.template_key],
+        "categories": _categories("operator_invite", invite.template_key),
     }
     try:
         with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
@@ -425,7 +467,7 @@ def send_operator_invite_email(
             status="failed",
             provider="sendgrid",
             recipient=recipient,
-            error=f"SendGrid returned {response.status_code}.",
+            error=_sendgrid_error(response),
             metadata=metadata,
         )
     except httpx.HTTPError as exc:
