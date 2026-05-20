@@ -495,16 +495,26 @@ const leases = [
   },
 ];
 
-const tenantPortalSession = () => ({
-  auth: {
-    mode: "tenant_portal_token",
-    token_source: "header",
-    tenant_auth_configured: false,
-    dev_fallback: false,
-    boundary: "tenant_onboarding_token",
-    detail:
-      "Tenant identity-provider auth is not wired yet. Access is scoped to the tenant linked to this onboarding token.",
-  },
+const tenantPortalSession = (authMode: "token" | "account" = "token") => ({
+  auth:
+    authMode === "account"
+      ? {
+          mode: "tenant_portal_account",
+          token_source: "bearer",
+          tenant_auth_configured: true,
+          dev_fallback: false,
+          boundary: "tenant_portal_account",
+          detail: "Access is scoped to the tenant linked to this tenant portal account.",
+        }
+      : {
+          mode: "tenant_portal_token",
+          token_source: "header",
+          tenant_auth_configured: false,
+          dev_fallback: false,
+          boundary: "tenant_onboarding_token",
+          detail:
+            "Tenant identity-provider auth is not wired yet. Access is scoped to the tenant linked to this onboarding token.",
+        },
   tenant: {
     id: tenantId,
     legal_name: "Bright Cafe Pty Ltd",
@@ -770,6 +780,7 @@ export async function mockLeasiumApi(page: Page) {
   let chargeTaxType: string | null = null;
   let xeroDraftApproved = false;
   let xeroDraftCreated = false;
+  let tenantAccountLinked = false;
   let appliedContactMappings: XeroContactMapping[] = [];
   let snapshotCount = 0;
   let insightSnapshots: JsonBody[] = [];
@@ -1551,6 +1562,21 @@ export async function mockLeasiumApi(page: Page) {
 
     if (method === "GET" && path === "/tenant-portal/session") {
       await fulfillJson(route, tenantPortalSession());
+      return;
+    }
+
+    if (method === "GET" && path === "/tenant-portal/account/session") {
+      if (!tenantAccountLinked) {
+        await fulfillJson(route, { detail: "Tenant portal account not found." }, 401);
+        return;
+      }
+      await fulfillJson(route, tenantPortalSession("account"));
+      return;
+    }
+
+    if (method === "POST" && path === "/tenant-portal/account/claim") {
+      tenantAccountLinked = true;
+      await fulfillJson(route, tenantPortalSession("account"));
       return;
     }
 

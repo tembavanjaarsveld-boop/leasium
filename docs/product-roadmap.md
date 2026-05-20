@@ -83,13 +83,14 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Tenant portal maintenance requests v1: token-scoped tenants can submit maintenance requests from `/tenant-portal/[token]`, see prior portal-submitted requests, attach scoped tenant documents through the API, and create linked Operations work orders without exposing operator-only fields. Pending Remba review.
 - [x] Operations maintenance detail v1: maintenance work orders now keep compact activity history, expose quote/approval/contractor/invoice context in an expandable Operations detail panel, link approved invoice drafts, and show portal-safe maintenance request history back to tenants. Pending Remba review.
 - [x] Tenant portal account foundation v1: tenants can claim a durable portal account with a signed bearer identity plus an existing portal token, then use bearer-only `/tenant-portal/account/session` for the same scoped self-service data while existing public token links remain available. New migration: `20260520_0019_tenant_portal_accounts`.
+- [x] Tenant portal account UI v1: `/tenant-portal/[token]` now shows a Clerk-backed Account Access panel, lets signed-in tenants link the portal once, reloads matching tenants through the account session, and uses bearer auth for account-scoped maintenance requests, document uploads, and notification preferences while preserving token fallback. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations` and `20260520_0019_tenant_portal_accounts` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, Portfolio QA IA link, tenant portal, invoice email action, and Operations workspace before treating them as UX complete.
 - [ ] Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
-- [ ] Continue tenant portal from backend account claim to the frontend claim/link UI, authenticated portal shell, inline maintenance photo upload, notification preference verification, and safer invite/link lifecycle.
+- [ ] Continue tenant portal with inline maintenance photo upload, an account-only entry path without requiring the old token URL, notification preference receipts, and safer invite/link lifecycle.
 - [ ] Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 - [ ] Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
@@ -120,7 +121,7 @@ Official Re-Leased pages position their product around a few mature modules that
 
 - [ ] Maintenance and arrears workflow depth: tenant-submitted requests, contractor coordination, approval history, invoice linking, legal/escalation notes, and portal-visible status where appropriate.
 - [ ] Compliance and inspections: recurring checks, certifications, document expiry, fire/safety obligations, delegated owners, and audit trail.
-- [ ] Tenant portal account auth: authenticated self-service for onboarding, documents, invoices, maintenance, compliance uploads, and notification preferences.
+- [ ] Tenant portal account lifecycle: account-only entry, revoke/relink handling, link expiry guidance, and tenant-facing account recovery.
 - [ ] Portfolio Insights: rent roll health, lease events, arrears, invoice status, maintenance aging, compliance expiry, owner/entity dashboards, and shareable snapshots.
 - [ ] Communications hub: email templates, outbound logs, tenant/contractor threads, and record-linked correspondence.
 - [ ] Approvals and workflow: invoice approval, maintenance spend approval, delegated tasks, reminders, escalation rules, and activity history.

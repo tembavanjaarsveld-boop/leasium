@@ -1,5 +1,6 @@
 "use client";
 
+import { SignInButton, SignUpButton, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Bell,
@@ -7,15 +8,18 @@ import {
   CheckCircle2,
   Download,
   FileText,
+  Link2,
   Loader2,
+  LogIn,
   ReceiptText,
   Send,
   ShieldCheck,
   UploadCloud,
+  UserRound,
   Wrench,
 } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { LeasiumMark } from "@/components/brand";
 import { QueryProvider } from "@/components/query-provider";
@@ -23,19 +27,25 @@ import {
   Button,
   Field,
   Input,
+  SecondaryButton,
   Select,
   StatusBadge,
 } from "@/components/ui";
 import {
+  claimTenantPortalAccount,
+  createTenantPortalAccountMaintenanceRequest,
   createTenantPortalMaintenanceRequest,
   DocumentCategory,
   getTenantPortal,
+  getTenantPortalAccountSession,
   MaintenancePriority,
   tenantPortalDocumentDownloadUrl,
   TenantPortalMaintenanceRequestPayload,
   TenantPortalNotificationPreferencesPayload,
   TenantPortalRecord,
+  updateTenantPortalAccountNotificationPreferences,
   updateTenantPortalNotificationPreferences,
+  uploadTenantPortalAccountDocument,
   uploadTenantPortalDocument,
 } from "@/lib/api";
 
@@ -213,10 +223,12 @@ function Panel({
 function PreferencesForm({
   token,
   portal,
+  accountAuthToken,
   onSaved,
 }: {
   token: string;
   portal: TenantPortalRecord;
+  accountAuthToken?: string | null;
   onSaved: () => void;
 }) {
   const [preferences, setPreferences] =
@@ -229,7 +241,13 @@ function PreferencesForm({
   }, [portal.notification_preferences]);
 
   const saveMutation = useMutation({
-    mutationFn: () => updateTenantPortalNotificationPreferences(token, preferences),
+    mutationFn: () =>
+      accountAuthToken
+        ? updateTenantPortalAccountNotificationPreferences(
+            preferences,
+            accountAuthToken,
+          )
+        : updateTenantPortalNotificationPreferences(token, preferences),
     onSuccess: onSaved,
   });
 
@@ -299,6 +317,188 @@ function PreferencesForm({
   );
 }
 
+function TenantAccountPanel({
+  token,
+  tokenTenantId,
+  onAccountPortal,
+}: {
+  token: string;
+  tokenTenantId: string | null;
+  onAccountPortal: (
+    portal: TenantPortalRecord | null,
+    authToken: string | null,
+  ) => void;
+}) {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
+  const returnTo = `/tenant-portal/${encodeURIComponent(token)}`;
+  const accountQuery = useQuery({
+    queryKey: ["tenant-portal-account-session", tokenTenantId],
+    queryFn: async () => {
+      const authToken = await getToken();
+      if (!authToken) {
+        throw new Error("Sign in before opening the tenant account.");
+      }
+      const portal = await getTenantPortalAccountSession(authToken);
+      return { authToken, portal };
+    },
+    enabled: isLoaded && isSignedIn,
+    retry: false,
+  });
+  const accountPortal = accountQuery.data?.portal ?? null;
+  const accountTenantMatches =
+    Boolean(accountPortal) && (!tokenTenantId || accountPortal?.tenant.id === tokenTenantId);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) {
+      onAccountPortal(null, null);
+      return;
+    }
+    if (accountQuery.data && accountTenantMatches) {
+      onAccountPortal(accountQuery.data.portal, accountQuery.data.authToken);
+      return;
+    }
+    if (accountQuery.isError || (accountQuery.data && !accountTenantMatches)) {
+      onAccountPortal(null, null);
+    }
+  }, [
+    accountQuery.data,
+    accountQuery.isError,
+    accountTenantMatches,
+    isLoaded,
+    isSignedIn,
+    onAccountPortal,
+  ]);
+
+  const claimMutation = useMutation({
+    mutationFn: async () => {
+      const authToken = await getToken();
+      if (!authToken) {
+        throw new Error("Sign in before linking this portal.");
+      }
+      const portal = await claimTenantPortalAccount(token, authToken);
+      return { authToken, portal };
+    },
+    onSuccess: (result) => {
+      onAccountPortal(result.portal, result.authToken);
+      accountQuery.refetch();
+    },
+  });
+
+  if (!isLoaded) {
+    return (
+      <Panel title="Account Access" icon={<UserRound size={18} />}>
+        <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+          <Loader2 size={16} className="animate-spin text-primary" />
+          Checking sign-in.
+        </div>
+      </Panel>
+    );
+  }
+
+  if (!isSignedIn) {
+    return (
+      <Panel title="Account Access" icon={<UserRound size={18} />}>
+        <div className="grid gap-3 p-4 text-sm">
+          <p className="text-muted-foreground">
+            Create or sign in to a tenant login, then link this portal once.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <SignUpButton mode="redirect" fallbackRedirectUrl={returnTo}>
+              <Button type="button">
+                <LogIn size={16} />
+                Create login
+              </Button>
+            </SignUpButton>
+            <SignInButton mode="redirect" fallbackRedirectUrl={returnTo}>
+              <SecondaryButton type="button">Sign in</SecondaryButton>
+            </SignInButton>
+          </div>
+        </div>
+      </Panel>
+    );
+  }
+
+  if (accountQuery.isLoading) {
+    return (
+      <Panel title="Account Access" icon={<UserRound size={18} />}>
+        <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+          <Loader2 size={16} className="animate-spin text-primary" />
+          Checking linked account.
+        </div>
+      </Panel>
+    );
+  }
+
+  if (accountPortal && !accountTenantMatches) {
+    return (
+      <Panel
+        title="Account Access"
+        icon={<UserRound size={18} />}
+        actions={<UserButton />}
+      >
+        <div className="grid gap-2 p-4 text-sm">
+          <StatusBadge tone="warning">Different tenant</StatusBadge>
+          <p className="text-muted-foreground">
+            This login is already linked to another tenant portal.
+          </p>
+        </div>
+      </Panel>
+    );
+  }
+
+  if (accountPortal && accountTenantMatches) {
+    return (
+      <Panel
+        title="Account Access"
+        icon={<UserRound size={18} />}
+        actions={<UserButton />}
+      >
+        <div className="grid gap-2 p-4 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone="success">Account linked</StatusBadge>
+            <span className="text-muted-foreground">
+              {user?.primaryEmailAddress?.emailAddress ?? user?.fullName ?? "Signed in"}
+            </span>
+          </div>
+          <p className="text-muted-foreground">
+            Future portal sessions can use this tenant account boundary.
+          </p>
+        </div>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel
+      title="Account Access"
+      icon={<UserRound size={18} />}
+      actions={<UserButton />}
+    >
+      <div className="grid gap-3 p-4 text-sm">
+        <p className="text-muted-foreground">
+          Link this portal to your signed-in tenant account.
+        </p>
+        {claimMutation.error ? (
+          <span className="text-sm text-danger">{claimMutation.error.message}</span>
+        ) : null}
+        <Button
+          type="button"
+          onClick={() => claimMutation.mutate()}
+          disabled={claimMutation.isPending}
+        >
+          {claimMutation.isPending ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <Link2 size={16} />
+          )}
+          Link portal
+        </Button>
+      </div>
+    </Panel>
+  );
+}
+
 function TenantPortalContent() {
   const params = useParams<{ token: string }>();
   const token = params.token;
@@ -307,7 +507,17 @@ function TenantPortalContent() {
     queryFn: () => getTenantPortal(token),
     enabled: Boolean(token),
   });
-  const portal = portalQuery.data;
+  const [accountPortal, setAccountPortal] = useState<TenantPortalRecord | null>(null);
+  const [accountAuthToken, setAccountAuthToken] = useState<string | null>(null);
+  const handleAccountPortal = useCallback(
+    (nextPortal: TenantPortalRecord | null, nextAuthToken: string | null) => {
+      setAccountPortal(nextPortal);
+      setAccountAuthToken(nextPortal ? nextAuthToken : null);
+    },
+    [],
+  );
+  const tokenPortal = portalQuery.data;
+  const portal = accountPortal ?? tokenPortal;
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadCategory, setUploadCategory] = useState<DocumentCategory>("insurance");
   const [uploadNotes, setUploadNotes] = useState("");
@@ -316,6 +526,20 @@ function TenantPortalContent() {
     useState<MaintenancePriority>("normal");
   const [maintenanceDescription, setMaintenanceDescription] = useState("");
   const [maintenanceSourceReference, setMaintenanceSourceReference] = useState("");
+  const tenantAccountAuthEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
+  useEffect(() => {
+    handleAccountPortal(null, null);
+  }, [handleAccountPortal, token]);
+
+  const refreshPortal = useCallback(() => {
+    if (accountAuthToken && accountPortal?.auth.mode === "tenant_portal_account") {
+      return getTenantPortalAccountSession(accountAuthToken)
+        .then((nextPortal) => setAccountPortal(nextPortal))
+        .catch(() => portalQuery.refetch());
+    }
+    return portalQuery.refetch();
+  }, [accountAuthToken, accountPortal?.auth.mode, portalQuery]);
 
   useEffect(() => {
     if (!portal || portal.compliance.accepted_categories.includes(uploadCategory)) {
@@ -329,6 +553,14 @@ function TenantPortalContent() {
       if (!uploadFile) {
         throw new Error("Choose a file first.");
       }
+      if (accountAuthToken && portal?.auth.mode === "tenant_portal_account") {
+        return uploadTenantPortalAccountDocument({
+          category: uploadCategory,
+          notes: uploadNotes,
+          file: uploadFile,
+          authToken: accountAuthToken,
+        });
+      }
       return uploadTenantPortalDocument({
         token,
         category: uploadCategory,
@@ -339,7 +571,7 @@ function TenantPortalContent() {
     onSuccess: () => {
       setUploadFile(null);
       setUploadNotes("");
-      portalQuery.refetch();
+      refreshPortal();
     },
   });
 
@@ -354,6 +586,9 @@ function TenantPortalContent() {
       if (!payload.title || !payload.description) {
         throw new Error("Add a title and details before submitting.");
       }
+      if (accountAuthToken && portal?.auth.mode === "tenant_portal_account") {
+        return createTenantPortalAccountMaintenanceRequest(payload, accountAuthToken);
+      }
       return createTenantPortalMaintenanceRequest(token, payload);
     },
     onSuccess: () => {
@@ -361,7 +596,7 @@ function TenantPortalContent() {
       setMaintenancePriority("normal");
       setMaintenanceDescription("");
       setMaintenanceSourceReference("");
-      portalQuery.refetch();
+      refreshPortal();
     },
   });
 
@@ -380,7 +615,7 @@ function TenantPortalContent() {
     [portal?.maintenance_requests],
   );
 
-  if (portalQuery.isLoading) {
+  if (portalQuery.isLoading && !portal) {
     return (
       <main className="grid min-h-screen place-items-center bg-background p-6">
         <Loader2 className="animate-spin text-primary" size={28} />
@@ -388,7 +623,7 @@ function TenantPortalContent() {
     );
   }
 
-  if (portalQuery.error || !portal) {
+  if ((portalQuery.error && !accountPortal) || !portal) {
     return (
       <PortalShell>
         <div className="grid min-h-[70vh] place-items-center px-5 py-8">
@@ -823,10 +1058,21 @@ function TenantPortalContent() {
               </dl>
             </Panel>
 
+            {tenantAccountAuthEnabled ? (
+              <TenantAccountPanel
+                token={token}
+                tokenTenantId={tokenPortal?.tenant.id ?? null}
+                onAccountPortal={handleAccountPortal}
+              />
+            ) : null}
+
             <PreferencesForm
               token={token}
               portal={portal}
-              onSaved={() => portalQuery.refetch()}
+              accountAuthToken={
+                portal.auth.mode === "tenant_portal_account" ? accountAuthToken : null
+              }
+              onSaved={refreshPortal}
             />
 
             <Panel

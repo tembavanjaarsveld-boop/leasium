@@ -205,9 +205,19 @@ Last updated: 2026-05-20
   - `POST /api/v1/tenant-portal/account/claim` requires a valid bearer identity plus an existing portal token before linking the signed tenant identity.
   - `GET /api/v1/tenant-portal/account/session` is bearer-only and returns the existing tenant portal read shape with `auth.mode = tenant_portal_account`.
   - Existing public `/tenant-portal/[token]`, `/api/v1/tenant-portal/session`, document, maintenance, and onboarding token paths remain available.
-  - This is backend-first; the tenant-facing claim/link UI is still next.
+  - Tenant portal account UI v1 is now built too.
+    - `/tenant-portal/[token]` shows Account Access when Clerk is configured.
+    - Signed-in tenants can link the token-scoped portal once, then reload matching portal data through the account session.
+    - Account-scoped maintenance requests, document uploads, notification preferences, and document downloads are accepted by the API through bearer auth, while the token path remains available.
+    - The UI avoids overriding the page with an account linked to a different tenant and asks the tenant to switch accounts instead.
+  - This is design-facing and still needs Remba review.
 ## Verification
 
+- Tenant portal account UI checks passed:
+  - `.venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py -q` (`7 passed`)
+  - `./node_modules/.bin/eslint 'src/app/tenant-portal/[token]/page.tsx' src/lib/api.ts tests/smoke/api-mocks.ts --ext .ts,.tsx`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `PORT=3005 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant portal shows scoped self-service data"` (`1 passed`)
 - Tenant portal account foundation checks passed:
   - `.venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py tests/integration/test_tenant_onboarding_api.py -q` (`14 passed`)
   - `.venv/bin/python -m pytest -q` (`94 passed`, `1 skipped`; migration smoke skipped because `TEST_DATABASE_URL` is not configured)
@@ -447,7 +457,7 @@ Last updated: 2026-05-20
 1. Verify the tenant account production deploy and confirm Neon has advanced through `20260520_0019`.
 2. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, and Operations workspace.
 3. Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
-4. Continue tenant portal from backend account claim to the frontend claim/link UI, authenticated portal shell, inline maintenance photo upload, notification preference verification, and safer invite/link lifecycle.
+4. Continue tenant portal with inline maintenance photo upload, an account-only entry path without requiring the old token URL, notification preference receipts, and safer invite/link lifecycle.
 5. Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 

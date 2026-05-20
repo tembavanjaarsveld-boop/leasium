@@ -443,8 +443,11 @@ export type DocumentRecord = {
 };
 
 export type TenantPortalAuthRecord = {
-  mode: "tenant_portal_token" | "tenant_portal_token_dev_fallback";
-  token_source: "header" | "query" | "form";
+  mode:
+    | "tenant_portal_token"
+    | "tenant_portal_token_dev_fallback"
+    | "tenant_portal_account";
+  token_source: "header" | "query" | "form" | "bearer";
   tenant_auth_configured: boolean;
   dev_fallback: boolean;
   boundary: string;
@@ -2435,9 +2438,41 @@ function tenantPortalHeaders(token: string) {
   return { "X-Tenant-Portal-Token": token };
 }
 
+function tenantPortalBearerHeaders(token: string) {
+  return { Authorization: `Bearer ${token}` };
+}
+
 export function getTenantPortal(token: string) {
   return publicRequest<TenantPortalRecord>("/tenant-portal/session", {
     headers: tenantPortalHeaders(token),
+  });
+}
+
+export function getTenantPortalAccountSession(authToken?: string | null) {
+  if (authToken) {
+    return publicRequest<TenantPortalRecord>("/tenant-portal/account/session", {
+      headers: tenantPortalBearerHeaders(authToken),
+    });
+  }
+  return request<TenantPortalRecord>("/tenant-portal/account/session");
+}
+
+export function claimTenantPortalAccount(
+  portalToken: string,
+  authToken?: string | null,
+) {
+  const init: RequestInit = {
+    method: "POST",
+    body: JSON.stringify({ portal_token: portalToken }),
+  };
+  if (authToken) {
+    return publicRequest<TenantPortalRecord>("/tenant-portal/account/claim", {
+      ...init,
+      headers: tenantPortalBearerHeaders(authToken),
+    });
+  }
+  return request<TenantPortalRecord>("/tenant-portal/account/claim", {
+    ...init,
   });
 }
 
@@ -2455,6 +2490,29 @@ export function updateTenantPortalNotificationPreferences(
   );
 }
 
+export function updateTenantPortalAccountNotificationPreferences(
+  payload: TenantPortalNotificationPreferencesPayload,
+  authToken?: string | null,
+) {
+  const init: RequestInit = {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  };
+  if (authToken) {
+    return publicRequest<TenantPortalNotificationPreferencesRecord>(
+      "/tenant-portal/notification-preferences",
+      {
+        ...init,
+        headers: tenantPortalBearerHeaders(authToken),
+      },
+    );
+  }
+  return request<TenantPortalNotificationPreferencesRecord>(
+    "/tenant-portal/notification-preferences",
+    init,
+  );
+}
+
 export function createTenantPortalMaintenanceRequest(
   token: string,
   payload: TenantPortalMaintenanceRequestPayload,
@@ -2466,6 +2524,29 @@ export function createTenantPortalMaintenanceRequest(
       headers: tenantPortalHeaders(token),
       body: JSON.stringify(payload),
     },
+  );
+}
+
+export function createTenantPortalAccountMaintenanceRequest(
+  payload: TenantPortalMaintenanceRequestPayload,
+  authToken?: string | null,
+) {
+  const init: RequestInit = {
+    method: "POST",
+    body: JSON.stringify(payload),
+  };
+  if (authToken) {
+    return publicRequest<TenantPortalMaintenanceRequestRecord>(
+      "/tenant-portal/maintenance-requests",
+      {
+        ...init,
+        headers: tenantPortalBearerHeaders(authToken),
+      },
+    );
+  }
+  return request<TenantPortalMaintenanceRequestRecord>(
+    "/tenant-portal/maintenance-requests",
+    init,
   );
 }
 
@@ -2485,6 +2566,31 @@ export function uploadTenantPortalDocument(payload: {
     "/tenant-portal/documents",
     formData,
     tenantPortalHeaders(payload.token),
+  );
+}
+
+export function uploadTenantPortalAccountDocument(payload: {
+  category: DocumentCategory;
+  notes?: string | null;
+  file: File;
+  authToken?: string | null;
+}) {
+  const formData = new FormData();
+  formData.append("category", payload.category);
+  if (payload.notes?.trim()) {
+    formData.append("notes", payload.notes.trim());
+  }
+  formData.append("file", payload.file);
+  if (payload.authToken) {
+    return publicRequestForm<TenantPortalDocumentRecord>(
+      "/tenant-portal/documents",
+      formData,
+      tenantPortalBearerHeaders(payload.authToken),
+    );
+  }
+  return requestForm<TenantPortalDocumentRecord>(
+    "/tenant-portal/documents",
+    formData,
   );
 }
 

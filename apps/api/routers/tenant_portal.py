@@ -281,6 +281,35 @@ def _portal_scope(
     )
 
 
+def _portal_scope_for_request(
+    request: Request,
+    session: Session,
+    settings: Settings,
+    *,
+    authorization: str | None = None,
+    header_token: str | None = None,
+    form_token: str | None = None,
+) -> PortalScope:
+    has_token = any(
+        _clean_token(value) is not None
+        for value in (
+            header_token or request.headers.get(PORTAL_TOKEN_HEADER),
+            form_token,
+            request.query_params.get(PORTAL_TOKEN_QUERY),
+        )
+    )
+    if authorization and authorization.startswith("Bearer ") and not has_token:
+        provider_id = _tenant_portal_provider_id(authorization, settings)
+        account = _active_tenant_portal_account(provider_id, session)
+        return _account_scope(account, session)
+    return _portal_scope(
+        request,
+        session,
+        header_token=header_token,
+        form_token=form_token,
+    )
+
+
 def _tenant_portal_provider_id(
     authorization: str | None,
     settings: Settings,
@@ -545,9 +574,14 @@ def _payment_summary(invoices: list[InvoiceDraft]) -> TenantPortalPaymentSummary
 
 
 def _portal_work_order_metadata(scope: PortalScope) -> dict[str, str]:
+    auth_boundary = (
+        "tenant_portal_account"
+        if scope.auth.mode == "tenant_portal_account"
+        else "tenant_onboarding_token"
+    )
     return {
         "source": "tenant_portal",
-        "auth_boundary": "tenant_onboarding_token",
+        "auth_boundary": auth_boundary,
         "auth_mode": scope.auth.mode,
         "tenant_onboarding_id": str(scope.onboarding.id),
         "portal_token_source": scope.auth.source,
@@ -1007,11 +1041,15 @@ def get_tenant_portal_account_session(
 def get_tenant_portal(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
     x_tenant_portal_token: Annotated[str | None, Header()] = None,
 ) -> TenantPortalRead:
-    scope = _portal_scope(
+    scope = _portal_scope_for_request(
         request,
         session,
+        settings,
+        authorization=authorization,
         header_token=x_tenant_portal_token,
     )
     return _portal_read(scope, session)
@@ -1024,11 +1062,15 @@ def get_tenant_portal(
 def list_tenant_portal_maintenance_requests(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
     x_tenant_portal_token: Annotated[str | None, Header()] = None,
 ) -> list[TenantPortalMaintenanceRequestRead]:
-    scope = _portal_scope(
+    scope = _portal_scope_for_request(
         request,
         session,
+        settings,
+        authorization=authorization,
         header_token=x_tenant_portal_token,
     )
     return [
@@ -1046,11 +1088,15 @@ def create_tenant_portal_maintenance_request(
     payload: TenantPortalMaintenanceRequestCreate,
     request: Request,
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
     x_tenant_portal_token: Annotated[str | None, Header()] = None,
 ) -> TenantPortalMaintenanceRequestRead:
-    scope = _portal_scope(
+    scope = _portal_scope_for_request(
         request,
         session,
+        settings,
+        authorization=authorization,
         header_token=x_tenant_portal_token,
     )
     document_ids = _portal_document_id_strings(scope, payload.document_ids, session)
@@ -1106,11 +1152,15 @@ def update_notification_preferences(
     payload: TenantPortalNotificationPreferencesUpdate,
     request: Request,
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
     x_tenant_portal_token: Annotated[str | None, Header()] = None,
 ) -> TenantPortalNotificationPreferencesRead:
-    scope = _portal_scope(
+    scope = _portal_scope_for_request(
         request,
         session,
+        settings,
+        authorization=authorization,
         header_token=x_tenant_portal_token,
     )
     current = _notification_preferences(scope.tenant).model_dump(mode="json")
@@ -1147,14 +1197,18 @@ async def upload_tenant_portal_document(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
     file: Annotated[UploadFile, File()],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
     x_tenant_portal_token: Annotated[str | None, Header()] = None,
     portal_token: Annotated[str | None, Form()] = None,
     category: Annotated[DocumentCategory, Form()] = DocumentCategory.onboarding,
     notes: Annotated[str | None, Form()] = None,
 ) -> TenantPortalDocumentRead:
-    scope = _portal_scope(
+    scope = _portal_scope_for_request(
         request,
         session,
+        settings,
+        authorization=authorization,
         header_token=x_tenant_portal_token,
         form_token=portal_token,
     )
@@ -1188,7 +1242,11 @@ async def upload_tenant_portal_document(
         notes=notes.strip() if notes and notes.strip() else None,
         document_metadata={
             "source": "tenant_portal",
-            "auth_boundary": "tenant_onboarding_token",
+            "auth_boundary": (
+                "tenant_portal_account"
+                if scope.auth.mode == "tenant_portal_account"
+                else "tenant_onboarding_token"
+            ),
             "auth_mode": scope.auth.mode,
             "uploaded_at": utcnow().isoformat(),
         },
@@ -1215,11 +1273,15 @@ def download_tenant_portal_document(
     document_id: UUID,
     request: Request,
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
     x_tenant_portal_token: Annotated[str | None, Header()] = None,
 ) -> Response:
-    scope = _portal_scope(
+    scope = _portal_scope_for_request(
         request,
         session,
+        settings,
+        authorization=authorization,
         header_token=x_tenant_portal_token,
     )
     document = _portal_document(scope, document_id, session)

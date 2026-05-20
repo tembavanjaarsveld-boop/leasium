@@ -401,6 +401,54 @@ def test_tenant_portal_account_claim_and_bearer_session_are_scoped(
     assert token_response.json()["auth"]["mode"] == "tenant_portal_token"
     assert token_response.json()["auth"]["tenant_auth_configured"] is False
 
+    preferences_response = client.patch(
+        "/api/v1/tenant-portal/notification-preferences",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"sms_enabled": False, "compliance_reminders_enabled": False},
+    )
+    assert preferences_response.status_code == 200
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    assert (
+        tenant.tenant_metadata["portal_notification_preferences"]["source"]
+        == "tenant_portal_account"
+    )
+
+    upload_response = client.post(
+        "/api/v1/tenant-portal/documents",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        data={"category": "other", "notes": "Account upload."},
+        files={"file": ("account-note.txt", b"account", "text/plain")},
+    )
+    assert upload_response.status_code == 201
+    uploaded = session.get(StoredDocument, UUID(upload_response.json()["id"]))
+    assert uploaded is not None
+    assert uploaded.tenant_id == UUID(scope["tenant_id"])
+    assert uploaded.document_metadata["auth_boundary"] == "tenant_portal_account"
+    assert uploaded.document_metadata["auth_mode"] == "tenant_portal_account"
+
+    download_response = client.get(
+        f"/api/v1/tenant-portal/documents/{upload_response.json()['id']}/download",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+    assert download_response.status_code == 200
+    assert download_response.content == b"account"
+
+    maintenance_response = client.post(
+        "/api/v1/tenant-portal/maintenance-requests",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={
+            "title": "Account submitted issue",
+            "description": "Raised after linking the portal account.",
+            "priority": "normal",
+        },
+    )
+    assert maintenance_response.status_code == 201
+    work_order = session.get(MaintenanceWorkOrder, UUID(maintenance_response.json()["id"]))
+    assert work_order is not None
+    assert work_order.work_order_metadata["auth_boundary"] == "tenant_portal_account"
+    assert work_order.work_order_metadata["auth_mode"] == "tenant_portal_account"
+
 
 def test_tenant_portal_account_blocks_conflicting_and_revoked_logins(
     client: TestClient,
