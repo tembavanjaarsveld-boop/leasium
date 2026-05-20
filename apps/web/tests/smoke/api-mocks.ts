@@ -100,7 +100,7 @@ const tenants = [
   },
 ];
 
-const tenantOnboardings = [
+const initialTenantOnboardings = [
   {
     id: "onboarding-1",
     entity_id: entityId,
@@ -114,6 +114,7 @@ const tenantOnboardings = [
     resent_at: null,
     cancel_reason: null,
     onboarding_url: "http://127.0.0.1:3000/onboarding/tenant-token-1",
+    portal_url: "http://127.0.0.1:3000/tenant-portal/tenant-token-1",
     submitted_data: {},
     submitted_at: null,
     review_data: {},
@@ -919,6 +920,13 @@ export async function mockLeasiumApi(
   let snapshotCount = 0;
   let insightSnapshots: JsonBody[] = [];
   let tenantPortalDocumentCount = initialTenantPortalDocuments.length;
+  let tenantOnboardings = initialTenantOnboardings.map((onboarding) => ({
+    ...onboarding,
+    delivery_data: {
+      ...onboarding.delivery_data,
+      channels: { ...onboarding.delivery_data.channels },
+    },
+  }));
   let operatorTenantPortalAccounts = initialOperatorTenantPortalAccounts.map(
     (account) => ({ ...account }),
   );
@@ -1847,6 +1855,38 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/tenant-onboarding") {
       await fulfillJson(route, tenantOnboardings);
+      return;
+    }
+
+    if (method === "POST" && path === "/tenant-onboarding/onboarding-1/fresh-link") {
+      const refreshedAt = "2026-05-20T00:10:00.000Z";
+      tenantOnboardings = tenantOnboardings.map((onboarding) =>
+        onboarding.id === "onboarding-1"
+          ? {
+              ...onboarding,
+              token: "tenant-token-fresh",
+              expires_at: "2026-06-03T00:10:00.000Z",
+              last_sent_at: refreshedAt,
+              resent_at: refreshedAt,
+              onboarding_url:
+                "http://127.0.0.1:3000/onboarding/tenant-token-fresh",
+              portal_url:
+                "http://127.0.0.1:3000/tenant-portal/tenant-token-fresh",
+              updated_at: refreshedAt,
+              delivery_data: {
+                ...onboarding.delivery_data,
+                fresh_link: {
+                  refreshed_at: refreshedAt,
+                  reason:
+                    "Operator sent a fresh portal link from the tenant profile.",
+                  expires_in_days: 14,
+                  expires_at: "2026-06-03T00:10:00.000Z",
+                },
+              },
+            }
+          : onboarding,
+      );
+      await fulfillJson(route, tenantOnboardings[0]);
       return;
     }
 

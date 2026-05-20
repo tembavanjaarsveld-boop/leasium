@@ -449,6 +449,13 @@ function dateOnly(value: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function isExpiredDateTime(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+  return new Date(value).getTime() <= Date.now();
+}
+
 function daysUntil(value: string) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -2016,8 +2023,15 @@ function Workspace() {
 
   function startTenantOnboarding(lease: LeaseRecord) {
     const existing = onboardingByLeaseId.get(lease.id);
-    if (existing) {
+    if (
+      existing &&
+      existing.status === "sent" &&
+      !isExpiredDateTime(existing.expires_at)
+    ) {
       void copyOnboardingLink(existing);
+      return;
+    }
+    if (existing) {
       return;
     }
     tenantOnboardingMutation.mutate(lease.id);
@@ -4210,6 +4224,9 @@ function Workspace() {
                         const onboarding = lease
                           ? onboardingByLeaseId.get(lease.id)
                           : undefined;
+                        const canCopyOnboarding =
+                          onboarding?.status === "sent" &&
+                          !isExpiredDateTime(onboarding.expires_at);
                         const isOccupied =
                           lease &&
                           ["active", "holding_over", "pending"].includes(
@@ -4289,21 +4306,30 @@ function Workspace() {
                                 <SecondaryButton
                                   type="button"
                                   aria-label={
-                                    onboarding
+                                    canCopyOnboarding
                                       ? `Copy onboarding link for ${unit.unit_label}`
-                                      : `Create onboarding link for ${unit.unit_label}`
+                                      : onboarding
+                                        ? `Onboarding link unavailable for ${unit.unit_label}`
+                                        : `Create onboarding link for ${unit.unit_label}`
+                                  }
+                                  title={
+                                    onboarding && !canCopyOnboarding
+                                      ? "Open tenant detail to send a fresh link"
+                                      : undefined
                                   }
                                   onClick={() =>
                                     lease ? startTenantOnboarding(lease) : null
                                   }
                                   disabled={
-                                    !lease || tenantOnboardingMutation.isPending
+                                    !lease ||
+                                    tenantOnboardingMutation.isPending ||
+                                    Boolean(onboarding && !canCopyOnboarding)
                                   }
                                   className="h-8 w-8 px-0 text-primary"
                                 >
                                   {copiedOnboardingId === onboarding?.id ? (
                                     <Check size={15} />
-                                  ) : onboarding ? (
+                                  ) : canCopyOnboarding ? (
                                     <Copy size={15} />
                                   ) : (
                                     <Link2 size={15} />

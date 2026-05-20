@@ -147,6 +147,13 @@ function statusTone(status: string, dueDate?: string | null) {
   return "warning" as const;
 }
 
+function isExpiredDateTime(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+  return new Date(value).getTime() <= Date.now();
+}
+
 function latestOnboarding(
   tenantId: string,
   onboardings: TenantOnboardingRecord[],
@@ -546,7 +553,9 @@ function TenantWorkspace() {
                             {onboardingNeedsContactFix(onboarding?.delivery_data) ? "Fix contact" : "Open"}
                           </SecondaryButton>
                         </Link>
-                        {onboarding?.onboarding_url ? (
+                        {onboarding?.status === "sent" &&
+                        onboarding.onboarding_url &&
+                        !isExpiredDateTime(onboarding.expires_at) ? (
                           <SecondaryButton type="button" onClick={() => navigator.clipboard.writeText(onboarding.onboarding_url)}>
                             <ClipboardCopy size={15} />
                             Copy link

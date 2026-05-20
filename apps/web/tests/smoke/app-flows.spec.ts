@@ -202,6 +202,12 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await page.getByRole("button", { name: "Restore" }).click();
   await expect(page.getByText("Recovery receipt: restored by staff")).toBeVisible();
   await expect(page.getByRole("button", { name: "Unlink" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Unlink" }).click();
+  await expect(page.getByRole("button", { name: "Fresh link" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Fresh link" }).click();
+  await expect(page.getByText("Fresh portal link copied.")).toBeVisible();
 });
 
 test("tenant portal shows scoped self-service data", async ({ page }) => {

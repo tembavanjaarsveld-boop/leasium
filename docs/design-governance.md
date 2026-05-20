@@ -232,6 +232,8 @@ Tenant maintenance history now hides internal and contractor-only operator activ
 
 Status: pending Remba review. Operators can now see linked tenant portal accounts from tenant detail and choose revoke for blocked access, restore for staff-approved recovery, or unlink when the tenant should reconnect with the same login. The panel shows the latest recovery receipt with staff action, timestamp, and reason. Keep the action language plain and calm, keep the distinction between revoke, restore, and unlink obvious, and review whether recovery receipts should stay in tenant detail or move into a dedicated account recovery panel.
 
+Tenant fresh-link recovery is now available from tenant detail for sent onboarding/portal links: staff can rotate the token, renew the expiry, send/copy a fresh portal URL, and avoid stale-link copying from tenant, property, and Portfolio QA surfaces. Remba should review whether this action belongs in Portal access, Onboarding workflow, or both, and whether the expiry/recovery language is calm enough for operators under support pressure.
+
 ## Maintenance And Arrears Foundations
 
 Status: pending Remba review. The backend now has migration-backed maintenance work orders and arrears/credit-control cases, and the first operator surface lives in `/operations`. Future screens should avoid crowding Properties or Tenants by deciding which work stays in the shared Operations queue and which work earns dedicated detail pages.

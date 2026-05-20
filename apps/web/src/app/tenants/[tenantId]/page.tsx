@@ -12,6 +12,7 @@ import {
   Link2,
   Loader2,
   Plus,
+  RefreshCw,
   Save,
   ShieldCheck,
   Sparkles,
@@ -55,6 +56,7 @@ import {
   listTenantPortalAccounts,
   listTenantOnboardings,
   previewPublicEnrichment,
+  refreshTenantOnboardingLink,
   resendTenantOnboarding,
   reviewTenantOnboarding,
   restoreTenantPortalAccount,
@@ -171,6 +173,13 @@ function dueRank(value: string | null | undefined) {
   const today = new Date(dateOnly(new Date())).getTime();
   const due = new Date(`${value.slice(0, 10)}T00:00:00`).getTime();
   return Math.ceil((due - today) / 86_400_000);
+}
+
+function isExpiredDateTime(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+  return new Date(value).getTime() <= Date.now();
 }
 
 function statusTone(status: string, dueDate?: string | null) {
@@ -390,6 +399,7 @@ function TenantDetail() {
   const [documentNotes, setDocumentNotes] = useState("");
   const [reviewNotesById, setReviewNotesById] = useState<Record<string, string>>({});
   const [enrichmentSuggestions, setEnrichmentSuggestions] = useState<EnrichmentSuggestion[]>([]);
+  const [freshLinkNotice, setFreshLinkNotice] = useState<string | null>(null);
 
   const tenantQuery = useQuery({
     queryKey: ["tenant", tenantId],
@@ -456,6 +466,7 @@ function TenantDetail() {
     .filter((item) => item.tenant_id === tenantId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const portalAccounts = portalAccountsQuery.data ?? [];
+  const latestSentOnboarding = tenantOnboardings.find((item) => item.status === "sent");
   const linkedLeases = tenantLeaseContexts.length
     ? tenantLeaseContexts
     : (leasesQuery.data ?? []).map((lease) => ({
@@ -546,6 +557,27 @@ function TenantDetail() {
     mutationFn: resendTenantOnboarding,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", tenant?.entity_id] });
+    },
+  });
+
+  const freshLinkMutation = useMutation({
+    mutationFn: ({
+      onboardingId,
+      reason,
+    }: {
+      onboardingId: string;
+      reason: string;
+    }) =>
+      refreshTenantOnboardingLink(onboardingId, {
+        reason,
+        expires_in_days: 14,
+      }),
+    onSuccess: async (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", tenant?.entity_id] });
+      setFreshLinkNotice(`Fresh portal link copied. Expires ${formatDate(updated.expires_at)}.`);
+      if (typeof navigator !== "undefined") {
+        await navigator.clipboard.writeText(updated.portal_url).catch(() => undefined);
+      }
     },
   });
 
@@ -784,7 +816,11 @@ function TenantDetail() {
 
             <SectionPanel title="Portal access" icon={<ShieldCheck size={17} />}>
               <div className="grid gap-3 p-4 text-sm">
-                {portalAccounts.map((account) => (
+                {portalAccounts.map((account) => {
+                  const accountOnboarding =
+                    tenantOnboardings.find((item) => item.id === account.tenant_onboarding_id) ??
+                    latestSentOnboarding;
+                  return (
                   <div
                     key={account.id}
                     className="grid gap-3 rounded-md border border-border bg-white p-3"
@@ -844,26 +880,68 @@ function TenantDetail() {
                             Restore
                           </SecondaryButton>
                         </div>
+                      ) : account.status === "unlinked" && accountOnboarding?.status === "sent" ? (
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <SecondaryButton
+                            type="button"
+                            className="h-8"
+                            onClick={() =>
+                              freshLinkMutation.mutate({
+                                onboardingId: accountOnboarding.id,
+                                reason: "Operator sent a fresh portal link from the tenant profile.",
+                              })
+                            }
+                            disabled={freshLinkMutation.isPending}
+                          >
+                            <RefreshCw size={15} />
+                            Fresh link
+                          </SecondaryButton>
+                        </div>
                       ) : null}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
+                {freshLinkNotice ? (
+                  <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-medium text-primary">
+                    {freshLinkNotice}
+                  </div>
+                ) : null}
                 {!portalAccountsQuery.isLoading && portalAccounts.length === 0 ? (
                   <EmptyState
                     title="No tenant login linked"
-                    description="The tenant can connect a login from their onboarding link."
+                    description="The tenant can connect a login from an active onboarding or portal link."
+                    action={
+                      latestSentOnboarding ? (
+                        <SecondaryButton
+                          type="button"
+                          onClick={() =>
+                            freshLinkMutation.mutate({
+                              onboardingId: latestSentOnboarding.id,
+                              reason: "Operator sent a fresh portal link from the tenant profile.",
+                            })
+                          }
+                          disabled={freshLinkMutation.isPending}
+                        >
+                          <RefreshCw size={15} />
+                          Send fresh link
+                        </SecondaryButton>
+                      ) : null
+                    }
                   />
                 ) : null}
                 {portalAccountsQuery.error ||
                 revokePortalAccountMutation.error ||
                 restorePortalAccountMutation.error ||
-                unlinkPortalAccountMutation.error ? (
+                unlinkPortalAccountMutation.error ||
+                freshLinkMutation.error ? (
                   <p className="text-sm text-danger">
                     {friendlyError(
                       portalAccountsQuery.error ??
                         revokePortalAccountMutation.error ??
                         restorePortalAccountMutation.error ??
-                        unlinkPortalAccountMutation.error,
+                        unlinkPortalAccountMutation.error ??
+                        freshLinkMutation.error,
                     )}
                   </p>
                 ) : null}
@@ -1111,6 +1189,7 @@ function TenantDetail() {
                     (document) => document.tenant_onboarding_id === item.id,
                   );
                   const submittedData = item.submitted_data ?? {};
+                  const linkExpired = isExpiredDateTime(item.expires_at);
                   return (
                   <div key={item.id} className="grid gap-3 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1118,15 +1197,35 @@ function TenantDetail() {
                         <StatusBadge tone={statusTone(item.status, item.due_date)}>
                           {item.status.replaceAll("_", " ")}
                         </StatusBadge>
+                        {linkExpired && item.status === "sent" ? (
+                          <StatusBadge tone="warning">Link expired</StatusBadge>
+                        ) : null}
                         <span className={cn("text-sm text-muted-foreground", dueRank(item.due_date) < 0 && "font-medium text-danger")}>
                           Due {formatDate(item.due_date)}
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <SecondaryButton type="button" onClick={() => navigator.clipboard.writeText(item.onboarding_url)}>
-                          <ClipboardCopy size={15} />
-                          Copy link
-                        </SecondaryButton>
+                        {item.status === "sent" && !linkExpired ? (
+                          <SecondaryButton type="button" onClick={() => navigator.clipboard.writeText(item.onboarding_url)}>
+                            <ClipboardCopy size={15} />
+                            Copy link
+                          </SecondaryButton>
+                        ) : null}
+                        {item.status === "sent" && linkExpired ? (
+                          <SecondaryButton
+                            type="button"
+                            onClick={() =>
+                              freshLinkMutation.mutate({
+                                onboardingId: item.id,
+                                reason: "Operator renewed an expired onboarding link.",
+                              })
+                            }
+                            disabled={freshLinkMutation.isPending}
+                          >
+                            <RefreshCw size={15} />
+                            Fresh link
+                          </SecondaryButton>
+                        ) : null}
                         {onboardingNeedsContactFix(item.delivery_data) ? (
                           <SecondaryButton type="button" onClick={startEdit}>
                             <Edit3 size={15} />
@@ -1140,7 +1239,7 @@ function TenantDetail() {
                           </SecondaryButton>
                         ) : null}
                         {item.status === "sent" ? (
-                          <SecondaryButton type="button" onClick={() => resendOnboardingMutation.mutate(item.id)} disabled={resendOnboardingMutation.isPending}>
+                          <SecondaryButton type="button" onClick={() => resendOnboardingMutation.mutate(item.id)} disabled={resendOnboardingMutation.isPending || linkExpired}>
                             <Link2 size={15} />
                             Resend
                           </SecondaryButton>
@@ -1351,6 +1450,7 @@ function TenantDetail() {
                   const activeOnboarding = tenantOnboardings.find(
                     (item) => item.lease_id === lease.lease_id && item.status !== "cancelled",
                   );
+                  const activeOnboardingExpired = isExpiredDateTime(activeOnboarding?.expires_at);
                   return (
                     <div key={lease.lease_id} className="grid gap-3 p-4 text-sm">
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1372,11 +1472,31 @@ function TenantDetail() {
                         </StatusBadge>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {activeOnboarding ? (
+                        {activeOnboarding &&
+                        activeOnboarding.status === "sent" &&
+                        !activeOnboardingExpired ? (
                           <SecondaryButton type="button" onClick={() => navigator.clipboard.writeText(activeOnboarding.onboarding_url)}>
                             <ClipboardCopy size={15} />
                             Copy onboarding link
                           </SecondaryButton>
+                        ) : activeOnboarding && activeOnboarding.status === "sent" ? (
+                          <SecondaryButton
+                            type="button"
+                            onClick={() =>
+                              freshLinkMutation.mutate({
+                                onboardingId: activeOnboarding.id,
+                                reason: "Operator renewed an expired onboarding link.",
+                              })
+                            }
+                            disabled={freshLinkMutation.isPending}
+                          >
+                            <RefreshCw size={15} />
+                            Fresh link
+                          </SecondaryButton>
+                        ) : activeOnboarding ? (
+                          <StatusBadge tone="neutral">
+                            Onboarding {activeOnboarding.status.replaceAll("_", " ")}
+                          </StatusBadge>
                         ) : (
                           <Button type="button" onClick={() => createOnboardingMutation.mutate(lease.lease_id)}>
                             <Plus size={16} />

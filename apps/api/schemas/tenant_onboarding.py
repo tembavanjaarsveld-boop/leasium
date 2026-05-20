@@ -20,6 +20,11 @@ class TenantOnboardingCancel(BaseModel):
     reason: str | None = None
 
 
+class TenantOnboardingFreshLink(BaseModel):
+    reason: str | None = None
+    expires_in_days: int = Field(default=14, ge=1, le=90)
+
+
 class TenantOnboardingReview(BaseModel):
     approved: bool = True
     notes: str | None = None
@@ -65,6 +70,7 @@ class TenantOnboardingRead(ApiModel):
     resent_at: datetime | None
     cancel_reason: str | None
     onboarding_url: str = ""
+    portal_url: str = ""
     submitted_data: dict[str, Any] = Field(default_factory=dict)
     submitted_at: datetime | None
     review_data: dict[str, Any] = Field(default_factory=dict)

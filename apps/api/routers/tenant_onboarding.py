@@ -50,6 +50,7 @@ from apps.api.schemas.documents import DocumentRead
 from apps.api.schemas.tenant_onboarding import (
     TenantOnboardingCancel,
     TenantOnboardingCreate,
+    TenantOnboardingFreshLink,
     TenantOnboardingPublicRead,
     TenantOnboardingRead,
     TenantOnboardingReminderRunRead,
@@ -79,9 +80,14 @@ def _onboarding_url(token: str) -> str:
     return f"{get_settings().frontend_url.rstrip('/')}/onboarding/{token}"
 
 
+def _portal_url(token: str) -> str:
+    return f"{get_settings().frontend_url.rstrip('/')}/tenant-portal/{token}"
+
+
 def _read(row: TenantOnboarding) -> TenantOnboardingRead:
     response = TenantOnboardingRead.model_validate(row)
     response.onboarding_url = _onboarding_url(row.token)
+    response.portal_url = _portal_url(row.token)
     return response
 
 
@@ -713,7 +719,7 @@ def _deliver_onboarding_link(
         reason,
         _template_metadata(invite),
     )
-    if reason in {"send", "resend"}:
+    if reason in {"send", "resend", "fresh_link"}:
         next_delivery_data = _reset_reminders(
             next_delivery_data,
             onboarding.last_sent_at or utcnow(),
@@ -758,6 +764,14 @@ def _is_expired(row: TenantOnboarding) -> bool:
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
     return expires_at <= utcnow()
+
+
+def _assert_public_onboarding_editable(onboarding: TenantOnboarding) -> None:
+    if onboarding.status != TenantOnboardingStatus.sent:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only sent onboarding can be changed from the public link.",
+        )
 
 
 def _property_address(prop: Property) -> str | None:
@@ -1195,6 +1209,73 @@ def resend_tenant_onboarding(
     return _read(onboarding)
 
 
+@router.post("/{onboarding_id}/fresh-link", response_model=TenantOnboardingRead)
+def refresh_tenant_onboarding_link(
+    onboarding_id: UUID,
+    payload: TenantOnboardingFreshLink,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantOnboardingRead:
+    onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)
+    if onboarding.status != TenantOnboardingStatus.sent:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only sent onboarding links can receive a fresh link.",
+        )
+
+    lease, prop, tenant = _lease_scope(onboarding.lease_id, session)
+    now = utcnow()
+    previous_expires_at = onboarding.expires_at
+    refreshed_expires_at = now + timedelta(days=payload.expires_in_days)
+    onboarding.token = _new_token(session)
+    onboarding.expires_at = refreshed_expires_at
+    onboarding.status = TenantOnboardingStatus.sent
+    onboarding.last_sent_at = now
+    onboarding.resent_at = now
+    delivery_data = dict(onboarding.delivery_data or {})
+    receipt = {
+        "refreshed_at": now.isoformat(),
+        "refreshed_by_user_id": str(user.id),
+        "reason": payload.reason,
+        "expires_in_days": payload.expires_in_days,
+        "expires_at": refreshed_expires_at.isoformat(),
+        "previous_expires_at": (
+            previous_expires_at.isoformat() if previous_expires_at is not None else None
+        ),
+    }
+    history = delivery_data.get("fresh_link_history")
+    next_history = (
+        [item for item in history if isinstance(item, dict)]
+        if isinstance(history, list)
+        else []
+    )
+    next_history.append(receipt)
+    delivery_data["fresh_link"] = receipt
+    delivery_data["fresh_link_history"] = next_history[-5:]
+    onboarding.delivery_data = delivery_data
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=onboarding.entity_id,
+        action="refresh_link",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+        tool_name="tenant_onboarding.fresh_link",
+        tool_input={
+            "reason": payload.reason,
+            "expires_in_days": payload.expires_in_days,
+        },
+        tool_output_summary="Rotated tenant onboarding token and prepared a fresh portal link.",
+        data_classification="confidential",
+    )
+    session.flush()
+    _deliver_onboarding_link(onboarding, lease, prop, tenant, user, session, "fresh_link")
+    session.commit()
+    session.refresh(onboarding)
+    return _read(onboarding)
+
+
 @router.post("/{onboarding_id}/review", response_model=TenantOnboardingRead)
 def review_tenant_onboarding(
     onboarding_id: UUID,
@@ -1345,15 +1426,7 @@ async def upload_public_onboarding_document(
     notes: Annotated[str | None, Form()] = None,
 ) -> StoredDocument:
     onboarding = _get_public_onboarding(token, session)
-    if onboarding.status in {
-        TenantOnboardingStatus.submitted,
-        TenantOnboardingStatus.reviewed,
-        TenantOnboardingStatus.applied,
-    }:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Submitted onboarding documents cannot be changed.",
-        )
+    _assert_public_onboarding_editable(onboarding)
     lease, prop, _tenant = _lease_scope(onboarding.lease_id, session)
     data = await file.read()
     max_bytes = get_settings().document_max_bytes
@@ -1418,15 +1491,7 @@ def delete_public_onboarding_document(
     session: Annotated[Session, Depends(get_session)],
 ) -> None:
     onboarding, document = _public_document(token, document_id, session)
-    if onboarding.status in {
-        TenantOnboardingStatus.submitted,
-        TenantOnboardingStatus.reviewed,
-        TenantOnboardingStatus.applied,
-    }:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Submitted onboarding documents cannot be changed.",
-        )
+    _assert_public_onboarding_editable(onboarding)
     document.deleted_at = utcnow()
     audit_log(
         session,
@@ -1448,6 +1513,7 @@ def submit_public_tenant_onboarding(
     session: Annotated[Session, Depends(get_session)],
 ) -> TenantOnboardingPublicRead:
     onboarding = _get_public_onboarding(token, session)
+    _assert_public_onboarding_editable(onboarding)
     if not payload.accepted:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

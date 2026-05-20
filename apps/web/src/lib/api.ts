@@ -342,6 +342,7 @@ export type TenantOnboardingRecord = {
   resent_at: string | null;
   cancel_reason: string | null;
   onboarding_url: string;
+  portal_url: string;
   submitted_data: Record<string, unknown>;
   submitted_at: string | null;
   review_data: Record<string, unknown>;
@@ -2213,6 +2214,19 @@ export function resendTenantOnboarding(onboardingId: string) {
     `/tenant-onboarding/${onboardingId}/resend`,
     {
       method: "POST",
+    },
+  );
+}
+
+export function refreshTenantOnboardingLink(
+  onboardingId: string,
+  payload: { reason?: string | null; expires_in_days?: number } = {},
+) {
+  return request<TenantOnboardingRecord>(
+    `/tenant-onboarding/${onboardingId}/fresh-link`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
     },
   );
 }

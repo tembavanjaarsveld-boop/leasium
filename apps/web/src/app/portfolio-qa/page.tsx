@@ -133,6 +133,13 @@ function dueRank(value: string | null | undefined) {
   return Math.ceil((due - today) / 86_400_000);
 }
 
+function isExpiredDateTime(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+  return new Date(value).getTime() <= Date.now();
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) {
     return "No date";
@@ -465,11 +472,16 @@ function buildTenantPrep(
       const tenant = row.tenant_id ? tenantById.get(row.tenant_id) : undefined;
       const onboarding = latestOnboarding(row.lease_id, row.tenant_id, onboardings);
       const email = tenant?.billing_email || tenant?.contact_email || row.tenant_billing_email || null;
+      const onboardingExpired = isExpiredDateTime(onboarding?.expires_at);
       const blockers = [
         !row.lease_id ? "No active lease" : null,
         !row.tenant_id || !tenant ? "Tenant record missing" : null,
         !email ? "No tenant email" : null,
-        onboarding ? `Existing onboarding ${label(onboarding.status)}` : null,
+        onboardingExpired
+          ? "Existing onboarding link expired"
+          : onboarding
+            ? `Existing onboarding ${label(onboarding.status)}`
+            : null,
       ].filter((item): item is string => Boolean(item));
       return {
         id: row.lease_id ?? row.tenancy_unit_id,

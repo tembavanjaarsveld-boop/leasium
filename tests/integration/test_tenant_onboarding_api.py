@@ -284,6 +284,109 @@ def test_tenant_onboarding_expired_link_blocks_public_access(
     assert submit_response.status_code == 404
 
 
+def test_tenant_onboarding_fresh_link_rotates_expired_token(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    sent_urls: list[str] = []
+
+    def fake_send(invite, settings):  # noqa: ANN001, ARG001
+        sent_urls.append(invite.onboarding_url)
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+                provider_message_id=f"email-{len(sent_urls)}",
+            )
+        ]
+
+    monkeypatch.setattr(tenant_onboarding_router, "send_tenant_onboarding_invite", fake_send)
+    lease_id = _lease_id(client, session)
+    expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    create_response = client.post(
+        "/api/v1/tenant-onboarding",
+        json={"lease_id": lease_id, "expires_at": expires_at.isoformat()},
+    )
+    assert create_response.status_code == 201
+    old_token = create_response.json()["token"]
+    onboarding_id = create_response.json()["id"]
+    sent_urls.clear()
+
+    fresh_response = client.post(
+        f"/api/v1/tenant-onboarding/{onboarding_id}/fresh-link",
+        json={"reason": "Tenant lost the original link.", "expires_in_days": 21},
+    )
+
+    assert fresh_response.status_code == 200
+    body = fresh_response.json()
+    assert body["token"] != old_token
+    assert body["status"] == "sent"
+    assert body["expires_at"] is not None
+    assert body["resent_at"] is not None
+    assert body["onboarding_url"].endswith(body["token"])
+    assert body["portal_url"].endswith(body["token"])
+    assert sent_urls == [body["onboarding_url"]]
+
+    old_public_response = client.get(f"/api/v1/tenant-onboarding/public/{old_token}")
+    assert old_public_response.status_code == 404
+    new_public_response = client.get(f"/api/v1/tenant-onboarding/public/{body['token']}")
+    assert new_public_response.status_code == 200
+
+    onboarding = session.get(TenantOnboarding, UUID(onboarding_id))
+    assert onboarding is not None
+    fresh_link = onboarding.delivery_data["fresh_link"]
+    assert fresh_link["reason"] == "Tenant lost the original link."
+    assert fresh_link["expires_in_days"] == 21
+    assert "token" not in fresh_link
+    assert onboarding.delivery_data["reminders"]["next_reminder_at"] is not None
+    assert onboarding.delivery_data["expiry_reminders"]["next_reminder_at"] is not None
+
+
+def test_public_onboarding_cannot_submit_again_after_review(
+    client: TestClient,
+    session: Session,
+) -> None:
+    lease_id = _lease_id(client, session)
+    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    assert create_response.status_code == 201
+    token = create_response.json()["token"]
+    onboarding_id = create_response.json()["id"]
+
+    first_submit_response = client.post(
+        f"/api/v1/tenant-onboarding/public/{token}/submit",
+        json={
+            "legal_name": "Reviewed Tenant Pty Ltd",
+            "contact_name": "Pat Reviewed",
+            "contact_email": "pat.reviewed@exampletenant.com.au",
+            "accepted": True,
+        },
+    )
+    assert first_submit_response.status_code == 200
+
+    review_response = client.post(
+        f"/api/v1/tenant-onboarding/{onboarding_id}/review",
+        json={"approved": True},
+    )
+    assert review_response.status_code == 200
+
+    second_submit_response = client.post(
+        f"/api/v1/tenant-onboarding/public/{token}/submit",
+        json={
+            "legal_name": "Changed Tenant Pty Ltd",
+            "contact_name": "Pat Changed",
+            "contact_email": "pat.changed@exampletenant.com.au",
+            "accepted": True,
+        },
+    )
+    assert second_submit_response.status_code == 409
+    assert second_submit_response.json()["detail"] == (
+        "Only sent onboarding can be changed from the public link."
+    )
+
+
 def test_tenant_onboarding_sendgrid_receipt_updates_delivery_data(
     client: TestClient,
     session: Session,

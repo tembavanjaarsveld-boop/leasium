@@ -214,6 +214,12 @@ Last updated: 2026-05-20
   - Linked invoice drafts now show status, payment state, delivery readiness, blockers, preview, PDF download, prepare delivery, and internal approve actions from the existing invoice draft APIs.
   - No new migration or persistence shape was added.
   - This is design-facing and still needs Remba review.
+- Tenant portal fresh-link recovery v1 is built on this branch.
+  - `POST /api/v1/tenant-onboarding/{onboarding_id}/fresh-link` rotates the onboarding token, renews expiry, resets reminder schedules, delivers the fresh URL, stores a compact recovery receipt in `delivery_data`, and returns both onboarding and tenant-portal URLs.
+  - Public onboarding submit/upload/delete now require the onboarding row to still be `sent`, so reviewed/applied links cannot be mutated from the public token.
+  - Tenant detail, tenant list, property workspace, and Portfolio QA avoid copying stale expired links; tenant detail can send/copy a fresh portal link for sent onboarding rows and unlinked tenant portal accounts.
+  - No new migration was added.
+  - This is design-facing and still needs Remba review.
 - Spreadsheet import plan durability v1 is built on this branch.
   - Dry-run now creates a persisted `register_import_plan` row and returns `plan_id` with the review payload.
   - Smart Intake and `/intake/spreadsheet` send `plan_id` on Apply, so the API applies the stored server-generated action list instead of trusting the browser copy.
@@ -594,12 +600,11 @@ Last updated: 2026-05-20
 
 ## Recommended Next Tickets
 
-1. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, tenant detail portal access controls, and Operations workspace.
-2. Add clearer tenant portal invite expiry renewal handling and staff-triggered fresh-link flows.
-3. Deepen Operations with contractor quote preview polish and maintenance invoice approval handoff.
-4. Continue Xero from provider dispatch into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
-5. Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
-6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
+1. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, tenant fresh-link recovery, tenant detail portal access controls, and Operations workspace.
+2. Continue Xero from provider dispatch into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
+3. Deepen Operations with contractor communications, maintenance invoice exception recovery, and clearer handoff rules between Operations and Billing Readiness.
+4. Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
+5. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 
 ## Resume Checklist
 
