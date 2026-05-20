@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production feature deployment before the overnight build bundle: `dfb4d63 Add shareable Insights snapshots`, Vercel deployment `dpl_7K8jpA5HTKATiRn9pTpT36JPxndG`, state `READY`; Render API health is live and exposes the snapshot routes.
+- Latest confirmed production deployment: `cdef576 Add tenant portal maintenance requests`, Vercel deployment `dpl_7TrkN5kjUKaQbjNiovxoCENvYoUW`, state `READY`; Render API health is live and production OpenAPI exposes `/api/v1/tenant-portal/maintenance-requests`.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -198,6 +198,9 @@ Last updated: 2026-05-20
   - `.venv/bin/python -m pytest -q` (`92 passed`, `1 skipped`; migration smoke skipped because `TEST_DATABASE_URL` is not configured)
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
   - `PORT=3004 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`7 passed`, `1 skipped`; Clerk guard remains environment-gated)
+  - Production Vercel `/tenant-portal/not-a-real-token` returned `200`.
+  - Production Render `/health` returned `200`, and `/api/v1/tenant-portal/maintenance-requests` returned `401` without a portal token as expected.
+  - Production Render OpenAPI now includes `/api/v1/tenant-portal/maintenance-requests`.
 - Overnight build bundle checks passed:
   - `.venv/bin/python -m pytest tests/integration/test_register_import_api.py tests/integration/test_tenant_portal_api.py tests/integration/test_maintenance_arrears_api.py tests/integration/test_xero_api.py tests/integration/test_document_intake_api.py::test_document_intake_apply_invoice_prepares_billing_work -q` (`23 passed`)
   - `.venv/bin/ruff check` on the changed backend routers/schemas/domain/integration/tests (`all checks passed`)
