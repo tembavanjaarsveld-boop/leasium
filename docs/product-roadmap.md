@@ -68,19 +68,26 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Insights overview v1: the Insights workspace now has a read-only backend overview for portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots, with no record mutation, invoice posting, or Xero sync.
 - [x] Shareable Insights snapshots v1: operators can freeze owner, finance, and lease-event snapshots from the live Insights overview into revocable public links with hashed tokens, expiry, public read-only rendering, and no live portfolio mutation.
 - [x] Spreadsheet portfolio import dry-run v1: `.xlsx` source-of-truth workbooks can be parsed into a no-mutation import plan for properties, units, tenants, leases, charge rules, obligations, and operational tasks, with row-level blockers/warnings and feature-candidate flags for vendors, legal entities, head leases, security originals, arrears, and issue/action queues.
+- [x] Spreadsheet portfolio Smart Intake review/apply v1: spreadsheet import plans now surface reviewable row actions in Smart Intake, require explicit approved action IDs before Apply, and store workbook filename, sheet, row, action ID, source hint, confidence, and before/after provenance on created/updated records. Pending Remba review.
 - [x] One-off SKJ portfolio workbook production import: the current source-of-truth workbook has been loaded into the hosted register with real properties, units, tenants, leases, charge rules, and obligations, while demo seed rows were archived.
-- [x] Post-import Portfolio QA workspace v1: `/portfolio-qa` brings together missing-field checks, tenant contact cleanup, source/import history, batch onboarding readiness, and internal billing draft preparation from the imported portfolio. Pending Remba review.
+- [x] Post-import Portfolio QA workspace v1: `/portfolio-qa` brings together missing-field checks, tenant contact cleanup, source/import history, batch onboarding readiness, and internal billing draft preparation from the imported portfolio. Insights now links to Portfolio QA as the IA home for cleanup. Pending Remba review.
 - [x] Charge-rule billing draft batch v1: reviewed rent/outgoings charge rules can generate source-linked internal billing drafts and line items with idempotent same-period reuse, synthetic prep source documents, and explicit no-PDF/no-email/no-Xero guardrails.
+- [x] Xero posting approval and draft creation v1: approved invoice drafts can receive explicit local Xero posting approval, then create provider-backed Xero draft invoices idempotently when credentials and preview validation pass; unconfigured/provider-missing states are safe skips, and no Xero write runs without approval.
+- [x] Xero payment reconciliation v1: provider/imported payment statuses can be previewed and applied to local invoice metadata with idempotency keys, preserving review/audit history and avoiding duplicate reconciliation.
+- [x] Provider-backed invoice email delivery v1: approved internal invoice drafts can send the prepared invoice email through SendGrid when configured, attach the stored PDF artifact, record queued/skipped/failed provider receipts, and keep Xero sync as a separate approval.
+- [x] Tenant portal self-service v1: `/tenant-portal/[token]` exposes token-scoped tenant onboarding status, lease context, approved invoices/payment summary, document download/upload, compliance status, and notification preferences without operator-only metadata. True tenant identity-provider auth remains future work.
+- [x] Maintenance work orders v1: migration-backed work orders now track tenant/property/lease scope, priority, status, contractor assignment, approvals, photos/documents, invoice/source references, soft delete, and audit history.
+- [x] Arrears and credit-control v1: migration-backed arrears cases now track aged balances, reminder cadence, dispute status, promise-to-pay notes, escalation queue/status, soft delete, and audit history.
 
 ## Next Build Order
 
-- [ ] Turn spreadsheet portfolio import from backend dry-run into a Smart Intake review surface, then add reviewed Apply with source provenance and no mutation until approval.
-- [ ] Promote Portfolio QA into the Remba-reviewed navigation/information architecture once the cleanup workflow settles.
-- [ ] Continue provider-backed Xero from invoice posting preview into explicit posting approval, idempotent Xero draft creation, and then payment reconciliation.
-- [ ] Add provider-backed invoice email delivery and Xero posting approvals on top of the internal invoice draft/PDF/payment workflow.
-- [ ] Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
-- [ ] Add maintenance work orders with tenant requests, photos, priorities, contractor assignment, approvals, invoices, and status tracking.
-- [ ] Start arrears and credit control with aged balances, reminder schedules, dispute status, promise-to-pay notes, and escalation queues.
+- [ ] Apply the new `20260520_0018_maintenance_arrears_foundations` migration in hosted Neon/Render if auto-migrations do not run.
+- [ ] Remba review the new Smart Intake spreadsheet import panel, Portfolio QA IA link, tenant portal, invoice email action, and maintenance/arrears API surfaces before treating them as UX complete.
+- [ ] Add operator UI workspaces for maintenance work orders and arrears/credit control so the new APIs are usable from the platform.
+- [ ] Continue tenant portal from token-scoped v1 to authenticated tenant accounts, maintenance requests, notification preference verification, and safer invite/link lifecycle.
+- [ ] Continue Xero from draft invoice creation/reconciliation metadata into operator UI approvals, webhook/provider status receipts, and full accounting reconciliation guardrails.
+- [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
+- [ ] Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 
 ## Smart Intake North Star
 
@@ -106,10 +113,10 @@ Official Re-Leased pages position their product around a few mature modules that
 
 ## Later Modules
 
-- [ ] Arrears and credit control: aged balances, reminder schedules, promise-to-pay notes, dispute status, and escalation queues.
-- [ ] Maintenance work orders: tenant requests, photos, priorities, contractor assignment, quotes, approvals, invoices, and status updates.
+- [ ] Arrears and credit control UI: aged balances, reminder schedules, promise-to-pay notes, dispute status, and escalation queues on top of the new API.
+- [ ] Maintenance work orders UI: tenant requests, photos, priorities, contractor assignment, quotes, approvals, invoices, and status updates on top of the new API.
 - [ ] Compliance and inspections: recurring checks, certifications, document expiry, fire/safety obligations, delegated owners, and audit trail.
-- [ ] Tenant portal: authenticated self-service for onboarding, documents, invoices, maintenance, compliance uploads, and notification preferences.
+- [ ] Tenant portal account auth: authenticated self-service for onboarding, documents, invoices, maintenance, compliance uploads, and notification preferences.
 - [ ] Portfolio Insights: rent roll health, lease events, arrears, invoice status, maintenance aging, compliance expiry, owner/entity dashboards, and shareable snapshots.
 - [ ] Communications hub: email templates, outbound logs, tenant/contractor threads, and record-linked correspondence.
 - [ ] Approvals and workflow: invoice approval, maintenance spend approval, delegated tasks, reminders, escalation rules, and activity history.

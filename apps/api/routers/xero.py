@@ -6,6 +6,7 @@ import hmac
 import json
 import secrets
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 from uuid import UUID
@@ -34,12 +35,14 @@ from stewart.core.models import (
 from stewart.core.settings import Settings, get_settings
 from stewart.integrations.xero import (
     XeroIntegrationError,
+    create_xero_invoice_draft,
     decrypt_xero_token,
     encrypt_xero_token,
     exchange_code_for_tokens,
     fetch_xero_accounts,
     fetch_xero_connections,
     fetch_xero_contacts,
+    fetch_xero_invoices,
     fetch_xero_tax_rates,
     refresh_xero_tokens,
     token_expiry_from_payload,
@@ -62,12 +65,21 @@ from apps.api.schemas.xero import (
     XeroContactMappingApplyResultRead,
     XeroContactMatchRead,
     XeroContactSyncPreviewRead,
+    XeroInvoiceDraftCreateRead,
+    XeroInvoiceDraftCreateRequest,
+    XeroInvoiceDraftCreateResultRead,
+    XeroInvoicePostingApprovalRead,
+    XeroInvoicePostingApprovalRequest,
     XeroInvoicePostingPreviewLineRead,
     XeroInvoicePostingPreviewRead,
     XeroInvoicePostingPreviewResultRead,
     XeroInvoiceSyncSummaryRead,
     XeroMappingIssueRead,
     XeroOAuthStartRead,
+    XeroPaymentReconciliationItem,
+    XeroPaymentReconciliationRead,
+    XeroPaymentReconciliationRequest,
+    XeroPaymentReconciliationResultRead,
     XeroPaymentSummaryRead,
     XeroProviderConfigRead,
     XeroReadinessSummaryRead,
@@ -175,6 +187,101 @@ def _payment_status(metadata: dict[str, Any]) -> str:
         if isinstance(status_value, str) and status_value:
             return status_value
     return "unpaid"
+
+
+def _payment_paid_cents(metadata: dict[str, Any]) -> int | None:
+    payment = metadata.get("payment_status")
+    if isinstance(payment, dict):
+        paid_cents = payment.get("paid_cents")
+        if isinstance(paid_cents, int):
+            return paid_cents
+    return None
+
+
+def _short_idempotency_key(prefix: str, *parts: object) -> str:
+    raw = "|".join(str(part) for part in parts if part is not None)
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+    return f"{prefix}-{digest}"
+
+
+def _metadata_text(metadata: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = metadata.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return None
+
+
+def _invoice_draft_for_xero_access(
+    invoice_draft_id: UUID,
+    user: CurrentUser,
+    session: Session,
+    roles: set[UserRole],
+) -> InvoiceDraft:
+    draft = session.get(InvoiceDraft, invoice_draft_id)
+    if draft is None or draft.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invoice draft not found.",
+        )
+    assert_entity_role(session, user, draft.entity_id, roles)
+    return draft
+
+
+def _xero_sync_state(metadata: dict[str, Any]) -> dict[str, Any]:
+    state = metadata.get("xero_sync")
+    return dict(state) if isinstance(state, dict) else {}
+
+
+def _xero_invoice_id_from_metadata(metadata: dict[str, Any]) -> str | None:
+    sync_state = _xero_sync_state(metadata)
+    invoice_id = _metadata_text(sync_state, "xero_invoice_id", "InvoiceID")
+    if invoice_id:
+        return invoice_id
+    posting_state = metadata.get("posting_preparation")
+    if isinstance(posting_state, dict):
+        return _metadata_text(posting_state, "xero_invoice_id", "InvoiceID")
+    return None
+
+
+def _xero_posting_approval_state(metadata: dict[str, Any]) -> str:
+    approval = metadata.get("xero_posting_approval")
+    if isinstance(approval, dict):
+        state_value = approval.get("state")
+        if isinstance(state_value, str) and state_value:
+            return state_value
+    return "not_requested"
+
+
+def _xero_posting_approved(metadata: dict[str, Any]) -> bool:
+    approval = metadata.get("xero_posting_approval")
+    return (
+        isinstance(approval, dict)
+        and approval.get("approved") is True
+        and approval.get("state") == "approved"
+    )
+
+
+def _xero_posting_approval_key(draft: InvoiceDraft, payload_key: str | None = None) -> str:
+    if payload_key:
+        return _short_idempotency_key("xero-post-approval", payload_key, draft.id)
+    return f"xero-post-approval-{draft.id}"
+
+
+def _xero_draft_create_key(draft: InvoiceDraft, payload_key: str | None = None) -> str:
+    metadata = draft.invoice_metadata or {}
+    sync_state = _xero_sync_state(metadata)
+    existing_key = _metadata_text(sync_state, "idempotency_key")
+    if existing_key:
+        return existing_key[:128]
+    approval = metadata.get("xero_posting_approval")
+    if isinstance(approval, dict):
+        approval_key = _metadata_text(approval, "draft_create_idempotency_key")
+        if approval_key:
+            return approval_key[:128]
+    if payload_key:
+        return _short_idempotency_key("xero-draft", payload_key, draft.id)
+    return f"xero-draft-{draft.id}"
 
 
 def _state_secret(settings: Settings) -> bytes:
@@ -865,6 +972,324 @@ def _xero_invoice_posting_result(
     )
 
 
+def _draft_create_result(
+    draft: InvoiceDraft,
+    *,
+    status_label: Literal["created", "skipped", "blocked", "failed"],
+    reason: str,
+    external_posting_status: str,
+    idempotency_key: str | None = None,
+    xero_invoice_id: str | None = None,
+    xero_status: str | None = None,
+) -> XeroInvoiceDraftCreateResultRead:
+    metadata = draft.invoice_metadata or {}
+    return XeroInvoiceDraftCreateResultRead(
+        invoice_draft_id=draft.id,
+        invoice_number=draft.invoice_number,
+        status=status_label,
+        reason=reason,
+        approval_state=_xero_posting_approval_state(metadata),
+        idempotency_key=idempotency_key,
+        xero_invoice_id=xero_invoice_id,
+        xero_status=xero_status,
+        external_posting_status=external_posting_status,
+    )
+
+
+def _store_xero_draft_create_result(
+    *,
+    draft: InvoiceDraft,
+    created_invoice: dict[str, Any],
+    provider_connection: XeroConnection,
+    user: CurrentUser,
+    idempotency_key: str,
+    created_at: Any,
+) -> tuple[str | None, str | None]:
+    metadata = dict(draft.invoice_metadata or {})
+    xero_invoice_id = _xero_text(created_invoice, "InvoiceID")
+    xero_status = _xero_text(created_invoice, "Status") or "DRAFT"
+    xero_invoice_number = _xero_text(created_invoice, "InvoiceNumber") or draft.invoice_number
+    sync_state = {
+        "xero_synced": True,
+        "external_posting_status": "draft_created",
+        "xero_invoice_id": xero_invoice_id,
+        "xero_invoice_number": xero_invoice_number,
+        "xero_status": xero_status,
+        "created_at": created_at.isoformat(),
+        "created_by_user_id": str(user.id),
+        "idempotency_key": idempotency_key,
+        "provider_connection_id": str(provider_connection.id),
+        "xero_tenant_id": provider_connection.xero_tenant_id,
+    }
+    metadata["xero_sync"] = sync_state
+
+    posting_preparation = dict(metadata.get("posting_preparation") or {})
+    posting_preparation.update(
+        {
+            "xero_synced": True,
+            "xero_sync_allowed": False,
+            "xero_sync_requested": False,
+            "external_posting_status": "draft_created",
+            "xero_invoice_id": xero_invoice_id,
+            "xero_invoice_number": xero_invoice_number,
+            "xero_status": xero_status,
+            "posted_at": created_at.isoformat(),
+            "posted_by_user_id": str(user.id),
+            "guardrail": "Xero draft was created after explicit local posting approval.",
+        }
+    )
+    metadata["posting_preparation"] = posting_preparation
+
+    delivery_state = dict(metadata.get("delivery_state") or {})
+    if delivery_state:
+        delivery_state["xero_synced"] = True
+        metadata["delivery_state"] = delivery_state
+
+    history = list(metadata.get("xero_sync_history") or [])
+    history.append(sync_state)
+    metadata["xero_sync_history"] = history[-20:]
+    draft.invoice_metadata = metadata
+    return xero_invoice_id, xero_status
+
+
+def _money_to_cents(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return int((amount * Decimal("100")).quantize(Decimal("1")))
+
+
+def _payment_items_from_xero_invoices(
+    invoices: list[dict[str, Any]],
+) -> list[XeroPaymentReconciliationItem]:
+    items: list[XeroPaymentReconciliationItem] = []
+    for invoice in invoices:
+        invoice_id = _xero_text(invoice, "InvoiceID")
+        invoice_number = _xero_text(invoice, "InvoiceNumber")
+        if not invoice_id and not invoice_number:
+            continue
+        total_cents = _money_to_cents(invoice.get("Total"))
+        paid_cents = _money_to_cents(invoice.get("AmountPaid")) or 0
+        due_cents = _money_to_cents(invoice.get("AmountDue"))
+        status_value = (_xero_text(invoice, "Status") or "").upper()
+        if status_value == "PAID" or (total_cents is not None and paid_cents >= total_cents):
+            proposed_status: Literal["unpaid", "partially_paid", "paid"] = "paid"
+            proposed_paid = total_cents if total_cents is not None else paid_cents
+        elif paid_cents > 0 or (due_cents is not None and total_cents and due_cents < total_cents):
+            proposed_status = "partially_paid"
+            proposed_paid = paid_cents
+        else:
+            proposed_status = "unpaid"
+            proposed_paid = 0
+        items.append(
+            XeroPaymentReconciliationItem(
+                invoice_number=invoice_number,
+                xero_invoice_id=invoice_id,
+                status=proposed_status,
+                paid_cents=proposed_paid,
+                source="provider",
+                provider_payment_id=_xero_text(invoice, "UpdatedDateUTC") or invoice_id,
+            )
+        )
+    return items
+
+
+def _invoice_payment_status(
+    draft: InvoiceDraft,
+    item: XeroPaymentReconciliationItem,
+    reconciled_at: Any,
+) -> tuple[dict[str, Any] | None, str | None]:
+    if item.status == "unpaid":
+        paid_cents = 0
+    elif item.status == "paid":
+        paid_cents = draft.total_cents if item.paid_cents is None else item.paid_cents
+        if paid_cents < draft.total_cents:
+            return None, "Paid reconciliation cannot be less than the invoice total."
+    else:
+        if item.paid_cents is None:
+            return None, "Partial payment needs a paid amount."
+        paid_cents = item.paid_cents
+        if paid_cents <= 0 or paid_cents >= draft.total_cents:
+            return (
+                None,
+                "Partial payment must be greater than zero and less than the invoice total.",
+            )
+
+    paid_cents = min(paid_cents, draft.total_cents)
+    outstanding_cents = max(draft.total_cents - paid_cents, 0)
+    status_value = item.status
+    if outstanding_cents == 0:
+        status_value = "paid"
+    elif paid_cents > 0:
+        status_value = "partially_paid"
+    else:
+        status_value = "unpaid"
+    return (
+        {
+            "status": status_value,
+            "paid_cents": paid_cents,
+            "outstanding_cents": outstanding_cents,
+            "paid_at": item.paid_at.isoformat() if item.paid_at else None,
+            "updated_at": reconciled_at.isoformat(),
+            "source": f"xero_payment_reconciliation_{item.source}",
+        },
+        None,
+    )
+
+
+def _payment_reconciliation_key(
+    draft: InvoiceDraft,
+    item: XeroPaymentReconciliationItem,
+    proposed_status: dict[str, Any],
+) -> str:
+    if item.idempotency_key:
+        return _short_idempotency_key("xero-payment", item.idempotency_key, draft.id)
+    return _short_idempotency_key(
+        "xero-payment",
+        item.provider_payment_id,
+        item.xero_invoice_id,
+        item.invoice_number,
+        draft.id,
+        proposed_status.get("status"),
+        proposed_status.get("paid_cents"),
+        proposed_status.get("paid_at"),
+    )
+
+
+def _payment_reconciliation_result(
+    *,
+    item: XeroPaymentReconciliationItem,
+    drafts_by_id: dict[UUID, InvoiceDraft],
+    drafts_by_number: dict[str, InvoiceDraft],
+    drafts_by_xero_invoice_id: dict[str, InvoiceDraft],
+    apply_changes: bool,
+    user: CurrentUser,
+    reconciled_at: Any,
+) -> XeroPaymentReconciliationResultRead:
+    draft = None
+    if item.invoice_draft_id is not None:
+        draft = drafts_by_id.get(item.invoice_draft_id)
+    if draft is None and item.xero_invoice_id:
+        draft = drafts_by_xero_invoice_id.get(item.xero_invoice_id)
+    if draft is None and item.invoice_number:
+        draft = drafts_by_number.get(item.invoice_number)
+    if draft is None:
+        return XeroPaymentReconciliationResultRead(
+            invoice_draft_id=item.invoice_draft_id,
+            invoice_number=item.invoice_number,
+            status="blocked",
+            reason="No matching invoice draft was found for this payment status.",
+            current_status=None,
+            proposed_status=item.status,
+            current_paid_cents=None,
+            proposed_paid_cents=item.paid_cents,
+            outstanding_cents=None,
+            idempotency_key=item.idempotency_key,
+        )
+
+    metadata = dict(draft.invoice_metadata or {})
+    proposed_status, error = _invoice_payment_status(draft, item, reconciled_at)
+    current_status = _payment_status(metadata)
+    current_paid_cents = _payment_paid_cents(metadata)
+    if proposed_status is None:
+        return XeroPaymentReconciliationResultRead(
+            invoice_draft_id=draft.id,
+            invoice_number=draft.invoice_number,
+            status="blocked",
+            reason=error or "Payment status could not be normalised.",
+            current_status=current_status,
+            proposed_status=item.status,
+            current_paid_cents=current_paid_cents,
+            proposed_paid_cents=item.paid_cents,
+            outstanding_cents=None,
+            idempotency_key=item.idempotency_key,
+        )
+
+    idempotency_key = _payment_reconciliation_key(draft, item, proposed_status)
+    reconciliation_history = list(metadata.get("xero_payment_reconciliation_history") or [])
+    if any(entry.get("idempotency_key") == idempotency_key for entry in reconciliation_history):
+        return XeroPaymentReconciliationResultRead(
+            invoice_draft_id=draft.id,
+            invoice_number=draft.invoice_number,
+            status="skipped",
+            reason="This payment reconciliation item was already applied.",
+            current_status=current_status,
+            proposed_status=proposed_status["status"],
+            current_paid_cents=current_paid_cents,
+            proposed_paid_cents=proposed_status["paid_cents"],
+            outstanding_cents=proposed_status["outstanding_cents"],
+            idempotency_key=idempotency_key,
+        )
+
+    if (
+        current_status == proposed_status["status"]
+        and current_paid_cents == proposed_status["paid_cents"]
+    ):
+        return XeroPaymentReconciliationResultRead(
+            invoice_draft_id=draft.id,
+            invoice_number=draft.invoice_number,
+            status="skipped",
+            reason="Invoice payment status is already up to date.",
+            current_status=current_status,
+            proposed_status=proposed_status["status"],
+            current_paid_cents=current_paid_cents,
+            proposed_paid_cents=proposed_status["paid_cents"],
+            outstanding_cents=proposed_status["outstanding_cents"],
+            idempotency_key=idempotency_key,
+        )
+
+    if not apply_changes:
+        return XeroPaymentReconciliationResultRead(
+            invoice_draft_id=draft.id,
+            invoice_number=draft.invoice_number,
+            status="ready",
+            reason="Payment status can be reconciled locally.",
+            current_status=current_status,
+            proposed_status=proposed_status["status"],
+            current_paid_cents=current_paid_cents,
+            proposed_paid_cents=proposed_status["paid_cents"],
+            outstanding_cents=proposed_status["outstanding_cents"],
+            idempotency_key=idempotency_key,
+        )
+
+    proposed_status["reconciled_by_user_id"] = str(user.id)
+    metadata["payment_status"] = proposed_status
+    payment_history = list(metadata.get("payment_history") or [])
+    payment_history.append(proposed_status)
+    metadata["payment_history"] = payment_history[-20:]
+    reconciliation_entry = {
+        "idempotency_key": idempotency_key,
+        "invoice_draft_id": str(draft.id),
+        "invoice_number": draft.invoice_number,
+        "xero_invoice_id": item.xero_invoice_id,
+        "provider_payment_id": item.provider_payment_id,
+        "source": item.source,
+        "status": proposed_status["status"],
+        "paid_cents": proposed_status["paid_cents"],
+        "reconciled_at": reconciled_at.isoformat(),
+        "reconciled_by_user_id": str(user.id),
+    }
+    reconciliation_history.append(reconciliation_entry)
+    metadata["xero_payment_reconciliation_history"] = reconciliation_history[-20:]
+    metadata["xero_payment_reconciliation"] = reconciliation_entry
+    draft.invoice_metadata = metadata
+    return XeroPaymentReconciliationResultRead(
+        invoice_draft_id=draft.id,
+        invoice_number=draft.invoice_number,
+        status="applied",
+        reason="Payment status was reconciled locally.",
+        current_status=current_status,
+        proposed_status=proposed_status["status"],
+        current_paid_cents=current_paid_cents,
+        proposed_paid_cents=proposed_status["paid_cents"],
+        outstanding_cents=proposed_status["outstanding_cents"],
+        idempotency_key=idempotency_key,
+    )
+
+
 @router.get("/oauth/start", response_model=XeroOAuthStartRead)
 def start_xero_oauth(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -1476,6 +1901,595 @@ def preview_xero_invoice_posting(
     )
 
 
+@router.post(
+    "/invoices/{invoice_draft_id}/posting-approval",
+    response_model=XeroInvoicePostingApprovalRead,
+)
+def approve_xero_invoice_posting(
+    invoice_draft_id: UUID,
+    payload: XeroInvoicePostingApprovalRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> XeroInvoicePostingApprovalRead:
+    draft = _invoice_draft_for_xero_access(invoice_draft_id, user, session, WRITE_ROLES)
+    metadata = dict(draft.invoice_metadata or {})
+    existing_xero_invoice_id = _xero_invoice_id_from_metadata(metadata)
+    if existing_xero_invoice_id:
+        return XeroInvoicePostingApprovalRead(
+            invoice_draft_id=draft.id,
+            invoice_number=draft.invoice_number,
+            status="skipped",
+            approval_state="already_posted",
+            xero_sync_allowed=False,
+            external_posting_status="draft_created",
+            approved_at=None,
+            idempotency_key=_xero_draft_create_key(draft, payload.idempotency_key),
+            reason="Invoice draft already has a Xero draft reference.",
+            guardrails=[
+                "No Xero mutation was run by the approval endpoint.",
+                "Existing Xero draft references are treated as idempotent completion.",
+            ],
+        )
+    if draft.status != InvoiceDraftStatus.approved:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Approve the invoice draft before approving Xero draft posting.",
+        )
+
+    approved_at = utcnow()
+    approval_key = _xero_posting_approval_key(draft, payload.idempotency_key)
+    draft_create_key = _xero_draft_create_key(draft, payload.idempotency_key)
+    posting_preparation = dict(metadata.get("posting_preparation") or {})
+    history = list(metadata.get("xero_posting_approval_history") or [])
+
+    if payload.approved:
+        current_approval = metadata.get("xero_posting_approval")
+        if (
+            isinstance(current_approval, dict)
+            and current_approval.get("state") == "approved"
+            and current_approval.get("approved") is True
+        ):
+            return XeroInvoicePostingApprovalRead(
+                invoice_draft_id=draft.id,
+                invoice_number=draft.invoice_number,
+                status="skipped",
+                approval_state="approved",
+                xero_sync_allowed=True,
+                external_posting_status=str(
+                    posting_preparation.get("external_posting_status")
+                    or "approved_pending_xero_draft"
+                ),
+                approved_at=approved_at,
+                idempotency_key=_metadata_text(current_approval, "draft_create_idempotency_key"),
+                reason="Xero draft posting was already explicitly approved.",
+                guardrails=[
+                    "No Xero mutation was run by the approval endpoint.",
+                    "Run Xero draft creation separately to use this approval.",
+                ],
+            )
+        approval_state = {
+            "state": "approved",
+            "approved": True,
+            "approved_at": approved_at.isoformat(),
+            "approved_by_user_id": str(user.id),
+            "approval_idempotency_key": approval_key,
+            "draft_create_idempotency_key": draft_create_key,
+            "notes": payload.notes,
+            "guardrail": "This local approval is required before creating a Xero draft.",
+        }
+        metadata["xero_posting_approval"] = approval_state
+        history.append(approval_state)
+        posting_preparation.update(
+            {
+                "approval_required": True,
+                "xero_posting_approval_state": "approved",
+                "xero_sync_allowed": True,
+                "xero_sync_requested": True,
+                "external_posting_status": "approved_pending_xero_draft",
+                "guardrail": (
+                    "Xero draft creation still runs only from the explicit create endpoint."
+                ),
+            }
+        )
+        status_label: Literal["approved", "revoked", "skipped"] = "approved"
+        approval_state_label: Literal["approved", "revoked", "already_posted"] = "approved"
+        reason = "Xero draft posting was explicitly approved locally."
+    else:
+        approval_state = {
+            "state": "revoked",
+            "approved": False,
+            "revoked_at": approved_at.isoformat(),
+            "revoked_by_user_id": str(user.id),
+            "approval_idempotency_key": approval_key,
+            "notes": payload.notes,
+        }
+        metadata["xero_posting_approval"] = approval_state
+        history.append(approval_state)
+        posting_preparation.update(
+            {
+                "approval_required": True,
+                "xero_posting_approval_state": "revoked",
+                "xero_sync_allowed": False,
+                "xero_sync_requested": False,
+                "external_posting_status": "approval_revoked",
+                "guardrail": "Xero draft creation is blocked until approval is granted again.",
+            }
+        )
+        status_label = "revoked"
+        approval_state_label = "revoked"
+        reason = "Xero draft posting approval was revoked locally."
+
+    metadata["xero_posting_approval_history"] = history[-20:]
+    metadata["posting_preparation"] = posting_preparation
+    draft.invoice_metadata = metadata
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=draft.entity_id,
+        action="approve" if payload.approved else "update",
+        target_table="invoice_draft",
+        target_id=draft.id,
+        tool_name="xero.invoice_posting_approval",
+        tool_input=payload.model_dump(mode="json", exclude_unset=True),
+        tool_output_summary=(
+            "Recorded explicit local Xero draft posting approval; no Xero mutation was run."
+            if payload.approved
+            else "Revoked local Xero draft posting approval; no Xero mutation was run."
+        ),
+    )
+    session.commit()
+    session.refresh(draft)
+    return XeroInvoicePostingApprovalRead(
+        invoice_draft_id=draft.id,
+        invoice_number=draft.invoice_number,
+        status=status_label,
+        approval_state=approval_state_label,
+        xero_sync_allowed=bool(posting_preparation.get("xero_sync_allowed")),
+        external_posting_status=str(posting_preparation.get("external_posting_status")),
+        approved_at=approved_at if payload.approved else None,
+        idempotency_key=draft_create_key if payload.approved else None,
+        reason=reason,
+        guardrails=[
+            "This endpoint only records local posting approval.",
+            "No Xero invoice is created until the separate draft creation endpoint is called.",
+            "Draft creation still requires an active configured provider connection.",
+        ],
+    )
+
+
+@router.post(
+    "/invoices/draft-create/{entity_id}",
+    response_model=XeroInvoiceDraftCreateRead,
+)
+def create_approved_xero_invoice_drafts(
+    entity_id: UUID,
+    payload: XeroInvoiceDraftCreateRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> XeroInvoiceDraftCreateRead:
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+
+    if payload.invoice_draft_ids:
+        drafts = list(
+            session.scalars(
+                select(InvoiceDraft).where(
+                    InvoiceDraft.id.in_(payload.invoice_draft_ids),
+                    InvoiceDraft.entity_id == entity.id,
+                    InvoiceDraft.deleted_at.is_(None),
+                )
+            )
+        )
+        if len({draft.id for draft in drafts}) != len(set(payload.invoice_draft_ids)):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="One or more invoice drafts were not found for this entity.",
+            )
+    else:
+        drafts = _approved_unsynced_invoice_drafts(session, entity.id)
+
+    applied_at = utcnow()
+    provider_configured = xero_provider_configured(settings)
+    provider_connection = _active_xero_connection(session, entity.id)
+    results: list[XeroInvoiceDraftCreateResultRead] = []
+    candidates: list[InvoiceDraft] = []
+
+    for draft in sorted(
+        drafts,
+        key=lambda item: (item.due_date or item.created_at.date(), item.id),
+    ):
+        metadata = draft.invoice_metadata or {}
+        existing_xero_invoice_id = _xero_invoice_id_from_metadata(metadata)
+        if existing_xero_invoice_id:
+            results.append(
+                _draft_create_result(
+                    draft,
+                    status_label="skipped",
+                    reason="Invoice draft already has a Xero draft reference.",
+                    external_posting_status="draft_created",
+                    idempotency_key=_xero_draft_create_key(draft, payload.idempotency_key),
+                    xero_invoice_id=existing_xero_invoice_id,
+                    xero_status=_metadata_text(_xero_sync_state(metadata), "xero_status"),
+                )
+            )
+            continue
+        if draft.status != InvoiceDraftStatus.approved:
+            results.append(
+                _draft_create_result(
+                    draft,
+                    status_label="blocked",
+                    reason="Invoice draft must be approved before Xero draft creation.",
+                    external_posting_status="blocked",
+                )
+            )
+            continue
+        if not _xero_posting_approved(metadata):
+            results.append(
+                _draft_create_result(
+                    draft,
+                    status_label="blocked",
+                    reason="Explicit Xero posting approval is required before any Xero mutation.",
+                    external_posting_status="approval_required",
+                )
+            )
+            continue
+        candidates.append(draft)
+
+    if candidates and (not provider_configured or provider_connection is None):
+        reason = (
+            "Xero provider credentials are not configured; no external call was attempted."
+            if not provider_configured
+            else "Xero provider connection is not active; no external call was attempted."
+        )
+        for draft in candidates:
+            results.append(
+                _draft_create_result(
+                    draft,
+                    status_label="skipped",
+                    reason=reason,
+                    external_posting_status="provider_unconfigured"
+                    if not provider_configured
+                    else "provider_not_connected",
+                    idempotency_key=_xero_draft_create_key(draft, payload.idempotency_key),
+                )
+            )
+        candidates = []
+
+    if candidates and provider_connection is not None:
+        try:
+            access_token = _refresh_provider_access_token(provider_connection, settings)
+            contacts = fetch_xero_contacts(
+                access_token,
+                provider_connection.xero_tenant_id,
+                settings,
+            )
+            accounts = fetch_xero_accounts(
+                access_token,
+                provider_connection.xero_tenant_id,
+                settings,
+            )
+            tax_rates = fetch_xero_tax_rates(
+                access_token,
+                provider_connection.xero_tenant_id,
+                settings,
+            )
+        except XeroIntegrationError as exc:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(exc),
+            ) from exc
+
+        contacts_by_id = {
+            contact_id: contact
+            for contact in contacts
+            if (contact_id := _contact_id(contact)) is not None
+        }
+        accounts_by_code = {
+            code: account
+            for account in accounts
+            if (code := _xero_account_code(account)) is not None
+        }
+        tax_rates_by_type = {
+            tax_type.upper(): tax_rate
+            for tax_rate in tax_rates
+            if (tax_type := _xero_tax_type(tax_rate)) is not None
+        }
+        for draft in candidates:
+            preview = _xero_invoice_posting_result(
+                draft=draft,
+                session=session,
+                contacts_by_id=contacts_by_id,
+                accounts_by_code=accounts_by_code,
+                tax_rates_by_type=tax_rates_by_type,
+            )
+            idempotency_key = _xero_draft_create_key(draft, payload.idempotency_key)
+            if preview.status == "blocked":
+                results.append(
+                    _draft_create_result(
+                        draft,
+                        status_label="blocked",
+                        reason=" ".join(preview.blockers),
+                        external_posting_status="preview_blocked",
+                        idempotency_key=idempotency_key,
+                    )
+                )
+                continue
+            try:
+                created_invoice = create_xero_invoice_draft(
+                    access_token,
+                    provider_connection.xero_tenant_id,
+                    preview.payload_preview,
+                    settings,
+                    idempotency_key=idempotency_key,
+                )
+            except XeroIntegrationError as exc:
+                results.append(
+                    _draft_create_result(
+                        draft,
+                        status_label="failed",
+                        reason=str(exc),
+                        external_posting_status="provider_failed",
+                        idempotency_key=idempotency_key,
+                    )
+                )
+                continue
+            xero_invoice_id, xero_status = _store_xero_draft_create_result(
+                draft=draft,
+                created_invoice=created_invoice,
+                provider_connection=provider_connection,
+                user=user,
+                idempotency_key=idempotency_key,
+                created_at=applied_at,
+            )
+            results.append(
+                _draft_create_result(
+                    draft,
+                    status_label="created",
+                    reason="Xero draft invoice was created after explicit approval.",
+                    external_posting_status="draft_created",
+                    idempotency_key=idempotency_key,
+                    xero_invoice_id=xero_invoice_id,
+                    xero_status=xero_status,
+                )
+            )
+
+    if provider_connection is not None:
+        connection_metadata = dict(provider_connection.connection_metadata or {})
+        connection_metadata["last_invoice_draft_create"] = {
+            "applied_at": applied_at.isoformat(),
+            "checked_invoices": len(drafts),
+            "created": sum(1 for result in results if result.status == "created"),
+            "skipped": sum(1 for result in results if result.status == "skipped"),
+            "blocked": sum(1 for result in results if result.status == "blocked"),
+            "failed": sum(1 for result in results if result.status == "failed"),
+            "mode": "explicit_approved_draft_create",
+        }
+        provider_connection.connection_metadata = connection_metadata
+        provider_connection.updated_by_user_id = user.id
+    entity.xero_last_sync_at = applied_at
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="apply",
+        target_table="xero_connection" if provider_connection is not None else "entity",
+        target_id=provider_connection.id if provider_connection is not None else entity.id,
+        tool_name="xero.invoice_draft_create",
+        tool_input=payload.model_dump(mode="json", exclude_unset=True),
+        tool_output_summary=(
+            f"Xero draft creation checked {len(drafts)} invoice draft(s); "
+            f"created {sum(1 for result in results if result.status == 'created')}, "
+            f"skipped {sum(1 for result in results if result.status == 'skipped')}, "
+            f"blocked {sum(1 for result in results if result.status == 'blocked')}, "
+            f"failed {sum(1 for result in results if result.status == 'failed')}; "
+            "no tenant email or payment reconciliation was run."
+        ),
+    )
+    session.commit()
+    return XeroInvoiceDraftCreateRead(
+        entity_id=entity.id,
+        provider_configured=provider_configured,
+        provider_connection_id=provider_connection.id if provider_connection else None,
+        xero_tenant_id=provider_connection.xero_tenant_id if provider_connection else None,
+        checked_invoices=len(drafts),
+        created_count=sum(1 for result in results if result.status == "created"),
+        skipped_count=sum(1 for result in results if result.status == "skipped"),
+        blocked_count=sum(1 for result in results if result.status == "blocked"),
+        failed_count=sum(1 for result in results if result.status == "failed"),
+        results=results,
+        applied_at=applied_at,
+        guardrails=[
+            (
+                "Xero draft creation only runs for invoice drafts with explicit local "
+                "posting approval."
+            ),
+            (
+                "When provider credentials or provider connection are absent, invoices "
+                "are skipped safely."
+            ),
+            (
+                "Successful Xero draft references are stored locally and repeated calls "
+                "are idempotent."
+            ),
+        ],
+    )
+
+
+def _xero_payment_reconciliation(
+    *,
+    entity_id: UUID,
+    payload: XeroPaymentReconciliationRequest,
+    apply_changes: bool,
+    user: CurrentUser,
+    session: Session,
+    settings: Settings,
+) -> XeroPaymentReconciliationRead:
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+
+    provider_configured = xero_provider_configured(settings)
+    provider_connection = _active_xero_connection(session, entity.id)
+    payments = list(payload.payments)
+    reconciled_at = utcnow()
+    if payload.source == "provider" and not payments:
+        if provider_configured and provider_connection is not None:
+            try:
+                access_token = _refresh_provider_access_token(provider_connection, settings)
+                xero_invoices = fetch_xero_invoices(
+                    access_token,
+                    provider_connection.xero_tenant_id,
+                    settings,
+                )
+            except XeroIntegrationError as exc:
+                session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=str(exc),
+                ) from exc
+            payments = _payment_items_from_xero_invoices(xero_invoices)
+        else:
+            payments = []
+
+    drafts = list(
+        session.scalars(
+            select(InvoiceDraft).where(
+                InvoiceDraft.entity_id == entity.id,
+                InvoiceDraft.deleted_at.is_(None),
+            )
+        )
+    )
+    drafts_by_id = {draft.id: draft for draft in drafts}
+    drafts_by_number = {
+        draft.invoice_number: draft for draft in drafts if draft.invoice_number is not None
+    }
+    drafts_by_xero_invoice_id = {
+        xero_invoice_id: draft
+        for draft in drafts
+        if (xero_invoice_id := _xero_invoice_id_from_metadata(draft.invoice_metadata or {}))
+    }
+    results = [
+        _payment_reconciliation_result(
+            item=item,
+            drafts_by_id=drafts_by_id,
+            drafts_by_number=drafts_by_number,
+            drafts_by_xero_invoice_id=drafts_by_xero_invoice_id,
+            apply_changes=apply_changes,
+            user=user,
+            reconciled_at=reconciled_at,
+        )
+        for item in payments
+    ]
+
+    target_id = provider_connection.id if provider_connection is not None else entity.id
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="apply" if apply_changes else "read",
+        target_table="xero_connection" if provider_connection is not None else "entity",
+        target_id=target_id,
+        tool_name=(
+            "xero.payment_reconciliation_apply"
+            if apply_changes
+            else "xero.payment_reconciliation_preview"
+        ),
+        tool_input=payload.model_dump(mode="json", exclude_unset=True),
+        tool_output_summary=(
+            f"{'Applied' if apply_changes else 'Previewed'} {len(results)} Xero payment "
+            "reconciliation item(s); no Xero payments, invoices, or bank records were mutated."
+        ),
+    )
+    if provider_connection is not None:
+        connection_metadata = dict(provider_connection.connection_metadata or {})
+        connection_metadata[
+            "last_payment_reconciliation_apply"
+            if apply_changes
+            else "last_payment_reconciliation_preview"
+        ] = {
+            "reconciled_at": reconciled_at.isoformat(),
+            "source": payload.source,
+            "checked_payments": len(results),
+            "ready": sum(1 for result in results if result.status == "ready"),
+            "applied": sum(1 for result in results if result.status == "applied"),
+            "skipped": sum(1 for result in results if result.status == "skipped"),
+            "blocked": sum(1 for result in results if result.status == "blocked"),
+            "mode": "local_payment_status_apply" if apply_changes else "preview_only",
+        }
+        provider_connection.connection_metadata = connection_metadata
+        provider_connection.updated_by_user_id = user.id
+    entity.xero_last_sync_at = reconciled_at
+    session.commit()
+    return XeroPaymentReconciliationRead(
+        entity_id=entity.id,
+        source=payload.source,
+        provider_configured=provider_configured,
+        provider_connection_id=provider_connection.id if provider_connection else None,
+        checked_payments=len(results),
+        ready_count=sum(1 for result in results if result.status == "ready"),
+        applied_count=sum(1 for result in results if result.status == "applied"),
+        skipped_count=sum(1 for result in results if result.status == "skipped"),
+        blocked_count=sum(1 for result in results if result.status == "blocked"),
+        results=results,
+        reconciled_at=reconciled_at,
+        guardrails=[
+            "Payment reconciliation preview does not change local invoice payment status.",
+            "Apply only updates Leasium invoice payment metadata; it never mutates Xero payments.",
+            "Duplicate payment idempotency keys are skipped.",
+        ],
+    )
+
+
+@router.post(
+    "/payments/reconciliation-preview/{entity_id}",
+    response_model=XeroPaymentReconciliationRead,
+)
+def preview_xero_payment_reconciliation(
+    entity_id: UUID,
+    payload: XeroPaymentReconciliationRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> XeroPaymentReconciliationRead:
+    return _xero_payment_reconciliation(
+        entity_id=entity_id,
+        payload=payload,
+        apply_changes=False,
+        user=user,
+        session=session,
+        settings=settings,
+    )
+
+
+@router.post(
+    "/payments/reconciliation-apply/{entity_id}",
+    response_model=XeroPaymentReconciliationRead,
+)
+def apply_xero_payment_reconciliation(
+    entity_id: UUID,
+    payload: XeroPaymentReconciliationRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> XeroPaymentReconciliationRead:
+    return _xero_payment_reconciliation(
+        entity_id=entity_id,
+        payload=payload,
+        apply_changes=True,
+        user=user,
+        session=session,
+        settings=settings,
+    )
+
+
 @router.get("/status", response_model=XeroStatusRead)
 def xero_status(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -1643,8 +2657,16 @@ def xero_status(
             synced += 1
         elif draft.status == InvoiceDraftStatus.approved:
             approved_unsynced += 1
-            if not connection.xero_tenant_id:
+            posting_approved = _xero_posting_approved(metadata)
+            if not connection.xero_tenant_id or not posting_approved:
                 blocked += 1
+            issue_action = (
+                "Connect the Xero provider before draft creation can be applied."
+                if not connection.xero_tenant_id
+                else "Approve Xero posting explicitly, then run idempotent draft creation."
+                if not posting_approved
+                else "Run idempotent Xero draft creation when ready."
+            )
             issues.append(
                 XeroMappingIssueRead(
                     id=f"invoice-sync-{draft.id}",
@@ -1655,7 +2677,7 @@ def xero_status(
                         f"{draft.invoice_number or draft.title} is approved "
                         "but not posted to Xero."
                     ),
-                    action="Keep this queued until Xero posting approvals are enabled.",
+                    action=issue_action,
                     property_id=draft.property_id,
                     tenancy_unit_id=draft.tenancy_unit_id,
                     lease_id=draft.lease_id,
@@ -1707,8 +2729,8 @@ def xero_status(
         issues=issues[:50],
         guardrails=[
             "Xero contact apply only saves reviewed local mappings; it does not mutate Xero.",
-            "Invoice posting remains blocked until a future explicit approval action exists.",
-            "Payment reconciliation is manual status tracking until bank/Xero feeds are connected.",
+            "Invoice posting requires explicit local approval and an active configured provider.",
+            "Payment reconciliation apply only updates local invoice payment metadata.",
         ],
     )
 

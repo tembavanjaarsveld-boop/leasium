@@ -95,9 +95,10 @@ and tenant onboarding still work.
 Xero provider connection needs the Xero OAuth redirect URI registered in the
 Xero developer app exactly as configured in `XERO_REDIRECT_URI`. Generate
 `XERO_TOKEN_ENCRYPTION_KEY` as a Fernet-compatible key and keep it stable; it is
-used to encrypt stored Xero access and refresh tokens. Provider contact sync is
-preview-only until reviewed local mapping apply and invoice posting approvals
-are built.
+used to encrypt stored Xero access and refresh tokens. Provider contact sync,
+local mapping apply, invoice posting approval, draft invoice creation, and
+payment reconciliation remain review-first workflows. No Xero invoice write runs
+without explicit local approval and a valid provider connection.
 
 ## Render And Alembic Safety
 
@@ -114,7 +115,7 @@ during instance startup.
 
 The API deploy artifact must include `alembic.ini` and the full `migrations/`
 tree. The Python wheel build is configured to force-include both so Alembic can
-resolve every revision, including `20260520_0017`, after the service is installed
+resolve every revision, including `20260520_0018`, after the service is installed
 from a wheel. Run Alembic from the repository or extracted artifact root so the
 existing `script_location = migrations` setting resolves to the bundled
 `migrations/` directory.
@@ -123,7 +124,7 @@ Treat Alembic migrations and the API runtime as one release. If Render applies a
 new migration and the deploy then falls back to an older service image or commit,
 the older code may fail on startup because the database `alembic_version` points
 at a revision that does not exist in that artifact. When production has advanced
-to `20260520_0017`, recover by redeploying the same or newer commit that contains
-that revision. Do not intentionally start an older backend against the advanced
-database unless the database is first restored, downgraded, or explicitly stamped
-to a revision that the older artifact contains.
+to a new revision such as `20260520_0018`, recover by redeploying the same or
+newer commit that contains that migration. Do not intentionally start an older
+backend against the advanced database unless the database is first restored,
+downgraded, or explicitly stamped to a revision that the older artifact contains.

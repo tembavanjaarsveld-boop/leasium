@@ -228,3 +228,107 @@ class XeroInvoicePostingPreviewRead(BaseModel):
     results: list[XeroInvoicePostingPreviewResultRead]
     prepared_at: datetime
     guardrails: list[str]
+
+
+class XeroInvoicePostingApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approved: bool = True
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class XeroInvoicePostingApprovalRead(BaseModel):
+    invoice_draft_id: UUID
+    invoice_number: str | None
+    status: Literal["approved", "revoked", "skipped"]
+    approval_state: Literal["approved", "revoked", "already_posted"]
+    xero_sync_allowed: bool
+    external_posting_status: str
+    approved_at: datetime | None
+    idempotency_key: str | None
+    reason: str
+    guardrails: list[str]
+
+
+class XeroInvoiceDraftCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invoice_draft_ids: list[UUID] | None = Field(default=None, max_length=50)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=96)
+
+
+class XeroInvoiceDraftCreateResultRead(BaseModel):
+    invoice_draft_id: UUID
+    invoice_number: str | None
+    status: Literal["created", "skipped", "blocked", "failed"]
+    reason: str
+    approval_state: str
+    idempotency_key: str | None
+    xero_invoice_id: str | None = None
+    xero_status: str | None = None
+    external_posting_status: str
+
+
+class XeroInvoiceDraftCreateRead(BaseModel):
+    entity_id: UUID
+    provider_configured: bool
+    provider_connection_id: UUID | None
+    xero_tenant_id: str | None
+    checked_invoices: int
+    created_count: int
+    skipped_count: int
+    blocked_count: int
+    failed_count: int
+    results: list[XeroInvoiceDraftCreateResultRead]
+    applied_at: datetime
+    guardrails: list[str]
+
+
+class XeroPaymentReconciliationItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invoice_draft_id: UUID | None = None
+    invoice_number: str | None = Field(default=None, min_length=1, max_length=120)
+    xero_invoice_id: str | None = Field(default=None, min_length=1, max_length=120)
+    status: Literal["unpaid", "partially_paid", "paid"]
+    paid_cents: int | None = Field(default=None, ge=0)
+    paid_at: datetime | None = None
+    provider_payment_id: str | None = Field(default=None, min_length=1, max_length=120)
+    source: Literal["imported", "provider"] = "imported"
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class XeroPaymentReconciliationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["imported", "provider"] = "imported"
+    payments: list[XeroPaymentReconciliationItem] = Field(default_factory=list, max_length=100)
+
+
+class XeroPaymentReconciliationResultRead(BaseModel):
+    invoice_draft_id: UUID | None
+    invoice_number: str | None
+    status: Literal["ready", "applied", "skipped", "blocked"]
+    reason: str
+    current_status: str | None
+    proposed_status: str | None
+    current_paid_cents: int | None
+    proposed_paid_cents: int | None
+    outstanding_cents: int | None
+    idempotency_key: str | None
+
+
+class XeroPaymentReconciliationRead(BaseModel):
+    entity_id: UUID
+    source: Literal["imported", "provider"]
+    provider_configured: bool
+    provider_connection_id: UUID | None
+    checked_payments: int
+    ready_count: int
+    applied_count: int
+    skipped_count: int
+    blocked_count: int
+    results: list[XeroPaymentReconciliationResultRead]
+    reconciled_at: datetime
+    guardrails: list[str]

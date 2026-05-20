@@ -7,7 +7,15 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.models import Entity
+from stewart.core.models import (
+    Entity,
+    Lease,
+    Obligation,
+    Property,
+    RentChargeRule,
+    TenancyUnit,
+    Tenant,
+)
 
 
 def _entity_id(session: Session) -> str:
@@ -247,6 +255,7 @@ def test_register_import_dry_run_plans_workbook_without_mutation(
     session: Session,
 ) -> None:
     entity_id = _entity_id(session)
+    assert session.scalar(select(Property).where(Property.entity_id == UUID(entity_id))) is None
     response = client.post(
         "/api/v1/register-imports/dry-run",
         data={"entity_id": entity_id},
@@ -276,6 +285,112 @@ def test_register_import_dry_run_plans_workbook_without_mutation(
     assert any(
         candidate["key"] == "headlease_role_model" for candidate in body["feature_candidates"]
     )
+    assert any(
+        item["target"] == "tenancies"
+        and item["operation"] == "create"
+        and item["default_decision"] == "approve"
+        for item in body["action_items"]
+    )
 
     unchanged = session.scalar(select(Entity).where(Entity.id == UUID(entity_id)))
     assert unchanged is not None
+    assert session.scalar(select(Property).where(Property.entity_id == UUID(entity_id))) is None
+
+
+def test_register_import_apply_creates_approved_records_with_provenance(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    dry_run_response = client.post(
+        "/api/v1/register-imports/dry-run",
+        data={"entity_id": entity_id},
+        files={
+            "file": (
+                "portfolio.xlsx",
+                _workbook_bytes(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert dry_run_response.status_code == 200
+    dry_run = dry_run_response.json()
+    approved_action_ids = [
+        item["id"]
+        for item in dry_run["action_items"]
+        if item["default_decision"] == "approve" and not item["blockers"]
+    ]
+    assert approved_action_ids
+
+    apply_response = client.post(
+        "/api/v1/register-imports/apply",
+        json={
+            "entity_id": entity_id,
+            "filename": dry_run["filename"],
+            "action_items": dry_run["action_items"],
+            "approved_action_ids": approved_action_ids,
+            "ignored_action_ids": [
+                item["id"]
+                for item in dry_run["action_items"]
+                if item["id"] not in approved_action_ids
+            ],
+        },
+    )
+
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["requested"] == len(approved_action_ids)
+    assert body["blocked"] == 0
+    assert body["created"]["properties"] == 2
+    assert body["created"]["tenancy_units"] == 1
+    assert body["created"]["tenants"] == 1
+    assert body["created"]["leases"] == 1
+    assert body["created"]["rent_charge_rules"] == 2
+    assert body["created"]["obligations"] == 2
+
+    properties = list(
+        session.scalars(select(Property).where(Property.entity_id == UUID(entity_id)))
+    )
+    assert len(properties) == 2
+    north_lakes = next(
+        prop for prop in properties if prop.property_metadata["portfolio_code"] == "NL1642"
+    )
+    assert north_lakes.property_metadata["source"] == "register_import"
+    assert north_lakes.property_metadata["last_register_import"]["filename"] == "portfolio.xlsx"
+    assert north_lakes.property_metadata["last_register_import"]["sheet"] == "Properties"
+    assert north_lakes.property_metadata["last_register_import"]["row"] == 2
+    assert any(
+        change["field"] == "street_address"
+        and change["before"] is None
+        and change["after"] == "1642 Anzac Avenue"
+        for change in north_lakes.property_metadata["last_register_import"]["changes"]
+    )
+
+    unit = session.scalar(select(TenancyUnit).where(TenancyUnit.unit_label == "T001"))
+    assert unit is not None
+    tenant = session.scalar(select(Tenant).where(Tenant.legal_name == "North Lakes Tenant Pty Ltd"))
+    assert tenant is not None
+    lease = session.scalar(select(Lease).where(Lease.tenant_id == tenant.id))
+    assert lease is not None
+    assert lease.tenancy_unit_id == unit.id
+    assert lease.lease_metadata["portfolio_tenancy_id"] == "NL1642-T001"
+    assert lease.lease_metadata["last_register_import"]["source_hint"] == "Tenancies row 2"
+
+    charge_rules = list(
+        session.scalars(select(RentChargeRule).where(RentChargeRule.lease_id == lease.id))
+    )
+    assert len(charge_rules) == 2
+    assert all(rule.charge_rule_metadata["source"] == "register_import" for rule in charge_rules)
+
+    obligations = list(
+        session.scalars(select(Obligation).where(Obligation.entity_id == UUID(entity_id)))
+    )
+    assert len(obligations) == 2
+    assert {obligation.category.value for obligation in obligations} == {
+        "insurance",
+        "rent_review",
+    }
+    assert all(
+        obligation.obligation_metadata["source_filename"] == "portfolio.xlsx"
+        for obligation in obligations
+    )

@@ -106,6 +106,21 @@ test("tenant workspace supports search and the add tenant form", async ({
   await expect(page.getByLabel("Contact email")).toBeVisible();
 });
 
+test("tenant portal shows scoped self-service data", async ({ page }) => {
+  await page.goto("/tenant-portal/tenant-token-1");
+
+  await expect(page.getByRole("heading", { name: "Bright Cafe" })).toBeVisible();
+  await expect(page.getByText("Token scoped")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible();
+  await expect(page.getByText("INV-1001")).toBeVisible();
+  await expect(page.getByText("May rent and outgoings")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Compliance" })).toBeVisible();
+  await expect(page.getByText("bright-cafe-insurance.pdf")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Notification Preferences" }),
+  ).toBeVisible();
+});
+
 test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.setViewportSize({ width: 1432, height: 900 });
   await page.goto("/settings");

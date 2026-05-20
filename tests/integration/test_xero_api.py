@@ -159,6 +159,203 @@ def _create_charge_rule_fixture(
     return str(charge_response.json()["id"])
 
 
+def _create_approved_invoice_fixture(
+    client: TestClient,
+    session: Session,
+    entity_id: str,
+    *,
+    invoice_number: str = "INV-20260601",
+    total_cents: int | None = None,
+    xero_invoice_id: str | None = None,
+) -> InvoiceDraft:
+    charge_rule_id = _create_charge_rule_fixture(
+        client,
+        entity_id,
+        charge_type="base_rent",
+        xero_account_code="200",
+        xero_tax_type="OUTPUT",
+    )
+    charge_rule = session.get(RentChargeRule, UUID(charge_rule_id))
+    assert charge_rule is not None
+    tenant = charge_rule.lease.tenant
+    tenant.tenant_metadata = {"xero_contact_id": "xero-contact-bright"}
+    invoice_total_cents = total_cents or charge_rule.amount_cents
+    document = StoredDocument(
+        entity_id=UUID(entity_id),
+        property_id=charge_rule.lease.tenancy_unit.property_id,
+        tenancy_unit_id=charge_rule.lease.tenancy_unit_id,
+        tenant_id=tenant.id,
+        lease_id=charge_rule.lease_id,
+        filename=f"{invoice_number}.pdf",
+        content_type="application/pdf",
+        byte_size=7,
+        file_data=b"invoice",
+        category=DocumentCategory.invoice,
+    )
+    session.add(document)
+    session.flush()
+    billing_draft = BillingDraft(
+        entity_id=UUID(entity_id),
+        property_id=charge_rule.lease.tenancy_unit.property_id,
+        tenancy_unit_id=charge_rule.lease.tenancy_unit_id,
+        tenant_id=tenant.id,
+        lease_id=charge_rule.lease_id,
+        document_id=document.id,
+        status=BillingDraftStatus.approved,
+        title="June base rent",
+        currency="AUD",
+        issue_date=charge_rule.next_due_date,
+        due_date=charge_rule.next_due_date,
+        total_cents=invoice_total_cents,
+        billing_metadata={"source": "test"},
+    )
+    session.add(billing_draft)
+    session.flush()
+    billing_line = BillingDraftLine(
+        billing_draft_id=billing_draft.id,
+        description="Base rent",
+        amount_cents=invoice_total_cents,
+        currency="AUD",
+        source_hint="Rent schedule",
+        confidence=0.98,
+        line_metadata={"source": "test", "charge_rule_id": charge_rule_id},
+    )
+    session.add(billing_line)
+    session.flush()
+    metadata = {
+        "posting_preparation": {
+            "approved": True,
+            "xero_sync_allowed": False,
+            "xero_synced": False,
+            "external_posting_status": "not_started",
+        },
+        "payment_status": {
+            "status": "unpaid",
+            "paid_cents": 0,
+            "outstanding_cents": invoice_total_cents,
+            "source": "test",
+        },
+    }
+    if xero_invoice_id:
+        metadata["xero_sync"] = {
+            "xero_synced": True,
+            "external_posting_status": "draft_created",
+            "xero_invoice_id": xero_invoice_id,
+            "xero_status": "DRAFT",
+            "idempotency_key": f"xero-draft-{invoice_number}",
+        }
+    invoice_draft = InvoiceDraft(
+        entity_id=UUID(entity_id),
+        billing_draft_id=billing_draft.id,
+        property_id=billing_draft.property_id,
+        tenancy_unit_id=billing_draft.tenancy_unit_id,
+        tenant_id=tenant.id,
+        lease_id=charge_rule.lease_id,
+        document_id=document.id,
+        status=InvoiceDraftStatus.approved,
+        invoice_number=invoice_number,
+        title="June base rent",
+        currency="AUD",
+        issue_date=charge_rule.next_due_date,
+        due_date=charge_rule.next_due_date,
+        subtotal_cents=invoice_total_cents,
+        gst_cents=0,
+        total_cents=invoice_total_cents,
+        issuer_name="SKJ Property Pty Ltd",
+        recipient_name=tenant.legal_name,
+        recipient_email=tenant.billing_email or tenant.contact_email,
+        invoice_metadata=metadata,
+    )
+    session.add(invoice_draft)
+    session.flush()
+    session.add(
+        InvoiceDraftLine(
+            invoice_draft_id=invoice_draft.id,
+            billing_draft_line_id=billing_line.id,
+            description="Base rent",
+            amount_cents=invoice_total_cents,
+            gst_cents=0,
+            currency="AUD",
+            source_hint="Rent schedule",
+            line_metadata={"source": "test", "charge_rule_id": charge_rule_id},
+        )
+    )
+    session.commit()
+    return invoice_draft
+
+
+def _fake_xero_invoice_dependencies(monkeypatch, create_calls: list[dict[str, object]]) -> None:
+    def fake_refresh_xero_tokens(
+        refresh_token: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> dict[str, object]:
+        assert refresh_token in {"raw-refresh-token", "raw-refresh-token-created"}
+        return {
+            "access_token": "raw-access-token-create",
+            "refresh_token": "raw-refresh-token-created",
+            "expires_in": 1800,
+            "scope": "offline_access accounting.contacts.read accounting.settings.read",
+        }
+
+    def fake_fetch_xero_contacts(
+        access_token: str,
+        xero_tenant_id: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        assert access_token == "raw-access-token-create"
+        assert xero_tenant_id == "tenant-provider-123"
+        return [
+            {
+                "ContactID": "xero-contact-bright",
+                "Name": "Base Rent Tenant Pty Ltd",
+                "ContactStatus": "ACTIVE",
+            }
+        ]
+
+    def fake_fetch_xero_accounts(
+        access_token: str,
+        xero_tenant_id: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        assert access_token == "raw-access-token-create"
+        assert xero_tenant_id == "tenant-provider-123"
+        return [{"Code": "200", "Name": "Rental Income", "Status": "ACTIVE"}]
+
+    def fake_fetch_xero_tax_rates(
+        access_token: str,
+        xero_tenant_id: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        assert access_token == "raw-access-token-create"
+        assert xero_tenant_id == "tenant-provider-123"
+        return [{"TaxType": "OUTPUT", "Name": "GST on Income", "Status": "ACTIVE"}]
+
+    def fake_create_xero_invoice_draft(
+        access_token: str,
+        xero_tenant_id: str,
+        invoice_payload: dict[str, object],
+        settings: Settings,  # noqa: ARG001
+        *,
+        idempotency_key: str,
+    ) -> dict[str, object]:
+        assert access_token == "raw-access-token-create"
+        assert xero_tenant_id == "tenant-provider-123"
+        create_calls.append(
+            {"payload": invoice_payload, "idempotency_key": idempotency_key}
+        )
+        return {
+            "InvoiceID": "xero-invoice-created-1",
+            "InvoiceNumber": invoice_payload["InvoiceNumber"],
+            "Status": "DRAFT",
+        }
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fake_refresh_xero_tokens)
+    monkeypatch.setattr(xero_router, "fetch_xero_contacts", fake_fetch_xero_contacts)
+    monkeypatch.setattr(xero_router, "fetch_xero_accounts", fake_fetch_xero_accounts)
+    monkeypatch.setattr(xero_router, "fetch_xero_tax_rates", fake_fetch_xero_tax_rates)
+    monkeypatch.setattr(xero_router, "create_xero_invoice_draft", fake_create_xero_invoice_draft)
+
+
 def test_xero_status_surfaces_mapping_gaps_and_manual_connection(
     client: TestClient,
     session: Session,
@@ -901,3 +1098,209 @@ def test_xero_invoice_posting_preview_requires_provider_connection(
     assert response.json()["detail"] == (
         "Connect Xero through OAuth before previewing invoice posting."
     )
+
+
+def test_xero_invoice_draft_create_requires_explicit_posting_approval_before_write(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    invoice_draft = _create_approved_invoice_fixture(client, session, entity_id)
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    create_calls: list[dict[str, object]] = []
+    _fake_xero_invoice_dependencies(monkeypatch, create_calls)
+
+    response = client.post(
+        f"/api/v1/xero/invoices/draft-create/{entity_id}",
+        json={"invoice_draft_ids": [str(invoice_draft.id)]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["created_count"] == 0
+    assert body["blocked_count"] == 1
+    assert "Explicit Xero posting approval" in body["results"][0]["reason"]
+    assert create_calls == []
+
+    session.refresh(invoice_draft)
+    assert "xero_sync" not in invoice_draft.invoice_metadata
+
+
+def test_xero_posting_approval_then_draft_create_is_idempotent(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    invoice_draft = _create_approved_invoice_fixture(client, session, entity_id)
+
+    approval_response = client.post(
+        f"/api/v1/xero/invoices/{invoice_draft.id}/posting-approval",
+        json={"approved": True, "idempotency_key": "overnight-build"},
+    )
+    assert approval_response.status_code == 200
+    approval_body = approval_response.json()
+    assert approval_body["status"] == "approved"
+    assert approval_body["approval_state"] == "approved"
+    assert approval_body["xero_sync_allowed"] is True
+    assert "No Xero invoice is created" in approval_body["guardrails"][1]
+
+    session.refresh(invoice_draft)
+    assert invoice_draft.invoice_metadata["xero_posting_approval"]["state"] == "approved"
+    assert invoice_draft.invoice_metadata["posting_preparation"]["xero_sync_allowed"] is True
+    assert "xero_sync" not in invoice_draft.invoice_metadata
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    create_calls: list[dict[str, object]] = []
+    _fake_xero_invoice_dependencies(monkeypatch, create_calls)
+
+    create_response = client.post(
+        f"/api/v1/xero/invoices/draft-create/{entity_id}",
+        json={"invoice_draft_ids": [str(invoice_draft.id)]},
+    )
+    assert create_response.status_code == 200
+    create_body = create_response.json()
+    assert create_body["created_count"] == 1
+    assert create_body["results"][0]["status"] == "created"
+    assert create_body["results"][0]["xero_invoice_id"] == "xero-invoice-created-1"
+    assert len(create_calls) == 1
+    assert create_calls[0]["idempotency_key"] == approval_body["idempotency_key"]
+    assert create_calls[0]["payload"]["Status"] == "DRAFT"
+
+    session.refresh(invoice_draft)
+    assert invoice_draft.invoice_metadata["xero_sync"]["xero_synced"] is True
+    assert invoice_draft.invoice_metadata["xero_sync"]["xero_invoice_id"] == (
+        "xero-invoice-created-1"
+    )
+    assert invoice_draft.invoice_metadata["posting_preparation"]["xero_sync_allowed"] is False
+
+    second_response = client.post(
+        f"/api/v1/xero/invoices/draft-create/{entity_id}",
+        json={"invoice_draft_ids": [str(invoice_draft.id)]},
+    )
+    assert second_response.status_code == 200
+    second_body = second_response.json()
+    assert second_body["created_count"] == 0
+    assert second_body["skipped_count"] == 1
+    assert second_body["results"][0]["reason"] == (
+        "Invoice draft already has a Xero draft reference."
+    )
+    assert len(create_calls) == 1
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "invoice_draft",
+            AuditAction.tool_name == "xero.invoice_posting_approval",
+        )
+    )
+    assert audit is not None
+    assert "no Xero mutation" in audit.tool_output_summary
+
+
+def test_xero_invoice_draft_create_skips_when_provider_unconfigured(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    invoice_draft = _create_approved_invoice_fixture(client, session, entity_id)
+
+    approval_response = client.post(
+        f"/api/v1/xero/invoices/{invoice_draft.id}/posting-approval",
+        json={"approved": True},
+    )
+    assert approval_response.status_code == 200
+
+    response = client.post(
+        f"/api/v1/xero/invoices/draft-create/{entity_id}",
+        json={"invoice_draft_ids": [str(invoice_draft.id)]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider_configured"] is False
+    assert body["created_count"] == 0
+    assert body["skipped_count"] == 1
+    assert "provider credentials are not configured" in body["results"][0]["reason"]
+
+    session.refresh(invoice_draft)
+    assert "xero_sync" not in invoice_draft.invoice_metadata
+
+
+def test_xero_payment_reconciliation_preview_and_apply_are_idempotent(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    invoice_draft = _create_approved_invoice_fixture(
+        client,
+        session,
+        entity_id,
+        invoice_number="INV-PAID-1",
+        total_cents=275050,
+        xero_invoice_id="xero-invoice-paid-1",
+    )
+
+    payload = {
+        "source": "imported",
+        "payments": [
+            {
+                "invoice_draft_id": str(invoice_draft.id),
+                "xero_invoice_id": "xero-invoice-paid-1",
+                "status": "paid",
+                "provider_payment_id": "xero-payment-1",
+                "idempotency_key": "payment-feed-row-1",
+            }
+        ],
+    }
+    preview_response = client.post(
+        f"/api/v1/xero/payments/reconciliation-preview/{entity_id}",
+        json=payload,
+    )
+    assert preview_response.status_code == 200
+    preview_body = preview_response.json()
+    assert preview_body["ready_count"] == 1
+    assert preview_body["applied_count"] == 0
+    assert preview_body["results"][0]["status"] == "ready"
+
+    session.refresh(invoice_draft)
+    assert invoice_draft.invoice_metadata["payment_status"]["status"] == "unpaid"
+
+    apply_response = client.post(
+        f"/api/v1/xero/payments/reconciliation-apply/{entity_id}",
+        json=payload,
+    )
+    assert apply_response.status_code == 200
+    apply_body = apply_response.json()
+    assert apply_body["applied_count"] == 1
+    assert apply_body["results"][0]["status"] == "applied"
+    assert apply_body["results"][0]["proposed_paid_cents"] == 275050
+
+    session.refresh(invoice_draft)
+    assert invoice_draft.invoice_metadata["payment_status"]["status"] == "paid"
+    assert invoice_draft.invoice_metadata["payment_status"]["paid_cents"] == 275050
+    assert len(invoice_draft.invoice_metadata["payment_history"]) == 1
+
+    second_response = client.post(
+        f"/api/v1/xero/payments/reconciliation-apply/{entity_id}",
+        json=payload,
+    )
+    assert second_response.status_code == 200
+    second_body = second_response.json()
+    assert second_body["applied_count"] == 0
+    assert second_body["skipped_count"] == 1
+    assert second_body["results"][0]["reason"] == (
+        "This payment reconciliation item was already applied."
+    )
+
+    session.refresh(invoice_draft)
+    assert len(invoice_draft.invoice_metadata["payment_history"]) == 1

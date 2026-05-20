@@ -23,6 +23,7 @@ from stewart.core.models import (
     Tenant,
 )
 from stewart.core.settings import Settings
+from stewart.integrations.communications import DeliveryResult
 
 
 def _entity_id(session: Session) -> str:
@@ -1113,6 +1114,42 @@ def test_document_intake_apply_invoice_prepares_billing_work(
         approved_invoice_body["metadata"]["posting_preparation"]["status"]
         == "approved_for_posting_preparation"
     )
+
+    def fake_send_invoice_delivery_email(invite: Any, settings: Settings) -> DeliveryResult:
+        assert invite.recipient_email == "accounts@scope-tenant.example"
+        assert invite.pdf_document_id is not None
+        assert invite.pdf_filename is not None
+        assert invite.pdf_content.startswith(b"%PDF")
+        assert settings.invoice_email_template_key == "invoice_delivery"
+        return DeliveryResult(
+            channel="email",
+            status="queued",
+            provider="sendgrid",
+            recipient=invite.recipient_email,
+            provider_message_id="sg-invoice-123",
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.charge_rules.send_invoice_delivery_email",
+        fake_send_invoice_delivery_email,
+    )
+    provider_delivery_response = client.post(
+        f"/api/v1/invoice-drafts/{invoice_body['id']}/send-delivery-email"
+    )
+    assert provider_delivery_response.status_code == 200
+    provider_delivery_body = provider_delivery_response.json()
+    assert provider_delivery_body["metadata"]["delivery_state"]["tenant_email_sent"] is True
+    assert (
+        provider_delivery_body["metadata"]["delivery_state"]["tenant_email_provider_status"]
+        == "queued"
+    )
+    assert provider_delivery_body["metadata"]["delivery_email"]["send"]["provider"] == "sendgrid"
+    assert provider_delivery_body["metadata"]["delivery_email"]["send"]["status"] == "queued"
+    assert provider_delivery_body["metadata"]["delivery_email"]["send"][
+        "provider_message_id"
+    ] == "sg-invoice-123"
+    assert provider_delivery_body["metadata"]["delivery_receipts"][0]["provider"] == "sendgrid"
+    assert provider_delivery_body["metadata"]["delivery_state"]["xero_synced"] is False
 
     delivered_invoice_response = client.post(
         f"/api/v1/invoice-drafts/{invoice_body['id']}/record-delivery",

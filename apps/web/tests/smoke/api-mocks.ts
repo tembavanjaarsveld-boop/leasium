@@ -393,6 +393,147 @@ const leases = [
   },
 ];
 
+const tenantPortalSession = () => ({
+  auth: {
+    mode: "tenant_portal_token",
+    token_source: "header",
+    tenant_auth_configured: false,
+    dev_fallback: false,
+    boundary: "tenant_onboarding_token",
+    detail:
+      "Tenant identity-provider auth is not wired yet. Access is scoped to the tenant linked to this onboarding token.",
+  },
+  tenant: {
+    id: tenantId,
+    legal_name: "Bright Cafe Pty Ltd",
+    trading_name: "Bright Cafe",
+    contact_name: "Mia Hart",
+    contact_email: "mia@example.com",
+    contact_phone: "0400 111 222",
+    billing_email: "accounts@bright.example",
+  },
+  lease: {
+    lease_id: leaseId,
+    status: "active",
+    property_name: "Queen Street Retail Centre",
+    property_address: "12 Queen Street, Brisbane City, QLD, 4000",
+    unit_label: "Shop 3",
+    commencement_date: "2025-07-01",
+    expiry_date: "2028-06-30",
+    next_review_date: "2026-07-01",
+  },
+  onboarding: {
+    id: "onboarding-1",
+    status: "sent",
+    due_date: "2026-05-29",
+    expires_at: "2026-06-12T00:00:00.000Z",
+    submitted_at: null,
+    last_sent_at: "2026-05-18T09:30:00.000Z",
+    document_count: 1,
+  },
+  compliance: {
+    uploads_enabled: true,
+    accepted_categories: ["insurance", "bank_guarantee", "lease", "onboarding", "other"],
+    items: [
+      {
+        key: "insurance",
+        label: "Insurance",
+        status: "received",
+        document_count: 1,
+        latest_document: {
+          id: "portal-document-1",
+          filename: "bright-cafe-insurance.pdf",
+          content_type: "application/pdf",
+          byte_size: 45000,
+          category: "insurance",
+          notes: "Current certificate.",
+          source: "tenant_onboarding",
+          created_at: "2026-05-18T09:35:00.000Z",
+        },
+        due_date: "2027-06-30",
+      },
+      {
+        key: "bank_guarantee",
+        label: "Bank guarantee",
+        status: "not_on_file",
+        document_count: 0,
+        latest_document: null,
+        due_date: null,
+      },
+      {
+        key: "onboarding",
+        label: "Onboarding files",
+        status: "not_on_file",
+        document_count: 0,
+        latest_document: null,
+        due_date: null,
+      },
+    ],
+    uploaded_documents: [
+      {
+        id: "portal-document-1",
+        filename: "bright-cafe-insurance.pdf",
+        content_type: "application/pdf",
+        byte_size: 45000,
+        category: "insurance",
+        notes: "Current certificate.",
+        source: "tenant_onboarding",
+        created_at: "2026-05-18T09:35:00.000Z",
+      },
+    ],
+  },
+  invoices: [
+    {
+      id: "invoice-draft-1",
+      invoice_number: "INV-1001",
+      title: "May rent and outgoings",
+      status: "approved",
+      issue_date: "2026-05-01",
+      due_date: "2026-05-15",
+      currency: "AUD",
+      subtotal_cents: 800000,
+      gst_cents: 80000,
+      total_cents: 880000,
+      paid_cents: 0,
+      outstanding_cents: 880000,
+      payment_status: "unpaid",
+      pdf_document_id: "document-1",
+      lines: [
+        {
+          id: "invoice-draft-line-1",
+          description: "Base rent",
+          amount_cents: 800000,
+          gst_cents: 80000,
+          currency: "AUD",
+        },
+      ],
+    },
+  ],
+  payment_summary: {
+    invoice_count: 1,
+    total_cents: 880000,
+    paid_cents: 0,
+    outstanding_cents: 880000,
+    overdue_count: 1,
+    next_due_date: "2026-05-15",
+    status: "overdue",
+    manual_only: true,
+  },
+  notification_preferences: {
+    email_enabled: true,
+    sms_enabled: true,
+    billing_email_enabled: true,
+    compliance_reminders_enabled: true,
+    preferred_channel: "both",
+    updated_at: null,
+  },
+  guardrails: [
+    "Tenant portal responses are scoped to the tenant attached to the onboarding token.",
+    "Only approved invoice drafts are visible to tenants.",
+    "Notification preference updates do not send email or SMS.",
+  ],
+});
+
 const securityWorkspace = () => ({
   auth: {
     auth_mode: "dev",
@@ -1193,6 +1334,11 @@ export async function mockLeasiumApi(page: Page) {
 
     if (method === "GET" && path === "/tenant-onboarding") {
       await fulfillJson(route, tenantOnboardings);
+      return;
+    }
+
+    if (method === "GET" && path === "/tenant-portal/session") {
+      await fulfillJson(route, tenantPortalSession());
       return;
     }
 

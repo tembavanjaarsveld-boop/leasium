@@ -147,7 +147,7 @@ Status: pending Remba review. Billing Readiness now creates and lists internal i
 
 ## Invoice Delivery Prep Surface
 
-Status: pending Remba review. Billing Readiness now stores internal invoice PDF artifacts, prepares branded email draft metadata, records manual tenant delivery receipts after approval, and tracks payment status across the Invoice prep and Delivery & payments tabs. Keep the boundary explicit: Leasium is preparing and recording internal invoice work, provider-backed email sending is manual/recorded for now, and no Xero sync or external posting runs from this surface.
+Status: pending Remba review. Billing Readiness now stores internal invoice PDF artifacts, prepares branded email draft metadata, can send explicitly approved provider-backed invoice emails through SendGrid, records manual/provider tenant delivery receipts after approval, and tracks payment status across the Invoice prep and Delivery & payments tabs. Keep the boundary explicit: Leasium is preparing and delivering approved invoice work, Xero sync remains a separate approval, and provider failures/skips must stay visible.
 
 ## AI Enrichment Surface
 
@@ -181,6 +181,10 @@ Status: pending Remba review. Provider-backed chart/tax validation preview is bu
 
 Status: pending Remba review. Provider-backed invoice posting preview is built behind `/api/v1/xero/invoices/posting-preview/{entity_id}` and returns approved unsynced invoice draft counts, per-draft ready/blocked results, draft Xero payload previews, line-item account/tax snapshots, blockers, and guardrails. Keep the surface dense and operational: operators should understand exactly what would be posted later while seeing that this step does not post invoices, mutate Xero, email tenants, or reconcile payments.
 
+## Xero Posting Approval And Reconciliation
+
+Status: pending Remba review. The backend now supports explicit local Xero posting approval, idempotent provider-backed Xero draft invoice creation, and payment reconciliation preview/apply into local invoice metadata. The operator surface still needs design review before it is treated as complete: approvals should show the exact invoice, Xero contact, line payload, idempotency key, provider status, and reconciliation source before any external write or local payment update is applied.
+
 ## Operator Security And Settings Arena
 
 Status: pending Remba review. Settings now has Security, Organisation, and Xero sections; Security shows the current auth mode, Clerk readiness, current operator, members, entity-role controls, and operator invite lifecycle. Keep the language clear that dev auth and the temporary password gate are pre-production safeguards until Clerk and SendGrid production env vars are configured and `AUTH_MODE` is switched deliberately.
@@ -199,7 +203,19 @@ Status: pending Remba review. Insights now uses a backend overview for portfolio
 
 ## Spreadsheet Portfolio Import Surface
 
-Status: pending Remba review before UI work. The backend can now produce a no-mutation dry-run plan from `.xlsx` portfolio source-of-truth workbooks, including register records, blockers, warnings, and feature candidates. Any frontend surface must stay review-first: show sheet/source row provenance, proposed creates/matches/skips, feature gaps, and explicit Apply guardrails before any records are written.
+Status: pending Remba review. Smart Intake now includes a spreadsheet import review/apply surface for `.xlsx` portfolio source-of-truth workbooks. It stages row-level actions, default approve/review/ignore decisions, blockers, warnings, workbook sheet/row provenance, and an explicit Apply step before any records are written. Remba should review the panel density, placement inside Smart Intake, the optional `/intake/spreadsheet` focused page, and whether the Apply outcome is clear enough for large workbooks.
+
+## Portfolio QA IA
+
+Status: pending Remba review. Portfolio QA remains a cleanup workspace at `/portfolio-qa` and is now surfaced from Insights as the IA entry point for portfolio cleanup rather than being added to the already-wide top navigation. Remba should confirm whether cleanup belongs under Insights long term, needs a secondary nav, or should graduate into its own module once operators use it repeatedly.
+
+## Tenant Portal Surface
+
+Status: pending Remba review. `/tenant-portal/[token]` now gives tenants a scoped self-service surface for onboarding status, lease context, approved invoices/payment summary, compliance/document upload and download, and notification preferences. Current auth is scoped to the existing onboarding token boundary and labels query/form token use as a development fallback; true tenant account auth remains future work. Remba should review first-viewport tenant context, portal trust language, upload density, and invoice/payment clarity.
+
+## Maintenance And Arrears Foundations
+
+Status: pending Remba review before UI work. The backend now has migration-backed maintenance work orders and arrears/credit-control cases. No operator UI workspace is complete yet. Future screens should avoid crowding Properties or Tenants by deciding whether maintenance and arrears live as dedicated module pages, task queues, tenant-detail panels, or a combination.
 
 ## Property Provenance Surface
 

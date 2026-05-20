@@ -214,5 +214,61 @@ def fetch_xero_tax_rates(
     return [tax_rate for tax_rate in tax_rates if isinstance(tax_rate, dict)]
 
 
+def create_xero_invoice_draft(
+    access_token: str,
+    xero_tenant_id: str,
+    invoice_payload: dict[str, Any],
+    settings: Settings,
+    *,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    try:
+        with httpx.Client(timeout=settings.xero_http_timeout_seconds) as client:
+            response = client.post(
+                f"{settings.xero_api_base_url.rstrip('/')}/Invoices",
+                json={"Invoices": [invoice_payload]},
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": idempotency_key[:128],
+                    "xero-tenant-id": xero_tenant_id,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPError as exc:
+        raise XeroIntegrationError("Could not create the Xero draft invoice.") from exc
+    invoices = payload.get("Invoices") if isinstance(payload, dict) else None
+    if not isinstance(invoices, list) or not invoices or not isinstance(invoices[0], dict):
+        raise XeroIntegrationError("Xero returned an unexpected invoice creation response.")
+    return invoices[0]
+
+
+def fetch_xero_invoices(
+    access_token: str,
+    xero_tenant_id: str,
+    settings: Settings,
+) -> list[dict[str, Any]]:
+    try:
+        with httpx.Client(timeout=settings.xero_http_timeout_seconds) as client:
+            response = client.get(
+                f"{settings.xero_api_base_url.rstrip('/')}/Invoices",
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {access_token}",
+                    "xero-tenant-id": xero_tenant_id,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPError as exc:
+        raise XeroIntegrationError("Could not read Xero invoices.") from exc
+    invoices = payload.get("Invoices") if isinstance(payload, dict) else None
+    if not isinstance(invoices, list):
+        raise XeroIntegrationError("Xero returned an unexpected invoices response.")
+    return [invoice for invoice in invoices if isinstance(invoice, dict)]
+
+
 def token_expiry_from_payload(payload: dict[str, Any]) -> datetime | None:
     return _token_expiry(payload)

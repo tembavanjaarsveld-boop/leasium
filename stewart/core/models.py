@@ -1,5 +1,6 @@
 """Phase 0 SQLAlchemy models."""
 
+import builtins
 import enum
 from datetime import date, datetime
 from typing import Any
@@ -50,6 +51,18 @@ class IntArrayCompat(TypeDecorator[list[int]]):
         if dialect.name == "postgresql":
             return dialect.type_descriptor(ARRAY(Integer))
         return dialect.type_descriptor(JSON)
+
+
+def _uuid_list(value: Any) -> list[UUID]:
+    if not isinstance(value, list):
+        return []
+    parsed: list[UUID] = []
+    for item in value:
+        try:
+            parsed.append(item if isinstance(item, UUID) else UUID(str(item)))
+        except (TypeError, ValueError):
+            continue
+    return parsed
 
 
 class UserRole(enum.StrEnum):
@@ -183,6 +196,55 @@ class InvoiceDraftStatus(enum.StrEnum):
     ready_for_approval = "ready_for_approval"
     approved = "approved"
     void = "void"
+
+
+class MaintenancePriority(enum.StrEnum):
+    low = "low"
+    normal = "normal"
+    high = "high"
+    urgent = "urgent"
+
+
+class MaintenanceWorkOrderStatus(enum.StrEnum):
+    requested = "requested"
+    triaged = "triaged"
+    assigned = "assigned"
+    awaiting_approval = "awaiting_approval"
+    approved = "approved"
+    in_progress = "in_progress"
+    completed = "completed"
+    cancelled = "cancelled"
+
+
+class MaintenanceApprovalStatus(enum.StrEnum):
+    not_required = "not_required"
+    pending = "pending"
+    approved = "approved"
+    declined = "declined"
+
+
+class ArrearsCaseStatus(enum.StrEnum):
+    monitoring = "monitoring"
+    active = "active"
+    resolved = "resolved"
+    written_off = "written_off"
+    closed = "closed"
+
+
+class ArrearsDisputeStatus(enum.StrEnum):
+    none = "none"
+    raised = "raised"
+    under_review = "under_review"
+    resolved = "resolved"
+    escalated = "escalated"
+
+
+class ArrearsEscalationStatus(enum.StrEnum):
+    none = "none"
+    queued = "queued"
+    in_progress = "in_progress"
+    referred = "referred"
+    closed = "closed"
 
 
 class AuditOutcome(enum.StrEnum):
@@ -1143,6 +1205,220 @@ Index(
     "invoice_draft_line_draft_idx",
     InvoiceDraftLine.invoice_draft_id,
     postgresql_where=InvoiceDraftLine.deleted_at.is_(None),
+)
+
+
+class MaintenanceWorkOrder(Base):
+    __tablename__ = "maintenance_work_order"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    property_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("property.id"))
+    tenancy_unit_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenancy_unit.id")
+    )
+    tenant_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenant.id"))
+    lease_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("lease.id"))
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[MaintenanceWorkOrderStatus] = mapped_column(
+        Enum(MaintenanceWorkOrderStatus, name="maintenance_work_order_status"),
+        nullable=False,
+        default=MaintenanceWorkOrderStatus.requested,
+    )
+    priority: Mapped[MaintenancePriority] = mapped_column(
+        Enum(MaintenancePriority, name="maintenance_priority"),
+        nullable=False,
+        default=MaintenancePriority.normal,
+    )
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    contractor_name: Mapped[str | None] = mapped_column(Text)
+    contractor_email: Mapped[str | None] = mapped_column(Text)
+    contractor_phone: Mapped[str | None] = mapped_column(Text)
+    contractor_assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approval_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    approval_status: Mapped[MaintenanceApprovalStatus] = mapped_column(
+        Enum(MaintenanceApprovalStatus, name="maintenance_approval_status"),
+        nullable=False,
+        default=MaintenanceApprovalStatus.not_required,
+    )
+    approval_limit_cents: Mapped[int | None] = mapped_column(Integer)
+    quote_amount_cents: Mapped[int | None] = mapped_column(Integer)
+    approved_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approval_notes: Mapped[str | None] = mapped_column(Text)
+    source_document_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("stored_document.id")
+    )
+    invoice_draft_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("invoice_draft.id")
+    )
+    invoice_reference: Mapped[str | None] = mapped_column(Text)
+    invoice_amount_cents: Mapped[int | None] = mapped_column(Integer)
+    source_reference: Mapped[str | None] = mapped_column(Text)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+    attachments: Mapped[dict[str, Any]] = mapped_column(JsonbCompat, nullable=False, default=dict)
+    work_order_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship()
+    property: Mapped[Property | None] = relationship()
+    tenancy_unit: Mapped[TenancyUnit | None] = relationship()
+    tenant: Mapped[Tenant | None] = relationship()
+    lease: Mapped[Lease | None] = relationship()
+    approved_by_user: Mapped[AppUser | None] = relationship()
+    source_document: Mapped[StoredDocument | None] = relationship()
+    invoice_draft: Mapped[InvoiceDraft | None] = relationship()
+
+    @builtins.property
+    def document_ids(self) -> list[UUID]:
+        return _uuid_list((self.attachments or {}).get("document_ids"))
+
+    @builtins.property
+    def photo_document_ids(self) -> list[UUID]:
+        return _uuid_list((self.attachments or {}).get("photo_document_ids"))
+
+
+Index(
+    "maintenance_work_order_entity_idx",
+    MaintenanceWorkOrder.entity_id,
+    postgresql_where=MaintenanceWorkOrder.deleted_at.is_(None),
+)
+Index(
+    "maintenance_work_order_property_idx",
+    MaintenanceWorkOrder.property_id,
+    postgresql_where=MaintenanceWorkOrder.deleted_at.is_(None),
+)
+Index(
+    "maintenance_work_order_tenant_idx",
+    MaintenanceWorkOrder.tenant_id,
+    postgresql_where=MaintenanceWorkOrder.deleted_at.is_(None),
+)
+Index(
+    "maintenance_work_order_status_idx",
+    MaintenanceWorkOrder.status,
+    postgresql_where=MaintenanceWorkOrder.deleted_at.is_(None),
+)
+Index(
+    "maintenance_work_order_due_date_idx",
+    MaintenanceWorkOrder.due_date,
+    postgresql_where=MaintenanceWorkOrder.deleted_at.is_(None),
+)
+
+
+class ArrearsCase(Base):
+    __tablename__ = "arrears_case"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    property_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("property.id"))
+    tenancy_unit_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenancy_unit.id")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenant.id"))
+    lease_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("lease.id"))
+    status: Mapped[ArrearsCaseStatus] = mapped_column(
+        Enum(ArrearsCaseStatus, name="arrears_case_status"),
+        nullable=False,
+        default=ArrearsCaseStatus.active,
+    )
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="AUD")
+    as_of: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
+    balance_current_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    balance_1_30_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    balance_31_60_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    balance_61_90_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    balance_90_plus_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_balance_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    oldest_unpaid_invoice_date: Mapped[date | None] = mapped_column(Date)
+    last_invoice_date: Mapped[date | None] = mapped_column(Date)
+    source_reference: Mapped[str | None] = mapped_column(Text)
+    reminder_stage: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reminder_frequency_days: Mapped[int | None] = mapped_column(Integer)
+    next_reminder_on: Mapped[date | None] = mapped_column(Date)
+    last_reminder_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reminder_paused_until: Mapped[date | None] = mapped_column(Date)
+    dispute_status: Mapped[ArrearsDisputeStatus] = mapped_column(
+        Enum(ArrearsDisputeStatus, name="arrears_dispute_status"),
+        nullable=False,
+        default=ArrearsDisputeStatus.none,
+    )
+    dispute_notes: Mapped[str | None] = mapped_column(Text)
+    promise_to_pay_date: Mapped[date | None] = mapped_column(Date)
+    promise_to_pay_amount_cents: Mapped[int | None] = mapped_column(Integer)
+    promise_to_pay_notes: Mapped[str | None] = mapped_column(Text)
+    escalation_status: Mapped[ArrearsEscalationStatus] = mapped_column(
+        Enum(ArrearsEscalationStatus, name="arrears_escalation_status"),
+        nullable=False,
+        default=ArrearsEscalationStatus.none,
+    )
+    escalation_queue: Mapped[str | None] = mapped_column(Text)
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    assigned_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    arrears_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship()
+    property: Mapped[Property | None] = relationship()
+    tenancy_unit: Mapped[TenancyUnit | None] = relationship()
+    tenant: Mapped[Tenant] = relationship()
+    lease: Mapped[Lease | None] = relationship()
+    assigned_user: Mapped[AppUser | None] = relationship()
+
+
+Index(
+    "arrears_case_entity_idx",
+    ArrearsCase.entity_id,
+    postgresql_where=ArrearsCase.deleted_at.is_(None),
+)
+Index(
+    "arrears_case_tenant_idx",
+    ArrearsCase.tenant_id,
+    postgresql_where=ArrearsCase.deleted_at.is_(None),
+)
+Index(
+    "arrears_case_status_idx",
+    ArrearsCase.status,
+    postgresql_where=ArrearsCase.deleted_at.is_(None),
+)
+Index(
+    "arrears_case_next_reminder_idx",
+    ArrearsCase.next_reminder_on,
+    postgresql_where=ArrearsCase.deleted_at.is_(None),
+)
+Index(
+    "arrears_case_escalation_idx",
+    ArrearsCase.escalation_status,
+    postgresql_where=ArrearsCase.deleted_at.is_(None),
 )
 
 

@@ -21,6 +21,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { RegisterImportPanel } from "@/app/intake/register-import-panel";
 import {
   Button,
   EmptyState,
@@ -1431,8 +1432,9 @@ function DocumentIntakeApplyOutcomeCard({
                         className="grid gap-1 text-xs text-muted-foreground"
                       >
                         <div className="font-medium text-foreground">
-                          {[row.unitLabel, row.tenantName].filter(Boolean).join(" - ") ||
-                            "Schedule row"}
+                          {[row.unitLabel, row.tenantName]
+                            .filter(Boolean)
+                            .join(" - ") || "Schedule row"}
                         </div>
                         <div>{row.blockers.join(" ")}</div>
                       </div>
@@ -2670,7 +2672,9 @@ export function Dashboard({
         {dashboardError ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
             <div>
-              <div className="font-semibold">Live data did not finish loading.</div>
+              <div className="font-semibold">
+                Live data did not finish loading.
+              </div>
               <div className="mt-1">{friendlyError(dashboardError)}</div>
             </div>
             <SecondaryButton
@@ -2746,8 +2750,8 @@ export function Dashboard({
               propertiesLoading
                 ? "Loading live property data."
                 : displayPropertiesCount
-                ? "Open the portfolio workspace."
-                : "Create or import your first property."
+                  ? "Open the portfolio workspace."
+                  : "Create or import your first property."
             }
             icon={<Layers3 size={17} />}
           />
@@ -2773,8 +2777,8 @@ export function Dashboard({
               tenantsLoading
                 ? "Loading tenant records."
                 : activeOnboardings.length
-                ? `${activeOnboardings.length} onboarding link waiting on tenants.`
-                : "Add tenants or send onboarding links."
+                  ? `${activeOnboardings.length} onboarding link waiting on tenants.`
+                  : "Add tenants or send onboarding links."
             }
             icon={<UserRound size={17} />}
           />
@@ -2800,8 +2804,8 @@ export function Dashboard({
               obligationsLoading
                 ? "Loading key dates."
                 : urgentObligations[0]
-                ? urgentObligations[0].title
-                : "No urgent dates need action."
+                  ? urgentObligations[0].title
+                  : "No urgent dates need action."
             }
             icon={<AlertTriangle size={17} />}
           />
@@ -2827,8 +2831,8 @@ export function Dashboard({
               rentRollLoading
                 ? "Loading billing readiness."
                 : billingIssues[0]
-                ? billingIssues[0].blockers[0]
-                : "Invoice run is ready from current data."
+                  ? billingIssues[0].blockers[0]
+                  : "Invoice run is ready from current data."
             }
             icon={<ReceiptText size={17} />}
           />
@@ -2854,8 +2858,8 @@ export function Dashboard({
               documentIntakesLoading
                 ? "Loading review queue."
                 : needsReviewCount
-                ? "Approve extracted document data."
-                : "Drop documents into Smart Intake."
+                  ? "Approve extracted document data."
+                  : "Drop documents into Smart Intake."
             }
             icon={<Sparkles size={17} />}
           />
@@ -2881,8 +2885,8 @@ export function Dashboard({
               documentIntakesLoading
                 ? "Checking document reads."
                 : failedIntakeCount
-                ? "Review documents Leasium could not read."
-                : "No intake failures right now."
+                  ? "Review documents Leasium could not read."
+                  : "No intake failures right now."
             }
             icon={<FileText size={17} />}
           />
@@ -3113,6 +3117,19 @@ export function Dashboard({
               </div>
             </SectionPanel>
 
+            {isIntakeWorkspace ? (
+              <RegisterImportPanel
+                entityId={selectedEntityId}
+                onApplied={() => {
+                  propertiesQuery.refetch();
+                  tenantsQuery.refetch();
+                  obligationsQuery.refetch();
+                  rentRollQuery.refetch();
+                  documentIntakesQuery.refetch();
+                }}
+              />
+            ) : null}
+
             {!isIntakeWorkspace ? (
               <SectionPanel title="Onboarding">
                 <div className="grid gap-3 p-4 text-sm">
@@ -3127,9 +3144,7 @@ export function Dashboard({
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Submitted</span>
                     <span className="font-semibold">
-                      {onboardingLoading
-                        ? "..."
-                        : submittedOnboardings.length}
+                      {onboardingLoading ? "..." : submittedOnboardings.length}
                     </span>
                   </div>
                   <Link
@@ -3268,7 +3283,9 @@ export function Dashboard({
                         className="grid gap-2 px-4 py-3 transition hover:bg-muted/60 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                       >
                         <div className="min-w-0">
-                          <div className="truncate font-medium">{item.title}</div>
+                          <div className="truncate font-medium">
+                            {item.title}
+                          </div>
                           <div className="mt-1 text-xs text-muted-foreground">
                             {item.category.replaceAll("_", " ")}
                           </div>

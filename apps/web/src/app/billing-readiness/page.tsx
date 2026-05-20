@@ -39,6 +39,7 @@ import {
   listRentRoll,
   prepareInvoiceDraftDelivery,
   recordInvoiceDraftDelivery,
+  sendInvoiceDraftDeliveryEmail,
   updateBillingDraft,
   updateInvoiceDraft,
   updateInvoiceDraftPaymentStatus,
@@ -573,6 +574,15 @@ function BillingReadinessWorkspace() {
   const recordInvoiceDeliveryMutation = useMutation({
     mutationFn: (draftId: string) =>
       recordInvoiceDraftDelivery(draftId, { method: "manual" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+      });
+    },
+  });
+
+  const sendInvoiceDeliveryEmailMutation = useMutation({
+    mutationFn: (draftId: string) => sendInvoiceDraftDeliveryEmail(draftId),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
@@ -1471,7 +1481,7 @@ function BillingReadinessWorkspace() {
             {activeBillingTab === "delivery" ? (
               <SectionPanel
                 title="Delivery & payments"
-                description="Record approved internal invoices as manually delivered or paid. This still does not send tenant email, post an invoice, or sync to Xero."
+                description="Send approved invoice emails when the provider is configured, or record manual delivery and payment status. Xero sync still needs a separate approval."
                 icon={<Mail size={17} className="text-primary" />}
                 actions={
                   <StatusBadge
@@ -1518,12 +1528,18 @@ function BillingReadinessWorkspace() {
                           deliveryState.delivery_ready === true;
                         const deliverySent =
                           deliveryState.tenant_email_sent === true ||
-                          metadataText(sendState.status) === "sent";
+                          ["queued", "sent", "delivered", "opened"].includes(
+                            metadataText(sendState.status) ?? "",
+                          );
                         const paymentLabel =
                           metadataText(paymentStatus.status) ?? "unpaid";
                         const isRecordingDelivery =
                           recordInvoiceDeliveryMutation.isPending &&
                           recordInvoiceDeliveryMutation.variables === draft.id;
+                        const isSendingEmail =
+                          sendInvoiceDeliveryEmailMutation.isPending &&
+                          sendInvoiceDeliveryEmailMutation.variables ===
+                            draft.id;
                         const isUpdatingPayment =
                           updatePaymentStatusMutation.isPending &&
                           updatePaymentStatusMutation.variables?.draftId ===
@@ -1592,8 +1608,9 @@ function BillingReadinessWorkspace() {
                                 </StatusBadge>
                               </div>
                               <div className="mt-2 text-xs text-muted-foreground">
-                                Manual receipt only. Provider-backed email
-                                sending is still off.
+                                {metadataText(sendState.provider)
+                                  ? `${metadataText(sendState.provider)}: ${metadataText(sendState.status) ?? "not sent"}`
+                                  : "Email is only sent after explicit approval."}
                               </div>
                             </td>
                             <td className="px-3 py-3">
@@ -1637,6 +1654,29 @@ function BillingReadinessWorkspace() {
                                     PDF
                                   </a>
                                 ) : null}
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-9 rounded-lg px-3"
+                                  onClick={() =>
+                                    sendInvoiceDeliveryEmailMutation.mutate(
+                                      draft.id,
+                                    )
+                                  }
+                                  disabled={
+                                    !canRecordDelivery || isSendingEmail
+                                  }
+                                  title="Sends the approved invoice email through the configured provider. No Xero sync is run."
+                                >
+                                  {isSendingEmail ? (
+                                    <Loader2
+                                      size={14}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <Mail size={14} />
+                                  )}
+                                  Email
+                                </SecondaryButton>
                                 <SecondaryButton
                                   type="button"
                                   className="min-h-9 rounded-lg px-3"
@@ -1693,7 +1733,7 @@ function BillingReadinessWorkspace() {
                           <td className="px-3 py-10" colSpan={5}>
                             <EmptyState
                               title="No approved invoices"
-                              description="Approve an internal invoice draft first. Delivery and payment recording stays manual, with no tenant email send or Xero sync."
+                              description="Approve an internal invoice draft first. Email sending and payment recording stay explicit, and Xero sync needs its own approval."
                             />
                           </td>
                         </tr>

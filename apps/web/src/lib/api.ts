@@ -442,6 +442,138 @@ export type DocumentRecord = {
   deleted_at: string | null;
 };
 
+export type TenantPortalAuthRecord = {
+  mode: "tenant_portal_token" | "tenant_portal_token_dev_fallback";
+  token_source: "header" | "query" | "form";
+  tenant_auth_configured: boolean;
+  dev_fallback: boolean;
+  boundary: string;
+  detail: string;
+};
+
+export type TenantPortalTenantRecord = {
+  id: string;
+  legal_name: string;
+  trading_name: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  billing_email: string | null;
+};
+
+export type TenantPortalLeaseRecord = {
+  lease_id: string;
+  status: string;
+  property_name: string;
+  property_address: string | null;
+  unit_label: string;
+  commencement_date: string | null;
+  expiry_date: string | null;
+  next_review_date: string | null;
+};
+
+export type TenantPortalOnboardingRecord = {
+  id: string;
+  status: string;
+  due_date: string | null;
+  expires_at: string | null;
+  submitted_at: string | null;
+  last_sent_at: string | null;
+  document_count: number;
+};
+
+export type TenantPortalDocumentRecord = {
+  id: string;
+  filename: string;
+  content_type: string | null;
+  byte_size: number;
+  category: DocumentCategory;
+  notes: string | null;
+  source: string;
+  created_at: string;
+};
+
+export type TenantPortalComplianceItemRecord = {
+  key: string;
+  label: string;
+  status: "missing" | "received" | "expired" | "not_on_file";
+  document_count: number;
+  latest_document: TenantPortalDocumentRecord | null;
+  due_date: string | null;
+};
+
+export type TenantPortalComplianceRecord = {
+  uploads_enabled: boolean;
+  accepted_categories: DocumentCategory[];
+  items: TenantPortalComplianceItemRecord[];
+  uploaded_documents: TenantPortalDocumentRecord[];
+};
+
+export type TenantPortalInvoiceLineRecord = {
+  id: string;
+  description: string;
+  amount_cents: number;
+  gst_cents: number;
+  currency: string;
+};
+
+export type TenantPortalInvoiceRecord = {
+  id: string;
+  invoice_number: string | null;
+  title: string;
+  status: string;
+  issue_date: string | null;
+  due_date: string | null;
+  currency: string;
+  subtotal_cents: number;
+  gst_cents: number;
+  total_cents: number;
+  paid_cents: number;
+  outstanding_cents: number;
+  payment_status: string;
+  pdf_document_id: string | null;
+  lines: TenantPortalInvoiceLineRecord[];
+};
+
+export type TenantPortalPaymentSummaryRecord = {
+  invoice_count: number;
+  total_cents: number;
+  paid_cents: number;
+  outstanding_cents: number;
+  overdue_count: number;
+  next_due_date: string | null;
+  status: "no_invoices" | "paid" | "unpaid" | "overdue";
+  manual_only: boolean;
+};
+
+export type TenantPortalNotificationPreferencesRecord = {
+  email_enabled: boolean;
+  sms_enabled: boolean;
+  billing_email_enabled: boolean;
+  compliance_reminders_enabled: boolean;
+  preferred_channel: "email" | "sms" | "both" | "none";
+  updated_at: string | null;
+};
+
+export type TenantPortalNotificationPreferencesPayload = {
+  email_enabled?: boolean;
+  sms_enabled?: boolean;
+  billing_email_enabled?: boolean;
+  compliance_reminders_enabled?: boolean;
+};
+
+export type TenantPortalRecord = {
+  auth: TenantPortalAuthRecord;
+  tenant: TenantPortalTenantRecord;
+  lease: TenantPortalLeaseRecord;
+  onboarding: TenantPortalOnboardingRecord;
+  compliance: TenantPortalComplianceRecord;
+  invoices: TenantPortalInvoiceRecord[];
+  payment_summary: TenantPortalPaymentSummaryRecord;
+  notification_preferences: TenantPortalNotificationPreferencesRecord;
+  guardrails: string[];
+};
+
 export type DocumentIntakeExtraction = {
   document_type?: string | null;
   summary?: string | null;
@@ -480,6 +612,118 @@ export type DocumentIntakeRecord = {
   content_type: string | null;
   byte_size: number;
   category: DocumentCategory;
+};
+
+export type RegisterImportSeverity = "info" | "warning" | "blocker";
+export type RegisterImportOperation =
+  | "create"
+  | "match"
+  | "update"
+  | "skip"
+  | "review";
+export type RegisterImportDecision = "approve" | "ignore" | "review";
+export type RegisterImportApplyStatus = "applied" | "skipped" | "blocked";
+
+export type RegisterImportSheetSummary = {
+  name: string;
+  rows: number;
+  columns: string[];
+};
+
+export type RegisterImportFinding = {
+  severity: RegisterImportSeverity;
+  message: string;
+  sheet: string | null;
+  row: number | null;
+  field: string | null;
+  source_value: unknown;
+};
+
+export type RegisterImportActionSummary = {
+  target: string;
+  create: number;
+  match: number;
+  update: number;
+  skip: number;
+  review: number;
+};
+
+export type RegisterImportFeatureCandidate = {
+  key: string;
+  label: string;
+  reason: string;
+  source_sheet: string;
+  source_count: number;
+  priority: "now" | "next" | "later";
+};
+
+export type RegisterImportSourceContext = {
+  filename: string;
+  sheet: string;
+  row: number | null;
+  source_hint: string | null;
+  confidence: number | null;
+};
+
+export type RegisterImportFieldChange = {
+  field: string;
+  label: string;
+  before: unknown;
+  after: unknown;
+  source: RegisterImportSourceContext | null;
+};
+
+export type RegisterImportActionItem = {
+  id: string;
+  target: string;
+  operation: RegisterImportOperation;
+  label: string;
+  summary: string;
+  source: RegisterImportSourceContext;
+  changes: RegisterImportFieldChange[];
+  payload: Record<string, unknown>;
+  blockers: string[];
+  warnings: string[];
+  default_decision: RegisterImportDecision;
+};
+
+export type RegisterImportDryRunRecord = {
+  entity_id: string;
+  filename: string;
+  sheets: RegisterImportSheetSummary[];
+  actions: RegisterImportActionSummary[];
+  action_items: RegisterImportActionItem[];
+  findings: RegisterImportFinding[];
+  feature_candidates: RegisterImportFeatureCandidate[];
+  totals: Record<string, number>;
+  importable: boolean;
+  summary: string;
+};
+
+export type RegisterImportApplyItemResult = {
+  action_id: string;
+  target: string;
+  operation: RegisterImportOperation;
+  status: RegisterImportApplyStatus;
+  message: string;
+  target_table: string | null;
+  target_id: string | null;
+  created: Record<string, number>;
+  updated: Record<string, number>;
+};
+
+export type RegisterImportApplyRecord = {
+  entity_id: string;
+  filename: string;
+  applied_at: string;
+  requested: number;
+  applied: number;
+  skipped: number;
+  blocked: number;
+  created: Record<string, number>;
+  updated: Record<string, number>;
+  ignored_action_ids: string[];
+  results: RegisterImportApplyItemResult[];
 };
 
 export type ObligationRecord = {
@@ -559,10 +803,7 @@ export type ChargeRuleRecord = {
   metadata?: Record<string, unknown>;
 };
 
-export type ChargeRulePayload = Omit<
-  ChargeRuleRecord,
-  "id" | "metadata"
-> & {
+export type ChargeRulePayload = Omit<ChargeRuleRecord, "id" | "metadata"> & {
   metadata?: Record<string, unknown>;
 };
 
@@ -1094,13 +1335,11 @@ export type LeaseIntakeExtraction = {
         annual_rent_dollars?: number | null;
       })
     | null;
-  obligations?:
-    | Array<
-        Partial<ObligationPayload> & {
-          due?: string | null;
-        }
-      >
-    | null;
+  obligations?: Array<
+    Partial<ObligationPayload> & {
+      due?: string | null;
+    }
+  > | null;
   notes?: string[] | null;
   warnings?: string[] | null;
   confidence?: number | null;
@@ -1130,7 +1369,9 @@ const API_BASE =
 
 let authTokenProvider: (() => Promise<string | null>) | null = null;
 
-export function setApiAuthTokenProvider(provider: (() => Promise<string | null>) | null) {
+export function setApiAuthTokenProvider(
+  provider: (() => Promise<string | null>) | null,
+) {
   authTokenProvider = provider;
 }
 
@@ -1206,6 +1447,20 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
   return parseResponse<T>(response);
 }
 
+async function publicRequestForm<T>(
+  path: string,
+  formData: FormData,
+  headersInit?: HeadersInit,
+): Promise<T> {
+  const headers = new Headers(headersInit);
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    body: formData,
+    headers,
+  });
+  return parseResponse<T>(response);
+}
+
 export function listEntities() {
   return request<Entity[]>("/entities");
 }
@@ -1236,23 +1491,33 @@ export function updateSecurityMember(
 }
 
 export function resendSecurityMemberInvite(memberId: string) {
-  return request<SecurityMemberInviteRecord>(`/security/members/${memberId}/invite`, {
-    method: "POST",
-  });
+  return request<SecurityMemberInviteRecord>(
+    `/security/members/${memberId}/invite`,
+    {
+      method: "POST",
+    },
+  );
 }
 
-export async function acceptSecurityInvitation(payload: SecurityInviteAcceptPayload) {
+export async function acceptSecurityInvitation(
+  payload: SecurityInviteAcceptPayload,
+) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    return await publicRequest<SecurityInviteAcceptRecord>("/security/invitations/accept", {
-      method: "POST",
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+    return await publicRequest<SecurityInviteAcceptRecord>(
+      "/security/invitations/accept",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      },
+    );
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error("Invite linking timed out. Refresh the page and try again.");
+      throw new Error(
+        "Invite linking timed out. Refresh the page and try again.",
+      );
     }
     throw err;
   } finally {
@@ -1264,7 +1529,9 @@ export function getSecurityBootstrapStatus() {
   return request<SecurityBootstrapStatusRecord>("/security/bootstrap/status");
 }
 
-export function createSecurityBootstrapWorkspace(payload: SecurityBootstrapPayload) {
+export function createSecurityBootstrapWorkspace(
+  payload: SecurityBootstrapPayload,
+) {
   return request<SecurityBootstrapRecord>("/security/bootstrap", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -1288,7 +1555,9 @@ export function updateXeroConnection(
 
 export function startXeroOAuth(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
-  return request<XeroOAuthStartRecord>(`/xero/oauth/start?${params.toString()}`);
+  return request<XeroOAuthStartRecord>(
+    `/xero/oauth/start?${params.toString()}`,
+  );
 }
 
 export function previewXeroContactSync(entityId: string) {
@@ -1336,7 +1605,9 @@ export function getInsightsOverview(entityId: string, asOf?: string) {
   if (asOf) {
     params.set("as_of", asOf);
   }
-  return request<InsightsOverviewRecord>(`/insights/overview?${params.toString()}`);
+  return request<InsightsOverviewRecord>(
+    `/insights/overview?${params.toString()}`,
+  );
 }
 
 export function createInsightsSnapshot(payload: {
@@ -1353,17 +1624,24 @@ export function createInsightsSnapshot(payload: {
 
 export function listInsightsSnapshots(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
-  return request<InsightsSnapshotRecord[]>(`/insights/snapshots?${params.toString()}`);
+  return request<InsightsSnapshotRecord[]>(
+    `/insights/snapshots?${params.toString()}`,
+  );
 }
 
 export function revokeInsightsSnapshot(snapshotId: string) {
-  return request<InsightsSnapshotRecord>(`/insights/snapshots/${snapshotId}/revoke`, {
-    method: "POST",
-  });
+  return request<InsightsSnapshotRecord>(
+    `/insights/snapshots/${snapshotId}/revoke`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function getPublicInsightsSnapshot(token: string) {
-  return request<InsightsSnapshotPublicRecord>(`/insights/snapshots/public/${token}`);
+  return request<InsightsSnapshotPublicRecord>(
+    `/insights/snapshots/public/${token}`,
+  );
 }
 
 export function listProperties(entityId: string) {
@@ -1726,7 +2004,9 @@ export function deleteDocument(documentId: string) {
 }
 
 export function listPublicOnboardingDocuments(token: string) {
-  return request<DocumentRecord[]>(`/tenant-onboarding/public/${token}/documents`);
+  return request<DocumentRecord[]>(
+    `/tenant-onboarding/public/${token}/documents`,
+  );
 }
 
 export function uploadPublicOnboardingDocument(payload: {
@@ -1747,18 +2027,114 @@ export function uploadPublicOnboardingDocument(payload: {
   );
 }
 
-export function publicOnboardingDocumentDownloadUrl(token: string, documentId: string) {
+export function publicOnboardingDocumentDownloadUrl(
+  token: string,
+  documentId: string,
+) {
   return `${API_BASE}/tenant-onboarding/public/${token}/documents/${documentId}/download`;
 }
 
-export function deletePublicOnboardingDocument(token: string, documentId: string) {
-  return request<void>(`/tenant-onboarding/public/${token}/documents/${documentId}`, {
-    method: "DELETE",
+export function deletePublicOnboardingDocument(
+  token: string,
+  documentId: string,
+) {
+  return request<void>(
+    `/tenant-onboarding/public/${token}/documents/${documentId}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+function tenantPortalHeaders(token: string) {
+  return { "X-Tenant-Portal-Token": token };
+}
+
+export function getTenantPortal(token: string) {
+  return publicRequest<TenantPortalRecord>("/tenant-portal/session", {
+    headers: tenantPortalHeaders(token),
   });
 }
 
+export function updateTenantPortalNotificationPreferences(
+  token: string,
+  payload: TenantPortalNotificationPreferencesPayload,
+) {
+  return publicRequest<TenantPortalNotificationPreferencesRecord>(
+    "/tenant-portal/notification-preferences",
+    {
+      method: "PATCH",
+      headers: tenantPortalHeaders(token),
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function uploadTenantPortalDocument(payload: {
+  token: string;
+  category: DocumentCategory;
+  notes?: string | null;
+  file: File;
+}) {
+  const formData = new FormData();
+  formData.append("category", payload.category);
+  if (payload.notes?.trim()) {
+    formData.append("notes", payload.notes.trim());
+  }
+  formData.append("file", payload.file);
+  return publicRequestForm<TenantPortalDocumentRecord>(
+    "/tenant-portal/documents",
+    formData,
+    tenantPortalHeaders(payload.token),
+  );
+}
+
+export function tenantPortalDocumentDownloadUrl(
+  token: string,
+  documentId: string,
+) {
+  const params = new URLSearchParams({ portal_token: token });
+  return `${API_BASE}/tenant-portal/documents/${documentId}/download?${params.toString()}`;
+}
+
 export function listDocumentIntakes(entityId: string) {
-  return request<DocumentIntakeRecord[]>(`/document-intakes?entity_id=${entityId}`);
+  return request<DocumentIntakeRecord[]>(
+    `/document-intakes?entity_id=${entityId}`,
+  );
+}
+
+export function dryRunRegisterImport(payload: {
+  entityId: string;
+  file: File;
+}) {
+  const formData = new FormData();
+  formData.append("entity_id", payload.entityId);
+  formData.append("file", payload.file);
+  return requestForm<RegisterImportDryRunRecord>(
+    "/register-imports/dry-run",
+    formData,
+  );
+}
+
+export function applyRegisterImportPlan(payload: {
+  entityId: string;
+  filename: string;
+  actionItems: RegisterImportActionItem[];
+  approvedActionIds: string[];
+  ignoredActionIds?: string[];
+  notes?: string | null;
+}) {
+  return request<RegisterImportApplyRecord>("/register-imports/apply", {
+    method: "POST",
+    body: JSON.stringify({
+      entity_id: payload.entityId,
+      filename: payload.filename,
+      action_items: payload.actionItems,
+      approved_action_ids: payload.approvedActionIds,
+      ignored_action_ids: payload.ignoredActionIds ?? [],
+      notes: payload.notes ?? undefined,
+    }),
+  });
 }
 
 export function createDocumentIntake(payload: {
@@ -1780,15 +2156,21 @@ export function getDocumentIntake(intakeId: string) {
 }
 
 export function extractDocumentIntake(intakeId: string) {
-  return request<DocumentIntakeRecord>(`/document-intakes/${intakeId}/extract`, {
-    method: "POST",
-  });
+  return request<DocumentIntakeRecord>(
+    `/document-intakes/${intakeId}/extract`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function createDocumentIntakeFromDocument(documentId: string) {
-  return request<DocumentIntakeRecord>(`/document-intakes/from-document/${documentId}`, {
-    method: "POST",
-  });
+  return request<DocumentIntakeRecord>(
+    `/document-intakes/from-document/${documentId}`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function reviewDocumentIntake(
@@ -1862,7 +2244,9 @@ export function listChargeRules(filters: {
     params.set("lease_id", filters.lease_id);
   }
   const query = params.toString();
-  return request<ChargeRuleRecord[]>(`/charge-rules${query ? `?${query}` : ""}`);
+  return request<ChargeRuleRecord[]>(
+    `/charge-rules${query ? `?${query}` : ""}`,
+  );
 }
 
 export function createChargeRule(payload: ChargeRulePayload) {
@@ -1967,13 +2351,26 @@ export function prepareInvoiceDraftDelivery(invoiceDraftId: string) {
 
 export function recordInvoiceDraftDelivery(
   invoiceDraftId: string,
-  payload: { method?: "manual"; sent_at?: string | null; notes?: string | null },
+  payload: {
+    method?: "manual";
+    sent_at?: string | null;
+    notes?: string | null;
+  },
 ) {
   return request<InvoiceDraftRecord>(
     `/invoice-drafts/${invoiceDraftId}/record-delivery`,
     {
       method: "POST",
       body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function sendInvoiceDraftDeliveryEmail(invoiceDraftId: string) {
+  return request<InvoiceDraftRecord>(
+    `/invoice-drafts/${invoiceDraftId}/send-delivery-email`,
+    {
+      method: "POST",
     },
   );
 }

@@ -28,6 +28,12 @@ from stewart.core.models import (
     Tenant,
     UserRole,
 )
+from stewart.core.settings import Settings, get_settings
+from stewart.integrations.communications import (
+    DeliveryResult,
+    InvoiceDeliveryEmail,
+    send_invoice_delivery_email,
+)
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.register import (
@@ -767,6 +773,141 @@ def _record_invoice_manual_delivery(
             "user_id": str(user.id),
             "method": payload.method,
             "recipient_email": draft.recipient_email,
+            "xero_synced": False,
+        }
+    )
+    metadata["delivery_state"] = delivery_state
+    metadata["delivery_email"] = delivery_email
+    metadata["delivery_receipts"] = receipts[:20]
+    metadata["delivery_history"] = history
+    return metadata
+
+
+def _invoice_pdf_document(
+    draft: InvoiceDraft,
+    metadata: dict[str, object],
+    session: Session,
+) -> StoredDocument | None:
+    artifact = metadata.get("pdf_artifact")
+    if not isinstance(artifact, dict):
+        return None
+    document_id = _uuid_from_metadata(artifact.get("document_id"))
+    if document_id is None:
+        return None
+    document = session.get(StoredDocument, document_id)
+    if (
+        document is None
+        or document.deleted_at is not None
+        or document.entity_id != draft.entity_id
+        or document.content_type != "application/pdf"
+    ):
+        return None
+    return document
+
+
+def _provider_invoice_delivery_invite(
+    draft: InvoiceDraft,
+    metadata: dict[str, object],
+    session: Session,
+    settings: Settings,
+) -> InvoiceDeliveryEmail:
+    pdf_document = _invoice_pdf_document(draft, metadata, session)
+    due_label = draft.due_date.isoformat() if draft.due_date else "the due date on the invoice"
+    preview_url = None
+    if settings.public_api_url:
+        preview_url = (
+            f"{settings.public_api_url.rstrip('/')}/api/v1/invoice-drafts/{draft.id}/preview"
+        )
+    return InvoiceDeliveryEmail(
+        invoice_draft_id=draft.id,
+        entity_id=draft.entity_id,
+        invoice_number=draft.invoice_number,
+        title=draft.title,
+        issuer_name=draft.issuer_name,
+        recipient_name=draft.recipient_name,
+        recipient_email=draft.recipient_email,
+        preview_url=preview_url,
+        total_label=_invoice_money(draft.total_cents, draft.currency),
+        due_label=due_label,
+        pdf_document_id=pdf_document.id if pdf_document is not None else None,
+        pdf_filename=pdf_document.filename if pdf_document is not None else None,
+        pdf_content=pdf_document.file_data if pdf_document is not None else None,
+        template_key=settings.invoice_email_template_key,
+        template_version=settings.invoice_email_template_version,
+    )
+
+
+def _record_invoice_provider_delivery(
+    draft: InvoiceDraft,
+    metadata: dict[str, object],
+    result: DeliveryResult,
+    user: CurrentUser,
+) -> dict[str, object]:
+    result_dict = result.to_dict()
+    status_value = str(result_dict.get("status") or "failed")
+    delivered = status_value in {"queued", "sent", "delivered", "opened"}
+    recorded_at = str(result_dict.get("attempted_at") or utcnow().isoformat())
+
+    delivery_state_value = metadata.get("delivery_state")
+    delivery_state = (
+        dict(cast(dict[str, object], delivery_state_value))
+        if isinstance(delivery_state_value, dict)
+        else {}
+    )
+    delivery_state.update(
+        {
+            "tenant_email_sent": delivered,
+            "tenant_email_sent_at": recorded_at if delivered else None,
+            "tenant_email_sent_by_user_id": str(user.id) if delivered else None,
+            "tenant_email_delivery_method": "sendgrid",
+            "tenant_email_provider_status": status_value,
+            "xero_synced": False,
+        }
+    )
+
+    delivery_email_value = metadata.get("delivery_email")
+    delivery_email = (
+        dict(cast(dict[str, object], delivery_email_value))
+        if isinstance(delivery_email_value, dict)
+        else {}
+    )
+    delivery_email["send"] = {
+        "status": status_value,
+        "provider": result_dict.get("provider") or "sendgrid",
+        "sent_at": recorded_at if delivered else None,
+        "sent_by_user_id": str(user.id),
+        "provider_message_id": result_dict.get("provider_message_id"),
+        "recipient_email": result_dict.get("recipient") or draft.recipient_email,
+        "error": result_dict.get("error"),
+        "xero_synced": False,
+    }
+
+    receipts_value = metadata.get("delivery_receipts")
+    receipts = list(cast(list[object], receipts_value)) if isinstance(receipts_value, list) else []
+    receipts.insert(
+        0,
+        {
+            "received_at": recorded_at,
+            "channel": "email",
+            "status": status_value,
+            "provider": result_dict.get("provider") or "sendgrid",
+            "recipient_email": result_dict.get("recipient") or draft.recipient_email,
+            "provider_message_id": result_dict.get("provider_message_id"),
+            "error": result_dict.get("error"),
+        },
+    )
+    history_value = metadata.get("delivery_history")
+    history = list(cast(list[object], history_value)) if isinstance(history_value, list) else []
+    history.append(
+        {
+            "event": "provider_delivery_attempted",
+            "at": recorded_at,
+            "user_id": str(user.id),
+            "provider": result_dict.get("provider") or "sendgrid",
+            "status": status_value,
+            "recipient_email": result_dict.get("recipient") or draft.recipient_email,
+            "provider_message_id": result_dict.get("provider_message_id"),
+            "error": result_dict.get("error"),
             "xero_synced": False,
         }
     )
@@ -1565,6 +1706,78 @@ def record_invoice_draft_delivery(
         tool_name="invoice.manual_delivery",
         tool_input=payload.model_dump(mode="json", exclude_unset=True),
         tool_output_summary="Recorded tenant invoice delivery manually; no Xero sync was run.",
+    )
+    session.commit()
+    session.refresh(draft)
+    return draft
+
+
+@router.post(
+    "/invoice-drafts/{invoice_draft_id}/send-delivery-email",
+    response_model=InvoiceDraftRead,
+)
+def send_invoice_draft_delivery_email(
+    invoice_draft_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> InvoiceDraft:
+    draft = _invoice_draft_for_access(invoice_draft_id, user, session, WRITE_ROLES)
+    metadata = dict(draft.invoice_metadata or {})
+    if draft.status != InvoiceDraftStatus.approved:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Approve the invoice draft before sending tenant email.",
+        )
+    if not _invoice_delivery_ready(metadata):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Prepare invoice delivery before sending tenant email.",
+        )
+    if _invoice_pdf_document(draft, metadata, session) is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Invoice PDF artifact missing. Prepare invoice delivery again.",
+        )
+    if not draft.recipient_email:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tenant billing email missing.",
+        )
+
+    delivery_email = metadata.get("delivery_email")
+    send_state = delivery_email.get("send") if isinstance(delivery_email, dict) else None
+    if (
+        isinstance(send_state, dict)
+        and send_state.get("provider") == "sendgrid"
+        and send_state.get("status") in {"queued", "sent", "delivered", "opened"}
+    ):
+        return draft
+
+    result = send_invoice_delivery_email(
+        _provider_invoice_delivery_invite(draft, metadata, session, settings),
+        settings,
+    )
+    draft.invoice_metadata = _record_invoice_provider_delivery(draft, metadata, result, user)
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=draft.entity_id,
+        action="deliver",
+        target_table="invoice_draft",
+        target_id=draft.id,
+        tool_name="sendgrid.invoice_delivery",
+        tool_input={
+            "invoice_draft_id": str(draft.id),
+            "recipient_email": draft.recipient_email,
+            "provider": result.provider,
+            "status": result.status,
+        },
+        tool_output_summary=(
+            f"Attempted provider-backed invoice email delivery via {result.provider}: "
+            f"{result.status}; no Xero sync was run."
+        ),
     )
     session.commit()
     session.refresh(draft)

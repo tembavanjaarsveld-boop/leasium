@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     sendgrid_from_email: str = ""
     sendgrid_from_name: str = "Leasium"
     sendgrid_mail_send_url: str = "https://api.sendgrid.com/v3/mail/send"
+    invoice_email_enabled: bool = True
+    invoice_email_template_key: str = "invoice_delivery"
+    invoice_email_template_version: str = "v1"
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_messaging_service_sid: str = ""

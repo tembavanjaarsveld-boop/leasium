@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from html import escape
@@ -76,6 +77,27 @@ class OperatorInviteEmail:
     email: str
     accept_url: str
     expires_at: datetime
+    template_key: str
+    template_version: str
+
+
+@dataclass(frozen=True)
+class InvoiceDeliveryEmail:
+    """Context needed to send an approved invoice email."""
+
+    invoice_draft_id: UUID
+    entity_id: UUID
+    invoice_number: str | None
+    title: str
+    issuer_name: str | None
+    recipient_name: str | None
+    recipient_email: str | None
+    preview_url: str | None
+    total_label: str
+    due_label: str
+    pdf_document_id: UUID | None
+    pdf_filename: str | None
+    pdf_content: bytes | None
     template_key: str
     template_version: str
 
@@ -443,6 +465,168 @@ def send_operator_invite_email(
         ],
         "categories": _categories("operator_invite", invite.template_key),
     }
+    try:
+        with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
+            response = client.post(
+                settings.sendgrid_mail_send_url,
+                headers={
+                    "Authorization": f"Bearer {settings.sendgrid_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if 200 <= response.status_code < 300:
+            return DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient=recipient,
+                provider_message_id=response.headers.get("x-message-id"),
+                metadata=metadata,
+            )
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=_sendgrid_error(response),
+            metadata=metadata,
+        )
+    except httpx.HTTPError as exc:
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=str(exc),
+            metadata=metadata,
+        )
+
+
+def _invoice_email_subject(invite: InvoiceDeliveryEmail) -> str:
+    reference = invite.invoice_number or invite.title
+    return f"Invoice {reference} from {invite.issuer_name or 'Leasium'}"
+
+
+def _invoice_email_text(invite: InvoiceDeliveryEmail) -> str:
+    greeting = f"Hi {invite.recipient_name}," if invite.recipient_name else "Hello,"
+    preview = f"\nPreview: {invite.preview_url}" if invite.preview_url else ""
+    return (
+        f"{greeting}\n\n"
+        f"An invoice has been prepared for {invite.total_label}. "
+        f"It is due {invite.due_label}.\n\n"
+        f"Reference: {invite.invoice_number or invite.title}{preview}\n\n"
+        "Please reply to this email if anything looks incorrect.\n\n"
+        "Regards,\n"
+        f"{invite.issuer_name or 'Leasium'}"
+    )
+
+
+def _invoice_email_html(invite: InvoiceDeliveryEmail) -> str:
+    preview_link = (
+        f'<p><a href="{escape(invite.preview_url)}">View invoice preview</a></p>'
+        if invite.preview_url
+        else ""
+    )
+    greeting = (
+        f"Hi {escape(invite.recipient_name)},"
+        if invite.recipient_name
+        else "Hello,"
+    )
+    return f"""
+    <div style="font-family:Inter,Arial,sans-serif;line-height:1.55;color:#172033">
+      <p>{greeting}</p>
+      <p>An invoice has been prepared for <strong>{escape(invite.total_label)}</strong>.</p>
+      <p>Due date: <strong>{escape(invite.due_label)}</strong></p>
+      <p>Reference: {escape(invite.invoice_number or invite.title)}</p>
+      {preview_link}
+      <p>Please reply to this email if anything looks incorrect.</p>
+      <p>Regards,<br>{escape(invite.issuer_name or 'Leasium')}</p>
+    </div>
+    """
+
+
+def send_invoice_delivery_email(
+    invite: InvoiceDeliveryEmail,
+    settings: Settings,
+) -> DeliveryResult:
+    """Send an approved invoice email where provider credentials allow."""
+
+    recipient = _clean(invite.recipient_email)
+    metadata: dict[str, str | None] = {
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "invoice_draft_id": str(invite.invoice_draft_id),
+        "entity_id": str(invite.entity_id),
+        "invoice_number": invite.invoice_number,
+        "subject": _invoice_email_subject(invite),
+        "pdf_document_id": str(invite.pdf_document_id) if invite.pdf_document_id else None,
+        "pdf_filename": invite.pdf_filename,
+    }
+    if not settings.invoice_email_enabled:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="Invoice email disabled.",
+            metadata=metadata,
+        )
+    if recipient is None:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            error="No invoice email recipient.",
+            metadata=metadata,
+        )
+    if not settings.sendgrid_api_key or not settings.sendgrid_from_email:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="SendGrid is not configured.",
+            metadata=metadata,
+        )
+
+    payload = {
+        "personalizations": [
+            {
+                "to": [
+                    {
+                        "email": recipient,
+                        **({"name": invite.recipient_name} if invite.recipient_name else {}),
+                    }
+                ],
+                "subject": _invoice_email_subject(invite),
+                "custom_args": {
+                    "invoice_draft_id": str(invite.invoice_draft_id),
+                    "entity_id": str(invite.entity_id),
+                    "template_key": invite.template_key,
+                    "template_version": invite.template_version,
+                },
+            }
+        ],
+        "from": {
+            "email": settings.sendgrid_from_email,
+            "name": settings.sendgrid_from_name,
+        },
+        "content": [
+            {"type": "text/plain", "value": _invoice_email_text(invite)},
+            {"type": "text/html", "value": _invoice_email_html(invite)},
+        ],
+        "categories": _categories("invoice_delivery", invite.template_key),
+    }
+    if invite.pdf_filename and invite.pdf_content:
+        payload["attachments"] = [
+            {
+                "content": base64.b64encode(invite.pdf_content).decode("ascii"),
+                "type": "application/pdf",
+                "filename": invite.pdf_filename,
+                "disposition": "attachment",
+            }
+        ]
     try:
         with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
             response = client.post(

@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production feature deployment in this handover: `dfb4d63 Add shareable Insights snapshots`, Vercel deployment `dpl_7K8jpA5HTKATiRn9pTpT36JPxndG`, state `READY`; Render API health is live and exposes the snapshot routes.
+- Latest confirmed production feature deployment before the overnight build bundle: `dfb4d63 Add shareable Insights snapshots`, Vercel deployment `dpl_7K8jpA5HTKATiRn9pTpT36JPxndG`, state `READY`; Render API health is live and exposes the snapshot routes.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -168,8 +168,23 @@ Last updated: 2026-05-20
   - This is design-facing and still needs Remba review.
 - Smart Intake applied outcomes now read backend apply results for billing draft, pending lease, and draft charge counts.
   - This is design-facing and still needs Remba review.
+- Overnight build bundle is implemented and documented in `docs/product-roadmap.md`.
+  - Spreadsheet portfolio import moved from backend dry-run to Smart Intake review/apply with explicit approved action IDs, source workbook/sheet/row provenance, confidence/source hints, and before/after metadata where feasible.
+  - Portfolio QA is now surfaced from Insights as the cleanup IA entry point, still pending Remba review.
+  - Xero now supports explicit local posting approval, idempotent provider-backed draft invoice creation, and payment reconciliation preview/apply into local invoice metadata.
+  - Approved invoice drafts can send prepared invoice emails through SendGrid when configured, attach stored PDF artifacts, and record provider delivery status while keeping Xero sync separate.
+  - Tenant portal self-service v1 is available at `/tenant-portal/[token]` for token-scoped onboarding status, documents, approved invoices/payment summary, compliance uploads, and notification preferences. True tenant identity-provider auth is still future work.
+  - Maintenance work orders and arrears/credit-control cases now have migration-backed APIs and audit-friendly metadata. Operator UI workspaces are next.
+  - New migration: `20260520_0018_maintenance_arrears_foundations`.
 ## Verification
 
+- Overnight build bundle checks passed:
+  - `.venv/bin/python -m pytest tests/integration/test_register_import_api.py tests/integration/test_tenant_portal_api.py tests/integration/test_maintenance_arrears_api.py tests/integration/test_xero_api.py tests/integration/test_document_intake_api.py::test_document_intake_apply_invoice_prepares_billing_work -q` (`23 passed`)
+  - `.venv/bin/ruff check` on the changed backend routers/schemas/domain/integration/tests (`all checks passed`)
+  - `./node_modules/.bin/tsc --noEmit`
+  - `.venv/bin/python -m pytest -q` (`90 passed`, `1 skipped`; migration smoke skipped because `TEST_DATABASE_URL` is not configured)
+  - `./node_modules/.bin/eslint src --ext .ts,.tsx`
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
 - Insights overview focused checks passed:
   - Dashboard/Insights loading-state polish checks passed:
     - `./node_modules/.bin/eslint src/components/dashboard.tsx src/app/insights/page.tsx`
@@ -351,21 +366,22 @@ Last updated: 2026-05-20
   - After redeploy, verify `/properties` redirects to `/access`, while `/setup`, `/accept-invite`, and `/onboarding/<token>` remain public.
   - To enforce operator login, set both `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` on the Vercel web app and redeploy.
   - After the Clerk redeploy, verify `/settings` redirects to `/sign-in`, while `/setup`, `/accept-invite`, `/sign-in`, `/sign-up`, `/access`, and `/onboarding/<token>` remain public.
-- Neon production is confirmed migrated through `20260520_0016` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
+- Neon production was previously confirmed migrated through `20260520_0016` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
   - Verified earlier: `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
   - Verified now: the live public snapshot endpoint can query `insights_snapshot` and returns a clean not-found response for an invalid token.
+- The overnight bundle adds `20260520_0018_maintenance_arrears_foundations`. Render's documented start command runs `.venv/bin/alembic upgrade head` before the API starts, so production should apply this migration during backend deploy. If Render does not pick up the deploy, run the same Alembic command against the hosted API environment before using maintenance or arrears endpoints.
 - Xero readiness v1 uses existing columns only and does not need a new database migration.
 - Twilio/SendGrid delivery code exists, but provider-side webhook/template setup still needs to be configured outside the codebase.
 - Public enrichment requires `OPENAI_API_KEY` on the API service. Without it, preview returns a clear 503 and does not mutate records.
 
 ## Recommended Next Tickets
 
-1. Enable the temporary Vercel password gate and verify production access behavior.
-2. Complete provider-backed operator login: configure Clerk/SendGrid production env vars, run `/setup` on a clean database or send the first real owner/admin invite, verify acceptance, and switch `AUTH_MODE` to clerk.
-3. Complete provider-backed Xero OAuth/contact sync, invoice posting approvals, and payment reconciliation on top of the readiness queue.
-4. Add provider-backed invoice email delivery and Xero posting approvals on top of internal invoice drafts.
-5. Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
-6. Start maintenance work orders and arrears/credit-control queues.
+1. Verify the overnight production deploy and confirm Neon has advanced through `20260520_0018`.
+2. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, and the future maintenance/arrears operator surfaces.
+3. Add operator UI workspaces for maintenance work orders and arrears/credit control on top of the new APIs.
+4. Continue tenant portal from token-scoped v1 to authenticated tenant accounts, maintenance requests, notification preference verification, and safer invite/link lifecycle.
+5. Continue Xero from draft invoice creation/reconciliation metadata into operator UI approvals, webhook/provider status receipts, and full accounting reconciliation guardrails.
+6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 
 ## Resume Checklist
 

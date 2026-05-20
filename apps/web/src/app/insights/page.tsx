@@ -16,6 +16,7 @@ import {
   Share2,
   ShieldCheck,
   Sparkles,
+  TableProperties,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
@@ -502,6 +503,13 @@ function InsightsWorkspace() {
                 <Sparkles size={15} />
                 Smart Intake
               </Link>
+              <Link
+                href="/portfolio-qa"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+              >
+                <TableProperties size={15} />
+                Portfolio QA
+              </Link>
               <SecondaryButton
                 type="button"
                 onClick={() => void overviewQuery.refetch()}
@@ -899,6 +907,7 @@ function InsightsWorkspace() {
               <div className="flex flex-wrap gap-2 p-4">
                 {[
                   ["Smart Intake", "/intake"],
+                  ["Portfolio QA", "/portfolio-qa"],
                   ["Tasks", "/tasks"],
                   ["Billing Readiness", "/billing-readiness"],
                   ["Properties", "/properties"],
