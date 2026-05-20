@@ -8,7 +8,7 @@ Last updated: 2026-05-21
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed app-code production deployment: `78982f0 Add Xero payment reconciliation review`, Vercel deployment `dpl_BaZXUcz1vjycWz2R2T1wNbUTxZS9`, state `READY`; Render API health is live and OpenAPI includes the Xero payment reconciliation preview/apply endpoints, invoice SendGrid webhook, `XeroProviderStatusReceiptRead`, `provider_receipts`, and `next_action`. `/settings` redirects signed-out operators to `/sign-in`, and `/tenant-portal/account` returns `200`.
+- Latest confirmed app-code production deployment: `5b378da Add billing provider history filters`, Vercel deployment `dpl_4Cvxcuty3TyzY4ywownqHhjKw7Sp`, state `READY`; Render API health is live and OpenAPI includes the Xero payment reconciliation preview/apply endpoints, invoice SendGrid webhook, `XeroProviderStatusReceiptRead`, `provider_receipts`, and `next_action`. `/billing-readiness` redirects signed-out operators to `/sign-in`, and `/tenant-portal/account` returns `200`.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
