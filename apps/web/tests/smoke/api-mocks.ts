@@ -8,6 +8,15 @@ type JsonBody =
   | JsonBody[]
   | { [key: string]: JsonBody };
 
+type XeroContactMapping = {
+  target_type: "tenant" | "property";
+  target_id: string;
+  target_name: string;
+  xero_contact_id: string;
+  xero_contact_name: string;
+  xero_email: string | null;
+};
+
 const entityId = "entity-1";
 const propertyId = "property-1";
 const tenantId = "tenant-1";
@@ -480,6 +489,7 @@ export async function mockLeasiumApi(page: Page) {
   let xeroProviderConnected = false;
   let chargeAccountCode: string | null = "401";
   let chargeTaxType: string | null = null;
+  let appliedContactMappings: XeroContactMapping[] = [];
   let snapshotCount = 0;
   let insightSnapshots: JsonBody[] = [];
 
@@ -593,7 +603,7 @@ export async function mockLeasiumApi(page: Page) {
       },
       issues,
       guardrails: [
-        "Xero provider actions only preview data until an explicit reviewed apply exists.",
+        "Xero contact apply only saves reviewed local mappings; it does not mutate Xero.",
         "Invoice posting remains blocked until a future explicit approval action exists.",
         "Payment reconciliation is manual status tracking until bank/Xero feeds are connected.",
       ],
@@ -814,9 +824,12 @@ export async function mockLeasiumApi(page: Page) {
     }
 
     if (method === "GET" && path === "/xero/oauth/start") {
+      xeroTenantId = xeroTenantId ?? "tenant-smoke";
+      xeroConnectedAt = xeroConnectedAt ?? "2026-05-19T10:00:00.000Z";
+      xeroProviderConnected = true;
       await fulfillJson(route, {
         configured: true,
-        authorization_url: "https://login.xero.com/identity/connect/authorize?state=mock",
+        authorization_url: null,
         missing_config: [],
         redirect_uri: "http://localhost:8000/api/v1/xero/oauth/callback",
         scopes: [
@@ -938,6 +951,10 @@ export async function mockLeasiumApi(page: Page) {
       xeroTenantId = xeroTenantId ?? "tenant-smoke";
       xeroConnectedAt = xeroConnectedAt ?? "2026-05-19T10:00:00.000Z";
       xeroProviderConnected = true;
+      const brightCafeMapping = appliedContactMappings.find(
+        (mapping) =>
+          mapping.target_type === "tenant" && mapping.target_id === tenantId,
+      );
       await fulfillJson(route, {
         entity_id: entityId,
         xero_tenant_id: xeroTenantId,
@@ -948,7 +965,7 @@ export async function mockLeasiumApi(page: Page) {
             target_type: "tenant",
             target_id: tenantId,
             target_name: "Bright Cafe",
-            current_xero_contact_id: null,
+            current_xero_contact_id: brightCafeMapping?.xero_contact_id ?? null,
             xero_contact_id: "contact-bright-cafe",
             xero_contact_name: "Bright Cafe",
             xero_email: "accounts@bright.example",
@@ -961,6 +978,77 @@ export async function mockLeasiumApi(page: Page) {
           "This is a preview only; tenant and property Xero contact IDs were not changed.",
           "Invoice posting and payment reconciliation are still blocked behind future approvals.",
         ],
+      });
+      return;
+    }
+
+    if (method === "POST" && path === `/xero/contacts/apply-preview/${entityId}`) {
+      const payload = request.postDataJSON() as {
+        mappings?: Partial<XeroContactMapping>[];
+      };
+      const appliedAt = "2026-05-19T10:10:00.000Z";
+      const appliedMappings: XeroContactMapping[] = [];
+      const skippedMappings: JsonBody[] = [];
+
+      for (const mapping of payload.mappings ?? []) {
+        if (
+          (mapping.target_type === "tenant" || mapping.target_type === "property") &&
+          mapping.target_id &&
+          mapping.xero_contact_id
+        ) {
+          const appliedMapping: XeroContactMapping = {
+            target_type: mapping.target_type,
+            target_id: mapping.target_id,
+            target_name: mapping.target_name ?? mapping.target_id,
+            xero_contact_id: mapping.xero_contact_id,
+            xero_contact_name: mapping.xero_contact_name ?? mapping.xero_contact_id,
+            xero_email: mapping.xero_email ?? null,
+          };
+          appliedMappings.push(appliedMapping);
+          continue;
+        }
+        skippedMappings.push({
+          target_type:
+            mapping.target_type === "tenant" || mapping.target_type === "property"
+              ? mapping.target_type
+              : "tenant",
+          target_id: mapping.target_id ?? "unknown",
+          target_name: mapping.target_name ?? "Unknown target",
+          previous_xero_contact_id: null,
+          xero_contact_id: mapping.xero_contact_id ?? "unknown",
+          xero_contact_name: mapping.xero_contact_name ?? "Unknown contact",
+          status: "skipped",
+          reason: "Mapping needs a tenant/property target and Xero contact ID.",
+        });
+      }
+
+      appliedContactMappings = [
+        ...appliedMappings,
+        ...appliedContactMappings.filter(
+          (existing) =>
+            !appliedMappings.some(
+              (mapping) =>
+                mapping.target_type === existing.target_type &&
+                mapping.target_id === existing.target_id,
+            ),
+        ),
+      ];
+
+      await fulfillJson(route, {
+        entity_id: entityId,
+        applied_mappings: appliedMappings.map((mapping) => ({
+          ...mapping,
+          previous_xero_contact_id: null,
+          status: "applied",
+          reason: "Reviewed mapping was saved locally.",
+        })),
+        skipped_mappings: skippedMappings,
+        guardrails: [
+          "Only reviewed tenant/property contact IDs were updated locally.",
+          "No invoice posting, tenant email, or payment reconciliation was run.",
+          "Provider contacts can be re-previewed before future approval actions.",
+        ],
+        applied_at: appliedAt,
       });
       return;
     }

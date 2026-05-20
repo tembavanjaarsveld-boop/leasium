@@ -3,7 +3,7 @@
 import { UserButton, useUser } from "@clerk/nextjs";
 import { Command, Search, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { LeasiumMark } from "@/components/brand";
@@ -77,6 +77,7 @@ function OperatorUserControl() {
 
 export function AppHeader({ children }: { children?: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
   const [commandOpen, setCommandOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -188,7 +189,11 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                 <Link
                   key={`${action.meta}-${action.label}`}
                   href={action.href}
-                  onClick={() => setCommandOpen(false)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setCommandOpen(false);
+                    router.push(action.href);
+                  }}
                   className="flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-sm transition hover:bg-muted"
                 >
                   <span className="font-semibold text-foreground">{action.label}</span>

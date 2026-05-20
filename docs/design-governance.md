@@ -167,7 +167,11 @@ Status: pending Remba review. Settings now includes a Xero readiness workspace f
 
 ## Xero Provider Connection Surface
 
-Status: pending Remba review. Settings now extends the Xero workspace with provider OAuth connect and contact sync preview controls. Keep the copy careful: provider-backed contact pulls can suggest tenant/property matches, but local mappings are not applied yet, invoices are not posted, tenant emails are not sent, and payment reconciliation is not automatic.
+Status: pending Remba review. Settings now extends the Xero workspace with provider OAuth connect, contact sync preview controls, and reviewed local contact mapping apply. Keep the copy careful: provider-backed contact pulls can suggest tenant/property matches, reviewed applies only update local contact mappings, invoices are not posted, tenant emails are not sent, and payment reconciliation is not automatic.
+
+## Xero Contact Mapping Apply
+
+Status: pending Remba review. Reviewed local Xero contact mapping apply is built behind an explicit apply-preview contract that returns applied mappings, skipped mappings, guardrails, and applied time. Keep the surface review-first and compact: operators should see which tenant/property mapping will change locally, why anything was skipped, and that no invoice posting, tenant email, or payment reconciliation is triggered.
 
 ## Operator Security And Settings Arena
 

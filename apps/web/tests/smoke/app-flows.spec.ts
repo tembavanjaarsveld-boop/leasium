@@ -132,8 +132,28 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.getByRole("button", { name: "Save status" }).click();
   await expect(page.getByText("Connected", { exact: true }).first()).toBeVisible();
 
+  await page.getByRole("button", { name: "Connect with Xero" }).click();
+  await expect(page.getByText("Provider connected").first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Preview contacts" }).click();
+  await expect(
+    page.getByText("Xero contact preview", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Contacts fetched")).toBeVisible();
+  await expect(page.getByText("Bright Cafe").first()).toBeVisible();
+  await expect(
+    page.getByText("Suggested Xero contact: Bright Cafe"),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Apply selected mappings" }).click();
+  await expect(page.getByText("1 applied")).toBeVisible();
+  await expect(page.getByText("0 skipped")).toBeVisible();
+  await expect(
+    page.getByText("No invoice posting, tenant email, or payment reconciliation"),
+  ).toBeVisible();
+
   await expect(page.getByText("Base Rent tax type missing")).toBeVisible();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("button", { exact: true, name: "Apply" }).click();
   await expect(
     page.getByText("Chart and tax mappings look ready"),
   ).toBeVisible();

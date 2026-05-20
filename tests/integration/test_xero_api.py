@@ -8,7 +8,14 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.models import AuditAction, Entity, Tenant, XeroConnection
+from stewart.core.models import (
+    AuditAction,
+    Entity,
+    Property,
+    PropertyType,
+    Tenant,
+    XeroConnection,
+)
 from stewart.core.settings import Settings, get_settings
 from stewart.integrations.xero import decrypt_xero_token
 
@@ -329,4 +336,160 @@ def test_xero_contact_sync_preview_suggests_matches_without_applying(
     assert connection.connection_metadata["last_contact_sync"]["mode"] == "preview_only"
     assert decrypt_xero_token(connection.refresh_token_ciphertext, settings) == (
         "raw-refresh-token-2"
+    )
+
+
+def test_xero_contact_mapping_apply_updates_reviewed_local_records(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    tenant = Tenant(entity_id=UUID(entity_id), legal_name="Bright Cafe Pty Ltd")
+    prop = Property(
+        entity_id=UUID(entity_id),
+        name="Queen Street Retail",
+        street_address="100 Queen Street",
+        property_type=PropertyType.commercial_retail,
+        ownership_structure="trust",
+        billing_email="owner@queen.example",
+    )
+    session.add_all([tenant, prop])
+    session.commit()
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    response = client.post(
+        f"/api/v1/xero/contacts/apply-preview/{entity_id}",
+        json={
+            "mappings": [
+                {
+                    "target_type": "tenant",
+                    "target_id": str(tenant.id),
+                    "xero_contact_id": "xero-contact-bright",
+                    "xero_contact_name": "Bright Cafe Pty Ltd",
+                    "xero_email": "accounts@bright.example",
+                    "match_reason": "billing/contact email matched",
+                    "confidence": 0.94,
+                },
+                {
+                    "target_type": "property",
+                    "target_id": str(prop.id),
+                    "xero_contact_id": "xero-owner-queen",
+                    "xero_contact_name": "Queen Street Property Trust",
+                    "xero_email": "owner@queen.example",
+                    "match_reason": "billing email matched",
+                    "confidence": 0.94,
+                },
+            ],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["applied_mappings"]) == 2
+    assert body["skipped_mappings"] == []
+    assert "No Xero contacts" in body["guardrails"][1]
+
+    session.refresh(tenant)
+    session.refresh(prop)
+    assert tenant.tenant_metadata["xero_contact_id"] == "xero-contact-bright"
+    assert tenant.tenant_metadata["xero_contact_mapping"]["source"] == "xero_contact_preview"
+    assert prop.xero_contact_id == "xero-owner-queen"
+    assert prop.property_metadata["xero_contact_mapping"]["xero_contact_id"] == "xero-owner-queen"
+
+    connection = session.scalar(
+        select(XeroConnection).where(XeroConnection.entity_id == UUID(entity_id))
+    )
+    assert connection is not None
+    assert connection.connection_metadata["last_contact_apply"]["applied_mappings"] == 2
+    assert connection.connection_metadata["last_contact_apply"]["mode"] == "local_mapping_apply"
+    entity = session.get(Entity, UUID(entity_id))
+    assert entity is not None
+    assert entity.xero_last_sync_at is not None
+
+    status_response = client.get(f"/api/v1/xero/status?entity_id={entity_id}")
+    assert status_response.status_code == 200
+    issue_ids = {issue["id"] for issue in status_response.json()["issues"]}
+    assert f"tenant-contact-{tenant.id}" not in issue_ids
+    assert f"property-contact-{prop.id}" not in issue_ids
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "xero_connection",
+            AuditAction.tool_name == "xero.contact_mapping_apply",
+        )
+    )
+    assert audit is not None
+    assert "no Xero contacts, invoices, or payments were mutated" in audit.tool_output_summary
+
+
+def test_xero_contact_mapping_apply_skips_conflicting_existing_mapping(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    tenant = Tenant(
+        entity_id=UUID(entity_id),
+        legal_name="Bright Cafe Pty Ltd",
+        tenant_metadata={"xero_contact_id": "existing-contact"},
+    )
+    session.add(tenant)
+    session.commit()
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    response = client.post(
+        f"/api/v1/xero/contacts/apply-preview/{entity_id}",
+        json={
+            "mappings": [
+                {
+                    "target_type": "tenant",
+                    "target_id": str(tenant.id),
+                    "xero_contact_id": "different-contact",
+                    "xero_contact_name": "Different Contact",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["applied_mappings"] == []
+    assert body["skipped_mappings"][0]["previous_xero_contact_id"] == "existing-contact"
+    assert "different Xero contact" in body["skipped_mappings"][0]["reason"]
+
+    session.refresh(tenant)
+    assert tenant.tenant_metadata["xero_contact_id"] == "existing-contact"
+
+
+def test_xero_contact_mapping_apply_requires_provider_connection(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    response = client.post(
+        f"/api/v1/xero/contacts/apply-preview/{entity_id}",
+        json={
+            "mappings": [
+                {
+                    "target_type": "tenant",
+                    "target_id": entity_id,
+                    "xero_contact_id": "xero-contact-bright",
+                    "xero_contact_name": "Bright Cafe Pty Ltd",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Connect Xero through OAuth before applying reviewed contact mappings."
     )

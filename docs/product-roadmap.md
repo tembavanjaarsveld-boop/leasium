@@ -62,12 +62,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Production operator-login rollout: the first operator invite/account has been linked, Vercel protected routes redirect signed-out users to Clerk sign-in, tenant onboarding remains public, and the Render API now enforces Clerk bearer tokens for protected workspace APIs.
 - [x] Xero readiness and mapping v1: Settings now surfaces entity connection state, contact readiness, chart/account mapping gaps, tax mapping gaps, approved invoice sync queues, and payment reconciliation counts, with suggested charge-rule mappings and no live Xero posting.
 - [x] Xero provider connection foundation v1: Settings can start a Xero OAuth connection, the API stores encrypted provider tokens in a per-entity connection record, records the selected Xero organisation, and can run a provider-backed contact sync preview that suggests tenant/property matches without applying mappings, posting invoices, or reconciling payments.
+- [x] Reviewed local Xero contact mapping apply: provider contact preview suggestions can now be applied locally after review through an explicit apply-preview contract, with skipped mappings and no invoice posting, tenant email, or payment reconciliation side effects. Pending Remba review.
 - [x] Insights overview v1: the Insights workspace now has a read-only backend overview for portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots, with no record mutation, invoice posting, or Xero sync.
 - [x] Shareable Insights snapshots v1: operators can freeze owner, finance, and lease-event snapshots from the live Insights overview into revocable public links with hashed tokens, expiry, public read-only rendering, and no live portfolio mutation.
 
 ## Next Build Order
 
-- [ ] Continue provider-backed Xero from connection/contact-preview into reviewed local contact mapping apply, account/tax validation, invoice posting approvals, and payment reconciliation on top of the readiness queue.
+- [ ] Continue provider-backed Xero from reviewed local contact mapping apply into account/tax validation, invoice posting approvals, and payment reconciliation on top of the readiness queue.
 - [ ] Add provider-backed invoice email delivery and Xero posting approvals on top of the internal invoice draft/PDF/payment workflow.
 - [ ] Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
 - [ ] Add maintenance work orders with tenant requests, photos, priorities, contractor assignment, approvals, invoices, and status tracking.

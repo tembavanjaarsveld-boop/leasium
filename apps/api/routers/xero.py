@@ -52,6 +52,10 @@ from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get
 from apps.api.schemas.xero import (
     XeroConnectionStatusRead,
     XeroConnectionUpdate,
+    XeroContactMappingApplyItem,
+    XeroContactMappingApplyRead,
+    XeroContactMappingApplyRequest,
+    XeroContactMappingApplyResultRead,
     XeroContactMatchRead,
     XeroContactSyncPreviewRead,
     XeroInvoiceSyncSummaryRead,
@@ -446,6 +450,47 @@ def _match_xero_contacts(
     return matches[:50]
 
 
+def _contact_mapping_metadata(
+    mapping: XeroContactMappingApplyItem,
+    user: CurrentUser,
+    applied_at: Any,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "source": "xero_contact_preview",
+        "xero_contact_id": mapping.xero_contact_id.strip(),
+        "xero_contact_name": mapping.xero_contact_name.strip(),
+        "applied_at": applied_at.isoformat(),
+        "applied_by_user_id": str(user.id),
+    }
+    if mapping.xero_email:
+        metadata["xero_email"] = mapping.xero_email.strip()
+    if mapping.match_reason:
+        metadata["match_reason"] = mapping.match_reason.strip()
+    if mapping.confidence is not None:
+        metadata["confidence"] = mapping.confidence
+    return metadata
+
+
+def _contact_mapping_result(
+    mapping: XeroContactMappingApplyItem,
+    *,
+    target_name: str,
+    previous_xero_contact_id: str | None,
+    status_label: Literal["applied", "skipped"],
+    reason: str,
+) -> XeroContactMappingApplyResultRead:
+    return XeroContactMappingApplyResultRead(
+        target_type=mapping.target_type,
+        target_id=mapping.target_id,
+        target_name=target_name,
+        previous_xero_contact_id=previous_xero_contact_id,
+        xero_contact_id=mapping.xero_contact_id.strip(),
+        xero_contact_name=mapping.xero_contact_name.strip(),
+        status=status_label,
+        reason=reason,
+    )
+
+
 @router.get("/oauth/start", response_model=XeroOAuthStartRead)
 def start_xero_oauth(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -650,6 +695,211 @@ def preview_xero_contact_sync(
         guardrails=[
             "This is a preview only; tenant and property Xero contact IDs were not changed.",
             "Invoice posting and payment reconciliation are still blocked behind future approvals.",
+        ],
+    )
+
+
+@router.post("/contacts/apply-preview/{entity_id}", response_model=XeroContactMappingApplyRead)
+def apply_xero_contact_mappings(
+    entity_id: UUID,
+    payload: XeroContactMappingApplyRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],  # noqa: ARG001
+) -> XeroContactMappingApplyRead:
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+    provider_connection = _active_xero_connection(session, entity.id)
+    if provider_connection is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Connect Xero through OAuth before applying reviewed contact mappings.",
+        )
+
+    applied_at = utcnow()
+    applied: list[XeroContactMappingApplyResultRead] = []
+    skipped: list[XeroContactMappingApplyResultRead] = []
+    seen_targets: set[tuple[str, UUID]] = set()
+
+    for mapping in payload.mappings:
+        target_key = (mapping.target_type, mapping.target_id)
+        xero_contact_id = mapping.xero_contact_id.strip()
+        xero_contact_name = mapping.xero_contact_name.strip()
+        if target_key in seen_targets:
+            skipped.append(
+                _contact_mapping_result(
+                    mapping,
+                    target_name=xero_contact_name or "Duplicate target",
+                    previous_xero_contact_id=None,
+                    status_label="skipped",
+                    reason="Duplicate reviewed mapping for this target was ignored.",
+                )
+            )
+            continue
+        seen_targets.add(target_key)
+        if not xero_contact_id or not xero_contact_name:
+            skipped.append(
+                _contact_mapping_result(
+                    mapping,
+                    target_name=xero_contact_name or "Xero contact",
+                    previous_xero_contact_id=None,
+                    status_label="skipped",
+                    reason="Xero contact ID and name are required.",
+                )
+            )
+            continue
+
+        if mapping.target_type == "tenant":
+            tenant = session.get(Tenant, mapping.target_id)
+            if tenant is None or tenant.deleted_at is not None or tenant.entity_id != entity.id:
+                skipped.append(
+                    _contact_mapping_result(
+                        mapping,
+                        target_name="Unknown tenant",
+                        previous_xero_contact_id=None,
+                        status_label="skipped",
+                        reason="Tenant was not found in this entity.",
+                    )
+                )
+                continue
+
+            metadata = dict(tenant.tenant_metadata or {})
+            current_value = metadata.get("xero_contact_id")
+            current_contact_id = (
+                current_value.strip() if isinstance(current_value, str) and current_value else None
+            )
+            tenant_name = _tenant_name(tenant) or tenant.legal_name
+            if current_contact_id and current_contact_id != xero_contact_id:
+                skipped.append(
+                    _contact_mapping_result(
+                        mapping,
+                        target_name=tenant_name,
+                        previous_xero_contact_id=current_contact_id,
+                        status_label="skipped",
+                        reason="Tenant already has a different Xero contact mapping.",
+                    )
+                )
+                continue
+            if current_contact_id == xero_contact_id:
+                skipped.append(
+                    _contact_mapping_result(
+                        mapping,
+                        target_name=tenant_name,
+                        previous_xero_contact_id=current_contact_id,
+                        status_label="skipped",
+                        reason="Tenant is already mapped to this Xero contact.",
+                    )
+                )
+                continue
+
+            metadata["xero_contact_id"] = xero_contact_id
+            metadata["xero_contact_mapping"] = _contact_mapping_metadata(mapping, user, applied_at)
+            tenant.tenant_metadata = metadata
+            applied.append(
+                _contact_mapping_result(
+                    mapping,
+                    target_name=tenant_name,
+                    previous_xero_contact_id=None,
+                    status_label="applied",
+                    reason="Reviewed tenant mapping was saved locally.",
+                )
+            )
+            continue
+
+        prop = session.get(Property, mapping.target_id)
+        if prop is None or prop.deleted_at is not None or prop.entity_id != entity.id:
+            skipped.append(
+                _contact_mapping_result(
+                    mapping,
+                    target_name="Unknown property",
+                    previous_xero_contact_id=None,
+                    status_label="skipped",
+                    reason="Property was not found in this entity.",
+                )
+            )
+            continue
+
+        current_contact_id = prop.xero_contact_id.strip() if prop.xero_contact_id else None
+        if current_contact_id and current_contact_id != xero_contact_id:
+            skipped.append(
+                _contact_mapping_result(
+                    mapping,
+                    target_name=prop.name,
+                    previous_xero_contact_id=current_contact_id,
+                    status_label="skipped",
+                    reason="Property already has a different Xero contact mapping.",
+                )
+            )
+            continue
+        if current_contact_id == xero_contact_id:
+            skipped.append(
+                _contact_mapping_result(
+                    mapping,
+                    target_name=prop.name,
+                    previous_xero_contact_id=current_contact_id,
+                    status_label="skipped",
+                    reason="Property is already mapped to this Xero contact.",
+                )
+            )
+            continue
+
+        prop.xero_contact_id = xero_contact_id
+        property_metadata = dict(prop.property_metadata or {})
+        property_metadata["xero_contact_mapping"] = _contact_mapping_metadata(
+            mapping,
+            user,
+            applied_at,
+        )
+        prop.property_metadata = property_metadata
+        applied.append(
+            _contact_mapping_result(
+                mapping,
+                target_name=prop.name,
+                previous_xero_contact_id=None,
+                status_label="applied",
+                reason="Reviewed property mapping was saved locally.",
+            )
+        )
+
+    connection_metadata = dict(provider_connection.connection_metadata or {})
+    connection_metadata["last_contact_apply"] = {
+        "applied_at": applied_at.isoformat(),
+        "requested_mappings": len(payload.mappings),
+        "applied_mappings": len(applied),
+        "skipped_mappings": len(skipped),
+        "mode": "local_mapping_apply",
+    }
+    provider_connection.connection_metadata = connection_metadata
+    provider_connection.updated_by_user_id = user.id
+    entity.xero_last_sync_at = applied_at
+
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="apply",
+        target_table="xero_connection",
+        target_id=provider_connection.id,
+        tool_name="xero.contact_mapping_apply",
+        tool_input={"entity_id": str(entity.id), "requested_mappings": len(payload.mappings)},
+        tool_output_summary=(
+            f"Applied {len(applied)} reviewed Xero contact mappings locally; "
+            f"skipped {len(skipped)}; no Xero contacts, invoices, or payments were mutated."
+        ),
+    )
+    session.commit()
+    return XeroContactMappingApplyRead(
+        entity_id=entity.id,
+        applied_mappings=applied,
+        skipped_mappings=skipped,
+        applied_at=applied_at,
+        guardrails=[
+            "Only selected reviewed tenant/property Xero contact IDs were saved locally.",
+            "No Xero contacts, invoices, payments, or accounting records were created or changed.",
+            "Existing conflicting mappings were skipped instead of overwritten.",
         ],
     )
 
@@ -898,7 +1148,7 @@ def xero_status(
         ),
         issues=issues[:50],
         guardrails=[
-            "Xero provider actions only preview data until an explicit reviewed apply exists.",
+            "Xero contact apply only saves reviewed local mappings; it does not mutate Xero.",
             "Invoice posting remains blocked until a future explicit approval action exists.",
             "Payment reconciliation is manual status tracking until bank/Xero feeds are connected.",
         ],

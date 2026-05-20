@@ -671,6 +671,35 @@ export type XeroContactSyncPreviewRecord = {
   guardrails: string[];
 };
 
+export type XeroContactApplyPreviewMappingPayload = {
+  target_type: "tenant" | "property";
+  target_id: string;
+  xero_contact_id: string;
+  xero_contact_name: string;
+  xero_email?: string | null;
+  confidence?: number | null;
+  match_reason?: string | null;
+};
+
+export type XeroContactApplyPreviewMappingResult = {
+  target_type: "tenant" | "property";
+  target_id: string;
+  target_name: string;
+  previous_xero_contact_id: string | null;
+  xero_contact_id: string;
+  xero_contact_name: string;
+  status: "applied" | "skipped";
+  reason: string;
+};
+
+export type XeroContactApplyPreviewRecord = {
+  entity_id: string;
+  applied_mappings: XeroContactApplyPreviewMappingResult[];
+  skipped_mappings: XeroContactApplyPreviewMappingResult[];
+  guardrails: string[];
+  applied_at: string;
+};
+
 export type InsightsEntityRecord = {
   id: string;
   name: string;
@@ -1181,6 +1210,19 @@ export function previewXeroContactSync(entityId: string) {
     `/xero/contacts/sync-preview/${entityId}`,
     {
       method: "POST",
+    },
+  );
+}
+
+export function applyXeroContactPreview(
+  entityId: string,
+  mappings: XeroContactApplyPreviewMappingPayload[],
+) {
+  return request<XeroContactApplyPreviewRecord>(
+    `/xero/contacts/apply-preview/${entityId}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ mappings }),
     },
   );
 }

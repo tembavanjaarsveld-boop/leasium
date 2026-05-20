@@ -36,6 +36,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  applyXeroContactPreview,
   createSecurityMember,
   getSecurityWorkspace,
   getXeroStatus,
@@ -46,6 +47,8 @@ import {
   updateSecurityMember,
   updateChargeRule,
   updateXeroConnection,
+  type XeroContactApplyPreviewRecord,
+  type XeroContactMatchRecord,
   type XeroContactSyncPreviewRecord,
   type SecurityMemberRecord,
   type SecurityRole,
@@ -122,6 +125,10 @@ function summaryLabel(summary: XeroReadinessSummaryRecord) {
 
 function roleLabel(role: SecurityRole) {
   return roleLabels[role] ?? role;
+}
+
+function xeroContactMatchKey(match: XeroContactMatchRecord) {
+  return `${match.target_type}:${match.target_id}:${match.xero_contact_id}`;
 }
 
 function roleForEntity(member: SecurityMemberRecord, entityId: string) {
@@ -226,6 +233,11 @@ function SettingsWorkspace() {
   const [xeroTenantId, setXeroTenantId] = useState("");
   const [xeroContactPreview, setXeroContactPreview] =
     useState<XeroContactSyncPreviewRecord | null>(null);
+  const [xeroContactApplyResult, setXeroContactApplyResult] =
+    useState<XeroContactApplyPreviewRecord | null>(null);
+  const [selectedXeroContactMatches, setSelectedXeroContactMatches] = useState<
+    Record<string, boolean>
+  >({});
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteDisplayName, setInviteDisplayName] = useState("");
   const [inviteRole, setInviteRole] = useState<SecurityRole>("viewer");
@@ -265,6 +277,9 @@ function SettingsWorkspace() {
     if (selectedEntityId) {
       window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
     }
+    setXeroContactPreview(null);
+    setXeroContactApplyResult(null);
+    setSelectedXeroContactMatches({});
   }, [selectedEntityId]);
 
   const selectedEntity = entitiesQuery.data?.find(
@@ -301,7 +316,10 @@ function SettingsWorkspace() {
     onSuccess: (result) => {
       if (result.authorization_url) {
         window.location.href = result.authorization_url;
+        return;
       }
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
   });
 
@@ -309,6 +327,38 @@ function SettingsWorkspace() {
     mutationFn: () => previewXeroContactSync(selectedEntityId),
     onSuccess: (result) => {
       setXeroContactPreview(result);
+      setXeroContactApplyResult(null);
+      setSelectedXeroContactMatches(
+        Object.fromEntries(
+          result.suggested_matches.map((match) => [
+            xeroContactMatchKey(match),
+            true,
+          ]),
+        ),
+      );
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
+    },
+  });
+
+  const xeroContactApplyMutation = useMutation({
+    mutationFn: () =>
+      applyXeroContactPreview(
+        selectedEntityId,
+        (xeroContactPreview?.suggested_matches ?? [])
+          .filter((match) => selectedXeroContactMatches[xeroContactMatchKey(match)])
+          .map((match) => ({
+            target_type: match.target_type,
+            target_id: match.target_id,
+            xero_contact_id: match.xero_contact_id,
+            xero_contact_name: match.xero_contact_name,
+            xero_email: match.xero_email,
+            confidence: match.confidence,
+            match_reason: match.match_reason,
+          })),
+      ),
+    onSuccess: (result) => {
+      setXeroContactApplyResult(result);
       queryClient.invalidateQueries({ queryKey: ["entities"] });
       queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
@@ -381,6 +431,10 @@ function SettingsWorkspace() {
   );
   const selectedEntityRoleMembers = securityQuery.data?.members ?? [];
   const selectedEntityName = selectedEntity?.name ?? "selected entity";
+  const selectedXeroContactMatchCount =
+    xeroContactPreview?.suggested_matches.filter(
+      (match) => selectedXeroContactMatches[xeroContactMatchKey(match)],
+    ).length ?? 0;
 
   return (
     <main className="min-h-screen">
@@ -476,6 +530,13 @@ function SettingsWorkspace() {
             {xeroContactSyncMutation.error instanceof Error
               ? xeroContactSyncMutation.error.message
               : "Could not preview Xero contacts."}
+          </div>
+        ) : null}
+        {xeroContactApplyMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {xeroContactApplyMutation.error instanceof Error
+              ? xeroContactApplyMutation.error.message
+              : "Could not apply the selected Xero contact mappings."}
           </div>
         ) : null}
         {mappingMutation.error ? (
@@ -1173,12 +1234,12 @@ function SettingsWorkspace() {
             {xeroContactPreview ? (
               <SectionPanel
                 title="Xero contact preview"
-                description="Suggested matches from the latest provider pull. These are not applied to tenant or property records yet."
+                description="Review suggested matches from the latest provider pull, then apply the selected local mappings."
                 icon={<SearchCheck size={17} className="text-primary" />}
                 actions={
                   <StatusBadge tone="primary">
-                    {xeroContactPreview.suggested_matches.length} suggestion
-                    {xeroContactPreview.suggested_matches.length === 1 ? "" : "s"}
+                    {selectedXeroContactMatchCount}/
+                    {xeroContactPreview.suggested_matches.length} selected
                   </StatusBadge>
                 }
               >
@@ -1208,28 +1269,109 @@ function SettingsWorkspace() {
                     </div>
                   </div>
                 </div>
-                <div className="divide-y divide-border border-t border-border">
-                  {xeroContactPreview.suggested_matches.map((match) => (
-                    <div
-                      key={`${match.target_type}-${match.target_id}-${match.xero_contact_id}`}
-                      className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[180px_1fr_220px]"
-                    >
-                      <div className="flex items-center gap-2">
-                        <StatusBadge tone="primary">{match.target_type}</StatusBadge>
-                        <span>{Math.round(match.confidence * 100)}%</span>
-                      </div>
-                      <div>
-                        <div className="font-medium">{match.target_name}</div>
-                        <p className="mt-1 text-muted-foreground">
-                          Suggested Xero contact: {match.xero_contact_name}
-                          {match.xero_email ? ` / ${match.xero_email}` : ""}
-                        </p>
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {match.match_reason}
-                      </div>
+                <div className="grid gap-3 border-t border-border px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="grid gap-2 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone="warning">Local only</StatusBadge>
+                      <span className="font-medium">
+                        Applies saved Leasium mappings only; no Xero contacts are
+                        created, updated, or deleted.
+                      </span>
                     </div>
-                  ))}
+                    <ul className="grid gap-1 text-xs text-muted-foreground">
+                      {[
+                        "No Xero mutation is performed by this review action.",
+                        ...xeroContactPreview.guardrails,
+                      ].map((guardrail) => (
+                        <li key={guardrail} className="flex gap-2">
+                          <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                          <span>{guardrail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <Button
+                    type="button"
+                    disabled={
+                      xeroContactApplyMutation.isPending ||
+                      selectedXeroContactMatchCount === 0
+                    }
+                    onClick={() => xeroContactApplyMutation.mutate()}
+                  >
+                    {xeroContactApplyMutation.isPending ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={15} />
+                    )}
+                    Apply selected mappings
+                  </Button>
+                </div>
+                {xeroContactApplyResult ? (
+                  <div className="border-t border-border bg-muted/25 px-4 py-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone="success">
+                        {xeroContactApplyResult.applied_mappings.length} applied
+                      </StatusBadge>
+                      <StatusBadge
+                        tone={
+                          xeroContactApplyResult.skipped_mappings.length
+                            ? "warning"
+                            : "neutral"
+                        }
+                      >
+                        {xeroContactApplyResult.skipped_mappings.length} skipped
+                      </StatusBadge>
+                      <span className="text-muted-foreground">
+                        {formatDateTime(xeroContactApplyResult.applied_at)}
+                      </span>
+                    </div>
+                    {xeroContactApplyResult.guardrails.length ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {xeroContactApplyResult.guardrails.join(" ")}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="divide-y divide-border border-t border-border">
+                  {xeroContactPreview.suggested_matches.map((match) => {
+                    const matchKey = xeroContactMatchKey(match);
+                    const checked = Boolean(selectedXeroContactMatches[matchKey]);
+                    return (
+                      <div
+                        key={matchKey}
+                        className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[48px_180px_1fr_220px]"
+                      >
+                        <div className="flex items-start pt-1">
+                          <input
+                            aria-label={`Select ${match.target_name} mapping`}
+                            checked={checked}
+                            className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                            onChange={(event) =>
+                              setSelectedXeroContactMatches((current) => ({
+                                ...current,
+                                [matchKey]: event.target.checked,
+                              }))
+                            }
+                            type="checkbox"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StatusBadge tone="primary">{match.target_type}</StatusBadge>
+                          <span>{Math.round(match.confidence * 100)}%</span>
+                        </div>
+                        <div>
+                          <div className="font-medium">{match.target_name}</div>
+                          <p className="mt-1 text-muted-foreground">
+                            Suggested Xero contact: {match.xero_contact_name}
+                            {match.xero_email ? ` / ${match.xero_email}` : ""}
+                          </p>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {match.match_reason}
+                        </div>
+                      </div>
+                    );
+                  })}
                   {xeroContactPreview.suggested_matches.length === 0 ? (
                     <EmptyState
                       title="No confident contact matches"

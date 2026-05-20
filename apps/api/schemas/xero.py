@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class XeroProviderConfigRead(BaseModel):
@@ -120,4 +120,41 @@ class XeroContactSyncPreviewRead(BaseModel):
     fetched_contacts: int
     suggested_matches: list[XeroContactMatchRead]
     last_contact_sync_at: datetime
+    guardrails: list[str]
+
+
+class XeroContactMappingApplyItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_type: Literal["tenant", "property"]
+    target_id: UUID
+    xero_contact_id: str = Field(min_length=1)
+    xero_contact_name: str = Field(min_length=1)
+    xero_email: str | None = None
+    match_reason: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class XeroContactMappingApplyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mappings: list[XeroContactMappingApplyItem] = Field(min_length=1, max_length=50)
+
+
+class XeroContactMappingApplyResultRead(BaseModel):
+    target_type: Literal["tenant", "property"]
+    target_id: UUID
+    target_name: str
+    previous_xero_contact_id: str | None
+    xero_contact_id: str
+    xero_contact_name: str
+    status: Literal["applied", "skipped"]
+    reason: str
+
+
+class XeroContactMappingApplyRead(BaseModel):
+    entity_id: UUID
+    applied_mappings: list[XeroContactMappingApplyResultRead]
+    skipped_mappings: list[XeroContactMappingApplyResultRead]
+    applied_at: datetime
     guardrails: list[str]
