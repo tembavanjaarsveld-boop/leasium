@@ -6,6 +6,20 @@ test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
 
+test("setup explains Clerk configuration before first workspace setup", async ({
+  page,
+}) => {
+  await page.goto("/setup");
+
+  await expect(
+    page.getByRole("heading", { name: "First workspace setup" }),
+  ).toBeVisible();
+  await expect(page.getByText("Clerk is not configured yet")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Back to sign in" }),
+  ).toBeVisible();
+});
+
 test("dashboard shows the mocked portfolio and opens billing readiness", async ({
   page,
 }) => {
@@ -80,14 +94,14 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.getByText("Operator access")).toBeVisible();
-  await expect(page.getByText("Owner Operator")).toBeVisible();
+  await expect(page.getByText("Owner Operator").first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Xero" }).click();
   await expect(page.getByText("Xero is not connected")).toBeVisible();
 
   await page.getByLabel("Xero tenant ID").fill("tenant-smoke");
   await page.getByRole("button", { name: "Save status" }).click();
-  await expect(page.getByText("Connected")).toBeVisible();
+  await expect(page.getByText("Connected", { exact: true }).first()).toBeVisible();
 
   await expect(page.getByText("Base Rent tax type missing")).toBeVisible();
   await page.getByRole("button", { name: "Apply" }).click();
@@ -101,11 +115,17 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
 }) => {
   await page.goto("/insights");
 
-  await expect(page.getByRole("heading", { name: "Insights" })).toBeVisible();
-  await expect(page.getByText("Live Exceptions")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Insights" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Live Exceptions" })).toBeVisible();
   await expect(page.getByText("Insurance certificate renewal")).toBeVisible();
-  await expect(page.getByText("Automation Activity")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Automation Activity" }),
+  ).toBeVisible();
   await expect(page.getByText("Created reviewed lease records")).toBeVisible();
-  await expect(page.getByText("Owner / Entity Snapshot")).toBeVisible();
-  await expect(page.getByText("Trust")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
+  ).toBeVisible();
+  await expect(page.getByText("Trust", { exact: true })).toBeVisible();
 });

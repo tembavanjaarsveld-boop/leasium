@@ -169,6 +169,10 @@ Status: pending Remba review. Settings now includes a Xero readiness workspace f
 
 Status: pending Remba review. Settings now has Security, Organisation, and Xero sections; Security shows the current auth mode, Clerk readiness, current operator, members, entity-role controls, and operator invite lifecycle. Keep the language clear that dev auth and the temporary password gate are pre-production safeguards until Clerk and SendGrid production env vars are configured and `AUTH_MODE` is switched deliberately.
 
+## First Workspace Setup
+
+Status: pending Remba review. `/setup` now gives a clean Clerk-backed database a first-owner path to create the organisation, primary entity, and owner operator. Keep the page sparse and operational: it should only appear before workspace data exists, explain blockers plainly, and avoid becoming a general onboarding tour.
+
 ## Insights Overview Surface
 
 Status: pending Remba review. Insights now uses a backend overview for portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots. Keep it read-only, link users to the owning workspace for action, and leave shareable owner/finance snapshots for a later pass generated from the same data.

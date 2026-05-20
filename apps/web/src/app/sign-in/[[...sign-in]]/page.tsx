@@ -2,6 +2,7 @@
 
 import { SignIn } from "@clerk/nextjs";
 import { ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 function ClerkNotConfigured() {
   return (
@@ -15,6 +16,9 @@ function ClerkNotConfigured() {
         <p className="text-sm text-muted-foreground">
           Clerk keys need to be added before operator sign-in can run.
         </p>
+        <Link className="text-sm font-semibold text-primary" href="/setup">
+          First workspace setup
+        </Link>
       </section>
     </main>
   );
@@ -26,8 +30,16 @@ export default function SignInPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
-      <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" />
+    <main className="grid min-h-screen place-items-center bg-background px-6 py-12">
+      <div className="grid justify-items-center gap-4">
+        <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" />
+        <Link
+          className="text-sm font-semibold text-muted-foreground transition hover:text-primary"
+          href="/setup"
+        >
+          First workspace setup
+        </Link>
+      </div>
     </main>
   );
 }

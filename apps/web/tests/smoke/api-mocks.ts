@@ -442,6 +442,23 @@ const securityWorkspace = () => ({
   can_manage_security: true,
 });
 
+const securityBootstrapStatus = () => ({
+  available: true,
+  reason: "No production workspace exists yet.",
+  auth: {
+    auth_mode: "clerk",
+    dev_auth_active: false,
+    clerk_secret_configured: true,
+    clerk_jwks_configured: true,
+    operator_login_enforced: true,
+    login_boundary: "Production operator login",
+    next_steps: [],
+  },
+  organisation_count: 0,
+  entity_count: 0,
+  operator_count: 0,
+});
+
 const corsHeaders = {
   "access-control-allow-headers": "content-type",
   "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
@@ -721,6 +738,11 @@ export async function mockLeasiumApi(page: Page) {
 
     if (method === "GET" && path === "/security/workspace") {
       await fulfillJson(route, securityWorkspace());
+      return;
+    }
+
+    if (method === "GET" && path === "/security/bootstrap/status") {
+      await fulfillJson(route, securityBootstrapStatus());
       return;
     }
 

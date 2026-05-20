@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     clerk_jwks_url: str = ""
     clerk_issuer: str = ""
     clerk_audience: str = ""
+    clerk_allow_legacy_token_mapping: bool = False
     operator_invite_ttl_hours: int = 72
     operator_invite_email_enabled: bool = True
     operator_invite_template_key: str = "operator_invite"

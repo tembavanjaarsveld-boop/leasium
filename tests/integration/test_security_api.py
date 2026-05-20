@@ -1,16 +1,94 @@
 """Security and operator access API integration tests."""
 
+from collections.abc import Generator
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 import pytest
+from apps.api.deps import get_session
+from apps.api.main import app
 from apps.api.routers import security as security_router
 from fastapi.testclient import TestClient
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-from stewart.core.models import AppUser, AuditAction, Entity, UserEntityRole, UserRole
-from stewart.core.settings import get_settings
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+from stewart.core.db import Base
+from stewart.core.models import (
+    AppUser,
+    AuditAction,
+    Entity,
+    Organisation,
+    UserEntityRole,
+    UserRole,
+)
+from stewart.core.settings import Settings, get_settings
 from stewart.integrations.communications import DeliveryResult
+
+
+@pytest.fixture()
+def empty_session() -> Generator[Session, None, None]:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
+    with TestingSession() as db:
+        yield db
+
+
+@pytest.fixture()
+def clerk_bootstrap_settings() -> Settings:
+    return Settings(
+        _env_file=None,
+        auth_mode="clerk",
+        clerk_secret_key="sk_test_clerk",
+        clerk_jwks_url="https://clerk.example/.well-known/jwks.json",
+        clerk_allow_legacy_token_mapping=False,
+    )
+
+
+@pytest.fixture()
+def empty_clerk_client(
+    empty_session: Session,
+    clerk_bootstrap_settings: Settings,
+) -> Generator[TestClient, None, None]:
+    def override_session() -> Generator[Session, None, None]:
+        yield empty_session
+
+    def override_settings() -> Settings:
+        return clerk_bootstrap_settings
+
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_settings] = override_settings
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def clerk_client(
+    session: Session,
+    clerk_bootstrap_settings: Settings,
+) -> Generator[TestClient, None, None]:
+    def override_session() -> Generator[Session, None, None]:
+        yield session
+
+    def override_settings() -> Settings:
+        return clerk_bootstrap_settings
+
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_settings] = override_settings
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
 
 
 def _entity(session: Session) -> Entity:
@@ -49,6 +127,94 @@ def test_security_workspace_lists_current_operator_and_auth_boundary(
             "role": "owner",
         }
     ]
+
+
+def test_first_workspace_bootstrap_creates_workspace_owner(
+    empty_clerk_client: TestClient,
+    empty_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_tokens: list[str] = []
+
+    def fake_clerk_provider_id(token: str, settings: Settings) -> str:  # noqa: ARG001
+        provider_tokens.append(token)
+        return "user_clerk_owner"
+
+    monkeypatch.setattr(security_router, "_clerk_provider_id", fake_clerk_provider_id)
+
+    response = empty_clerk_client.post(
+        "/api/v1/security/bootstrap",
+        headers={"Authorization": "Bearer signed-in-clerk-session"},
+        json={
+            "organisation_name": "Stewart Capital",
+            "entity_name": "Stewart Property Pty Ltd",
+            "email": "  Owner@Example.com ",
+            "display_name": "Owner Operator",
+            "entity_abn": "12345678901",
+            "gst_registered": True,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["accepted"] is True
+    assert body["organisation"]["name"] == "Stewart Capital"
+    assert body["entity"]["name"] == "Stewart Property Pty Ltd"
+    assert body["entity"]["abn"] == "12345678901"
+    assert body["member"]["email"] == "owner@example.com"
+    assert body["member"]["display_name"] == "Owner Operator"
+    assert body["member"]["login_linked"] is True
+    assert body["member"]["invite_email_status"] == "accepted"
+    assert body["member"]["roles"] == [
+        {
+            "entity_id": body["entity"]["id"],
+            "entity_name": "Stewart Property Pty Ltd",
+            "role": "owner",
+        }
+    ]
+    assert provider_tokens == ["signed-in-clerk-session"]
+
+    organisation = empty_session.scalar(
+        select(Organisation).where(Organisation.name == "Stewart Capital")
+    )
+    member = empty_session.scalar(select(AppUser).where(AppUser.email == "owner@example.com"))
+    entity = empty_session.scalar(select(Entity).where(Entity.name == "Stewart Property Pty Ltd"))
+    assert organisation is not None
+    assert member is not None
+    assert entity is not None
+    assert member.organisation_id == organisation.id
+    assert entity.organisation_id == organisation.id
+    assert member.auth_provider_id == "user_clerk_owner"
+
+    role = empty_session.scalar(
+        select(UserEntityRole.role).where(
+            UserEntityRole.user_id == member.id,
+            UserEntityRole.entity_id == entity.id,
+        )
+    )
+    assert role == UserRole.owner
+    audit_actions = empty_session.scalars(
+        select(AuditAction.action).where(AuditAction.target_table == "organisation")
+    ).all()
+    assert audit_actions == ["bootstrap"]
+
+
+def test_bootstrap_status_unavailable_once_workspace_data_exists(
+    clerk_client: TestClient,
+) -> None:
+    response = clerk_client.get("/api/v1/security/bootstrap/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["available"] is False
+    assert body["reason"] == (
+        "First workspace setup is closed because Leasium already has workspace data."
+    )
+    assert body["auth"]["auth_mode"] == "clerk"
+    assert body["auth"]["clerk_jwks_configured"] is True
+    assert body["organisation_count"] == 1
+    assert body["entity_count"] == 1
+    assert body["operator_count"] == 1
 
 
 def test_owner_can_invite_and_update_operator_roles(

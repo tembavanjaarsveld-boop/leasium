@@ -22,7 +22,9 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
 
 `LEASIUM_ACCESS_PASSWORD` enables the temporary app-level password gate for the
 main Leasium workspace. It is a light private-beta screen only; public tenant
-onboarding links under `/onboarding/...` remain accessible without the password.
+onboarding links under `/onboarding/...`, operator login pages, invite
+acceptance, and first workspace setup under `/setup` remain accessible without
+the password.
 
 The web app is only the frontend. The FastAPI backend still needs a separate host.
 
@@ -71,8 +73,11 @@ secret so Leasium can show sent, delivered, opened, and failed receipts.
 
 Operator invite delivery also uses the SendGrid key/from settings above. Invite
 links point to `/accept-invite?token=...`; the raw token is sent once by email,
-while only a hash is stored in the database. Keep `AUTH_MODE=dev` until at least
-one owner/admin operator has accepted an invite and is linked to a Clerk user.
+while only a hash is stored in the database. On a clean production database,
+use `/setup` after Clerk is configured to create the first organisation, entity,
+and owner operator from a signed-in Clerk session. Keep `AUTH_MODE=dev` for an
+existing seeded workspace until at least one owner/admin operator has accepted an
+invite and is linked to a Clerk user.
 
 ## Render And Alembic Safety
 

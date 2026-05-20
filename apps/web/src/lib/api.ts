@@ -121,6 +121,39 @@ export type SecurityInviteAcceptRecord = {
   accepted: boolean;
 };
 
+export type SecurityBootstrapStatusRecord = {
+  available: boolean;
+  reason: string;
+  auth: SecurityAuthStatusRecord;
+  organisation_count: number;
+  entity_count: number;
+  operator_count: number;
+};
+
+export type SecurityBootstrapPayload = {
+  organisation_name: string;
+  entity_name: string;
+  email: string;
+  display_name?: string | null;
+  country_code?: string;
+  timezone?: string;
+  entity_abn?: string | null;
+  gst_registered?: boolean;
+};
+
+export type SecurityBootstrapRecord = {
+  accepted: boolean;
+  organisation: SecurityWorkspaceRecord["organisation"];
+  entity: {
+    id: string;
+    organisation_id: string;
+    name: string;
+    abn: string | null;
+    gst_registered: boolean;
+  };
+  member: SecurityMemberRecord;
+};
+
 export type PropertyType =
   | "commercial_office"
   | "commercial_retail"
@@ -978,6 +1011,17 @@ export function resendSecurityMemberInvite(memberId: string) {
 
 export function acceptSecurityInvitation(payload: SecurityInviteAcceptPayload) {
   return request<SecurityInviteAcceptRecord>("/security/invitations/accept", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getSecurityBootstrapStatus() {
+  return request<SecurityBootstrapStatusRecord>("/security/bootstrap/status");
+}
+
+export function createSecurityBootstrapWorkspace(payload: SecurityBootstrapPayload) {
+  return request<SecurityBootstrapRecord>("/security/bootstrap", {
     method: "POST",
     body: JSON.stringify(payload),
   });

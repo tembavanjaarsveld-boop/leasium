@@ -57,12 +57,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Temporary private-beta access gate: Vercel frontend supports an env-controlled password screen while tenant onboarding links remain publicly reachable.
 - [x] Operator security and settings arena v1: Settings now has Security, Organisation, and Xero sections; `/api/v1/me` and `/api/v1/security/workspace` expose the current operator, organisation, roles, auth boundary, and members; owner/admin users can add operator access records, adjust entity roles, and activate/deactivate teammates over the existing user/entity-role foundation.
 - [x] Operator invite and Clerk linking v1: owner/admin users can send SendGrid-backed operator invite emails, invite links are stored as hashed one-time tokens with expiry/status, `/accept-invite` links a signed-in Clerk user to the existing Leasium operator record, and backend Clerk mode can verify sessions against JWKS before mapping the Clerk subject to `app_user.auth_provider_id`.
+- [x] First workspace setup foundation: clean Clerk-backed databases can create the first organisation, entity, and owner operator through a reviewable `/setup` flow, and Clerk mode now fails closed unless JWKS verification is configured or an explicit legacy test flag is enabled.
 - [x] Xero readiness and mapping v1: Settings now surfaces entity connection state, contact readiness, chart/account mapping gaps, tax mapping gaps, approved invoice sync queues, and payment reconciliation counts, with suggested charge-rule mappings and no live Xero posting.
 - [x] Insights overview v1: the Insights workspace now has a read-only backend overview for portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots, with no record mutation, invoice posting, or Xero sync.
 
 ## Next Build Order
 
-- [ ] Complete production operator-login rollout: configure Clerk/SendGrid env vars, send the first real invite, switch `AUTH_MODE` to Clerk after acceptance is verified, and add first-user organisation setup for a clean empty database.
+- [ ] Complete production operator-login rollout: configure Clerk/SendGrid env vars, run first workspace setup on a clean database or send the first real invite from an existing owner/admin, then switch `AUTH_MODE` to Clerk after acceptance is verified.
 - [ ] Complete provider-backed Xero OAuth/contact sync, invoice posting approvals, and payment reconciliation on top of the readiness queue.
 - [ ] Add shareable owner, finance, and lease-event snapshots generated from the live Insights overview data.
 - [ ] Add provider-backed invoice email delivery and Xero posting approvals on top of the internal invoice draft/PDF/payment workflow.

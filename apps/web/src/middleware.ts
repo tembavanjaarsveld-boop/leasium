@@ -13,6 +13,7 @@ function isPublicPath(pathname: string) {
     pathname.startsWith("/api/access") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/sign-up") ||
+    pathname.startsWith("/setup") ||
     pathname.startsWith("/accept-invite") ||
     pathname.startsWith("/onboarding/") ||
     pathname === "/icon.svg"

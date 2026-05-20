@@ -6,10 +6,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, select
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
+from stewart.core.auth import _clerk_provider_id
 from stewart.core.db import utcnow
 from stewart.core.models import (
     AppUser,
@@ -29,6 +30,10 @@ from stewart.integrations.communications import (
 from apps.api.deps import CurrentUser, get_current_user, get_session
 from apps.api.schemas.security import (
     SecurityAuthStatusRead,
+    SecurityBootstrapCreate,
+    SecurityBootstrapEntityRead,
+    SecurityBootstrapRead,
+    SecurityBootstrapStatusRead,
     SecurityCurrentUserRead,
     SecurityEntityRoleRead,
     SecurityInviteAccept,
@@ -128,6 +133,53 @@ def _auth_status(settings: Settings) -> SecurityAuthStatusRead:
         ),
         next_steps=next_steps,
     )
+
+
+def _bootstrap_counts(session: Session) -> tuple[int, int, int]:
+    organisation_count = session.scalar(select(func.count(Organisation.id))) or 0
+    entity_count = session.scalar(select(func.count(Entity.id))) or 0
+    operator_count = session.scalar(select(func.count(AppUser.id))) or 0
+    return organisation_count, entity_count, operator_count
+
+
+def _bootstrap_status(session: Session, settings: Settings) -> SecurityBootstrapStatusRead:
+    organisation_count, entity_count, operator_count = _bootstrap_counts(session)
+    empty_workspace = organisation_count == 0 and entity_count == 0 and operator_count == 0
+    if empty_workspace and settings.auth_mode == "clerk" and settings.clerk_jwks_url.strip():
+        available = True
+        reason = "First workspace setup is available for a signed-in Clerk operator."
+    elif empty_workspace and settings.auth_mode == "clerk":
+        available = False
+        reason = "Set CLERK_JWKS_URL before first workspace setup can verify Clerk sessions."
+    elif empty_workspace:
+        available = False
+        reason = "Switch AUTH_MODE to clerk before first workspace setup."
+    else:
+        available = False
+        reason = "First workspace setup is closed because Leasium already has workspace data."
+    return SecurityBootstrapStatusRead(
+        available=available,
+        reason=reason,
+        auth=_auth_status(settings),
+        organisation_count=organisation_count,
+        entity_count=entity_count,
+        operator_count=operator_count,
+    )
+
+
+def _bootstrap_clerk_provider_id(authorization: str | None, settings: Settings) -> str:
+    if settings.auth_mode != "clerk":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Switch AUTH_MODE to clerk before first workspace setup.",
+        )
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sign in with Clerk before first workspace setup.",
+        )
+    token = authorization.removeprefix("Bearer ").strip()
+    return _clerk_provider_id(token, settings)
 
 
 def _invite_detail(member: AppUser) -> str:
@@ -274,6 +326,106 @@ def _aware(value: datetime | None) -> datetime | None:
     if value is None or value.tzinfo is not None:
         return value
     return value.replace(tzinfo=UTC)
+
+
+@router.get("/bootstrap/status", response_model=SecurityBootstrapStatusRead)
+def get_security_bootstrap_status(
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SecurityBootstrapStatusRead:
+    return _bootstrap_status(session, settings)
+
+
+@router.post(
+    "/bootstrap",
+    response_model=SecurityBootstrapRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_first_workspace(
+    payload: SecurityBootstrapCreate,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> SecurityBootstrapRead:
+    bootstrap_status = _bootstrap_status(session, settings)
+    if not bootstrap_status.available:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=bootstrap_status.reason)
+
+    provider_id = _bootstrap_clerk_provider_id(authorization, settings)
+    email = _normalise_email(payload.email)
+    if not email or "@" not in email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a valid email.")
+    organisation_name = payload.organisation_name.strip()
+    entity_name = payload.entity_name.strip()
+    timezone = payload.timezone.strip()
+    country_code = payload.country_code.strip().upper()
+    entity_abn = payload.entity_abn.strip() if payload.entity_abn else None
+    if not organisation_name or not entity_name or not timezone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Organisation, entity, and timezone are required.",
+        )
+
+    now = utcnow()
+    organisation = Organisation(
+        name=organisation_name,
+        country_code=country_code,
+        timezone=timezone,
+    )
+    session.add(organisation)
+    session.flush()
+
+    member = AppUser(
+        organisation_id=organisation.id,
+        email=email,
+        display_name=(payload.display_name or "").strip() or email,
+        auth_provider_id=provider_id,
+        is_active=True,
+        invite_status=OperatorInviteStatus.accepted,
+        invite_accepted_at=now,
+    )
+    entity = Entity(
+        organisation_id=organisation.id,
+        name=entity_name,
+        abn=entity_abn or None,
+        gst_registered=payload.gst_registered,
+        notes="Created during first workspace setup.",
+    )
+    session.add_all([member, entity])
+    session.flush()
+    session.add(UserEntityRole(user_id=member.id, entity_id=entity.id, role=UserRole.owner))
+    audit_log(
+        session,
+        actor=f"user:{email}",
+        user_id=member.id,
+        entity_id=entity.id,
+        target_table="organisation",
+        target_id=organisation.id,
+        action="bootstrap",
+        tool_name="security.first_workspace_setup",
+        tool_input={
+            "organisation_name": organisation.name,
+            "entity_name": entity.name,
+            "email": email,
+        },
+    )
+    session.commit()
+    session.refresh(organisation)
+    session.refresh(entity)
+    session.refresh(member)
+    roles_by_user = _role_rows(session, organisation.id)
+    return SecurityBootstrapRead(
+        accepted=True,
+        organisation=SecurityOrganisationRead.model_validate(organisation),
+        entity=SecurityBootstrapEntityRead(
+            id=entity.id,
+            organisation_id=entity.organisation_id,
+            name=entity.name,
+            abn=entity.abn,
+            gst_registered=entity.gst_registered,
+        ),
+        member=_member_read(member, roles_by_user),
+    )
 
 
 @router.get("/workspace", response_model=SecurityWorkspaceRead)

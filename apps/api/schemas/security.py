@@ -77,6 +77,41 @@ class SecurityMeRead(BaseModel):
     can_manage_security: bool
 
 
+class SecurityBootstrapStatusRead(BaseModel):
+    available: bool
+    reason: str
+    auth: SecurityAuthStatusRead
+    organisation_count: int
+    entity_count: int
+    operator_count: int
+
+
+class SecurityBootstrapCreate(BaseModel):
+    organisation_name: str = Field(min_length=1, max_length=160)
+    entity_name: str = Field(min_length=1, max_length=160)
+    email: str = Field(min_length=3, max_length=320)
+    display_name: str | None = Field(default=None, max_length=160)
+    country_code: str = Field(default="AU", min_length=2, max_length=2)
+    timezone: str = Field(default="Australia/Brisbane", min_length=1, max_length=80)
+    entity_abn: str | None = Field(default=None, max_length=32)
+    gst_registered: bool = True
+
+
+class SecurityBootstrapEntityRead(BaseModel):
+    id: UUID
+    organisation_id: UUID
+    name: str
+    abn: str | None
+    gst_registered: bool
+
+
+class SecurityBootstrapRead(BaseModel):
+    accepted: bool
+    organisation: SecurityOrganisationRead
+    entity: SecurityBootstrapEntityRead
+    member: SecurityMemberRead
+
+
 class SecurityMemberCreate(BaseModel):
     email: str
     display_name: str

@@ -27,6 +27,12 @@ Last updated: 2026-05-20
   - Settings now has Security, Organisation, and Xero sections; Security exposes dev-auth/Clerk readiness without exposing secrets.
   - This is design-facing and still needs Remba review.
   - Production rollout still needs Clerk/SendGrid env vars configured, first invite acceptance verified, and `AUTH_MODE` switched from dev to clerk.
+- First workspace setup foundation is built on this branch.
+  - New public `/api/v1/security/bootstrap/status` reports whether a clean database can be bootstrapped.
+  - New `/api/v1/security/bootstrap` creates the first organisation, primary entity, and owner operator only when the database has no organisations, entities, or operators.
+  - Bootstrap requires `AUTH_MODE=clerk`, `CLERK_JWKS_URL`, and a signed-in Clerk bearer token; Clerk mode now fails closed without JWKS unless `CLERK_ALLOW_LEGACY_TOKEN_MAPPING=true` is explicitly set for legacy/testing use.
+  - New `/setup` frontend flow handles Clerk-not-configured, signed-out, unavailable, and signed-in setup states, and `/setup` stays public through the temporary password gate.
+  - This is design-facing and still needs Remba review.
 - Temporary private-beta password gate is built and pushed in `f845a69`.
   - `LEASIUM_ACCESS_PASSWORD` controls whether the gate is active.
   - When unset or blank, the frontend remains open for local/dev convenience.
@@ -272,6 +278,14 @@ Last updated: 2026-05-20
   - Access middleware/page/API lint
   - TypeScript no-emit
   - Production Next build with `LEASIUM_ACCESS_PASSWORD` set
+- First workspace setup and Clerk safety checks passed:
+  - `.venv/bin/python -m ruff check stewart/core/auth.py stewart/core/settings.py apps/api/routers/security.py apps/api/schemas/security.py tests/unit/test_auth.py tests/integration/test_security_api.py`
+  - `.venv/bin/python -m pytest tests/unit/test_auth.py tests/integration/test_security_api.py -q` (`12 passed`)
+  - `./node_modules/.bin/eslint src/app/setup/page.tsx 'src/app/sign-in/[[...sign-in]]/page.tsx' 'src/app/sign-up/[[...sign-up]]/page.tsx' src/middleware.ts src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  - `LEASIUM_ACCESS_PASSWORD=secret ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "setup explains Clerk configuration"`
+  - `PORT=3003 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`5 passed`)
 
 ## Important Deployment Notes
 
@@ -291,7 +305,7 @@ Last updated: 2026-05-20
     restored, downgraded, or stamped back to a revision present in that artifact.
 - Vercel has no exposed env-var mutation tool in this session.
   - To actually hide the public app, set `LEASIUM_ACCESS_PASSWORD` in the Vercel project environment settings and redeploy.
-  - After redeploy, verify `/properties` redirects to `/access`, and `/onboarding/<token>` remains public.
+  - After redeploy, verify `/properties` redirects to `/access`, while `/setup`, `/accept-invite`, and `/onboarding/<token>` remain public.
 - Neon production is confirmed migrated through `20260520_0015` on project `snowy-boat-02653440`, branch `production` (`br-soft-rice-aqp2uyx1`), database `neondb`.
   - Verified `invoice_draft_status`, `invoice_draft`, and `invoice_draft_line` exist.
 - Xero readiness v1 uses existing columns only and does not need a new database migration.
@@ -301,7 +315,7 @@ Last updated: 2026-05-20
 ## Recommended Next Tickets
 
 1. Enable the temporary Vercel password gate and verify production access behavior.
-2. Complete provider-backed operator login: Clerk sign-in/sign-up, verified backend sessions, invite acceptance, first-user organisation setup, and production replacement of dev auth.
+2. Complete provider-backed operator login: configure Clerk/SendGrid production env vars, run `/setup` on a clean database or send the first real owner/admin invite, verify acceptance, and switch `AUTH_MODE` to clerk.
 3. Complete provider-backed Xero OAuth/contact sync, invoice posting approvals, and payment reconciliation on top of the readiness queue.
 4. Add shareable owner, finance, and lease-event snapshots generated from the live Insights overview data.
 5. Add provider-backed invoice email delivery and Xero posting approvals on top of internal invoice drafts.

@@ -73,10 +73,15 @@ def get_current_user(
 
 
 def _clerk_provider_id(token: str, settings: Settings) -> str:
-    """Return the verified Clerk subject, with legacy token mapping until JWKS is configured."""
+    """Return the verified Clerk subject."""
 
     if not settings.clerk_jwks_url:
-        return token
+        if settings.clerk_allow_legacy_token_mapping:
+            return token
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Clerk JWKS is not configured.",
+        )
     try:
         jwks_client = PyJWKClient(settings.clerk_jwks_url)
         signing_key = jwks_client.get_signing_key_from_jwt(token)
