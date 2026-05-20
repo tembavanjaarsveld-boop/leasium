@@ -119,6 +119,16 @@ function label(value: string) {
   return value.replaceAll("_", " ");
 }
 
+function maintenanceEventLabel(value: string) {
+  if (value === "tenant_submitted") {
+    return "Request submitted";
+  }
+  if (value === "comment_added") {
+    return "Team update";
+  }
+  return label(value);
+}
+
 function paymentTone(status: TenantPortalRecord["payment_summary"]["status"]) {
   if (status === "paid") {
     return "success" as const;
@@ -1287,7 +1297,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
                               >
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span className="font-semibold">
-                                    {label(entry.event)}
+                                    {maintenanceEventLabel(entry.event)}
                                   </span>
                                   {entry.status ? (
                                     <StatusBadge

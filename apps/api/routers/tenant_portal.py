@@ -665,6 +665,11 @@ def _portal_safe_history(
     for raw_entry in raw_history:
         if not isinstance(raw_entry, dict):
             continue
+        if (
+            raw_entry.get("source") != "tenant_portal"
+            and raw_entry.get("visibility") != "tenant"
+        ):
+            continue
         timestamp = _parse_iso_datetime(raw_entry.get("timestamp"))
         event = raw_entry.get("event")
         summary = raw_entry.get("summary")

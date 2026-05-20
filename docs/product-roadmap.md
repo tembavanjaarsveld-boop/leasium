@@ -95,6 +95,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Tenant portal account recovery receipts v1: operator revoke/unlink/restore actions now keep compact recovery receipts, tenant detail shows the latest staff recovery receipt, revoked accounts can be restored without a fresh link, and tenant account status confirms unlinked/restored recovery state. Pending Remba review.
 - [x] Operations work-order detail route v1: maintenance rows now open a dedicated work-order page with status, contractor, quote approval, invoice linking, activity history, linked evidence downloads, and contractor quote document upload through the existing document store. Pending Remba review.
 - [x] Operations work-order comments v1: the dedicated work-order page now supports structured internal/contractor/tenant comments, stores them in work-order metadata with activity history and audit receipts, and keeps them visible in the work-order timeline. Pending Remba review.
+- [x] Tenant-safe maintenance history v1: tenant portal maintenance timelines now show tenant-submitted events and explicitly tenant-visible operator comments only, hiding internal and contractor-only activity while keeping operator work-order history intact. Pending Remba review.
 
 ## Next Build Order
 

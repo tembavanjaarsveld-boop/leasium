@@ -807,6 +807,14 @@ def test_tenant_portal_session_lists_scoped_maintenance_requests(
             "tenant_onboarding_id": scope["onboarding_id"],
             "activity_history": [
                 {
+                    "timestamp": "2026-05-20T08:30:00+00:00",
+                    "actor": "tenant-portal:header:tenant-t",
+                    "source": "tenant_portal",
+                    "event": "tenant_submitted",
+                    "summary": "Tenant submitted maintenance request.",
+                    "status": "requested",
+                },
+                {
                     "timestamp": "2026-05-20T09:00:00+00:00",
                     "actor": "user:ops@example.com",
                     "source": "operator_api",
@@ -814,6 +822,24 @@ def test_tenant_portal_session_lists_scoped_maintenance_requests(
                     "summary": "Updated status.",
                     "status": "requested",
                     "operator_work_order_id": "hidden",
+                },
+                {
+                    "timestamp": "2026-05-20T09:30:00+00:00",
+                    "actor": "user:ops@example.com",
+                    "source": "operator_api",
+                    "event": "comment_added",
+                    "summary": "We have asked the contractor for an attendance window.",
+                    "visibility": "tenant",
+                    "status": "requested",
+                },
+                {
+                    "timestamp": "2026-05-20T09:45:00+00:00",
+                    "actor": "user:ops@example.com",
+                    "source": "operator_api",
+                    "event": "comment_added",
+                    "summary": "Owner approval threshold still needs internal review.",
+                    "visibility": "internal",
+                    "status": "requested",
                 }
             ],
         },
@@ -870,14 +896,25 @@ def test_tenant_portal_session_lists_scoped_maintenance_requests(
         "photo_document_ids": [],
         "history": [
             {
-                "timestamp": "2026-05-20T09:00:00Z",
-                "event": "updated",
-                "summary": "Updated status.",
+                "timestamp": "2026-05-20T08:30:00Z",
+                "event": "tenant_submitted",
+                "summary": "Tenant submitted maintenance request.",
                 "status": "requested",
-            }
+            },
+            {
+                "timestamp": "2026-05-20T09:30:00Z",
+                "event": "comment_added",
+                "summary": "We have asked the contractor for an attendance window.",
+                "status": "requested",
+            },
         ],
         "created_at": visible.created_at.isoformat().replace("+00:00", "Z"),
     }
+    assert all(item["summary"] != "Updated status." for item in requests[0]["history"])
+    assert all(
+        item["summary"] != "Owner approval threshold still needs internal review."
+        for item in requests[0]["history"]
+    )
     assert "actor" not in requests[0]["history"][0]
     assert "source" not in requests[0]["history"][0]
     assert "operator_work_order_id" not in requests[0]["history"][0]
@@ -888,6 +925,58 @@ def test_tenant_portal_session_lists_scoped_maintenance_requests(
     )
     assert list_response.status_code == 200
     assert [request["id"] for request in list_response.json()] == [str(visible.id)]
+
+
+def test_tenant_portal_hides_internal_maintenance_history(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    work_order = MaintenanceWorkOrder(
+        entity_id=UUID(scope["entity_id"]),
+        property_id=UUID(scope["property_id"]),
+        tenancy_unit_id=UUID(scope["unit_id"]),
+        tenant_id=UUID(scope["tenant_id"]),
+        lease_id=UUID(scope["lease_id"]),
+        title="Door issue",
+        description="Back door is hard to latch.",
+        status=MaintenanceWorkOrderStatus.requested,
+        priority=MaintenancePriority.normal,
+        work_order_metadata={
+            "source": "tenant_portal",
+            "tenant_onboarding_id": scope["onboarding_id"],
+            "activity_history": [
+                {
+                    "timestamp": "2026-05-20T09:00:00Z",
+                    "event": "updated",
+                    "summary": "Internal contractor negotiation.",
+                    "status": "requested",
+                    "visibility": "internal",
+                    "source": "operator_api",
+                },
+                {
+                    "timestamp": "2026-05-20T09:15:00Z",
+                    "event": "comment_added",
+                    "summary": "Contractor replied to the property team.",
+                    "status": "requested",
+                    "visibility": "contractor",
+                    "source": "operator_api",
+                },
+            ],
+        },
+    )
+    session.add(work_order)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/tenant-portal/session",
+        headers={"x-tenant-portal-token": scope["token"]},
+    )
+
+    assert response.status_code == 200
+    requests = response.json()["maintenance_requests"]
+    assert [request["id"] for request in requests] == [str(work_order.id)]
+    assert requests[0]["history"] == []
 
 
 def test_tenant_portal_can_create_maintenance_request_with_scoped_documents(

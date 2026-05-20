@@ -204,6 +204,11 @@ Last updated: 2026-05-20
   - Comments are appended to `metadata.comments`, mirrored into `metadata.activity_history`, and audit logged as work-order updates without a new migration.
   - `/operations/maintenance/<work_order_id>` now has a comment form and shows comment entries in the activity timeline.
   - This is design-facing and still needs Remba review.
+- Tenant-safe maintenance history v1 is built on this branch.
+  - Tenant portal maintenance timelines now include tenant-submitted activity and explicitly tenant-visible operator comments only.
+  - Internal and contractor-only operator activity remains available in operator work-order history but is hidden from tenant portal responses.
+  - Tenant-visible comments render as `Team update` in the portal timeline.
+  - This is design-facing and still needs Remba review.
 - Spreadsheet import plan durability v1 is built on this branch.
   - Dry-run now creates a persisted `register_import_plan` row and returns `plan_id` with the review payload.
   - Smart Intake and `/intake/spreadsheet` send `plan_id` on Apply, so the API applies the stored server-generated action list instead of trusting the browser copy.
@@ -383,6 +388,12 @@ Last updated: 2026-05-20
   - `.venv/bin/python -m pytest tests/integration/test_maintenance_arrears_api.py -q` (`3 passed`)
   - `./node_modules/.bin/eslint 'src/app/operations/maintenance/[workOrderId]/page.tsx' src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
   - `./node_modules/.bin/tsc --noEmit`
+- Tenant-safe maintenance history checks passed:
+  - `.venv/bin/python -m ruff check apps/api/routers/tenant_portal.py tests/integration/test_tenant_portal_api.py`
+  - `.venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py -q` (`11 passed`)
+  - `./node_modules/.bin/eslint src/app/tenant-portal/tenant-portal-content.tsx tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant portal shows scoped self-service data"` (`1 passed`)
 - Insights overview focused checks passed:
   - Dashboard/Insights loading-state polish checks passed:
     - `./node_modules/.bin/eslint src/components/dashboard.tsx src/app/insights/page.tsx`

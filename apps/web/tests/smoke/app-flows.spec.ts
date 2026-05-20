@@ -213,6 +213,13 @@ test("tenant portal shows scoped self-service data", async ({ page }) => {
   await expect(
     page.getByText("Tenant submitted maintenance request."),
   ).toBeVisible();
+  await expect(page.getByText("Team update")).toBeVisible();
+  await expect(
+    page.getByText("We have asked the contractor for an attendance window."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Updated contractor and approval status."),
+  ).toHaveCount(0);
   await expect(page.getByText("2 files")).toBeVisible();
   await page.getByLabel("Request title").fill("Shopfront light fault");
   await page.getByLabel("Priority").selectOption("high");

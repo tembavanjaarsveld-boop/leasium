@@ -232,6 +232,15 @@ const maintenanceWorkOrders = [
           summary: "Updated contractor and approval status.",
           status: "awaiting_approval",
         },
+        {
+          timestamp: "2026-05-19T02:30:00.000Z",
+          actor: "operator-1",
+          source: "operator_api",
+          event: "comment_added",
+          summary: "We have asked the contractor for an attendance window.",
+          status: "awaiting_approval",
+          visibility: "tenant",
+        },
       ],
     },
     created_at: "2026-05-19T01:00:00.000Z",
@@ -741,24 +750,33 @@ const tenantPortalSession = (
       photo_document_ids: workOrder.photo_document_ids,
       created_at: workOrder.created_at,
       history: Array.isArray(workOrder.metadata?.activity_history)
-        ? workOrder.metadata.activity_history.map((entry) => ({
-            timestamp:
-              typeof entry === "object" && entry && "timestamp" in entry
-                ? String(entry.timestamp)
-                : workOrder.created_at,
-            event:
-              typeof entry === "object" && entry && "event" in entry
-                ? String(entry.event)
-                : "updated",
-            summary:
-              typeof entry === "object" && entry && "summary" in entry
-                ? String(entry.summary)
-                : "Maintenance request updated.",
-            status:
-              typeof entry === "object" && entry && "status" in entry
-                ? String(entry.status)
-                : workOrder.status,
-          }))
+        ? workOrder.metadata.activity_history
+            .filter((entry) => {
+              if (typeof entry !== "object" || !entry) {
+                return false;
+              }
+              const source = "source" in entry ? entry.source : null;
+              const visibility = "visibility" in entry ? entry.visibility : null;
+              return source === "tenant_portal" || visibility === "tenant";
+            })
+            .map((entry) => ({
+              timestamp:
+                typeof entry === "object" && entry && "timestamp" in entry
+                  ? String(entry.timestamp)
+                  : workOrder.created_at,
+              event:
+                typeof entry === "object" && entry && "event" in entry
+                  ? String(entry.event)
+                  : "updated",
+              summary:
+                typeof entry === "object" && entry && "summary" in entry
+                  ? String(entry.summary)
+                  : "Maintenance request updated.",
+              status:
+                typeof entry === "object" && entry && "status" in entry
+                  ? String(entry.status)
+                  : workOrder.status,
+            }))
         : [],
     })),
   notification_preferences: tenantPortalNotificationPreferences,
