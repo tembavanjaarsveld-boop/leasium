@@ -177,17 +177,23 @@ test("tenant portal shows scoped self-service data", async ({ page }) => {
     .getByLabel("Details")
     .fill("Entry light is flickering during trading hours.");
   await page.getByLabel("Location or reference").fill("Front entry");
-  await page.getByLabel("Photo").setInputFiles({
+  await page.getByLabel("Photo", { exact: true }).setInputFiles({
     name: "shopfront-light.jpg",
     mimeType: "image/jpeg",
     buffer: Buffer.from("mock image bytes"),
   });
   await page.getByRole("button", { name: "Submit request" }).click();
-  await expect(page.getByText("Shopfront light fault")).toBeVisible();
+  await expect(
+    page.getByText("Shopfront light fault", { exact: true }).first(),
+  ).toBeVisible();
   await expect(page.getByText("Front entry")).toBeVisible();
   await expect(page.getByText("1 file", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Compliance" })).toBeVisible();
   await expect(page.getByText("bright-cafe-insurance.pdf")).toBeVisible();
+  await expect(
+    page.getByText(/Insurance\s+-\s+45 KB\s+-\s+tenant onboarding\s+-\s+18 May 2026/),
+  ).toBeVisible();
+  await expect(page.getByText("Current certificate.")).toBeVisible();
   await expect(page.getByText("shopfront-light.jpg")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Notification Preferences" }),

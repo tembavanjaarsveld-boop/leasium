@@ -48,6 +48,7 @@ import {
   getTenantPortalAccountSession,
   MaintenancePriority,
   tenantPortalDocumentDownloadUrl,
+  TenantPortalDocumentRecord,
   TenantPortalMaintenanceRequestPayload,
   TenantPortalNotificationPreferencesRecord,
   TenantPortalNotificationPreferencesPayload,
@@ -216,6 +217,34 @@ function Metric({
         <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
       ) : null}
     </div>
+  );
+}
+
+function TenantDocumentSummary({
+  document,
+}: {
+  document: TenantPortalDocumentRecord;
+}) {
+  return (
+    <>
+      <span className="grid min-w-0 gap-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <FileText size={15} className="shrink-0 text-primary" />
+          <span className="truncate font-medium">{document.filename}</span>
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {categoryLabels[document.category]} - {formatBytes(document.byte_size)} -{" "}
+          {label(document.source)} - {formatDateTime(document.created_at)}
+        </span>
+        {document.notes ? (
+          <span className="text-xs text-muted-foreground">{document.notes}</span>
+        ) : null}
+      </span>
+      <span className="flex shrink-0 items-center gap-2 justify-self-start text-xs font-semibold text-muted-foreground md:justify-self-end">
+        Download
+        <Download size={14} />
+      </span>
+    </>
   );
 }
 
@@ -1299,7 +1328,8 @@ function TenantPortalContent({ token }: { token: string | null }) {
                     accountScoped ? (
                       <button
                         key={document.id}
-                        className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label={`Download ${document.filename}`}
+                        className="grid gap-2 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
                         type="button"
                         disabled={documentDownloadMutation.isPending}
                         onClick={() =>
@@ -1309,40 +1339,19 @@ function TenantPortalContent({ token }: { token: string | null }) {
                           })
                         }
                       >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <FileText
-                            size={15}
-                            className="shrink-0 text-primary"
-                          />
-                          <span className="truncate">{document.filename}</span>
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                          {categoryLabels[document.category]} -{" "}
-                          {formatBytes(document.byte_size)}
-                          <Download size={14} />
-                        </span>
+                        <TenantDocumentSummary document={document} />
                       </button>
                     ) : token ? (
                       <a
                         key={document.id}
-                        className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm hover:bg-muted"
+                        aria-label={`Download ${document.filename}`}
+                        className="grid gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-muted md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
                         href={tenantPortalDocumentDownloadUrl(
                           token,
                           document.id,
                         )}
                       >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <FileText
-                            size={15}
-                            className="shrink-0 text-primary"
-                          />
-                          <span className="truncate">{document.filename}</span>
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                          {categoryLabels[document.category]} -{" "}
-                          {formatBytes(document.byte_size)}
-                          <Download size={14} />
-                        </span>
+                        <TenantDocumentSummary document={document} />
                       </a>
                     ) : null,
                   )}
