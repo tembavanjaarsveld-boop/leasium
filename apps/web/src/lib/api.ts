@@ -969,6 +969,22 @@ export type BillingDraftRecord = {
   deleted_at: string | null;
 };
 
+export type BillingDraftBatchSkippedRecord = {
+  lease_id: string | null;
+  tenant_name: string | null;
+  property_name: string | null;
+  unit_label: string | null;
+  reason: string;
+};
+
+export type BillingDraftBatchRecord = {
+  created: number;
+  existing: number;
+  skipped: number;
+  drafts: BillingDraftRecord[];
+  skipped_rows: BillingDraftBatchSkippedRecord[];
+};
+
 export type InvoiceDraftStatus =
   | "draft"
   | "ready_for_approval"
@@ -1901,6 +1917,17 @@ export function updateBillingDraft(
 ) {
   return request<BillingDraftRecord>(`/billing-drafts/${billingDraftId}`, {
     method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createBillingDraftsFromChargeRules(payload: {
+  entity_id: string;
+  lease_ids?: string[];
+  as_of?: string | null;
+}) {
+  return request<BillingDraftBatchRecord>("/billing-drafts/from-charge-rules", {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }

@@ -47,6 +47,11 @@ const commandActions = [
     meta: "Tasks",
   },
   {
+    href: "/portfolio-qa",
+    label: "Open portfolio QA",
+    meta: "Data cleanup",
+  },
+  {
     href: "/insights",
     label: "Open portfolio insights",
     meta: "Insights",

@@ -456,6 +456,12 @@ class BillingDraftUpdate(BaseModel):
     notes: str | None = None
 
 
+class BillingDraftFromChargeRulesCreate(BaseModel):
+    entity_id: UUID
+    lease_ids: list[UUID] | None = None
+    as_of: date | None = None
+
+
 class BillingDraftRead(ApiModel):
     id: UUID
     entity_id: UUID
@@ -480,6 +486,22 @@ class BillingDraftRead(ApiModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+
+
+class BillingDraftBatchSkippedRead(BaseModel):
+    lease_id: UUID | None = None
+    tenant_name: str | None = None
+    property_name: str | None = None
+    unit_label: str | None = None
+    reason: str
+
+
+class BillingDraftBatchRead(BaseModel):
+    created: int
+    existing: int
+    skipped: int
+    drafts: list[BillingDraftRead]
+    skipped_rows: list[BillingDraftBatchSkippedRead]
 
 
 class InvoiceDraftLineRead(ApiModel):

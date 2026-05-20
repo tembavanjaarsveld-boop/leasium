@@ -2,7 +2,7 @@
 
 from datetime import date
 from html import escape
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -31,6 +31,9 @@ from stewart.core.models import (
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.register import (
+    BillingDraftBatchRead,
+    BillingDraftBatchSkippedRead,
+    BillingDraftFromChargeRulesCreate,
     BillingDraftRead,
     BillingDraftUpdate,
     InvoiceDraftDeliverySendRecord,
@@ -49,6 +52,7 @@ router = APIRouter(tags=["billing"])
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 PROPERTY_OWNER_BILLING_STRUCTURES = {"property_owner", "trust", "split"}
+BILLING_DRAFT_CHARGE_RULE_SOURCE = "charge_rule_batch"
 
 
 def _property_for_access(
@@ -136,6 +140,41 @@ def _invoice_number_for_billing_draft(
         prefix = f"{prefix}-"
     invoice_date = draft.issue_date or draft.due_date or date.today()
     return f"{prefix}{invoice_date:%Y%m%d}-{str(draft.id)[:8].upper()}"
+
+
+def _source_hint_from_charge_rule(rule: RentChargeRule) -> str:
+    metadata = rule.charge_rule_metadata or {}
+    source_hint = metadata.get("source_hint")
+    if isinstance(source_hint, str) and source_hint:
+        return source_hint
+    source_sheet = metadata.get("source_sheet")
+    source_row = metadata.get("source_row")
+    if isinstance(source_sheet, str) and source_sheet:
+        if source_row is not None:
+            return f"{source_sheet} row {source_row}"
+        return source_sheet
+    source = metadata.get("source")
+    if isinstance(source, str) and source:
+        return source.replace("_", " ")
+    import_source = metadata.get("portfolio_import_source")
+    if isinstance(import_source, str) and import_source:
+        return import_source.replace("_", " ")
+    return "Lease charge rule"
+
+
+def _billing_prep_filename(unit: TenancyUnit, tenant: Tenant, period_key: str) -> str:
+    safe_parts = [
+        "".join(char for char in tenant.legal_name if char.isalnum() or char in (" ", "-", "_"))
+        .strip()
+        .replace(" ", "-")
+        .lower(),
+        "".join(char for char in unit.unit_label if char.isalnum() or char in (" ", "-", "_"))
+        .strip()
+        .replace(" ", "-")
+        .lower(),
+    ]
+    safe_name = "-".join(part for part in safe_parts if part)[:80] or "tenant"
+    return f"billing-prep-{period_key}-{safe_name}.txt"
 
 
 def _invoice_draft_blockers(
@@ -675,7 +714,12 @@ def _record_invoice_manual_delivery(
     user: CurrentUser,
 ) -> dict[str, object]:
     sent_at = (payload.sent_at or utcnow()).isoformat()
-    delivery_state = dict(metadata.get("delivery_state") or {})
+    delivery_state_value = metadata.get("delivery_state")
+    delivery_state = (
+        dict(cast(dict[str, object], delivery_state_value))
+        if isinstance(delivery_state_value, dict)
+        else {}
+    )
     delivery_state.update(
         {
             "tenant_email_sent": True,
@@ -685,7 +729,12 @@ def _record_invoice_manual_delivery(
             "xero_synced": False,
         }
     )
-    delivery_email = dict(metadata.get("delivery_email") or {})
+    delivery_email_value = metadata.get("delivery_email")
+    delivery_email = (
+        dict(cast(dict[str, object], delivery_email_value))
+        if isinstance(delivery_email_value, dict)
+        else {}
+    )
     delivery_email["send"] = {
         "status": "sent",
         "provider": payload.method,
@@ -696,7 +745,8 @@ def _record_invoice_manual_delivery(
         "notes": payload.notes,
         "xero_synced": False,
     }
-    receipts = list(metadata.get("delivery_receipts") or [])
+    receipts_value = metadata.get("delivery_receipts")
+    receipts = list(cast(list[object], receipts_value)) if isinstance(receipts_value, list) else []
     receipts.insert(
         0,
         {
@@ -708,7 +758,8 @@ def _record_invoice_manual_delivery(
             "notes": payload.notes,
         },
     )
-    history = list(metadata.get("delivery_history") or [])
+    history_value = metadata.get("delivery_history")
+    history = list(cast(list[object], history_value)) if isinstance(history_value, list) else []
     history.append(
         {
             "event": "recorded_manual_delivery",
@@ -895,6 +946,240 @@ def update_billing_draft(
     session.commit()
     session.refresh(draft)
     return draft
+
+
+@router.post("/billing-drafts/from-charge-rules", response_model=BillingDraftBatchRead)
+def create_billing_drafts_from_charge_rules(
+    payload: BillingDraftFromChargeRulesCreate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> BillingDraftBatchRead:
+    assert_entity_role(session, user, payload.entity_id, WRITE_ROLES)
+    requested_lease_ids = set(payload.lease_ids or [])
+    period_key = (payload.as_of or date.today()).isoformat()
+
+    lease_statement = (
+        select(Property, TenancyUnit, Lease, Tenant)
+        .join(TenancyUnit, TenancyUnit.property_id == Property.id)
+        .join(Lease, Lease.tenancy_unit_id == TenancyUnit.id)
+        .join(Tenant, Tenant.id == Lease.tenant_id)
+        .where(
+            Property.entity_id == payload.entity_id,
+            Tenant.entity_id == payload.entity_id,
+            Property.deleted_at.is_(None),
+            TenancyUnit.deleted_at.is_(None),
+            Lease.deleted_at.is_(None),
+            Tenant.deleted_at.is_(None),
+        )
+        .order_by(Property.name, TenancyUnit.unit_label, Tenant.legal_name)
+    )
+    if requested_lease_ids:
+        lease_statement = lease_statement.where(Lease.id.in_(requested_lease_ids))
+    if payload.as_of is not None:
+        lease_statement = lease_statement.where(
+            or_(Lease.commencement_date.is_(None), Lease.commencement_date <= payload.as_of),
+            or_(Lease.expiry_date.is_(None), Lease.expiry_date >= payload.as_of),
+        )
+
+    lease_rows = session.execute(lease_statement).all()
+    found_lease_ids = {lease.id for _, _, lease, _ in lease_rows}
+    skipped_rows: list[BillingDraftBatchSkippedRead] = [
+        BillingDraftBatchSkippedRead(
+            lease_id=lease_id,
+            reason="Lease was not found in this entity.",
+        )
+        for lease_id in sorted(requested_lease_ids - found_lease_ids, key=str)
+    ]
+
+    if not lease_rows:
+        return BillingDraftBatchRead(
+            created=0,
+            existing=0,
+            skipped=len(skipped_rows),
+            drafts=[],
+            skipped_rows=skipped_rows,
+        )
+
+    lease_ids = [lease.id for _, _, lease, _ in lease_rows]
+    rules_by_lease: dict[UUID, list[RentChargeRule]] = {lease_id: [] for lease_id in lease_ids}
+    rules = session.scalars(
+        select(RentChargeRule)
+        .where(RentChargeRule.lease_id.in_(lease_ids), RentChargeRule.deleted_at.is_(None))
+        .order_by(RentChargeRule.charge_type, RentChargeRule.created_at)
+    )
+    for rule in rules:
+        rules_by_lease.setdefault(rule.lease_id, []).append(rule)
+
+    existing_by_lease: dict[UUID, BillingDraft] = {}
+    existing_drafts = session.scalars(
+        select(BillingDraft).where(
+            BillingDraft.entity_id == payload.entity_id,
+            BillingDraft.lease_id.in_(lease_ids),
+            BillingDraft.deleted_at.is_(None),
+        )
+    ).all()
+    for draft in existing_drafts:
+        metadata = draft.billing_metadata or {}
+        if (
+            metadata.get("source") == BILLING_DRAFT_CHARGE_RULE_SOURCE
+            and metadata.get("period_key") == period_key
+            and draft.status != BillingDraftStatus.void
+            and draft.lease_id is not None
+        ):
+            existing_by_lease[draft.lease_id] = draft
+
+    now = utcnow()
+    created_count = 0
+    existing_count = 0
+    drafts: list[BillingDraft] = []
+    for prop, unit, lease, tenant in lease_rows:
+        charge_rules = [rule for rule in rules_by_lease.get(lease.id, []) if rule.amount_cents > 0]
+        if not charge_rules:
+            skipped_rows.append(
+                BillingDraftBatchSkippedRead(
+                    lease_id=lease.id,
+                    tenant_name=tenant.trading_name or tenant.legal_name,
+                    property_name=prop.name,
+                    unit_label=unit.unit_label,
+                    reason="Lease has no positive charge rules.",
+                )
+            )
+            continue
+
+        existing = existing_by_lease.get(lease.id)
+        if existing is not None:
+            existing_count += 1
+            drafts.append(existing)
+            continue
+
+        total_cents = sum(rule.amount_cents for rule in charge_rules)
+        due_dates = [rule.next_due_date for rule in charge_rules if rule.next_due_date is not None]
+        due_date = min(due_dates) if due_dates else None
+        line_labels = ", ".join(
+            f"{rule.charge_type.value.replace('_', ' ')} {rule.frequency.value}"
+            for rule in charge_rules
+        )
+        document_text = (
+            "Leasium internal billing preparation source.\n"
+            f"Prepared from reviewed charge rules on {now.isoformat()}.\n"
+            f"Entity: {payload.entity_id}\n"
+            f"Property: {prop.name}\n"
+            f"Unit: {unit.unit_label}\n"
+            f"Tenant: {tenant.legal_name}\n"
+            f"Lease: {lease.id}\n"
+            f"Period key: {period_key}\n"
+            f"Lines: {line_labels}\n"
+            "No tenant email, PDF generation, or Xero sync was run.\n"
+        ).encode()
+        document = StoredDocument(
+            entity_id=payload.entity_id,
+            property_id=prop.id,
+            tenancy_unit_id=unit.id,
+            tenant_id=tenant.id,
+            lease_id=lease.id,
+            filename=_billing_prep_filename(unit, tenant, period_key),
+            content_type="text/plain",
+            byte_size=len(document_text),
+            file_data=document_text,
+            category=DocumentCategory.invoice,
+            notes="Internal billing prep source generated from reviewed charge rules.",
+            document_metadata={
+                "source": BILLING_DRAFT_CHARGE_RULE_SOURCE,
+                "period_key": period_key,
+                "created_by_user_id": str(user.id),
+                "created_at": now.isoformat(),
+            },
+        )
+        session.add(document)
+        session.flush()
+
+        title = f"Billing draft - {tenant.trading_name or tenant.legal_name} - {unit.unit_label}"
+        draft = BillingDraft(
+            entity_id=payload.entity_id,
+            property_id=prop.id,
+            tenancy_unit_id=unit.id,
+            tenant_id=tenant.id,
+            lease_id=lease.id,
+            document_id=document.id,
+            document_intake_id=None,
+            status=BillingDraftStatus.needs_review,
+            title=title,
+            currency="AUD",
+            issue_date=payload.as_of or date.today(),
+            due_date=due_date,
+            total_cents=total_cents,
+            notes=(
+                "Prepared from existing Leasium charge rules. Review and approve before "
+                "invoice draft creation. No PDF, tenant email, or Xero sync has run."
+            ),
+            billing_metadata={
+                "source": BILLING_DRAFT_CHARGE_RULE_SOURCE,
+                "period_key": period_key,
+                "lease_id": str(lease.id),
+                "charge_rule_ids": [str(rule.id) for rule in charge_rules],
+                "created_from_charge_rules_at": now.isoformat(),
+                "created_by_user_id": str(user.id),
+                "guardrail": (
+                    "No invoice PDF, tenant email, or Xero sync runs from this batch step."
+                ),
+            },
+        )
+        session.add(draft)
+        session.flush()
+
+        for rule in charge_rules:
+            session.add(
+                BillingDraftLine(
+                    billing_draft_id=draft.id,
+                    description=rule.charge_type.value.replace("_", " ").title(),
+                    amount_cents=rule.amount_cents,
+                    currency="AUD",
+                    source_hint=_source_hint_from_charge_rule(rule),
+                    confidence=1.0,
+                    line_metadata={
+                        "source": BILLING_DRAFT_CHARGE_RULE_SOURCE,
+                        "charge_rule_id": str(rule.id),
+                        "charge_type": rule.charge_type.value,
+                        "frequency": rule.frequency.value,
+                        "gst_treatment": rule.gst_treatment.value,
+                        "xero_account_code": rule.xero_account_code,
+                        "xero_tax_type": rule.xero_tax_type,
+                        "start_date": rule.start_date.isoformat() if rule.start_date else None,
+                        "end_date": rule.end_date.isoformat() if rule.end_date else None,
+                        "next_due_date": (
+                            rule.next_due_date.isoformat() if rule.next_due_date else None
+                        ),
+                    },
+                )
+            )
+
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=payload.entity_id,
+            action="create",
+            target_table="billing_draft",
+            target_id=draft.id,
+            tool_output_summary=(
+                "Created internal billing draft from reviewed charge rules; "
+                "no PDF, tenant email, or Xero sync was run."
+            ),
+        )
+        created_count += 1
+        drafts.append(draft)
+
+    session.commit()
+    for draft in drafts:
+        session.refresh(draft)
+
+    return BillingDraftBatchRead(
+        created=created_count,
+        existing=existing_count,
+        skipped=len(skipped_rows),
+        drafts=[BillingDraftRead.model_validate(draft) for draft in drafts],
+        skipped_rows=skipped_rows,
+    )
 
 
 @router.post("/billing-drafts/{billing_draft_id}/invoice-drafts", response_model=InvoiceDraftRead)

@@ -479,6 +479,33 @@ def test_charge_rules_and_rent_roll_surface_billing_readiness(
         "Entity is not connected to Xero."
     ]
 
+    billing_batch_response = client.post(
+        "/api/v1/billing-drafts/from-charge-rules",
+        json={"entity_id": entity_id, "lease_ids": [lease_id], "as_of": "2026-06-01"},
+    )
+    assert billing_batch_response.status_code == 200
+    billing_batch = billing_batch_response.json()
+    assert billing_batch["created"] == 1
+    assert billing_batch["existing"] == 0
+    assert billing_batch["skipped"] == 0
+    billing_draft = billing_batch["drafts"][0]
+    assert billing_draft["status"] == "needs_review"
+    assert billing_draft["total_cents"] == 1100000
+    assert billing_draft["document_id"]
+    assert billing_draft["metadata"]["source"] == "charge_rule_batch"
+    assert billing_draft["metadata"]["guardrail"].startswith("No invoice PDF")
+    assert billing_draft["lines"][0]["source_hint"] == "test"
+
+    repeat_billing_batch_response = client.post(
+        "/api/v1/billing-drafts/from-charge-rules",
+        json={"entity_id": entity_id, "lease_ids": [lease_id], "as_of": "2026-06-01"},
+    )
+    assert repeat_billing_batch_response.status_code == 200
+    repeat_billing_batch = repeat_billing_batch_response.json()
+    assert repeat_billing_batch["created"] == 0
+    assert repeat_billing_batch["existing"] == 1
+    assert repeat_billing_batch["drafts"][0]["id"] == billing_draft["id"]
+
     update_response = client.patch(
         f"/api/v1/charge-rules/{charge_rule_id}",
         json={"amount_cents": 1200000, "xero_tax_type": None},

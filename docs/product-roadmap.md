@@ -68,10 +68,14 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Insights overview v1: the Insights workspace now has a read-only backend overview for portfolio health, live exceptions, automation activity, billing risk, and owner/entity snapshots, with no record mutation, invoice posting, or Xero sync.
 - [x] Shareable Insights snapshots v1: operators can freeze owner, finance, and lease-event snapshots from the live Insights overview into revocable public links with hashed tokens, expiry, public read-only rendering, and no live portfolio mutation.
 - [x] Spreadsheet portfolio import dry-run v1: `.xlsx` source-of-truth workbooks can be parsed into a no-mutation import plan for properties, units, tenants, leases, charge rules, obligations, and operational tasks, with row-level blockers/warnings and feature-candidate flags for vendors, legal entities, head leases, security originals, arrears, and issue/action queues.
+- [x] One-off SKJ portfolio workbook production import: the current source-of-truth workbook has been loaded into the hosted register with real properties, units, tenants, leases, charge rules, and obligations, while demo seed rows were archived.
+- [x] Post-import Portfolio QA workspace v1: `/portfolio-qa` brings together missing-field checks, tenant contact cleanup, source/import history, batch onboarding readiness, and internal billing draft preparation from the imported portfolio. Pending Remba review.
+- [x] Charge-rule billing draft batch v1: reviewed rent/outgoings charge rules can generate source-linked internal billing drafts and line items with idempotent same-period reuse, synthetic prep source documents, and explicit no-PDF/no-email/no-Xero guardrails.
 
 ## Next Build Order
 
 - [ ] Turn spreadsheet portfolio import from backend dry-run into a Smart Intake review surface, then add reviewed Apply with source provenance and no mutation until approval.
+- [ ] Promote Portfolio QA into the Remba-reviewed navigation/information architecture once the cleanup workflow settles.
 - [ ] Continue provider-backed Xero from invoice posting preview into explicit posting approval, idempotent Xero draft creation, and then payment reconciliation.
 - [ ] Add provider-backed invoice email delivery and Xero posting approvals on top of the internal invoice draft/PDF/payment workflow.
 - [ ] Build tenant portal authentication and self-service for onboarding, documents, invoices, compliance uploads, and notification preferences.
