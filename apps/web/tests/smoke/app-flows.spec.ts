@@ -86,7 +86,9 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
 
   await page.getByRole("tab", { name: /Delivery & payments/ }).click();
   await expect(page.getByText("Needs Xero approval").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Dispatch" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { exact: true, name: "Dispatch" }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Email" })).toBeVisible();
 });
 
@@ -491,11 +493,19 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.goto("/billing-readiness");
   await page.getByRole("tab", { name: /Delivery & payments/ }).click();
   await expect(page.getByText("Xero DRAFT").first()).toBeVisible();
-  await page.getByRole("button", { name: "Dispatch" }).click();
+  await page.getByRole("button", { exact: true, name: "Dispatch" }).click();
   await expect(page.getByText("Xero receipt created #1")).toBeVisible();
   await expect(
     page.getByText("Xero draft and tenant email are recorded."),
   ).toBeVisible();
+  await expect(page.getByText("Provider history")).toBeVisible();
+  await expect(
+    page.getByText("Payment status was reconciled locally."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Complete/ }).click();
+  await expect(page.getByText("INV-1001").first()).toBeVisible();
+  await page.getByRole("button", { name: /Unpaid/ }).click();
+  await expect(page.getByText("No invoices match this filter")).toBeVisible();
 });
 
 test("insights shows overview, exceptions, activity, and owner snapshot", async ({

@@ -78,6 +78,13 @@ type BillingWorkspaceTab =
   | "invoice-prep"
   | "delivery";
 
+type DeliveryFilter =
+  | "all"
+  | "needs_action"
+  | "ready_dispatch"
+  | "complete"
+  | "unpaid";
+
 const billingWorkspaceTabs: Array<{
   id: BillingWorkspaceTab;
   label: string;
@@ -105,6 +112,14 @@ const billingWorkspaceTabs: Array<{
   },
 ];
 
+const deliveryFilters: Array<{ id: DeliveryFilter; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "needs_action", label: "Needs action" },
+  { id: "ready_dispatch", label: "Ready to dispatch" },
+  { id: "complete", label: "Complete" },
+  { id: "unpaid", label: "Unpaid" },
+];
+
 type BlockerAction = {
   label: string;
   href: string;
@@ -129,6 +144,19 @@ function formatDate(value: string | null | undefined) {
     month: "short",
     year: "numeric",
   }).format(new Date(dateValue));
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "Not recorded";
+  }
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function formatMoney(cents: number | null | undefined) {
@@ -261,6 +289,17 @@ function invoicePaymentStatus(draft: InvoiceDraftRecord) {
   return metadataRecord(draft.metadata.payment_status);
 }
 
+function invoicePaymentReconciliationEntries(draft: InvoiceDraftRecord) {
+  const history = metadataRecordList(
+    draft.metadata.xero_payment_reconciliation_history,
+  );
+  if (history.length > 0) {
+    return history;
+  }
+  const latest = metadataRecord(draft.metadata.xero_payment_reconciliation);
+  return Object.keys(latest).length > 0 ? [latest] : [];
+}
+
 function invoiceXeroSync(draft: InvoiceDraftRecord) {
   return metadataRecord(draft.metadata.xero_sync);
 }
@@ -310,6 +349,103 @@ function xeroStatusLabel(
     return "Needs Xero approval";
   }
   return "Ready for Xero";
+}
+
+function invoiceDeliveryReview(draft: InvoiceDraftRecord) {
+  const deliveryState = invoiceDeliveryState(draft);
+  const emailPreview = invoiceEmailPreview(draft);
+  const pdfArtifact = invoicePdfArtifact(draft);
+  const sendState = invoiceDeliverySend(draft);
+  const paymentStatus = invoicePaymentStatus(draft);
+  const xeroSync = invoiceXeroSync(draft);
+  const postingPreparation = invoicePostingPreparation(draft);
+  const xeroApproval = invoiceXeroPostingApproval(draft);
+  const providerDispatch = invoiceProviderDispatch(draft);
+  const providerDispatchXero = metadataRecord(providerDispatch.xero);
+  const providerReceipts = invoiceProviderReceipts(draft);
+  const latestProviderReceipt =
+    providerReceipts.find((receipt) => metadataText(receipt.provider) === "xero") ??
+    null;
+  const latestProviderRetryCount =
+    typeof latestProviderReceipt?.retry_count === "number"
+      ? latestProviderReceipt.retry_count
+      : null;
+  const xeroApproved = metadataText(xeroApproval.state) === "approved";
+  const xeroSynced = xeroSync.xero_synced === true;
+  const xeroExternalStatus =
+    metadataText(postingPreparation.external_posting_status) ??
+    metadataText(providerDispatchXero.external_posting_status);
+  const xeroFailed =
+    xeroExternalStatus === "provider_failed" ||
+    metadataText(providerDispatchXero.status) === "failed";
+  const previewReady = deliveryState.pdf_preview_generated === true;
+  const pdfStored =
+    deliveryState.pdf_artifact_stored === true ||
+    Boolean(metadataText(pdfArtifact.document_id));
+  const emailPrepared = deliveryState.tenant_email_prepared === true;
+  const deliveryReady = deliveryState.delivery_ready === true;
+  const deliverySent =
+    deliveryState.tenant_email_sent === true ||
+    ["queued", "sent", "delivered", "opened"].includes(
+      metadataText(sendState.status) ?? "",
+    );
+  const emailFailed = metadataText(sendState.status) === "failed";
+  const providerComplete = xeroSynced && deliverySent;
+  const paymentLabel = metadataText(paymentStatus.status) ?? "unpaid";
+  const readyForProviderDispatch =
+    deliveryReady && xeroApproved && !providerComplete;
+  const needsAction =
+    xeroFailed ||
+    emailFailed ||
+    !xeroApproved ||
+    readyForProviderDispatch ||
+    paymentLabel !== "paid";
+
+  return {
+    deliveryState,
+    emailPreview,
+    pdfArtifact,
+    sendState,
+    paymentStatus,
+    xeroSync,
+    postingPreparation,
+    xeroApproval,
+    providerDispatch,
+    providerDispatchXero,
+    providerReceipts,
+    latestProviderReceipt,
+    latestProviderRetryCount,
+    xeroApproved,
+    xeroSynced,
+    xeroExternalStatus,
+    xeroFailed,
+    previewReady,
+    pdfStored,
+    emailPrepared,
+    deliveryReady,
+    deliverySent,
+    emailFailed,
+    providerComplete,
+    paymentLabel,
+    readyForProviderDispatch,
+    needsAction,
+  };
+}
+
+function deliveryFilterMatches(draft: InvoiceDraftRecord, filter: DeliveryFilter) {
+  const review = invoiceDeliveryReview(draft);
+  switch (filter) {
+    case "needs_action":
+      return review.needsAction;
+    case "ready_dispatch":
+      return review.readyForProviderDispatch;
+    case "complete":
+      return review.providerComplete && review.paymentLabel === "paid";
+    case "unpaid":
+      return review.paymentLabel !== "paid";
+    default:
+      return true;
+  }
 }
 
 function blockerItems(row: RentRollRow): BlockerItem[] {
@@ -499,6 +635,7 @@ function BillingReadinessWorkspace() {
   const [asOf, setAsOf] = useState(() => dateOnly(new Date()));
   const [activeBillingTab, setActiveBillingTab] =
     useState<BillingWorkspaceTab>("readiness");
+  const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>("all");
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -743,6 +880,25 @@ function BillingReadinessWorkspace() {
   const approvedInvoiceDrafts = useMemo(
     () => invoiceDrafts.filter((draft) => draft.status === "approved"),
     [invoiceDrafts],
+  );
+  const filteredApprovedInvoiceDrafts = useMemo(
+    () =>
+      approvedInvoiceDrafts.filter((draft) =>
+        deliveryFilterMatches(draft, deliveryFilter),
+      ),
+    [approvedInvoiceDrafts, deliveryFilter],
+  );
+  const deliveryFilterCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        deliveryFilters.map((filter) => [
+          filter.id,
+          approvedInvoiceDrafts.filter((draft) =>
+            deliveryFilterMatches(draft, filter.id),
+          ).length,
+        ]),
+      ) as Record<DeliveryFilter, number>,
+    [approvedInvoiceDrafts],
   );
   const invoiceDraftByBillingDraftId = useMemo(() => {
     const drafts = new Map<string, InvoiceDraftRecord>();
@@ -1566,10 +1722,41 @@ function BillingReadinessWorkspace() {
                   >
                     {invoiceDraftsLoading
                       ? "Loading"
-                      : `${approvedInvoiceDrafts.length} approved invoice${approvedInvoiceDrafts.length === 1 ? "" : "s"}`}
+                      : `${filteredApprovedInvoiceDrafts.length}/${approvedInvoiceDrafts.length} shown`}
                   </StatusBadge>
                 }
               >
+                <div className="border-b border-border p-3">
+                  <div className="flex flex-wrap gap-2">
+                    {deliveryFilters.map((filter) => {
+                      const isActive = deliveryFilter === filter.id;
+                      return (
+                        <button
+                          key={filter.id}
+                          type="button"
+                          aria-pressed={isActive}
+                          onClick={() => setDeliveryFilter(filter.id)}
+                          className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition duration-200 ease-leasium ${
+                            isActive
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground"
+                          }`}
+                        >
+                          {filter.label}
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs ${
+                              isActive
+                                ? "bg-white/20 text-primary-foreground"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {deliveryFilterCounts[filter.id]}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-left text-sm">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
@@ -1582,66 +1769,31 @@ function BillingReadinessWorkspace() {
                       </tr>
                     </thead>
                     <tbody>
-                      {approvedInvoiceDrafts.map((draft) => {
-                        const deliveryState = invoiceDeliveryState(draft);
-                        const emailPreview = invoiceEmailPreview(draft);
-                        const pdfArtifact = invoicePdfArtifact(draft);
-                        const sendState = invoiceDeliverySend(draft);
-                        const paymentStatus = invoicePaymentStatus(draft);
-                        const xeroSync = invoiceXeroSync(draft);
-                        const postingPreparation =
-                          invoicePostingPreparation(draft);
-                        const xeroApproval =
-                          invoiceXeroPostingApproval(draft);
-                        const providerDispatch =
-                          invoiceProviderDispatch(draft);
-                        const providerDispatchXero = metadataRecord(
-                          providerDispatch.xero,
-                        );
-                        const providerReceipts =
-                          invoiceProviderReceipts(draft);
-                        const latestProviderReceipt =
-                          providerReceipts.find(
-                            (receipt) =>
-                              metadataText(receipt.provider) === "xero",
-                          ) ?? null;
-                        const latestProviderRetryCount =
-                          typeof latestProviderReceipt?.retry_count === "number"
-                            ? latestProviderReceipt.retry_count
-                            : null;
-                        const xeroApproved =
-                          metadataText(xeroApproval.state) === "approved";
-                        const xeroSynced = xeroSync.xero_synced === true;
-                        const xeroExternalStatus =
-                          metadataText(
-                            postingPreparation.external_posting_status,
-                          ) ??
-                          metadataText(
-                            providerDispatchXero.external_posting_status,
-                          );
-                        const xeroFailed =
-                          xeroExternalStatus === "provider_failed" ||
-                          metadataText(providerDispatchXero.status) ===
-                            "failed";
-                        const previewReady =
-                          deliveryState.pdf_preview_generated === true;
-                        const pdfStored =
-                          deliveryState.pdf_artifact_stored === true ||
-                          Boolean(metadataText(pdfArtifact.document_id));
-                        const emailPrepared =
-                          deliveryState.tenant_email_prepared === true;
-                        const deliveryReady =
-                          deliveryState.delivery_ready === true;
-                        const deliverySent =
-                          deliveryState.tenant_email_sent === true ||
-                          ["queued", "sent", "delivered", "opened"].includes(
-                            metadataText(sendState.status) ?? "",
-                          );
-                        const emailFailed =
-                          metadataText(sendState.status) === "failed";
-                        const providerComplete = xeroSynced && deliverySent;
-                        const paymentLabel =
-                          metadataText(paymentStatus.status) ?? "unpaid";
+                      {filteredApprovedInvoiceDrafts.map((draft) => {
+                        const review = invoiceDeliveryReview(draft);
+                        const {
+                          emailPreview,
+                          pdfArtifact,
+                          sendState,
+                          xeroSync,
+                          postingPreparation,
+                          providerReceipts,
+                          latestProviderReceipt,
+                          latestProviderRetryCount,
+                          xeroApproved,
+                          xeroExternalStatus,
+                          xeroFailed,
+                          previewReady,
+                          pdfStored,
+                          emailPrepared,
+                          deliveryReady,
+                          deliverySent,
+                          emailFailed,
+                          providerComplete,
+                          paymentLabel,
+                        } = review;
+                        const paymentReconciliationEntries =
+                          invoicePaymentReconciliationEntries(draft);
                         const isRecordingDelivery =
                           recordInvoiceDeliveryMutation.isPending &&
                           recordInvoiceDeliveryMutation.variables === draft.id;
@@ -1758,6 +1910,83 @@ function BillingReadinessWorkspace() {
                                       ? "Dispatch creates or reuses Xero first, then sends email."
                                       : "Approve Xero posting in Settings before provider dispatch."}
                               </div>
+                              {providerReceipts.length > 0 ||
+                              paymentReconciliationEntries.length > 0 ? (
+                                <div className="mt-3 grid gap-2 rounded-md border border-border bg-muted/30 p-2 text-xs">
+                                  <div className="font-semibold text-foreground">
+                                    Provider history
+                                  </div>
+                                  {providerReceipts.map((receipt, index) => {
+                                    const provider =
+                                      metadataText(receipt.provider) ?? "xero";
+                                    const statusValue =
+                                      metadataText(receipt.status) ?? "recorded";
+                                    const retryCount =
+                                      typeof receipt.retry_count === "number"
+                                        ? receipt.retry_count
+                                        : index + 1;
+                                    const reason = metadataText(receipt.reason);
+                                    return (
+                                      <div
+                                        key={`${provider}-${retryCount}-${metadataText(receipt.received_at) ?? index}`}
+                                        className="grid gap-1"
+                                      >
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <StatusBadge
+                                            tone={
+                                              statusValue === "failed"
+                                                ? "danger"
+                                                : "success"
+                                            }
+                                          >
+                                            {provider} {statusValue} #
+                                            {retryCount}
+                                          </StatusBadge>
+                                          <span className="text-muted-foreground">
+                                            {formatDateTime(
+                                              metadataText(receipt.received_at),
+                                            )}
+                                          </span>
+                                        </div>
+                                        {reason ? (
+                                          <div className="text-muted-foreground">
+                                            {reason}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                  {paymentReconciliationEntries.map(
+                                    (entry, index) => {
+                                      const statusValue =
+                                        metadataText(entry.status) ?? "paid";
+                                      return (
+                                        <div
+                                          key={`payment-${metadataText(entry.idempotency_key) ?? index}`}
+                                          className="grid gap-1"
+                                        >
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <StatusBadge tone="success">
+                                              Payment {statusValue}
+                                            </StatusBadge>
+                                            <span className="text-muted-foreground">
+                                              {formatDateTime(
+                                                metadataText(
+                                                  entry.reconciled_at,
+                                                ),
+                                              )}
+                                            </span>
+                                          </div>
+                                          <div className="text-muted-foreground">
+                                            Payment status was reconciled
+                                            locally.
+                                          </div>
+                                        </div>
+                                      );
+                                    },
+                                  )}
+                                </div>
+                              ) : null}
                             </td>
                             <td className="px-3 py-3">
                               <StatusBadge
@@ -1906,6 +2135,18 @@ function BillingReadinessWorkspace() {
                             <EmptyState
                               title="No approved invoices"
                               description="Approve an internal invoice draft first. Email sending and payment recording stay explicit, and Xero sync needs its own approval."
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                      {!invoiceDraftsLoading &&
+                      approvedInvoiceDrafts.length > 0 &&
+                      filteredApprovedInvoiceDrafts.length === 0 ? (
+                        <tr>
+                          <td className="px-3 py-10" colSpan={5}>
+                            <EmptyState
+                              title="No invoices match this filter"
+                              description="Try another delivery filter to review approved invoice delivery, provider history, and payment status."
                             />
                           </td>
                         </tr>

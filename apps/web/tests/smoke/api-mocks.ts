@@ -1170,6 +1170,9 @@ export async function mockLeasiumApi(
       paid_cents: 880000,
       reconciled_at: reconciledAt,
     };
+    metadata.xero_payment_reconciliation_history = [
+      metadata.xero_payment_reconciliation,
+    ];
   };
 
   const xeroPaymentReconciliationResult = (applied: boolean) => ({

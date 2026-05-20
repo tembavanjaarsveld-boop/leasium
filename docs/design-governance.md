@@ -189,7 +189,7 @@ Status: pending Remba review. Reviewed local Xero contact mapping apply is built
 
 ## Provider Invoice Dispatch
 
-Status: pending Remba review. Provider invoice dispatch now combines two approved external actions for one invoice: create or reuse the Xero DRAFT first, then send or reuse the SendGrid tenant email. Billing Readiness exposes per-invoice Dispatch/Retry actions and Xero receipt/retry state, while backend responses include next-action hints for failed or blocked dispatch. Keep the UI copy explicit that payment reconciliation is separate, retries are idempotent, and skipped/failed provider receipts need operator attention.
+Status: pending Remba review. Provider invoice dispatch now combines two approved external actions for one invoice: create or reuse the Xero DRAFT first, then send or reuse the SendGrid tenant email. Billing Readiness exposes per-invoice Dispatch/Retry actions, all/needs action/ready/complete/unpaid delivery filters, and provider history rows for Xero attempts plus local payment reconciliation receipts, while backend responses include next-action hints for failed or blocked dispatch. Keep the UI copy explicit that payment reconciliation is separate, retries are idempotent, and skipped/failed provider receipts need operator attention.
 
 ## Xero Chart/Tax Validation Preview
 
