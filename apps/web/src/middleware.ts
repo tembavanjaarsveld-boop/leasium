@@ -11,6 +11,10 @@ function accessPassword() {
   return process.env.LEASIUM_ACCESS_PASSWORD?.trim() ?? "";
 }
 
+function isClerkProxyPath(pathname: string) {
+  return pathname === "/__clerk" || pathname.startsWith("/__clerk/");
+}
+
 function clerkServerConfigured() {
   return Boolean(
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() &&
@@ -28,7 +32,11 @@ async function accessToken(password: string) {
 
 async function enforceAccessGate(request: NextRequest) {
   const password = accessPassword();
-  if (!password || isPublicOperatorPath(request.nextUrl.pathname)) {
+  if (
+    !password ||
+    isClerkProxyPath(request.nextUrl.pathname) ||
+    isPublicOperatorPath(request.nextUrl.pathname)
+  ) {
     return null;
   }
 
@@ -74,6 +82,10 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
     const accessResponse = await enforceAccessGate(request);
     if (accessResponse) {
       return accessResponse;
+    }
+
+    if (isClerkProxyPath(request.nextUrl.pathname)) {
+      return clerkProtectedMiddleware(request, event);
     }
 
     if (!isPublicOperatorPath(request.nextUrl.pathname)) {
