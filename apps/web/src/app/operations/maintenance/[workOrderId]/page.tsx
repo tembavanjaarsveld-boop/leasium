@@ -52,6 +52,7 @@ import {
   type MaintenanceWorkOrderRecord,
   prepareInvoiceDraftDelivery,
   type PropertyRecord,
+  sendMaintenanceWorkOrderContractorEmail,
   type TenantRecord,
   updateMaintenanceWorkOrder,
   updateInvoiceDraft,
@@ -249,6 +250,46 @@ function contractorHandoffSummary(workOrder: MaintenanceWorkOrderRecord) {
     return `Latest contractor note: ${metadataText(latestComment.body) ?? "recorded"}`;
   }
   return "Contractor is assigned; use the activity comment form for the next update.";
+}
+
+function contractorDeliveryEmail(workOrder: MaintenanceWorkOrderRecord) {
+  const delivery = metadataRecord(workOrder.metadata.contractor_delivery);
+  return metadataRecord(delivery.email);
+}
+
+function contractorEmailSendState(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecord(contractorDeliveryEmail(workOrder).send);
+}
+
+function contractorEmailReceipts(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecordList(contractorDeliveryEmail(workOrder).receipts);
+}
+
+function contractorEmailTone(statusValue: string | null): Tone {
+  if (["queued", "sent", "delivered", "opened"].includes(statusValue ?? "")) {
+    return "success";
+  }
+  if (statusValue === "failed") {
+    return "danger";
+  }
+  if (statusValue === "attention" || statusValue === "skipped") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function contractorEmailDefaultSubject(workOrder: MaintenanceWorkOrderRecord) {
+  return `Maintenance update: ${workOrder.title}`;
+}
+
+function contractorEmailDefaultBody(workOrder: MaintenanceWorkOrderRecord) {
+  return [
+    `Please review this maintenance work order and reply with your next available attendance window.`,
+    "",
+    `Work order: ${workOrder.title}`,
+    `Priority: ${label(workOrder.priority)}`,
+    `Due: ${formatDate(workOrder.due_date)}`,
+  ].join("\n");
 }
 
 function invoiceBillingHandoff(
@@ -450,6 +491,8 @@ function MaintenanceDetailRoute() {
   const [quoteFile, setQuoteFile] = useState<File | null>(null);
   const [quoteNotes, setQuoteNotes] = useState("");
   const [invoiceDraftId, setInvoiceDraftId] = useState("");
+  const [contractorEmailSubject, setContractorEmailSubject] = useState("");
+  const [contractorEmailBody, setContractorEmailBody] = useState("");
   const [commentBody, setCommentBody] = useState("");
   const [commentVisibility, setCommentVisibility] = useState<
     "internal" | "contractor" | "tenant"
@@ -546,6 +589,28 @@ function MaintenanceDetailRoute() {
     linkedInvoiceDraft && workOrder
       ? invoiceBillingHandoff(workOrder, linkedInvoiceDraft)
       : null;
+  const contractorSendState = workOrder
+    ? contractorEmailSendState(workOrder)
+    : {};
+  const contractorSendStatus =
+    metadataText(contractorSendState.status) ?? "not_sent";
+  const contractorSendSubject = metadataText(contractorSendState.subject);
+  const contractorSendError = metadataText(contractorSendState.error);
+  const contractorReceiptRows = workOrder
+    ? contractorEmailReceipts(workOrder)
+    : [];
+  const latestContractorReceipt = contractorReceiptRows[0] ?? null;
+  const latestContractorReceiptStatus =
+    metadataText(latestContractorReceipt?.status) ?? null;
+  const latestContractorReceiptAt =
+    metadataText(latestContractorReceipt?.received_at) ??
+    metadataText(contractorSendState.attempted_at);
+  const contractorMessageDefault = workOrder
+    ? contractorEmailDefaultBody(workOrder)
+    : "";
+  const contractorSubjectDefault = workOrder
+    ? contractorEmailDefaultSubject(workOrder)
+    : "";
 
   const refresh = () => {
     workOrderQuery.refetch();
@@ -667,6 +732,40 @@ function MaintenanceDetailRoute() {
     commentMutation.mutate();
   };
 
+  const contractorEmailMutation = useMutation({
+    mutationFn: () => {
+      if (!workOrder) {
+        throw new Error("Work order is still loading.");
+      }
+      return sendMaintenanceWorkOrderContractorEmail(workOrderId, {
+        subject:
+          contractorEmailSubject.trim() ||
+          contractorEmailDefaultSubject(workOrder),
+        body:
+          contractorEmailBody.trim() || contractorEmailDefaultBody(workOrder),
+        include_comment: true,
+      });
+    },
+    onSuccess: () => {
+      setContractorEmailSubject("");
+      setContractorEmailBody("");
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-work-order", workOrderId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", entityId],
+      });
+    },
+  });
+
+  const handleContractorEmailSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!workOrder?.contractor_email) {
+      return;
+    }
+    contractorEmailMutation.mutate();
+  };
+
   return (
     <main className="min-h-screen">
       <AppHeader />
@@ -771,22 +870,108 @@ function MaintenanceDetailRoute() {
               </SectionPanel>
 
               <SectionPanel title="Contractor" icon={<UserRound size={17} />}>
-                <dl className="grid gap-2 p-4 text-sm">
-                  <div>
-                    <dt className="text-muted-foreground">Name</dt>
-                    <dd className="font-medium">
-                      {workOrder.contractor_name ?? "Not assigned"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Contact</dt>
-                    <dd>
-                      {workOrder.contractor_email ??
-                        workOrder.contractor_phone ??
-                        "-"}
-                    </dd>
-                  </div>
-                </dl>
+                <div className="grid gap-3 p-4 text-sm">
+                  <dl className="grid gap-2">
+                    <div>
+                      <dt className="text-muted-foreground">Name</dt>
+                      <dd className="font-medium">
+                        {workOrder.contractor_name ?? "Not assigned"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Contact</dt>
+                      <dd>
+                        {workOrder.contractor_email ??
+                          workOrder.contractor_phone ??
+                          "-"}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <form
+                    className="grid gap-3 rounded-md border border-border bg-muted/30 p-3"
+                    onSubmit={handleContractorEmailSubmit}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge
+                        tone={contractorEmailTone(contractorSendStatus)}
+                      >
+                        {contractorSendStatus === "not_sent"
+                          ? "Email not sent"
+                          : `Email ${label(contractorSendStatus)}`}
+                      </StatusBadge>
+                      {latestContractorReceiptStatus ? (
+                        <StatusBadge
+                          tone={contractorEmailTone(
+                            latestContractorReceiptStatus,
+                          )}
+                        >
+                          Receipt {label(latestContractorReceiptStatus)}
+                        </StatusBadge>
+                      ) : null}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {contractorSendSubject
+                        ? `${contractorSendSubject} - ${formatDateTime(
+                            latestContractorReceiptAt,
+                          )}`
+                        : "SendGrid delivery and receipts will be stored on this work order."}
+                    </div>
+                    {contractorSendError ? (
+                      <div className="text-xs text-danger">
+                        {contractorSendError}
+                      </div>
+                    ) : null}
+                    <Field label="Email subject">
+                      <Input
+                        value={contractorEmailSubject}
+                        onChange={(event) =>
+                          setContractorEmailSubject(event.target.value)
+                        }
+                        placeholder={contractorSubjectDefault}
+                      />
+                    </Field>
+                    <label className="grid gap-1.5">
+                      <span className="font-medium text-foreground">
+                        Contractor email message
+                      </span>
+                      <textarea
+                        aria-label="Contractor email message"
+                        value={contractorEmailBody}
+                        onChange={(event) =>
+                          setContractorEmailBody(event.target.value)
+                        }
+                        rows={4}
+                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        placeholder={contractorMessageDefault}
+                      />
+                    </label>
+                    <Button
+                      type="submit"
+                      disabled={
+                        !workOrder.contractor_email ||
+                        contractorEmailMutation.isPending
+                      }
+                      title={
+                        workOrder.contractor_email
+                          ? "Send a provider-backed contractor update and keep the receipt on the work order."
+                          : "Add a contractor email before sending."
+                      }
+                    >
+                      {contractorEmailMutation.isPending ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Mail size={16} />
+                      )}
+                      Send update
+                    </Button>
+                    {contractorEmailMutation.error ? (
+                      <p className="text-sm text-danger">
+                        {friendlyError(contractorEmailMutation.error)}
+                      </p>
+                    ) : null}
+                  </form>
+                </div>
               </SectionPanel>
 
               <SectionPanel title="Invoice" icon={<ReceiptText size={17} />}>

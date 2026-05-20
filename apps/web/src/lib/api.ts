@@ -1419,7 +1419,10 @@ export type XeroInvoiceProviderDispatchRecord = {
   guardrails: string[];
 };
 
-export type XeroPaymentReconciliationStatus = "unpaid" | "partially_paid" | "paid";
+export type XeroPaymentReconciliationStatus =
+  | "unpaid"
+  | "partially_paid"
+  | "paid";
 
 export type XeroPaymentReconciliationItemPayload = {
   invoice_draft_id?: string | null;
@@ -2064,7 +2067,11 @@ export function previewXeroInvoicePosting(entityId: string) {
 
 export function approveXeroInvoicePosting(
   invoiceDraftId: string,
-  payload: { approved: boolean; idempotency_key?: string | null; notes?: string | null },
+  payload: {
+    approved: boolean;
+    idempotency_key?: string | null;
+    notes?: string | null;
+  },
 ) {
   return request<XeroInvoicePostingApprovalRecord>(
     `/xero/invoices/${invoiceDraftId}/posting-approval`,
@@ -2077,7 +2084,10 @@ export function approveXeroInvoicePosting(
 
 export function createXeroInvoiceDrafts(
   entityId: string,
-  payload: { invoice_draft_ids?: string[] | null; idempotency_key?: string | null },
+  payload: {
+    invoice_draft_ids?: string[] | null;
+    idempotency_key?: string | null;
+  },
 ) {
   return request<XeroInvoiceDraftCreateRecord>(
     `/xero/invoices/draft-create/${entityId}`,
@@ -2090,7 +2100,10 @@ export function createXeroInvoiceDrafts(
 
 export function dispatchXeroInvoiceProviders(
   entityId: string,
-  payload: { invoice_draft_ids?: string[] | null; idempotency_key?: string | null },
+  payload: {
+    invoice_draft_ids?: string[] | null;
+    idempotency_key?: string | null;
+  },
 ) {
   return request<XeroInvoiceProviderDispatchRecord>(
     `/xero/invoices/provider-dispatch/${entityId}`,
@@ -2545,7 +2558,9 @@ export function getMaintenanceWorkOrder(workOrderId: string) {
   );
 }
 
-export function createMaintenanceWorkOrder(payload: MaintenanceWorkOrderPayload) {
+export function createMaintenanceWorkOrder(
+  payload: MaintenanceWorkOrderPayload,
+) {
   return request<MaintenanceWorkOrderRecord>("/maintenance/work-orders", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -2574,6 +2589,23 @@ export function addMaintenanceWorkOrderComment(
 ) {
   return request<MaintenanceWorkOrderRecord>(
     `/maintenance/work-orders/${workOrderId}/comments`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function sendMaintenanceWorkOrderContractorEmail(
+  workOrderId: string,
+  payload: {
+    subject?: string | null;
+    body: string;
+    include_comment?: boolean;
+  },
+) {
+  return request<MaintenanceWorkOrderRecord>(
+    `/maintenance/work-orders/${workOrderId}/contractor-delivery/send-email`,
     {
       method: "POST",
       body: JSON.stringify(payload),

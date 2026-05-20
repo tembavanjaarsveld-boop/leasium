@@ -159,6 +159,28 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Approve quote" }),
   ).toBeVisible();
+  await expect(page.getByText("Email not sent")).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Contractor email message" })
+    .fill("Please confirm your first available attendance window.");
+  await page.getByRole("button", { name: "Send update" }).click();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Email Queued$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Receipt Queued$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Please confirm your first available attendance window. (Contractor)",
+    ),
+  ).toBeVisible();
   await page
     .getByLabel("Linked maintenance invoice")
     .selectOption("invoice-draft-1");

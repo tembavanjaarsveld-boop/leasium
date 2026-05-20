@@ -2622,6 +2622,116 @@ export async function mockLeasiumApi(
 
     if (
       method === "POST" &&
+      path ===
+        "/maintenance/work-orders/work-order-1/contractor-delivery/send-email"
+    ) {
+      const payload = request.postDataJSON() as {
+        body?: string;
+        subject?: string | null;
+        include_comment?: boolean;
+      };
+      const body = (payload.body ?? "").trim();
+      const subject =
+        payload.subject?.trim() || "Maintenance update: Air conditioning fault";
+      const timestamp = "2026-05-20T01:20:00.000Z";
+      const contractorDelivery = {
+        email: {
+          send: {
+            status: "queued",
+            provider: "sendgrid",
+            attempted_at: timestamp,
+            sent_at: timestamp,
+            sent_by_user_id: operatorId,
+            provider_message_id: "sg-maintenance-1",
+            recipient_email: "service@coolair.example",
+            subject,
+            body,
+            error: null,
+            template_key: "maintenance_contractor_update",
+            template_version: "v1",
+          },
+          receipts: [
+            {
+              received_at: timestamp,
+              channel: "email",
+              status: "queued",
+              provider: "sendgrid",
+              recipient_email: "service@coolair.example",
+              provider_message_id: "sg-maintenance-1",
+              error: null,
+              subject,
+            },
+          ],
+          history: [
+            {
+              event: "provider_delivery_attempted",
+              at: timestamp,
+              user_id: operatorId,
+              provider: "sendgrid",
+              status: "queued",
+              recipient_email: "service@coolair.example",
+              provider_message_id: "sg-maintenance-1",
+              error: null,
+            },
+          ],
+        },
+      };
+      const existingComments =
+        (maintenanceWorkOrders[0].metadata.comments as
+          | JsonBody[]
+          | undefined) ?? [];
+      const comments =
+        payload.include_comment === false
+          ? existingComments
+          : [
+              ...existingComments,
+              {
+                timestamp,
+                actor: operatorId,
+                visibility: "contractor",
+                body,
+              },
+            ];
+      const commentActivity =
+        payload.include_comment === false
+          ? []
+          : [
+              {
+                timestamp,
+                actor: operatorId,
+                source: "operator_api",
+                event: "comment_added",
+                visibility: "contractor",
+                summary: body,
+              },
+            ];
+      const metadata = {
+        ...maintenanceWorkOrders[0].metadata,
+        comments,
+        contractor_delivery: contractorDelivery,
+        activity_history: [
+          ...maintenanceWorkOrders[0].metadata.activity_history,
+          ...commentActivity,
+          {
+            timestamp,
+            actor: operatorId,
+            source: "operator_api",
+            event: "contractor_email_attempted",
+            summary: "Contractor email queued.",
+            status: maintenanceWorkOrders[0].status,
+          },
+        ],
+      };
+      Object.assign(maintenanceWorkOrders[0], {
+        metadata,
+        updated_at: timestamp,
+      });
+      await fulfillJson(route, maintenanceWorkOrders[0]);
+      return;
+    }
+
+    if (
+      method === "POST" &&
       path === "/maintenance/work-orders/work-order-1/comments"
     ) {
       const payload = request.postDataJSON() as {

@@ -65,8 +65,7 @@ class Settings(BaseSettings):
     xero_connections_url: str = "https://api.xero.com/connections"
     xero_api_base_url: str = "https://api.xero.com/api.xro/2.0"
     xero_default_scopes: str = (
-        "offline_access accounting.contacts.read accounting.settings.read "
-        "accounting.transactions"
+        "offline_access accounting.contacts.read accounting.settings.read accounting.transactions"
     )
     xero_http_timeout_seconds: float = 15.0
     sendgrid_api_key: str = ""
@@ -76,6 +75,9 @@ class Settings(BaseSettings):
     invoice_email_enabled: bool = True
     invoice_email_template_key: str = "invoice_delivery"
     invoice_email_template_version: str = "v1"
+    contractor_email_enabled: bool = True
+    contractor_email_template_key: str = "maintenance_contractor_update"
+    contractor_email_template_version: str = "v1"
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_messaging_service_sid: str = ""

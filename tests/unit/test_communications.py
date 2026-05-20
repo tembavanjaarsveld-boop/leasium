@@ -9,8 +9,10 @@ import pytest
 from stewart.core.settings import Settings
 from stewart.integrations import communications
 from stewart.integrations.communications import (
+    ContractorWorkOrderEmail,
     OperatorInviteEmail,
     TenantOnboardingInvite,
+    send_contractor_work_order_email,
     send_operator_invite_email,
 )
 
@@ -114,3 +116,45 @@ def test_tenant_onboarding_sendgrid_categories_are_deduplicated(
 
     assert result.status == "queued"
     assert payloads[0]["categories"] == ["tenant_onboarding"]
+
+
+def test_contractor_work_order_sendgrid_categories_are_deduplicated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payloads: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "stewart.integrations.communications.httpx.Client",
+        lambda **kwargs: _CaptureClient(payloads),
+    )
+
+    work_order_id = uuid4()
+    entity_id = uuid4()
+    result = send_contractor_work_order_email(
+        ContractorWorkOrderEmail(
+            work_order_id=work_order_id,
+            entity_id=entity_id,
+            title="Replace shopfront lock",
+            description="Rear lock is sticking.",
+            priority="normal",
+            status="assigned",
+            property_name="Queen Street Retail Centre",
+            property_address="12 Queen Street, Brisbane City, QLD 4000",
+            unit_label="Shop 1",
+            tenant_name="Bright Cafe",
+            contractor_name="Rapid Locksmiths",
+            contractor_email="dispatch@rapidlocks.example",
+            due_date=date(2026, 5, 28),
+            subject="Attendance window request",
+            body="Please confirm your first available attendance window.",
+            template_key="maintenance_contractor",
+            template_version="v1",
+        ),
+        _settings(),
+    )
+
+    assert result.status == "queued"
+    assert payloads[0]["categories"] == ["maintenance_contractor"]
+    personalizations = payloads[0]["personalizations"]
+    assert isinstance(personalizations, list)
+    custom_args = personalizations[0]["custom_args"]
+    assert custom_args["maintenance_work_order_id"] == str(work_order_id)

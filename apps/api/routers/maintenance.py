@@ -1,11 +1,12 @@
 """Maintenance work order routes."""
 
+import secrets
 from datetime import date, datetime
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
@@ -24,10 +25,17 @@ from stewart.core.models import (
     UserEntityRole,
     UserRole,
 )
+from stewart.core.settings import get_settings
+from stewart.integrations.communications import (
+    ContractorWorkOrderEmail,
+    DeliveryResult,
+    send_contractor_work_order_email,
+)
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.maintenance import (
     MaintenanceWorkOrderCommentCreate,
+    MaintenanceWorkOrderContractorEmailSend,
     MaintenanceWorkOrderCreate,
     MaintenanceWorkOrderRead,
     MaintenanceWorkOrderUpdate,
@@ -40,6 +48,7 @@ WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 
 ACTIVITY_HISTORY_KEY = "activity_history"
 COMMENTS_KEY = "comments"
+CONTRACTOR_DELIVERY_KEY = "contractor_delivery"
 ACTIVITY_TRACKED_FIELDS = (
     "status",
     "priority",
@@ -158,6 +167,259 @@ def _append_comment(
             "event": "comment_added",
             "summary": body.strip(),
         },
+    )
+
+
+def _delivery_dict(value: object) -> dict[str, object]:
+    return dict(cast(dict[str, object], value)) if isinstance(value, dict) else {}
+
+
+def _delivery_list(value: object) -> list[object]:
+    return list(cast(list[object], value)) if isinstance(value, list) else []
+
+
+def _contractor_email_default_subject(work_order: MaintenanceWorkOrder) -> str:
+    return f"Maintenance update: {work_order.title}"
+
+
+def _property_address(prop: Property | None) -> str | None:
+    if prop is None:
+        return None
+    parts = [prop.street_address, prop.suburb, prop.state, prop.postcode]
+    return ", ".join(part for part in parts if part)
+
+
+def _contractor_work_order_email(
+    work_order: MaintenanceWorkOrder,
+    payload: MaintenanceWorkOrderContractorEmailSend,
+    session: Session,
+) -> ContractorWorkOrderEmail:
+    settings = get_settings()
+    prop = session.get(Property, work_order.property_id) if work_order.property_id else None
+    unit = (
+        session.get(TenancyUnit, work_order.tenancy_unit_id) if work_order.tenancy_unit_id else None
+    )
+    tenant = session.get(Tenant, work_order.tenant_id) if work_order.tenant_id else None
+    tenant_name = None
+    if tenant is not None:
+        tenant_name = tenant.trading_name or tenant.legal_name
+    return ContractorWorkOrderEmail(
+        work_order_id=work_order.id,
+        entity_id=work_order.entity_id,
+        title=work_order.title,
+        description=work_order.description,
+        priority=str(_activity_value(work_order.priority)),
+        status=str(_activity_value(work_order.status)),
+        property_name=prop.name if prop is not None else "Portfolio",
+        property_address=_property_address(prop),
+        unit_label=unit.unit_label if unit is not None else None,
+        tenant_name=tenant_name,
+        contractor_name=work_order.contractor_name,
+        contractor_email=work_order.contractor_email,
+        due_date=work_order.due_date,
+        subject=payload.subject.strip()
+        if payload.subject and payload.subject.strip()
+        else _contractor_email_default_subject(work_order),
+        body=payload.body.strip(),
+        template_key=settings.contractor_email_template_key,
+        template_version=settings.contractor_email_template_version,
+    )
+
+
+def _record_contractor_provider_delivery(
+    work_order: MaintenanceWorkOrder,
+    metadata: dict[str, Any] | None,
+    *,
+    invite: ContractorWorkOrderEmail,
+    result: DeliveryResult,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    result_dict = result.to_dict()
+    status_value = str(result_dict.get("status") or "failed")
+    recorded_at = str(result_dict.get("attempted_at") or utcnow().isoformat())
+    delivery_metadata = dict(metadata or {})
+    contractor_delivery = _delivery_dict(delivery_metadata.get(CONTRACTOR_DELIVERY_KEY))
+    email_delivery = _delivery_dict(contractor_delivery.get("email"))
+    delivered = status_value in {"queued", "sent", "delivered", "opened"}
+
+    email_delivery["send"] = {
+        "status": status_value,
+        "provider": result_dict.get("provider") or "sendgrid",
+        "attempted_at": recorded_at,
+        "sent_at": recorded_at if delivered else None,
+        "sent_by_user_id": str(user.id),
+        "provider_message_id": result_dict.get("provider_message_id"),
+        "recipient_email": result_dict.get("recipient") or work_order.contractor_email,
+        "subject": invite.subject,
+        "body": invite.body,
+        "error": result_dict.get("error"),
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+    }
+    receipts = _delivery_list(email_delivery.get("receipts"))
+    receipts.insert(
+        0,
+        {
+            "received_at": recorded_at,
+            "channel": "email",
+            "status": status_value,
+            "provider": result_dict.get("provider") or "sendgrid",
+            "recipient_email": result_dict.get("recipient") or work_order.contractor_email,
+            "provider_message_id": result_dict.get("provider_message_id"),
+            "error": result_dict.get("error"),
+            "subject": invite.subject,
+        },
+    )
+    history = _delivery_list(email_delivery.get("history"))
+    history.append(
+        {
+            "event": "provider_delivery_attempted",
+            "at": recorded_at,
+            "user_id": str(user.id),
+            "provider": result_dict.get("provider") or "sendgrid",
+            "status": status_value,
+            "recipient_email": result_dict.get("recipient") or work_order.contractor_email,
+            "provider_message_id": result_dict.get("provider_message_id"),
+            "error": result_dict.get("error"),
+        }
+    )
+    email_delivery["receipts"] = receipts[:20]
+    email_delivery["history"] = history
+    contractor_delivery["email"] = email_delivery
+    delivery_metadata[CONTRACTOR_DELIVERY_KEY] = contractor_delivery
+    return _append_activity_history(
+        delivery_metadata,
+        _activity_entry(
+            actor=user.actor,
+            source="operator_api",
+            event="contractor_email_attempted",
+            summary=f"Contractor email {status_value}.",
+            status_value=work_order.status,
+        ),
+    )
+
+
+def _assert_webhook_secret(request: Request) -> None:
+    secret = get_settings().communications_webhook_secret
+    if not secret:
+        return
+    provided = request.headers.get("x-leasium-webhook-secret") or request.query_params.get("token")
+    if not provided or not secrets.compare_digest(provided, secret):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook token.",
+        )
+
+
+def _contractor_email_receipt_status(raw_status: str) -> str:
+    value = raw_status.lower()
+    if value in {"processed", "deferred"}:
+        return "sent" if value == "processed" else "attention"
+    if value == "delivered":
+        return "delivered"
+    if value in {"open", "click"}:
+        return "opened"
+    if value in {"bounce", "dropped", "spamreport", "unsubscribe", "group_unsubscribe"}:
+        return "failed"
+    return "attention"
+
+
+def _find_work_order_by_message_id(
+    session: Session,
+    provider_message_id: str,
+) -> MaintenanceWorkOrder | None:
+    rows = session.scalars(
+        select(MaintenanceWorkOrder).where(MaintenanceWorkOrder.deleted_at.is_(None))
+    ).all()
+    for work_order in rows:
+        metadata = work_order.work_order_metadata or {}
+        contractor_delivery = metadata.get(CONTRACTOR_DELIVERY_KEY)
+        email_delivery = (
+            contractor_delivery.get("email") if isinstance(contractor_delivery, dict) else None
+        )
+        send_state = email_delivery.get("send") if isinstance(email_delivery, dict) else None
+        if (
+            isinstance(send_state, dict)
+            and send_state.get("provider_message_id") == provider_message_id
+        ):
+            return work_order
+        receipts = email_delivery.get("receipts") if isinstance(email_delivery, dict) else None
+        if not isinstance(receipts, list):
+            continue
+        for receipt in receipts:
+            if (
+                isinstance(receipt, dict)
+                and receipt.get("provider_message_id") == provider_message_id
+            ):
+                return work_order
+    return None
+
+
+def _apply_contractor_email_receipt(
+    work_order: MaintenanceWorkOrder,
+    raw_status: str,
+    provider_message_id: str | None,
+    event: dict[str, object],
+) -> None:
+    now = utcnow().isoformat()
+    status_value = _contractor_email_receipt_status(raw_status)
+    metadata = dict(work_order.work_order_metadata or {})
+    contractor_delivery = _delivery_dict(metadata.get(CONTRACTOR_DELIVERY_KEY))
+    email_delivery = _delivery_dict(contractor_delivery.get("email"))
+    send_state = _delivery_dict(email_delivery.get("send"))
+    send_state.update(
+        {
+            "status": status_value,
+            "provider": "sendgrid",
+            "provider_message_id": provider_message_id or send_state.get("provider_message_id"),
+            "receipt_at": now,
+            "last_event": raw_status,
+        }
+    )
+    if status_value in {"sent", "delivered", "opened"} and not send_state.get("sent_at"):
+        send_state["sent_at"] = now
+    if status_value == "failed":
+        send_state["error"] = str(
+            event.get("reason") or event.get("response") or event.get("event") or raw_status
+        )
+    email_delivery["send"] = send_state
+    receipts = _delivery_list(email_delivery.get("receipts"))
+    receipts.insert(
+        0,
+        {
+            "received_at": now,
+            "channel": "email",
+            "status": status_value,
+            "event": raw_status,
+            "provider": "sendgrid",
+            "recipient_email": event.get("email") or work_order.contractor_email,
+            "provider_message_id": provider_message_id,
+        },
+    )
+    history = _delivery_list(email_delivery.get("history"))
+    history.append(
+        {
+            "event": "provider_delivery_receipt",
+            "at": now,
+            "provider": "sendgrid",
+            "status": status_value,
+            "raw_event": raw_status,
+            "provider_message_id": provider_message_id,
+        }
+    )
+    email_delivery["receipts"] = receipts[:20]
+    email_delivery["history"] = history
+    contractor_delivery["email"] = email_delivery
+    metadata[CONTRACTOR_DELIVERY_KEY] = contractor_delivery
+    work_order.work_order_metadata = _append_activity_history(
+        metadata,
+        _activity_entry(
+            actor="provider:sendgrid",
+            source="sendgrid_webhook",
+            event="contractor_email_receipt",
+            summary=f"Contractor email receipt {status_value}.",
+            status_value=work_order.status,
+        ),
     )
 
 
@@ -290,9 +552,7 @@ def _document_for_entity(document_id: UUID, entity_id: UUID, session: Session) -
     return document
 
 
-def _document_id_strings(
-    document_ids: list[UUID], entity_id: UUID, session: Session
-) -> list[str]:
+def _document_id_strings(document_ids: list[UUID], entity_id: UUID, session: Session) -> list[str]:
     validated: list[str] = []
     seen: set[UUID] = set()
     for document_id in document_ids:
@@ -473,6 +733,114 @@ def add_work_order_comment(
     session.commit()
     session.refresh(work_order)
     return work_order
+
+
+@router.post(
+    "/{work_order_id}/contractor-delivery/send-email",
+    response_model=MaintenanceWorkOrderRead,
+)
+def send_work_order_contractor_email(
+    work_order_id: UUID,
+    payload: MaintenanceWorkOrderContractorEmailSend,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> MaintenanceWorkOrder:
+    work_order = _work_order_for_user(work_order_id, user, session, WRITE_ROLES)
+    body = payload.body.strip()
+    if not body:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Contractor email body cannot be blank.",
+        )
+
+    invite = _contractor_work_order_email(work_order, payload, session)
+    settings = get_settings()
+    result = send_contractor_work_order_email(invite, settings)
+    metadata = dict(work_order.work_order_metadata or {})
+    if payload.include_comment and result.status in {"queued", "sent", "delivered", "opened"}:
+        metadata = _append_comment(
+            metadata,
+            actor=user.actor,
+            body=body,
+            visibility="contractor",
+        )
+    work_order.work_order_metadata = _record_contractor_provider_delivery(
+        work_order,
+        metadata,
+        invite=invite,
+        result=result,
+        user=user,
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=work_order.entity_id,
+        action="deliver",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="sendgrid.maintenance_contractor",
+        tool_input={
+            "maintenance_work_order_id": str(work_order.id),
+            "recipient_email": work_order.contractor_email,
+            "provider": result.provider,
+            "status": result.status,
+        },
+        tool_output_summary=(
+            f"Attempted contractor email delivery via {result.provider}: {result.status}."
+        ),
+    )
+    session.commit()
+    session.refresh(work_order)
+    return work_order
+
+
+@router.post("/webhooks/sendgrid-events", status_code=status.HTTP_204_NO_CONTENT)
+async def record_maintenance_sendgrid_delivery_events(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    _assert_webhook_secret(request)
+    payload = await request.json()
+    events = payload if isinstance(payload, list) else [payload]
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        raw_status = str(event.get("event") or "")
+        if not raw_status:
+            continue
+        work_order = None
+        work_order_id = event.get("maintenance_work_order_id")
+        if isinstance(work_order_id, str):
+            try:
+                work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+            except ValueError:
+                work_order = None
+        message_id = event.get("sg_message_id") or event.get("sg-message-id")
+        if work_order is None and isinstance(message_id, str):
+            work_order = _find_work_order_by_message_id(session, message_id)
+        if work_order is None or work_order.deleted_at is not None:
+            continue
+        _apply_contractor_email_receipt(
+            work_order,
+            raw_status,
+            str(message_id) if message_id else None,
+            event,
+        )
+        audit_log(
+            session,
+            actor="provider:sendgrid",
+            entity_id=work_order.entity_id,
+            action="receipt",
+            target_table="maintenance_work_order",
+            target_id=work_order.id,
+            tool_name="sendgrid.maintenance_contractor_event_webhook",
+            tool_input={"channel": "email", "status": raw_status},
+            tool_output_summary="Recorded SendGrid contractor email receipt.",
+            data_classification="confidential",
+        )
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{work_order_id}", response_model=MaintenanceWorkOrderRead)

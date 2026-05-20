@@ -102,6 +102,29 @@ class InvoiceDeliveryEmail:
     template_version: str
 
 
+@dataclass(frozen=True)
+class ContractorWorkOrderEmail:
+    """Context needed to send a contractor maintenance update."""
+
+    work_order_id: UUID
+    entity_id: UUID
+    title: str
+    description: str | None
+    priority: str
+    status: str
+    property_name: str
+    property_address: str | None
+    unit_label: str | None
+    tenant_name: str | None
+    contractor_name: str | None
+    contractor_email: str | None
+    due_date: date | None
+    subject: str
+    body: str
+    template_key: str
+    template_version: str
+
+
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
@@ -528,11 +551,7 @@ def _invoice_email_html(invite: InvoiceDeliveryEmail) -> str:
         if invite.preview_url
         else ""
     )
-    greeting = (
-        f"Hi {escape(invite.recipient_name)},"
-        if invite.recipient_name
-        else "Hello,"
-    )
+    greeting = f"Hi {escape(invite.recipient_name)}," if invite.recipient_name else "Hello,"
     return f"""
     <div style="font-family:Inter,Arial,sans-serif;line-height:1.55;color:#172033">
       <p>{greeting}</p>
@@ -541,9 +560,192 @@ def _invoice_email_html(invite: InvoiceDeliveryEmail) -> str:
       <p>Reference: {escape(invite.invoice_number or invite.title)}</p>
       {preview_link}
       <p>Please reply to this email if anything looks incorrect.</p>
-      <p>Regards,<br>{escape(invite.issuer_name or 'Leasium')}</p>
+      <p>Regards,<br>{escape(invite.issuer_name or "Leasium")}</p>
     </div>
     """
+
+
+def _contractor_email_text(invite: ContractorWorkOrderEmail) -> str:
+    greeting = f"Hi {invite.contractor_name}," if invite.contractor_name else "Hi,"
+    context = [
+        f"Work order: {invite.title}",
+        f"Property: {invite.property_name}",
+        *([f"Area: {invite.unit_label}"] if invite.unit_label else []),
+        *([f"Tenant: {invite.tenant_name}"] if invite.tenant_name else []),
+        f"Priority: {invite.priority.replace('_', ' ').title()}",
+        f"Status: {invite.status.replace('_', ' ').title()}",
+        f"Due: {_date_label(invite.due_date)}",
+    ]
+    description = f"\nDescription: {invite.description}\n" if invite.description else ""
+    return "\n".join(
+        [
+            greeting,
+            "",
+            invite.body,
+            "",
+            *context,
+            description.strip(),
+            "",
+            "Please reply to this email with timing, blockers, or next steps.",
+            "",
+            "Regards,",
+            "Leasium",
+        ]
+    )
+
+
+def _contractor_email_html(invite: ContractorWorkOrderEmail) -> str:
+    greeting = f"Hi {escape(invite.contractor_name)}," if invite.contractor_name else "Hi,"
+    address = (
+        f'<p style="margin:4px 0 0;color:#667085;">{escape(invite.property_address)}</p>'
+        if invite.property_address
+        else ""
+    )
+    unit = (
+        f'<p style="margin:8px 0 0;color:#475467;">Area: {escape(invite.unit_label)}</p>'
+        if invite.unit_label
+        else ""
+    )
+    tenant = (
+        f'<p style="margin:4px 0 0;color:#475467;">Tenant: {escape(invite.tenant_name)}</p>'
+        if invite.tenant_name
+        else ""
+    )
+    description = (
+        f'<p style="margin:14px 0 0;color:#475467;">{escape(invite.description)}</p>'
+        if invite.description
+        else ""
+    )
+    body = "<br>".join(escape(line) for line in invite.body.splitlines())
+    return f"""
+    <div style="font-family:Inter,Arial,sans-serif;line-height:1.55;color:#172033">
+      <p>{greeting}</p>
+      <p>{body}</p>
+      <div style="border:1px solid #E4E7EC;border-radius:12px;padding:16px;margin:18px 0;">
+        <p style="margin:0;font-weight:700;">{escape(invite.title)}</p>
+        <p style="margin:10px 0 0;color:#475467;">{escape(invite.property_name)}</p>
+        {address}
+        {unit}
+        {tenant}
+        <p style="margin:10px 0 0;color:#475467;">
+          Priority: {escape(invite.priority.replace("_", " ").title())}
+        </p>
+        <p style="margin:4px 0 0;color:#475467;">
+          Due: {escape(_date_label(invite.due_date))}
+        </p>
+        {description}
+      </div>
+      <p>Please reply to this email with timing, blockers, or next steps.</p>
+      <p>Regards,<br>Leasium</p>
+    </div>
+    """
+
+
+def send_contractor_work_order_email(
+    invite: ContractorWorkOrderEmail,
+    settings: Settings,
+) -> DeliveryResult:
+    """Send a maintenance work-order update to the assigned contractor."""
+
+    recipient = _clean(invite.contractor_email)
+    metadata: dict[str, str | None] = {
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "maintenance_work_order_id": str(invite.work_order_id),
+        "entity_id": str(invite.entity_id),
+        "subject": invite.subject,
+    }
+    if not settings.contractor_email_enabled:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="Contractor email disabled.",
+            metadata=metadata,
+        )
+    if recipient is None:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            error="No contractor email recipient.",
+            metadata=metadata,
+        )
+    if not settings.sendgrid_api_key or not settings.sendgrid_from_email:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="SendGrid is not configured.",
+            metadata=metadata,
+        )
+
+    payload = {
+        "personalizations": [
+            {
+                "to": [
+                    {
+                        "email": recipient,
+                        **({"name": invite.contractor_name} if invite.contractor_name else {}),
+                    }
+                ],
+                "subject": invite.subject,
+                "custom_args": {
+                    "maintenance_work_order_id": str(invite.work_order_id),
+                    "entity_id": str(invite.entity_id),
+                    "template_key": invite.template_key,
+                    "template_version": invite.template_version,
+                },
+            }
+        ],
+        "from": {
+            "email": settings.sendgrid_from_email,
+            "name": settings.sendgrid_from_name,
+        },
+        "content": [
+            {"type": "text/plain", "value": _contractor_email_text(invite)},
+            {"type": "text/html", "value": _contractor_email_html(invite)},
+        ],
+        "categories": _categories("maintenance_contractor", invite.template_key),
+    }
+    try:
+        with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
+            response = client.post(
+                settings.sendgrid_mail_send_url,
+                headers={
+                    "Authorization": f"Bearer {settings.sendgrid_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if 200 <= response.status_code < 300:
+            return DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient=recipient,
+                provider_message_id=response.headers.get("x-message-id"),
+                metadata=metadata,
+            )
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=_sendgrid_error(response),
+            metadata=metadata,
+        )
+    except httpx.HTTPError as exc:
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=str(exc),
+            metadata=metadata,
+        )
 
 
 def send_invoice_delivery_email(

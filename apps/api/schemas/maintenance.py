@@ -90,6 +90,12 @@ class MaintenanceWorkOrderCommentCreate(BaseModel):
     visibility: MaintenanceCommentVisibility = "internal"
 
 
+class MaintenanceWorkOrderContractorEmailSend(BaseModel):
+    subject: str | None = Field(default=None, max_length=200)
+    body: str = Field(min_length=1, max_length=4000)
+    include_comment: bool = True
+
+
 class MaintenanceWorkOrderRead(ApiModel):
     id: UUID
     entity_id: UUID

@@ -261,6 +261,8 @@ Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry
 
 2026-05-21 update: maintenance detail now shows a read-only Operations-to-Billing handoff panel for linked invoice drafts, and Billing Readiness can open from that handoff with the invoice highlighted plus a return link to the work order. Remba should review whether this makes ownership clear enough: Operations owns contractor/quote/approval/completion, while Billing Readiness owns invoice delivery prep, tenant email, Xero dispatch, and payment reconciliation.
 
+2026-05-21 update: the Contractor card on maintenance detail now includes an explicit provider-backed email action, latest send/receipt badges, editable subject/message fields, and a work-order activity receipt. Queued provider messages become contractor-visible comments for operator history, while tenant portal timelines continue hiding contractor-only activity. Remba should review whether contractor communication belongs in the first-viewport card, whether the SendGrid receipt language is too operational, and whether retry/recovery should be visually separate from ordinary updates.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

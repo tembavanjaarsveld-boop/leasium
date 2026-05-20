@@ -1,12 +1,14 @@
 """Maintenance work order and arrears API integration tests."""
 
 from typing import Any
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.models import AuditAction, Entity, Organisation
+from stewart.core.models import AuditAction, Entity, MaintenanceWorkOrder, Organisation
 from stewart.core.settings import get_settings
+from stewart.integrations.communications import DeliveryResult
 
 
 def _entity_id(session: Session) -> str:
@@ -249,6 +251,88 @@ def test_maintenance_work_order_rejects_cross_entity_document_links(
         },
     )
     assert response.status_code == 404
+
+
+def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    context = _lease_context(client, session)
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "Replace shopfront lock",
+            "description": "Tenant reported the rear lock is sticking.",
+            "priority": "normal",
+            "contractor_name": "Rapid Locksmiths",
+            "contractor_email": "dispatch@rapidlocks.example",
+            "status": "assigned",
+            "due_date": "2026-05-28",
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+
+    def fake_send_contractor_work_order_email(invite: Any, settings: Any) -> DeliveryResult:
+        assert invite.contractor_email == "dispatch@rapidlocks.example"
+        assert invite.subject == "Attendance window request"
+        assert invite.body == "Please confirm your first available attendance window."
+        assert settings.contractor_email_template_key == "maintenance_contractor_update"
+        return DeliveryResult(
+            channel="email",
+            status="queued",
+            provider="sendgrid",
+            recipient=invite.contractor_email,
+            provider_message_id="sg-maintenance-123",
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.maintenance.send_contractor_work_order_email",
+        fake_send_contractor_work_order_email,
+    )
+    send_response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/contractor-delivery/send-email",
+        json={
+            "subject": "Attendance window request",
+            "body": "Please confirm your first available attendance window.",
+        },
+    )
+    assert send_response.status_code == 200
+    sent = send_response.json()
+    email_delivery = sent["metadata"]["contractor_delivery"]["email"]
+    assert email_delivery["send"]["status"] == "queued"
+    assert email_delivery["send"]["provider"] == "sendgrid"
+    assert email_delivery["send"]["provider_message_id"] == "sg-maintenance-123"
+    assert email_delivery["receipts"][0]["status"] == "queued"
+    assert sent["metadata"]["comments"][-1]["visibility"] == "contractor"
+    assert sent["metadata"]["comments"][-1]["body"] == (
+        "Please confirm your first available attendance window."
+    )
+    assert sent["metadata"]["activity_history"][-1]["event"] == "contractor_email_attempted"
+
+    receipt_response = client.post(
+        "/api/v1/maintenance/work-orders/webhooks/sendgrid-events",
+        json=[
+            {
+                "maintenance_work_order_id": work_order_id,
+                "sg_message_id": "sg-maintenance-123",
+                "event": "delivered",
+                "email": "dispatch@rapidlocks.example",
+            }
+        ],
+    )
+    assert receipt_response.status_code == 204
+    work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+    assert work_order is not None
+    email_delivery = work_order.work_order_metadata["contractor_delivery"]["email"]
+    assert email_delivery["send"]["status"] == "delivered"
+    assert email_delivery["receipts"][0]["event"] == "delivered"
+    assert work_order.work_order_metadata["activity_history"][-1]["event"] == (
+        "contractor_email_receipt"
+    )
 
 
 def test_arrears_case_tracks_aged_balances_reminders_and_escalation(
