@@ -173,6 +173,19 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       .first(),
   ).toBeVisible();
   await expect(page.getByText("Last provider attempt failed")).toBeVisible();
+  await expect(page.getByText("Provider history")).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Attempt Failed #1$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Receipt Failed #1$/ })
+      .first(),
+  ).toBeVisible();
   await expect(page.getByLabel("Contractor update template")).toBeVisible();
   await page
     .getByLabel("Contractor update template")
@@ -194,6 +207,18 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
     page
       .locator("span")
       .filter({ hasText: /^Receipt Queued$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Attempt Queued #2$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Receipt Queued #2$/ })
       .first(),
   ).toBeVisible();
   await expect(

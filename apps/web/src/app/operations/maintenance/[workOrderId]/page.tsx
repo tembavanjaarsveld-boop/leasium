@@ -278,6 +278,42 @@ function contractorEmailReceipts(workOrder: MaintenanceWorkOrderRecord) {
   return metadataRecordList(contractorDeliveryEmail(workOrder).receipts);
 }
 
+function contractorEmailHistory(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecordList(contractorDeliveryEmail(workOrder).history);
+}
+
+function contractorEmailHistoryRows(workOrder: MaintenanceWorkOrderRecord) {
+  const attemptRows = contractorEmailHistory(workOrder).map((entry) => ({
+    kind: "Attempt",
+    status: metadataText(entry.status) ?? metadataText(entry.event) ?? "sent",
+    at: metadataText(entry.at) ?? metadataText(entry.timestamp),
+    detail:
+      metadataText(entry.error) ??
+      metadataText(entry.recipient_email) ??
+      metadataText(entry.provider) ??
+      "Provider delivery attempt recorded.",
+    retryCount:
+      typeof entry.retry_count === "number" ? entry.retry_count : null,
+  }));
+  const receiptRows = contractorEmailReceipts(workOrder).map((entry) => ({
+    kind: "Receipt",
+    status: metadataText(entry.status) ?? "recorded",
+    at: metadataText(entry.received_at) ?? metadataText(entry.at),
+    detail:
+      metadataText(entry.error) ??
+      metadataText(entry.recipient_email) ??
+      metadataText(entry.provider) ??
+      "Provider receipt recorded.",
+    retryCount:
+      typeof entry.retry_count === "number" ? entry.retry_count : null,
+  }));
+  return [...attemptRows, ...receiptRows]
+    .sort(
+      (a, b) => new Date(b.at ?? "").getTime() - new Date(a.at ?? "").getTime(),
+    )
+    .slice(0, 5);
+}
+
 function closeoutRecord(workOrder: MaintenanceWorkOrderRecord) {
   return metadataRecord(workOrder.metadata.closeout);
 }
@@ -928,6 +964,9 @@ function MaintenanceDetailRoute() {
   const contractorReceiptRows = workOrder
     ? contractorEmailReceipts(workOrder)
     : [];
+  const contractorHistoryRows = workOrder
+    ? contractorEmailHistoryRows(workOrder)
+    : [];
   const latestContractorReceipt = contractorReceiptRows[0] ?? null;
   const latestContractorReceiptStatus =
     metadataText(latestContractorReceipt?.status) ?? null;
@@ -1364,6 +1403,36 @@ function MaintenanceDetailRoute() {
                         }`}
                       >
                         {contractorRecoveryCopy}
+                      </div>
+                    ) : null}
+                    {contractorHistoryRows.length ? (
+                      <div className="grid gap-2 rounded-md border border-border bg-white p-2 text-xs">
+                        <div className="font-semibold text-foreground">
+                          Provider history
+                        </div>
+                        {contractorHistoryRows.map((entry, index) => (
+                          <div
+                            key={`${entry.kind}-${entry.status}-${entry.at ?? index}`}
+                            className="grid gap-1 border-t border-border pt-2 first:border-t-0 first:pt-0"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge
+                                tone={contractorEmailTone(entry.status)}
+                              >
+                                {entry.kind} {label(entry.status)}
+                                {entry.retryCount
+                                  ? ` #${entry.retryCount}`
+                                  : ""}
+                              </StatusBadge>
+                              <span className="text-muted-foreground">
+                                {formatDateTime(entry.at)}
+                              </span>
+                            </div>
+                            <div className="text-muted-foreground">
+                              {entry.detail}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ) : null}
                     <Field label="Contractor update template">

@@ -271,6 +271,8 @@ Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry
 
 2026-05-21 update: the Job completion handoff panel now lets operators record a closeout note and attach an optional closeout photo at the moment they complete a maintenance job. The note is stored as closeout metadata rather than overwriting the general work-order note, and photo evidence stays source-linked through the document store. Remba should review whether closeout capture belongs inside the completion panel, whether the optional photo control is too prominent for simple jobs, and whether saved closeout evidence needs a stronger audit/history treatment.
 
+2026-05-21 update: contractor communication now shows a compact provider history in the Contractor card, combining recent SendGrid attempts and receipts with status, attempt number, timestamp, and provider detail. Remba should review whether this operational history is understandable enough for property managers, and whether it should be collapsed behind a disclosure once the history grows.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface
