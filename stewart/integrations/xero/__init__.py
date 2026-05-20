@@ -164,5 +164,55 @@ def fetch_xero_contacts(
     return [contact for contact in contacts if isinstance(contact, dict)]
 
 
+def fetch_xero_accounts(
+    access_token: str,
+    xero_tenant_id: str,
+    settings: Settings,
+) -> list[dict[str, Any]]:
+    try:
+        with httpx.Client(timeout=settings.xero_http_timeout_seconds) as client:
+            response = client.get(
+                f"{settings.xero_api_base_url.rstrip('/')}/Accounts",
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {access_token}",
+                    "xero-tenant-id": xero_tenant_id,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPError as exc:
+        raise XeroIntegrationError("Could not read Xero accounts.") from exc
+    accounts = payload.get("Accounts") if isinstance(payload, dict) else None
+    if not isinstance(accounts, list):
+        raise XeroIntegrationError("Xero returned an unexpected accounts response.")
+    return [account for account in accounts if isinstance(account, dict)]
+
+
+def fetch_xero_tax_rates(
+    access_token: str,
+    xero_tenant_id: str,
+    settings: Settings,
+) -> list[dict[str, Any]]:
+    try:
+        with httpx.Client(timeout=settings.xero_http_timeout_seconds) as client:
+            response = client.get(
+                f"{settings.xero_api_base_url.rstrip('/')}/TaxRates",
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {access_token}",
+                    "xero-tenant-id": xero_tenant_id,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPError as exc:
+        raise XeroIntegrationError("Could not read Xero tax rates.") from exc
+    tax_rates = payload.get("TaxRates") if isinstance(payload, dict) else None
+    if not isinstance(tax_rates, list):
+        raise XeroIntegrationError("Xero returned an unexpected tax rates response.")
+    return [tax_rate for tax_rate in tax_rates if isinstance(tax_rate, dict)]
+
+
 def token_expiry_from_payload(payload: dict[str, Any]) -> datetime | None:
     return _token_expiry(payload)

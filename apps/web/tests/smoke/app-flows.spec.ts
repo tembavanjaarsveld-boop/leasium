@@ -152,11 +152,24 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     page.getByText("No invoice posting, tenant email, or payment reconciliation"),
   ).toBeVisible();
 
+  await page.getByRole("button", { name: "Preview chart/tax" }).click();
+  await expect(page.getByText("Xero chart/tax preview")).toBeVisible();
+  await expect(page.getByText("0/1 ready").first()).toBeVisible();
+  await expect(
+    page.getByText("Taxable charge is missing a Xero tax type."),
+  ).toBeVisible();
+  await expect(page.getByText("No invoice posting").first()).toBeVisible();
+
   await expect(page.getByText("Base Rent tax type missing")).toBeVisible();
   await page.getByRole("button", { exact: true, name: "Apply" }).click();
   await expect(
     page.getByText("Chart and tax mappings look ready"),
   ).toBeVisible();
+
+  await page.getByRole("button", { name: "Preview chart/tax" }).click();
+  await expect(page.getByText("1/1 ready").first()).toBeVisible();
+  await expect(page.getByText("Rental Income")).toBeVisible();
+  await expect(page.getByText("GST on Income")).toBeVisible();
 });
 
 test("insights shows overview, exceptions, activity, and owner snapshot", async ({

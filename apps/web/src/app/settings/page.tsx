@@ -41,6 +41,7 @@ import {
   getSecurityWorkspace,
   getXeroStatus,
   listEntities,
+  previewXeroChartTaxValidation,
   previewXeroContactSync,
   resendSecurityMemberInvite,
   startXeroOAuth,
@@ -48,6 +49,8 @@ import {
   updateChargeRule,
   updateXeroConnection,
   type XeroContactApplyPreviewRecord,
+  type XeroChartTaxValidationPreviewRecord,
+  type XeroChartTaxValidationResultRecord,
   type XeroContactMatchRecord,
   type XeroContactSyncPreviewRecord,
   type SecurityMemberRecord,
@@ -129,6 +132,28 @@ function roleLabel(role: SecurityRole) {
 
 function xeroContactMatchKey(match: XeroContactMatchRecord) {
   return `${match.target_type}:${match.target_id}:${match.xero_contact_id}`;
+}
+
+function chartTaxStatusTone(
+  result: XeroChartTaxValidationResultRecord,
+): StatusTone {
+  if (result.status === "ready") {
+    return "success";
+  }
+  if (result.status === "not_found") {
+    return "danger";
+  }
+  return "warning";
+}
+
+function chartTaxStatusLabel(status: XeroChartTaxValidationResultRecord["status"]) {
+  if (status === "needs_mapping") {
+    return "Needs mapping";
+  }
+  if (status === "not_found") {
+    return "Not found";
+  }
+  return "Ready";
 }
 
 function roleForEntity(member: SecurityMemberRecord, entityId: string) {
@@ -235,6 +260,8 @@ function SettingsWorkspace() {
     useState<XeroContactSyncPreviewRecord | null>(null);
   const [xeroContactApplyResult, setXeroContactApplyResult] =
     useState<XeroContactApplyPreviewRecord | null>(null);
+  const [xeroChartTaxPreview, setXeroChartTaxPreview] =
+    useState<XeroChartTaxValidationPreviewRecord | null>(null);
   const [selectedXeroContactMatches, setSelectedXeroContactMatches] = useState<
     Record<string, boolean>
   >({});
@@ -279,6 +306,7 @@ function SettingsWorkspace() {
     }
     setXeroContactPreview(null);
     setXeroContactApplyResult(null);
+    setXeroChartTaxPreview(null);
     setSelectedXeroContactMatches({});
   }, [selectedEntityId]);
 
@@ -306,6 +334,7 @@ function SettingsWorkspace() {
       updateXeroConnection(selectedEntityId, payload),
     onSuccess: () => {
       setXeroContactPreview(null);
+      setXeroChartTaxPreview(null);
       queryClient.invalidateQueries({ queryKey: ["entities"] });
       queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
@@ -359,6 +388,15 @@ function SettingsWorkspace() {
       ),
     onSuccess: (result) => {
       setXeroContactApplyResult(result);
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
+    },
+  });
+
+  const xeroChartTaxMutation = useMutation({
+    mutationFn: () => previewXeroChartTaxValidation(selectedEntityId),
+    onSuccess: (result) => {
+      setXeroChartTaxPreview(result);
       queryClient.invalidateQueries({ queryKey: ["entities"] });
       queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
@@ -435,6 +473,15 @@ function SettingsWorkspace() {
     xeroContactPreview?.suggested_matches.filter(
       (match) => selectedXeroContactMatches[xeroContactMatchKey(match)],
     ).length ?? 0;
+  const chartTaxCounts = useMemo(() => {
+    const results = xeroChartTaxPreview?.results ?? [];
+    return {
+      ready: results.filter((result) => result.status === "ready").length,
+      needsMapping: results.filter((result) => result.status === "needs_mapping")
+        .length,
+      notFound: results.filter((result) => result.status === "not_found").length,
+    };
+  }, [xeroChartTaxPreview]);
 
   return (
     <main className="min-h-screen">
@@ -537,6 +584,13 @@ function SettingsWorkspace() {
             {xeroContactApplyMutation.error instanceof Error
               ? xeroContactApplyMutation.error.message
               : "Could not apply the selected Xero contact mappings."}
+          </div>
+        ) : null}
+        {xeroChartTaxMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {xeroChartTaxMutation.error instanceof Error
+              ? xeroChartTaxMutation.error.message
+              : "Could not preview Xero chart and tax validation."}
           </div>
         ) : null}
         {mappingMutation.error ? (
@@ -1185,6 +1239,28 @@ function SettingsWorkspace() {
                       Preview contacts
                     </SecondaryButton>
                   </div>
+                  <div className="grid gap-2 rounded-md border border-border bg-white p-3">
+                    <div className="text-sm font-semibold">Chart/tax validation</div>
+                    <p className="text-sm text-muted-foreground">
+                      Validate charge-rule account codes and tax types against the
+                      provider chart without posting invoices.
+                    </p>
+                    <SecondaryButton
+                      type="button"
+                      disabled={
+                        xeroChartTaxMutation.isPending ||
+                        status.connection.connection_source !== "provider"
+                      }
+                      onClick={() => xeroChartTaxMutation.mutate()}
+                    >
+                      {xeroChartTaxMutation.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <SearchCheck size={15} />
+                      )}
+                      Preview chart/tax
+                    </SecondaryButton>
+                  </div>
                   <Field label="Xero tenant ID">
                     <Input
                       value={xeroTenantId}
@@ -1378,6 +1454,160 @@ function SettingsWorkspace() {
                       description="The provider pull completed, but no tenant or property contacts matched by email or name."
                     />
                   ) : null}
+                </div>
+              </SectionPanel>
+            ) : null}
+
+            {xeroChartTaxPreview ? (
+              <SectionPanel
+                title="Xero chart/tax preview"
+                description="Review provider-backed account and tax validation before any invoice posting path is enabled."
+                icon={<CircleDollarSign size={17} className="text-primary" />}
+                actions={
+                  <StatusBadge
+                    tone={
+                      chartTaxCounts.notFound || chartTaxCounts.needsMapping
+                        ? "warning"
+                        : "success"
+                    }
+                  >
+                    {chartTaxCounts.ready}/{xeroChartTaxPreview.checked_rules} ready
+                  </StatusBadge>
+                }
+              >
+                <div className="grid gap-3 p-4 md:grid-cols-4">
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Accounts fetched
+                    </div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {xeroChartTaxPreview.fetched_accounts}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Tax rates fetched
+                    </div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {xeroChartTaxPreview.fetched_tax_rates}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Needs review
+                    </div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {chartTaxCounts.needsMapping + chartTaxCounts.notFound}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/25 p-3">
+                    <div className="text-xs uppercase text-muted-foreground">
+                      Validated
+                    </div>
+                    <div className="mt-1 font-semibold">
+                      {formatDateTime(xeroChartTaxPreview.validated_at)}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid gap-3 border-t border-border px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge tone="warning">Review first</StatusBadge>
+                    <span className="font-medium">
+                      This preview reads Xero chart and tax data only; no invoices
+                      are posted.
+                    </span>
+                  </div>
+                  <ul className="grid gap-1 text-xs text-muted-foreground">
+                    {[
+                      "No Xero mutation is performed by this validation preview.",
+                      ...xeroChartTaxPreview.guardrails,
+                    ].map((guardrail) => (
+                      <li key={guardrail} className="flex gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                        <span>{guardrail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="overflow-x-auto border-t border-border">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Status</th>
+                        <th className="px-3 py-2 font-semibold">Charge rule</th>
+                        <th className="px-3 py-2 font-semibold">Account</th>
+                        <th className="px-3 py-2 font-semibold">Tax</th>
+                        <th className="px-3 py-2 font-semibold">Suggestion</th>
+                        <th className="px-3 py-2 font-semibold">Blockers</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {xeroChartTaxPreview.results.map((result) => (
+                        <tr
+                          key={result.charge_rule_id}
+                          className="border-t border-border align-top"
+                        >
+                          <td className="px-3 py-3">
+                            <StatusBadge tone={chartTaxStatusTone(result)}>
+                              {chartTaxStatusLabel(result.status)}
+                            </StatusBadge>
+                          </td>
+                          <td className="min-w-56 px-3 py-3 text-xs">
+                            <div className="font-medium text-foreground">
+                              {result.charge_type}
+                            </div>
+                            <div className="mt-1 text-muted-foreground">
+                              {result.property_name ?? "Property"} /{" "}
+                              {result.unit_label ?? "Unit"}
+                              {result.tenant_name ? ` / ${result.tenant_name}` : ""}
+                            </div>
+                          </td>
+                          <td className="min-w-48 px-3 py-3 text-xs">
+                            <div>
+                              {result.account_code ?? "-"}
+                              {result.account_name ? ` / ${result.account_name}` : ""}
+                            </div>
+                            <div className="mt-1 text-muted-foreground">
+                              {result.account_valid ? "Valid" : "Needs review"}
+                              {result.account_status
+                                ? ` / ${result.account_status}`
+                                : ""}
+                            </div>
+                          </td>
+                          <td className="min-w-48 px-3 py-3 text-xs">
+                            <div>
+                              {result.tax_type ?? "-"}
+                              {result.tax_name ? ` / ${result.tax_name}` : ""}
+                            </div>
+                            <div className="mt-1 text-muted-foreground">
+                              {result.tax_valid ? "Valid" : "Needs review"}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-xs">
+                            <div>
+                              Account: {result.suggested_account_code ?? "-"}
+                            </div>
+                            <div>Tax: {result.suggested_tax_type ?? "-"}</div>
+                          </td>
+                          <td className="min-w-64 px-3 py-3 text-xs text-muted-foreground">
+                            {result.blockers.length
+                              ? result.blockers.join("; ")
+                              : "None"}
+                          </td>
+                        </tr>
+                      ))}
+                      {xeroChartTaxPreview.results.length === 0 ? (
+                        <tr>
+                          <td className="px-3 py-10" colSpan={6}>
+                            <EmptyState
+                              title="No charge rules checked"
+                              description="The provider validation completed, but no charge rules were available for chart and tax validation."
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
                 </div>
               </SectionPanel>
             ) : null}

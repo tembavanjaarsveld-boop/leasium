@@ -158,3 +158,34 @@ class XeroContactMappingApplyRead(BaseModel):
     skipped_mappings: list[XeroContactMappingApplyResultRead]
     applied_at: datetime
     guardrails: list[str]
+
+
+class XeroChartTaxValidationResultRead(BaseModel):
+    charge_rule_id: UUID
+    charge_type: str
+    property_name: str
+    unit_label: str
+    tenant_name: str | None
+    account_code: str | None
+    account_name: str | None
+    account_status: str | None
+    account_valid: bool
+    tax_type: str | None
+    tax_name: str | None
+    tax_valid: bool
+    suggested_account_code: str | None
+    suggested_tax_type: str | None
+    status: Literal["ready", "needs_mapping", "not_found"]
+    blockers: list[str]
+
+
+class XeroChartTaxValidationPreviewRead(BaseModel):
+    entity_id: UUID
+    xero_tenant_id: str
+    tenant_name: str | None
+    fetched_accounts: int
+    fetched_tax_rates: int
+    checked_rules: int
+    results: list[XeroChartTaxValidationResultRead]
+    validated_at: datetime
+    guardrails: list[str]

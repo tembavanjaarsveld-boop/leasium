@@ -37,8 +37,10 @@ from stewart.integrations.xero import (
     decrypt_xero_token,
     encrypt_xero_token,
     exchange_code_for_tokens,
+    fetch_xero_accounts,
     fetch_xero_connections,
     fetch_xero_contacts,
+    fetch_xero_tax_rates,
     refresh_xero_tokens,
     token_expiry_from_payload,
     xero_authorization_url,
@@ -50,6 +52,8 @@ from stewart.integrations.xero import (
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.xero import (
+    XeroChartTaxValidationPreviewRead,
+    XeroChartTaxValidationResultRead,
     XeroConnectionStatusRead,
     XeroConnectionUpdate,
     XeroContactMappingApplyItem,
@@ -294,6 +298,22 @@ def _token_value(tokens: dict[str, Any], key: str) -> str:
     return value
 
 
+def _refresh_provider_access_token(
+    provider_connection: XeroConnection,
+    settings: Settings,
+) -> str:
+    refresh_token = decrypt_xero_token(provider_connection.refresh_token_ciphertext, settings)
+    tokens = refresh_xero_tokens(refresh_token, settings)
+    access_token = _token_value(tokens, "access_token")
+    provider_connection.access_token_ciphertext = encrypt_xero_token(access_token, settings)
+    provider_connection.refresh_token_ciphertext = encrypt_xero_token(
+        _token_value(tokens, "refresh_token"),
+        settings,
+    )
+    provider_connection.token_expires_at = token_expiry_from_payload(tokens)
+    return access_token
+
+
 def _store_provider_connection(
     *,
     session: Session,
@@ -351,6 +371,26 @@ def _store_provider_connection(
     entity.xero_tenant_id = tenant_id
     entity.xero_connected_at = entity.xero_connected_at or now
     return provider_connection
+
+
+def _charge_rule_rows(session: Session, entity_id: UUID) -> list[Any]:
+    return list(
+        session.execute(
+            select(RentChargeRule, Lease, TenancyUnit, Property, Tenant)
+            .join(Lease, Lease.id == RentChargeRule.lease_id)
+            .join(TenancyUnit, TenancyUnit.id == Lease.tenancy_unit_id)
+            .join(Property, Property.id == TenancyUnit.property_id)
+            .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
+            .where(
+                Property.entity_id == entity_id,
+                Property.deleted_at.is_(None),
+                TenancyUnit.deleted_at.is_(None),
+                Lease.deleted_at.is_(None),
+                RentChargeRule.deleted_at.is_(None),
+            )
+            .order_by(Property.name, TenancyUnit.unit_label, RentChargeRule.charge_type)
+        ).all()
+    )
 
 
 def _normalise(value: str | None) -> str:
@@ -491,6 +531,105 @@ def _contact_mapping_result(
     )
 
 
+def _xero_text(payload: dict[str, Any] | None, key: str) -> str | None:
+    if payload is None:
+        return None
+    value = payload.get(key)
+    return str(value).strip() if value is not None and str(value).strip() else None
+
+
+def _xero_account_code(account: dict[str, Any]) -> str | None:
+    return _xero_text(account, "Code")
+
+
+def _xero_tax_type(tax_rate: dict[str, Any]) -> str | None:
+    return _xero_text(tax_rate, "TaxType")
+
+
+def _active_xero_status(payload: dict[str, Any] | None) -> bool:
+    status_value = _xero_text(payload, "Status")
+    return status_value is None or status_value.upper() == "ACTIVE"
+
+
+def _validate_xero_chart_tax(
+    *,
+    charge_rows: list[Any],
+    accounts: list[dict[str, Any]],
+    tax_rates: list[dict[str, Any]],
+) -> list[XeroChartTaxValidationResultRead]:
+    accounts_by_code = {
+        code: account
+        for account in accounts
+        if (code := _xero_account_code(account)) is not None
+    }
+    tax_rates_by_type = {
+        tax_type.upper(): tax_rate
+        for tax_rate in tax_rates
+        if (tax_type := _xero_tax_type(tax_rate)) is not None
+    }
+    results: list[XeroChartTaxValidationResultRead] = []
+    for rule, _lease, unit, prop, tenant in charge_rows:
+        suggested_account, suggested_tax = SUGGESTED_CHARGE_MAPPINGS.get(
+            rule.charge_type,
+            ("299", "OUTPUT"),
+        )
+        account_code = rule.xero_account_code.strip() if rule.xero_account_code else None
+        tax_type = rule.xero_tax_type.strip() if rule.xero_tax_type else None
+        account = accounts_by_code.get(account_code or "")
+        tax_rate = tax_rates_by_type.get((tax_type or "").upper())
+        blockers: list[str] = []
+
+        account_valid = False
+        if not account_code:
+            blockers.append("Xero account code is missing.")
+        elif account is None:
+            blockers.append(f"Account code {account_code} was not found in Xero.")
+        elif not _active_xero_status(account):
+            blockers.append(f"Account code {account_code} is not active in Xero.")
+        else:
+            account_valid = True
+
+        taxable_rule = rule.gst_treatment.value == "taxable"
+        tax_valid = not taxable_rule and not tax_type
+        if taxable_rule and not tax_type:
+            blockers.append("Taxable charge is missing a Xero tax type.")
+        elif tax_type and tax_rate is None:
+            blockers.append(f"Tax type {tax_type} was not found in Xero.")
+        elif tax_type and not _active_xero_status(tax_rate):
+            blockers.append(f"Tax type {tax_type} is not active in Xero.")
+        elif tax_type:
+            tax_valid = True
+
+        missing_mapping = not account_code or (taxable_rule and not tax_type)
+        status_label: Literal["ready", "needs_mapping", "not_found"] = "ready"
+        if missing_mapping:
+            status_label = "needs_mapping"
+        elif blockers:
+            status_label = "not_found"
+
+        results.append(
+            XeroChartTaxValidationResultRead(
+                charge_rule_id=rule.id,
+                charge_type=rule.charge_type.value,
+                property_name=prop.name,
+                unit_label=unit.unit_label,
+                tenant_name=_tenant_name(tenant),
+                account_code=account_code,
+                account_name=_xero_text(account, "Name"),
+                account_status=_xero_text(account, "Status"),
+                account_valid=account_valid,
+                tax_type=tax_type,
+                tax_name=_xero_text(tax_rate, "Name"),
+                tax_valid=tax_valid,
+                suggested_account_code=suggested_account,
+                suggested_tax_type=suggested_tax,
+                status=status_label,
+                blockers=blockers,
+            )
+        )
+    return results
+
+
 @router.get("/oauth/start", response_model=XeroOAuthStartRead)
 def start_xero_oauth(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -623,15 +762,7 @@ def preview_xero_contact_sync(
         )
 
     try:
-        refresh_token = decrypt_xero_token(provider_connection.refresh_token_ciphertext, settings)
-        tokens = refresh_xero_tokens(refresh_token, settings)
-        access_token = _token_value(tokens, "access_token")
-        provider_connection.access_token_ciphertext = encrypt_xero_token(access_token, settings)
-        provider_connection.refresh_token_ciphertext = encrypt_xero_token(
-            _token_value(tokens, "refresh_token"),
-            settings,
-        )
-        provider_connection.token_expires_at = token_expiry_from_payload(tokens)
+        access_token = _refresh_provider_access_token(provider_connection, settings)
         contacts = fetch_xero_contacts(access_token, provider_connection.xero_tenant_id, settings)
     except XeroIntegrationError as exc:
         session.rollback()
@@ -904,6 +1035,97 @@ def apply_xero_contact_mappings(
     )
 
 
+@router.post(
+    "/chart-tax/validate-preview/{entity_id}",
+    response_model=XeroChartTaxValidationPreviewRead,
+)
+def validate_xero_chart_tax_preview(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> XeroChartTaxValidationPreviewRead:
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+    provider_connection = _active_xero_connection(session, entity.id)
+    if provider_connection is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Connect Xero through OAuth before validating chart and tax mappings.",
+        )
+
+    try:
+        access_token = _refresh_provider_access_token(provider_connection, settings)
+        accounts = fetch_xero_accounts(access_token, provider_connection.xero_tenant_id, settings)
+        tax_rates = fetch_xero_tax_rates(
+            access_token,
+            provider_connection.xero_tenant_id,
+            settings,
+        )
+    except XeroIntegrationError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    charge_rows = _charge_rule_rows(session, entity.id)
+    results = _validate_xero_chart_tax(
+        charge_rows=charge_rows,
+        accounts=accounts,
+        tax_rates=tax_rates,
+    )
+    validated_at = utcnow()
+    provider_connection.updated_by_user_id = user.id
+    connection_metadata = dict(provider_connection.connection_metadata or {})
+    connection_metadata["last_chart_tax_validation"] = {
+        "validated_at": validated_at.isoformat(),
+        "fetched_accounts": len(accounts),
+        "fetched_tax_rates": len(tax_rates),
+        "checked_rules": len(charge_rows),
+        "ready": sum(1 for result in results if result.status == "ready"),
+        "needs_mapping": sum(1 for result in results if result.status == "needs_mapping"),
+        "not_found": sum(1 for result in results if result.status == "not_found"),
+        "mode": "preview_only",
+    }
+    provider_connection.connection_metadata = connection_metadata
+    entity.xero_last_sync_at = validated_at
+
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="read",
+        target_table="xero_connection",
+        target_id=provider_connection.id,
+        tool_name="xero.chart_tax_validation_preview",
+        tool_input={"entity_id": str(entity.id)},
+        tool_output_summary=(
+            f"Validated {len(charge_rows)} charge-rule chart/tax mappings against Xero; "
+            "no invoice posting, Xero mutation, or payment reconciliation was run."
+        ),
+    )
+    session.commit()
+    return XeroChartTaxValidationPreviewRead(
+        entity_id=entity.id,
+        xero_tenant_id=provider_connection.xero_tenant_id,
+        tenant_name=provider_connection.tenant_name,
+        fetched_accounts=len(accounts),
+        fetched_tax_rates=len(tax_rates),
+        checked_rules=len(charge_rows),
+        results=results,
+        validated_at=validated_at,
+        guardrails=[
+            "This is a provider-backed validation preview only.",
+            "Leasium only checks whether local account codes and tax types exist in Xero.",
+            "No invoice posting, Xero mutation, tenant email, or payment reconciliation was run.",
+        ],
+    )
+
+
 @router.get("/status", response_model=XeroStatusRead)
 def xero_status(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -987,21 +1209,7 @@ def xero_status(
             )
         )
 
-    charge_rows = session.execute(
-        select(RentChargeRule, Lease, TenancyUnit, Property, Tenant)
-        .join(Lease, Lease.id == RentChargeRule.lease_id)
-        .join(TenancyUnit, TenancyUnit.id == Lease.tenancy_unit_id)
-        .join(Property, Property.id == TenancyUnit.property_id)
-        .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
-        .where(
-            Property.entity_id == entity_id,
-            Property.deleted_at.is_(None),
-            TenancyUnit.deleted_at.is_(None),
-            Lease.deleted_at.is_(None),
-            RentChargeRule.deleted_at.is_(None),
-        )
-        .order_by(Property.name, TenancyUnit.unit_label, RentChargeRule.charge_type)
-    ).all()
+    charge_rows = _charge_rule_rows(session, entity_id)
     account_ready = 0
     tax_ready = 0
     for rule, lease, unit, prop, tenant in charge_rows:

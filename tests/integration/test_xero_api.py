@@ -91,6 +91,65 @@ def _finish_xero_oauth(client: TestClient, state: str) -> None:
     assert "xero_connected=1" in response.headers["location"]
 
 
+def _create_charge_rule_fixture(
+    client: TestClient,
+    entity_id: str,
+    *,
+    charge_type: str = "base_rent",
+    xero_account_code: str | None = None,
+    xero_tax_type: str | None = None,
+) -> str:
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": f"{charge_type.replace('_', ' ').title()} Property",
+            "street_address": "100 Queen Street",
+            "property_type": "commercial_retail",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+    unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "Shop 1"},
+    )
+    assert unit_response.status_code == 201
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": f"{charge_type.title()} Tenant Pty Ltd"},
+    )
+    assert tenant_response.status_code == 201
+    lease_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_response.json()["id"],
+            "tenant_id": tenant_response.json()["id"],
+            "status": "active",
+            "commencement_date": "2026-01-01",
+            "expiry_date": "2028-12-31",
+            "annual_rent_cents": 1200000,
+            "rent_frequency": "monthly",
+        },
+    )
+    assert lease_response.status_code == 201
+    charge_response = client.post(
+        "/api/v1/charge-rules",
+        json={
+            "lease_id": lease_response.json()["id"],
+            "charge_type": charge_type,
+            "amount_cents": 100000,
+            "frequency": "monthly",
+            "gst_treatment": "taxable",
+            "next_due_date": "2026-06-01",
+            "xero_account_code": xero_account_code,
+            "xero_tax_type": xero_tax_type,
+        },
+    )
+    assert charge_response.status_code == 201
+    return str(charge_response.json()["id"])
+
+
 def test_xero_status_surfaces_mapping_gaps_and_manual_connection(
     client: TestClient,
     session: Session,
@@ -492,4 +551,127 @@ def test_xero_contact_mapping_apply_requires_provider_connection(
     assert response.status_code == 422
     assert response.json()["detail"] == (
         "Connect Xero through OAuth before applying reviewed contact mappings."
+    )
+
+
+def test_xero_chart_tax_validation_preview_checks_provider_accounts_and_tax_rates(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    ready_rule_id = _create_charge_rule_fixture(
+        client,
+        entity_id,
+        charge_type="base_rent",
+        xero_account_code="200",
+        xero_tax_type="OUTPUT",
+    )
+    blocked_rule_id = _create_charge_rule_fixture(
+        client,
+        entity_id,
+        charge_type="outgoings",
+        xero_account_code="999",
+        xero_tax_type="BADTAX",
+    )
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    def fake_refresh_xero_tokens(
+        refresh_token: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> dict[str, object]:
+        assert refresh_token == "raw-refresh-token"
+        return {
+            "access_token": "raw-access-token-validation",
+            "refresh_token": "raw-refresh-token-validation",
+            "expires_in": 1800,
+            "scope": "offline_access accounting.settings.read",
+        }
+
+    def fake_fetch_xero_accounts(
+        access_token: str,
+        xero_tenant_id: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        assert access_token == "raw-access-token-validation"
+        assert xero_tenant_id == "tenant-provider-123"
+        return [
+            {"Code": "200", "Name": "Rental Income", "Status": "ACTIVE"},
+            {"Code": "999", "Name": "Archived Income", "Status": "ARCHIVED"},
+        ]
+
+    def fake_fetch_xero_tax_rates(
+        access_token: str,
+        xero_tenant_id: str,
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        assert access_token == "raw-access-token-validation"
+        assert xero_tenant_id == "tenant-provider-123"
+        return [{"TaxType": "OUTPUT", "Name": "GST on Income", "Status": "ACTIVE"}]
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fake_refresh_xero_tokens)
+    monkeypatch.setattr(xero_router, "fetch_xero_accounts", fake_fetch_xero_accounts)
+    monkeypatch.setattr(xero_router, "fetch_xero_tax_rates", fake_fetch_xero_tax_rates)
+
+    response = client.post(f"/api/v1/xero/chart-tax/validate-preview/{entity_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fetched_accounts"] == 2
+    assert body["fetched_tax_rates"] == 1
+    assert body["checked_rules"] == 2
+    assert "No invoice posting" in body["guardrails"][2]
+
+    results_by_id = {result["charge_rule_id"]: result for result in body["results"]}
+    ready_result = results_by_id[ready_rule_id]
+    assert ready_result["status"] == "ready"
+    assert ready_result["account_valid"] is True
+    assert ready_result["tax_valid"] is True
+    assert ready_result["account_name"] == "Rental Income"
+    assert ready_result["tax_name"] == "GST on Income"
+
+    blocked_result = results_by_id[blocked_rule_id]
+    assert blocked_result["status"] == "not_found"
+    assert blocked_result["account_valid"] is False
+    assert blocked_result["tax_valid"] is False
+    assert "not active" in blocked_result["blockers"][0]
+    assert "BADTAX" in blocked_result["blockers"][1]
+    assert blocked_result["suggested_account_code"] == "201"
+    assert blocked_result["suggested_tax_type"] == "OUTPUT"
+
+    connection = session.scalar(
+        select(XeroConnection).where(XeroConnection.entity_id == UUID(entity_id))
+    )
+    assert connection is not None
+    assert connection.connection_metadata["last_chart_tax_validation"]["checked_rules"] == 2
+    assert connection.connection_metadata["last_chart_tax_validation"]["not_found"] == 1
+    assert connection.connection_metadata["last_chart_tax_validation"]["mode"] == "preview_only"
+    assert decrypt_xero_token(connection.refresh_token_ciphertext, settings) == (
+        "raw-refresh-token-validation"
+    )
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "xero_connection",
+            AuditAction.tool_name == "xero.chart_tax_validation_preview",
+        )
+    )
+    assert audit is not None
+    assert "no invoice posting" in audit.tool_output_summary
+
+
+def test_xero_chart_tax_validation_preview_requires_provider_connection(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    response = client.post(f"/api/v1/xero/chart-tax/validate-preview/{entity_id}")
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Connect Xero through OAuth before validating chart and tax mappings."
     )

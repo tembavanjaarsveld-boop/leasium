@@ -700,6 +700,37 @@ export type XeroContactApplyPreviewRecord = {
   applied_at: string;
 };
 
+export type XeroChartTaxValidationResultRecord = {
+  charge_rule_id: string;
+  charge_type: string;
+  property_name: string | null;
+  unit_label: string | null;
+  tenant_name: string | null;
+  account_code: string | null;
+  account_name: string | null;
+  account_status: string | null;
+  account_valid: boolean;
+  tax_type: string | null;
+  tax_name: string | null;
+  tax_valid: boolean;
+  suggested_account_code: string | null;
+  suggested_tax_type: string | null;
+  status: "ready" | "needs_mapping" | "not_found";
+  blockers: string[];
+};
+
+export type XeroChartTaxValidationPreviewRecord = {
+  entity_id: string;
+  xero_tenant_id: string;
+  tenant_name: string | null;
+  fetched_accounts: number;
+  fetched_tax_rates: number;
+  checked_rules: number;
+  results: XeroChartTaxValidationResultRecord[];
+  validated_at: string;
+  guardrails: string[];
+};
+
 export type InsightsEntityRecord = {
   id: string;
   name: string;
@@ -1223,6 +1254,15 @@ export function applyXeroContactPreview(
     {
       method: "POST",
       body: JSON.stringify({ mappings }),
+    },
+  );
+}
+
+export function previewXeroChartTaxValidation(entityId: string) {
+  return request<XeroChartTaxValidationPreviewRecord>(
+    `/xero/chart-tax/validate-preview/${entityId}`,
+    {
+      method: "POST",
     },
   );
 }

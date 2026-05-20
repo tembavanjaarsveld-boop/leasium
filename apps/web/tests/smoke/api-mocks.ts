@@ -610,6 +610,60 @@ export async function mockLeasiumApi(page: Page) {
     };
   };
 
+  const xeroChartTaxValidationPreview = () => {
+    const chartReady = chargeAccountCode === "401" || chargeAccountCode === "200";
+    const taxReady = chargeTaxType === "OUTPUT";
+    const resultStatus =
+      chartReady && taxReady ? "ready" : chargeTaxType ? "not_found" : "needs_mapping";
+    const blockers = [
+      ...(chartReady
+        ? []
+        : chargeAccountCode
+          ? [`Account code ${chargeAccountCode} was not found in Xero.`]
+          : ["Xero account code is missing."]),
+      ...(taxReady
+        ? []
+        : chargeTaxType
+          ? [`Tax type ${chargeTaxType} was not found in Xero.`]
+          : ["Taxable charge is missing a Xero tax type."]),
+    ];
+
+    return {
+      entity_id: entityId,
+      xero_tenant_id: xeroTenantId ?? "tenant-smoke",
+      tenant_name: "Demo Xero Org",
+      fetched_accounts: 2,
+      fetched_tax_rates: 2,
+      checked_rules: 1,
+      results: [
+        {
+          charge_rule_id: "charge-1",
+          charge_type: "base_rent",
+          property_name: "Queen Street Retail Centre",
+          unit_label: "Shop 3",
+          tenant_name: "Bright Cafe",
+          account_code: chargeAccountCode,
+          account_name: chartReady ? "Rental Income" : null,
+          account_status: chartReady ? "ACTIVE" : null,
+          account_valid: chartReady,
+          tax_type: chargeTaxType,
+          tax_name: taxReady ? "GST on Income" : null,
+          tax_valid: taxReady,
+          suggested_account_code: "200",
+          suggested_tax_type: "OUTPUT",
+          status: resultStatus,
+          blockers,
+        },
+      ],
+      validated_at: "2026-05-19T10:12:00.000Z",
+      guardrails: [
+        "This preview validates local charge-rule mappings against provider chart and tax settings only.",
+        "No invoice posting or tenant email is triggered by chart/tax validation.",
+        "Payment reconciliation remains separate and manual.",
+      ],
+    };
+  };
+
   const insightsOverview = () => {
     const xero = xeroStatus();
     return {
@@ -1050,6 +1104,17 @@ export async function mockLeasiumApi(page: Page) {
         ],
         applied_at: appliedAt,
       });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === `/xero/chart-tax/validate-preview/${entityId}`
+    ) {
+      xeroTenantId = xeroTenantId ?? "tenant-smoke";
+      xeroConnectedAt = xeroConnectedAt ?? "2026-05-19T10:00:00.000Z";
+      xeroProviderConnected = true;
+      await fulfillJson(route, xeroChartTaxValidationPreview());
       return;
     }
 
