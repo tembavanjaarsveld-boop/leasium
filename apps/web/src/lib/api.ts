@@ -1233,6 +1233,46 @@ export type XeroInvoicePostingPreviewRecord = {
   guardrails: string[];
 };
 
+export type XeroInvoicePostingApprovalRecord = {
+  invoice_draft_id: string;
+  invoice_number: string | null;
+  status: "approved" | "revoked" | "skipped";
+  approval_state: "approved" | "revoked" | "already_posted";
+  xero_sync_allowed: boolean;
+  external_posting_status: string;
+  approved_at: string | null;
+  idempotency_key: string | null;
+  reason: string;
+  guardrails: string[];
+};
+
+export type XeroInvoiceDraftCreateResultRecord = {
+  invoice_draft_id: string;
+  invoice_number: string | null;
+  status: "created" | "skipped" | "blocked" | "failed";
+  reason: string;
+  approval_state: string;
+  idempotency_key: string | null;
+  xero_invoice_id: string | null;
+  xero_status: string | null;
+  external_posting_status: string;
+};
+
+export type XeroInvoiceDraftCreateRecord = {
+  entity_id: string;
+  provider_configured: boolean;
+  provider_connection_id: string | null;
+  xero_tenant_id: string | null;
+  checked_invoices: number;
+  created_count: number;
+  skipped_count: number;
+  blocked_count: number;
+  failed_count: number;
+  results: XeroInvoiceDraftCreateResultRecord[];
+  applied_at: string;
+  guardrails: string[];
+};
+
 export type InsightsEntityRecord = {
   id: string;
   name: string;
@@ -1818,6 +1858,32 @@ export function previewXeroInvoicePosting(entityId: string) {
     `/xero/invoices/posting-preview/${entityId}`,
     {
       method: "POST",
+    },
+  );
+}
+
+export function approveXeroInvoicePosting(
+  invoiceDraftId: string,
+  payload: { approved: boolean; idempotency_key?: string | null; notes?: string | null },
+) {
+  return request<XeroInvoicePostingApprovalRecord>(
+    `/xero/invoices/${invoiceDraftId}/posting-approval`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function createXeroInvoiceDrafts(
+  entityId: string,
+  payload: { invoice_draft_ids?: string[] | null; idempotency_key?: string | null },
+) {
+  return request<XeroInvoiceDraftCreateRecord>(
+    `/xero/invoices/draft-create/${entityId}`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
     },
   );
 }

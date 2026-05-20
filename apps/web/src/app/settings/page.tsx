@@ -37,7 +37,9 @@ import {
 } from "@/components/ui";
 import {
   applyXeroContactPreview,
+  approveXeroInvoicePosting,
   createSecurityMember,
+  createXeroInvoiceDrafts,
   getSecurityWorkspace,
   getXeroStatus,
   listEntities,
@@ -54,6 +56,9 @@ import {
   type XeroChartTaxValidationResultRecord,
   type XeroContactMatchRecord,
   type XeroContactSyncPreviewRecord,
+  type XeroInvoiceDraftCreateRecord,
+  type XeroInvoiceDraftCreateResultRecord,
+  type XeroInvoicePostingApprovalRecord,
   type XeroInvoicePostingPreviewRecord,
   type XeroInvoicePostingPreviewResultRecord,
   type SecurityMemberRecord,
@@ -172,6 +177,18 @@ function invoicePostingStatusTone(
   return status === "ready" ? "success" : "danger";
 }
 
+function xeroDraftCreateTone(
+  status: XeroInvoiceDraftCreateResultRecord["status"],
+): StatusTone {
+  if (status === "created") {
+    return "success";
+  }
+  if (status === "blocked" || status === "failed") {
+    return "danger";
+  }
+  return "warning";
+}
+
 function roleForEntity(member: SecurityMemberRecord, entityId: string) {
   return member.roles.find((role) => role.entity_id === entityId);
 }
@@ -280,6 +297,11 @@ function SettingsWorkspace() {
     useState<XeroChartTaxValidationPreviewRecord | null>(null);
   const [xeroInvoicePostingPreview, setXeroInvoicePostingPreview] =
     useState<XeroInvoicePostingPreviewRecord | null>(null);
+  const [xeroInvoiceApprovalResults, setXeroInvoiceApprovalResults] = useState<
+    Record<string, XeroInvoicePostingApprovalRecord>
+  >({});
+  const [xeroDraftCreateResult, setXeroDraftCreateResult] =
+    useState<XeroInvoiceDraftCreateRecord | null>(null);
   const [selectedXeroContactMatches, setSelectedXeroContactMatches] = useState<
     Record<string, boolean>
   >({});
@@ -326,6 +348,8 @@ function SettingsWorkspace() {
     setXeroContactApplyResult(null);
     setXeroChartTaxPreview(null);
     setXeroInvoicePostingPreview(null);
+    setXeroInvoiceApprovalResults({});
+    setXeroDraftCreateResult(null);
     setSelectedXeroContactMatches({});
   }, [selectedEntityId]);
 
@@ -355,6 +379,8 @@ function SettingsWorkspace() {
       setXeroContactPreview(null);
       setXeroChartTaxPreview(null);
       setXeroInvoicePostingPreview(null);
+      setXeroInvoiceApprovalResults({});
+      setXeroDraftCreateResult(null);
       queryClient.invalidateQueries({ queryKey: ["entities"] });
       queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
@@ -426,6 +452,47 @@ function SettingsWorkspace() {
     mutationFn: () => previewXeroInvoicePosting(selectedEntityId),
     onSuccess: (result) => {
       setXeroInvoicePostingPreview(result);
+      setXeroInvoiceApprovalResults({});
+      setXeroDraftCreateResult(null);
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
+    },
+  });
+
+  const xeroInvoiceApprovalMutation = useMutation({
+    mutationFn: ({
+      invoiceDraftId,
+      approved,
+    }: {
+      invoiceDraftId: string;
+      approved: boolean;
+    }) =>
+      approveXeroInvoicePosting(invoiceDraftId, {
+        approved,
+        notes: approved
+          ? "Approved from the Settings Xero review queue."
+          : "Revoked from the Settings Xero review queue.",
+      }),
+    onSuccess: (result) => {
+      setXeroInvoiceApprovalResults((current) => ({
+        ...current,
+        [result.invoice_draft_id]: result,
+      }));
+      setXeroDraftCreateResult(null);
+      queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
+    },
+  });
+
+  const xeroDraftCreateMutation = useMutation({
+    mutationFn: () =>
+      createXeroInvoiceDrafts(selectedEntityId, {
+        invoice_draft_ids:
+          xeroInvoicePostingPreview?.results
+            .filter((result) => result.status === "ready")
+            .map((result) => result.invoice_draft_id) ?? null,
+      }),
+    onSuccess: (result) => {
+      setXeroDraftCreateResult(result);
       queryClient.invalidateQueries({ queryKey: ["entities"] });
       queryClient.invalidateQueries({ queryKey: ["xero-status", selectedEntityId] });
     },
@@ -511,6 +578,17 @@ function SettingsWorkspace() {
       notFound: results.filter((result) => result.status === "not_found").length,
     };
   }, [xeroChartTaxPreview]);
+  const readyXeroInvoiceDraftIds = useMemo(
+    () =>
+      (xeroInvoicePostingPreview?.results ?? [])
+        .filter((result) => result.status === "ready")
+        .map((result) => result.invoice_draft_id),
+    [xeroInvoicePostingPreview],
+  );
+  const locallyApprovedXeroDraftCount = readyXeroInvoiceDraftIds.filter(
+    (invoiceDraftId) =>
+      xeroInvoiceApprovalResults[invoiceDraftId]?.approval_state === "approved",
+  ).length;
 
   return (
     <main className="min-h-screen">
@@ -627,6 +705,20 @@ function SettingsWorkspace() {
             {xeroInvoicePostingMutation.error instanceof Error
               ? xeroInvoicePostingMutation.error.message
               : "Could not preview Xero invoice posting."}
+          </div>
+        ) : null}
+        {xeroInvoiceApprovalMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {xeroInvoiceApprovalMutation.error instanceof Error
+              ? xeroInvoiceApprovalMutation.error.message
+              : "Could not record Xero posting approval."}
+          </div>
+        ) : null}
+        {xeroDraftCreateMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {xeroDraftCreateMutation.error instanceof Error
+              ? xeroDraftCreateMutation.error.message
+              : "Could not create Xero draft invoices."}
           </div>
         ) : null}
         {mappingMutation.error ? (
@@ -1673,10 +1765,10 @@ function SettingsWorkspace() {
             {xeroInvoicePostingPreview ? (
               <SectionPanel
                 title="Xero invoice posting preview"
-                description="Inspect the provider payload shape for approved invoice drafts before any posting approval is available."
+                description="Inspect provider-ready invoice drafts, record explicit local approval, then create Xero drafts as a separate action."
                 icon={<CircleDollarSign size={17} className="text-primary" />}
                 actions={
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge tone="success">
                       {xeroInvoicePostingPreview.ready_count} ready
                     </StatusBadge>
@@ -1689,6 +1781,27 @@ function SettingsWorkspace() {
                     >
                       {xeroInvoicePostingPreview.blocked_count} blocked
                     </StatusBadge>
+                    <StatusBadge
+                      tone={locallyApprovedXeroDraftCount ? "success" : "warning"}
+                    >
+                      {locallyApprovedXeroDraftCount} approved
+                    </StatusBadge>
+                    <SecondaryButton
+                      type="button"
+                      className="min-h-9 rounded-lg px-3"
+                      disabled={
+                        readyXeroInvoiceDraftIds.length === 0 ||
+                        xeroDraftCreateMutation.isPending
+                      }
+                      onClick={() => xeroDraftCreateMutation.mutate()}
+                    >
+                      {xeroDraftCreateMutation.isPending ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Send size={14} />
+                      )}
+                      Create Xero drafts
+                    </SecondaryButton>
                   </div>
                 }
               >
@@ -1730,11 +1843,14 @@ function SettingsWorkspace() {
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge tone="warning">Preview only</StatusBadge>
                     <span className="font-medium">
-                      No Xero posting, email, or payment mutation is performed.
+                      This preview does not post to Xero, email tenants, or reconcile payments.
                     </span>
                   </div>
                   <ul className="grid gap-1 text-xs text-muted-foreground">
-                    {xeroInvoicePostingPreview.guardrails.map((guardrail) => (
+                    {[
+                      "Approval is local only; Xero draft creation is a separate reviewed action.",
+                      ...xeroInvoicePostingPreview.guardrails,
+                    ].map((guardrail) => (
                       <li key={guardrail} className="flex gap-2">
                         <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
                         <span>{guardrail}</span>
@@ -1743,60 +1859,126 @@ function SettingsWorkspace() {
                   </ul>
                 </div>
                 <div className="divide-y divide-border border-t border-border">
-                  {xeroInvoicePostingPreview.results.map((result) => (
-                    <div
-                      key={result.invoice_draft_id}
-                      className="grid gap-3 px-4 py-3 text-sm lg:grid-cols-[170px_1fr_260px]"
-                    >
-                      <div className="flex flex-wrap items-start gap-2">
-                        <StatusBadge tone={invoicePostingStatusTone(result.status)}>
-                          {result.status}
-                        </StatusBadge>
-                        <div className="text-xs text-muted-foreground">
-                          {result.invoice_number ?? result.invoice_draft_id}
-                        </div>
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <span className="font-medium">{result.title}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {result.contact_name ?? "No contact"} /{" "}
-                            {formatCurrencyCents(
-                              result.total_cents,
-                              result.currency,
-                            )}
-                          </span>
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          Issue {result.issue_date ?? "-"} / Due{" "}
-                          {result.due_date ?? "-"} / {result.line_count} line
-                          {result.line_count === 1 ? "" : "s"}
-                        </div>
-                        {result.blockers.length ? (
-                          <p className="mt-2 text-xs text-danger">
-                            {result.blockers.join("; ")}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="grid gap-1 text-xs text-muted-foreground">
-                        {result.line_items.map((line, index) => (
-                          <div
-                            key={line.source_line_id ?? `${result.invoice_draft_id}-${index}`}
-                            className="rounded-md border border-border bg-muted/25 p-2"
+                  {xeroInvoicePostingPreview.results.map((result) => {
+                    const approval = xeroInvoiceApprovalResults[result.invoice_draft_id];
+                    const isApproved = approval?.approval_state === "approved";
+                    const isApprovalPending =
+                      xeroInvoiceApprovalMutation.isPending &&
+                      xeroInvoiceApprovalMutation.variables?.invoiceDraftId ===
+                        result.invoice_draft_id;
+                    return (
+                      <div
+                        key={result.invoice_draft_id}
+                        className="grid gap-3 px-4 py-3 text-sm lg:grid-cols-[170px_1fr_300px]"
+                      >
+                        <div className="flex flex-wrap items-start gap-2">
+                          <StatusBadge tone={invoicePostingStatusTone(result.status)}>
+                            {result.status}
+                          </StatusBadge>
+                          <StatusBadge
+                            tone={
+                              isApproved
+                                ? "success"
+                                : result.status === "ready"
+                                  ? "warning"
+                                  : "neutral"
+                            }
                           >
-                            <div className="font-medium text-foreground">
-                              {line.description}
-                            </div>
-                            <div className="mt-1">
-                              Qty {line.quantity} x {line.unit_amount} / acct{" "}
-                              {line.account_code ?? "-"} / tax{" "}
-                              {line.tax_type ?? "-"} / {line.line_amount}
-                            </div>
+                            {isApproved
+                              ? "Approved for Xero"
+                              : result.status === "ready"
+                                ? "Needs approval"
+                                : "Blocked"}
+                          </StatusBadge>
+                          <div className="text-xs text-muted-foreground">
+                            {result.invoice_number ?? result.invoice_draft_id}
                           </div>
-                        ))}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span className="font-medium">{result.title}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {result.contact_name ?? "No contact"} /{" "}
+                              {formatCurrencyCents(
+                                result.total_cents,
+                                result.currency,
+                              )}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Issue {result.issue_date ?? "-"} / Due{" "}
+                            {result.due_date ?? "-"} / {result.line_count} line
+                            {result.line_count === 1 ? "" : "s"}
+                          </div>
+                          {approval ? (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {approval.reason}
+                            </p>
+                          ) : null}
+                          {result.blockers.length ? (
+                            <p className="mt-2 text-xs text-danger">
+                              {result.blockers.join("; ")}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="grid gap-2 text-xs text-muted-foreground">
+                          <div className="flex flex-wrap gap-2">
+                            <SecondaryButton
+                              type="button"
+                              className="min-h-8 rounded-lg px-3 text-xs"
+                              disabled={result.status !== "ready" || isApprovalPending}
+                              onClick={() =>
+                                xeroInvoiceApprovalMutation.mutate({
+                                  invoiceDraftId: result.invoice_draft_id,
+                                  approved: true,
+                                })
+                              }
+                            >
+                              {isApprovalPending ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <CheckCircle2 size={13} />
+                              )}
+                              Approve Xero
+                            </SecondaryButton>
+                            <SecondaryButton
+                              type="button"
+                              className="min-h-8 rounded-lg px-3 text-xs"
+                              disabled={!isApproved || isApprovalPending}
+                              onClick={() =>
+                                xeroInvoiceApprovalMutation.mutate({
+                                  invoiceDraftId: result.invoice_draft_id,
+                                  approved: false,
+                                })
+                              }
+                            >
+                              {isApprovalPending ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Ban size={13} />
+                              )}
+                              Revoke
+                            </SecondaryButton>
+                          </div>
+                          {result.line_items.map((line, index) => (
+                            <div
+                              key={line.source_line_id ?? `${result.invoice_draft_id}-${index}`}
+                              className="rounded-md border border-border bg-muted/25 p-2"
+                            >
+                              <div className="font-medium text-foreground">
+                                {line.description}
+                              </div>
+                              <div className="mt-1">
+                                Qty {line.quantity} x {line.unit_amount} / acct{" "}
+                                {line.account_code ?? "-"} / tax{" "}
+                                {line.tax_type ?? "-"} / {line.line_amount}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {xeroInvoicePostingPreview.results.length === 0 ? (
                     <EmptyState
                       title="No invoice drafts checked"
@@ -1804,6 +1986,89 @@ function SettingsWorkspace() {
                     />
                   ) : null}
                 </div>
+                {xeroDraftCreateResult ? (
+                  <div className="border-t border-border">
+                    <div className="grid gap-3 p-4 md:grid-cols-4">
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Created
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">
+                          {xeroDraftCreateResult.created_count}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Skipped
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">
+                          {xeroDraftCreateResult.skipped_count}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Blocked
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">
+                          {xeroDraftCreateResult.blocked_count}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Failed
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">
+                          {xeroDraftCreateResult.failed_count}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 border-t border-border px-4 py-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge tone="primary">Xero draft creation result</StatusBadge>
+                        <span className="font-medium">
+                          Checked {xeroDraftCreateResult.checked_invoices} invoice
+                          {xeroDraftCreateResult.checked_invoices === 1 ? "" : "s"}.
+                        </span>
+                      </div>
+                      <ul className="grid gap-1 text-xs text-muted-foreground">
+                        {xeroDraftCreateResult.guardrails.map((guardrail) => (
+                          <li key={guardrail} className="flex gap-2">
+                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                            <span>{guardrail}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="divide-y divide-border border-t border-border">
+                      {xeroDraftCreateResult.results.map((result) => (
+                        <div
+                          key={result.invoice_draft_id}
+                          className="grid gap-3 px-4 py-3 text-sm md:grid-cols-[180px_1fr_220px]"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge tone={xeroDraftCreateTone(result.status)}>
+                              {result.status}
+                            </StatusBadge>
+                            <span className="text-xs text-muted-foreground">
+                              {result.invoice_number ?? result.invoice_draft_id}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-medium">{result.reason}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {result.external_posting_status} / approval{" "}
+                              {result.approval_state}
+                            </p>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            <div>Xero ID: {result.xero_invoice_id ?? "-"}</div>
+                            <div>Status: {result.xero_status ?? "-"}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </SectionPanel>
             ) : null}
 

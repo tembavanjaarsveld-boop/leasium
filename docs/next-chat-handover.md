@@ -8,7 +8,7 @@ Last updated: 2026-05-20
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest confirmed production deployment: `cdef576 Add tenant portal maintenance requests`, Vercel deployment `dpl_7TrkN5kjUKaQbjNiovxoCENvYoUW`, state `READY`; Render API health is live and production OpenAPI exposes `/api/v1/tenant-portal/maintenance-requests`.
+- Latest confirmed production deployment: `438eedc Add maintenance work order detail history`, Vercel deployment `dpl_2ne5GwU5gFd6LmUNujsdWwCBrucg`, state `READY`; Render API health is live and production OpenAPI exposes tenant-portal maintenance history plus the Xero approval/draft-create schemas and routes.
 - Product source of truth: `docs/product-roadmap.md`
 - Brand/frontend design source of truth: `docs/leasium-codex-design-source-of-truth.md`
 - UX governance source of truth: `docs/design-governance.md`; design-facing changes still need Remba review.
@@ -194,8 +194,20 @@ Last updated: 2026-05-20
   - `/operations` maintenance rows can expand to show approval/quote, contractor, invoice, attachments, notes, and activity detail.
   - Operators can link/unlink approved invoice drafts to work orders through the Operations detail panel; the API already validates invoice drafts by entity.
   - This is design-facing and still needs Remba review.
+- Xero operator approval UI v1 is built on this branch.
+  - Settings now turns the provider invoice posting preview into an operator workflow.
+  - Ready invoice drafts can be explicitly approved or revoked for Xero posting from the preview result.
+  - Xero draft creation remains a separate action and returns created/skipped/blocked/failed outcome panels with provider IDs/status where available.
+  - The copy keeps tenant email delivery and payment reconciliation separate from Xero draft creation.
+  - This is design-facing and still needs Remba review.
 ## Verification
 
+- Xero operator approval UI checks passed:
+  - `.venv/bin/python -m pytest tests/integration/test_xero_api.py -q` (`14 passed`)
+  - `./node_modules/.bin/eslint src/app/settings/page.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `PORT=3004 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "settings shows Xero"` (`1 passed`)
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
 - Operations maintenance detail checks passed:
   - `.venv/bin/python -m pytest tests/integration/test_maintenance_arrears_api.py tests/integration/test_tenant_portal_api.py -q` (`8 passed`)
   - `.venv/bin/python -m ruff check apps/api/routers/maintenance.py apps/api/routers/tenant_portal.py apps/api/schemas/tenant_portal.py tests/integration/test_maintenance_arrears_api.py tests/integration/test_tenant_portal_api.py`
@@ -215,6 +227,7 @@ Last updated: 2026-05-20
   - Production Vercel `/tenant-portal/not-a-real-token` returned `200`.
   - Production Render `/health` returned `200`, and `/api/v1/tenant-portal/maintenance-requests` returned `401` without a portal token as expected.
   - Production Render OpenAPI now includes `/api/v1/tenant-portal/maintenance-requests`.
+  - Production Render OpenAPI now includes `TenantPortalMaintenanceHistoryItemRead`, `XeroInvoicePostingApprovalRead`, `XeroInvoiceDraftCreateRead`, and `/api/v1/xero/invoices/draft-create/{entity_id}`.
 - Overnight build bundle checks passed:
   - `.venv/bin/python -m pytest tests/integration/test_register_import_api.py tests/integration/test_tenant_portal_api.py tests/integration/test_maintenance_arrears_api.py tests/integration/test_xero_api.py tests/integration/test_document_intake_api.py::test_document_intake_apply_invoice_prepares_billing_work -q` (`23 passed`)
   - `.venv/bin/ruff check` on the changed backend routers/schemas/domain/integration/tests (`all checks passed`)
@@ -420,7 +433,7 @@ Last updated: 2026-05-20
 2. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, and Operations workspace.
 3. Deepen Operations with dedicated work-order detail routes, contractor quote document upload/preview, richer comments, and maintenance invoice approval handoff.
 4. Continue tenant portal from token-scoped v1 to authenticated tenant accounts, inline maintenance photo upload, notification preference verification, and safer invite/link lifecycle.
-5. Continue Xero from draft invoice creation/reconciliation metadata into operator UI approvals, webhook/provider status receipts, and full accounting reconciliation guardrails.
+5. Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 
 ## Resume Checklist

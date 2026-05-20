@@ -768,6 +768,8 @@ export async function mockLeasiumApi(page: Page) {
   let xeroProviderConnected = false;
   let chargeAccountCode: string | null = "401";
   let chargeTaxType: string | null = null;
+  let xeroDraftApproved = false;
+  let xeroDraftCreated = false;
   let appliedContactMappings: XeroContactMapping[] = [];
   let snapshotCount = 0;
   let insightSnapshots: JsonBody[] = [];
@@ -870,8 +872,8 @@ export async function mockLeasiumApi(page: Page) {
       },
       invoice_sync: {
         total_invoice_drafts: 1,
-        approved_unsynced: 1,
-        synced: 0,
+        approved_unsynced: xeroDraftCreated ? 0 : 1,
+        synced: xeroDraftCreated ? 1 : 0,
         blocked: 0,
       },
       payment_reconciliation: {
@@ -883,7 +885,7 @@ export async function mockLeasiumApi(page: Page) {
       issues,
       guardrails: [
         "Xero contact apply only saves reviewed local mappings; it does not mutate Xero.",
-        "Invoice posting remains blocked until a future explicit approval action exists.",
+        "Invoice posting requires explicit local approval before Xero draft creation.",
         "Payment reconciliation is manual status tracking until bank/Xero feeds are connected.",
       ],
     };
@@ -1452,6 +1454,78 @@ export async function mockLeasiumApi(page: Page) {
       xeroConnectedAt = xeroConnectedAt ?? "2026-05-19T10:00:00.000Z";
       xeroProviderConnected = true;
       await fulfillJson(route, xeroInvoicePostingPreview());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/xero/invoices/invoice-draft-1/posting-approval"
+    ) {
+      const payload = (await route.request().postDataJSON()) as {
+        approved?: boolean;
+      };
+      xeroDraftApproved = payload.approved !== false;
+      await fulfillJson(route, {
+        invoice_draft_id: "invoice-draft-1",
+        invoice_number: "INV-1001",
+        status: xeroDraftApproved ? "approved" : "revoked",
+        approval_state: xeroDraftApproved ? "approved" : "revoked",
+        xero_sync_allowed: xeroDraftApproved,
+        external_posting_status: xeroDraftApproved
+          ? "approved_pending_xero_draft"
+          : "approval_revoked",
+        approved_at: xeroDraftApproved ? "2026-05-19T10:25:00.000Z" : null,
+        idempotency_key: xeroDraftApproved ? "xero-draft-invoice-draft-1" : null,
+        reason: xeroDraftApproved
+          ? "Xero draft posting was explicitly approved locally."
+          : "Xero draft posting approval was revoked locally.",
+        guardrails: [
+          "This endpoint only records local posting approval.",
+          "No Xero invoice is created until the separate draft creation endpoint is called.",
+          "Draft creation still requires an active configured provider connection.",
+        ],
+      });
+      return;
+    }
+
+    if (method === "POST" && path === `/xero/invoices/draft-create/${entityId}`) {
+      if (xeroDraftApproved) {
+        xeroDraftCreated = true;
+      }
+      await fulfillJson(route, {
+        entity_id: entityId,
+        provider_configured: true,
+        provider_connection_id: "xero-connection-1",
+        xero_tenant_id: xeroTenantId ?? "tenant-smoke",
+        checked_invoices: 1,
+        created_count: xeroDraftApproved && xeroDraftCreated ? 1 : 0,
+        skipped_count: 0,
+        blocked_count: xeroDraftApproved ? 0 : 1,
+        failed_count: 0,
+        results: [
+          {
+            invoice_draft_id: "invoice-draft-1",
+            invoice_number: "INV-1001",
+            status: xeroDraftApproved ? "created" : "blocked",
+            reason: xeroDraftApproved
+              ? "Xero draft invoice was created after explicit approval."
+              : "Explicit Xero posting approval is required before any Xero mutation.",
+            approval_state: xeroDraftApproved ? "approved" : "missing",
+            idempotency_key: "xero-draft-invoice-draft-1",
+            xero_invoice_id: xeroDraftApproved ? "xero-invoice-smoke-1" : null,
+            xero_status: xeroDraftApproved ? "DRAFT" : null,
+            external_posting_status: xeroDraftApproved
+              ? "draft_created"
+              : "approval_required",
+          },
+        ],
+        applied_at: "2026-05-19T10:30:00.000Z",
+        guardrails: [
+          "Xero draft creation only runs for invoice drafts with explicit local posting approval.",
+          "When provider credentials or provider connection are absent, invoices are skipped safely.",
+          "Successful Xero draft references are stored locally and repeated calls are idempotent.",
+        ],
+      });
       return;
     }
 

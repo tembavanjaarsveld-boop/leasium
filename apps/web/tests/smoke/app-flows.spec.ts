@@ -246,10 +246,23 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("0 blocked").first()).toBeVisible();
   await expect(
     page.getByText(
-      "No Xero posting, email, or payment mutation is performed by this preview.",
+      "This preview does not post to Xero, email tenants, or reconcile payments.",
     ),
   ).toBeVisible();
   await expect(page.getByText("acct 401 / tax OUTPUT")).toBeVisible();
+
+  await page.getByRole("button", { name: "Approve Xero" }).click();
+  await expect(page.getByText("Approved for Xero")).toBeVisible();
+  await expect(
+    page.getByText("Xero draft posting was explicitly approved locally."),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Create Xero drafts" }).click();
+  await expect(page.getByText("Xero draft creation result")).toBeVisible();
+  await expect(
+    page.getByText("Xero draft invoice was created after explicit approval."),
+  ).toBeVisible();
+  await expect(page.getByText("xero-invoice-smoke-1")).toBeVisible();
 });
 
 test("insights shows overview, exceptions, activity, and owner snapshot", async ({

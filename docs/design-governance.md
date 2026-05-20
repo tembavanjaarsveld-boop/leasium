@@ -184,7 +184,7 @@ Status: pending Remba review. Provider-backed invoice posting preview is built b
 
 ## Xero Posting Approval And Reconciliation
 
-Status: pending Remba review. The backend now supports explicit local Xero posting approval, idempotent provider-backed Xero draft invoice creation, and payment reconciliation preview/apply into local invoice metadata. The operator surface still needs design review before it is treated as complete: approvals should show the exact invoice, Xero contact, line payload, idempotency key, provider status, and reconciliation source before any external write or local payment update is applied.
+Status: pending Remba review. The backend now supports explicit local Xero posting approval, idempotent provider-backed Xero draft invoice creation, and payment reconciliation preview/apply into local invoice metadata. Settings now exposes the first operator approval surface from the invoice posting preview: each ready invoice can be approved or revoked for Xero, draft creation remains a separate action, and the result panel shows created/skipped/blocked/failed outcomes plus provider IDs when available. Remba should review whether this belongs in Settings long-term or should move per-invoice into Billing Readiness, and keep the copy clear that tenant email delivery and payment reconciliation remain separate approvals.
 
 ## Operator Security And Settings Arena
 
