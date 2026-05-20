@@ -182,8 +182,22 @@ Last updated: 2026-05-20
   - Maintenance tab lists work orders, supports quick creation, filtering by status/priority, and approval/start/complete status actions.
   - Arrears tab lists ageing, reminders, disputes, promise-to-pay, and escalation state, with reminder/escalate/resolve actions.
   - This is design-facing and still needs Remba review.
+- Tenant portal maintenance requests v1 is built on this branch.
+  - `/tenant-portal/[token]` now includes a Maintenance panel where token-scoped tenants can submit a request, choose priority, add details/location reference, and see prior portal-submitted requests.
+  - `/api/v1/tenant-portal/session` includes `maintenance_requests`, and new `GET`/`POST /api/v1/tenant-portal/maintenance-requests` endpoints create scoped `maintenance_work_order` rows.
+  - Request creation infers entity/property/unit/tenant/lease context from the portal token, marks the work order as `requested`, stores tenant-portal provenance metadata, validates blank text, and validates attached document/photo IDs through the portal document boundary.
+  - The response intentionally exposes only portal-safe fields; operator-only fields remain in `/operations`.
+  - This is design-facing and still needs Remba review.
 ## Verification
 
+- Tenant portal maintenance request checks passed:
+  - `.venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py -q` (`5 passed`)
+  - `.venv/bin/python -m ruff check apps/api/routers/tenant_portal.py apps/api/schemas/tenant_portal.py tests/integration/test_tenant_portal_api.py`
+  - `./node_modules/.bin/eslint 'src/app/tenant-portal/[token]/page.tsx' src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
+  - `./node_modules/.bin/tsc --noEmit`
+  - `.venv/bin/python -m pytest -q` (`92 passed`, `1 skipped`; migration smoke skipped because `TEST_DATABASE_URL` is not configured)
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  - `PORT=3004 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts` (`7 passed`, `1 skipped`; Clerk guard remains environment-gated)
 - Overnight build bundle checks passed:
   - `.venv/bin/python -m pytest tests/integration/test_register_import_api.py tests/integration/test_tenant_portal_api.py tests/integration/test_maintenance_arrears_api.py tests/integration/test_xero_api.py tests/integration/test_document_intake_api.py::test_document_intake_apply_invoice_prepares_billing_work -q` (`23 passed`)
   - `.venv/bin/ruff check` on the changed backend routers/schemas/domain/integration/tests (`all checks passed`)
@@ -387,8 +401,8 @@ Last updated: 2026-05-20
 
 1. Verify the overnight production deploy and confirm Neon has advanced through `20260520_0018`.
 2. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, and Operations workspace.
-3. Deepen Operations with tenant-submitted maintenance requests, tenant portal photo/document upload, contractor quote approval detail, invoice linking, and activity history.
-4. Continue tenant portal from token-scoped v1 to authenticated tenant accounts, maintenance requests, notification preference verification, and safer invite/link lifecycle.
+3. Deepen Operations with contractor quote approval detail, work-order invoice linking, portal-visible status history, and richer maintenance activity history.
+4. Continue tenant portal from token-scoped v1 to authenticated tenant accounts, inline maintenance photo upload, notification preference verification, and safer invite/link lifecycle.
 5. Continue Xero from draft invoice creation/reconciliation metadata into operator UI approvals, webhook/provider status receipts, and full accounting reconciliation guardrails.
 6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 

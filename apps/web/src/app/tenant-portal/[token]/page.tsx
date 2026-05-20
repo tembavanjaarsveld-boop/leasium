@@ -9,8 +9,10 @@ import {
   FileText,
   Loader2,
   ReceiptText,
+  Send,
   ShieldCheck,
   UploadCloud,
+  Wrench,
 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -25,9 +27,12 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  createTenantPortalMaintenanceRequest,
   DocumentCategory,
   getTenantPortal,
+  MaintenancePriority,
   tenantPortalDocumentDownloadUrl,
+  TenantPortalMaintenanceRequestPayload,
   TenantPortalNotificationPreferencesPayload,
   TenantPortalRecord,
   updateTenantPortalNotificationPreferences,
@@ -117,6 +122,32 @@ function complianceTone(status: string) {
     return "warning" as const;
   }
   return "neutral" as const;
+}
+
+function maintenanceTone(status: string) {
+  if (status === "completed") {
+    return "success" as const;
+  }
+  if (status === "cancelled") {
+    return "danger" as const;
+  }
+  if (["awaiting_approval", "approved", "assigned", "in_progress"].includes(status)) {
+    return "primary" as const;
+  }
+  return "warning" as const;
+}
+
+function priorityTone(priority: MaintenancePriority) {
+  if (priority === "urgent") {
+    return "danger" as const;
+  }
+  if (priority === "high") {
+    return "warning" as const;
+  }
+  if (priority === "low") {
+    return "neutral" as const;
+  }
+  return "primary" as const;
 }
 
 function PortalShell({ children }: { children: React.ReactNode }) {
@@ -280,6 +311,11 @@ function TenantPortalContent() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadCategory, setUploadCategory] = useState<DocumentCategory>("insurance");
   const [uploadNotes, setUploadNotes] = useState("");
+  const [maintenanceTitle, setMaintenanceTitle] = useState("");
+  const [maintenancePriority, setMaintenancePriority] =
+    useState<MaintenancePriority>("normal");
+  const [maintenanceDescription, setMaintenanceDescription] = useState("");
+  const [maintenanceSourceReference, setMaintenanceSourceReference] = useState("");
 
   useEffect(() => {
     if (!portal || portal.compliance.accepted_categories.includes(uploadCategory)) {
@@ -307,12 +343,41 @@ function TenantPortalContent() {
     },
   });
 
+  const maintenanceMutation = useMutation({
+    mutationFn: () => {
+      const payload: TenantPortalMaintenanceRequestPayload = {
+        title: maintenanceTitle.trim(),
+        description: maintenanceDescription.trim(),
+        priority: maintenancePriority,
+        source_reference: maintenanceSourceReference.trim() || null,
+      };
+      if (!payload.title || !payload.description) {
+        throw new Error("Add a title and details before submitting.");
+      }
+      return createTenantPortalMaintenanceRequest(token, payload);
+    },
+    onSuccess: () => {
+      setMaintenanceTitle("");
+      setMaintenancePriority("normal");
+      setMaintenanceDescription("");
+      setMaintenanceSourceReference("");
+      portalQuery.refetch();
+    },
+  });
+
   const visibleCategories = useMemo(
     () =>
       (portal?.compliance.accepted_categories ?? []).filter(
         (category) => category !== "invoice",
       ),
     [portal?.compliance.accepted_categories],
+  );
+  const openMaintenanceCount = useMemo(
+    () =>
+      (portal?.maintenance_requests ?? []).filter(
+        (request) => !["completed", "cancelled"].includes(request.status),
+      ).length,
+    [portal?.maintenance_requests],
   );
 
   if (portalQuery.isLoading) {
@@ -364,7 +429,7 @@ function TenantPortalContent() {
           </div>
         </section>
 
-        <section className="grid gap-3 md:grid-cols-4">
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <Metric
             label="Onboarding"
             value={label(portal.onboarding.status)}
@@ -392,6 +457,11 @@ function TenantPortalContent() {
             label="Documents"
             value={String(portal.compliance.uploaded_documents.length)}
             detail="Tenant files"
+          />
+          <Metric
+            label="Maintenance"
+            value={String(portal.maintenance_requests.length)}
+            detail="Submitted requests"
           />
         </section>
 
@@ -474,6 +544,133 @@ function TenantPortalContent() {
                     No approved invoices are available.
                   </div>
                 ) : null}
+              </div>
+            </Panel>
+
+            <Panel
+              title="Maintenance"
+              icon={<Wrench size={18} />}
+              actions={
+                <StatusBadge
+                  tone={openMaintenanceCount ? "primary" : "neutral"}
+                >
+                  {openMaintenanceCount} open
+                </StatusBadge>
+              }
+            >
+              <div className="grid gap-4 p-4">
+                <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3">
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
+                    <Field label="Request title">
+                      <Input
+                        value={maintenanceTitle}
+                        onChange={(event) => setMaintenanceTitle(event.target.value)}
+                        placeholder="Air conditioning fault"
+                      />
+                    </Field>
+                    <Field label="Priority">
+                      <Select
+                        value={maintenancePriority}
+                        onChange={(event) =>
+                          setMaintenancePriority(event.target.value as MaintenancePriority)
+                        }
+                      >
+                        <option value="low">Low</option>
+                        <option value="normal">Normal</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                      </Select>
+                    </Field>
+                  </div>
+                  <Field label="Details">
+                    <textarea
+                      className="min-h-28 w-full resize-y rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                      value={maintenanceDescription}
+                      onChange={(event) => setMaintenanceDescription(event.target.value)}
+                      placeholder="What is happening, where is it, and when did it start?"
+                    />
+                  </Field>
+                  <Field label="Location or reference">
+                    <Input
+                      value={maintenanceSourceReference}
+                      onChange={(event) =>
+                        setMaintenanceSourceReference(event.target.value)
+                      }
+                      placeholder="Front counter, rear entry, invoice reference..."
+                    />
+                  </Field>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {maintenanceMutation.error ? (
+                      <span className="text-sm text-danger">
+                        {maintenanceMutation.error.message}
+                      </span>
+                    ) : null}
+                    <Button
+                      type="button"
+                      onClick={() => maintenanceMutation.mutate()}
+                      disabled={maintenanceMutation.isPending}
+                    >
+                      {maintenanceMutation.isPending ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Send size={16} />
+                      )}
+                      Submit request
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  {portal.maintenance_requests.map((request) => (
+                    <div
+                      key={request.id}
+                      className="grid gap-3 rounded-md border border-border p-3 md:grid-cols-[minmax(0,1fr)_auto]"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="truncate font-semibold">{request.title}</div>
+                          <StatusBadge tone={maintenanceTone(request.status)}>
+                            {label(request.status)}
+                          </StatusBadge>
+                          <StatusBadge tone={priorityTone(request.priority)}>
+                            {label(request.priority)}
+                          </StatusBadge>
+                        </div>
+                        {request.description ? (
+                          <div className="mt-2 text-sm text-muted-foreground">
+                            {request.description}
+                          </div>
+                        ) : null}
+                        {request.source_reference ? (
+                          <div className="mt-2 text-sm">
+                            {request.source_reference}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="grid content-start justify-items-end gap-1 text-xs text-muted-foreground">
+                        <span>Requested {formatDateTime(request.requested_at)}</span>
+                        {request.completed_at ? (
+                          <span>Completed {formatDateTime(request.completed_at)}</span>
+                        ) : null}
+                        {request.document_ids.length || request.photo_document_ids.length ? (
+                          <span>
+                            {request.document_ids.length + request.photo_document_ids.length}{" "}
+                            file
+                            {request.document_ids.length + request.photo_document_ids.length ===
+                            1
+                              ? ""
+                              : "s"}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                  {!portal.maintenance_requests.length ? (
+                    <div className="rounded-md border border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
+                      No maintenance requests are open.
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </Panel>
 

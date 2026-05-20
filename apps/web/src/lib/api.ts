@@ -562,6 +562,30 @@ export type TenantPortalNotificationPreferencesPayload = {
   compliance_reminders_enabled?: boolean;
 };
 
+export type TenantPortalMaintenanceRequestRecord = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: MaintenanceWorkOrderStatus;
+  priority: MaintenancePriority;
+  requested_at: string;
+  source_reference: string | null;
+  due_date: string | null;
+  completed_at: string | null;
+  document_ids: string[];
+  photo_document_ids: string[];
+  created_at: string;
+};
+
+export type TenantPortalMaintenanceRequestPayload = {
+  title: string;
+  description: string;
+  priority?: MaintenancePriority;
+  source_reference?: string | null;
+  document_ids?: string[];
+  photo_document_ids?: string[];
+};
+
 export type TenantPortalRecord = {
   auth: TenantPortalAuthRecord;
   tenant: TenantPortalTenantRecord;
@@ -570,6 +594,7 @@ export type TenantPortalRecord = {
   compliance: TenantPortalComplianceRecord;
   invoices: TenantPortalInvoiceRecord[];
   payment_summary: TenantPortalPaymentSummaryRecord;
+  maintenance_requests: TenantPortalMaintenanceRequestRecord[];
   notification_preferences: TenantPortalNotificationPreferencesRecord;
   guardrails: string[];
 };
@@ -2350,6 +2375,20 @@ export function updateTenantPortalNotificationPreferences(
     "/tenant-portal/notification-preferences",
     {
       method: "PATCH",
+      headers: tenantPortalHeaders(token),
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function createTenantPortalMaintenanceRequest(
+  token: string,
+  payload: TenantPortalMaintenanceRequestPayload,
+) {
+  return publicRequest<TenantPortalMaintenanceRequestRecord>(
+    "/tenant-portal/maintenance-requests",
+    {
+      method: "POST",
       headers: tenantPortalHeaders(token),
       body: JSON.stringify(payload),
     },

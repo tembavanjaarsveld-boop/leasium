@@ -212,7 +212,7 @@ Status: pending Remba review. Portfolio QA remains a cleanup workspace at `/port
 
 ## Tenant Portal Surface
 
-Status: pending Remba review. `/tenant-portal/[token]` now gives tenants a scoped self-service surface for onboarding status, lease context, approved invoices/payment summary, compliance/document upload and download, and notification preferences. Current auth is scoped to the existing onboarding token boundary and labels query/form token use as a development fallback; true tenant account auth remains future work. Remba should review first-viewport tenant context, portal trust language, upload density, and invoice/payment clarity.
+Status: pending Remba review. `/tenant-portal/[token]` now gives tenants a scoped self-service surface for onboarding status, lease context, approved invoices/payment summary, compliance/document upload and download, maintenance request submission/status, and notification preferences. Current auth is scoped to the existing onboarding token boundary and labels query/form token use as a development fallback; true tenant account auth remains future work. Remba should review first-viewport tenant context, portal trust language, upload/request density, invoice/payment clarity, and whether maintenance belongs before or after compliance for tenants.
 
 ## Maintenance And Arrears Foundations
 
@@ -220,7 +220,7 @@ Status: pending Remba review. The backend now has migration-backed maintenance w
 
 ## Operations Workspace
 
-Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry while preserving `/tasks` as a redirect. It keeps the original triage queue and adds Maintenance and Arrears tabs with KPI cards, quick-create panels, and status actions for approvals, work starts, completion, reminders, escalation, and resolution. Remba should review whether Operations is the right long-term IA home, whether the first viewport is too dense on laptops, and how tenant-submitted maintenance and arrears escalation detail should split between queue rows and dedicated detail pages.
+Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry while preserving `/tasks` as a redirect. It keeps the original triage queue and adds Maintenance and Arrears tabs with KPI cards, quick-create panels, tenant-portal submitted requests, and status actions for approvals, work starts, completion, reminders, escalation, and resolution. Remba should review whether Operations is the right long-term IA home, whether the first viewport is too dense on laptops, and how tenant-submitted maintenance and arrears escalation detail should split between queue rows and dedicated detail pages.
 
 ## Property Provenance Surface
 

@@ -15,6 +15,9 @@ from stewart.core.models import (
     InvoiceDraftStatus,
     Lease,
     LeaseStatus,
+    MaintenancePriority,
+    MaintenanceWorkOrder,
+    MaintenanceWorkOrderStatus,
     Property,
     PropertyType,
     StoredDocument,
@@ -249,7 +252,16 @@ def _seed_portal_scope(session: Session) -> dict[str, str]:
     return {
         "token": onboarding_one.token,
         "other_token": onboarding_two.token,
+        "entity_id": str(entity.id),
+        "property_id": str(prop.id),
+        "unit_id": str(unit_one.id),
+        "other_unit_id": str(unit_two.id),
         "tenant_id": str(tenant_one.id),
+        "other_tenant_id": str(tenant_two.id),
+        "lease_id": str(lease_one.id),
+        "other_lease_id": str(lease_two.id),
+        "onboarding_id": str(onboarding_one.id),
+        "other_onboarding_id": str(onboarding_two.id),
         "document_id": str(document_one.id),
         "other_document_id": str(document_two.id),
         "invoice_document_id": str(invoice_document.id),
@@ -295,6 +307,7 @@ def test_tenant_portal_session_is_scoped_to_token_tenant(
     assert body["payment_summary"]["total_cents"] == 880000
     assert body["payment_summary"]["paid_cents"] == 330000
     assert body["payment_summary"]["outstanding_cents"] == 550000
+    assert body["maintenance_requests"] == []
 
 
 def test_tenant_portal_query_token_is_labelled_dev_fallback(
@@ -386,3 +399,155 @@ def test_tenant_portal_upload_download_and_preferences_stay_scoped(
     tenant = session.get(Tenant, UUID(scope["tenant_id"]))
     assert tenant is not None
     assert tenant.tenant_metadata["portal_notification_preferences"]["sms_enabled"] is False
+
+
+def test_tenant_portal_session_lists_scoped_maintenance_requests(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    visible = MaintenanceWorkOrder(
+        entity_id=UUID(scope["entity_id"]),
+        property_id=UUID(scope["property_id"]),
+        tenancy_unit_id=UUID(scope["unit_id"]),
+        tenant_id=UUID(scope["tenant_id"]),
+        lease_id=UUID(scope["lease_id"]),
+        title="Leaking sink",
+        description="Water is pooling under the basin.",
+        status=MaintenanceWorkOrderStatus.requested,
+        priority=MaintenancePriority.high,
+        source_reference="TENANT-REF-1",
+        attachments={
+            "document_ids": [scope["document_id"]],
+            "photo_document_ids": [],
+        },
+        work_order_metadata={
+            "source": "tenant_portal",
+            "tenant_onboarding_id": scope["onboarding_id"],
+        },
+    )
+    internal_same_tenant = MaintenanceWorkOrder(
+        entity_id=UUID(scope["entity_id"]),
+        property_id=UUID(scope["property_id"]),
+        tenancy_unit_id=UUID(scope["unit_id"]),
+        tenant_id=UUID(scope["tenant_id"]),
+        lease_id=UUID(scope["lease_id"]),
+        title="Internal inspection item",
+        description="Created by ops, not submitted through portal.",
+        status=MaintenanceWorkOrderStatus.requested,
+        priority=MaintenancePriority.normal,
+        work_order_metadata={"source": "internal"},
+    )
+    other_tenant = MaintenanceWorkOrder(
+        entity_id=UUID(scope["entity_id"]),
+        property_id=UUID(scope["property_id"]),
+        tenancy_unit_id=UUID(scope["other_unit_id"]),
+        tenant_id=UUID(scope["other_tenant_id"]),
+        lease_id=UUID(scope["other_lease_id"]),
+        title="Other tenant issue",
+        description="Should not cross the token boundary.",
+        status=MaintenanceWorkOrderStatus.requested,
+        priority=MaintenancePriority.urgent,
+        work_order_metadata={
+            "source": "tenant_portal",
+            "tenant_onboarding_id": scope["other_onboarding_id"],
+        },
+    )
+    session.add_all([visible, internal_same_tenant, other_tenant])
+    session.commit()
+
+    response = client.get(
+        "/api/v1/tenant-portal/session",
+        headers={"x-tenant-portal-token": scope["token"]},
+    )
+
+    assert response.status_code == 200
+    requests = response.json()["maintenance_requests"]
+    assert [request["id"] for request in requests] == [str(visible.id)]
+    assert requests[0] == {
+        "id": str(visible.id),
+        "title": "Leaking sink",
+        "description": "Water is pooling under the basin.",
+        "status": "requested",
+        "priority": "high",
+        "requested_at": visible.requested_at.isoformat().replace("+00:00", "Z"),
+        "source_reference": "TENANT-REF-1",
+        "due_date": None,
+        "completed_at": None,
+        "document_ids": [scope["document_id"]],
+        "photo_document_ids": [],
+        "created_at": visible.created_at.isoformat().replace("+00:00", "Z"),
+    }
+
+    list_response = client.get(
+        "/api/v1/tenant-portal/maintenance-requests",
+        headers={"x-tenant-portal-token": scope["token"]},
+    )
+    assert list_response.status_code == 200
+    assert [request["id"] for request in list_response.json()] == [str(visible.id)]
+
+
+def test_tenant_portal_can_create_maintenance_request_with_scoped_documents(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+
+    response = client.post(
+        "/api/v1/tenant-portal/maintenance-requests",
+        headers={"x-tenant-portal-token": scope["token"]},
+        json={
+            "title": "  Aircon fault  ",
+            "description": "  The unit turns off after five minutes.  ",
+            "priority": "urgent",
+            "source_reference": "  tenant-app-123  ",
+            "document_ids": [scope["document_id"], scope["document_id"]],
+            "photo_document_ids": [scope["document_id"]],
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["title"] == "Aircon fault"
+    assert body["description"] == "The unit turns off after five minutes."
+    assert body["status"] == "requested"
+    assert body["priority"] == "urgent"
+    assert body["source_reference"] == "tenant-app-123"
+    assert body["document_ids"] == [scope["document_id"]]
+    assert body["photo_document_ids"] == [scope["document_id"]]
+    assert "entity_id" not in body
+    assert "tenant_id" not in body
+
+    work_order = session.get(MaintenanceWorkOrder, UUID(body["id"]))
+    assert work_order is not None
+    assert work_order.entity_id == UUID(scope["entity_id"])
+    assert work_order.property_id == UUID(scope["property_id"])
+    assert work_order.tenancy_unit_id == UUID(scope["unit_id"])
+    assert work_order.tenant_id == UUID(scope["tenant_id"])
+    assert work_order.lease_id == UUID(scope["lease_id"])
+    assert work_order.work_order_metadata["source"] == "tenant_portal"
+    assert work_order.work_order_metadata["tenant_onboarding_id"] == scope["onboarding_id"]
+    assert work_order.work_order_metadata["auth_mode"] == "tenant_portal_token"
+
+    blank_response = client.post(
+        "/api/v1/tenant-portal/maintenance-requests",
+        headers={"x-tenant-portal-token": scope["token"]},
+        json={
+            "title": " ",
+            "description": " ",
+            "priority": "normal",
+        },
+    )
+    assert blank_response.status_code == 422
+
+    cross_scope_document_response = client.post(
+        "/api/v1/tenant-portal/maintenance-requests",
+        headers={"x-tenant-portal-token": scope["token"]},
+        json={
+            "title": "Blocked drain",
+            "description": "Water is backing up.",
+            "priority": "high",
+            "document_ids": [scope["other_document_id"]],
+        },
+    )
+    assert cross_scope_document_response.status_code == 404

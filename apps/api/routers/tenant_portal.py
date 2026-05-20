@@ -29,6 +29,8 @@ from stewart.core.models import (
     InvoiceDraft,
     InvoiceDraftStatus,
     Lease,
+    MaintenanceWorkOrder,
+    MaintenanceWorkOrderStatus,
     Property,
     StoredDocument,
     TenancyUnit,
@@ -47,6 +49,8 @@ from apps.api.schemas.tenant_portal import (
     TenantPortalInvoiceLineRead,
     TenantPortalInvoiceRead,
     TenantPortalLeaseRead,
+    TenantPortalMaintenanceRequestCreate,
+    TenantPortalMaintenanceRequestRead,
     TenantPortalNotificationPreferencesRead,
     TenantPortalNotificationPreferencesUpdate,
     TenantPortalOnboardingRead,
@@ -405,6 +409,59 @@ def _payment_summary(invoices: list[InvoiceDraft]) -> TenantPortalPaymentSummary
     )
 
 
+def _portal_work_order_metadata(scope: PortalScope) -> dict[str, str]:
+    return {
+        "source": "tenant_portal",
+        "auth_boundary": "tenant_onboarding_token",
+        "auth_mode": scope.auth.mode,
+        "tenant_onboarding_id": str(scope.onboarding.id),
+        "portal_token_source": scope.auth.source,
+    }
+
+
+def _is_portal_work_order(scope: PortalScope, work_order: MaintenanceWorkOrder) -> bool:
+    metadata = work_order.work_order_metadata or {}
+    return (
+        metadata.get("source") == "tenant_portal"
+        and metadata.get("tenant_onboarding_id") == str(scope.onboarding.id)
+    )
+
+
+def _portal_work_orders(scope: PortalScope, session: Session) -> list[MaintenanceWorkOrder]:
+    rows = session.scalars(
+        select(MaintenanceWorkOrder)
+        .where(
+            MaintenanceWorkOrder.entity_id == scope.onboarding.entity_id,
+            MaintenanceWorkOrder.property_id == scope.property.id,
+            MaintenanceWorkOrder.tenancy_unit_id == scope.unit.id,
+            MaintenanceWorkOrder.tenant_id == scope.tenant.id,
+            MaintenanceWorkOrder.lease_id == scope.lease.id,
+            MaintenanceWorkOrder.deleted_at.is_(None),
+        )
+        .order_by(MaintenanceWorkOrder.created_at.desc())
+    )
+    return [row for row in rows if _is_portal_work_order(scope, row)]
+
+
+def _maintenance_request_read(
+    work_order: MaintenanceWorkOrder,
+) -> TenantPortalMaintenanceRequestRead:
+    return TenantPortalMaintenanceRequestRead(
+        id=work_order.id,
+        title=work_order.title,
+        description=work_order.description,
+        status=work_order.status.value,
+        priority=work_order.priority.value,
+        requested_at=work_order.requested_at,
+        source_reference=work_order.source_reference,
+        due_date=work_order.due_date,
+        completed_at=work_order.completed_at,
+        document_ids=work_order.document_ids,
+        photo_document_ids=work_order.photo_document_ids,
+        created_at=work_order.created_at,
+    )
+
+
 def _latest_document(
     documents: list[StoredDocument],
     category: DocumentCategory,
@@ -528,6 +585,7 @@ def _notification_preferences(tenant: Tenant) -> TenantPortalNotificationPrefere
 def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
     documents = _tenant_documents(scope, session)
     invoices = _portal_invoices(scope, session)
+    maintenance_requests = _portal_work_orders(scope, session)
     return TenantPortalRead(
         auth=scope.auth.read(),
         tenant=TenantPortalTenantRead(
@@ -561,10 +619,14 @@ def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
         compliance=_compliance(scope, documents),
         invoices=[_invoice_read(invoice) for invoice in invoices],
         payment_summary=_payment_summary(invoices),
+        maintenance_requests=[
+            _maintenance_request_read(work_order) for work_order in maintenance_requests
+        ],
         notification_preferences=_notification_preferences(scope.tenant),
         guardrails=[
             "Tenant portal responses are scoped to the tenant attached to the onboarding token.",
             "Only approved invoice drafts are visible to tenants.",
+            "Maintenance requests only include tenant portal submissions for this token.",
             "Notification preference updates do not send email or SMS.",
         ],
     )
@@ -612,6 +674,21 @@ def _portal_document(
     return document
 
 
+def _portal_document_id_strings(
+    scope: PortalScope,
+    document_ids: list[UUID],
+    session: Session,
+) -> list[str]:
+    validated: list[str] = []
+    seen: set[UUID] = set()
+    for document_id in document_ids:
+        if document_id in seen:
+            continue
+        seen.add(document_id)
+        validated.append(str(_portal_document(scope, document_id, session).id))
+    return validated
+
+
 @router.get("/session", response_model=TenantPortalRead)
 def get_tenant_portal(
     request: Request,
@@ -624,6 +701,82 @@ def get_tenant_portal(
         header_token=x_tenant_portal_token,
     )
     return _portal_read(scope, session)
+
+
+@router.get(
+    "/maintenance-requests",
+    response_model=list[TenantPortalMaintenanceRequestRead],
+)
+def list_tenant_portal_maintenance_requests(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    x_tenant_portal_token: Annotated[str | None, Header()] = None,
+) -> list[TenantPortalMaintenanceRequestRead]:
+    scope = _portal_scope(
+        request,
+        session,
+        header_token=x_tenant_portal_token,
+    )
+    return [
+        _maintenance_request_read(work_order)
+        for work_order in _portal_work_orders(scope, session)
+    ]
+
+
+@router.post(
+    "/maintenance-requests",
+    response_model=TenantPortalMaintenanceRequestRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_tenant_portal_maintenance_request(
+    payload: TenantPortalMaintenanceRequestCreate,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    x_tenant_portal_token: Annotated[str | None, Header()] = None,
+) -> TenantPortalMaintenanceRequestRead:
+    scope = _portal_scope(
+        request,
+        session,
+        header_token=x_tenant_portal_token,
+    )
+    document_ids = _portal_document_id_strings(scope, payload.document_ids, session)
+    photo_document_ids = _portal_document_id_strings(scope, payload.photo_document_ids, session)
+    work_order = MaintenanceWorkOrder(
+        entity_id=scope.onboarding.entity_id,
+        property_id=scope.property.id,
+        tenancy_unit_id=scope.unit.id,
+        tenant_id=scope.tenant.id,
+        lease_id=scope.lease.id,
+        title=payload.title,
+        description=payload.description,
+        status=MaintenanceWorkOrderStatus.requested,
+        priority=payload.priority,
+        source_reference=payload.source_reference,
+        attachments={
+            "document_ids": document_ids,
+            "photo_document_ids": photo_document_ids,
+        },
+        work_order_metadata={
+            **_portal_work_order_metadata(scope),
+            "submitted_at": utcnow().isoformat(),
+        },
+    )
+    session.add(work_order)
+    session.flush()
+    audit_log(
+        session,
+        actor=scope.auth.actor,
+        entity_id=work_order.entity_id,
+        action="create",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        outcome=AuditOutcome.success,
+        tool_name="tenant_portal.maintenance_request",
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(work_order)
+    return _maintenance_request_read(work_order)
 
 
 @router.patch("/notification-preferences", response_model=TenantPortalNotificationPreferencesRead)

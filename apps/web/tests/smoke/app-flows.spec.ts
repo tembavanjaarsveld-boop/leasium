@@ -138,6 +138,17 @@ test("tenant portal shows scoped self-service data", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible();
   await expect(page.getByText("INV-1001")).toBeVisible();
   await expect(page.getByText("May rent and outgoings")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Maintenance" })).toBeVisible();
+  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await page.getByLabel("Request title").fill("Shopfront light fault");
+  await page.getByLabel("Priority").selectOption("high");
+  await page
+    .getByLabel("Details")
+    .fill("Entry light is flickering during trading hours.");
+  await page.getByLabel("Location or reference").fill("Front entry");
+  await page.getByRole("button", { name: "Submit request" }).click();
+  await expect(page.getByText("Shopfront light fault")).toBeVisible();
+  await expect(page.getByText("Front entry")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Compliance" })).toBeVisible();
   await expect(page.getByText("bright-cafe-insurance.pdf")).toBeVisible();
   await expect(

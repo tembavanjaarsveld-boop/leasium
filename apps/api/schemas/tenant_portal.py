@@ -4,8 +4,8 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
-from stewart.core.models import DocumentCategory
+from pydantic import BaseModel, Field, field_validator
+from stewart.core.models import DocumentCategory, MaintenancePriority
 
 
 class TenantPortalAuthRead(BaseModel):
@@ -128,6 +128,50 @@ class TenantPortalNotificationPreferencesUpdate(BaseModel):
     compliance_reminders_enabled: bool | None = None
 
 
+class TenantPortalMaintenanceRequestCreate(BaseModel):
+    title: str
+    description: str
+    priority: MaintenancePriority = MaintenancePriority.normal
+    source_reference: str | None = None
+    document_ids: list[UUID] = Field(default_factory=list)
+    photo_document_ids: list[UUID] = Field(default_factory=list)
+
+    @field_validator("title", "description", mode="before")
+    @classmethod
+    def _required_text(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Value is required.")
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Value cannot be blank.")
+        return cleaned
+
+    @field_validator("source_reference", mode="before")
+    @classmethod
+    def _optional_text(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Value must be text.")
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class TenantPortalMaintenanceRequestRead(BaseModel):
+    id: UUID
+    title: str
+    description: str | None
+    status: str
+    priority: str
+    requested_at: datetime
+    source_reference: str | None
+    due_date: date | None
+    completed_at: datetime | None
+    document_ids: list[UUID]
+    photo_document_ids: list[UUID]
+    created_at: datetime
+
+
 class TenantPortalRead(BaseModel):
     auth: TenantPortalAuthRead
     tenant: TenantPortalTenantRead
@@ -136,5 +180,6 @@ class TenantPortalRead(BaseModel):
     compliance: TenantPortalComplianceRead
     invoices: list[TenantPortalInvoiceRead]
     payment_summary: TenantPortalPaymentSummaryRead
+    maintenance_requests: list[TenantPortalMaintenanceRequestRead]
     notification_preferences: TenantPortalNotificationPreferencesRead
     guardrails: list[str]

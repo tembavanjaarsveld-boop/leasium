@@ -602,6 +602,22 @@ const tenantPortalSession = () => ({
     status: "overdue",
     manual_only: true,
   },
+  maintenance_requests: maintenanceWorkOrders
+    .filter((workOrder) => workOrder.tenant_id === tenantId)
+    .map((workOrder) => ({
+      id: workOrder.id,
+      title: workOrder.title,
+      description: workOrder.description,
+      status: workOrder.status,
+      priority: workOrder.priority,
+      requested_at: workOrder.requested_at,
+      source_reference: workOrder.source_reference,
+      due_date: workOrder.due_date,
+      completed_at: workOrder.completed_at,
+      document_ids: workOrder.document_ids,
+      photo_document_ids: workOrder.photo_document_ids,
+      created_at: workOrder.created_at,
+    })),
   notification_preferences: {
     email_enabled: true,
     sms_enabled: true,
@@ -1422,6 +1438,71 @@ export async function mockLeasiumApi(page: Page) {
 
     if (method === "GET" && path === "/tenant-portal/session") {
       await fulfillJson(route, tenantPortalSession());
+      return;
+    }
+
+    if (method === "POST" && path === "/tenant-portal/maintenance-requests") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const created = {
+        ...maintenanceWorkOrders[0],
+        ...payload,
+        id: "portal-work-order-created",
+        entity_id: entityId,
+        property_id: propertyId,
+        tenancy_unit_id: unitId,
+        tenant_id: tenantId,
+        lease_id: leaseId,
+        status: "requested",
+        priority: String(payload.priority ?? "normal"),
+        requested_at: "2026-05-20T03:00:00.000Z",
+        contractor_name: null,
+        contractor_email: null,
+        contractor_phone: null,
+        contractor_assigned_at: null,
+        approval_required: false,
+        approval_status: "not_required",
+        approval_limit_cents: null,
+        quote_amount_cents: null,
+        approved_by_user_id: null,
+        approved_at: null,
+        approval_notes: null,
+        source_document_id: null,
+        invoice_draft_id: null,
+        invoice_reference: null,
+        invoice_amount_cents: null,
+        source_reference:
+          typeof payload.source_reference === "string"
+            ? payload.source_reference
+            : null,
+        due_date: null,
+        completed_at: null,
+        notes: null,
+        document_ids: [],
+        photo_document_ids: [],
+        metadata: { source: "tenant_portal" },
+        created_at: "2026-05-20T03:00:00.000Z",
+        updated_at: "2026-05-20T03:00:00.000Z",
+        deleted_at: null,
+      };
+      maintenanceWorkOrders.unshift(created);
+      await fulfillJson(
+        route,
+        {
+          id: created.id,
+          title: created.title,
+          description: created.description,
+          status: created.status,
+          priority: created.priority,
+          requested_at: created.requested_at,
+          source_reference: created.source_reference,
+          due_date: created.due_date,
+          completed_at: created.completed_at,
+          document_ids: created.document_ids,
+          photo_document_ids: created.photo_document_ids,
+          created_at: created.created_at,
+        },
+        201,
+      );
       return;
     }
 
