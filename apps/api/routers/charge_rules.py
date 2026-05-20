@@ -854,6 +854,19 @@ def _record_invoice_provider_delivery(
         if isinstance(delivery_state_value, dict)
         else {}
     )
+    xero_sync_value = metadata.get("xero_sync")
+    posting_preparation_value = metadata.get("posting_preparation")
+    xero_synced = (
+        delivery_state.get("xero_synced") is True
+        or (
+            isinstance(xero_sync_value, dict)
+            and cast(dict[str, object], xero_sync_value).get("xero_synced") is True
+        )
+        or (
+            isinstance(posting_preparation_value, dict)
+            and cast(dict[str, object], posting_preparation_value).get("xero_synced") is True
+        )
+    )
     delivery_state.update(
         {
             "tenant_email_sent": delivered,
@@ -861,7 +874,7 @@ def _record_invoice_provider_delivery(
             "tenant_email_sent_by_user_id": str(user.id) if delivered else None,
             "tenant_email_delivery_method": "sendgrid",
             "tenant_email_provider_status": status_value,
-            "xero_synced": False,
+            "xero_synced": xero_synced,
         }
     )
 
@@ -879,7 +892,7 @@ def _record_invoice_provider_delivery(
         "provider_message_id": result_dict.get("provider_message_id"),
         "recipient_email": result_dict.get("recipient") or draft.recipient_email,
         "error": result_dict.get("error"),
-        "xero_synced": False,
+        "xero_synced": xero_synced,
     }
 
     receipts_value = metadata.get("delivery_receipts")
@@ -908,7 +921,7 @@ def _record_invoice_provider_delivery(
             "recipient_email": result_dict.get("recipient") or draft.recipient_email,
             "provider_message_id": result_dict.get("provider_message_id"),
             "error": result_dict.get("error"),
-            "xero_synced": False,
+            "xero_synced": xero_synced,
         }
     )
     metadata["delivery_state"] = delivery_state

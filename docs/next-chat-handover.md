@@ -210,6 +210,11 @@ Last updated: 2026-05-20
   - Xero draft creation remains a separate action and returns created/skipped/blocked/failed outcome panels with provider IDs/status where available.
   - The copy keeps tenant email delivery and payment reconciliation separate from Xero draft creation.
   - This is design-facing and still needs Remba review.
+- Provider invoice dispatch v1 is built on this branch.
+  - `POST /api/v1/xero/invoices/provider-dispatch/{entity_id}` creates or reuses an approved Xero DRAFT, then sends or reuses the SendGrid invoice email for the same invoice draft.
+  - The endpoint requires explicit Xero posting approval before any Xero mutation, reuses existing Xero draft IDs and SendGrid receipts, and reports per-invoice Xero/email outcomes.
+  - Provider email delivery now preserves `delivery_state.xero_synced` when email is sent after Xero draft creation.
+  - Payment reconciliation remains a separate reviewed action.
 - Tenant portal account foundation v1 is built on this branch.
   - New `tenant_portal_account` model and migration `20260520_0019_tenant_portal_accounts` store tenant-linked bearer identities without using operator `app_user` or entity-role access.
   - `POST /api/v1/tenant-portal/account/claim` requires a valid bearer identity plus an existing portal token before linking the signed tenant identity.
@@ -321,6 +326,13 @@ Last updated: 2026-05-20
   - `./node_modules/.bin/eslint src/app/settings/page.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts --ext .ts,.tsx`
   - `./node_modules/.bin/tsc --noEmit`
   - `PORT=3004 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "settings shows Xero"` (`1 passed`)
+  - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+- Provider invoice dispatch checks passed:
+  - `.venv/bin/python -m ruff check apps/api/routers/xero.py apps/api/routers/charge_rules.py apps/api/schemas/xero.py tests/integration/test_xero_api.py`
+  - `.venv/bin/python -m pytest tests/integration/test_xero_api.py -q` (`15 passed`)
+  - `.venv/bin/python -m pytest tests/integration/test_document_intake_api.py::test_document_intake_apply_invoice_prepares_billing_work -q` (`1 passed`)
+  - `./node_modules/.bin/eslint src/lib/api.ts`
+  - `./node_modules/.bin/tsc --noEmit`
   - `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
 - Operations maintenance detail checks passed:
   - `.venv/bin/python -m pytest tests/integration/test_maintenance_arrears_api.py tests/integration/test_tenant_portal_api.py -q` (`8 passed`)
@@ -555,7 +567,7 @@ Last updated: 2026-05-20
 1. Remba review the Smart Intake spreadsheet import panel, Portfolio QA IA link, invoice email action, tenant portal, tenant detail portal access controls, and Operations workspace.
 2. Add clearer tenant portal invite expiry renewal handling and staff-triggered fresh-link flows.
 3. Deepen Operations with contractor quote preview polish and maintenance invoice approval handoff.
-4. Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
+4. Continue Xero from provider dispatch into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 5. Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 6. Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 

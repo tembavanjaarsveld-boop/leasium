@@ -285,6 +285,44 @@ class XeroInvoiceDraftCreateRead(BaseModel):
     guardrails: list[str]
 
 
+class XeroInvoiceProviderDispatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invoice_draft_ids: list[UUID] | None = Field(default=None, max_length=50)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=96)
+
+
+class XeroInvoiceProviderDispatchResultRead(BaseModel):
+    invoice_draft_id: UUID
+    invoice_number: str | None
+    xero_status: Literal["created", "reused", "skipped", "blocked", "failed"]
+    xero_reason: str
+    xero_invoice_id: str | None = None
+    xero_provider_status: str | None = None
+    xero_idempotency_key: str | None = None
+    email_status: Literal["sent", "reused", "skipped", "blocked", "failed"]
+    email_reason: str
+    email_provider_status: str | None = None
+    email_provider_message_id: str | None = None
+
+
+class XeroInvoiceProviderDispatchRead(BaseModel):
+    entity_id: UUID
+    provider_configured: bool
+    provider_connection_id: UUID | None
+    xero_tenant_id: str | None
+    checked_invoices: int
+    xero_created_count: int
+    xero_reused_count: int
+    email_sent_count: int
+    email_reused_count: int
+    blocked_count: int
+    failed_count: int
+    dispatched_at: datetime
+    results: list[XeroInvoiceProviderDispatchResultRead]
+    guardrails: list[str]
+
+
 class XeroPaymentReconciliationItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

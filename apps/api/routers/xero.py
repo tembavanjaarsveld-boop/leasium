@@ -54,6 +54,13 @@ from stewart.integrations.xero import (
 )
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.routers.charge_rules import (
+    _invoice_delivery_ready,
+    _invoice_pdf_document,
+    _provider_invoice_delivery_invite,
+    _record_invoice_provider_delivery,
+    send_invoice_delivery_email,
+)
 from apps.api.schemas.xero import (
     XeroChartTaxValidationPreviewRead,
     XeroChartTaxValidationResultRead,
@@ -73,6 +80,9 @@ from apps.api.schemas.xero import (
     XeroInvoicePostingPreviewLineRead,
     XeroInvoicePostingPreviewRead,
     XeroInvoicePostingPreviewResultRead,
+    XeroInvoiceProviderDispatchRead,
+    XeroInvoiceProviderDispatchRequest,
+    XeroInvoiceProviderDispatchResultRead,
     XeroInvoiceSyncSummaryRead,
     XeroMappingIssueRead,
     XeroOAuthStartRead,
@@ -1050,6 +1060,77 @@ def _store_xero_draft_create_result(
     metadata["xero_sync_history"] = history[-20:]
     draft.invoice_metadata = metadata
     return xero_invoice_id, xero_status
+
+
+EMAIL_DELIVERED_STATUSES = {"queued", "sent", "delivered", "opened"}
+
+
+def _sendgrid_send_state(metadata: dict[str, Any]) -> dict[str, Any] | None:
+    delivery_email = metadata.get("delivery_email")
+    if not isinstance(delivery_email, dict):
+        return None
+    send_state = delivery_email.get("send")
+    return dict(send_state) if isinstance(send_state, dict) else None
+
+
+def _provider_dispatch_email_result(
+    *,
+    draft: InvoiceDraft,
+    user: CurrentUser,
+    session: Session,
+    settings: Settings,
+) -> tuple[Literal["sent", "reused", "skipped", "blocked", "failed"], str, str | None, str | None]:
+    metadata = dict(draft.invoice_metadata or {})
+    if draft.status != InvoiceDraftStatus.approved:
+        return "blocked", "Invoice draft must be approved before tenant email dispatch.", None, None
+    if not _invoice_delivery_ready(metadata):
+        return "blocked", "Prepare invoice delivery before tenant email dispatch.", None, None
+    if _invoice_pdf_document(draft, metadata, session) is None:
+        return "blocked", "Invoice PDF artifact missing. Prepare delivery again.", None, None
+    if not draft.recipient_email:
+        return "blocked", "Tenant billing email missing.", None, None
+
+    send_state = _sendgrid_send_state(metadata)
+    if (
+        send_state is not None
+        and send_state.get("provider") == "sendgrid"
+        and send_state.get("status") in EMAIL_DELIVERED_STATUSES
+    ):
+        return (
+            "reused",
+            "SendGrid invoice email receipt already exists.",
+            str(send_state.get("status") or ""),
+            str(send_state.get("provider_message_id") or "") or None,
+        )
+
+    result = send_invoice_delivery_email(
+        _provider_invoice_delivery_invite(draft, metadata, session, settings),
+        settings,
+    )
+    draft.invoice_metadata = _record_invoice_provider_delivery(draft, metadata, result, user)
+    result_dict = result.to_dict()
+    provider_status = str(result_dict.get("status") or "failed")
+    message_id = str(result_dict.get("provider_message_id") or "") or None
+    if provider_status in EMAIL_DELIVERED_STATUSES:
+        return (
+            "sent",
+            "SendGrid invoice email was queued for delivery.",
+            provider_status,
+            message_id,
+        )
+    if provider_status == "skipped":
+        return (
+            "skipped",
+            "SendGrid invoice email was skipped by provider configuration.",
+            provider_status,
+            message_id,
+        )
+    return (
+        "failed",
+        str(result_dict.get("error") or "SendGrid invoice email delivery failed."),
+        provider_status,
+        message_id,
+    )
 
 
 def _money_to_cents(value: Any) -> int | None:
@@ -2317,6 +2398,306 @@ def create_approved_xero_invoice_drafts(
                 "Successful Xero draft references are stored locally and repeated calls "
                 "are idempotent."
             ),
+        ],
+    )
+
+
+@router.post(
+    "/invoices/provider-dispatch/{entity_id}",
+    response_model=XeroInvoiceProviderDispatchRead,
+)
+def dispatch_approved_invoice_providers(
+    entity_id: UUID,
+    payload: XeroInvoiceProviderDispatchRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> XeroInvoiceProviderDispatchRead:
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+
+    if payload.invoice_draft_ids:
+        drafts = list(
+            session.scalars(
+                select(InvoiceDraft).where(
+                    InvoiceDraft.id.in_(payload.invoice_draft_ids),
+                    InvoiceDraft.entity_id == entity.id,
+                    InvoiceDraft.deleted_at.is_(None),
+                )
+            )
+        )
+        if len({draft.id for draft in drafts}) != len(set(payload.invoice_draft_ids)):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="One or more invoice drafts were not found for this entity.",
+            )
+    else:
+        drafts = list(
+            session.scalars(
+                select(InvoiceDraft)
+                .where(
+                    InvoiceDraft.entity_id == entity.id,
+                    InvoiceDraft.status == InvoiceDraftStatus.approved,
+                    InvoiceDraft.deleted_at.is_(None),
+                )
+                .order_by(InvoiceDraft.due_date, InvoiceDraft.created_at)
+            )
+        )
+
+    dispatched_at = utcnow()
+    provider_configured = xero_provider_configured(settings)
+    provider_connection = _active_xero_connection(session, entity.id)
+    ordered_drafts = sorted(
+        drafts,
+        key=lambda item: (item.due_date or item.created_at.date(), item.id),
+    )
+    xero_outcomes: dict[
+        UUID,
+        tuple[
+            Literal["created", "reused", "skipped", "blocked", "failed"],
+            str,
+            str | None,
+            str | None,
+            str | None,
+        ],
+    ] = {}
+    candidates: list[InvoiceDraft] = []
+
+    for draft in ordered_drafts:
+        metadata = draft.invoice_metadata or {}
+        existing_xero_invoice_id = _xero_invoice_id_from_metadata(metadata)
+        if existing_xero_invoice_id:
+            xero_outcomes[draft.id] = (
+                "reused",
+                "Invoice draft already has a Xero draft reference.",
+                existing_xero_invoice_id,
+                _metadata_text(_xero_sync_state(metadata), "xero_status"),
+                _metadata_text(_xero_sync_state(metadata), "idempotency_key"),
+            )
+            continue
+        if draft.status != InvoiceDraftStatus.approved:
+            xero_outcomes[draft.id] = (
+                "blocked",
+                "Invoice draft must be approved before provider dispatch.",
+                None,
+                None,
+                None,
+            )
+            continue
+        if not _xero_posting_approved(metadata):
+            xero_outcomes[draft.id] = (
+                "blocked",
+                "Explicit Xero posting approval is required before provider dispatch.",
+                None,
+                None,
+                None,
+            )
+            continue
+        candidates.append(draft)
+
+    if candidates and (not provider_configured or provider_connection is None):
+        reason = (
+            "Xero provider credentials are not configured; no external call was attempted."
+            if not provider_configured
+            else "Xero provider connection is not active; no external call was attempted."
+        )
+        for draft in candidates:
+            xero_outcomes[draft.id] = (
+                "skipped",
+                reason,
+                None,
+                None,
+                _xero_draft_create_key(draft, payload.idempotency_key),
+            )
+        candidates = []
+
+    if candidates and provider_connection is not None:
+        try:
+            access_token = _refresh_provider_access_token(provider_connection, settings)
+            contacts = fetch_xero_contacts(
+                access_token,
+                provider_connection.xero_tenant_id,
+                settings,
+            )
+            accounts = fetch_xero_accounts(
+                access_token,
+                provider_connection.xero_tenant_id,
+                settings,
+            )
+            tax_rates = fetch_xero_tax_rates(
+                access_token,
+                provider_connection.xero_tenant_id,
+                settings,
+            )
+        except XeroIntegrationError as exc:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(exc),
+            ) from exc
+
+        contacts_by_id = {
+            contact_id: contact
+            for contact in contacts
+            if (contact_id := _contact_id(contact)) is not None
+        }
+        accounts_by_code = {
+            code: account
+            for account in accounts
+            if (code := _xero_account_code(account)) is not None
+        }
+        tax_rates_by_type = {
+            tax_type.upper(): tax_rate
+            for tax_rate in tax_rates
+            if (tax_type := _xero_tax_type(tax_rate)) is not None
+        }
+        for draft in candidates:
+            preview = _xero_invoice_posting_result(
+                draft=draft,
+                session=session,
+                contacts_by_id=contacts_by_id,
+                accounts_by_code=accounts_by_code,
+                tax_rates_by_type=tax_rates_by_type,
+            )
+            idempotency_key = _xero_draft_create_key(draft, payload.idempotency_key)
+            if preview.status == "blocked":
+                xero_outcomes[draft.id] = (
+                    "blocked",
+                    " ".join(preview.blockers),
+                    None,
+                    "preview_blocked",
+                    idempotency_key,
+                )
+                continue
+            try:
+                created_invoice = create_xero_invoice_draft(
+                    access_token,
+                    provider_connection.xero_tenant_id,
+                    preview.payload_preview,
+                    settings,
+                    idempotency_key=idempotency_key,
+                )
+            except XeroIntegrationError as exc:
+                xero_outcomes[draft.id] = (
+                    "failed",
+                    str(exc),
+                    None,
+                    "provider_failed",
+                    idempotency_key,
+                )
+                continue
+            xero_invoice_id, xero_status = _store_xero_draft_create_result(
+                draft=draft,
+                created_invoice=created_invoice,
+                provider_connection=provider_connection,
+                user=user,
+                idempotency_key=idempotency_key,
+                created_at=dispatched_at,
+            )
+            xero_outcomes[draft.id] = (
+                "created",
+                "Xero draft invoice was created after explicit approval.",
+                xero_invoice_id,
+                xero_status,
+                idempotency_key,
+            )
+
+    results: list[XeroInvoiceProviderDispatchResultRead] = []
+    for draft in ordered_drafts:
+        xero_status, xero_reason, xero_invoice_id, xero_provider_status, xero_key = (
+            xero_outcomes[draft.id]
+        )
+        if xero_status in {"created", "reused"}:
+            email_status, email_reason, email_provider_status, email_message_id = (
+                _provider_dispatch_email_result(
+                    draft=draft,
+                    user=user,
+                    session=session,
+                    settings=settings,
+                )
+            )
+        else:
+            email_status = "skipped"
+            email_reason = "Tenant email waits until a Xero draft exists or is reused."
+            email_provider_status = None
+            email_message_id = None
+        results.append(
+            XeroInvoiceProviderDispatchResultRead(
+                invoice_draft_id=draft.id,
+                invoice_number=draft.invoice_number,
+                xero_status=xero_status,
+                xero_reason=xero_reason,
+                xero_invoice_id=xero_invoice_id,
+                xero_provider_status=xero_provider_status,
+                xero_idempotency_key=xero_key,
+                email_status=email_status,
+                email_reason=email_reason,
+                email_provider_status=email_provider_status,
+                email_provider_message_id=email_message_id,
+            )
+        )
+
+    if provider_connection is not None:
+        connection_metadata = dict(provider_connection.connection_metadata or {})
+        connection_metadata["last_invoice_provider_dispatch"] = {
+            "dispatched_at": dispatched_at.isoformat(),
+            "checked_invoices": len(ordered_drafts),
+            "xero_created": sum(1 for result in results if result.xero_status == "created"),
+            "xero_reused": sum(1 for result in results if result.xero_status == "reused"),
+            "email_sent": sum(1 for result in results if result.email_status == "sent"),
+            "email_reused": sum(1 for result in results if result.email_status == "reused"),
+        }
+        provider_connection.connection_metadata = connection_metadata
+        provider_connection.updated_by_user_id = user.id
+        entity.xero_last_sync_at = dispatched_at
+
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="apply",
+        target_table="xero_connection" if provider_connection is not None else "entity",
+        target_id=provider_connection.id if provider_connection is not None else entity.id,
+        tool_name="provider.invoice_dispatch",
+        tool_input=payload.model_dump(mode="json", exclude_unset=True),
+        tool_output_summary=(
+            f"Provider invoice dispatch checked {len(ordered_drafts)} invoice draft(s); "
+            f"created {sum(1 for result in results if result.xero_status == 'created')} "
+            "Xero draft(s) and sent "
+            f"{sum(1 for result in results if result.email_status == 'sent')} "
+            "tenant email(s). Payment reconciliation was not run."
+        ),
+    )
+    session.commit()
+    return XeroInvoiceProviderDispatchRead(
+        entity_id=entity.id,
+        provider_configured=provider_configured,
+        provider_connection_id=provider_connection.id if provider_connection else None,
+        xero_tenant_id=provider_connection.xero_tenant_id if provider_connection else None,
+        checked_invoices=len(ordered_drafts),
+        xero_created_count=sum(1 for result in results if result.xero_status == "created"),
+        xero_reused_count=sum(1 for result in results if result.xero_status == "reused"),
+        email_sent_count=sum(1 for result in results if result.email_status == "sent"),
+        email_reused_count=sum(1 for result in results if result.email_status == "reused"),
+        blocked_count=sum(
+            1
+            for result in results
+            if result.xero_status == "blocked" or result.email_status == "blocked"
+        ),
+        failed_count=sum(
+            1
+            for result in results
+            if result.xero_status == "failed" or result.email_status == "failed"
+        ),
+        dispatched_at=dispatched_at,
+        results=results,
+        guardrails=[
+            "Provider dispatch creates or reuses an approved Xero DRAFT before tenant email.",
+            "SendGrid email is reused when a successful provider receipt already exists.",
+            "Payment reconciliation remains a separate reviewed action.",
         ],
     )
 

@@ -76,6 +76,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Xero payment reconciliation v1: provider/imported payment statuses can be previewed and applied to local invoice metadata with idempotency keys, preserving review/audit history and avoiding duplicate reconciliation.
 - [x] Xero operator approval UI v1: Settings now turns the provider posting preview into an explicit operator workflow with per-invoice Xero approval/revoke actions, separate batch draft creation, created/skipped/blocked/failed result panels, and guardrails that keep tenant email and payment reconciliation separate. Pending Remba review.
 - [x] Provider-backed invoice email delivery v1: approved internal invoice drafts can send the prepared invoice email through SendGrid when configured, attach the stored PDF artifact, record queued/skipped/failed provider receipts, and keep Xero sync as a separate approval.
+- [x] Provider invoice dispatch v1: approved invoice drafts can run an explicit combined provider action that creates or reuses the Xero DRAFT first, sends or reuses the SendGrid invoice email second, preserves Xero sync state across email delivery, and leaves payment reconciliation separate.
 - [x] Tenant portal self-service v1: `/tenant-portal/[token]` exposes token-scoped tenant onboarding status, lease context, approved invoices/payment summary, document download/upload, compliance status, and notification preferences without operator-only metadata. True tenant identity-provider auth remains future work.
 - [x] Maintenance work orders v1: migration-backed work orders now track tenant/property/lease scope, priority, status, contractor assignment, approvals, photos/documents, invoice/source references, soft delete, and audit history.
 - [x] Arrears and credit-control v1: migration-backed arrears cases now track aged balances, reminder cadence, dispute status, promise-to-pay notes, escalation queue/status, soft delete, and audit history.
@@ -100,7 +101,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [ ] Remba review the new Smart Intake spreadsheet import panel, Portfolio QA IA link, tenant portal, invoice email action, and Operations workspace before treating them as UX complete.
 - [ ] Deepen Operations with contractor quote preview polish and maintenance invoice approval handoff.
 - [ ] Add clearer tenant portal invite expiry renewal handling and staff-triggered fresh-link flows.
-- [ ] Continue Xero from operator draft creation into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
+- [ ] Continue Xero from provider dispatch into webhook/provider status receipts, better failed-post recovery, per-invoice Billing Readiness actions, and full accounting reconciliation guardrails.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 - [ ] Add provider receipt webhooks and branded template management for invoice delivery and tenant portal communications.
 

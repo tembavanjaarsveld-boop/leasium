@@ -1308,6 +1308,37 @@ export type XeroInvoiceDraftCreateRecord = {
   guardrails: string[];
 };
 
+export type XeroInvoiceProviderDispatchResultRecord = {
+  invoice_draft_id: string;
+  invoice_number: string | null;
+  xero_status: "created" | "reused" | "skipped" | "blocked" | "failed";
+  xero_reason: string;
+  xero_invoice_id: string | null;
+  xero_provider_status: string | null;
+  xero_idempotency_key: string | null;
+  email_status: "sent" | "reused" | "skipped" | "blocked" | "failed";
+  email_reason: string;
+  email_provider_status: string | null;
+  email_provider_message_id: string | null;
+};
+
+export type XeroInvoiceProviderDispatchRecord = {
+  entity_id: string;
+  provider_configured: boolean;
+  provider_connection_id: string | null;
+  xero_tenant_id: string | null;
+  checked_invoices: number;
+  xero_created_count: number;
+  xero_reused_count: number;
+  email_sent_count: number;
+  email_reused_count: number;
+  blocked_count: number;
+  failed_count: number;
+  dispatched_at: string;
+  results: XeroInvoiceProviderDispatchResultRecord[];
+  guardrails: string[];
+};
+
 export type InsightsEntityRecord = {
   id: string;
   name: string;
@@ -1916,6 +1947,19 @@ export function createXeroInvoiceDrafts(
 ) {
   return request<XeroInvoiceDraftCreateRecord>(
     `/xero/invoices/draft-create/${entityId}`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function dispatchXeroInvoiceProviders(
+  entityId: string,
+  payload: { invoice_draft_ids?: string[] | null; idempotency_key?: string | null },
+) {
+  return request<XeroInvoiceProviderDispatchRecord>(
+    `/xero/invoices/provider-dispatch/${entityId}`,
     {
       method: "POST",
       body: JSON.stringify(payload),

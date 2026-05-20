@@ -26,6 +26,7 @@ from stewart.core.models import (
     XeroConnection,
 )
 from stewart.core.settings import Settings, get_settings
+from stewart.integrations.communications import DeliveryResult
 from stewart.integrations.xero import decrypt_xero_token
 
 
@@ -1206,6 +1207,98 @@ def test_xero_posting_approval_then_draft_create_is_idempotent(
     )
     assert audit is not None
     assert "no Xero mutation" in audit.tool_output_summary
+
+
+def test_xero_provider_dispatch_creates_xero_then_sends_email_idempotently(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    invoice_draft = _create_approved_invoice_fixture(client, session, entity_id)
+    invoice_draft.recipient_email = "accounts@base-rent.example"
+    session.commit()
+
+    prepare_response = client.post(
+        f"/api/v1/invoice-drafts/{invoice_draft.id}/prepare-delivery"
+    )
+    assert prepare_response.status_code == 200
+    assert prepare_response.json()["metadata"]["delivery_state"]["delivery_ready"] is True
+
+    approval_response = client.post(
+        f"/api/v1/xero/invoices/{invoice_draft.id}/posting-approval",
+        json={"approved": True, "idempotency_key": "provider-dispatch"},
+    )
+    assert approval_response.status_code == 200
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    create_calls: list[dict[str, object]] = []
+    email_calls: list[dict[str, object]] = []
+    _fake_xero_invoice_dependencies(monkeypatch, create_calls)
+
+    def fake_send_invoice_delivery_email(invite, settings: Settings) -> DeliveryResult:
+        assert invite.recipient_email == "accounts@base-rent.example"
+        assert invite.pdf_document_id is not None
+        assert invite.pdf_content.startswith(b"%PDF")
+        email_calls.append(
+            {
+                "recipient": invite.recipient_email,
+                "pdf_document_id": str(invite.pdf_document_id),
+            }
+        )
+        return DeliveryResult(
+            channel="email",
+            status="queued",
+            provider="sendgrid",
+            recipient=invite.recipient_email,
+            provider_message_id="sg-dispatch-1",
+        )
+
+    monkeypatch.setattr(
+        xero_router,
+        "send_invoice_delivery_email",
+        fake_send_invoice_delivery_email,
+    )
+
+    dispatch_response = client.post(
+        f"/api/v1/xero/invoices/provider-dispatch/{entity_id}",
+        json={"invoice_draft_ids": [str(invoice_draft.id)]},
+    )
+    assert dispatch_response.status_code == 200
+    dispatch_body = dispatch_response.json()
+    assert dispatch_body["xero_created_count"] == 1
+    assert dispatch_body["email_sent_count"] == 1
+    assert dispatch_body["results"][0]["xero_status"] == "created"
+    assert dispatch_body["results"][0]["email_status"] == "sent"
+    assert dispatch_body["results"][0]["email_provider_message_id"] == "sg-dispatch-1"
+    assert len(create_calls) == 1
+    assert len(email_calls) == 1
+
+    session.refresh(invoice_draft)
+    metadata = invoice_draft.invoice_metadata
+    assert metadata["xero_sync"]["xero_synced"] is True
+    assert metadata["delivery_state"]["xero_synced"] is True
+    assert metadata["delivery_state"]["tenant_email_sent"] is True
+    assert metadata["delivery_email"]["send"]["xero_synced"] is True
+
+    second_response = client.post(
+        f"/api/v1/xero/invoices/provider-dispatch/{entity_id}",
+        json={"invoice_draft_ids": [str(invoice_draft.id)]},
+    )
+    assert second_response.status_code == 200
+    second_body = second_response.json()
+    assert second_body["xero_created_count"] == 0
+    assert second_body["xero_reused_count"] == 1
+    assert second_body["email_sent_count"] == 0
+    assert second_body["email_reused_count"] == 1
+    assert second_body["results"][0]["xero_status"] == "reused"
+    assert second_body["results"][0]["email_status"] == "reused"
+    assert len(create_calls) == 1
+    assert len(email_calls) == 1
 
 
 def test_xero_invoice_draft_create_skips_when_provider_unconfigured(
