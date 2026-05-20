@@ -276,11 +276,23 @@ def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
     assert create_response.status_code == 201
     work_order_id = create_response.json()["id"]
 
+    attempts: list[str] = []
+
     def fake_send_contractor_work_order_email(invite: Any, settings: Any) -> DeliveryResult:
         assert invite.contractor_email == "dispatch@rapidlocks.example"
         assert invite.subject == "Attendance window request"
         assert invite.body == "Please confirm your first available attendance window."
         assert settings.contractor_email_template_key == "maintenance_contractor_update"
+        attempts.append(str(invite.work_order_id))
+        if len(attempts) == 1:
+            return DeliveryResult(
+                channel="email",
+                status="failed",
+                provider="sendgrid",
+                recipient=invite.contractor_email,
+                provider_message_id="sg-maintenance-failed",
+                error="SendGrid returned 500.",
+            )
         return DeliveryResult(
             channel="email",
             status="queued",
@@ -301,12 +313,32 @@ def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
         },
     )
     assert send_response.status_code == 200
-    sent = send_response.json()
+    failed = send_response.json()
+    failed_email_delivery = failed["metadata"]["contractor_delivery"]["email"]
+    assert failed_email_delivery["send"]["status"] == "failed"
+    assert failed_email_delivery["send"]["retry_count"] == 1
+    assert failed_email_delivery["receipts"][0]["status"] == "failed"
+    assert failed_email_delivery["receipts"][0]["retry_count"] == 1
+    assert failed["metadata"].get("comments", []) == []
+
+    retry_response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/contractor-delivery/send-email",
+        json={
+            "subject": "Attendance window request",
+            "body": "Please confirm your first available attendance window.",
+        },
+    )
+    assert retry_response.status_code == 200
+    sent = retry_response.json()
     email_delivery = sent["metadata"]["contractor_delivery"]["email"]
     assert email_delivery["send"]["status"] == "queued"
     assert email_delivery["send"]["provider"] == "sendgrid"
     assert email_delivery["send"]["provider_message_id"] == "sg-maintenance-123"
+    assert email_delivery["send"]["retry_count"] == 2
     assert email_delivery["receipts"][0]["status"] == "queued"
+    assert email_delivery["receipts"][0]["retry_count"] == 2
+    assert email_delivery["receipts"][1]["status"] == "failed"
+    assert email_delivery["receipts"][1]["retry_count"] == 1
     assert sent["metadata"]["comments"][-1]["visibility"] == "contractor"
     assert sent["metadata"]["comments"][-1]["body"] == (
         "Please confirm your first available attendance window."
@@ -330,6 +362,7 @@ def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
     email_delivery = work_order.work_order_metadata["contractor_delivery"]["email"]
     assert email_delivery["send"]["status"] == "delivered"
     assert email_delivery["receipts"][0]["event"] == "delivered"
+    assert email_delivery["receipts"][0]["retry_count"] == 2
     assert work_order.work_order_metadata["activity_history"][-1]["event"] == (
         "contractor_email_receipt"
     )

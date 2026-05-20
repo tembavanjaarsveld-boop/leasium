@@ -241,6 +241,15 @@ def _record_contractor_provider_delivery(
     contractor_delivery = _delivery_dict(delivery_metadata.get(CONTRACTOR_DELIVERY_KEY))
     email_delivery = _delivery_dict(contractor_delivery.get("email"))
     delivered = status_value in {"queued", "sent", "delivered", "opened"}
+    history = _delivery_list(email_delivery.get("history"))
+    retry_count = (
+        sum(
+            1
+            for entry in history
+            if isinstance(entry, dict) and entry.get("event") == "provider_delivery_attempted"
+        )
+        + 1
+    )
 
     email_delivery["send"] = {
         "status": status_value,
@@ -255,6 +264,7 @@ def _record_contractor_provider_delivery(
         "error": result_dict.get("error"),
         "template_key": invite.template_key,
         "template_version": invite.template_version,
+        "retry_count": retry_count,
     }
     receipts = _delivery_list(email_delivery.get("receipts"))
     receipts.insert(
@@ -268,9 +278,9 @@ def _record_contractor_provider_delivery(
             "provider_message_id": result_dict.get("provider_message_id"),
             "error": result_dict.get("error"),
             "subject": invite.subject,
+            "retry_count": retry_count,
         },
     )
-    history = _delivery_list(email_delivery.get("history"))
     history.append(
         {
             "event": "provider_delivery_attempted",
@@ -281,6 +291,7 @@ def _record_contractor_provider_delivery(
             "recipient_email": result_dict.get("recipient") or work_order.contractor_email,
             "provider_message_id": result_dict.get("provider_message_id"),
             "error": result_dict.get("error"),
+            "retry_count": retry_count,
         }
     )
     email_delivery["receipts"] = receipts[:20]
@@ -367,6 +378,9 @@ def _apply_contractor_email_receipt(
     contractor_delivery = _delivery_dict(metadata.get(CONTRACTOR_DELIVERY_KEY))
     email_delivery = _delivery_dict(contractor_delivery.get("email"))
     send_state = _delivery_dict(email_delivery.get("send"))
+    retry_count = (
+        send_state.get("retry_count") if isinstance(send_state.get("retry_count"), int) else None
+    )
     send_state.update(
         {
             "status": status_value,
@@ -394,6 +408,7 @@ def _apply_contractor_email_receipt(
             "provider": "sendgrid",
             "recipient_email": event.get("email") or work_order.contractor_email,
             "provider_message_id": provider_message_id,
+            "retry_count": retry_count,
         },
     )
     history = _delivery_list(email_delivery.get("history"))
@@ -405,6 +420,7 @@ def _apply_contractor_email_receipt(
             "status": status_value,
             "raw_event": raw_status,
             "provider_message_id": provider_message_id,
+            "retry_count": retry_count,
         }
     )
     email_delivery["receipts"] = receipts[:20]

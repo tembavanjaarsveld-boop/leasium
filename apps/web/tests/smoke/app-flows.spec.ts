@@ -159,15 +159,21 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Approve quote" }),
   ).toBeVisible();
-  await expect(page.getByText("Email not sent")).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "Contractor email message" })
-    .fill("Please confirm your first available attendance window.");
-  await page.getByRole("button", { name: "Send update" }).click();
   await expect(
     page
       .locator("span")
-      .filter({ hasText: /^Email Queued$/ })
+      .filter({ hasText: /^Email Failed #1$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(page.getByText("Last provider attempt failed")).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Contractor email message" })
+    .fill("Please confirm your first available attendance window.");
+  await page.getByRole("button", { name: "Retry update" }).click();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Email Queued #2$/ })
       .first(),
   ).toBeVisible();
   await expect(

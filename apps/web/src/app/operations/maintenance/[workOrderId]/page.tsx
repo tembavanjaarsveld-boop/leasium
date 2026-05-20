@@ -278,6 +278,32 @@ function contractorEmailTone(statusValue: string | null): Tone {
   return "neutral";
 }
 
+function contractorEmailNeedsRecovery(statusValue: string | null) {
+  return ["failed", "skipped", "attention"].includes(statusValue ?? "");
+}
+
+function contractorEmailRecoveryCopy(
+  statusValue: string | null,
+  error: string | null,
+) {
+  if (statusValue === "failed") {
+    return error
+      ? `Last provider attempt failed: ${error}`
+      : "Last provider attempt failed. Fix the blocker, then retry the update.";
+  }
+  if (statusValue === "skipped") {
+    return error
+      ? `Delivery was skipped: ${error}`
+      : "Delivery was skipped. Confirm provider setup and contractor contact details before retrying.";
+  }
+  if (statusValue === "attention") {
+    return error
+      ? `Provider returned attention: ${error}`
+      : "Provider returned an attention state. Review the latest receipt before retrying.";
+  }
+  return null;
+}
+
 function contractorEmailDefaultSubject(workOrder: MaintenanceWorkOrderRecord) {
   return `Maintenance update: ${workOrder.title}`;
 }
@@ -396,6 +422,39 @@ function invoiceBillingHandoff(
     operationsReady,
     contractorSummary: contractorHandoffSummary(workOrder),
   };
+}
+
+function invoiceRecoveryReasons(draft: InvoiceDraftRecord) {
+  const sendState = invoiceDeliverySend(draft);
+  const postingPreparation = invoicePostingPreparation(draft);
+  const providerDispatch = invoiceProviderDispatch(draft);
+  const providerDispatchXero = metadataRecord(providerDispatch.xero);
+  const providerReceipts = invoiceProviderReceipts(draft);
+  const latestXeroReceipt =
+    providerReceipts.find(
+      (receipt) => metadataText(receipt.provider) === "xero",
+    ) ?? null;
+  const reasons: string[] = [];
+  if (
+    metadataText(postingPreparation.external_posting_status) ===
+      "provider_failed" ||
+    metadataText(providerDispatchXero.status) === "failed" ||
+    metadataText(latestXeroReceipt?.status) === "failed"
+  ) {
+    reasons.push(
+      metadataText(postingPreparation.last_provider_reason) ??
+        metadataText(providerDispatchXero.reason) ??
+        metadataText(latestXeroReceipt?.reason) ??
+        "Xero provider dispatch failed.",
+    );
+  }
+  if (metadataText(sendState.status) === "failed") {
+    reasons.push(
+      metadataText(sendState.error) ??
+        "Tenant invoice email provider delivery failed.",
+    );
+  }
+  return reasons;
 }
 
 function activityRows(workOrder: MaintenanceWorkOrderRecord) {
@@ -589,6 +648,9 @@ function MaintenanceDetailRoute() {
     linkedInvoiceDraft && workOrder
       ? invoiceBillingHandoff(workOrder, linkedInvoiceDraft)
       : null;
+  const linkedInvoiceRecoveryReasons = linkedInvoiceDraft
+    ? invoiceRecoveryReasons(linkedInvoiceDraft)
+    : [];
   const contractorSendState = workOrder
     ? contractorEmailSendState(workOrder)
     : {};
@@ -596,6 +658,17 @@ function MaintenanceDetailRoute() {
     metadataText(contractorSendState.status) ?? "not_sent";
   const contractorSendSubject = metadataText(contractorSendState.subject);
   const contractorSendError = metadataText(contractorSendState.error);
+  const contractorSendBody = metadataText(contractorSendState.body);
+  const contractorRetryCount =
+    typeof contractorSendState.retry_count === "number"
+      ? contractorSendState.retry_count
+      : null;
+  const contractorNeedsRecovery =
+    contractorEmailNeedsRecovery(contractorSendStatus);
+  const contractorRecoveryCopy = contractorEmailRecoveryCopy(
+    contractorSendStatus,
+    contractorSendError,
+  );
   const contractorReceiptRows = workOrder
     ? contractorEmailReceipts(workOrder)
     : [];
@@ -606,10 +679,14 @@ function MaintenanceDetailRoute() {
     metadataText(latestContractorReceipt?.received_at) ??
     metadataText(contractorSendState.attempted_at);
   const contractorMessageDefault = workOrder
-    ? contractorEmailDefaultBody(workOrder)
+    ? contractorNeedsRecovery && contractorSendBody
+      ? contractorSendBody
+      : contractorEmailDefaultBody(workOrder)
     : "";
   const contractorSubjectDefault = workOrder
-    ? contractorEmailDefaultSubject(workOrder)
+    ? contractorNeedsRecovery && contractorSendSubject
+      ? contractorSendSubject
+      : contractorEmailDefaultSubject(workOrder)
     : "";
 
   const refresh = () => {
@@ -738,12 +815,10 @@ function MaintenanceDetailRoute() {
         throw new Error("Work order is still loading.");
       }
       return sendMaintenanceWorkOrderContractorEmail(workOrderId, {
-        subject:
-          contractorEmailSubject.trim() ||
-          contractorEmailDefaultSubject(workOrder),
-        body:
-          contractorEmailBody.trim() || contractorEmailDefaultBody(workOrder),
-        include_comment: true,
+        subject: contractorEmailSubject.trim() || contractorSubjectDefault,
+        body: contractorEmailBody.trim() || contractorMessageDefault,
+        include_comment:
+          !contractorNeedsRecovery || Boolean(contractorEmailBody.trim()),
       });
     },
     onSuccess: () => {
@@ -898,7 +973,11 @@ function MaintenanceDetailRoute() {
                       >
                         {contractorSendStatus === "not_sent"
                           ? "Email not sent"
-                          : `Email ${label(contractorSendStatus)}`}
+                          : `Email ${label(contractorSendStatus)}${
+                              contractorRetryCount
+                                ? ` #${contractorRetryCount}`
+                                : ""
+                            }`}
                       </StatusBadge>
                       {latestContractorReceiptStatus ? (
                         <StatusBadge
@@ -917,9 +996,15 @@ function MaintenanceDetailRoute() {
                           )}`
                         : "SendGrid delivery and receipts will be stored on this work order."}
                     </div>
-                    {contractorSendError ? (
-                      <div className="text-xs text-danger">
-                        {contractorSendError}
+                    {contractorRecoveryCopy ? (
+                      <div
+                        className={`rounded-md border p-2 text-xs ${
+                          contractorNeedsRecovery
+                            ? "border-warning/30 bg-warning/10 text-warning"
+                            : "border-border bg-white text-muted-foreground"
+                        }`}
+                      >
+                        {contractorRecoveryCopy}
                       </div>
                     ) : null}
                     <Field label="Email subject">
@@ -963,7 +1048,7 @@ function MaintenanceDetailRoute() {
                       ) : (
                         <Mail size={16} />
                       )}
-                      Send update
+                      {contractorNeedsRecovery ? "Retry update" : "Send update"}
                     </Button>
                     {contractorEmailMutation.error ? (
                       <p className="text-sm text-danger">
@@ -1053,6 +1138,32 @@ function MaintenanceDetailRoute() {
                           >
                             <ArrowUpRight size={14} />
                             {linkedInvoiceHandoff.action}
+                          </Link>
+                        </div>
+                      ) : null}
+                      {linkedInvoiceHandoff &&
+                      linkedInvoiceRecoveryReasons.length > 0 ? (
+                        <div className="grid gap-2 rounded-md border border-danger/20 bg-leasium-danger-soft p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge tone="danger">
+                              Recovery needed
+                            </StatusBadge>
+                            <span className="text-xs font-semibold text-danger">
+                              Billing Readiness owns retry and provider
+                              recovery.
+                            </span>
+                          </div>
+                          <div className="grid gap-1 text-xs text-muted-foreground">
+                            {linkedInvoiceRecoveryReasons.map((reason) => (
+                              <span key={reason}>{reason}</span>
+                            ))}
+                          </div>
+                          <Link
+                            href={linkedInvoiceHandoff.href}
+                            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                          >
+                            <ArrowUpRight size={14} />
+                            Recover in Billing
                           </Link>
                         </div>
                       ) : null}

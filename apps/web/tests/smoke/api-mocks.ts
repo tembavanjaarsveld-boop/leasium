@@ -285,6 +285,51 @@ const maintenanceWorkOrders = [
     photo_document_ids: ["portal-photo-1"],
     metadata: {
       comments: [],
+      contractor_delivery: {
+        email: {
+          send: {
+            status: "failed",
+            provider: "sendgrid",
+            attempted_at: "2026-05-19T02:15:00.000Z",
+            sent_at: null,
+            sent_by_user_id: operatorId,
+            provider_message_id: "sg-maintenance-failed",
+            recipient_email: "service@coolair.example",
+            subject: "Attendance window request",
+            body: "Please confirm your first available attendance window.",
+            error: "SendGrid returned 500.",
+            template_key: "maintenance_contractor_update",
+            template_version: "v1",
+            retry_count: 1,
+          },
+          receipts: [
+            {
+              received_at: "2026-05-19T02:15:00.000Z",
+              channel: "email",
+              status: "failed",
+              provider: "sendgrid",
+              recipient_email: "service@coolair.example",
+              provider_message_id: "sg-maintenance-failed",
+              error: "SendGrid returned 500.",
+              subject: "Attendance window request",
+              retry_count: 1,
+            },
+          ],
+          history: [
+            {
+              event: "provider_delivery_attempted",
+              at: "2026-05-19T02:15:00.000Z",
+              user_id: operatorId,
+              provider: "sendgrid",
+              status: "failed",
+              recipient_email: "service@coolair.example",
+              provider_message_id: "sg-maintenance-failed",
+              error: "SendGrid returned 500.",
+              retry_count: 1,
+            },
+          ],
+        },
+      },
       activity_history: [
         {
           timestamp: "2026-05-19T01:00:00.000Z",
@@ -2634,6 +2679,18 @@ export async function mockLeasiumApi(
       const subject =
         payload.subject?.trim() || "Maintenance update: Air conditioning fault";
       const timestamp = "2026-05-20T01:20:00.000Z";
+      const existingDelivery = maintenanceWorkOrders[0].metadata
+        .contractor_delivery as Record<string, JsonBody> | undefined;
+      const existingEmailDelivery = existingDelivery?.email as
+        | Record<string, JsonBody>
+        | undefined;
+      const existingReceipts = Array.isArray(existingEmailDelivery?.receipts)
+        ? existingEmailDelivery.receipts
+        : [];
+      const existingHistory = Array.isArray(existingEmailDelivery?.history)
+        ? existingEmailDelivery.history
+        : [];
+      const retryCount = existingHistory.length + 1;
       const contractorDelivery = {
         email: {
           send: {
@@ -2649,6 +2706,7 @@ export async function mockLeasiumApi(
             error: null,
             template_key: "maintenance_contractor_update",
             template_version: "v1",
+            retry_count: retryCount,
           },
           receipts: [
             {
@@ -2660,9 +2718,12 @@ export async function mockLeasiumApi(
               provider_message_id: "sg-maintenance-1",
               error: null,
               subject,
+              retry_count: retryCount,
             },
+            ...existingReceipts,
           ],
           history: [
+            ...existingHistory,
             {
               event: "provider_delivery_attempted",
               at: timestamp,
@@ -2672,6 +2733,7 @@ export async function mockLeasiumApi(
               recipient_email: "service@coolair.example",
               provider_message_id: "sg-maintenance-1",
               error: null,
+              retry_count: retryCount,
             },
           ],
         },

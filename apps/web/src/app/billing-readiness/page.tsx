@@ -1931,6 +1931,16 @@ function BillingReadinessWorkspace() {
                         );
                         const isHighlighted =
                           highlightInvoiceDraftId === draft.id;
+                        const providerExceptionReason = xeroFailed
+                          ? (metadataText(
+                              postingPreparation.last_provider_reason,
+                            ) ??
+                            metadataText(latestProviderReceipt?.reason) ??
+                            "Xero provider dispatch failed.")
+                          : emailFailed
+                            ? (metadataText(sendState.error) ??
+                              "Tenant invoice email provider delivery failed.")
+                            : null;
                         return (
                           <tr
                             key={draft.id}
@@ -2039,6 +2049,35 @@ function BillingReadinessWorkspace() {
                                       ? "Dispatch creates or reuses Xero first, then sends email."
                                       : "Approve Xero posting in Settings before provider dispatch."}
                               </div>
+                              {providerExceptionReason ? (
+                                <div className="mt-3 grid gap-2 rounded-md border border-danger/20 bg-leasium-danger-soft p-2 text-xs">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <StatusBadge tone="danger">
+                                      Recovery needed
+                                      {latestProviderRetryCount
+                                        ? ` #${latestProviderRetryCount}`
+                                        : ""}
+                                    </StatusBadge>
+                                    {linkedWorkOrder ? (
+                                      <span className="font-semibold text-danger">
+                                        Maintenance-linked invoice
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <div className="text-muted-foreground">
+                                    {providerExceptionReason}
+                                  </div>
+                                  {linkedWorkOrder ? (
+                                    <Link
+                                      href={`/operations/maintenance/${linkedWorkOrder.id}`}
+                                      className="inline-flex min-h-8 w-fit items-center gap-2 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                                    >
+                                      <ArrowUpRight size={13} />
+                                      Return to work order
+                                    </Link>
+                                  ) : null}
+                                </div>
+                              ) : null}
                               {providerReceipts.length > 0 ||
                               paymentReconciliationEntries.length > 0 ? (
                                 <div className="mt-3 grid gap-2 rounded-md border border-border bg-muted/30 p-2 text-xs">
