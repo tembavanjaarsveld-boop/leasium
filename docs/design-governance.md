@@ -340,6 +340,8 @@ Sixteenth 2026-05-21 follow-up: Notifications digest history now shows a direct 
 
 Seventeenth 2026-05-21 follow-up: digest recovery receipts now carry delivery trigger, source digest timestamp, provider attempt history, and delivery attempt count. Notifications uses the count in recovery copy when applicable. Remba should review whether attempt numbers help operators trust recovery without making the notification center feel like a technical log.
 
+Eighteenth 2026-05-21 follow-up: Settings now moves Work email and digest cadence controls into a dedicated Work notifications panel, with per-operator assignment email toggles, digest cadence, latest digest receipt, and panel-level enabled counts. The Users and roles table is now focused on access, invite, and activation work. Remba should review whether notification preferences should remain inside Security, whether the compact receipt belongs here or in Notifications, and whether future channels need their own notification settings tab.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

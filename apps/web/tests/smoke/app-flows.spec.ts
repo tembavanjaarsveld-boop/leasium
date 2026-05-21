@@ -723,9 +723,10 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   expect(settingsNavFits).toBe(true);
   await expect(page.getByText("Operator access")).toBeVisible();
   await expect(page.getByText("Owner Operator").first()).toBeVisible();
+  await expect(page.getByText("Work notifications")).toBeVisible();
   await expect(page.getByText("Work email on").first()).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Mute work email" }).first(),
+    page.getByLabel("Owner Operator assignment email notifications").first(),
   ).toBeVisible();
   await expect(page.getByText("Daily digest").first()).toBeVisible();
   await expect(page.getByText("Last digest").first()).toBeVisible();

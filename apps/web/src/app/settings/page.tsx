@@ -70,6 +70,7 @@ import {
   type XeroPaymentReconciliationResultRecord,
   type SecurityMemberRecord,
   type SecurityMemberUpdatePayload,
+  type SecurityNotificationPreferences,
   type SecurityRole,
   type SecurityRoleAssignment,
   type SecurityWorkAssignmentDigestCadence,
@@ -341,17 +342,27 @@ function latestDigestReceipt(member: SecurityMemberRecord) {
   );
 }
 
+function nextNotificationPreferences(
+  member: SecurityMemberRecord,
+  patch: Partial<SecurityNotificationPreferences>,
+) {
+  return {
+    ...member.notification_preferences,
+    ...patch,
+  };
+}
+
 function DigestReceiptSummary({ member }: { member: SecurityMemberRecord }) {
   const receipt = latestDigestReceipt(member);
   if (!receipt) {
     return (
-      <div className="mt-2 max-w-56 text-xs text-muted-foreground">
-        Controls Work queue notices and digest cadence.
+      <div className="text-xs leading-5 text-muted-foreground">
+        No digest generated yet.
       </div>
     );
   }
   return (
-    <div className="mt-2 grid max-w-72 gap-1 rounded-md border border-border bg-muted/30 p-2 text-xs">
+    <div className="grid gap-1 text-xs">
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold text-foreground">Last digest</span>
         <StatusBadge tone={receipt.message_sent ? "success" : "neutral"}>
@@ -769,6 +780,12 @@ function SettingsWorkspace() {
   );
   const selectedEntityRoleMembers = securityQuery.data?.members ?? [];
   const selectedEntityName = selectedEntity?.name ?? "selected entity";
+  const workEmailEnabledCount = selectedEntityRoleMembers.filter(
+    workAssignmentEmailEnabled,
+  ).length;
+  const workDigestEnabledCount = selectedEntityRoleMembers.filter(
+    (member) => workAssignmentDigestCadence(member) !== "off",
+  ).length;
   const selectedXeroContactMatchCount =
     xeroContactPreview?.suggested_matches.filter(
       (match) => selectedXeroContactMatches[xeroContactMatchKey(match)],
@@ -1307,7 +1324,6 @@ function SettingsWorkspace() {
                       <th className="px-3 py-2 font-semibold">
                         Selected entity role
                       </th>
-                      <th className="px-3 py-2 font-semibold">Notifications</th>
                       <th className="px-3 py-2 font-semibold">All access</th>
                       <th className="px-3 py-2 font-semibold">Action</th>
                     </tr>
@@ -1329,9 +1345,6 @@ function SettingsWorkspace() {
                       const isSendingInvite =
                         resendInviteMutation.isPending &&
                         resendInviteMutation.variables === member.id;
-                      const workEmailEnabled =
-                        workAssignmentEmailEnabled(member);
-                      const digestCadence = workAssignmentDigestCadence(member);
                       return (
                         <tr
                           key={member.id}
@@ -1414,88 +1427,6 @@ function SettingsWorkspace() {
                                 Save
                               </SecondaryButton>
                             </div>
-                          </td>
-                          <td className="min-w-64 px-3 py-3">
-                            <div className="grid gap-2">
-                              <div className="flex flex-wrap gap-2">
-                                <StatusBadge
-                                  tone={
-                                    workEmailEnabled ? "success" : "neutral"
-                                  }
-                                >
-                                  {workEmailEnabled
-                                    ? "Work email on"
-                                    : "Work email off"}
-                                </StatusBadge>
-                                <SecondaryButton
-                                  type="button"
-                                  className="h-9 px-3"
-                                  disabled={
-                                    isUpdating ||
-                                    !securityQuery.data?.can_manage_security
-                                  }
-                                  onClick={() =>
-                                    memberMutation.mutate({
-                                      memberId: member.id,
-                                      payload: {
-                                        notification_preferences: {
-                                          ...member.notification_preferences,
-                                          work_assignment_email_enabled:
-                                            !workEmailEnabled,
-                                        },
-                                      },
-                                    })
-                                  }
-                                >
-                                  {workEmailEnabled ? (
-                                    <BellOff size={14} />
-                                  ) : (
-                                    <Bell size={14} />
-                                  )}
-                                  {workEmailEnabled
-                                    ? "Mute work email"
-                                    : "Enable work email"}
-                                </SecondaryButton>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                <StatusBadge
-                                  tone={
-                                    digestCadence === "off"
-                                      ? "neutral"
-                                      : "primary"
-                                  }
-                                >
-                                  {digestCadenceLabel(digestCadence)}
-                                </StatusBadge>
-                                <Select
-                                  aria-label={`${member.display_name} work digest`}
-                                  className="h-9 w-36"
-                                  value={digestCadence}
-                                  disabled={
-                                    isUpdating ||
-                                    !securityQuery.data?.can_manage_security
-                                  }
-                                  onChange={(event) =>
-                                    memberMutation.mutate({
-                                      memberId: member.id,
-                                      payload: {
-                                        notification_preferences: {
-                                          ...member.notification_preferences,
-                                          work_assignment_digest_cadence: event
-                                            .target
-                                            .value as SecurityWorkAssignmentDigestCadence,
-                                        },
-                                      },
-                                    })
-                                  }
-                                >
-                                  <option value="daily">Daily digest</option>
-                                  <option value="weekly">Weekly digest</option>
-                                  <option value="off">Digest off</option>
-                                </Select>
-                              </div>
-                            </div>
-                            <DigestReceiptSummary member={member} />
                           </td>
                           <td className="min-w-64 px-3 py-3">
                             <div className="flex flex-wrap gap-2">
@@ -1581,6 +1512,148 @@ function SettingsWorkspace() {
                     ) : null}
                   </tbody>
                 </table>
+              </div>
+            </SectionPanel>
+
+            <SectionPanel
+              title="Work notifications"
+              description="Choose assignment email and digest cadence for each operator without changing their access."
+              icon={<Bell size={17} className="text-primary" />}
+              actions={
+                <div className="flex flex-wrap gap-2">
+                  <StatusBadge tone="success">
+                    {workEmailEnabledCount} email on
+                  </StatusBadge>
+                  <StatusBadge tone="primary">
+                    {workDigestEnabledCount} digest on
+                  </StatusBadge>
+                </div>
+              }
+            >
+              <div className="divide-y divide-border">
+                {selectedEntityRoleMembers.map((member) => {
+                  const currentRole = roleForEntity(member, selectedEntityId);
+                  const isUpdating =
+                    memberMutation.isPending &&
+                    memberMutation.variables?.memberId === member.id;
+                  const workEmailEnabled = workAssignmentEmailEnabled(member);
+                  const digestCadence = workAssignmentDigestCadence(member);
+                  const canManageSecurity =
+                    Boolean(securityQuery.data?.can_manage_security) &&
+                    !isUpdating;
+
+                  return (
+                    <div
+                      key={`${member.id}-notifications`}
+                      className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_220px_300px] lg:items-start"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-medium">
+                            {member.display_name}
+                          </div>
+                          <StatusBadge
+                            tone={workEmailEnabled ? "success" : "neutral"}
+                          >
+                            {workEmailEnabled
+                              ? "Work email on"
+                              : "Work email off"}
+                          </StatusBadge>
+                          <StatusBadge
+                            tone={
+                              digestCadence === "off" ? "neutral" : "primary"
+                            }
+                          >
+                            {digestCadenceLabel(digestCadence)}
+                          </StatusBadge>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {member.email}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <StatusBadge tone="neutral">
+                            {currentRole
+                              ? `${roleLabel(
+                                  currentRole.role,
+                                )} on selected entity`
+                              : "No selected entity access"}
+                          </StatusBadge>
+                        </div>
+                      </div>
+
+                      <label className="flex min-h-11 items-start gap-3 text-sm">
+                        <input
+                          aria-label={`${member.display_name} assignment email notifications`}
+                          checked={workEmailEnabled}
+                          className="mt-1 h-4 w-4 accent-primary"
+                          disabled={!canManageSecurity}
+                          onChange={(event) =>
+                            memberMutation.mutate({
+                              memberId: member.id,
+                              payload: {
+                                notification_preferences:
+                                  nextNotificationPreferences(member, {
+                                    work_assignment_email_enabled:
+                                      event.target.checked,
+                                  }),
+                              },
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1 font-medium">
+                            {workEmailEnabled ? (
+                              <Bell size={14} />
+                            ) : (
+                              <BellOff size={14} />
+                            )}
+                            Assignment email
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                            Immediate notice when assigned work is ready.
+                          </span>
+                        </span>
+                      </label>
+
+                      <div className="grid gap-2">
+                        <Field label="Digest cadence">
+                          <Select
+                            aria-label={`${member.display_name} work digest`}
+                            value={digestCadence}
+                            disabled={!canManageSecurity}
+                            onChange={(event) =>
+                              memberMutation.mutate({
+                                memberId: member.id,
+                                payload: {
+                                  notification_preferences:
+                                    nextNotificationPreferences(member, {
+                                      work_assignment_digest_cadence: event
+                                        .target
+                                        .value as SecurityWorkAssignmentDigestCadence,
+                                    }),
+                                },
+                              })
+                            }
+                          >
+                            <option value="daily">Daily digest</option>
+                            <option value="weekly">Weekly digest</option>
+                            <option value="off">Digest off</option>
+                          </Select>
+                        </Field>
+                        <DigestReceiptSummary member={member} />
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {!securityQuery.isLoading &&
+                selectedEntityRoleMembers.length === 0 ? (
+                  <EmptyState
+                    title="No operators yet"
+                    description="Invite an operator before setting Work notification preferences."
+                  />
+                ) : null}
               </div>
             </SectionPanel>
           </>
