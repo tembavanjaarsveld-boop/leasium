@@ -317,8 +317,16 @@ def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
     failed_email_delivery = failed["metadata"]["contractor_delivery"]["email"]
     assert failed_email_delivery["send"]["status"] == "failed"
     assert failed_email_delivery["send"]["retry_count"] == 1
+    assert failed_email_delivery["send"]["template_key"] == (
+        "maintenance_contractor_update"
+    )
+    assert failed_email_delivery["send"]["template_version"] == "v1"
     assert failed_email_delivery["receipts"][0]["status"] == "failed"
     assert failed_email_delivery["receipts"][0]["retry_count"] == 1
+    assert failed_email_delivery["receipts"][0]["template_key"] == (
+        "maintenance_contractor_update"
+    )
+    assert failed_email_delivery["history"][0]["template_version"] == "v1"
     assert failed["metadata"].get("comments", []) == []
 
     retry_response = client.post(
@@ -337,8 +345,12 @@ def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
     assert email_delivery["send"]["retry_count"] == 2
     assert email_delivery["receipts"][0]["status"] == "queued"
     assert email_delivery["receipts"][0]["retry_count"] == 2
+    assert email_delivery["receipts"][0]["template_version"] == "v1"
     assert email_delivery["receipts"][1]["status"] == "failed"
     assert email_delivery["receipts"][1]["retry_count"] == 1
+    assert email_delivery["history"][1]["template_key"] == (
+        "maintenance_contractor_update"
+    )
     assert sent["metadata"]["comments"][-1]["visibility"] == "contractor"
     assert sent["metadata"]["comments"][-1]["body"] == (
         "Please confirm your first available attendance window."

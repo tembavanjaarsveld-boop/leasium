@@ -278,6 +278,8 @@ def _record_contractor_provider_delivery(
             "provider_message_id": result_dict.get("provider_message_id"),
             "error": result_dict.get("error"),
             "subject": invite.subject,
+            "template_key": invite.template_key,
+            "template_version": invite.template_version,
             "retry_count": retry_count,
         },
     )
@@ -291,6 +293,9 @@ def _record_contractor_provider_delivery(
             "recipient_email": result_dict.get("recipient") or work_order.contractor_email,
             "provider_message_id": result_dict.get("provider_message_id"),
             "error": result_dict.get("error"),
+            "subject": invite.subject,
+            "template_key": invite.template_key,
+            "template_version": invite.template_version,
             "retry_count": retry_count,
         }
     )

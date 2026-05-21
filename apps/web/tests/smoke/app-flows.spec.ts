@@ -180,6 +180,9 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(page.getByText("Last provider attempt failed")).toBeVisible();
   await expect(page.getByText("Provider history")).toBeVisible();
   await expect(
+    page.getByText("Template maintenance_contractor_update v1").first(),
+  ).toBeVisible();
+  await expect(
     page
       .locator("span")
       .filter({ hasText: /^Attempt Failed #1$/ })

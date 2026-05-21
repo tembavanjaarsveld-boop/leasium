@@ -180,6 +180,19 @@ function metadataRecordList(value: unknown) {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
+function templateVersionLabel(
+  templateKey: string | null | undefined,
+  templateVersion: string | null | undefined,
+) {
+  if (!templateKey && !templateVersion) {
+    return null;
+  }
+  if (templateKey && templateVersion) {
+    return `Template ${templateKey} ${templateVersion}`;
+  }
+  return `Template ${templateKey ?? templateVersion}`;
+}
+
 function invoiceStatusTone(status: InvoiceDraftRecord["status"]): Tone {
   if (status === "approved") {
     return "success";
@@ -294,6 +307,8 @@ function contractorEmailHistoryRows(workOrder: MaintenanceWorkOrderRecord) {
       "Provider delivery attempt recorded.",
     retryCount:
       typeof entry.retry_count === "number" ? entry.retry_count : null,
+    templateKey: metadataText(entry.template_key),
+    templateVersion: metadataText(entry.template_version),
   }));
   const receiptRows = contractorEmailReceipts(workOrder).map((entry) => ({
     kind: "Receipt",
@@ -306,6 +321,8 @@ function contractorEmailHistoryRows(workOrder: MaintenanceWorkOrderRecord) {
       "Provider receipt recorded.",
     retryCount:
       typeof entry.retry_count === "number" ? entry.retry_count : null,
+    templateKey: metadataText(entry.template_key),
+    templateVersion: metadataText(entry.template_version),
   }));
   return [...attemptRows, ...receiptRows]
     .sort(
@@ -1089,6 +1106,10 @@ function MaintenanceDetailRoute() {
   const contractorSendSubject = metadataText(contractorSendState.subject);
   const contractorSendError = metadataText(contractorSendState.error);
   const contractorSendBody = metadataText(contractorSendState.body);
+  const contractorSendTemplateLabel = templateVersionLabel(
+    metadataText(contractorSendState.template_key),
+    metadataText(contractorSendState.template_version),
+  );
   const contractorRetryCount =
     typeof contractorSendState.retry_count === "number"
       ? contractorSendState.retry_count
@@ -1543,6 +1564,11 @@ function MaintenanceDetailRoute() {
                           )}`
                         : "SendGrid delivery and receipts will be stored on this work order."}
                     </div>
+                    {contractorSendTemplateLabel ? (
+                      <div className="text-xs font-semibold text-muted-foreground">
+                        {contractorSendTemplateLabel}
+                      </div>
+                    ) : null}
                     {contractorRecoveryCopy ? (
                       <div
                         className={`rounded-md border p-2 text-xs ${
@@ -1580,6 +1606,14 @@ function MaintenanceDetailRoute() {
                             <div className="text-muted-foreground">
                               {entry.detail}
                             </div>
+                            {entry.templateKey || entry.templateVersion ? (
+                              <div className="text-muted-foreground">
+                                {templateVersionLabel(
+                                  entry.templateKey,
+                                  entry.templateVersion,
+                                )}
+                              </div>
+                            ) : null}
                           </div>
                         ))}
                       </div>
