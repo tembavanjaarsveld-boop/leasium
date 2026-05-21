@@ -3240,6 +3240,75 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/work-assignments/notification-center") {
+      await fulfillJson(route, {
+        entity_id: url.searchParams.get("entity_id") ?? entityId,
+        generated_at: "2026-05-21T10:00:00.000Z",
+        notice_count: 2,
+        attention_count: 1,
+        ready_count: 0,
+        in_flight_count: 1,
+        done_count: 0,
+        digest_receipt_count: 1,
+        guardrails: [
+          "Notification center is read-only; sending still requires explicit operator action.",
+          "Digest receipts are preview receipts unless message_sent is true.",
+        ],
+        notices: [
+          {
+            target_id: "work-order-1",
+            target_type: "maintenance_work_order",
+            title: "Air conditioning fault",
+            summary: "Assignment notification email was queued.",
+            assignee_user_id: assigneeId,
+            assignee_name: "Temba van Jaarsveld",
+            assignee_email: "temba@example.com",
+            group: "in_flight",
+            notification_status: "queued",
+            notification_detail: "Assignment email was queued by SendGrid.",
+            channel: "email",
+            provider: "sendgrid",
+            due_date: "2026-05-20",
+            event_at: "2026-05-20T01:15:00.000Z",
+            follow_up_due: false,
+            work_url: "/operations/maintenance/work-order-1",
+          },
+          {
+            target_id: "arrears-1",
+            target_type: "arrears_case",
+            title: "Bright Cafe arrears",
+            summary: "Assignment notification email failed.",
+            assignee_user_id: assigneeId,
+            assignee_name: "Temba van Jaarsveld",
+            assignee_email: "temba@example.com",
+            group: "attention",
+            notification_status: "failed",
+            notification_detail: "SendGrid returned 500.",
+            channel: "email",
+            provider: "sendgrid",
+            due_date: "2026-05-18",
+            event_at: "2026-05-20T00:30:00.000Z",
+            follow_up_due: true,
+            work_url: "/operations",
+          },
+        ],
+        digest_receipts: [
+          {
+            assignee_user_id: operatorId,
+            assignee_name: "Owner Operator",
+            assignee_email: "owner@example.com",
+            generated_at: "2026-05-21T09:00:00.000Z",
+            cadence: "daily",
+            item_count: 4,
+            follow_up_due_count: 2,
+            delivery_status: "previewed",
+            message_sent: false,
+          },
+        ],
+      });
+      return;
+    }
+
     if (method === "POST" && path === "/work-assignments/digests/run") {
       const payload = request.postDataJSON() as {
         entity_id?: string;

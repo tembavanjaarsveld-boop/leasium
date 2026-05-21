@@ -202,6 +202,24 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   ).toBeVisible();
 });
 
+test("notification center shows work notices and digest receipts", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Open notifications" }).click();
+  await expect(page).toHaveURL(/\/notifications$/);
+
+  await expect(
+    page.getByRole("heading", { name: "Notifications" }),
+  ).toBeVisible();
+  await expect(page.getByText("Work notice center")).toBeVisible();
+  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expect(page.getByText("Bright Cafe arrears")).toBeVisible();
+  await expect(page.getByText("Digest history")).toBeVisible();
+  await expect(page.getByText("Owner Operator").first()).toBeVisible();
+  await expect(page.getByText("No messages sent").first()).toBeVisible();
+});
+
 test("maintenance detail route shows quote evidence", async ({ page }) => {
   await page.goto("/operations/maintenance/work-order-1");
 

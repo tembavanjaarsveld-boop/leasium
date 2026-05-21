@@ -5,7 +5,7 @@ from datetime import date, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
@@ -31,6 +31,9 @@ from apps.api.schemas.work_assignments import (
     WorkAssignmentDigestRun,
     WorkAssignmentDigestRunRead,
     WorkAssignmentNoticeGroup,
+    WorkAssignmentNotificationCenterDigestRead,
+    WorkAssignmentNotificationCenterItemRead,
+    WorkAssignmentNotificationCenterRead,
 )
 from apps.api.work_assignments import (
     apply_work_assignment_delivery_receipt,
@@ -61,6 +64,10 @@ DIGEST_GUARDRAILS = [
         "Generated items come from currently assigned open maintenance, arrears, "
         "and critical-date work."
     ),
+]
+NOTIFICATION_CENTER_GUARDRAILS = [
+    "Notification center is read-only; sending still requires explicit operator action.",
+    "Digest receipts are preview receipts unless message_sent is true.",
 ]
 
 
@@ -137,6 +144,18 @@ def _metadata_date(value: Any) -> date | None:
         return None
 
 
+def _metadata_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    text = _metadata_text(value)
+    if text is None:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def _metadata_uuid(value: Any) -> UUID | None:
     text = _metadata_text(value)
     if text is None:
@@ -151,6 +170,10 @@ def _digest_preference(member: AppUser) -> str:
     preferences = _metadata_record(member.notification_preferences)
     cadence = preferences.get("work_assignment_digest_cadence")
     return cadence if cadence in {"off", "daily", "weekly"} else "daily"
+
+
+def _metadata_list(value: Any) -> list[Any]:
+    return list(value) if isinstance(value, list) else []
 
 
 def _notice_group(
@@ -263,6 +286,66 @@ def _digest_item(
     )
 
 
+def _latest_assignment_event_at(assignment: dict[str, Any]) -> datetime | None:
+    for entry in _metadata_list(assignment.get("history")):
+        record = _metadata_record(entry)
+        event_at = _metadata_datetime(record.get("at"))
+        if event_at is not None:
+            return event_at
+    notification = _metadata_record(assignment.get("notification"))
+    return (
+        _metadata_datetime(notification.get("receipt_at"))
+        or _metadata_datetime(notification.get("attempted_at"))
+        or _metadata_datetime(notification.get("sent_at"))
+        or _metadata_datetime(assignment.get("assigned_at"))
+    )
+
+
+def _notification_center_item(
+    target: WorkAssignmentTarget,
+    settings_base: str | None,
+    today: date,
+) -> WorkAssignmentNotificationCenterItemRead | None:
+    assignment = work_assignment_record(_target_metadata(target))
+    assigned_user_id = _metadata_uuid(assignment.get("assigned_user_id"))
+    assigned_name = _metadata_text(assignment.get("assigned_user_name"))
+    if assigned_user_id is None and assigned_name is None:
+        return None
+    notification = _metadata_record(assignment.get("notification"))
+    status_value = _metadata_text(notification.get("status"))
+    assigned_email = _metadata_text(assignment.get("assigned_user_email"))
+    group = _notice_group(status_value, assigned_email)
+    if group is None or status_value is None:
+        return None
+    latest_history = _metadata_record(
+        _metadata_list(assignment.get("history"))[0]
+        if _metadata_list(assignment.get("history"))
+        else {}
+    )
+    path = _target_url(target)
+    return WorkAssignmentNotificationCenterItemRead(
+        target_id=target.id,
+        target_type=_target_table(target),  # type: ignore[arg-type]
+        title=_target_title(target),
+        summary=_metadata_text(latest_history.get("summary"))
+        or _metadata_text(notification.get("detail"))
+        or _metadata_text(notification.get("error")),
+        assignee_user_id=assigned_user_id,
+        assignee_name=assigned_name,
+        assignee_email=assigned_email,
+        group=group,
+        notification_status=status_value,
+        notification_detail=_metadata_text(notification.get("detail"))
+        or _metadata_text(notification.get("error")),
+        channel=_metadata_text(notification.get("channel")),
+        provider=_metadata_text(notification.get("provider")),
+        due_date=_target_due_date(target),
+        event_at=_latest_assignment_event_at(assignment),
+        follow_up_due=_follow_up_due(assignment, today),
+        work_url=f"{settings_base}{path}" if settings_base else path,
+    )
+
+
 def _assigned_user_id(metadata: dict[str, Any] | None) -> UUID | None:
     return _metadata_uuid(work_assignment_record(metadata).get("assigned_user_id"))
 
@@ -345,6 +428,110 @@ def _record_digest_receipt(
     member.notification_preferences = preferences
 
 
+def _notification_center_digest_receipts(
+    members: list[AppUser],
+    entity_id: UUID,
+) -> list[WorkAssignmentNotificationCenterDigestRead]:
+    receipts: list[WorkAssignmentNotificationCenterDigestRead] = []
+    for member in members:
+        preferences = _metadata_record(member.notification_preferences)
+        for receipt in _metadata_list(preferences.get("work_assignment_digest_history")):
+            record = _metadata_record(receipt)
+            if _metadata_uuid(record.get("entity_id")) != entity_id:
+                continue
+            generated_at = _metadata_datetime(record.get("generated_at"))
+            cadence = _metadata_text(record.get("cadence"))
+            if generated_at is None or cadence not in {"daily", "weekly"}:
+                continue
+            item_count = record.get("item_count")
+            follow_up_due_count = record.get("follow_up_due_count")
+            message_sent = record.get("message_sent")
+            receipts.append(
+                WorkAssignmentNotificationCenterDigestRead(
+                    assignee_user_id=member.id,
+                    assignee_name=member.display_name,
+                    assignee_email=member.email,
+                    generated_at=generated_at,
+                    cadence=cadence,  # type: ignore[arg-type]
+                    item_count=item_count
+                    if isinstance(item_count, int) and not isinstance(item_count, bool)
+                    else 0,
+                    follow_up_due_count=follow_up_due_count
+                    if isinstance(follow_up_due_count, int)
+                    and not isinstance(follow_up_due_count, bool)
+                    else 0,
+                    delivery_status=_metadata_text(record.get("delivery_status"))
+                    or "previewed",
+                    message_sent=message_sent if isinstance(message_sent, bool) else False,
+                )
+            )
+    receipts.sort(key=lambda receipt: receipt.generated_at, reverse=True)
+    return receipts[:20]
+
+
+def _entity_assignment_members(
+    session: Session,
+    *,
+    organisation_id: UUID,
+    entity_id: UUID,
+) -> list[AppUser]:
+    return session.scalars(
+        select(AppUser)
+        .join(UserEntityRole, UserEntityRole.user_id == AppUser.id)
+        .where(
+            AppUser.organisation_id == organisation_id,
+            AppUser.is_active.is_(True),
+            UserEntityRole.entity_id == entity_id,
+        )
+    ).all()
+
+
+@router.get("/notification-center", response_model=WorkAssignmentNotificationCenterRead)
+def get_work_assignment_notification_center(
+    entity_id: Annotated[UUID, Query()],
+    session: Annotated[Session, Depends(get_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> WorkAssignmentNotificationCenterRead:
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    settings = get_settings()
+    frontend_base = settings.frontend_url.strip().rstrip("/") or None
+    today = utcnow().date()
+    notices = [
+        item
+        for target in _open_assignment_targets(session, entity_id)
+        if (item := _notification_center_item(target, frontend_base, today)) is not None
+    ]
+    group_rank = {"attention": 0, "ready": 1, "in_flight": 2, "done": 3}
+    notices.sort(
+        key=lambda item: (
+            group_rank[item.group],
+            0 if item.follow_up_due else 1,
+            -(item.event_at.timestamp() if item.event_at is not None else 0),
+            item.due_date or date.max,
+            item.title,
+        )
+    )
+    members = _entity_assignment_members(
+        session,
+        organisation_id=user.organisation_id,
+        entity_id=entity_id,
+    )
+    digest_receipts = _notification_center_digest_receipts(members, entity_id)
+    return WorkAssignmentNotificationCenterRead(
+        entity_id=entity_id,
+        generated_at=utcnow(),
+        notice_count=len(notices),
+        attention_count=sum(1 for item in notices if item.group == "attention"),
+        ready_count=sum(1 for item in notices if item.group == "ready"),
+        in_flight_count=sum(1 for item in notices if item.group == "in_flight"),
+        done_count=sum(1 for item in notices if item.group == "done"),
+        digest_receipt_count=len(digest_receipts),
+        guardrails=NOTIFICATION_CENTER_GUARDRAILS,
+        notices=notices[:50],
+        digest_receipts=digest_receipts,
+    )
+
+
 def _generate_work_assignment_digest(
     payload: WorkAssignmentDigestRun,
     *,
@@ -354,15 +541,11 @@ def _generate_work_assignment_digest(
     user_id: UUID | None,
     tool_name: str,
 ) -> WorkAssignmentDigestRunRead:
-    members = session.scalars(
-        select(AppUser)
-        .join(UserEntityRole, UserEntityRole.user_id == AppUser.id)
-        .where(
-            AppUser.organisation_id == organisation_id,
-            AppUser.is_active.is_(True),
-            UserEntityRole.entity_id == payload.entity_id,
-        )
-    ).all()
+    members = _entity_assignment_members(
+        session,
+        organisation_id=organisation_id,
+        entity_id=payload.entity_id,
+    )
     members_by_id = {
         member.id: member
         for member in members

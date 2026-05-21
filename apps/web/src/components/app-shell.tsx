@@ -1,7 +1,7 @@
 "use client";
 
 import { UserButton, useUser } from "@clerk/nextjs";
-import { Command, Search, X } from "lucide-react";
+import { Bell, Command, Search, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -72,6 +72,11 @@ const frequentActions: CommandAction[] = [
     meta: "Work",
   },
   {
+    href: "/notifications",
+    label: "Open notifications",
+    meta: "Work",
+  },
+  {
     href: "/portfolio-qa",
     label: "Data cleanup / Portfolio QA",
     meta: "Portfolio",
@@ -96,7 +101,10 @@ const moduleJumpActions: CommandAction[] = [
   },
 ];
 
-const commandActions: CommandAction[] = [...frequentActions, ...moduleJumpActions];
+const commandActions: CommandAction[] = [
+  ...frequentActions,
+  ...moduleJumpActions,
+];
 
 function OperatorUserControl() {
   const { isLoaded, isSignedIn } = useUser();
@@ -118,7 +126,9 @@ function OperatorUserControl() {
 export function AppHeader({ children }: { children?: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+  const clerkConfigured = Boolean(
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  );
   const [commandOpen, setCommandOpen] = useState(false);
   const [query, setQuery] = useState("");
   const filteredActions = useMemo(() => {
@@ -157,7 +167,9 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           <Link href="/" className="flex min-w-0 items-center gap-3">
             <LeasiumMark className="h-11 w-11" />
             <div className="min-w-0">
-              <h1 className="text-lg font-semibold leading-5 tracking-normal">Leasium</h1>
+              <h1 className="text-lg font-semibold leading-5 tracking-normal">
+                Leasium
+              </h1>
               <p className="truncate whitespace-nowrap text-sm leading-5 text-muted-foreground">
                 Lease operations, automated
               </p>
@@ -200,7 +212,21 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           >
             <Search size={15} />
           </button>
-          {children ? <div className="min-w-40 flex-1 sm:max-w-xs">{children}</div> : null}
+          <Link
+            href="/notifications"
+            aria-label="Open notifications"
+            title="Notifications"
+            className={cn(
+              "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted",
+              pathname.startsWith("/notifications") &&
+                "border-primary/30 bg-leasium-blue-soft text-primary",
+            )}
+          >
+            <Bell size={15} />
+          </Link>
+          {children ? (
+            <div className="min-w-40 flex-1 sm:max-w-xs">{children}</div>
+          ) : null}
           {clerkConfigured ? (
             <div className="flex h-11 shrink-0 items-center">
               <OperatorUserControl />
@@ -241,7 +267,9 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                   }}
                   className="flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-sm transition hover:bg-muted"
                 >
-                  <span className="font-semibold text-foreground">{action.label}</span>
+                  <span className="font-semibold text-foreground">
+                    {action.label}
+                  </span>
                   <span className="text-xs font-medium text-muted-foreground">
                     {action.meta}
                   </span>

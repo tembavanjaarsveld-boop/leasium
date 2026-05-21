@@ -751,6 +751,21 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert scheduled_audit.actor == "cron:work_assignment_digest"
     assert scheduled_audit.user_id is None
 
+    center_response = client.get(
+        "/api/v1/work-assignments/notification-center",
+        params={"entity_id": entity_id},
+    )
+    assert center_response.status_code == 200
+    center = center_response.json()
+    assert center["notice_count"] == 1
+    assert center["ready_count"] == 1
+    assert center["digest_receipt_count"] == 2
+    assert center["notices"][0]["title"] == "Digest-ready maintenance job"
+    assert center["notices"][0]["group"] == "ready"
+    assert center["notices"][0]["assignee_user_id"] == str(assignee.id)
+    assert center["digest_receipts"][0]["delivery_status"] == "previewed"
+    assert center["guardrails"][0].startswith("Notification center is read-only")
+
 
 def test_arrears_case_tracks_aged_balances_reminders_and_escalation(
     client: TestClient,

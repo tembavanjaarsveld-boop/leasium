@@ -98,6 +98,51 @@ export type WorkAssignmentDigestRunRecord = {
   digests: WorkAssignmentDigestRecord[];
 };
 
+export type WorkAssignmentNotificationCenterItemRecord = {
+  target_id: string;
+  target_type: "maintenance_work_order" | "arrears_case" | "obligation";
+  title: string;
+  summary: string | null;
+  assignee_user_id: string | null;
+  assignee_name: string | null;
+  assignee_email: string | null;
+  group: WorkAssignmentNoticeGroup;
+  notification_status: string;
+  notification_detail: string | null;
+  channel: string | null;
+  provider: string | null;
+  due_date: string | null;
+  event_at: string | null;
+  follow_up_due: boolean;
+  work_url: string | null;
+};
+
+export type WorkAssignmentNotificationCenterDigestRecord = {
+  assignee_user_id: string;
+  assignee_name: string;
+  assignee_email: string;
+  generated_at: string;
+  cadence: WorkAssignmentDigestCadence;
+  item_count: number;
+  follow_up_due_count: number;
+  delivery_status: string;
+  message_sent: boolean;
+};
+
+export type WorkAssignmentNotificationCenterRecord = {
+  entity_id: string;
+  generated_at: string;
+  notice_count: number;
+  attention_count: number;
+  ready_count: number;
+  in_flight_count: number;
+  done_count: number;
+  digest_receipt_count: number;
+  guardrails: string[];
+  notices: WorkAssignmentNotificationCenterItemRecord[];
+  digest_receipts: WorkAssignmentNotificationCenterDigestRecord[];
+};
+
 export type SecurityEntityRoleRecord = SecurityRoleAssignment & {
   entity_name: string;
 };
@@ -2793,6 +2838,13 @@ export function runWorkAssignmentDigest(payload: {
       method: "POST",
       body: JSON.stringify(payload),
     },
+  );
+}
+
+export function getWorkAssignmentNotificationCenter(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<WorkAssignmentNotificationCenterRecord>(
+    `/work-assignments/notification-center?${params.toString()}`,
   );
 }
 
