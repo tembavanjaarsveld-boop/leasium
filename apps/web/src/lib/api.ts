@@ -313,6 +313,7 @@ export type WorkAssignmentNotificationCenterDigestRecord = {
   delivery_attempt_count: number;
   provider_history: WorkAssignmentProviderHistoryRecord[];
   rendered_message_preview: WorkAssignmentRenderedMessagePreviewRecord | null;
+  channel_receipts: WorkAssignmentNoticeChannelReceiptRecord[];
 };
 
 export type WorkAssignmentNotificationCenterRecord = {

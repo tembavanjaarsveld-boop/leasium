@@ -1215,6 +1215,54 @@ def _record_digest_receipt(
     return receipt
 
 
+def _digest_channel_receipts(
+    *,
+    member: AppUser,
+    record: dict[str, Any],
+    provider: str | None,
+    delivery_status: str,
+    message_sent: bool,
+    template_key: str,
+    template_version: str,
+    attempt_count: int,
+    provider_history: list[WorkAssignmentProviderHistoryRead],
+    rendered_preview: WorkAssignmentRenderedMessagePreviewRead | None,
+) -> list[WorkAssignmentNoticeChannelReceiptRead]:
+    """Project a single Email channel receipt for a Work digest record.
+
+    Digests are currently email-only, so the projection always returns at most
+    one entry. The legacy top-level digest fields stay populated for backward
+    compatibility; this list lets the Notifications UI render the same
+    normalized channel-receipt cards used for Work notice rows.
+    """
+    recipient_email = _metadata_text(record.get("recipient_email")) or member.email
+    detail = _metadata_text(record.get("delivery_detail"))
+    return [
+        WorkAssignmentNoticeChannelReceiptRead(
+            channel="email",
+            label="Work digest email",
+            provider=provider,
+            status=delivery_status,
+            detail=detail,
+            recipient_email=recipient_email,
+            recipient_phone=None,
+            provider_message_id=_metadata_text(record.get("provider_message_id")),
+            template_key=template_key,
+            template_version=template_version,
+            attempted_at=_metadata_text(record.get("attempted_at")),
+            sent_at=_metadata_text(record.get("sent_at")),
+            receipt_at=_metadata_text(record.get("receipt_at")),
+            last_event=_metadata_text(record.get("last_event")),
+            delivery_trigger=_metadata_text(record.get("delivery_trigger")),
+            delivery_attempt_count=attempt_count,
+            message_sent=message_sent,
+            action_available=False,
+            provider_history=provider_history,
+            rendered_message_preview=rendered_preview,
+        )
+    ]
+
+
 def _notification_center_digest_receipts(
     members: list[AppUser],
     entity_id: UUID,
@@ -1236,6 +1284,52 @@ def _notification_center_digest_receipts(
             attempt_count = record.get("delivery_attempt_count")
             delivery_channel = _metadata_text(record.get("delivery_channel"))
             provider = _metadata_text(record.get("provider"))
+            normalised_item_count = (
+                item_count
+                if isinstance(item_count, int) and not isinstance(item_count, bool)
+                else 0
+            )
+            normalised_follow_up_due_count = (
+                follow_up_due_count
+                if isinstance(follow_up_due_count, int)
+                and not isinstance(follow_up_due_count, bool)
+                else 0
+            )
+            normalised_delivery_status = (
+                _metadata_text(record.get("delivery_status")) or "previewed"
+            )
+            normalised_message_sent = (
+                message_sent if isinstance(message_sent, bool) else False
+            )
+            normalised_template_key = (
+                _metadata_text(record.get("template_key")) or "work_assignment_digest"
+            )
+            normalised_template_version = (
+                _metadata_text(record.get("template_version")) or "v1"
+            )
+            normalised_attempt_count = (
+                attempt_count
+                if isinstance(attempt_count, int) and not isinstance(attempt_count, bool)
+                else 0
+            )
+            digest_provider_history = _provider_history_records(
+                record.get("provider_history")
+            )
+            digest_rendered_preview = _rendered_message_preview_read(
+                record.get("rendered_message_preview")
+            )
+            digest_channel_receipts = _digest_channel_receipts(
+                member=member,
+                record=record,
+                provider=provider,
+                delivery_status=normalised_delivery_status,
+                message_sent=normalised_message_sent,
+                template_key=normalised_template_key,
+                template_version=normalised_template_version,
+                attempt_count=normalised_attempt_count,
+                provider_history=digest_provider_history,
+                rendered_preview=digest_rendered_preview,
+            )
             receipts.append(
                 WorkAssignmentNotificationCenterDigestRead(
                     assignee_user_id=member.id,
@@ -1243,33 +1337,24 @@ def _notification_center_digest_receipts(
                     assignee_email=member.email,
                     generated_at=generated_at,
                     cadence=cadence,  # type: ignore[arg-type]
-                    item_count=item_count
-                    if isinstance(item_count, int) and not isinstance(item_count, bool)
-                    else 0,
-                    follow_up_due_count=follow_up_due_count
-                    if isinstance(follow_up_due_count, int)
-                    and not isinstance(follow_up_due_count, bool)
-                    else 0,
-                    delivery_status=_metadata_text(record.get("delivery_status")) or "previewed",
-                    message_sent=message_sent if isinstance(message_sent, bool) else False,
+                    item_count=normalised_item_count,
+                    follow_up_due_count=normalised_follow_up_due_count,
+                    delivery_status=normalised_delivery_status,
+                    message_sent=normalised_message_sent,
                     delivery_detail=_metadata_text(record.get("delivery_detail")),
                     delivery_channel=delivery_channel,
                     provider=provider,
                     provider_message_id=_metadata_text(record.get("provider_message_id")),
-                    template_key=_metadata_text(record.get("template_key"))
-                    or "work_assignment_digest",
-                    template_version=_metadata_text(record.get("template_version")) or "v1",
+                    template_key=normalised_template_key,
+                    template_version=normalised_template_version,
                     delivery_trigger=_metadata_text(record.get("delivery_trigger")),
                     recovery_of_generated_at=_metadata_datetime(
                         record.get("recovery_of_generated_at")
                     ),
-                    delivery_attempt_count=attempt_count
-                    if isinstance(attempt_count, int) and not isinstance(attempt_count, bool)
-                    else 0,
-                    provider_history=_provider_history_records(record.get("provider_history")),
-                    rendered_message_preview=_rendered_message_preview_read(
-                        record.get("rendered_message_preview")
-                    ),
+                    delivery_attempt_count=normalised_attempt_count,
+                    provider_history=digest_provider_history,
+                    rendered_message_preview=digest_rendered_preview,
+                    channel_receipts=digest_channel_receipts,
                 )
             )
     receipts.sort(key=lambda receipt: receipt.generated_at, reverse=True)

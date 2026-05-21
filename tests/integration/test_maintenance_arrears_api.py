@@ -1262,6 +1262,20 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert "Digest-ready maintenance job" in digest_preview["body_text"]
     assert digest_preview["template_key"] == "custom_work_digest"
     assert digest_preview["template_version"] == "v3"
+    digest_channel_receipts = center["digest_receipts"][0]["channel_receipts"]
+    assert len(digest_channel_receipts) == 1
+    digest_email_receipt = digest_channel_receipts[0]
+    assert digest_email_receipt["channel"] == "email"
+    assert digest_email_receipt["label"] == "Work digest email"
+    assert digest_email_receipt["status"] == "previewed"
+    assert digest_email_receipt["template_key"] == "custom_work_digest"
+    assert digest_email_receipt["template_version"] == "v3"
+    assert digest_email_receipt["recipient_email"] == assignee.email
+    assert digest_email_receipt["message_sent"] is False
+    assert digest_email_receipt["action_available"] is False
+    assert digest_email_receipt["delivery_attempt_count"] == 0
+    assert digest_email_receipt["provider_history"] == []
+    assert digest_email_receipt["rendered_message_preview"]["channel"] == "email"
     assert center["guardrails"][0].startswith("Notification center is read-only")
     assert center["channels"][0]["channel"] == "email"
     assert center["channels"][0]["readiness"] == "actionable"
@@ -1518,6 +1532,23 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
     assert center["digest_receipts"][0]["delivery_attempt_count"] == 1
     assert center["digest_receipts"][0]["provider_history"][0]["event"] == (
         "digest_delivery_attempted"
+    )
+    sent_digest_channel_receipts = center["digest_receipts"][0]["channel_receipts"]
+    assert len(sent_digest_channel_receipts) == 1
+    sent_digest_email_receipt = sent_digest_channel_receipts[0]
+    assert sent_digest_email_receipt["channel"] == "email"
+    assert sent_digest_email_receipt["provider"] == "sendgrid"
+    assert sent_digest_email_receipt["status"] == "queued"
+    assert sent_digest_email_receipt["message_sent"] is True
+    assert sent_digest_email_receipt["provider_message_id"] == "sg-digest-1"
+    assert sent_digest_email_receipt["template_key"] == "custom_work_digest"
+    assert sent_digest_email_receipt["template_version"] == "v3"
+    assert sent_digest_email_receipt["delivery_trigger"] == "scheduled"
+    assert sent_digest_email_receipt["delivery_attempt_count"] == 1
+    assert sent_digest_email_receipt["recipient_email"] == assignee.email
+    assert (
+        sent_digest_email_receipt["provider_history"][0]["event"]
+        == "digest_delivery_attempted"
     )
     assert center["digest_receipts"][0]["provider_history"][0]["template_key"] == (
         "custom_work_digest"

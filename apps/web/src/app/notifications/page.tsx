@@ -1430,6 +1430,11 @@ function NotificationsWorkspace() {
                     </div>
                   </div>
                   <ProviderHistoryStrip history={receipt.provider_history} />
+                  {receipt.channel_receipts.length > 0 ? (
+                    <ReceiptEvidenceDisclosure
+                      receipt={receipt.channel_receipts[0]}
+                    />
+                  ) : null}
                   <MessagePreviewDisclosure
                     preview={receipt.rendered_message_preview}
                   />

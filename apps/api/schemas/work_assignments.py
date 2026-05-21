@@ -286,6 +286,7 @@ class WorkAssignmentNotificationCenterDigestRead(BaseModel):
     delivery_attempt_count: int = 0
     provider_history: list[WorkAssignmentProviderHistoryRead] = Field(default_factory=list)
     rendered_message_preview: WorkAssignmentRenderedMessagePreviewRead | None = None
+    channel_receipts: list[WorkAssignmentNoticeChannelReceiptRead] = Field(default_factory=list)
 
 
 class WorkAssignmentNotificationCenterRead(BaseModel):

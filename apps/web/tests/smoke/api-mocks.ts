@@ -4638,6 +4638,58 @@ export async function mockLeasiumApi(
                   },
                 ]
               : [],
+            channel_receipts: [
+              {
+                channel: "email",
+                label: "Work digest email",
+                provider: digestReceiptSent ? "sendgrid" : null,
+                status: digestReceiptSent ? "queued" : "previewed",
+                detail: digestReceiptSent
+                  ? "Digest email was queued by SendGrid."
+                  : null,
+                recipient_email: "owner@example.com",
+                recipient_phone: null,
+                provider_message_id: digestReceiptSent
+                  ? "sg-digest-smoke-retry"
+                  : null,
+                template_key: "work_assignment_digest",
+                template_version: "v1",
+                attempted_at: digestReceiptSent
+                  ? "2026-05-21T10:00:00.000Z"
+                  : null,
+                sent_at: null,
+                receipt_at: null,
+                last_event: null,
+                delivery_trigger: digestReceiptSent ? "recovery" : "preview",
+                delivery_attempt_count: digestReceiptSent ? 1 : 0,
+                message_sent: digestReceiptSent,
+                action_available: false,
+                provider_history: digestReceiptSent
+                  ? [
+                      {
+                        event: "digest_delivery_attempted",
+                        channel: "email",
+                        status: "queued",
+                        raw_event: null,
+                        provider: "sendgrid",
+                        attempted_at: "2026-05-21T10:00:00.000Z",
+                        received_at: null,
+                        recipient_email: "owner@example.com",
+                        recipient_phone: null,
+                        provider_message_id: "sg-digest-smoke-retry",
+                        error: null,
+                        template_key: "work_assignment_digest",
+                        template_version: "v1",
+                        delivery_trigger: "recovery",
+                        recovery_of_generated_at:
+                          "2026-05-21T09:00:00.000Z",
+                        delivery_attempt_count: 1,
+                      },
+                    ]
+                  : [],
+                rendered_message_preview: workDigestMessagePreview(),
+              },
+            ],
           },
         ],
       });

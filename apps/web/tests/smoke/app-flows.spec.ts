@@ -391,6 +391,10 @@ test("notification center shows work notices and digest receipts", async ({
   ).toBeVisible();
   await expect(page.getByText("Email queued").first()).toBeVisible();
   await expect(page.getByText("Digest Delivery Attempted")).toBeVisible();
+  await page.getByText("Receipt evidence").last().click();
+  await expect(
+    page.getByText("sg-digest-smoke-retry").first(),
+  ).toBeVisible();
   await expect(
     page.getByText("Wait for the SendGrid delivery receipt."),
   ).toBeVisible();
