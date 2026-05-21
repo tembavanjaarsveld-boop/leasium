@@ -55,7 +55,6 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
-  applyPropertyImage,
   applyPublicEnrichment,
   applyLeaseIntake,
   cancelTenantOnboarding,
@@ -70,7 +69,6 @@ import {
   createTenantOnboarding,
   deleteLease,
   deleteTenancyUnit,
-  downloadDocumentBlob,
   EnrichmentSuggestion,
   getLeaseIntake,
   LeaseRecord,
@@ -86,7 +84,6 @@ import {
   listTenantOnboardings,
   listTenancyUnits,
   ObligationRecord,
-  PropertyImageCandidateRecord,
   PropertyRecord,
   PropertyType,
   TenantRecord,
@@ -94,7 +91,6 @@ import {
   TenancyUnitRecord,
   updateObligation,
   previewPublicEnrichment,
-  previewPropertyImages,
   updateLease,
   updateTenancyUnit,
   updateProperty,
@@ -412,17 +408,6 @@ type PropertySourceCitation = {
   url?: string | null;
 };
 
-type PropertyPrimaryImage = {
-  title: string;
-  imageUrl: string | null;
-  documentId: string | null;
-  pageUrl: string | null;
-  source: PropertySourceCitation | null;
-  confidence: number | null;
-  notes: string | null;
-  selectedAt: string | null;
-};
-
 type PropertyApplyChange = {
   field: string;
   before: unknown;
@@ -611,136 +596,6 @@ function sourceCitation(value: unknown): PropertySourceCitation | null {
     source.url
     ? source
     : null;
-}
-
-function httpsUrl(value: unknown) {
-  const url = textValue(value);
-  return url?.toLowerCase().startsWith("https://") ? url : null;
-}
-
-function directImageUrl(value: unknown) {
-  const url = textValue(value);
-  if (!url) {
-    return null;
-  }
-  const lowerUrl = url.toLowerCase();
-  return lowerUrl.startsWith("http://") ||
-    lowerUrl.startsWith("https://") ||
-    url.startsWith("/")
-    ? url
-    : null;
-}
-
-function propertyPrimaryImage(
-  property: PropertyRecord | null | undefined,
-): PropertyPrimaryImage | null {
-  const media = propertyMetadata(property).property_media;
-  if (!isRecord(media)) {
-    return null;
-  }
-  const primaryImage = media.primary_image;
-  if (!isRecord(primaryImage)) {
-    return null;
-  }
-  const documentId =
-    textValue(primaryImage.document_id) ??
-    textValue(primaryImage.image_document_id) ??
-    textValue(primaryImage.thumbnail_document_id);
-  const imageUrl =
-    directImageUrl(primaryImage.download_url) ??
-    directImageUrl(primaryImage.thumbnail_url) ??
-    (documentId ? null : httpsUrl(primaryImage.image_url));
-  if (!imageUrl && !documentId) {
-    return null;
-  }
-  return {
-    title: textValue(primaryImage.title) ?? property?.name ?? "Property image",
-    imageUrl,
-    documentId,
-    pageUrl: httpsUrl(primaryImage.page_url),
-    source: sourceCitation(primaryImage.source),
-    confidence: numberValue(primaryImage.confidence),
-    notes: textValue(primaryImage.notes),
-    selectedAt: textValue(primaryImage.selected_at),
-  };
-}
-
-function useDocumentImageUrl(image: PropertyPrimaryImage | null) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    setObjectUrl(null);
-    if (image?.imageUrl || !image?.documentId) {
-      return;
-    }
-
-    let isCurrent = true;
-    let nextObjectUrl: string | null = null;
-    downloadDocumentBlob(image.documentId)
-      .then((blob) => {
-        if (!isCurrent) {
-          return;
-        }
-        nextObjectUrl = URL.createObjectURL(blob);
-        setObjectUrl(nextObjectUrl);
-      })
-      .catch(() => {
-        if (isCurrent) {
-          setObjectUrl(null);
-        }
-      });
-
-    return () => {
-      isCurrent = false;
-      if (nextObjectUrl) {
-        URL.revokeObjectURL(nextObjectUrl);
-      }
-    };
-  }, [image?.documentId, image?.imageUrl]);
-
-  return image?.imageUrl ?? objectUrl;
-}
-
-function StoredPropertyImage({
-  image,
-  alt,
-  className,
-  placeholderClassName,
-  iconSize = 16,
-  testId,
-}: {
-  image: PropertyPrimaryImage | null;
-  alt: string;
-  className: string;
-  placeholderClassName: string;
-  iconSize?: number;
-  testId?: string;
-}) {
-  const imageUrl = useDocumentImageUrl(image);
-  const [imageFailed, setImageFailed] = useState(false);
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [imageUrl]);
-
-  if (imageUrl && !imageFailed) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        alt={alt}
-        className={className}
-        data-testid={testId}
-        onError={() => setImageFailed(true)}
-        src={imageUrl}
-      />
-    );
-  }
-
-  return (
-    <div className={placeholderClassName}>
-      <ImageIcon size={iconSize} />
-    </div>
-  );
 }
 
 function propertySourceCitations(property: PropertyRecord | null | undefined) {
@@ -1255,18 +1110,6 @@ function Workspace() {
   const [billingProfileOpen, setBillingProfileOpen] = useState(false);
   const [propertyEnrichmentSuggestions, setPropertyEnrichmentSuggestions] =
     useState<EnrichmentSuggestion[]>([]);
-  const [propertyImageCandidates, setPropertyImageCandidates] = useState<
-    PropertyImageCandidateRecord[]
-  >([]);
-  const [propertyImageWarnings, setPropertyImageWarnings] = useState<string[]>(
-    [],
-  );
-  const [applyingPropertyImageUrl, setApplyingPropertyImageUrl] =
-    useState<string>("");
-  const [
-    failedPropertyImageCandidateUrls,
-    setFailedPropertyImageCandidateUrls,
-  ] = useState<Set<string>>(() => new Set());
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -1392,10 +1235,6 @@ function Workspace() {
 
   useEffect(() => {
     setPropertyEnrichmentSuggestions([]);
-    setPropertyImageCandidates([]);
-    setPropertyImageWarnings([]);
-    setApplyingPropertyImageUrl("");
-    setFailedPropertyImageCandidateUrls(new Set());
   }, [selectedPropertyId]);
 
   const selectedEntity = useMemo(
@@ -1409,10 +1248,6 @@ function Workspace() {
         (property) => property.id === selectedPropertyId,
       ),
     [propertiesQuery.data, selectedPropertyId],
-  );
-  const selectedPropertyImage = useMemo(
-    () => propertyPrimaryImage(selectedProperty),
-    [selectedProperty],
   );
   const ownershipPaletteByLabel = useMemo(
     () =>
@@ -1816,48 +1651,6 @@ function Workspace() {
           rentRollAsOf,
         ],
       });
-    },
-  });
-
-  const previewPropertyImagesMutation = useMutation({
-    mutationFn: () => {
-      if (!selectedPropertyId) {
-        throw new Error("Select a property first.");
-      }
-      return previewPropertyImages({
-        property_id: selectedPropertyId,
-        requested_count: 4,
-      });
-    },
-    onSuccess: (result) => {
-      setPropertyImageCandidates(result.candidates);
-      setPropertyImageWarnings(result.warnings);
-      setFailedPropertyImageCandidateUrls(new Set());
-    },
-  });
-
-  const applyPropertyImageMutation = useMutation({
-    mutationFn: (candidate: PropertyImageCandidateRecord) => {
-      if (!selectedPropertyId) {
-        throw new Error("Select a property first.");
-      }
-      return applyPropertyImage({
-        property_id: selectedPropertyId,
-        candidate,
-      });
-    },
-    onMutate: (candidate) => {
-      setApplyingPropertyImageUrl(candidate.image_url);
-    },
-    onSuccess: () => {
-      setPropertyImageCandidates([]);
-      setPropertyImageWarnings([]);
-      queryClient.invalidateQueries({
-        queryKey: ["properties", selectedEntityId],
-      });
-    },
-    onSettled: () => {
-      setApplyingPropertyImageUrl("");
     },
   });
 
@@ -4180,184 +3973,10 @@ function Workspace() {
                 </div>
               ) : null}
 
-              {selectedProperty ? (
-                <section className="overflow-hidden rounded-md border border-border bg-white">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <ImageIcon size={17} className="text-primary" />
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-semibold">
-                          Property images
-                        </h3>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {selectedProperty.name}
-                        </p>
-                      </div>
-                    </div>
-                    <SecondaryButton
-                      type="button"
-                      className="h-9"
-                      disabled={
-                        !selectedPropertyId ||
-                        previewPropertyImagesMutation.isPending
-                      }
-                      onClick={() => previewPropertyImagesMutation.mutate()}
-                    >
-                      {previewPropertyImagesMutation.isPending ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <Sparkles size={14} />
-                      )}
-                      Find property images
-                    </SecondaryButton>
-                  </div>
-                  <div className="grid gap-4 p-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-                    <div className="min-w-0">
-                      <div className="aspect-video overflow-hidden rounded-md border border-border bg-muted/40">
-                        <StoredPropertyImage
-                          alt={`${selectedProperty.name} primary image`}
-                          className="h-full w-full object-cover"
-                          image={selectedPropertyImage}
-                          placeholderClassName="grid h-full place-items-center text-muted-foreground"
-                          iconSize={22}
-                          testId="selected-property-image"
-                        />
-                      </div>
-                      {selectedPropertyImage ? (
-                        <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                          <div className="truncate font-medium text-foreground">
-                            {selectedPropertyImage.title}
-                          </div>
-                          <div>
-                            {confidencePercent(selectedPropertyImage.confidence) ??
-                              "Reviewed image"}
-                          </div>
-                          {selectedPropertyImage.pageUrl ? (
-                            <a
-                              href={selectedPropertyImage.pageUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex min-w-0 items-center gap-1 text-primary hover:text-leasium-blue-hover"
-                            >
-                              <ExternalLink size={12} />
-                              <span className="truncate">Source page</span>
-                            </a>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          No reviewed image saved.
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      {propertyImageCandidates.length ? (
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                          {propertyImageCandidates.map((candidate) => (
-                            <div
-                              key={candidate.image_url}
-                              className="overflow-hidden rounded-md border border-border bg-white"
-                            >
-                              <div className="aspect-video bg-muted/40">
-                                {failedPropertyImageCandidateUrls.has(
-                                  candidate.image_url,
-                                ) ? (
-                                  <div
-                                    className="grid h-full place-items-center text-muted-foreground"
-                                    data-testid="property-image-candidate-fallback"
-                                  >
-                                    <ImageIcon size={18} />
-                                  </div>
-                                ) : (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    alt={candidate.title}
-                                    className="h-full w-full object-cover"
-                                    data-testid="property-image-candidate-preview"
-                                    onError={() =>
-                                      setFailedPropertyImageCandidateUrls(
-                                        (failedUrls) =>
-                                          new Set(failedUrls).add(
-                                            candidate.image_url,
-                                          ),
-                                      )
-                                    }
-                                    referrerPolicy="no-referrer"
-                                    src={candidate.image_url}
-                                  />
-                                )}
-                              </div>
-                              <div className="grid gap-2 p-3 text-xs">
-                                <div className="font-semibold text-foreground">
-                                  {candidate.title}
-                                </div>
-                                <div className="text-muted-foreground">
-                                  {candidate.source.source_hint} -{" "}
-                                  {candidate.source.citation}
-                                </div>
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <StatusBadge tone="neutral">
-                                    {confidencePercent(candidate.confidence)}
-                                  </StatusBadge>
-                                  <Button
-                                    type="button"
-                                    className="h-8 px-2.5 text-xs"
-                                    disabled={
-                                      applyPropertyImageMutation.isPending
-                                    }
-                                    onClick={() =>
-                                      applyPropertyImageMutation.mutate(
-                                        candidate,
-                                      )
-                                    }
-                                  >
-                                    {applyingPropertyImageUrl ===
-                                    candidate.image_url ? (
-                                      <Loader2
-                                        size={13}
-                                        className="animate-spin"
-                                      />
-                                    ) : (
-                                      <Check size={13} />
-                                    )}
-                                    Apply image
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-4 text-sm text-muted-foreground">
-                          Image candidates will appear here for review.
-                        </div>
-                      )}
-                      {propertyImageWarnings.length ? (
-                        <div className="mt-3 grid gap-1 text-xs text-warning">
-                          {propertyImageWarnings.map((warning) => (
-                            <div key={warning}>{warning}</div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {previewPropertyImagesMutation.error ||
-                      applyPropertyImageMutation.error ? (
-                        <div className="mt-3 text-xs text-danger">
-                          {friendlyError(
-                            previewPropertyImagesMutation.error ??
-                              applyPropertyImageMutation.error,
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </section>
-              ) : null}
-
               <div className="overflow-hidden rounded-md border border-border bg-white">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead className="bg-muted text-xs uppercase text-muted-foreground">
                     <tr>
-                      <th className="w-28 px-3 py-2 font-semibold">Image</th>
                       <th className="px-3 py-2 font-semibold">Property</th>
                       <th className="px-3 py-2 font-semibold">Type</th>
                       <th className="px-3 py-2 font-semibold">Area</th>
@@ -4368,7 +3987,6 @@ function Workspace() {
                   <tbody>
                     {displayedProperties.map((property) => {
                       const isSelected = property.id === selectedPropertyId;
-                      const rowImage = propertyPrimaryImage(property);
                       return (
                         <tr
                           key={property.id}
@@ -4377,14 +3995,6 @@ function Workspace() {
                           }`}
                           onClick={() => selectProperty(property.id)}
                         >
-                          <td className="px-3 py-3">
-                            <StoredPropertyImage
-                              alt={`${property.name} property image`}
-                              className="h-14 w-24 rounded-md border border-border object-cover"
-                              image={rowImage}
-                              placeholderClassName="grid h-14 w-24 place-items-center rounded-md border border-dashed border-border bg-muted/40 text-muted-foreground"
-                            />
-                          </td>
                           <td className="px-3 py-3">
                             <div className="font-medium">{property.name}</div>
                             <div className="text-muted-foreground">
