@@ -25,6 +25,10 @@ export type SecurityRoleAssignment = {
   role: SecurityRole;
 };
 
+export type SecurityNotificationPreferences = {
+  work_assignment_email_enabled: boolean;
+};
+
 export type SecurityEntityRoleRecord = SecurityRoleAssignment & {
   entity_name: string;
 };
@@ -48,6 +52,7 @@ export type SecurityMemberRecord = {
   invite_sent_at: string | null;
   invite_expires_at: string | null;
   invite_accepted_at: string | null;
+  notification_preferences: SecurityNotificationPreferences;
   created_at: string;
   roles: SecurityEntityRoleRecord[];
 };
@@ -95,12 +100,14 @@ export type SecurityMemberPayload = {
   display_name: string;
   roles: SecurityRoleAssignment[];
   is_active?: boolean;
+  notification_preferences?: SecurityNotificationPreferences;
 };
 
 export type SecurityMemberUpdatePayload = {
   display_name?: string;
   is_active?: boolean;
   roles?: SecurityRoleAssignment[];
+  notification_preferences?: SecurityNotificationPreferences;
 };
 
 export type SecurityMemberInviteRecord = {

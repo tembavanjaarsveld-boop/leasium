@@ -43,6 +43,7 @@ from apps.api.schemas.security import (
     SecurityMemberRead,
     SecurityMemberUpdate,
     SecurityMeRead,
+    SecurityNotificationPreferences,
     SecurityOrganisationRead,
     SecurityRoleAssignment,
     SecurityWorkspaceRead,
@@ -198,6 +199,18 @@ def _invite_detail(member: AppUser) -> str:
     return "No operator invite email has been sent yet; access is recorded only."
 
 
+def _notification_preferences(member: AppUser) -> SecurityNotificationPreferences:
+    raw = (
+        member.notification_preferences
+        if isinstance(member.notification_preferences, dict)
+        else {}
+    )
+    enabled = raw.get("work_assignment_email_enabled")
+    return SecurityNotificationPreferences(
+        work_assignment_email_enabled=enabled if isinstance(enabled, bool) else True
+    )
+
+
 def _member_read(
     member: AppUser,
     roles_by_user: dict[UUID, list[SecurityEntityRoleRead]],
@@ -214,6 +227,7 @@ def _member_read(
         invite_sent_at=member.invite_sent_at,
         invite_expires_at=member.invite_expires_at,
         invite_accepted_at=member.invite_accepted_at,
+        notification_preferences=_notification_preferences(member),
         created_at=member.created_at,
         roles=roles_by_user.get(member.id, []),
     )
@@ -383,6 +397,7 @@ def create_first_workspace(
         is_active=True,
         invite_status=OperatorInviteStatus.accepted,
         invite_accepted_at=now,
+        notification_preferences=SecurityNotificationPreferences().model_dump(),
     )
     entity = Entity(
         organisation_id=organisation.id,
@@ -521,12 +536,14 @@ def create_security_member(
             email=email,
             display_name=payload.display_name.strip() or email,
             is_active=payload.is_active,
+            notification_preferences=payload.notification_preferences.model_dump(),
         )
         session.add(member)
         session.flush()
     else:
         member.display_name = payload.display_name.strip() or member.display_name
         member.is_active = payload.is_active
+        member.notification_preferences = payload.notification_preferences.model_dump()
     _replace_roles(session, user.organisation_id, member.id, assignments)
     result = _send_operator_invite(member, user, organisation, settings)
     audit_log(
@@ -684,6 +701,8 @@ def update_security_member(
                 detail="Keep at least one owner or admin role on your own account.",
             )
         _replace_roles(session, user.organisation_id, member.id, assignments)
+    if payload.notification_preferences is not None:
+        member.notification_preferences = payload.notification_preferences.model_dump()
     audit_log(
         session,
         actor=user.actor,

@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Ban,
+  Bell,
+  BellOff,
   Building2,
   CheckCircle2,
   CircleDollarSign,
@@ -67,6 +69,7 @@ import {
   type XeroPaymentReconciliationRecord,
   type XeroPaymentReconciliationResultRecord,
   type SecurityMemberRecord,
+  type SecurityMemberUpdatePayload,
   type SecurityRole,
   type SecurityRoleAssignment,
   type XeroMappingIssueRecord,
@@ -312,6 +315,10 @@ function inviteLabel(member: SecurityMemberRecord) {
     return "Invite expired";
   }
   return "No email sent";
+}
+
+function workAssignmentEmailEnabled(member: SecurityMemberRecord) {
+  return member.notification_preferences.work_assignment_email_enabled;
 }
 
 function nextRolesForEntity(
@@ -691,11 +698,7 @@ function SettingsWorkspace() {
       payload,
     }: {
       memberId: string;
-      payload: {
-        display_name?: string;
-        is_active?: boolean;
-        roles?: SecurityRoleAssignment[];
-      };
+      payload: SecurityMemberUpdatePayload;
     }) => updateSecurityMember(memberId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["security-workspace"] });
@@ -1250,6 +1253,7 @@ function SettingsWorkspace() {
                       <th className="px-3 py-2 font-semibold">
                         Selected entity role
                       </th>
+                      <th className="px-3 py-2 font-semibold">Notifications</th>
                       <th className="px-3 py-2 font-semibold">All access</th>
                       <th className="px-3 py-2 font-semibold">Action</th>
                     </tr>
@@ -1271,6 +1275,8 @@ function SettingsWorkspace() {
                       const isSendingInvite =
                         resendInviteMutation.isPending &&
                         resendInviteMutation.variables === member.id;
+                      const workEmailEnabled =
+                        workAssignmentEmailEnabled(member);
                       return (
                         <tr
                           key={member.id}
@@ -1352,6 +1358,50 @@ function SettingsWorkspace() {
                                 )}
                                 Save
                               </SecondaryButton>
+                            </div>
+                          </td>
+                          <td className="min-w-64 px-3 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <StatusBadge
+                                tone={workEmailEnabled ? "success" : "neutral"}
+                              >
+                                {workEmailEnabled
+                                  ? "Work email on"
+                                  : "Work email off"}
+                              </StatusBadge>
+                              <SecondaryButton
+                                type="button"
+                                className="h-9 px-3"
+                                disabled={
+                                  isUpdating ||
+                                  !securityQuery.data?.can_manage_security
+                                }
+                                onClick={() =>
+                                  memberMutation.mutate({
+                                    memberId: member.id,
+                                    payload: {
+                                      notification_preferences: {
+                                        ...member.notification_preferences,
+                                        work_assignment_email_enabled:
+                                          !workEmailEnabled,
+                                      },
+                                    },
+                                  })
+                                }
+                              >
+                                {workEmailEnabled ? (
+                                  <BellOff size={14} />
+                                ) : (
+                                  <Bell size={14} />
+                                )}
+                                {workEmailEnabled
+                                  ? "Mute work email"
+                                  : "Enable work email"}
+                              </SecondaryButton>
+                            </div>
+                            <div className="mt-2 max-w-56 text-xs text-muted-foreground">
+                              Controls Work queue Send notice emails for this
+                              operator.
                             </div>
                           </td>
                           <td className="min-w-64 px-3 py-3">

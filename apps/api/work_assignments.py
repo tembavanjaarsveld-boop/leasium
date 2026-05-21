@@ -7,7 +7,9 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 from stewart.core.db import utcnow
+from stewart.core.models import AppUser
 from stewart.core.settings import Settings
 from stewart.integrations.communications import DeliveryResult, WorkAssignmentEmail
 
@@ -109,6 +111,42 @@ def work_assignment_email_invite(
         work_url=work_url,
         template_key=_template_key(settings, assignment),
         template_version=_template_version(settings, assignment),
+    )
+
+
+def work_assignment_email_preference_enabled(
+    metadata: dict[str, Any] | None,
+    session: Session,
+) -> bool:
+    assignment = _metadata_record((metadata or {}).get(WORK_ASSIGNMENT_KEY))
+    assigned_user_id = _metadata_uuid(assignment.get("assigned_user_id"))
+    if assigned_user_id is None:
+        return True
+    app_user = session.get(AppUser, assigned_user_id)
+    if app_user is None:
+        return True
+    preferences = _metadata_record(app_user.notification_preferences)
+    enabled = preferences.get("work_assignment_email_enabled")
+    return enabled if isinstance(enabled, bool) else True
+
+
+def work_assignment_email_preference_skipped_result(
+    invite: WorkAssignmentEmail,
+) -> DeliveryResult:
+    return DeliveryResult(
+        channel="email",
+        status="skipped",
+        provider="sendgrid",
+        recipient=invite.assignee_email,
+        error="Assignment email disabled by operator preference.",
+        metadata={
+            "template_key": invite.template_key,
+            "template_version": invite.template_version,
+            "target_id": str(invite.target_id),
+            "target_type": invite.target_type,
+            "entity_id": str(invite.entity_id),
+            "work_kind": invite.work_kind,
+        },
     )
 
 

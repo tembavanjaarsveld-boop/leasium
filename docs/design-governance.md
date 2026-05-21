@@ -314,6 +314,8 @@ Fourth 2026-05-21 follow-up: assignment controls now include explicit `Send noti
 
 Fifth 2026-05-21 follow-up: assignment notices now accept SendGrid receipt events and can move from queued into delivered/opened/failed provider history across maintenance, arrears, and critical-date work. Remba should review whether the inline `Email delivered` badge is enough for operators or whether provider receipt history needs a compact disclosure once more notification channels exist.
 
+Sixth 2026-05-21 follow-up: Settings now includes a per-operator Work email on/off control, and Work assignment provider notices record `Email skipped` when an assignee has muted work email. Remba should review whether notification preferences belong in the Users and roles table or a dedicated notification/settings panel once batch sends and more channels are added.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

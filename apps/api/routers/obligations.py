@@ -28,6 +28,8 @@ from apps.api.work_assignments import (
     assignment_notification_sent,
     record_work_assignment_delivery,
     work_assignment_email_invite,
+    work_assignment_email_preference_enabled,
+    work_assignment_email_preference_skipped_result,
     work_url,
 )
 
@@ -298,20 +300,22 @@ def send_obligation_assignment_notification_email(
         return obligation
 
     settings = get_settings()
-    result = send_work_assignment_email(
-        work_assignment_email_invite(
-            metadata,
-            target_id=obligation.id,
-            target_type="obligation",
-            entity_id=obligation.entity_id,
-            work_kind="Critical date",
-            title=obligation.title,
-            description=obligation.notes,
-            due_date=obligation.due_date,
-            work_url=work_url(settings, "/properties"),
-            settings=settings,
-        ),
-        settings,
+    invite = work_assignment_email_invite(
+        metadata,
+        target_id=obligation.id,
+        target_type="obligation",
+        entity_id=obligation.entity_id,
+        work_kind="Critical date",
+        title=obligation.title,
+        description=obligation.notes,
+        due_date=obligation.due_date,
+        work_url=work_url(settings, "/properties"),
+        settings=settings,
+    )
+    result = (
+        send_work_assignment_email(invite, settings)
+        if work_assignment_email_preference_enabled(metadata, session)
+        else work_assignment_email_preference_skipped_result(invite)
     )
     obligation.obligation_metadata = record_work_assignment_delivery(
         metadata,

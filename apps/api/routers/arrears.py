@@ -30,6 +30,8 @@ from apps.api.work_assignments import (
     assignment_notification_sent,
     record_work_assignment_delivery,
     work_assignment_email_invite,
+    work_assignment_email_preference_enabled,
+    work_assignment_email_preference_skipped_result,
     work_url,
 )
 
@@ -349,20 +351,22 @@ def send_arrears_assignment_notification_email(
     tenant = session.get(Tenant, arrears_case.tenant_id)
     tenant_name = (tenant.trading_name or tenant.legal_name) if tenant is not None else "Tenant"
     settings = get_settings()
-    result = send_work_assignment_email(
-        work_assignment_email_invite(
-            metadata,
-            target_id=arrears_case.id,
-            target_type="arrears_case",
-            entity_id=arrears_case.entity_id,
-            work_kind="Arrears",
-            title=f"{tenant_name} arrears",
-            description=arrears_case.notes,
-            due_date=arrears_case.next_reminder_on,
-            work_url=work_url(settings, "/operations"),
-            settings=settings,
-        ),
-        settings,
+    invite = work_assignment_email_invite(
+        metadata,
+        target_id=arrears_case.id,
+        target_type="arrears_case",
+        entity_id=arrears_case.entity_id,
+        work_kind="Arrears",
+        title=f"{tenant_name} arrears",
+        description=arrears_case.notes,
+        due_date=arrears_case.next_reminder_on,
+        work_url=work_url(settings, "/operations"),
+        settings=settings,
+    )
+    result = (
+        send_work_assignment_email(invite, settings)
+        if work_assignment_email_preference_enabled(metadata, session)
+        else work_assignment_email_preference_skipped_result(invite)
     )
     arrears_case.arrears_metadata = record_work_assignment_delivery(
         metadata,

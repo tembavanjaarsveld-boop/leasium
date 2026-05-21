@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.models import AuditAction, Entity, MaintenanceWorkOrder, Organisation
+from stewart.core.models import AppUser, AuditAction, Entity, MaintenanceWorkOrder, Organisation
 from stewart.core.settings import get_settings
 from stewart.integrations.communications import DeliveryResult
 
@@ -590,6 +590,63 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
         "sendgrid.work_assignment",
         "sendgrid.work_assignment_event_webhook",
     ]
+
+
+def test_maintenance_assignment_notification_respects_operator_email_preference(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    context = _lease_context(client, session)
+    settings = get_settings()
+    assignee = session.get(AppUser, settings.dev_user_id)
+    assert assignee is not None
+    assignee.notification_preferences = {"work_assignment_email_enabled": False}
+    session.commit()
+
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "Preference blocked notice",
+            "status": "assigned",
+            "metadata": {
+                "work_assignment": {
+                    "assigned_user_id": str(settings.dev_user_id),
+                    "assigned_user_name": settings.dev_user_name,
+                    "assigned_user_email": settings.dev_user_email,
+                    "work_title": "Preference blocked notice",
+                    "work_kind": "Maintenance",
+                    "notification": {
+                        "status": "ready",
+                        "recipient_email": settings.dev_user_email,
+                        "template_key": "work_assignment_notification",
+                        "template_version": "v1",
+                    },
+                    "history": [],
+                }
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+
+    def fake_send_work_assignment_email(invite: Any, settings_arg: Any) -> DeliveryResult:
+        raise AssertionError("Work assignment email should respect disabled preference.")
+
+    monkeypatch.setattr(
+        "apps.api.routers.maintenance.send_work_assignment_email",
+        fake_send_work_assignment_email,
+    )
+
+    send_response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/assignment-notification/send-email"
+    )
+    assert send_response.status_code == 200
+    notification = send_response.json()["metadata"]["work_assignment"]["notification"]
+    assert notification["status"] == "skipped"
+    assert notification["error"] == "Assignment email disabled by operator preference."
 
 
 def test_arrears_case_tracks_aged_balances_reminders_and_escalation(

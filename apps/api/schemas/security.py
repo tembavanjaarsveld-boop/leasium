@@ -20,6 +20,10 @@ class SecurityEntityRoleRead(BaseModel):
     role: UserRole
 
 
+class SecurityNotificationPreferences(BaseModel):
+    work_assignment_email_enabled: bool = True
+
+
 class SecurityCurrentUserRead(BaseModel):
     id: UUID
     organisation_id: UUID
@@ -46,6 +50,9 @@ class SecurityMemberRead(ApiModel):
     invite_sent_at: datetime | None
     invite_expires_at: datetime | None
     invite_accepted_at: datetime | None
+    notification_preferences: SecurityNotificationPreferences = Field(
+        default_factory=SecurityNotificationPreferences
+    )
     created_at: datetime
     roles: list[SecurityEntityRoleRead] = Field(default_factory=list)
 
@@ -117,12 +124,16 @@ class SecurityMemberCreate(BaseModel):
     display_name: str
     roles: list[SecurityRoleAssignment] = Field(min_length=1)
     is_active: bool = True
+    notification_preferences: SecurityNotificationPreferences = Field(
+        default_factory=SecurityNotificationPreferences
+    )
 
 
 class SecurityMemberUpdate(BaseModel):
     display_name: str | None = None
     is_active: bool | None = None
     roles: list[SecurityRoleAssignment] | None = None
+    notification_preferences: SecurityNotificationPreferences | None = None
 
 
 class SecurityMemberInviteRead(BaseModel):

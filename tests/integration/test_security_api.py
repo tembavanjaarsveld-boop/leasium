@@ -120,6 +120,9 @@ def test_security_workspace_lists_current_operator_and_auth_boundary(
     assert body["organisation"]["name"] == "SKJ Capital"
     assert body["current_user"]["email"] == get_settings().dev_user_email
     assert body["can_manage_security"] is True
+    assert body["members"][0]["notification_preferences"] == {
+        "work_assignment_email_enabled": True
+    }
     assert body["members"][0]["roles"] == [
         {
             "entity_id": str(entity.id),
@@ -265,6 +268,7 @@ def test_owner_can_invite_and_update_operator_roles(
             "display_name": "Operations Team",
             "is_active": False,
             "roles": [{"entity_id": str(entity.id), "role": "viewer"}],
+            "notification_preferences": {"work_assignment_email_enabled": False},
         },
     )
 
@@ -273,10 +277,12 @@ def test_owner_can_invite_and_update_operator_roles(
     assert updated["display_name"] == "Operations Team"
     assert updated["is_active"] is False
     assert updated["roles"][0]["role"] == "viewer"
+    assert updated["notification_preferences"]["work_assignment_email_enabled"] is False
 
     member = session.get(AppUser, UUID(member_id))
     assert member is not None
     assert member.email == "ops.team@example.com"
+    assert member.notification_preferences["work_assignment_email_enabled"] is False
     role = session.scalar(
         select(UserEntityRole.role).where(
             UserEntityRole.user_id == member.id,

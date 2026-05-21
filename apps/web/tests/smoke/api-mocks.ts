@@ -1054,6 +1054,9 @@ const securityWorkspace = () => ({
       invite_sent_at: "2026-05-01T00:00:00.000Z",
       invite_expires_at: "2026-05-04T00:00:00.000Z",
       invite_accepted_at: "2026-05-01T00:00:00.000Z",
+      notification_preferences: {
+        work_assignment_email_enabled: true,
+      },
       created_at: "2026-05-01T00:00:00.000Z",
       roles: [
         {
@@ -1074,6 +1077,9 @@ const securityWorkspace = () => ({
       invite_sent_at: "2026-05-01T00:00:00.000Z",
       invite_expires_at: "2026-05-04T00:00:00.000Z",
       invite_accepted_at: "2026-05-01T00:00:00.000Z",
+      notification_preferences: {
+        work_assignment_email_enabled: true,
+      },
       created_at: "2026-05-01T00:00:00.000Z",
       roles: [
         {
