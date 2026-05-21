@@ -714,34 +714,37 @@ function DashboardCommandCenter({
                 key={item.id}
                 href={item.href}
                 className={[
-                  "group grid gap-3 px-4 py-4 transition hover:bg-muted/55 md:grid-cols-[3rem_minmax(0,1fr)_auto] md:items-center",
-                  index === 0 ? "bg-leasium-blue-soft/45" : "",
+                  "group grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 transition hover:bg-muted/55 md:grid-cols-[3.25rem_minmax(0,1fr)_auto] md:items-center",
+                  index === 0 ? "bg-leasium-blue-soft/35" : "",
                 ].join(" ")}
               >
-                <div className="flex items-center gap-2 md:grid md:justify-items-center">
-                  <span className="text-xs font-semibold text-muted-foreground">
+                <div className="flex justify-center self-center">
+                  <span className="inline-flex h-8 min-w-10 items-center justify-center rounded-full border border-border bg-white px-2 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition group-hover:border-primary/30 group-hover:text-primary">
                     #{index + 1}
-                  </span>
-                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-white text-primary shadow-leasiumXs transition group-hover:bg-primary group-hover:text-white">
-                    {item.icon}
                   </span>
                 </div>
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <div className="line-clamp-2 text-[15px] font-semibold leading-5 text-foreground">
+                    {item.title}
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium leading-4 text-muted-foreground">
                     <StatusBadge tone={item.tone}>{item.chip}</StatusBadge>
                     <span>{item.area}</span>
-                    <span>{item.dateLabel}</span>
+                    <span
+                      aria-hidden="true"
+                      className="hidden h-1 w-1 rounded-full bg-border sm:inline-block"
+                    />
+                    <span className="min-w-0 truncate">{item.dateLabel}</span>
                   </div>
-                  <div className="mt-2 font-semibold">{item.title}</div>
                   <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">
                     {item.why}
                   </p>
                 </div>
-                <div className="flex items-center justify-between gap-2 md:justify-end">
-                  <span className="text-sm font-semibold text-primary">
+                <div className="col-start-2 flex min-w-0 items-center gap-2 md:col-start-auto md:justify-end md:self-center">
+                  <span className="truncate text-sm font-semibold text-primary md:whitespace-nowrap">
                     {item.nextStep}
                   </span>
-                  <span className="grid h-8 w-8 place-items-center rounded-xl border border-border bg-white text-primary transition group-hover:border-primary/35 group-hover:bg-primary group-hover:text-white">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border bg-white text-primary transition group-hover:border-primary/35 group-hover:bg-primary group-hover:text-white">
                     <Link2 size={15} />
                   </span>
                 </div>
