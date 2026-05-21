@@ -2239,11 +2239,14 @@ function OperationsWorkspace() {
                   {filteredOpenQueueItems.map((item) => (
                     <div
                       key={item.id}
-                      className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+                      className="grid gap-3 px-4 py-4 xl:grid-cols-[minmax(18rem,1fr)_22rem_auto] xl:items-start"
                     >
                       <Link href={item.href} className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-semibold">{item.title}</span>
+                          <StatusBadge tone={item.tone}>
+                            {queueDateLabel(item)}
+                          </StatusBadge>
                           <StatusBadge tone={item.tone}>
                             {item.chip}
                           </StatusBadge>
@@ -2255,22 +2258,20 @@ function OperationsWorkspace() {
                           {item.description}
                         </p>
                       </Link>
-                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                        <StatusBadge tone={item.tone}>
-                          {queueDateLabel(item)}
-                        </StatusBadge>
-                        {isAssignableQueueItem(item)
-                          ? renderAssignmentControl({
-                              itemId: item.id,
-                              title: item.title,
-                              metadata: item.record.metadata,
-                              onAssign: (assigneeId) =>
-                                assignQueueItem(item, assigneeId),
-                              onAction: (action) =>
-                                actionQueueItem(item, action),
-                              onNotify: () => sendAssignmentNotification(item),
-                            })
-                          : null}
+                      {isAssignableQueueItem(item) ? (
+                        <div className="w-full xl:w-[22rem]">
+                          {renderAssignmentControl({
+                            itemId: item.id,
+                            title: item.title,
+                            metadata: item.record.metadata,
+                            onAssign: (assigneeId) =>
+                              assignQueueItem(item, assigneeId),
+                            onAction: (action) => actionQueueItem(item, action),
+                            onNotify: () => sendAssignmentNotification(item),
+                          })}
+                        </div>
+                      ) : null}
+                      <div className="grid w-full gap-2 sm:w-auto sm:grid-flow-col xl:grid-flow-row xl:justify-items-stretch">
                         {renderQueueActions(item)}
                       </div>
                     </div>
