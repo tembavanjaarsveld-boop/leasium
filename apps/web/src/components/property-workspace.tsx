@@ -560,10 +560,17 @@ function propertyUsesOwnerBilling(property: PropertyRecord | null | undefined) {
 
 type OwnershipChipPalette =
   | "current"
+  | "sky"
   | "teal"
+  | "cyan"
   | "lavender"
+  | "indigo"
   | "green"
-  | "blue"
+  | "lime"
+  | "amber"
+  | "rose"
+  | "pink"
+  | "peach"
   | "slate";
 
 type OwnershipChip = {
@@ -582,11 +589,27 @@ function normaliseOwnerLabel(value: string) {
 }
 
 function ownerLabelHash(value: string) {
-  return [...normaliseOwnerLabel(value)].reduce(
-    (hash, char) => (hash * 31 + char.charCodeAt(0)) % 997,
-    7,
-  );
+  let hash = 2166136261;
+  for (const char of normaliseOwnerLabel(value)) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
+
+const ownerChipPaletteCycle: OwnershipChipPalette[] = [
+  "teal",
+  "indigo",
+  "green",
+  "rose",
+  "cyan",
+  "amber",
+  "lavender",
+  "lime",
+  "sky",
+  "pink",
+  "peach",
+];
 
 function splitOwnershipLabels(value: string | null | undefined) {
   if (!value) {
@@ -659,6 +682,7 @@ function ownerPaletteForLabel(
   label: string,
   property: PropertyRecord,
   currentEntityName?: string | null,
+  paletteByLabel?: Map<string, OwnershipChipPalette>,
 ): OwnershipChipPalette {
   if (
     currentEntityName &&
@@ -671,36 +695,79 @@ function ownerPaletteForLabel(
   if (role.includes("unknown") || owner.includes("unknown")) {
     return "slate";
   }
-  if (role.includes("related") || role.includes("subsidiary")) {
-    return "teal";
+  const assignedPalette = paletteByLabel?.get(owner);
+  if (assignedPalette) {
+    return assignedPalette;
   }
-  if (role.includes("trust") || owner.includes("trust")) {
-    return "lavender";
-  }
-  const palettes: OwnershipChipPalette[] = [
-    "teal",
-    "green",
-    "blue",
-    "lavender",
+  return ownerChipPaletteCycle[
+    ownerLabelHash(label) % ownerChipPaletteCycle.length
   ];
-  return palettes[ownerLabelHash(label) % palettes.length];
 }
 
 function ownershipChipClassName(palette: OwnershipChipPalette) {
   const palettes: Record<OwnershipChipPalette, string> = {
     current: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
+    sky: "border-[#BAE6FD] bg-[#F0F9FF] text-[#0369A1]",
     teal: "border-[#99F6E4] bg-[#F0FDFA] text-[#0F766E]",
+    cyan: "border-[#A5F3FC] bg-[#ECFEFF] text-[#0E7490]",
     lavender: "border-[#DDD6FE] bg-[#F5F3FF] text-[#5B21B6]",
+    indigo: "border-[#C7D2FE] bg-[#EEF2FF] text-[#3730A3]",
     green: "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]",
-    blue: "border-[#C7D2FE] bg-[#EEF2FF] text-[#3730A3]",
+    lime: "border-[#D9F99D] bg-[#F7FEE7] text-[#4D7C0F]",
+    amber: "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    rose: "border-[#FECDD3] bg-[#FFF1F2] text-[#BE123C]",
+    pink: "border-[#FBCFE8] bg-[#FDF2F8] text-[#BE185D]",
+    peach: "border-[#FED7AA] bg-[#FFF7ED] text-[#C2410C]",
     slate: "border-slate-200 bg-slate-100 text-slate-600",
   };
   return palettes[palette];
 }
 
+function propertyOwnershipPaletteMap(
+  properties: PropertyRecord[],
+  currentEntityName?: string | null,
+) {
+  const labelsByKey = new Map<string, string>();
+  for (const property of properties) {
+    for (const label of propertyOwnerLabels(property, currentEntityName)) {
+      labelsByKey.set(normaliseOwnerLabel(label), label);
+    }
+  }
+
+  const assignments = new Map<string, OwnershipChipPalette>();
+  const usedPalettes = new Set<OwnershipChipPalette>();
+  for (const [key, label] of [...labelsByKey.entries()].sort((a, b) =>
+    a[1].localeCompare(b[1]),
+  )) {
+    if (currentEntityName && key === normaliseOwnerLabel(currentEntityName)) {
+      assignments.set(key, "current");
+      continue;
+    }
+
+    const startIndex = ownerLabelHash(label) % ownerChipPaletteCycle.length;
+    let palette = ownerChipPaletteCycle[startIndex];
+    if (usedPalettes.size < ownerChipPaletteCycle.length) {
+      for (let offset = 0; offset < ownerChipPaletteCycle.length; offset += 1) {
+        const candidate =
+          ownerChipPaletteCycle[
+            (startIndex + offset) % ownerChipPaletteCycle.length
+          ];
+        if (!usedPalettes.has(candidate)) {
+          palette = candidate;
+          break;
+        }
+      }
+    }
+    assignments.set(key, palette);
+    usedPalettes.add(palette);
+  }
+  return assignments;
+}
+
 function propertyOwnershipBadges(
   property: PropertyRecord | null | undefined,
   currentEntityName?: string | null,
+  paletteByLabel?: Map<string, OwnershipChipPalette>,
 ) {
   if (!property) {
     return [];
@@ -718,7 +785,12 @@ function propertyOwnershipBadges(
   const visibleLabels = labels.slice(0, 2);
   const badges: OwnershipChip[] = visibleLabels.map((label) => ({
     label,
-    palette: ownerPaletteForLabel(label, property, currentEntityName),
+    palette: ownerPaletteForLabel(
+      label,
+      property,
+      currentEntityName,
+      paletteByLabel,
+    ),
     title: label,
   }));
 
@@ -1406,6 +1478,14 @@ function Workspace() {
         (property) => property.id === selectedPropertyId,
       ),
     [propertiesQuery.data, selectedPropertyId],
+  );
+  const ownershipPaletteByLabel = useMemo(
+    () =>
+      propertyOwnershipPaletteMap(
+        propertiesQuery.data ?? [],
+        selectedEntity?.name,
+      ),
+    [propertiesQuery.data, selectedEntity?.name],
   );
   const entitiesLoading =
     !entitiesQuery.data &&
@@ -4070,6 +4150,7 @@ function Workspace() {
                             {propertyOwnershipBadges(
                               property,
                               selectedEntity?.name,
+                              ownershipPaletteByLabel,
                             )
                               .slice(0, 3)
                               .map((badge) => (
@@ -4164,6 +4245,7 @@ function Workspace() {
                     {propertyOwnershipBadges(
                       selectedProperty,
                       selectedEntity?.name,
+                      ownershipPaletteByLabel,
                     ).map((badge) => (
                       <span
                         key={badge.label}

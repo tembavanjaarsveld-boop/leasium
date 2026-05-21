@@ -100,6 +100,9 @@ Progress notes:
   chips, split ownership collapses after two labels, and unknown ownership uses
   a neutral slate chip. Remba reviewed the direction and asked that tags stay
   compact metadata, not warnings or decorative rainbow labels.
+- 2026-05-21 follow-up: owner tag colours now distribute across the loaded
+  owner/entity set with collision avoidance, so different owners are easier to
+  identify by colour while the same owner keeps the same soft tag colour.
 - 2026-05-20: `/billing-readiness` now has task-zone tabs for Readiness,
   Billing drafts, Invoice prep, and Delivery & payments. The blocker action
   queue lives with rent-roll readiness, while preparation/approval work is
