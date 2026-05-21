@@ -220,12 +220,23 @@ type WorkAssignment = {
   assignedRole: string | null;
   assignedAt: string | null;
   assignedByName: string | null;
+  reminderStatus: string | null;
+  reminderDueOn: string | null;
+  reminderDetail: string | null;
+  escalationStatus: string | null;
+  escalationDueOn: string | null;
+  escalationRule: string | null;
   notificationStatus: string | null;
   notificationDetail: string | null;
   history: WorkAssignmentHistoryEntry[];
 };
 
-type AssigneeFilter = "all" | "unassigned" | "me" | `member:${string}`;
+type AssigneeFilter =
+  | "all"
+  | "unassigned"
+  | "me"
+  | "follow_up"
+  | `member:${string}`;
 
 type MaintenanceFormState = {
   title: string;
@@ -310,6 +321,12 @@ function dateOnly(value: Date) {
   const month = String(value.getMonth() + 1).padStart(2, "0");
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function addDays(value: Date, days: number) {
+  const next = new Date(value);
+  next.setDate(next.getDate() + days);
+  return next;
 }
 
 function optionalString(value: string) {
@@ -473,6 +490,8 @@ function workAssignment(
     return null;
   }
   const notification = isPlainRecord(raw.notification) ? raw.notification : {};
+  const reminder = isPlainRecord(raw.reminder) ? raw.reminder : {};
+  const escalation = isPlainRecord(raw.escalation) ? raw.escalation : {};
   const assignedUserId = stringValue(raw, "assigned_user_id");
   const assignedName = stringValue(raw, "assigned_user_name");
   const history = workAssignmentHistory(raw.history);
@@ -486,6 +505,12 @@ function workAssignment(
     assignedRole: stringValue(raw, "assigned_role"),
     assignedAt: stringValue(raw, "assigned_at"),
     assignedByName: stringValue(raw, "assigned_by_name"),
+    reminderStatus: stringValue(reminder, "status"),
+    reminderDueOn: stringValue(reminder, "due_on"),
+    reminderDetail: stringValue(reminder, "detail"),
+    escalationStatus: stringValue(escalation, "status"),
+    escalationDueOn: stringValue(escalation, "due_on"),
+    escalationRule: stringValue(escalation, "rule"),
     notificationStatus: stringValue(notification, "status"),
     notificationDetail: stringValue(notification, "detail"),
     history,
@@ -553,7 +578,84 @@ function matchesAssigneeFilter(
   if (filter === "me") {
     return Boolean(currentUserId && userId === currentUserId);
   }
+  if (filter === "follow_up") {
+    return assignmentFollowUpDue(workAssignment(item.record.metadata));
+  }
   return userId === filter.replace("member:", "");
+}
+
+function assignmentFollowUpDue(assignment: WorkAssignment | null) {
+  if (!assignment || (!assignment.assignedUserId && !assignment.assignedName)) {
+    return false;
+  }
+  if (assignment.reminderStatus === "due") {
+    return true;
+  }
+  if (assignment.reminderDueOn && dueRank(assignment.reminderDueOn) <= 0) {
+    return true;
+  }
+  return Boolean(
+    assignment.escalationDueOn && dueRank(assignment.escalationDueOn) <= 0,
+  );
+}
+
+function assignmentWorkflowPlan({
+  assignee,
+  dueDate,
+  tone,
+  now,
+}: {
+  assignee: SecurityMemberRecord | null;
+  dueDate: string | null | undefined;
+  tone: Tone;
+  now: Date;
+}) {
+  if (!assignee) {
+    return {
+      reminder: {
+        status: "skipped",
+        due_on: null,
+        detail: "Assignment was cleared; no reminder is scheduled.",
+      },
+      escalation: {
+        status: "skipped",
+        due_on: null,
+        rule: "No assignee is watching this work.",
+      },
+    };
+  }
+
+  const dueDays = dueRank(dueDate);
+  const reminderDueOn =
+    tone === "danger" || dueDays <= 0
+      ? dateOnly(now)
+      : tone === "warning" || dueDays <= 2
+        ? dateOnly(addDays(now, 1))
+        : dateOnly(addDays(now, 2));
+  const escalationDueOn =
+    dueDays < 0
+      ? dateOnly(addDays(now, 1))
+      : dueDate
+        ? dateOnly(addDays(new Date(`${dueDate.slice(0, 10)}T00:00:00`), 1))
+        : dateOnly(addDays(now, 3));
+
+  return {
+    reminder: {
+      channel: "in_app",
+      provider: "leasium",
+      status: dueRank(reminderDueOn) <= 0 ? "due" : "scheduled",
+      due_on: reminderDueOn,
+      detail:
+        "In-app reminder plan only. Provider email/SMS delivery is a separate approval step.",
+    },
+    escalation: {
+      channel: "in_app",
+      provider: "leasium",
+      status: "watching",
+      due_on: escalationDueOn,
+      rule: "Flag for escalation if this assigned work is still open after the watched date.",
+    },
+  };
 }
 
 function assignmentMetadata({
@@ -563,6 +665,8 @@ function assignmentMetadata({
   entityId,
   title,
   kind,
+  dueDate,
+  tone,
 }: {
   metadata: Record<string, unknown>;
   assignee: SecurityMemberRecord | null;
@@ -573,14 +677,23 @@ function assignmentMetadata({
   entityId: string;
   title: string;
   kind: string;
+  dueDate: string | null | undefined;
+  tone: Tone;
 }) {
   const now = new Date().toISOString();
+  const nowDate = new Date(now);
   const existing = workAssignment(metadata);
   const existingHistory = existing?.history ?? [];
   const actorName =
     currentUser?.display_name || currentUser?.email || "Leasium operator";
   const assigneeName = assignee ? memberLabel(assignee) : null;
   const notificationStatus = assignee ? "ready" : "skipped";
+  const workflowPlan = assignmentWorkflowPlan({
+    assignee,
+    dueDate,
+    tone,
+    now: nowDate,
+  });
   const summary = assigneeName
     ? `${kind} assigned to ${assigneeName}.`
     : `${kind} assignment cleared.`;
@@ -608,6 +721,8 @@ function assignmentMetadata({
       assigned_by_name: actorName,
       work_title: title,
       work_kind: kind,
+      reminder: workflowPlan.reminder,
+      escalation: workflowPlan.escalation,
       notification: {
         channel: "in_app",
         provider: "leasium",
@@ -1221,6 +1336,9 @@ function OperationsWorkspace() {
   ).length;
   const assignedWorkCount =
     assignableOpenQueueItems.length - unassignedWorkCount;
+  const followUpDueCount = assignableOpenQueueItems.filter((item) =>
+    assignmentFollowUpDue(workAssignment(item.record.metadata)),
+  ).length;
   const myWorkCount = currentUser
     ? assignableOpenQueueItems.filter(
         (item) => assignedUserId(item) === currentUser.id,
@@ -1238,6 +1356,9 @@ function OperationsWorkspace() {
         count: memberItems.length,
         urgentCount: memberItems.filter((item) =>
           ["danger", "warning"].includes(item.tone),
+        ).length,
+        followUpCount: memberItems.filter((item) =>
+          assignmentFollowUpDue(workAssignment(item.record.metadata)),
         ).length,
       };
     })
@@ -1402,6 +1523,8 @@ function OperationsWorkspace() {
     assigneeId: string,
     title: string,
     kind: string,
+    dueDate: string | null | undefined,
+    tone: Tone,
   ) {
     const assignee = assigneeId
       ? (assignableMembers.find((member) => member.id === assigneeId) ?? null)
@@ -1416,6 +1539,8 @@ function OperationsWorkspace() {
       entityId: selectedEntityId,
       title,
       kind,
+      dueDate,
+      tone,
     });
   }
 
@@ -1428,6 +1553,8 @@ function OperationsWorkspace() {
       assigneeId,
       workOrder.title,
       "Maintenance",
+      workOrder.due_date,
+      maintenanceTone(workOrder),
     );
     if (!metadata) {
       return;
@@ -1445,6 +1572,8 @@ function OperationsWorkspace() {
       assigneeId,
       title,
       "Arrears",
+      arrearsCase.next_reminder_on,
+      arrearsTone(arrearsCase),
     );
     if (!metadata) {
       return;
@@ -1464,6 +1593,8 @@ function OperationsWorkspace() {
       assigneeId,
       obligation.title,
       "Critical date",
+      obligation.due_date,
+      obligationTone(obligation),
     );
     if (!metadata) {
       return;
@@ -1777,6 +1908,7 @@ function OperationsWorkspace() {
                   >
                     <option value="all">All open work</option>
                     <option value="unassigned">Unassigned</option>
+                    <option value="follow_up">Follow-up due</option>
                     {currentUser ? <option value="me">My work</option> : null}
                     {assignableMembers.map((member) => (
                       <option
@@ -1833,6 +1965,22 @@ function OperationsWorkspace() {
                         {assignedWorkCount}
                       </span>
                     </span>
+                    <button
+                      type="button"
+                      aria-label={`Show assignment follow-ups, ${followUpDueCount}`}
+                      onClick={() => setAssigneeFilter("follow_up")}
+                      className={cn(
+                        "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                        assigneeFilter === "follow_up"
+                          ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
+                          : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      Follow-up due
+                      <span className="text-foreground">
+                        {followUpDueCount}
+                      </span>
+                    </button>
                     {currentUser ? (
                       <button
                         type="button"
@@ -1875,6 +2023,11 @@ function OperationsWorkspace() {
                           {row.urgentCount ? (
                             <span className="text-danger">
                               {row.urgentCount} urgent
+                            </span>
+                          ) : null}
+                          {row.followUpCount ? (
+                            <span className="text-warning">
+                              {row.followUpCount} follow-up
                             </span>
                           ) : null}
                         </button>
@@ -1924,12 +2077,16 @@ function OperationsWorkspace() {
                       title={
                         assigneeFilter === "all"
                           ? "No open operational work"
-                          : "No work matches this assignee"
+                          : assigneeFilter === "follow_up"
+                            ? "No assignment follow-ups due"
+                            : "No work matches this assignee"
                       }
                       description={
                         assigneeFilter === "all"
                           ? "New document reviews, maintenance jobs, arrears cases, and tenant follow-ups will appear here."
-                          : "This assignee has no open assigned work in the current queue."
+                          : assigneeFilter === "follow_up"
+                            ? "Assigned work with due reminders or escalation watches will appear here."
+                            : "This assignee has no open assigned work in the current queue."
                       }
                       action={
                         assigneeFilter === "all" ? (
@@ -2796,6 +2953,12 @@ function WorkAssignmentControl({
   const hasMembers = members.length > 0;
   const canAssign = Boolean(value) && value !== currentAssigneeId;
   const notificationReady = assignment?.notificationStatus === "ready";
+  const reminderDue = Boolean(
+    assignment?.reminderDueOn && dueRank(assignment.reminderDueOn) <= 0,
+  );
+  const escalationDue = Boolean(
+    assignment?.escalationDueOn && dueRank(assignment.escalationDueOn) <= 0,
+  );
 
   return (
     <div className="grid min-w-[min(100%,22rem)] gap-2 rounded-xl border border-border bg-muted/30 p-2 text-sm">
@@ -2810,6 +2973,16 @@ function WorkAssignmentControl({
         </span>
         {notificationReady ? (
           <StatusBadge tone="success">Notification ready</StatusBadge>
+        ) : null}
+        {assignment?.reminderDueOn ? (
+          <StatusBadge tone={reminderDue ? "warning" : "neutral"}>
+            Reminder {dueLabel(assignment.reminderDueOn)}
+          </StatusBadge>
+        ) : null}
+        {assignment?.escalationDueOn ? (
+          <StatusBadge tone={escalationDue ? "danger" : "neutral"}>
+            Escalate {dueLabel(assignment.escalationDueOn)}
+          </StatusBadge>
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -2861,7 +3034,7 @@ function WorkAssignmentControl({
         {assignment?.assignedAt
           ? `Updated ${formatDateTime(assignment.assignedAt)} by ${
               assignment.assignedByName ?? "Leasium"
-            }.`
+            }. In-app reminder only; no email/SMS sent.`
           : "Assign the owner and prepare the Leasium notification."}
       </div>
     </div>

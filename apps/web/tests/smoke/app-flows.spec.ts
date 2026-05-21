@@ -124,9 +124,16 @@ test("operations workspace surfaces maintenance and arrears work", async ({
     page.getByText("Assigned to Temba van Jaarsveld").first(),
   ).toBeVisible();
   await expect(page.getByText("Notification ready").first()).toBeVisible();
+  await expect(page.getByText("Reminder Today").first()).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Show Temba van Jaarsveld work, 1/ }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Show assignment follow-ups, 1/ }),
+  ).toBeVisible();
+  await page.getByLabel("Queue assignee").selectOption("follow_up");
+  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expect(page.getByText("Bright Cafe arrears")).not.toBeVisible();
   await page
     .getByLabel("Queue assignee")
     .selectOption({ label: "Temba van Jaarsveld" });
