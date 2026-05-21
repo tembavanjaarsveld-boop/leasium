@@ -100,6 +100,15 @@ for `/run-due`. Leasium records queued/skipped/failed digest receipts in
 operator notification history and accepts SendGrid digest events through
 `/api/v1/work-assignments/webhooks/sendgrid-events`.
 
+The Work notification center also shows provider setup checks for SendGrid and
+Twilio using only bare endpoint URLs. Configure the SendGrid Event Webhook at
+`<PUBLIC_API_URL>/api/v1/work-assignments/webhooks/sendgrid-events` and Twilio
+Work SMS status callbacks at
+`<PUBLIC_API_URL>/api/v1/work-assignments/webhooks/twilio-status`, then pass the
+shared `COMMUNICATIONS_WEBHOOK_SECRET` through the provider console or protected
+scheduler calls. Notification-center responses must not expose webhook secrets,
+provider API tokens, or tokenized callback URLs.
+
 Operator invite delivery also uses the SendGrid key/from settings above. Invite
 links point to `/accept-invite?token=...`; the raw token is sent once by email,
 while only a hash is stored in the database. On a clean production database,
