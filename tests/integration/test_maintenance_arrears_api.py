@@ -851,13 +851,14 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
         assert invite.items[0].title == "Digest delivery maintenance job"
         assert settings_arg.work_assignment_email_template_key == ("work_assignment_notification")
         attempts.append(str(invite.assignee_user_id))
+        message_id = f"sg-digest-{len(attempts)}"
         return DeliveryResult(
             channel="email",
             status="queued",
             provider="sendgrid",
             attempted_at="2026-05-21T09:00:00+00:00",
             recipient=invite.assignee_email,
-            provider_message_id="sg-digest-123",
+            provider_message_id=message_id,
             metadata={
                 "template_key": invite.template_key,
                 "template_version": invite.template_version,
@@ -896,14 +897,19 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
     operator_digest = delivered["digests"][0]
     assert operator_digest["delivery_status"] == "queued"
     assert operator_digest["message_sent"] is True
-    assert operator_digest["provider_message_id"] == "sg-digest-123"
+    assert operator_digest["provider_message_id"] == "sg-digest-1"
+    assert operator_digest["delivery_trigger"] == "scheduled"
+    assert operator_digest["delivery_attempt_count"] == 1
 
     session.refresh(assignee)
     receipt = assignee.notification_preferences["work_assignment_digest_history"][0]
     assert receipt["delivery_status"] == "queued"
     assert receipt["message_sent"] is True
-    assert receipt["provider_message_id"] == "sg-digest-123"
+    assert receipt["provider_message_id"] == "sg-digest-1"
     assert receipt["recipient_email"] == assignee.email
+    assert receipt["delivery_trigger"] == "scheduled"
+    assert receipt["delivery_attempt_count"] == 1
+    assert receipt["provider_history"][0]["event"] == "digest_delivery_attempted"
 
     center_response = client.get(
         "/api/v1/work-assignments/notification-center",
@@ -913,7 +919,34 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
     center = center_response.json()
     assert center["digest_receipts"][0]["delivery_status"] == "queued"
     assert center["digest_receipts"][0]["message_sent"] is True
-    assert center["digest_receipts"][0]["provider_message_id"] == "sg-digest-123"
+    assert center["digest_receipts"][0]["provider_message_id"] == "sg-digest-1"
+    assert center["digest_receipts"][0]["delivery_trigger"] == "scheduled"
+    assert center["digest_receipts"][0]["delivery_attempt_count"] == 1
+
+    recovery_response = client.post(
+        "/api/v1/work-assignments/digests/run",
+        json={
+            "entity_id": entity_id,
+            "cadence": "daily",
+            "send_email_approved": True,
+            "delivery_trigger": "recovery",
+            "recovery_of_generated_at": receipt["generated_at"],
+        },
+    )
+    assert recovery_response.status_code == 200
+    recovery_digest = recovery_response.json()["digests"][0]
+    assert attempts == [str(assignee.id), str(assignee.id)]
+    assert recovery_digest["delivery_trigger"] == "recovery"
+    assert recovery_digest["recovery_of_generated_at"] == receipt["generated_at"].replace(
+        "+00:00", "Z"
+    )
+    assert recovery_digest["delivery_attempt_count"] == 2
+    session.refresh(assignee)
+    recovery_receipt = assignee.notification_preferences["work_assignment_digest_history"][0]
+    assert recovery_receipt["provider_message_id"] == "sg-digest-2"
+    assert recovery_receipt["delivery_trigger"] == "recovery"
+    assert recovery_receipt["recovery_of_generated_at"] == receipt["generated_at"]
+    assert recovery_receipt["delivery_attempt_count"] == 2
 
     receipt_response = client.post(
         "/api/v1/work-assignments/webhooks/sendgrid-events",
@@ -921,7 +954,7 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
             {
                 "work_assignment_digest_entity_id": entity_id,
                 "work_assignment_digest_assignee_user_id": str(assignee.id),
-                "sg_message_id": "sg-digest-123",
+                "sg_message_id": "sg-digest-2",
                 "event": "delivered",
                 "email": assignee.email,
             }

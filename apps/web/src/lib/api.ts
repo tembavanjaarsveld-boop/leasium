@@ -26,6 +26,10 @@ export type SecurityRoleAssignment = {
 };
 
 export type WorkAssignmentDigestCadence = "daily" | "weekly";
+export type WorkAssignmentDigestDeliveryTrigger =
+  | "manual"
+  | "scheduled"
+  | "recovery";
 
 export type SecurityWorkAssignmentDigestCadence = "off" | "daily" | "weekly";
 
@@ -44,6 +48,9 @@ export type SecurityWorkAssignmentDigestReceiptRecord = {
   message_sent: boolean;
   delivery_detail: string | null;
   provider_message_id: string | null;
+  delivery_trigger: string | null;
+  recovery_of_generated_at: string | null;
+  delivery_attempt_count: number;
 };
 
 export type SecurityNotificationPreferences = {
@@ -91,6 +98,9 @@ export type WorkAssignmentDigestRecord = {
   message_sent: boolean;
   delivery_detail: string | null;
   provider_message_id: string | null;
+  delivery_trigger: string | null;
+  recovery_of_generated_at: string | null;
+  delivery_attempt_count: number;
   items: WorkAssignmentDigestItemRecord[];
 };
 
@@ -135,6 +145,9 @@ export type WorkAssignmentNotificationCenterDigestRecord = {
   message_sent: boolean;
   delivery_detail: string | null;
   provider_message_id: string | null;
+  delivery_trigger: string | null;
+  recovery_of_generated_at: string | null;
+  delivery_attempt_count: number;
 };
 
 export type WorkAssignmentNotificationCenterRecord = {
@@ -2848,6 +2861,8 @@ export function runWorkAssignmentDigest(payload: {
   entity_id: string;
   cadence?: WorkAssignmentDigestCadence;
   send_email_approved?: boolean;
+  delivery_trigger?: WorkAssignmentDigestDeliveryTrigger;
+  recovery_of_generated_at?: string | null;
 }) {
   return request<WorkAssignmentDigestRunRecord>(
     "/work-assignments/digests/run",

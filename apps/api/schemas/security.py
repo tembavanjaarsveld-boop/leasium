@@ -36,6 +36,9 @@ class SecurityWorkAssignmentDigestReceipt(BaseModel):
     message_sent: bool = False
     delivery_detail: str | None = None
     provider_message_id: str | None = None
+    delivery_trigger: str | None = None
+    recovery_of_generated_at: datetime | None = None
+    delivery_attempt_count: int = 0
 
 
 class SecurityNotificationPreferences(BaseModel):

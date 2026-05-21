@@ -338,6 +338,8 @@ Fifteenth 2026-05-21 follow-up: Work digests now have an explicit `Send digest` 
 
 Sixteenth 2026-05-21 follow-up: Notifications digest history now shows a direct `Send digest` / `Retry digest` recovery action on digest receipts that have not sent. The action uses the same explicit approved-send path and then refreshes receipt state. Remba should review whether the recovery copy makes it clear that the current cadence digest is sent to matching operators, not only the single historical receipt row.
 
+Seventeenth 2026-05-21 follow-up: digest recovery receipts now carry delivery trigger, source digest timestamp, provider attempt history, and delivery attempt count. Notifications uses the count in recovery copy when applicable. Remba should review whether attempt numbers help operators trust recovery without making the notification center feel like a technical log.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

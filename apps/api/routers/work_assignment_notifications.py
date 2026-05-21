@@ -466,6 +466,26 @@ def _digest_email_preference_skipped_result(
     )
 
 
+def _digest_delivery_attempt_count(
+    history: list[Any],
+    *,
+    entity_id: UUID,
+    cadence: WorkAssignmentDigestCadence,
+    delivery_result: DeliveryResult | None,
+) -> int:
+    count = 0
+    for item in history:
+        receipt = _metadata_record(item)
+        if _metadata_uuid(receipt.get("entity_id")) != entity_id:
+            continue
+        if _metadata_text(receipt.get("cadence")) != cadence:
+            continue
+        status_value = _metadata_text(receipt.get("delivery_status"))
+        if status_value and status_value != "previewed":
+            count += 1
+    return count + (1 if delivery_result is not None else 0)
+
+
 def _digest_work_kind(item: WorkAssignmentDigestItemRead) -> str:
     if item.target_type == "maintenance_work_order":
         return "Maintenance"
@@ -516,14 +536,44 @@ def _record_digest_receipt(
     digest: WorkAssignmentDigestRead,
     entity_id: UUID,
     generated_at: datetime,
+    payload: WorkAssignmentDigestRun,
     delivery_result: DeliveryResult | None = None,
-) -> None:
+) -> dict[str, Any]:
     preferences = _metadata_record(member.notification_preferences)
     raw_history = preferences.get("work_assignment_digest_history")
     history = list(raw_history) if isinstance(raw_history, list) else []
     result_dict = delivery_result.to_dict() if delivery_result is not None else {}
     delivery_status = str(result_dict.get("status") or "previewed")
     delivery_detail = _digest_delivery_detail(delivery_result)
+    delivery_trigger = payload.delivery_trigger if delivery_result is not None else "preview"
+    recovery_of = (
+        payload.recovery_of_generated_at.isoformat()
+        if payload.recovery_of_generated_at is not None
+        else None
+    )
+    delivery_attempt_count = _digest_delivery_attempt_count(
+        history,
+        entity_id=entity_id,
+        cadence=digest.cadence,
+        delivery_result=delivery_result,
+    )
+    provider_history = []
+    if delivery_result is not None:
+        provider_history.append(
+            {
+                "event": "digest_delivery_attempted",
+                "channel": result_dict.get("channel"),
+                "status": delivery_status,
+                "provider": result_dict.get("provider"),
+                "attempted_at": result_dict.get("attempted_at"),
+                "recipient_email": result_dict.get("recipient"),
+                "provider_message_id": result_dict.get("provider_message_id"),
+                "error": result_dict.get("error"),
+                "delivery_trigger": delivery_trigger,
+                "recovery_of_generated_at": recovery_of,
+                "delivery_attempt_count": delivery_attempt_count,
+            }
+        )
     receipt = {
         "event": "digest_generated",
         "generated_at": generated_at.isoformat(),
@@ -538,16 +588,21 @@ def _record_digest_receipt(
         "delivery_status": delivery_status,
         "message_sent": _digest_message_sent(delivery_status),
         "delivery_detail": delivery_detail,
+        "delivery_trigger": delivery_trigger,
+        "recovery_of_generated_at": recovery_of,
+        "delivery_attempt_count": delivery_attempt_count,
         "delivery_channel": result_dict.get("channel"),
         "provider": result_dict.get("provider"),
         "provider_message_id": result_dict.get("provider_message_id"),
         "recipient_email": result_dict.get("recipient"),
         "delivery_attempted_at": result_dict.get("attempted_at"),
+        "provider_history": provider_history,
     }
     preferences["work_assignment_digest_last_generated_at"] = receipt["generated_at"]
     preferences["work_assignment_digest_last_item_count"] = digest.item_count
     preferences["work_assignment_digest_history"] = [receipt, *history][:10]
     member.notification_preferences = preferences
+    return receipt
 
 
 def _notification_center_digest_receipts(
@@ -568,6 +623,7 @@ def _notification_center_digest_receipts(
             item_count = record.get("item_count")
             follow_up_due_count = record.get("follow_up_due_count")
             message_sent = record.get("message_sent")
+            attempt_count = record.get("delivery_attempt_count")
             receipts.append(
                 WorkAssignmentNotificationCenterDigestRead(
                     assignee_user_id=member.id,
@@ -586,6 +642,13 @@ def _notification_center_digest_receipts(
                     message_sent=message_sent if isinstance(message_sent, bool) else False,
                     delivery_detail=_metadata_text(record.get("delivery_detail")),
                     provider_message_id=_metadata_text(record.get("provider_message_id")),
+                    delivery_trigger=_metadata_text(record.get("delivery_trigger")),
+                    recovery_of_generated_at=_metadata_datetime(
+                        record.get("recovery_of_generated_at")
+                    ),
+                    delivery_attempt_count=attempt_count
+                    if isinstance(attempt_count, int) and not isinstance(attempt_count, bool)
+                    else 0,
                 )
             )
     receipts.sort(key=lambda receipt: receipt.generated_at, reverse=True)
@@ -674,6 +737,9 @@ def _apply_digest_delivery_receipt(
             "recipient_email": recipient,
             "provider_message_id": receipt.get("provider_message_id"),
             "error": receipt.get("delivery_detail") if status_value == "failed" else None,
+            "delivery_trigger": receipt.get("delivery_trigger"),
+            "recovery_of_generated_at": receipt.get("recovery_of_generated_at"),
+            "delivery_attempt_count": receipt.get("delivery_attempt_count"),
         },
         *_metadata_list(receipt.get("provider_history")),
     ]
@@ -974,13 +1040,20 @@ def _generate_work_assignment_digest(
             digest.message_sent = _digest_message_sent(delivery_result.status)
             digest.delivery_detail = _digest_delivery_detail(delivery_result)
             digest.provider_message_id = delivery_result.provider_message_id
-        _record_digest_receipt(
+        receipt = _record_digest_receipt(
             members_by_id[digest.assignee_user_id],
             digest=digest,
             entity_id=payload.entity_id,
             generated_at=generated_at,
+            payload=payload,
             delivery_result=delivery_result,
         )
+        digest.delivery_trigger = _metadata_text(receipt.get("delivery_trigger"))
+        digest.recovery_of_generated_at = _metadata_datetime(
+            receipt.get("recovery_of_generated_at")
+        )
+        attempt_count = receipt.get("delivery_attempt_count")
+        digest.delivery_attempt_count = attempt_count if isinstance(attempt_count, int) else 0
     work_item_count = sum(digest.item_count for digest in digests)
     sent_count = sum(1 for digest in digests if digest.message_sent)
     delivery_summary = (
@@ -1044,6 +1117,8 @@ def run_scheduled_work_assignment_digest(
     entity = session.get(Entity, payload.entity_id)
     if entity is None or entity.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+    if payload.send_email_approved and payload.delivery_trigger == "manual":
+        payload = payload.model_copy(update={"delivery_trigger": "scheduled"})
     return _generate_work_assignment_digest(
         payload,
         session=session,
@@ -1089,6 +1164,7 @@ def run_due_work_assignment_digests(
                         entity_id=entity.id,
                         cadence=digest_cadence,
                         send_email_approved=send_email_approved,
+                        delivery_trigger="scheduled" if send_email_approved else "manual",
                     ),
                     session=session,
                     organisation_id=entity.organisation_id,

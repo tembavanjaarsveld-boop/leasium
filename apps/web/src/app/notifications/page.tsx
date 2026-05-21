@@ -29,7 +29,6 @@ import {
   listEntities,
   markWorkAssignmentNotificationCenterRead,
   runWorkAssignmentDigest,
-  type WorkAssignmentDigestCadence,
   type WorkAssignmentNotificationCenterDigestRecord,
   type WorkAssignmentNotificationCenterItemRecord,
   type WorkAssignmentNoticeGroup,
@@ -241,11 +240,13 @@ function NotificationsWorkspace() {
   });
 
   const retryDigestMutation = useMutation({
-    mutationFn: (cadence: WorkAssignmentDigestCadence) =>
+    mutationFn: (receipt: WorkAssignmentNotificationCenterDigestRecord) =>
       runWorkAssignmentDigest({
         entity_id: selectedEntityId,
-        cadence,
+        cadence: receipt.cadence,
         send_email_approved: true,
+        delivery_trigger: "recovery",
+        recovery_of_generated_at: receipt.generated_at,
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({
@@ -455,6 +456,9 @@ function NotificationsWorkspace() {
                     <span>
                       Sends the current {label(receipt.cadence).toLowerCase()}{" "}
                       digest to matching operators.
+                      {receipt.delivery_attempt_count > 0
+                        ? ` Attempt ${receipt.delivery_attempt_count + 1}.`
+                        : ""}
                     </span>
                     <SecondaryButton
                       type="button"
@@ -462,9 +466,7 @@ function NotificationsWorkspace() {
                       disabled={
                         !selectedEntityId || retryDigestMutation.isPending
                       }
-                      onClick={() =>
-                        retryDigestMutation.mutate(receipt.cadence)
-                      }
+                      onClick={() => retryDigestMutation.mutate(receipt)}
                     >
                       <Send size={14} />
                       {retryDigestMutation.isPending

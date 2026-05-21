@@ -1075,6 +1075,9 @@ const securityWorkspace = () => ({
             message_sent: false,
             delivery_detail: null,
             provider_message_id: null,
+            delivery_trigger: "preview",
+            recovery_of_generated_at: null,
+            delivery_attempt_count: 0,
           },
         ],
       },
@@ -3315,6 +3318,11 @@ export async function mockLeasiumApi(
             provider_message_id: digestReceiptSent
               ? "sg-digest-smoke-retry"
               : null,
+            delivery_trigger: digestReceiptSent ? "recovery" : "preview",
+            recovery_of_generated_at: digestReceiptSent
+              ? "2026-05-21T09:00:00.000Z"
+              : null,
+            delivery_attempt_count: digestReceiptSent ? 1 : 0,
           },
         ],
       });
@@ -3339,6 +3347,8 @@ export async function mockLeasiumApi(
         entity_id?: string;
         cadence?: "daily" | "weekly";
         send_email_approved?: boolean;
+        delivery_trigger?: "manual" | "scheduled" | "recovery";
+        recovery_of_generated_at?: string | null;
       };
       const sendApproved = payload.send_email_approved === true;
       if (sendApproved) {
@@ -3373,6 +3383,11 @@ export async function mockLeasiumApi(
               ? "Digest email was queued by SendGrid."
               : null,
             provider_message_id: sendApproved ? "sg-digest-smoke-1" : null,
+            delivery_trigger: sendApproved
+              ? (payload.delivery_trigger ?? "manual")
+              : "preview",
+            recovery_of_generated_at: payload.recovery_of_generated_at ?? null,
+            delivery_attempt_count: sendApproved ? 1 : 0,
             items: [
               {
                 target_id: "work-order-1",

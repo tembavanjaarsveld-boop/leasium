@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 WorkAssignmentDigestCadence = Literal["daily", "weekly"]
 WorkAssignmentDigestDueCadence = Literal["daily", "weekly", "all"]
+WorkAssignmentDigestDeliveryTrigger = Literal["manual", "scheduled", "recovery"]
 WorkAssignmentNoticeGroup = Literal["ready", "in_flight", "attention", "done"]
 
 
@@ -15,6 +16,8 @@ class WorkAssignmentDigestRun(BaseModel):
     entity_id: UUID
     cadence: WorkAssignmentDigestCadence = "daily"
     send_email_approved: bool = False
+    delivery_trigger: WorkAssignmentDigestDeliveryTrigger = "manual"
+    recovery_of_generated_at: datetime | None = None
 
 
 class WorkAssignmentDigestItemRead(BaseModel):
@@ -49,6 +52,9 @@ class WorkAssignmentDigestRead(BaseModel):
     message_sent: bool = False
     delivery_detail: str | None = None
     provider_message_id: str | None = None
+    delivery_trigger: str | None = None
+    recovery_of_generated_at: datetime | None = None
+    delivery_attempt_count: int = 0
     items: list[WorkAssignmentDigestItemRead] = Field(default_factory=list)
 
 
@@ -104,6 +110,9 @@ class WorkAssignmentNotificationCenterDigestRead(BaseModel):
     message_sent: bool = False
     delivery_detail: str | None = None
     provider_message_id: str | None = None
+    delivery_trigger: str | None = None
+    recovery_of_generated_at: datetime | None = None
+    delivery_attempt_count: int = 0
 
 
 class WorkAssignmentNotificationCenterRead(BaseModel):
