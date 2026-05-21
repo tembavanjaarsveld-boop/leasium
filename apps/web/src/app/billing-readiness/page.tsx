@@ -2155,6 +2155,21 @@ function BillingReadinessWorkspace() {
                                     (entry, index) => {
                                       const statusValue =
                                         metadataText(entry.status) ?? "paid";
+                                      const matchConfidence = metadataText(
+                                        entry.match_confidence,
+                                      );
+                                      const matchMethod = metadataText(
+                                        entry.match_method,
+                                      );
+                                      const reference = metadataText(
+                                        entry.reference,
+                                      );
+                                      const bankTransactionId = metadataText(
+                                        entry.bank_transaction_id,
+                                      );
+                                      const guardrailFlags = metadataStringList(
+                                        entry.guardrail_flags,
+                                      );
                                       return (
                                         <div
                                           key={`payment-${metadataText(entry.idempotency_key) ?? index}`}
@@ -2164,6 +2179,20 @@ function BillingReadinessWorkspace() {
                                             <StatusBadge tone="success">
                                               Payment {statusValue}
                                             </StatusBadge>
+                                            {matchConfidence ? (
+                                              <StatusBadge
+                                                tone={
+                                                  matchConfidence === "high"
+                                                    ? "success"
+                                                    : matchConfidence ===
+                                                        "medium"
+                                                      ? "warning"
+                                                      : "danger"
+                                                }
+                                              >
+                                                {matchConfidence} confidence
+                                              </StatusBadge>
+                                            ) : null}
                                             <span className="text-muted-foreground">
                                               {formatDateTime(
                                                 metadataText(
@@ -2176,6 +2205,32 @@ function BillingReadinessWorkspace() {
                                             Payment status was reconciled
                                             locally.
                                           </div>
+                                          {matchMethod ? (
+                                            <div className="text-muted-foreground">
+                                              {matchMethod}
+                                            </div>
+                                          ) : null}
+                                          {reference || bankTransactionId ? (
+                                            <div className="text-muted-foreground">
+                                              {[
+                                                reference
+                                                  ? `Ref ${reference}`
+                                                  : null,
+                                                bankTransactionId
+                                                  ? `Bank ${bankTransactionId}`
+                                                  : null,
+                                              ]
+                                                .filter(Boolean)
+                                                .join(" / ")}
+                                            </div>
+                                          ) : null}
+                                          {guardrailFlags.includes(
+                                            "no_bank_feed_mutation",
+                                          ) ? (
+                                            <div className="text-muted-foreground">
+                                              Bank feed was not mutated.
+                                            </div>
+                                          ) : null}
                                         </div>
                                       );
                                     },

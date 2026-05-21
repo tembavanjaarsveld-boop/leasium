@@ -741,6 +741,10 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     page.getByText("Payment status can be reconciled locally."),
   ).toBeVisible();
   await expect(page.getByText("Current unpaid / Proposed paid")).toBeVisible();
+  await expect(page.getByText("high confidence")).toBeVisible();
+  await expect(page.getByText("No bank write")).toBeVisible();
+  await expect(page.getByText("Ref INV-1001")).toBeVisible();
+  await expect(page.getByText("Bank bank-txn-smoke-1")).toBeVisible();
   await page.getByRole("button", { name: "Apply provider payments" }).click();
   await expect(
     page.getByText("Payment status was reconciled locally."),
@@ -766,6 +770,10 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(primaryDispatchRow.getByText("Provider history")).toBeVisible();
   await expect(
     page.getByText("Payment status was reconciled locally."),
+  ).toBeVisible();
+  await expect(primaryDispatchRow.getByText("high confidence")).toBeVisible();
+  await expect(
+    primaryDispatchRow.getByText("Bank feed was not mutated."),
   ).toBeVisible();
   await page.getByRole("button", { name: /Complete/ }).click();
   await expect(page.getByText("INV-1001").first()).toBeVisible();

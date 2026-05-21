@@ -1557,6 +1557,14 @@ def test_xero_payment_reconciliation_preview_and_apply_are_idempotent(
                 "status": "paid",
                 "provider_payment_id": "xero-payment-1",
                 "idempotency_key": "payment-feed-row-1",
+                "bank_transaction_id": "bank-txn-1",
+                "bank_account_name": "Operating Account",
+                "statement_date": "2026-05-20",
+                "statement_amount_cents": 275050,
+                "counterparty": "Bright Cafe",
+                "reference": "INV-PAID-1",
+                "match_confidence": "high",
+                "match_method": "Matched by bank statement reference.",
             }
         ],
     }
@@ -1569,6 +1577,14 @@ def test_xero_payment_reconciliation_preview_and_apply_are_idempotent(
     assert preview_body["ready_count"] == 1
     assert preview_body["applied_count"] == 0
     assert preview_body["results"][0]["status"] == "ready"
+    assert preview_body["results"][0]["match_confidence"] == "high"
+    assert preview_body["results"][0]["match_method"] == (
+        "Matched by bank statement reference."
+    )
+    assert preview_body["results"][0]["bank_transaction_id"] == "bank-txn-1"
+    assert preview_body["results"][0]["amount_delta_cents"] == 0
+    assert "bank_evidence_stored" in preview_body["results"][0]["guardrail_flags"]
+    assert "no_bank_feed_mutation" in preview_body["results"][0]["guardrail_flags"]
 
     session.refresh(invoice_draft)
     assert invoice_draft.invoice_metadata["payment_status"]["status"] == "unpaid"
@@ -1582,11 +1598,18 @@ def test_xero_payment_reconciliation_preview_and_apply_are_idempotent(
     assert apply_body["applied_count"] == 1
     assert apply_body["results"][0]["status"] == "applied"
     assert apply_body["results"][0]["proposed_paid_cents"] == 275050
+    assert apply_body["results"][0]["reference"] == "INV-PAID-1"
 
     session.refresh(invoice_draft)
     assert invoice_draft.invoice_metadata["payment_status"]["status"] == "paid"
     assert invoice_draft.invoice_metadata["payment_status"]["paid_cents"] == 275050
     assert len(invoice_draft.invoice_metadata["payment_history"]) == 1
+    reconciliation_entry = invoice_draft.invoice_metadata["xero_payment_reconciliation"]
+    assert reconciliation_entry["bank_transaction_id"] == "bank-txn-1"
+    assert reconciliation_entry["bank_account_name"] == "Operating Account"
+    assert reconciliation_entry["reference"] == "INV-PAID-1"
+    assert reconciliation_entry["match_confidence"] == "high"
+    assert "no_bank_feed_mutation" in reconciliation_entry["guardrail_flags"]
 
     second_response = client.post(
         f"/api/v1/xero/payments/reconciliation-apply/{entity_id}",
@@ -1602,6 +1625,28 @@ def test_xero_payment_reconciliation_preview_and_apply_are_idempotent(
 
     session.refresh(invoice_draft)
     assert len(invoice_draft.invoice_metadata["payment_history"]) == 1
+
+    low_confidence_response = client.post(
+        f"/api/v1/xero/payments/reconciliation-preview/{entity_id}",
+        json={
+            "source": "imported",
+            "payments": [
+                {
+                    "invoice_number": "INV-PAID-1",
+                    "status": "paid",
+                    "provider_payment_id": "bank-row-low-confidence",
+                    "match_confidence": "low",
+                    "reference": "Unclear remittance",
+                }
+            ],
+        },
+    )
+    assert low_confidence_response.status_code == 200
+    low_confidence_body = low_confidence_response.json()
+    assert low_confidence_body["blocked_count"] == 1
+    assert low_confidence_body["results"][0]["status"] == "blocked"
+    assert low_confidence_body["results"][0]["match_confidence"] == "low"
+    assert "review_match_confidence" in low_confidence_body["results"][0]["guardrail_flags"]
 
 
 def test_xero_provider_payment_reconciliation_fetches_xero_invoices(

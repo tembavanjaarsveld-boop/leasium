@@ -125,6 +125,17 @@ function formatDateTime(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return "Not recorded";
+  }
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(`${value.slice(0, 10)}T00:00:00`));
+}
+
 function formatCurrencyCents(value: number, currency = "AUD") {
   return new Intl.NumberFormat("en-AU", {
     currency,
@@ -250,6 +261,18 @@ function paymentReconciliationTone(
     return "danger";
   }
   return "neutral";
+}
+
+function paymentConfidenceTone(
+  confidence: XeroPaymentReconciliationResultRecord["match_confidence"],
+): StatusTone {
+  if (confidence === "high") {
+    return "success";
+  }
+  if (confidence === "medium") {
+    return "warning";
+  }
+  return "danger";
 }
 
 function roleForEntity(member: SecurityMemberRecord, entityId: string) {
@@ -2853,10 +2876,52 @@ function SettingsWorkspace() {
                           </div>
                           <div>
                             <div className="font-medium">{result.reason}</div>
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                              <StatusBadge
+                                tone={paymentConfidenceTone(
+                                  result.match_confidence,
+                                )}
+                              >
+                                {result.match_confidence} confidence
+                              </StatusBadge>
+                              <StatusBadge tone="neutral">
+                                No bank write
+                              </StatusBadge>
+                              {result.amount_delta_cents ? (
+                                <StatusBadge tone="warning">
+                                  Delta{" "}
+                                  {formatCurrencyCents(
+                                    result.amount_delta_cents,
+                                  )}
+                                </StatusBadge>
+                              ) : (
+                                <StatusBadge tone="success">
+                                  Amount aligned
+                                </StatusBadge>
+                              )}
+                            </div>
                             <div className="mt-1 text-xs text-muted-foreground">
                               Current {result.current_status ?? "unknown"} /
                               Proposed {result.proposed_status ?? "unknown"}
                             </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {result.match_method}
+                            </div>
+                            {result.reference || result.bank_transaction_id ? (
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {[
+                                  result.reference
+                                    ? `Ref ${result.reference}`
+                                    : null,
+                                  result.bank_transaction_id
+                                    ? `Bank ${result.bank_transaction_id}`
+                                    : null,
+                                  result.bank_account_name,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" / ")}
+                              </div>
+                            ) : null}
                             {result.idempotency_key ? (
                               <div className="mt-1 text-xs text-muted-foreground">
                                 Key {result.idempotency_key}
@@ -2886,6 +2951,34 @@ function SettingsWorkspace() {
                                 ? "-"
                                 : formatCurrencyCents(result.outstanding_cents)}
                             </div>
+                            {result.statement_amount_cents !== null ? (
+                              <div>
+                                Statement:{" "}
+                                {formatCurrencyCents(
+                                  result.statement_amount_cents,
+                                )}
+                              </div>
+                            ) : null}
+                            {result.statement_date ? (
+                              <div>
+                                Statement date:{" "}
+                                {formatDate(result.statement_date)}
+                              </div>
+                            ) : null}
+                            {result.guardrail_flags.length ? (
+                              <div className="flex flex-wrap gap-1 pt-1">
+                                {result.guardrail_flags
+                                  .slice(0, 3)
+                                  .map((flag) => (
+                                    <span
+                                      key={flag}
+                                      className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground"
+                                    >
+                                      {flag.replaceAll("_", " ")}
+                                    </span>
+                                  ))}
+                              </div>
+                            ) : null}
                             {result.invoice_draft_id ? (
                               <Link
                                 href={billingReadinessHandoffHref({

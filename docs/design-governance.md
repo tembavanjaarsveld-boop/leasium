@@ -209,6 +209,8 @@ Status: pending Remba review. The backend now supports explicit local Xero posti
 
 Update 2026-05-21: Settings Xero posting, draft creation, payment reconciliation, and guided exception rows now include invoice-specific handoff links into Billing Readiness Delivery & payments with the matching invoice/filter selected. Remba should review whether this makes the ownership split clear enough: Settings owns accounting setup and Xero approval, while Billing Readiness owns dispatch recovery, payment follow-up, and invoice-level operations.
 
+Update 2026-05-21: payment reconciliation rows now show match method, confidence, amount delta, bank/reference evidence, and explicit no-bank-write guardrails. Applied reconciliation receipts carry the same evidence into Billing Readiness provider history. Remba should review whether this extra accounting context helps operators trust local payment updates, and whether confidence/amount-delta badges should be quieter once true bank-feed imports arrive.
+
 ## Operator Security And Settings Arena
 
 Status: pending Remba review. Settings now has Security, Organisation, and Xero sections; Security shows the current auth mode, Clerk readiness, current operator, members, entity-role controls, and operator invite lifecycle. Keep the language clear that dev auth and the temporary password gate are pre-production safeguards until Clerk and SendGrid production env vars are configured and `AUTH_MODE` is switched deliberately.

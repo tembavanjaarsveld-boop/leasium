@@ -1549,6 +1549,89 @@ def _payment_reconciliation_key(
     )
 
 
+def _payment_match_method(
+    item: XeroPaymentReconciliationItem,
+    match_basis: Literal["invoice_draft_id", "xero_invoice_id", "invoice_number", "none"],
+) -> str:
+    if item.match_method:
+        return item.match_method
+    if match_basis == "invoice_draft_id":
+        return "Matched by Leasium invoice draft ID."
+    if match_basis == "xero_invoice_id":
+        return "Matched by Xero invoice ID."
+    if match_basis == "invoice_number":
+        return "Matched by invoice number."
+    return "No invoice match found."
+
+
+def _payment_match_confidence(
+    item: XeroPaymentReconciliationItem,
+    match_basis: Literal["invoice_draft_id", "xero_invoice_id", "invoice_number", "none"],
+) -> Literal["high", "medium", "low"]:
+    if item.match_confidence:
+        return item.match_confidence
+    if match_basis in {"invoice_draft_id", "xero_invoice_id"}:
+        return "high"
+    if match_basis == "invoice_number":
+        return "medium"
+    return "low"
+
+
+def _payment_amount_delta_cents(
+    item: XeroPaymentReconciliationItem,
+    proposed_status: dict[str, Any] | None,
+) -> int | None:
+    if proposed_status is None:
+        return None
+    proposed_paid = proposed_status.get("paid_cents")
+    if not isinstance(proposed_paid, int):
+        return None
+    statement_amount = item.statement_amount_cents
+    if statement_amount is None:
+        statement_amount = item.paid_cents
+    if statement_amount is None:
+        return 0
+    return statement_amount - proposed_paid
+
+
+def _payment_guardrail_flags(
+    item: XeroPaymentReconciliationItem,
+    proposed_status: dict[str, Any] | None,
+    match_confidence: Literal["high", "medium", "low"],
+) -> list[str]:
+    flags = ["no_bank_feed_mutation", "local_payment_metadata_only"]
+    if item.bank_transaction_id or item.reference or item.statement_amount_cents is not None:
+        flags.append("bank_evidence_stored")
+    if match_confidence != "high":
+        flags.append("review_match_confidence")
+    amount_delta = _payment_amount_delta_cents(item, proposed_status)
+    if amount_delta not in {None, 0}:
+        flags.append("amount_delta_needs_review")
+    if item.match_notes:
+        flags.append("operator_match_notes")
+    return flags
+
+
+def _payment_result_context(
+    item: XeroPaymentReconciliationItem,
+    match_basis: Literal["invoice_draft_id", "xero_invoice_id", "invoice_number", "none"],
+    proposed_status: dict[str, Any] | None,
+) -> dict[str, Any]:
+    match_confidence = _payment_match_confidence(item, match_basis)
+    return {
+        "match_method": _payment_match_method(item, match_basis),
+        "match_confidence": match_confidence,
+        "amount_delta_cents": _payment_amount_delta_cents(item, proposed_status),
+        "bank_transaction_id": item.bank_transaction_id,
+        "bank_account_name": item.bank_account_name,
+        "statement_date": item.statement_date,
+        "statement_amount_cents": item.statement_amount_cents,
+        "counterparty": item.counterparty,
+        "reference": item.reference,
+        "guardrail_flags": _payment_guardrail_flags(item, proposed_status, match_confidence),
+    }
+
+
 def _payment_reconciliation_result(
     *,
     item: XeroPaymentReconciliationItem,
@@ -1560,12 +1643,19 @@ def _payment_reconciliation_result(
     reconciled_at: Any,
 ) -> XeroPaymentReconciliationResultRead:
     draft = None
+    match_basis: Literal["invoice_draft_id", "xero_invoice_id", "invoice_number", "none"] = "none"
     if item.invoice_draft_id is not None:
         draft = drafts_by_id.get(item.invoice_draft_id)
+        if draft is not None:
+            match_basis = "invoice_draft_id"
     if draft is None and item.xero_invoice_id:
         draft = drafts_by_xero_invoice_id.get(item.xero_invoice_id)
+        if draft is not None:
+            match_basis = "xero_invoice_id"
     if draft is None and item.invoice_number:
         draft = drafts_by_number.get(item.invoice_number)
+        if draft is not None:
+            match_basis = "invoice_number"
     if draft is None:
         return XeroPaymentReconciliationResultRead(
             invoice_draft_id=item.invoice_draft_id,
@@ -1578,12 +1668,14 @@ def _payment_reconciliation_result(
             proposed_paid_cents=item.paid_cents,
             outstanding_cents=None,
             idempotency_key=item.idempotency_key,
+            **_payment_result_context(item, "none", None),
         )
 
     metadata = dict(draft.invoice_metadata or {})
     proposed_status, error = _invoice_payment_status(draft, item, reconciled_at)
     current_status = _payment_status(metadata)
     current_paid_cents = _payment_paid_cents(metadata)
+    result_context = _payment_result_context(item, match_basis, proposed_status)
     if proposed_status is None:
         return XeroPaymentReconciliationResultRead(
             invoice_draft_id=draft.id,
@@ -1596,6 +1688,22 @@ def _payment_reconciliation_result(
             proposed_paid_cents=item.paid_cents,
             outstanding_cents=None,
             idempotency_key=item.idempotency_key,
+            **result_context,
+        )
+
+    if result_context["match_confidence"] == "low":
+        return XeroPaymentReconciliationResultRead(
+            invoice_draft_id=draft.id,
+            invoice_number=draft.invoice_number,
+            status="blocked",
+            reason="Low-confidence payment matches require manual review before apply.",
+            current_status=current_status,
+            proposed_status=proposed_status["status"],
+            current_paid_cents=current_paid_cents,
+            proposed_paid_cents=proposed_status["paid_cents"],
+            outstanding_cents=proposed_status["outstanding_cents"],
+            idempotency_key=item.idempotency_key,
+            **result_context,
         )
 
     idempotency_key = _payment_reconciliation_key(draft, item, proposed_status)
@@ -1612,6 +1720,7 @@ def _payment_reconciliation_result(
             proposed_paid_cents=proposed_status["paid_cents"],
             outstanding_cents=proposed_status["outstanding_cents"],
             idempotency_key=idempotency_key,
+            **result_context,
         )
 
     if (
@@ -1629,6 +1738,7 @@ def _payment_reconciliation_result(
             proposed_paid_cents=proposed_status["paid_cents"],
             outstanding_cents=proposed_status["outstanding_cents"],
             idempotency_key=idempotency_key,
+            **result_context,
         )
 
     if not apply_changes:
@@ -1643,6 +1753,7 @@ def _payment_reconciliation_result(
             proposed_paid_cents=proposed_status["paid_cents"],
             outstanding_cents=proposed_status["outstanding_cents"],
             idempotency_key=idempotency_key,
+            **result_context,
         )
 
     proposed_status["reconciled_by_user_id"] = str(user.id)
@@ -1661,6 +1772,16 @@ def _payment_reconciliation_result(
         "paid_cents": proposed_status["paid_cents"],
         "reconciled_at": reconciled_at.isoformat(),
         "reconciled_by_user_id": str(user.id),
+        "match_method": result_context["match_method"],
+        "match_confidence": result_context["match_confidence"],
+        "amount_delta_cents": result_context["amount_delta_cents"],
+        "bank_transaction_id": item.bank_transaction_id,
+        "bank_account_name": item.bank_account_name,
+        "statement_date": item.statement_date.isoformat() if item.statement_date else None,
+        "statement_amount_cents": item.statement_amount_cents,
+        "counterparty": item.counterparty,
+        "reference": item.reference,
+        "guardrail_flags": result_context["guardrail_flags"],
     }
     reconciliation_history.append(reconciliation_entry)
     metadata["xero_payment_reconciliation_history"] = reconciliation_history[-20:]
@@ -1677,6 +1798,7 @@ def _payment_reconciliation_result(
         proposed_paid_cents=proposed_status["paid_cents"],
         outstanding_cents=proposed_status["outstanding_cents"],
         idempotency_key=idempotency_key,
+        **result_context,
     )
 
 
@@ -3185,6 +3307,10 @@ def _xero_payment_reconciliation(
             "Payment reconciliation preview does not change local invoice payment status.",
             "Apply only updates Leasium invoice payment metadata; it never mutates Xero payments.",
             "Duplicate payment idempotency keys are skipped.",
+            (
+                "Bank-feed evidence is stored for review only; Leasium does not create, "
+                "edit, or match bank transactions in Xero."
+            ),
         ],
     )
 

@@ -1434,6 +1434,15 @@ export type XeroPaymentReconciliationItemPayload = {
   provider_payment_id?: string | null;
   source?: "imported" | "provider";
   idempotency_key?: string | null;
+  bank_transaction_id?: string | null;
+  bank_account_name?: string | null;
+  statement_date?: string | null;
+  statement_amount_cents?: number | null;
+  counterparty?: string | null;
+  reference?: string | null;
+  match_confidence?: "high" | "medium" | "low" | null;
+  match_method?: string | null;
+  match_notes?: string | null;
 };
 
 export type XeroPaymentReconciliationPayload = {
@@ -1452,6 +1461,16 @@ export type XeroPaymentReconciliationResultRecord = {
   proposed_paid_cents: number | null;
   outstanding_cents: number | null;
   idempotency_key: string | null;
+  match_method: string;
+  match_confidence: "high" | "medium" | "low";
+  amount_delta_cents: number | null;
+  bank_transaction_id: string | null;
+  bank_account_name: string | null;
+  statement_date: string | null;
+  statement_amount_cents: number | null;
+  counterparty: string | null;
+  reference: string | null;
+  guardrail_flags: string[];
 };
 
 export type XeroPaymentReconciliationRecord = {

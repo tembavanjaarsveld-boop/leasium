@@ -408,6 +408,15 @@ class XeroPaymentReconciliationItem(BaseModel):
     provider_payment_id: str | None = Field(default=None, min_length=1, max_length=120)
     source: Literal["imported", "provider"] = "imported"
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+    bank_transaction_id: str | None = Field(default=None, min_length=1, max_length=120)
+    bank_account_name: str | None = Field(default=None, min_length=1, max_length=120)
+    statement_date: date | None = None
+    statement_amount_cents: int | None = Field(default=None, ge=0)
+    counterparty: str | None = Field(default=None, min_length=1, max_length=200)
+    reference: str | None = Field(default=None, min_length=1, max_length=200)
+    match_confidence: Literal["high", "medium", "low"] | None = None
+    match_method: str | None = Field(default=None, min_length=1, max_length=120)
+    match_notes: str | None = Field(default=None, min_length=1, max_length=500)
 
 
 class XeroPaymentReconciliationRequest(BaseModel):
@@ -428,6 +437,16 @@ class XeroPaymentReconciliationResultRead(BaseModel):
     proposed_paid_cents: int | None
     outstanding_cents: int | None
     idempotency_key: str | None
+    match_method: str
+    match_confidence: Literal["high", "medium", "low"]
+    amount_delta_cents: int | None
+    bank_transaction_id: str | None = None
+    bank_account_name: str | None = None
+    statement_date: date | None = None
+    statement_amount_cents: int | None = None
+    counterparty: str | None = None
+    reference: str | None = None
+    guardrail_flags: list[str] = Field(default_factory=list)
 
 
 class XeroPaymentReconciliationRead(BaseModel):

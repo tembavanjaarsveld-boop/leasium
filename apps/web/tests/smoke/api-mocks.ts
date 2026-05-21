@@ -1555,6 +1555,20 @@ export async function mockLeasiumApi(
       status: "paid",
       paid_cents: 880000,
       reconciled_at: reconciledAt,
+      match_method: "Matched by Xero invoice ID.",
+      match_confidence: "high",
+      amount_delta_cents: 0,
+      bank_transaction_id: "bank-txn-smoke-1",
+      bank_account_name: "Operating Account",
+      statement_date: "2026-05-19",
+      statement_amount_cents: 880000,
+      counterparty: "Bright Cafe",
+      reference: "INV-1001",
+      guardrail_flags: [
+        "no_bank_feed_mutation",
+        "local_payment_metadata_only",
+        "bank_evidence_stored",
+      ],
     };
     metadata.xero_payment_reconciliation_history = [
       metadata.xero_payment_reconciliation,
@@ -1588,12 +1602,27 @@ export async function mockLeasiumApi(
         proposed_paid_cents: 880000,
         outstanding_cents: 0,
         idempotency_key: "xero-payment-smoke-1",
+        match_method: "Matched by Xero invoice ID.",
+        match_confidence: "high",
+        amount_delta_cents: 0,
+        bank_transaction_id: "bank-txn-smoke-1",
+        bank_account_name: "Operating Account",
+        statement_date: "2026-05-19",
+        statement_amount_cents: 880000,
+        counterparty: "Bright Cafe",
+        reference: "INV-1001",
+        guardrail_flags: [
+          "no_bank_feed_mutation",
+          "local_payment_metadata_only",
+          "bank_evidence_stored",
+        ],
       },
     ],
     guardrails: [
       "Payment reconciliation preview does not change local invoice payment status.",
       "Apply only updates Leasium invoice payment metadata; it never mutates Xero payments.",
       "Duplicate payment idempotency keys are skipped.",
+      "Bank-feed evidence is stored for review only; Leasium does not create, edit, or match bank transactions in Xero.",
     ],
   });
 
