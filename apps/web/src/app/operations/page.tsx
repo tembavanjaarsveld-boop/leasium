@@ -225,6 +225,8 @@ type WorkAssignment = {
   history: WorkAssignmentHistoryEntry[];
 };
 
+type AssigneeFilter = "all" | "unassigned" | "me" | `member:${string}`;
+
 type MaintenanceFormState = {
   title: string;
   description: string;
@@ -509,6 +511,49 @@ function isAssignableQueueItem(item: QueueItem): item is AssignableQueueItem {
     item.kind === "maintenance" ||
     item.kind === "arrears"
   );
+}
+
+function assignedUserId(item: QueueItem) {
+  if (!isAssignableQueueItem(item)) {
+    return null;
+  }
+  return (
+    workAssignment(item.record.metadata)?.assignedUserId ??
+    (item.kind === "arrears" ? item.record.assigned_user_id : null)
+  );
+}
+
+function assignedUserName(item: QueueItem) {
+  if (!isAssignableQueueItem(item)) {
+    return null;
+  }
+  return workAssignment(item.record.metadata)?.assignedName ?? null;
+}
+
+function memberAssigneeFilter(memberId: string): AssigneeFilter {
+  return `member:${memberId}`;
+}
+
+function matchesAssigneeFilter(
+  item: QueueItem,
+  filter: AssigneeFilter,
+  currentUserId: string | null | undefined,
+) {
+  if (filter === "all") {
+    return true;
+  }
+  if (!isAssignableQueueItem(item)) {
+    return false;
+  }
+  const userId = assignedUserId(item);
+  const userName = assignedUserName(item);
+  if (filter === "unassigned") {
+    return !userId && !userName;
+  }
+  if (filter === "me") {
+    return Boolean(currentUserId && userId === currentUserId);
+  }
+  return userId === filter.replace("member:", "");
 }
 
 function assignmentMetadata({
@@ -931,6 +976,7 @@ function buildQueueItems(
 function OperationsWorkspace() {
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [activeTab, setActiveTab] = useState<OperationsTab>("queue");
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [maintenanceStatus, setMaintenanceStatus] = useState<
     MaintenanceWorkOrderStatus | "all"
   >("all");
@@ -1166,6 +1212,37 @@ function OperationsWorkspace() {
   );
 
   const openQueueItems = queueItems.filter((item) => !item.completed);
+  const assignableOpenQueueItems = openQueueItems.filter(isAssignableQueueItem);
+  const filteredOpenQueueItems = openQueueItems.filter((item) =>
+    matchesAssigneeFilter(item, assigneeFilter, currentUser?.id),
+  );
+  const unassignedWorkCount = assignableOpenQueueItems.filter(
+    (item) => !assignedUserId(item) && !assignedUserName(item),
+  ).length;
+  const assignedWorkCount =
+    assignableOpenQueueItems.length - unassignedWorkCount;
+  const myWorkCount = currentUser
+    ? assignableOpenQueueItems.filter(
+        (item) => assignedUserId(item) === currentUser.id,
+      ).length
+    : 0;
+  const workloadRows = assignableMembers
+    .map((member) => {
+      const memberItems = assignableOpenQueueItems.filter(
+        (item) => assignedUserId(item) === member.id,
+      );
+      return {
+        id: member.id,
+        label: memberLabel(member),
+        role: memberEntityRole(member, selectedEntityId),
+        count: memberItems.length,
+        urgentCount: memberItems.filter((item) =>
+          ["danger", "warning"].includes(item.tone),
+        ).length,
+      };
+    })
+    .filter((row) => row.count > 0 && row.id !== currentUser?.id)
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   const urgentMaintenance = maintenance.filter(
     (item) =>
       maintenanceIsOpen(item) && ["urgent", "high"].includes(item.priority),
@@ -1689,9 +1766,124 @@ function OperationsWorkspace() {
                 title="Operations queue"
                 description={selectedEntity?.name ?? "Current entity"}
                 icon={<ClipboardList size={17} className="text-primary" />}
+                actions={
+                  <Select
+                    aria-label="Queue assignee"
+                    value={assigneeFilter}
+                    onChange={(event) =>
+                      setAssigneeFilter(event.target.value as AssigneeFilter)
+                    }
+                    className="w-52"
+                  >
+                    <option value="all">All open work</option>
+                    <option value="unassigned">Unassigned</option>
+                    {currentUser ? <option value="me">My work</option> : null}
+                    {assignableMembers.map((member) => (
+                      <option
+                        key={member.id}
+                        value={memberAssigneeFilter(member.id)}
+                      >
+                        {memberLabel(member)}
+                      </option>
+                    ))}
+                  </Select>
+                }
               >
+                <div className="border-b border-border bg-muted/30 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="inline-flex min-h-9 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
+                      <UserRound size={14} className="text-primary" />
+                      Team workload
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Show all open work, ${openQueueItems.length}`}
+                      onClick={() => setAssigneeFilter("all")}
+                      className={cn(
+                        "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                        assigneeFilter === "all"
+                          ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
+                          : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      Open
+                      <span className="text-foreground">
+                        {openQueueItems.length}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Show unowned work, ${unassignedWorkCount}`}
+                      onClick={() => setAssigneeFilter("unassigned")}
+                      className={cn(
+                        "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                        assigneeFilter === "unassigned"
+                          ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
+                          : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      Unassigned
+                      <span className="text-foreground">
+                        {unassignedWorkCount}
+                      </span>
+                    </button>
+                    <span className="inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Assigned
+                      <span className="text-foreground">
+                        {assignedWorkCount}
+                      </span>
+                    </span>
+                    {currentUser ? (
+                      <button
+                        type="button"
+                        aria-label={`Show my work, ${myWorkCount}`}
+                        onClick={() => setAssigneeFilter("me")}
+                        className={cn(
+                          "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                          assigneeFilter === "me"
+                            ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
+                            : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        My work
+                        <span className="text-foreground">{myWorkCount}</span>
+                      </button>
+                    ) : null}
+                    {workloadRows.map((row) => {
+                      const filter = memberAssigneeFilter(row.id);
+                      const active = assigneeFilter === filter;
+                      return (
+                        <button
+                          key={row.id}
+                          type="button"
+                          aria-label={`Show ${row.label} work, ${row.count}`}
+                          onClick={() => setAssigneeFilter(filter)}
+                          className={cn(
+                            "inline-flex min-h-9 max-w-full items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                            active
+                              ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
+                              : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                          title={`${row.label}${row.role ? ` - ${label(row.role)}` : ""}`}
+                        >
+                          <span className="max-w-36 truncate">
+                            {row.id === currentUser?.id
+                              ? `${row.label} (me)`
+                              : row.label}
+                          </span>
+                          <span className="text-foreground">{row.count}</span>
+                          {row.urgentCount ? (
+                            <span className="text-danger">
+                              {row.urgentCount} urgent
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <div className="divide-y divide-border">
-                  {openQueueItems.map((item) => (
+                  {filteredOpenQueueItems.map((item) => (
                     <div
                       key={item.id}
                       className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
@@ -1727,33 +1919,51 @@ function OperationsWorkspace() {
                       </div>
                     </div>
                   ))}
-                  {!operationsLoading && openQueueItems.length === 0 ? (
+                  {!operationsLoading && filteredOpenQueueItems.length === 0 ? (
                     <EmptyState
-                      title="No open operational work"
-                      description="New document reviews, maintenance jobs, arrears cases, and tenant follow-ups will appear here."
+                      title={
+                        assigneeFilter === "all"
+                          ? "No open operational work"
+                          : "No work matches this assignee"
+                      }
+                      description={
+                        assigneeFilter === "all"
+                          ? "New document reviews, maintenance jobs, arrears cases, and tenant follow-ups will appear here."
+                          : "This assignee has no open assigned work in the current queue."
+                      }
                       action={
-                        <div className="flex flex-wrap justify-center gap-2">
+                        assigneeFilter === "all" ? (
+                          <div className="flex flex-wrap justify-center gap-2">
+                            <SecondaryButton
+                              type="button"
+                              onClick={() => {
+                                setActiveTab("maintenance");
+                                setMaintenanceFormOpen(true);
+                              }}
+                            >
+                              <Wrench size={15} />
+                              Work order
+                            </SecondaryButton>
+                            <SecondaryButton
+                              type="button"
+                              onClick={() => {
+                                setActiveTab("arrears");
+                                setArrearsFormOpen(true);
+                              }}
+                            >
+                              <HandCoins size={15} />
+                              Arrears case
+                            </SecondaryButton>
+                          </div>
+                        ) : (
                           <SecondaryButton
                             type="button"
-                            onClick={() => {
-                              setActiveTab("maintenance");
-                              setMaintenanceFormOpen(true);
-                            }}
+                            onClick={() => setAssigneeFilter("all")}
                           >
-                            <Wrench size={15} />
-                            Work order
+                            <ClipboardList size={15} />
+                            Show all work
                           </SecondaryButton>
-                          <SecondaryButton
-                            type="button"
-                            onClick={() => {
-                              setActiveTab("arrears");
-                              setArrearsFormOpen(true);
-                            }}
-                          >
-                            <HandCoins size={15} />
-                            Arrears case
-                          </SecondaryButton>
-                        </div>
+                        )
                       }
                     />
                   ) : null}

@@ -304,6 +304,8 @@ Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry
 
 2026-05-21 update: the Work queue and Maintenance/Arrears rows now include member assignment controls for maintenance jobs, arrears cases, and critical-date obligations. Assignment stores a compact history and an in-app notification-ready receipt in record metadata; it does not send provider email/SMS automatically. Remba should review whether assignment belongs in queue rows, row detail, or a side panel; whether the control density is acceptable on laptops; and whether `Notification ready` is clear enough before provider-backed notifications are added.
 
+2026-05-21 follow-up: the Work queue now includes an assignee workload strip and queue-level filters for all open work, unassigned work, current-operator work, and selected member work. The strip surfaces unassigned/assigned totals plus urgent load for assigned members without changing assignment persistence. Remba should review whether the workload strip helps accountability or adds too much density above the queue, and whether assignee filtering should also appear inside the Maintenance and Arrears tabs.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface
