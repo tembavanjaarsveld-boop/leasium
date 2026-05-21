@@ -338,16 +338,34 @@ function closeoutPhotoRows(
   return documents.filter((document) => linkedIds.has(document.id));
 }
 
-function closeoutHistoryRows(workOrder: MaintenanceWorkOrderRecord) {
+function closeoutHistoryRows(
+  workOrder: MaintenanceWorkOrderRecord,
+  documents: DocumentRecord[],
+) {
   const closeout = closeoutRecord(workOrder);
+  const documentsById = new Map(
+    documents.map((document) => [document.id, document]),
+  );
   return metadataRecordList(closeout.history)
     .map((entry) => {
-      const photoIds = metadataStringList(entry.photo_document_ids);
+      const photoIds = Array.from(
+        new Set(
+          [
+            metadataText(entry.photo_document_id),
+            ...metadataStringList(entry.photo_document_ids),
+          ].filter((id): id is string => Boolean(id)),
+        ),
+      );
+      const photoDocuments = photoIds
+        .map((id) => documentsById.get(id))
+        .filter((document): document is DocumentRecord => Boolean(document));
       return {
         at: metadataText(entry.at) ?? metadataText(entry.completed_at),
         note: metadataText(entry.note),
         status: metadataText(entry.status) ?? "completed",
         photoCount: photoIds.length,
+        photoDocuments,
+        missingPhotoCount: photoIds.length - photoDocuments.length,
       };
     })
     .sort(
@@ -992,7 +1010,9 @@ function MaintenanceDetailRoute() {
   const closeoutPhotos = workOrder
     ? closeoutPhotoRows(workOrder, documents)
     : [];
-  const closeoutHistory = workOrder ? closeoutHistoryRows(workOrder) : [];
+  const closeoutHistory = workOrder
+    ? closeoutHistoryRows(workOrder, documents)
+    : [];
   const timeline = workOrder ? activityRows(workOrder) : [];
   const linkedInvoiceDraft = workOrder?.invoice_draft_id
     ? (invoiceDrafts.find((draft) => draft.id === workOrder.invoice_draft_id) ??
@@ -2051,6 +2071,34 @@ function MaintenanceDetailRoute() {
                                 ? `${entry.photoCount} closeout photo${entry.photoCount === 1 ? "" : "s"}`
                                 : "No closeout photo attached."}
                             </div>
+                            {entry.photoDocuments.length ? (
+                              <div className="grid gap-1 rounded-md border border-border bg-muted/30 px-2 py-2">
+                                <div className="font-semibold text-foreground">
+                                  Source evidence
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {entry.photoDocuments.map((document) => (
+                                    <a
+                                      key={document.id}
+                                      href={documentDownloadUrl(document.id)}
+                                      className="inline-flex items-center gap-1 font-semibold text-primary hover:text-leasium-blue-hover"
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      <FileUp size={12} />
+                                      {document.filename}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                            {entry.missingPhotoCount > 0 ? (
+                              <div className="text-muted-foreground">
+                                {entry.missingPhotoCount} source document
+                                {entry.missingPhotoCount === 1 ? "" : "s"} not
+                                loaded in this view.
+                              </div>
+                            ) : null}
                           </div>
                         ))}
                       </div>
