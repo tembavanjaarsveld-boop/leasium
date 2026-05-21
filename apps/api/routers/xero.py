@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import json
 import secrets
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
@@ -62,6 +62,7 @@ from apps.api.routers.charge_rules import (
     send_invoice_delivery_email,
 )
 from apps.api.schemas.xero import (
+    XeroAccountingFreshnessRead,
     XeroChartTaxValidationPreviewRead,
     XeroChartTaxValidationResultRead,
     XeroConnectionStatusRead,
@@ -116,6 +117,7 @@ SUGGESTED_CHARGE_MAPPINGS: dict[RentChargeType, tuple[str, str | None]] = {
     RentChargeType.other: ("299", "OUTPUT"),
 }
 OAUTH_STATE_TTL_MINUTES = 15
+XERO_RECONCILIATION_STALE_AFTER_DAYS = 7
 XERO_EXCEPTION_KINDS = (
     "connection",
     "contact",
@@ -235,6 +237,24 @@ def _metadata_text(metadata: dict[str, Any], *keys: str) -> str | None:
     return None
 
 
+def _metadata_record(value: object) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _metadata_datetime(metadata: dict[str, Any], *keys: str) -> datetime | None:
+    for key in keys:
+        value = metadata.get(key)
+        if isinstance(value, datetime):
+            return value if value.tzinfo else value.replace(tzinfo=UTC)
+        if isinstance(value, str) and value.strip():
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return None
+
+
 def _invoice_draft_for_xero_access(
     invoice_draft_id: UUID,
     user: CurrentUser,
@@ -265,6 +285,156 @@ def _xero_invoice_id_from_metadata(metadata: dict[str, Any]) -> str | None:
     if isinstance(posting_state, dict):
         return _metadata_text(posting_state, "xero_invoice_id", "InvoiceID")
     return None
+
+
+def _checkpoint_at(
+    connection_metadata: dict[str, Any],
+    key: str,
+    *timestamp_keys: str,
+) -> datetime | None:
+    return _metadata_datetime(
+        _metadata_record(connection_metadata.get(key)),
+        *timestamp_keys,
+    )
+
+
+def _latest_datetime(*values: datetime | None) -> datetime | None:
+    timestamps = [value for value in values if value is not None]
+    return max(timestamps) if timestamps else None
+
+
+def _accounting_freshness(
+    *,
+    provider_connection: XeroConnection | None,
+    readiness_issue_count: int,
+    readiness_blocker_count: int,
+    readiness_warning_count: int,
+    approved_unsynced_invoice_count: int,
+    xero_linked_open_invoice_count: int,
+    generated_at: datetime,
+) -> XeroAccountingFreshnessRead:
+    connection_metadata = (
+        dict(provider_connection.connection_metadata or {})
+        if provider_connection is not None
+        else {}
+    )
+    last_contact_sync_at = (
+        provider_connection.last_contact_sync_at
+        if provider_connection is not None
+        else None
+    ) or _checkpoint_at(connection_metadata, "last_contact_sync", "synced_at")
+    last_chart_tax_validation_at = _checkpoint_at(
+        connection_metadata,
+        "last_chart_tax_validation",
+        "validated_at",
+    )
+    last_invoice_posting_preview_at = _checkpoint_at(
+        connection_metadata,
+        "last_invoice_posting_preview",
+        "prepared_at",
+    )
+    last_invoice_draft_create_at = _checkpoint_at(
+        connection_metadata,
+        "last_invoice_draft_create",
+        "applied_at",
+    )
+    last_invoice_provider_dispatch_at = _checkpoint_at(
+        connection_metadata,
+        "last_invoice_provider_dispatch",
+        "dispatched_at",
+    )
+    payment_preview = _metadata_record(
+        connection_metadata.get("last_payment_reconciliation_preview")
+    )
+    payment_apply = _metadata_record(connection_metadata.get("last_payment_reconciliation_apply"))
+    last_payment_preview_at = _metadata_datetime(payment_preview, "reconciled_at")
+    last_payment_apply_at = _metadata_datetime(payment_apply, "reconciled_at")
+    last_payment_at = _latest_datetime(last_payment_preview_at, last_payment_apply_at)
+    last_payment_record = (
+        payment_apply
+        if last_payment_apply_at
+        and (last_payment_preview_at is None or last_payment_apply_at >= last_payment_preview_at)
+        else payment_preview
+    )
+
+    stale_reconciliation = False
+    needs_readiness_attention = (
+        readiness_issue_count > 0 or approved_unsynced_invoice_count > 0
+    )
+    if xero_linked_open_invoice_count > 0 and last_payment_at is None:
+        freshness_status: Literal["ready", "stale", "missing", "attention"]
+        freshness_status = "missing"
+        stale_reconciliation = True
+        invoice_label = "invoice" if xero_linked_open_invoice_count == 1 else "invoices"
+        summary = (
+            f"{xero_linked_open_invoice_count} open Xero-linked {invoice_label} "
+            "need a payment reconciliation preview."
+        )
+    elif (
+        xero_linked_open_invoice_count > 0
+        and last_payment_at is not None
+        and generated_at - last_payment_at > timedelta(days=XERO_RECONCILIATION_STALE_AFTER_DAYS)
+    ):
+        freshness_status = "stale"
+        stale_reconciliation = True
+        summary = (
+            "Payment reconciliation is stale for open Xero-linked invoices; "
+            "preview payments before relying on the accounting snapshot."
+        )
+    elif needs_readiness_attention:
+        freshness_status = "attention"
+        issue_label = "issue" if readiness_issue_count == 1 else "issues"
+        invoice_label = "invoice" if approved_unsynced_invoice_count == 1 else "invoices"
+        summary_parts = []
+        if readiness_issue_count > 0:
+            summary_parts.append(
+                f"{readiness_issue_count} Xero readiness {issue_label} "
+                f"{'needs' if readiness_issue_count == 1 else 'need'} review"
+            )
+        if approved_unsynced_invoice_count > 0:
+            summary_parts.append(
+                f"{approved_unsynced_invoice_count} approved {invoice_label} still need Xero draft creation"
+            )
+        summary = "; ".join(summary_parts) + "."
+    else:
+        freshness_status = "ready"
+        summary = (
+            "Payment reconciliation is fresh for open Xero-linked invoices."
+            if xero_linked_open_invoice_count > 0
+            else "No open Xero-linked invoices need payment reconciliation."
+        )
+
+    return XeroAccountingFreshnessRead(
+        generated_at=generated_at,
+        source="local_metadata",
+        status=freshness_status,
+        summary=summary,
+        stale_after_days=XERO_RECONCILIATION_STALE_AFTER_DAYS,
+        stale_reconciliation=stale_reconciliation,
+        readiness_issue_count=readiness_issue_count,
+        readiness_blocker_count=readiness_blocker_count,
+        readiness_warning_count=readiness_warning_count,
+        approved_unsynced_invoice_count=approved_unsynced_invoice_count,
+        xero_linked_open_invoice_count=xero_linked_open_invoice_count,
+        last_contact_sync_at=last_contact_sync_at,
+        last_chart_tax_validation_at=last_chart_tax_validation_at,
+        last_invoice_posting_preview_at=last_invoice_posting_preview_at,
+        last_invoice_draft_create_at=last_invoice_draft_create_at,
+        last_invoice_provider_dispatch_at=last_invoice_provider_dispatch_at,
+        last_payment_reconciliation_preview_at=last_payment_preview_at,
+        last_payment_reconciliation_apply_at=last_payment_apply_at,
+        last_payment_reconciliation_at=last_payment_at,
+        last_payment_reconciliation_source=_metadata_text(last_payment_record, "source"),
+        last_payment_reconciliation_mode=_metadata_text(last_payment_record, "mode"),
+        guardrails=[
+            "Accounting freshness is calculated from local Leasium metadata only.",
+            (
+                "Loading Xero status does not refresh tokens, call Xero, "
+                "post invoices, or reconcile payments."
+            ),
+            "Stale payment reconciliation is a review cue, not an automatic accounting action.",
+        ],
+    )
 
 
 def _xero_posting_approval_state(metadata: dict[str, Any]) -> str:
@@ -1342,6 +1512,27 @@ def _payment_exception_from_invoice(
         provider="xero",
         provider_status=payment_status,
         xero_invoice_id=xero_invoice_id,
+    )
+
+
+def _freshness_exception_from_status(
+    freshness: XeroAccountingFreshnessRead,
+) -> XeroExceptionQueueItemRead | None:
+    if not freshness.stale_reconciliation:
+        return None
+    return XeroExceptionQueueItemRead(
+        id="xero-payment-reconciliation-freshness",
+        kind="payment",
+        severity="warning",
+        label="Payment reconciliation freshness needs review",
+        detail=freshness.summary,
+        action=(
+            "Preview provider payments before relying on the accounting snapshot "
+            "for Xero-linked invoices."
+        ),
+        next_action="preview_payment_reconciliation",
+        source="accounting_freshness",
+        provider="xero",
     )
 
 
@@ -3376,6 +3567,9 @@ def xero_exception_queue(
         entity_id=entity_id,
     )
     items = [_exception_from_status_issue(issue) for issue in status_read.issues]
+    freshness_exception = _freshness_exception_from_status(status_read.accounting_freshness)
+    if freshness_exception is not None:
+        items.append(freshness_exception)
 
     invoice_drafts = list(
         session.scalars(
@@ -3439,6 +3633,7 @@ def xero_status(
     if entity is None or entity.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
 
+    provider_connection = _active_xero_connection(session, entity.id)
     connection = _connection(entity, session, settings)
     issues: list[XeroMappingIssueRead] = []
     if not connection.xero_tenant_id:
@@ -3586,6 +3781,7 @@ def xero_status(
     unpaid = 0
     partially_paid = 0
     paid = 0
+    xero_linked_open_invoice_count = 0
     for draft in invoice_drafts:
         metadata = draft.invoice_metadata or {}
         xero_sync = metadata.get("xero_sync")
@@ -3626,13 +3822,30 @@ def xero_status(
             paid += 1
         elif payment_status == "partially_paid":
             partially_paid += 1
+            if _xero_invoice_id_from_metadata(metadata):
+                xero_linked_open_invoice_count += 1
         else:
             unpaid += 1
+            if _xero_invoice_id_from_metadata(metadata):
+                xero_linked_open_invoice_count += 1
 
     total_contacts = len(tenants) + property_contact_total
     ready_contacts = tenant_contact_ready + property_contact_ready
     issue_order = {"blocker": 0, "warning": 1, "info": 2}
     issues.sort(key=lambda issue: (issue_order[issue.severity], issue.label, issue.id))
+    readiness_blocker_count = sum(1 for issue in issues if issue.severity == "blocker")
+    readiness_warning_count = sum(1 for issue in issues if issue.severity == "warning")
+    readiness_issue_count = len(issues)
+    generated_at = utcnow()
+    accounting_freshness = _accounting_freshness(
+        provider_connection=provider_connection,
+        readiness_issue_count=readiness_issue_count,
+        readiness_blocker_count=readiness_blocker_count,
+        readiness_warning_count=readiness_warning_count,
+        approved_unsynced_invoice_count=approved_unsynced,
+        xero_linked_open_invoice_count=xero_linked_open_invoice_count,
+        generated_at=generated_at,
+    )
     return XeroStatusRead(
         provider=_provider(settings),
         connection=connection,
@@ -3663,6 +3876,7 @@ def xero_status(
             paid=paid,
             reconciliation_ready=paid + partially_paid,
         ),
+        accounting_freshness=accounting_freshness,
         issues=issues[:50],
         guardrails=[
             "Xero contact apply only saves reviewed local mappings; it does not mutate Xero.",

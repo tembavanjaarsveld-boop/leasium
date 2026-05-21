@@ -67,6 +67,31 @@ class XeroPaymentSummaryRead(BaseModel):
     reconciliation_ready: int
 
 
+class XeroAccountingFreshnessRead(BaseModel):
+    generated_at: datetime
+    source: Literal["local_metadata"]
+    status: Literal["ready", "stale", "missing", "attention"]
+    summary: str
+    stale_after_days: int
+    stale_reconciliation: bool
+    readiness_issue_count: int = 0
+    readiness_blocker_count: int = 0
+    readiness_warning_count: int = 0
+    approved_unsynced_invoice_count: int = 0
+    xero_linked_open_invoice_count: int
+    last_contact_sync_at: datetime | None = None
+    last_chart_tax_validation_at: datetime | None = None
+    last_invoice_posting_preview_at: datetime | None = None
+    last_invoice_draft_create_at: datetime | None = None
+    last_invoice_provider_dispatch_at: datetime | None = None
+    last_payment_reconciliation_preview_at: datetime | None = None
+    last_payment_reconciliation_apply_at: datetime | None = None
+    last_payment_reconciliation_at: datetime | None = None
+    last_payment_reconciliation_source: str | None = None
+    last_payment_reconciliation_mode: str | None = None
+    guardrails: list[str]
+
+
 class XeroMappingIssueRead(BaseModel):
     id: str
     kind: Literal["connection", "contact", "chart", "tax", "invoice_sync", "payment"]
@@ -156,6 +181,7 @@ class XeroStatusRead(BaseModel):
     tax_mapping: XeroReadinessSummaryRead
     invoice_sync: XeroInvoiceSyncSummaryRead
     payment_reconciliation: XeroPaymentSummaryRead
+    accounting_freshness: XeroAccountingFreshnessRead
     issues: list[XeroMappingIssueRead]
     guardrails: list[str]
 

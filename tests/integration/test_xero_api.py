@@ -431,6 +431,20 @@ def test_xero_status_surfaces_mapping_gaps_and_manual_connection(
     assert body["contact_mapping"] == {"total": 2, "ready": 0, "missing": 2}
     assert body["chart_mapping"] == {"total": 1, "ready": 0, "missing": 1}
     assert body["tax_mapping"] == {"total": 1, "ready": 0, "missing": 1}
+    assert body["accounting_freshness"]["source"] == "local_metadata"
+    assert body["accounting_freshness"]["status"] == "attention"
+    assert body["accounting_freshness"]["stale_reconciliation"] is False
+    assert body["accounting_freshness"]["readiness_issue_count"] == len(body["issues"])
+    assert body["accounting_freshness"]["readiness_warning_count"] >= 0
+    assert (
+        body["accounting_freshness"]["readiness_blocker_count"]
+        <= body["accounting_freshness"]["readiness_issue_count"]
+    )
+    assert (
+        body["accounting_freshness"]["readiness_warning_count"]
+        <= body["accounting_freshness"]["readiness_issue_count"]
+    )
+    assert body["accounting_freshness"]["approved_unsynced_invoice_count"] == 0
     issue_ids = {issue["id"] for issue in body["issues"]}
     assert f"connection-{entity_id}" in issue_ids
     assert f"chart-{charge_rule_id}" in issue_ids
@@ -477,6 +491,13 @@ def test_xero_status_surfaces_mapping_gaps_and_manual_connection(
     assert ready_body["connection"]["connected"] is True
     assert ready_body["chart_mapping"] == {"total": 1, "ready": 1, "missing": 0}
     assert ready_body["tax_mapping"] == {"total": 1, "ready": 1, "missing": 0}
+    assert ready_body["accounting_freshness"]["status"] == "attention"
+    assert ready_body["accounting_freshness"]["readiness_issue_count"] == len(
+        ready_body["issues"]
+    )
+    assert ready_body["accounting_freshness"]["readiness_blocker_count"] >= 0
+    assert ready_body["accounting_freshness"]["readiness_warning_count"] >= 0
+    assert ready_body["accounting_freshness"]["approved_unsynced_invoice_count"] == 0
     assert f"connection-{entity_id}" not in {issue["id"] for issue in ready_body["issues"]}
 
     audit = session.scalar(
@@ -531,6 +552,67 @@ def test_xero_oauth_callback_records_provider_connection(
     )
     assert audit is not None
     assert "no contacts, invoices, or payments were mutated" in audit.tool_output_summary
+
+
+def test_xero_status_flags_stale_payment_reconciliation_from_local_metadata(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+    _create_approved_invoice_fixture(
+        client,
+        session,
+        entity_id,
+        invoice_number="INV-XERO-OPEN",
+        xero_invoice_id="xero-invoice-open",
+    )
+    connection = session.scalar(
+        select(XeroConnection).where(XeroConnection.entity_id == UUID(entity_id))
+    )
+    assert connection is not None
+    connection.connection_metadata = {
+        **dict(connection.connection_metadata or {}),
+        "last_contact_sync": {
+            "synced_at": "2026-05-10T00:00:00+00:00",
+            "mode": "preview_only",
+        },
+        "last_chart_tax_validation": {
+            "validated_at": "2026-05-10T00:10:00+00:00",
+            "mode": "preview_only",
+        },
+        "last_payment_reconciliation_preview": {
+            "reconciled_at": "2000-01-01T00:00:00+00:00",
+            "source": "provider",
+            "mode": "preview_only",
+        },
+    }
+    session.commit()
+
+    response = client.get(f"/api/v1/xero/status?entity_id={entity_id}")
+    assert response.status_code == 200
+    freshness = response.json()["accounting_freshness"]
+    assert freshness["status"] == "stale"
+    assert freshness["stale_reconciliation"] is True
+    assert freshness["xero_linked_open_invoice_count"] == 1
+    assert freshness["last_contact_sync_at"] == "2026-05-10T00:00:00Z"
+    assert freshness["last_chart_tax_validation_at"] == "2026-05-10T00:10:00Z"
+    assert freshness["last_payment_reconciliation_source"] == "provider"
+    assert freshness["last_payment_reconciliation_mode"] == "preview_only"
+    assert freshness["readiness_issue_count"] >= 0
+    assert freshness["readiness_blocker_count"] >= 0
+    assert freshness["readiness_warning_count"] >= 0
+    assert (
+        freshness["readiness_issue_count"]
+        >= freshness["readiness_blocker_count"] + freshness["readiness_warning_count"]
+    )
+    assert freshness["approved_unsynced_invoice_count"] == 0
+    assert "local Leasium metadata only" in freshness["guardrails"][0]
 
 
 def test_xero_contact_sync_preview_suggests_matches_without_applying(
@@ -1215,6 +1297,8 @@ def test_xero_provider_dispatch_creates_xero_then_sends_email_idempotently(
     monkeypatch,
 ) -> None:
     settings = _provider_settings()
+    settings.invoice_email_template_key = "invoice_delivery_custom"
+    settings.invoice_email_template_version = "v2"
     _override_settings(settings)
     _fake_xero_provider(monkeypatch)
     entity_id = _entity_id(session)
@@ -1226,7 +1310,21 @@ def test_xero_provider_dispatch_creates_xero_then_sends_email_idempotently(
         f"/api/v1/invoice-drafts/{invoice_draft.id}/prepare-delivery"
     )
     assert prepare_response.status_code == 200
-    assert prepare_response.json()["metadata"]["delivery_state"]["delivery_ready"] is True
+    prepare_metadata = prepare_response.json()["metadata"]
+    assert prepare_metadata["delivery_state"]["delivery_ready"] is True
+    delivery_draft = prepare_metadata["delivery_email"]["draft"]
+    assert delivery_draft["template_key"] == "invoice_delivery_custom"
+    assert delivery_draft["template_version"] == "v2"
+    email_preview = prepare_metadata["delivery_preview"]["email"]
+    assert email_preview["template_key"] == "invoice_delivery_custom"
+    assert email_preview["template_version"] == "v2"
+    rendered_preview = email_preview["rendered_message_preview"]
+    assert rendered_preview["recipient"] == "accounts@base-rent.example"
+    assert rendered_preview["template_key"] == "invoice_delivery_custom"
+    assert rendered_preview["template_version"] == "v2"
+    assert "Invoice" in rendered_preview["subject"]
+    assert "Reference:" in rendered_preview["body_text"]
+    assert str(invoice_draft.id) in rendered_preview["action_url"]
 
     approval_response = client.post(
         f"/api/v1/xero/invoices/{invoice_draft.id}/posting-approval",
@@ -1244,6 +1342,8 @@ def test_xero_provider_dispatch_creates_xero_then_sends_email_idempotently(
         assert invite.recipient_email == "accounts@base-rent.example"
         assert invite.pdf_document_id is not None
         assert invite.pdf_content.startswith(b"%PDF")
+        assert invite.template_key == "invoice_delivery_custom"
+        assert invite.template_version == "v2"
         email_calls.append(
             {
                 "recipient": invite.recipient_email,
@@ -1493,6 +1593,12 @@ def test_xero_exception_queue_surfaces_local_provider_and_payment_gaps(
     assert payment_item["next_action"] == "preview_payment_reconciliation"
     assert payment_item["xero_invoice_id"] == "xero-invoice-payment-gap"
     assert payment_item["provider_status"] == "unpaid"
+
+    freshness_exception = item_by_id["xero-payment-reconciliation-freshness"]
+    assert freshness_exception["severity"] == "warning"
+    assert freshness_exception["next_action"] == "preview_payment_reconciliation"
+    assert freshness_exception["provider"] == "xero"
+    assert "preview payments" in freshness_exception["action"]
 
     assert body["summary"]["provider"] >= 1
     assert body["summary"]["payment"] >= 1

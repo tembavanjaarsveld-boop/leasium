@@ -89,6 +89,38 @@ class BillingRiskRead(BaseModel):
     unpaid_invoice_count: int
 
 
+class AccountingReadinessSnapshotRead(BaseModel):
+    generated_at: datetime | None = None
+    source: str | None = None
+    status: str
+    summary: str
+    stale_after_days: int | None = None
+    contact_ready: int
+    contact_missing: int
+    chart_ready: int
+    chart_missing: int
+    tax_ready: int
+    tax_missing: int
+    readiness_issue_count: int = 0
+    readiness_blocker_count: int = 0
+    readiness_warning_count: int = 0
+    approved_unsynced_invoice_count: int
+    unpaid_invoice_count: int
+    stale_reconciliation: bool
+    xero_linked_open_invoice_count: int
+    last_contact_sync_at: datetime | None
+    last_chart_tax_validation_at: datetime | None
+    last_invoice_posting_preview_at: datetime | None = None
+    last_invoice_draft_create_at: datetime | None = None
+    last_invoice_provider_dispatch_at: datetime | None = None
+    last_payment_reconciliation_preview_at: datetime | None = None
+    last_payment_reconciliation_apply_at: datetime | None = None
+    last_payment_reconciliation_at: datetime | None
+    last_payment_reconciliation_source: str | None = None
+    last_payment_reconciliation_mode: str | None = None
+    guardrails: list[str]
+
+
 class FinanceSnapshotRead(BaseModel):
     configured_charges_cents: int
     ready_to_bill_count: int
@@ -97,6 +129,7 @@ class FinanceSnapshotRead(BaseModel):
     unpaid_invoice_count: int
     billing_draft_counts: dict[str, int]
     invoice_draft_counts: dict[str, int]
+    accounting_readiness: AccountingReadinessSnapshotRead | None = None
 
 
 class OwnerEntitySnapshotRead(BaseModel):
@@ -109,6 +142,7 @@ class OwnerEntitySnapshotRead(BaseModel):
     entity_gst_registered: bool
     xero_connected: bool
     xero_last_sync_at: datetime | None
+    accounting_readiness: AccountingReadinessSnapshotRead | None = None
 
 
 class LeaseEventRead(BaseModel):

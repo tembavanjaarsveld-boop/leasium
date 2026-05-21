@@ -36,6 +36,7 @@ from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get
 from apps.api.routers.charge_rules import rent_roll
 from apps.api.routers.xero import xero_status
 from apps.api.schemas.insights import (
+    AccountingReadinessSnapshotRead,
     AutomationActivityRead,
     BillingRiskRead,
     FinanceSnapshotRead,
@@ -317,6 +318,55 @@ def _build_insights_overview(
     )
     xero = xero_status(user, session, get_settings(), entity_id)
     xero_blocker_count = sum(1 for issue in xero.issues if issue.severity == "blocker")
+    accounting_readiness = AccountingReadinessSnapshotRead(
+        generated_at=xero.accounting_freshness.generated_at,
+        source=xero.accounting_freshness.source,
+        status=xero.accounting_freshness.status,
+        summary=xero.accounting_freshness.summary,
+        stale_after_days=xero.accounting_freshness.stale_after_days,
+        contact_ready=xero.contact_mapping.ready,
+        contact_missing=xero.contact_mapping.missing,
+        chart_ready=xero.chart_mapping.ready,
+        chart_missing=xero.chart_mapping.missing,
+        tax_ready=xero.tax_mapping.ready,
+        tax_missing=xero.tax_mapping.missing,
+        readiness_issue_count=xero.accounting_freshness.readiness_issue_count,
+        readiness_blocker_count=xero.accounting_freshness.readiness_blocker_count,
+        readiness_warning_count=xero.accounting_freshness.readiness_warning_count,
+        approved_unsynced_invoice_count=xero.invoice_sync.approved_unsynced,
+        unpaid_invoice_count=xero.payment_reconciliation.unpaid,
+        stale_reconciliation=xero.accounting_freshness.stale_reconciliation,
+        xero_linked_open_invoice_count=(
+            xero.accounting_freshness.xero_linked_open_invoice_count
+        ),
+        last_contact_sync_at=xero.accounting_freshness.last_contact_sync_at,
+        last_chart_tax_validation_at=(
+            xero.accounting_freshness.last_chart_tax_validation_at
+        ),
+        last_invoice_posting_preview_at=(
+            xero.accounting_freshness.last_invoice_posting_preview_at
+        ),
+        last_invoice_draft_create_at=xero.accounting_freshness.last_invoice_draft_create_at,
+        last_invoice_provider_dispatch_at=(
+            xero.accounting_freshness.last_invoice_provider_dispatch_at
+        ),
+        last_payment_reconciliation_preview_at=(
+            xero.accounting_freshness.last_payment_reconciliation_preview_at
+        ),
+        last_payment_reconciliation_apply_at=(
+            xero.accounting_freshness.last_payment_reconciliation_apply_at
+        ),
+        last_payment_reconciliation_at=(
+            xero.accounting_freshness.last_payment_reconciliation_at
+        ),
+        last_payment_reconciliation_source=(
+            xero.accounting_freshness.last_payment_reconciliation_source
+        ),
+        last_payment_reconciliation_mode=(
+            xero.accounting_freshness.last_payment_reconciliation_mode
+        ),
+        guardrails=xero.accounting_freshness.guardrails,
+    )
 
     live_exceptions: list[LiveExceptionRead] = []
     for obligation in open_obligations:
@@ -613,6 +663,7 @@ def _build_insights_overview(
             unpaid_invoice_count=xero.payment_reconciliation.unpaid,
             billing_draft_counts=dict(billing_draft_status_counts),
             invoice_draft_counts=dict(invoice_draft_status_counts),
+            accounting_readiness=accounting_readiness,
         ),
         owner_entity_snapshot=OwnerEntitySnapshotRead(
             ownership_profile_counts=dict(ownership_counter),
@@ -640,6 +691,7 @@ def _build_insights_overview(
             entity_gst_registered=entity.gst_registered,
             xero_connected=bool(entity.xero_tenant_id),
             xero_last_sync_at=entity.xero_last_sync_at,
+            accounting_readiness=accounting_readiness,
         ),
         lease_event_snapshot=LeaseEventSnapshotRead(
             active_lease_count=len(active_leases),

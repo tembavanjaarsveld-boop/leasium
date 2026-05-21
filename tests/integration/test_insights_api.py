@@ -238,12 +238,21 @@ def test_insights_overview_summarises_live_operations_without_leaking_tool_input
     assert body["billing_risk"]["invoice_draft_counts"]["approved"] == 1
     assert body["finance_snapshot"]["configured_charges_cents"] > 0
     assert body["finance_snapshot"]["approved_unsynced_invoice_count"] == 1
+    accounting = body["finance_snapshot"]["accounting_readiness"]
+    assert accounting["status"] in {"ready", "missing", "stale", "attention"}
+    assert accounting["generated_at"] is not None
+    assert accounting["source"] == "local_metadata"
+    assert accounting["approved_unsynced_invoice_count"] == 1
+    assert accounting["readiness_issue_count"] >= 1
+    assert accounting["readiness_blocker_count"] >= 1
+    assert "local Leasium metadata only" in accounting["guardrails"][0]
 
     snapshot = body["owner_entity_snapshot"]
     assert snapshot["ownership_profile_counts"]["trust"] == 1
     assert snapshot["missing_owner_abn_count"] == 1
     assert snapshot["missing_trustee_count"] == 1
     assert snapshot["missing_xero_contact_count"] == 1
+    assert snapshot["accounting_readiness"]["status"] == accounting["status"]
 
     lease_events = body["lease_event_snapshot"]
     assert lease_events["active_lease_count"] == 1
@@ -289,6 +298,15 @@ def test_insights_snapshots_freeze_public_payload_and_revoke(
     public_body = public_response.json()
     assert public_body["payload"]["entity"]["name"] == "SKJ Property Pty Ltd"
     assert public_body["payload"]["finance_snapshot"]["ready_to_bill_count"] >= 0
+    assert public_body["payload"]["finance_snapshot"]["accounting_readiness"]["status"]
+    assert (
+        public_body["payload"]["finance_snapshot"]["accounting_readiness"]["generated_at"]
+        is not None
+    )
+    assert (
+        public_body["payload"]["finance_snapshot"]["accounting_readiness"]["source"]
+        == "local_metadata"
+    )
     assert "tool_input" not in public_response.text
 
     list_response = client.get(f"/api/v1/insights/snapshots?entity_id={entity_id}")
