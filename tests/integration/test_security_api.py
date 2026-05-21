@@ -122,7 +122,11 @@ def test_security_workspace_lists_current_operator_and_auth_boundary(
     assert body["can_manage_security"] is True
     assert body["members"][0]["notification_preferences"] == {
         "work_assignment_email_enabled": True,
+        "work_assignment_notice_template_key": "work_assignment_notification",
+        "work_assignment_notice_template_version": "v1",
         "work_assignment_digest_cadence": "daily",
+        "work_assignment_digest_template_key": "work_assignment_digest",
+        "work_assignment_digest_template_version": "v1",
         "work_assignment_digest_last_generated_at": None,
         "work_assignment_digest_last_item_count": None,
         "work_assignment_digest_history": [],
@@ -311,11 +315,17 @@ def test_owner_can_invite_and_update_operator_roles(
     assert updated["roles"][0]["role"] == "viewer"
     assert updated["notification_preferences"]["work_assignment_email_enabled"] is False
     assert updated["notification_preferences"]["work_assignment_digest_cadence"] == "weekly"
+    assert (
+        updated["notification_preferences"]["work_assignment_notice_template_key"]
+        == "work_assignment_notification"
+    )
+    assert (
+        updated["notification_preferences"]["work_assignment_digest_template_key"]
+        == "work_assignment_digest"
+    )
     assert updated["notification_preferences"]["work_assignment_digest_last_item_count"] == 3
     assert (
-        updated["notification_preferences"]["work_assignment_digest_history"][0][
-            "delivery_status"
-        ]
+        updated["notification_preferences"]["work_assignment_digest_history"][0]["delivery_status"]
         == "previewed"
     )
 
@@ -324,6 +334,14 @@ def test_owner_can_invite_and_update_operator_roles(
     assert member.email == "ops.team@example.com"
     assert member.notification_preferences["work_assignment_email_enabled"] is False
     assert member.notification_preferences["work_assignment_digest_cadence"] == "weekly"
+    assert (
+        member.notification_preferences["work_assignment_notice_template_key"]
+        == "work_assignment_notification"
+    )
+    assert (
+        member.notification_preferences["work_assignment_digest_template_key"]
+        == "work_assignment_digest"
+    )
     assert member.notification_preferences["work_assignment_digest_last_item_count"] == 3
     assert member.notification_preferences["work_assignment_digest_history"][0]["item_count"] == 3
     role = session.scalar(

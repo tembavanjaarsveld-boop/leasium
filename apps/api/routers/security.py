@@ -202,14 +202,16 @@ def _invite_detail(member: AppUser) -> str:
 
 def _notification_preferences(member: AppUser) -> SecurityNotificationPreferences:
     raw = (
-        member.notification_preferences
-        if isinstance(member.notification_preferences, dict)
-        else {}
+        member.notification_preferences if isinstance(member.notification_preferences, dict) else {}
     )
     enabled = raw.get("work_assignment_email_enabled")
     digest_cadence = raw.get("work_assignment_digest_cadence")
     if digest_cadence not in {"off", "daily", "weekly"}:
         digest_cadence = "daily"
+    notice_template_key = raw.get("work_assignment_notice_template_key")
+    notice_template_version = raw.get("work_assignment_notice_template_version")
+    digest_template_key = raw.get("work_assignment_digest_template_key")
+    digest_template_version = raw.get("work_assignment_digest_template_version")
     raw_history = raw.get("work_assignment_digest_history")
     history: list[SecurityWorkAssignmentDigestReceipt] = []
     if isinstance(raw_history, list):
@@ -222,14 +224,24 @@ def _notification_preferences(member: AppUser) -> SecurityNotificationPreference
                 continue
     raw_last_generated_at = raw.get("work_assignment_digest_last_generated_at")
     last_generated_at = (
-        raw_last_generated_at
-        if isinstance(raw_last_generated_at, (datetime, str))
-        else None
+        raw_last_generated_at if isinstance(raw_last_generated_at, (datetime, str)) else None
     )
     last_item_count = raw.get("work_assignment_digest_last_item_count")
     return SecurityNotificationPreferences(
         work_assignment_email_enabled=enabled if isinstance(enabled, bool) else True,
+        work_assignment_notice_template_key=notice_template_key
+        if isinstance(notice_template_key, str) and notice_template_key.strip()
+        else "work_assignment_notification",
+        work_assignment_notice_template_version=notice_template_version
+        if isinstance(notice_template_version, str) and notice_template_version.strip()
+        else "v1",
         work_assignment_digest_cadence=digest_cadence,
+        work_assignment_digest_template_key=digest_template_key
+        if isinstance(digest_template_key, str) and digest_template_key.strip()
+        else "work_assignment_digest",
+        work_assignment_digest_template_version=digest_template_version
+        if isinstance(digest_template_version, str) and digest_template_version.strip()
+        else "v1",
         work_assignment_digest_last_generated_at=last_generated_at,
         work_assignment_digest_last_item_count=last_item_count
         if isinstance(last_item_count, int) and not isinstance(last_item_count, bool)
@@ -244,7 +256,19 @@ def _notification_preferences_for_write(
 ) -> dict[str, object]:
     preferences = dict(current) if isinstance(current, dict) else {}
     preferences["work_assignment_email_enabled"] = payload.work_assignment_email_enabled
+    preferences["work_assignment_notice_template_key"] = (
+        payload.work_assignment_notice_template_key.strip() or "work_assignment_notification"
+    )
+    preferences["work_assignment_notice_template_version"] = (
+        payload.work_assignment_notice_template_version.strip() or "v1"
+    )
     preferences["work_assignment_digest_cadence"] = payload.work_assignment_digest_cadence
+    preferences["work_assignment_digest_template_key"] = (
+        payload.work_assignment_digest_template_key.strip() or "work_assignment_digest"
+    )
+    preferences["work_assignment_digest_template_version"] = (
+        payload.work_assignment_digest_template_version.strip() or "v1"
+    )
     return preferences
 
 
@@ -294,9 +318,7 @@ def _validate_role_assignments(
     ).all()
     found_ids = {entity.id for entity in entities}
     missing_ids = [
-        assignment.entity_id
-        for assignment in assignments
-        if assignment.entity_id not in found_ids
+        assignment.entity_id for assignment in assignments if assignment.entity_id not in found_ids
     ]
     if missing_ids:
         raise HTTPException(

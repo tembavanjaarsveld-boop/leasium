@@ -346,6 +346,8 @@ Nineteenth 2026-05-21 follow-up: Notifications now has segmented filters for Wor
 
 Twentieth 2026-05-21 follow-up: notification-center data now exposes channel, provider, template key, and template version evidence for Work notice and digest receipts, and Notifications adds channel filters for notices and digest history. Remba should review whether channel filtering is useful before SMS/push Work delivery exists, whether template/version text is too technical for operators, and whether this evidence should move into a receipt detail drawer later.
 
+Twenty-first 2026-05-21 follow-up: Settings now lets owner/admin operators edit per-member Work assignment notice and digest template key/version defaults. Provider sends still require explicit Send/Retry approval, and receipts expose the template used. Remba should review whether template keys are too implementation-heavy for this panel, whether these should become named template choices, and whether template editing belongs in Security or a future Communications settings tab.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

@@ -84,6 +84,12 @@ const EMPTY_XERO_ISSUES: XeroMappingIssueRecord[] = [];
 type SettingsTab = "security" | "organisation" | "xero";
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type PanelRef = { current: HTMLDivElement | null };
+type NotificationTemplateDraft = {
+  noticeKey: string;
+  noticeVersion: string;
+  digestKey: string;
+  digestVersion: string;
+};
 type XeroChargeRuleMappingInput = Pick<
   XeroMappingIssueRecord,
   | "id"
@@ -329,6 +335,48 @@ function workAssignmentDigestCadence(member: SecurityMemberRecord) {
   );
 }
 
+function workNotificationTemplateDraft(
+  member: SecurityMemberRecord,
+): NotificationTemplateDraft {
+  return {
+    noticeKey:
+      member.notification_preferences.work_assignment_notice_template_key ||
+      "work_assignment_notification",
+    noticeVersion:
+      member.notification_preferences.work_assignment_notice_template_version ||
+      "v1",
+    digestKey:
+      member.notification_preferences.work_assignment_digest_template_key ||
+      "work_assignment_digest",
+    digestVersion:
+      member.notification_preferences.work_assignment_digest_template_version ||
+      "v1",
+  };
+}
+
+function normalisedTemplateDraft(draft: NotificationTemplateDraft) {
+  return {
+    noticeKey: draft.noticeKey.trim() || "work_assignment_notification",
+    noticeVersion: draft.noticeVersion.trim() || "v1",
+    digestKey: draft.digestKey.trim() || "work_assignment_digest",
+    digestVersion: draft.digestVersion.trim() || "v1",
+  };
+}
+
+function templateDraftChanged(
+  member: SecurityMemberRecord,
+  draft: NotificationTemplateDraft,
+) {
+  const current = workNotificationTemplateDraft(member);
+  const next = normalisedTemplateDraft(draft);
+  return (
+    current.noticeKey !== next.noticeKey ||
+    current.noticeVersion !== next.noticeVersion ||
+    current.digestKey !== next.digestKey ||
+    current.digestVersion !== next.digestVersion
+  );
+}
+
 function digestCadenceLabel(value: SecurityWorkAssignmentDigestCadence) {
   if (value === "off") {
     return "Digest off";
@@ -476,6 +524,9 @@ function SettingsWorkspace() {
   const [inviteRole, setInviteRole] = useState<SecurityRole>("viewer");
   const [roleDrafts, setRoleDrafts] = useState<
     Record<string, SecurityRole | "">
+  >({});
+  const [notificationTemplateDrafts, setNotificationTemplateDrafts] = useState<
+    Record<string, NotificationTemplateDraft>
   >({});
   const xeroConnectionPanelRef = useRef<HTMLDivElement>(null);
   const xeroContactPreviewPanelRef = useRef<HTMLDivElement>(null);
@@ -1538,14 +1589,34 @@ function SettingsWorkspace() {
                     memberMutation.variables?.memberId === member.id;
                   const workEmailEnabled = workAssignmentEmailEnabled(member);
                   const digestCadence = workAssignmentDigestCadence(member);
+                  const templateDraft =
+                    notificationTemplateDrafts[member.id] ??
+                    workNotificationTemplateDraft(member);
+                  const cleanTemplateDraft =
+                    normalisedTemplateDraft(templateDraft);
+                  const templatesChanged = templateDraftChanged(
+                    member,
+                    templateDraft,
+                  );
                   const canManageSecurity =
                     Boolean(securityQuery.data?.can_manage_security) &&
                     !isUpdating;
+                  const updateTemplateDraft = (
+                    patch: Partial<NotificationTemplateDraft>,
+                  ) =>
+                    setNotificationTemplateDrafts((drafts) => ({
+                      ...drafts,
+                      [member.id]: {
+                        ...workNotificationTemplateDraft(member),
+                        ...drafts[member.id],
+                        ...patch,
+                      },
+                    }));
 
                   return (
                     <div
                       key={`${member.id}-notifications`}
-                      className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_220px_300px] lg:items-start"
+                      className="grid gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_220px_minmax(320px,420px)] xl:items-start"
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1642,6 +1713,101 @@ function SettingsWorkspace() {
                           </Select>
                         </Field>
                         <DigestReceiptSummary member={member} />
+                      </div>
+
+                      <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3 xl:col-start-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-sm font-medium">
+                            Template defaults
+                          </div>
+                          <StatusBadge
+                            tone={templatesChanged ? "warning" : "neutral"}
+                          >
+                            {templatesChanged ? "Unsaved" : "Current"}
+                          </StatusBadge>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-[1fr_88px]">
+                          <Field label="Assignment notice">
+                            <Input
+                              aria-label={`${member.display_name} assignment notice template key`}
+                              value={templateDraft.noticeKey}
+                              disabled={!canManageSecurity}
+                              onChange={(event) =>
+                                updateTemplateDraft({
+                                  noticeKey: event.target.value,
+                                })
+                              }
+                            />
+                          </Field>
+                          <Field label="Version">
+                            <Input
+                              aria-label={`${member.display_name} assignment notice template version`}
+                              value={templateDraft.noticeVersion}
+                              disabled={!canManageSecurity}
+                              onChange={(event) =>
+                                updateTemplateDraft({
+                                  noticeVersion: event.target.value,
+                                })
+                              }
+                            />
+                          </Field>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-[1fr_88px]">
+                          <Field label="Digest">
+                            <Input
+                              aria-label={`${member.display_name} digest template key`}
+                              value={templateDraft.digestKey}
+                              disabled={!canManageSecurity}
+                              onChange={(event) =>
+                                updateTemplateDraft({
+                                  digestKey: event.target.value,
+                                })
+                              }
+                            />
+                          </Field>
+                          <Field label="Version">
+                            <Input
+                              aria-label={`${member.display_name} digest template version`}
+                              value={templateDraft.digestVersion}
+                              disabled={!canManageSecurity}
+                              onChange={(event) =>
+                                updateTemplateDraft({
+                                  digestVersion: event.target.value,
+                                })
+                              }
+                            />
+                          </Field>
+                        </div>
+                        <SecondaryButton
+                          type="button"
+                          className="justify-self-start"
+                          disabled={!canManageSecurity || !templatesChanged}
+                          onClick={() =>
+                            memberMutation.mutate({
+                              memberId: member.id,
+                              payload: {
+                                notification_preferences:
+                                  nextNotificationPreferences(member, {
+                                    work_assignment_notice_template_key:
+                                      cleanTemplateDraft.noticeKey,
+                                    work_assignment_notice_template_version:
+                                      cleanTemplateDraft.noticeVersion,
+                                    work_assignment_digest_template_key:
+                                      cleanTemplateDraft.digestKey,
+                                    work_assignment_digest_template_version:
+                                      cleanTemplateDraft.digestVersion,
+                                  }),
+                              },
+                            })
+                          }
+                        >
+                          {isUpdating ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <CheckCircle2 size={14} />
+                          )}
+                          Save templates
+                        </SecondaryButton>
                       </div>
                     </div>
                   );

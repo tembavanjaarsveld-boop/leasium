@@ -1056,7 +1056,11 @@ const securityWorkspace = () => ({
       invite_accepted_at: "2026-05-01T00:00:00.000Z",
       notification_preferences: {
         work_assignment_email_enabled: true,
+        work_assignment_notice_template_key: "work_assignment_notification",
+        work_assignment_notice_template_version: "v1",
         work_assignment_digest_cadence: "daily",
+        work_assignment_digest_template_key: "work_assignment_digest",
+        work_assignment_digest_template_version: "v1",
         work_assignment_digest_last_generated_at: "2026-05-21T09:00:00.000Z",
         work_assignment_digest_last_item_count: 4,
         work_assignment_digest_history: [
@@ -1074,7 +1078,11 @@ const securityWorkspace = () => ({
             delivery_status: "previewed",
             message_sent: false,
             delivery_detail: null,
+            delivery_channel: null,
+            provider: null,
             provider_message_id: null,
+            template_key: "work_assignment_digest",
+            template_version: "v1",
             delivery_trigger: "preview",
             recovery_of_generated_at: null,
             delivery_attempt_count: 0,
@@ -1103,7 +1111,11 @@ const securityWorkspace = () => ({
       invite_accepted_at: "2026-05-01T00:00:00.000Z",
       notification_preferences: {
         work_assignment_email_enabled: true,
+        work_assignment_notice_template_key: "work_assignment_notification",
+        work_assignment_notice_template_version: "v1",
         work_assignment_digest_cadence: "daily",
+        work_assignment_digest_template_key: "work_assignment_digest",
+        work_assignment_digest_template_version: "v1",
         work_assignment_digest_last_generated_at: null,
         work_assignment_digest_last_item_count: null,
         work_assignment_digest_history: [],
@@ -3277,6 +3289,8 @@ export async function mockLeasiumApi(
             notification_detail: "Assignment email was queued by SendGrid.",
             channel: "email",
             provider: "sendgrid",
+            template_key: "work_assignment_notification",
+            template_version: "v1",
             due_date: "2026-05-20",
             event_at: "2026-05-20T01:15:00.000Z",
             follow_up_due: false,
@@ -3295,6 +3309,8 @@ export async function mockLeasiumApi(
             notification_detail: "SendGrid returned 500.",
             channel: "email",
             provider: "sendgrid",
+            template_key: "work_assignment_notification",
+            template_version: "v1",
             due_date: "2026-05-18",
             event_at: "2026-05-20T00:30:00.000Z",
             follow_up_due: true,
@@ -3315,9 +3331,13 @@ export async function mockLeasiumApi(
             delivery_detail: digestReceiptSent
               ? "Digest email was queued by SendGrid."
               : null,
+            delivery_channel: digestReceiptSent ? "email" : null,
+            provider: digestReceiptSent ? "sendgrid" : null,
             provider_message_id: digestReceiptSent
               ? "sg-digest-smoke-retry"
               : null,
+            template_key: "work_assignment_digest",
+            template_version: "v1",
             delivery_trigger: digestReceiptSent ? "recovery" : "preview",
             recovery_of_generated_at: digestReceiptSent
               ? "2026-05-21T09:00:00.000Z"

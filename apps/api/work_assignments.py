@@ -48,18 +48,45 @@ def work_assignment_record(metadata: dict[str, Any] | None) -> dict[str, Any]:
     return _metadata_record((metadata or {}).get(WORK_ASSIGNMENT_KEY))
 
 
-def _template_key(settings: Settings, assignment: dict[str, Any]) -> str:
+def _assigned_user_preferences(
+    assignment: dict[str, Any],
+    session: Session | None,
+) -> dict[str, Any]:
+    if session is None:
+        return {}
+    assigned_user_id = _metadata_uuid(assignment.get("assigned_user_id"))
+    if assigned_user_id is None:
+        return {}
+    app_user = session.get(AppUser, assigned_user_id)
+    if app_user is None:
+        return {}
+    return _metadata_record(app_user.notification_preferences)
+
+
+def _template_key(
+    settings: Settings,
+    assignment: dict[str, Any],
+    session: Session | None,
+) -> str:
     notification = _metadata_record(assignment.get("notification"))
+    preferences = _assigned_user_preferences(assignment, session)
     return (
-        _metadata_text(notification.get("template_key"))
+        _metadata_text(preferences.get("work_assignment_notice_template_key"))
+        or _metadata_text(notification.get("template_key"))
         or settings.work_assignment_email_template_key
     )
 
 
-def _template_version(settings: Settings, assignment: dict[str, Any]) -> str:
+def _template_version(
+    settings: Settings,
+    assignment: dict[str, Any],
+    session: Session | None,
+) -> str:
     notification = _metadata_record(assignment.get("notification"))
+    preferences = _assigned_user_preferences(assignment, session)
     return (
-        _metadata_text(notification.get("template_version"))
+        _metadata_text(preferences.get("work_assignment_notice_template_version"))
+        or _metadata_text(notification.get("template_version"))
         or settings.work_assignment_email_template_version
     )
 
@@ -85,6 +112,7 @@ def work_assignment_email_invite(
     due_date: date | datetime | None,
     work_url: str | None,
     settings: Settings,
+    session: Session | None = None,
 ) -> WorkAssignmentEmail:
     assignment = _metadata_record((metadata or {}).get(WORK_ASSIGNMENT_KEY))
     if not assignment:
@@ -113,8 +141,8 @@ def work_assignment_email_invite(
         assignee_email=recipient,
         assigned_by_name=_metadata_text(assignment.get("assigned_by_name")),
         work_url=work_url,
-        template_key=_template_key(settings, assignment),
-        template_version=_template_version(settings, assignment),
+        template_key=_template_key(settings, assignment, session),
+        template_version=_template_version(settings, assignment, session),
     )
 
 

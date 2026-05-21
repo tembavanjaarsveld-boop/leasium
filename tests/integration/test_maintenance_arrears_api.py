@@ -479,6 +479,15 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
             ],
         }
     }
+    assignee = session.get(AppUser, settings.dev_user_id)
+    assert assignee is not None
+    assignee.notification_preferences = {
+        "work_assignment_email_enabled": True,
+        "work_assignment_notice_template_key": "custom_work_notice",
+        "work_assignment_notice_template_version": "v2",
+        "work_assignment_digest_cadence": "daily",
+    }
+    session.commit()
     create_response = client.post(
         "/api/v1/maintenance/work-orders",
         json={
@@ -504,7 +513,8 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
         assert invite.work_kind == "Maintenance"
         assert invite.title == "Replace shopfront lock"
         assert invite.assignee_email == settings.dev_user_email
-        assert invite.template_key == "work_assignment_notification"
+        assert invite.template_key == "custom_work_notice"
+        assert invite.template_version == "v2"
         assert settings_arg.work_assignment_email_template_key == ("work_assignment_notification")
         assert invite.work_url is None or invite.work_url.endswith(
             f"/operations/maintenance/{work_order_id}"
@@ -540,7 +550,8 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
     assert notification["provider"] == "sendgrid"
     assert notification["provider_message_id"] == "sg-assignment-123"
     assert notification["recipient_email"] == settings.dev_user_email
-    assert notification["template_key"] == "work_assignment_notification"
+    assert notification["template_key"] == "custom_work_notice"
+    assert notification["template_version"] == "v2"
     assert notification["provider_history"][0]["event"] == ("provider_notification_attempted")
     assert assignment["history"][0]["event"] == "provider_notification_attempted"
     assert assignment["history"][0]["notification_status"] == "queued"
@@ -646,6 +657,8 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assignee.notification_preferences = {
         "work_assignment_email_enabled": True,
         "work_assignment_digest_cadence": "daily",
+        "work_assignment_digest_template_key": "custom_work_digest",
+        "work_assignment_digest_template_version": "v3",
     }
     session.commit()
 
@@ -775,8 +788,8 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert center["notices"][0]["assignee_user_id"] == str(assignee.id)
     assert center["digest_receipts"][0]["delivery_status"] == "previewed"
     assert center["digest_receipts"][0]["delivery_channel"] is None
-    assert center["digest_receipts"][0]["template_key"] == "work_assignment_digest"
-    assert center["digest_receipts"][0]["template_version"] == "v1"
+    assert center["digest_receipts"][0]["template_key"] == "custom_work_digest"
+    assert center["digest_receipts"][0]["template_version"] == "v3"
     assert center["guardrails"][0].startswith("Notification center is read-only")
 
     mark_read_response = client.post(
@@ -815,6 +828,8 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
     assignee.notification_preferences = {
         "work_assignment_email_enabled": True,
         "work_assignment_digest_cadence": "daily",
+        "work_assignment_digest_template_key": "custom_work_digest",
+        "work_assignment_digest_template_version": "v3",
     }
     session.commit()
 
@@ -852,6 +867,8 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
         assert invite.cadence == "daily"
         assert invite.item_count == 1
         assert invite.items[0].title == "Digest delivery maintenance job"
+        assert invite.template_key == "custom_work_digest"
+        assert invite.template_version == "v3"
         assert settings_arg.work_assignment_email_template_key == ("work_assignment_notification")
         attempts.append(str(invite.assignee_user_id))
         message_id = f"sg-digest-{len(attempts)}"
@@ -925,8 +942,8 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
     assert center["digest_receipts"][0]["delivery_channel"] == "email"
     assert center["digest_receipts"][0]["provider"] == "sendgrid"
     assert center["digest_receipts"][0]["provider_message_id"] == "sg-digest-1"
-    assert center["digest_receipts"][0]["template_key"] == "work_assignment_digest"
-    assert center["digest_receipts"][0]["template_version"] == "v1"
+    assert center["digest_receipts"][0]["template_key"] == "custom_work_digest"
+    assert center["digest_receipts"][0]["template_version"] == "v3"
     assert center["digest_receipts"][0]["delivery_trigger"] == "scheduled"
     assert center["digest_receipts"][0]["delivery_attempt_count"] == 1
 

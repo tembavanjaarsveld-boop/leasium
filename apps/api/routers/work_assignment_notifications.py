@@ -445,8 +445,22 @@ def _digest_email_preference_enabled(member: AppUser) -> bool:
     return enabled if isinstance(enabled, bool) else True
 
 
+def _digest_template_key(member: AppUser) -> str:
+    preferences = _metadata_record(member.notification_preferences)
+    return (
+        _metadata_text(preferences.get("work_assignment_digest_template_key"))
+        or "work_assignment_digest"
+    )
+
+
+def _digest_template_version(member: AppUser) -> str:
+    preferences = _metadata_record(member.notification_preferences)
+    return _metadata_text(preferences.get("work_assignment_digest_template_version")) or "v1"
+
+
 def _digest_email_preference_skipped_result(
     digest: WorkAssignmentDigestRead,
+    member: AppUser,
     *,
     entity_id: UUID,
     generated_at: datetime,
@@ -458,8 +472,8 @@ def _digest_email_preference_skipped_result(
         recipient=digest.assignee_email,
         error="Assignment email disabled by operator preference.",
         metadata={
-            "template_key": "work_assignment_digest",
-            "template_version": "v1",
+            "template_key": _digest_template_key(member),
+            "template_version": _digest_template_version(member),
             "entity_id": str(entity_id),
             "assignee_user_id": str(digest.assignee_user_id),
             "cadence": digest.cadence,
@@ -498,6 +512,7 @@ def _digest_work_kind(item: WorkAssignmentDigestItemRead) -> str:
 
 def _digest_email_invite(
     digest: WorkAssignmentDigestRead,
+    member: AppUser,
     *,
     entity_id: UUID,
     generated_at: datetime,
@@ -527,8 +542,8 @@ def _digest_email_invite(
             )
             for item in digest.items
         ],
-        template_key="work_assignment_digest",
-        template_version="v1",
+        template_key=_digest_template_key(member),
+        template_version=_digest_template_version(member),
     )
 
 
@@ -600,8 +615,9 @@ def _record_digest_receipt(
         "provider": result_dict.get("provider"),
         "provider_message_id": result_dict.get("provider_message_id"),
         "recipient_email": result_dict.get("recipient"),
-        "template_key": result_metadata.get("template_key") or "work_assignment_digest",
-        "template_version": result_metadata.get("template_version") or "v1",
+        "template_key": result_metadata.get("template_key") or _digest_template_key(member),
+        "template_version": result_metadata.get("template_version")
+        or _digest_template_version(member),
         "delivery_attempted_at": result_dict.get("attempted_at"),
         "provider_history": provider_history,
     }
@@ -1038,6 +1054,7 @@ def _generate_work_assignment_digest(
                 send_work_assignment_digest_email(
                     _digest_email_invite(
                         digest,
+                        member,
                         entity_id=payload.entity_id,
                         generated_at=generated_at,
                     ),
@@ -1046,6 +1063,7 @@ def _generate_work_assignment_digest(
                 if _digest_email_preference_enabled(member)
                 else _digest_email_preference_skipped_result(
                     digest,
+                    member,
                     entity_id=payload.entity_id,
                     generated_at=generated_at,
                 )

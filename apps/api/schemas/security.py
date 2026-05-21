@@ -35,7 +35,11 @@ class SecurityWorkAssignmentDigestReceipt(BaseModel):
     delivery_status: str = "previewed"
     message_sent: bool = False
     delivery_detail: str | None = None
+    delivery_channel: str | None = None
+    provider: str | None = None
     provider_message_id: str | None = None
+    template_key: str | None = None
+    template_version: str | None = None
     delivery_trigger: str | None = None
     recovery_of_generated_at: datetime | None = None
     delivery_attempt_count: int = 0
@@ -43,7 +47,11 @@ class SecurityWorkAssignmentDigestReceipt(BaseModel):
 
 class SecurityNotificationPreferences(BaseModel):
     work_assignment_email_enabled: bool = True
+    work_assignment_notice_template_key: str = "work_assignment_notification"
+    work_assignment_notice_template_version: str = "v1"
     work_assignment_digest_cadence: Literal["off", "daily", "weekly"] = "daily"
+    work_assignment_digest_template_key: str = "work_assignment_digest"
+    work_assignment_digest_template_version: str = "v1"
     work_assignment_digest_last_generated_at: datetime | None = None
     work_assignment_digest_last_item_count: int | None = None
     work_assignment_digest_history: list[SecurityWorkAssignmentDigestReceipt] = Field(

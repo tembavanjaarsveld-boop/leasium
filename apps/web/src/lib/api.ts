@@ -47,7 +47,11 @@ export type SecurityWorkAssignmentDigestReceiptRecord = {
   delivery_status: string;
   message_sent: boolean;
   delivery_detail: string | null;
+  delivery_channel: string | null;
+  provider: string | null;
   provider_message_id: string | null;
+  template_key: string | null;
+  template_version: string | null;
   delivery_trigger: string | null;
   recovery_of_generated_at: string | null;
   delivery_attempt_count: number;
@@ -55,7 +59,11 @@ export type SecurityWorkAssignmentDigestReceiptRecord = {
 
 export type SecurityNotificationPreferences = {
   work_assignment_email_enabled: boolean;
+  work_assignment_notice_template_key: string;
+  work_assignment_notice_template_version: string;
   work_assignment_digest_cadence: SecurityWorkAssignmentDigestCadence;
+  work_assignment_digest_template_key: string;
+  work_assignment_digest_template_version: string;
   work_assignment_digest_last_generated_at: string | null;
   work_assignment_digest_last_item_count: number | null;
   work_assignment_digest_history: SecurityWorkAssignmentDigestReceiptRecord[];

@@ -311,6 +311,7 @@ def send_obligation_assignment_notification_email(
         due_date=obligation.due_date,
         work_url=work_url(settings, "/properties"),
         settings=settings,
+        session=session,
     )
     result = (
         send_work_assignment_email(invite, settings)
@@ -338,8 +339,7 @@ def send_obligation_assignment_notification_email(
             "status": result.status,
         },
         tool_output_summary=(
-            f"Attempted assignment notification delivery via {result.provider}: "
-            f"{result.status}."
+            f"Attempted assignment notification delivery via {result.provider}: {result.status}."
         ),
     )
     session.commit()
