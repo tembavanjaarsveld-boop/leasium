@@ -26,6 +26,9 @@ from stewart.core.settings import get_settings
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.work_assignments import (
+    WorkAssignmentDigestCadence,
+    WorkAssignmentDigestDueCadence,
+    WorkAssignmentDigestDueRunRead,
     WorkAssignmentDigestItemRead,
     WorkAssignmentDigestRead,
     WorkAssignmentDigestRun,
@@ -65,6 +68,11 @@ DIGEST_GUARDRAILS = [
         "Generated items come from currently assigned open maintenance, arrears, "
         "and critical-date work."
     ),
+]
+DUE_DIGEST_GUARDRAILS = [
+    "Due digest runs are review-only; they do not send email, SMS, or push notifications.",
+    "Cron callers do not need entity IDs; active entities are scanned for matching assigned work.",
+    "Only active operators whose digest cadence matches the run are included.",
 ]
 NOTIFICATION_CENTER_GUARDRAILS = [
     "Notification center is read-only; sending still requires explicit operator action.",
@@ -488,6 +496,29 @@ def _entity_assignment_members(
     ).all()
 
 
+def _digest_cadences_for_filter(
+    cadence_filter: WorkAssignmentDigestDueCadence,
+) -> list[WorkAssignmentDigestCadence]:
+    if cadence_filter == "all":
+        return ["daily", "weekly"]
+    return [cadence_filter]
+
+
+def _has_assigned_digest_work(
+    session: Session,
+    *,
+    entity_id: UUID,
+    member_ids: set[UUID],
+) -> bool:
+    if not member_ids:
+        return False
+    for target in _open_assignment_targets(session, entity_id):
+        assignee_id = _assigned_user_id(_target_metadata(target))
+        if assignee_id in member_ids:
+            return True
+    return False
+
+
 def _notification_center_read_at(member: AppUser | None, entity_id: UUID) -> datetime | None:
     if member is None:
         return None
@@ -774,6 +805,56 @@ def run_scheduled_work_assignment_digest(
         actor="cron:work_assignment_digest",
         user_id=None,
         tool_name="work_assignment.digest_generate_scheduled",
+    )
+
+
+@router.post("/digests/run-due", response_model=WorkAssignmentDigestDueRunRead)
+def run_due_work_assignment_digests(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    cadence: Annotated[WorkAssignmentDigestDueCadence, Query()] = "daily",
+) -> WorkAssignmentDigestDueRunRead:
+    _assert_webhook_secret(request)
+    entities = session.scalars(
+        select(Entity).where(Entity.deleted_at.is_(None)).order_by(Entity.name)
+    ).all()
+    cadences = _digest_cadences_for_filter(cadence)
+    runs: list[WorkAssignmentDigestRunRead] = []
+    for entity in entities:
+        members = _entity_assignment_members(
+            session,
+            organisation_id=entity.organisation_id,
+            entity_id=entity.id,
+        )
+        for digest_cadence in cadences:
+            eligible_member_ids = {
+                member.id for member in members if _digest_preference(member) == digest_cadence
+            }
+            if not _has_assigned_digest_work(
+                session,
+                entity_id=entity.id,
+                member_ids=eligible_member_ids,
+            ):
+                continue
+            runs.append(
+                _generate_work_assignment_digest(
+                    WorkAssignmentDigestRun(entity_id=entity.id, cadence=digest_cadence),
+                    session=session,
+                    organisation_id=entity.organisation_id,
+                    actor="cron:work_assignment_digest_due",
+                    user_id=None,
+                    tool_name="work_assignment.digest_generate_due",
+                )
+            )
+    return WorkAssignmentDigestDueRunRead(
+        generated_at=utcnow(),
+        cadence_filter=cadence,
+        entity_count=len(entities),
+        run_count=len(runs),
+        operator_count=sum(run.operator_count for run in runs),
+        work_item_count=sum(run.work_item_count for run in runs),
+        guardrails=DUE_DIGEST_GUARDRAILS,
+        runs=runs,
     )
 
 

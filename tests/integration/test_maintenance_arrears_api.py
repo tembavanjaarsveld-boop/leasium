@@ -751,6 +751,28 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert scheduled_audit.actor == "cron:work_assignment_digest"
     assert scheduled_audit.user_id is None
 
+    due_response = client.post(
+        "/api/v1/work-assignments/digests/run-due",
+        params={"cadence": "daily"},
+    )
+    assert due_response.status_code == 200
+    due_digest = due_response.json()
+    assert due_digest["cadence_filter"] == "daily"
+    assert due_digest["entity_count"] == 1
+    assert due_digest["run_count"] == 1
+    assert due_digest["operator_count"] == 1
+    assert due_digest["work_item_count"] == 1
+    assert due_digest["guardrails"][0].startswith("Due digest runs are review-only")
+    assert due_digest["runs"][0]["cadence"] == "daily"
+    session.refresh(assignee)
+    assert len(assignee.notification_preferences["work_assignment_digest_history"]) == 3
+    due_audit = session.scalar(
+        select(AuditAction).where(AuditAction.tool_name == "work_assignment.digest_generate_due")
+    )
+    assert due_audit is not None
+    assert due_audit.actor == "cron:work_assignment_digest_due"
+    assert due_audit.user_id is None
+
     center_response = client.get(
         "/api/v1/work-assignments/notification-center",
         params={"entity_id": entity_id},
@@ -758,10 +780,10 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert center_response.status_code == 200
     center = center_response.json()
     assert center["notice_count"] == 1
-    assert center["unread_count"] == 3
+    assert center["unread_count"] == 4
     assert center["last_read_at"] is None
     assert center["ready_count"] == 1
-    assert center["digest_receipt_count"] == 2
+    assert center["digest_receipt_count"] == 3
     assert center["notices"][0]["title"] == "Digest-ready maintenance job"
     assert center["notices"][0]["group"] == "ready"
     assert center["notices"][0]["assignee_user_id"] == str(assignee.id)

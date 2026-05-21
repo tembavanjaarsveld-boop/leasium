@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 WorkAssignmentDigestCadence = Literal["daily", "weekly"]
+WorkAssignmentDigestDueCadence = Literal["daily", "weekly", "all"]
 WorkAssignmentNoticeGroup = Literal["ready", "in_flight", "attention", "done"]
 
 
@@ -54,6 +55,17 @@ class WorkAssignmentDigestRunRead(BaseModel):
     work_item_count: int
     guardrails: list[str] = Field(default_factory=list)
     digests: list[WorkAssignmentDigestRead] = Field(default_factory=list)
+
+
+class WorkAssignmentDigestDueRunRead(BaseModel):
+    generated_at: datetime
+    cadence_filter: WorkAssignmentDigestDueCadence
+    entity_count: int
+    run_count: int
+    operator_count: int
+    work_item_count: int
+    guardrails: list[str] = Field(default_factory=list)
+    runs: list[WorkAssignmentDigestRunRead] = Field(default_factory=list)
 
 
 class WorkAssignmentNotificationCenterItemRead(BaseModel):
