@@ -127,6 +127,10 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expect(
     page.getByRole("button", { name: /Send ready notices 1/ }),
   ).toBeVisible();
+  await expect(page.getByText("Notice inbox")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Air conditioning fault Ready/ }),
+  ).toBeVisible();
   await expect(page.getByText("Reminder Today").first()).toBeVisible();
   await page.getByRole("button", { name: "Send notice" }).first().click();
   await expect(page.getByText("Email queued").first()).toBeVisible();
@@ -146,7 +150,9 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await page
     .getByLabel("Queue assignee")
     .selectOption({ label: "Temba van Jaarsveld" });
-  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Air conditioning fault 1d/ }),
+  ).toBeVisible();
   await expect(page.getByText("Bright Cafe arrears")).not.toBeVisible();
   await page.getByLabel("Queue assignee").selectOption("unassigned");
   await expect(page.getByText("Insurance certificate renewal")).toBeVisible();

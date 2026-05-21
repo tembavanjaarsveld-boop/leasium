@@ -241,6 +241,19 @@ type AssigneeFilter =
   | "follow_up"
   | `member:${string}`;
 type WorkAssignmentAction = "reminder_logged" | "escalation_queued";
+type AssignmentNoticeGroup = "ready" | "in_flight" | "attention" | "done";
+
+type AssignmentNoticeInboxItem = {
+  id: string;
+  href: string;
+  title: string;
+  group: AssignmentNoticeGroup;
+  tone: Tone;
+  statusLabel: string;
+  summary: string;
+  meta: string;
+  at: string | null;
+};
 
 const ASSIGNMENT_EMAIL_DELIVERED_STATUSES = [
   "queued",
@@ -266,6 +279,91 @@ function assignmentEmailReady(assignment: WorkAssignment | null) {
   return Boolean(
     assignment?.assignedEmail && assignment.notificationStatus === "ready",
   );
+}
+
+function assignmentNoticeGroup(
+  assignment: WorkAssignment | null,
+): AssignmentNoticeGroup | null {
+  if (!assignment || (!assignment.assignedUserId && !assignment.assignedName)) {
+    return null;
+  }
+  const status = assignment.notificationStatus ?? "";
+  if (assignmentEmailReady(assignment)) {
+    return "ready";
+  }
+  if (assignmentEmailProblem(assignment)) {
+    return "attention";
+  }
+  if (["queued", "sent"].includes(status)) {
+    return "in_flight";
+  }
+  if (["delivered", "opened"].includes(status)) {
+    return "done";
+  }
+  return null;
+}
+
+function assignmentNoticeTone(group: AssignmentNoticeGroup): Tone {
+  if (group === "attention") {
+    return "danger";
+  }
+  if (group === "ready") {
+    return "primary";
+  }
+  if (group === "done") {
+    return "success";
+  }
+  return "warning";
+}
+
+function assignmentNoticeLabel(group: AssignmentNoticeGroup) {
+  if (group === "in_flight") {
+    return "In flight";
+  }
+  return label(group);
+}
+
+function assignmentNoticeInboxItem(
+  item: AssignableQueueItem,
+): AssignmentNoticeInboxItem | null {
+  const assignment = workAssignment(item.record.metadata);
+  const group = assignmentNoticeGroup(assignment);
+  if (!assignment || !group) {
+    return null;
+  }
+  const latestHistory = assignment.history[0];
+  const at = latestHistory?.at ?? assignment.assignedAt;
+  const statusLabel =
+    assignment.notificationStatus === "ready"
+      ? "Ready"
+      : assignment.notificationStatus
+        ? label(assignment.notificationStatus)
+        : assignmentNoticeLabel(group);
+  const summary =
+    latestHistory?.summary ??
+    assignment.notificationDetail ??
+    (group === "ready"
+      ? "Assignment notice is ready."
+      : "Assignment notice updated.");
+  const meta = [
+    assignment.assignedName,
+    at ? formatDateTime(at) : null,
+    assignment.assignedEmail,
+  ]
+    .filter(Boolean)
+    .join(" - ");
+
+  return {
+    id: item.id,
+    href: item.href,
+    title: item.title,
+    group,
+    tone: assignmentNoticeTone(group),
+    statusLabel,
+    summary,
+    meta,
+    at,
+  };
 }
 
 type MaintenanceFormState = {
@@ -1490,6 +1588,34 @@ function OperationsWorkspace() {
     .filter((item) =>
       assignmentEmailReady(workAssignment(item.record.metadata)),
     );
+  const noticeInboxItems = filteredOpenQueueItems
+    .filter(isAssignableQueueItem)
+    .map(assignmentNoticeInboxItem)
+    .filter((item): item is AssignmentNoticeInboxItem => Boolean(item))
+    .sort((a, b) => {
+      const rank: Record<AssignmentNoticeGroup, number> = {
+        attention: 0,
+        ready: 1,
+        in_flight: 2,
+        done: 3,
+      };
+      return (
+        rank[a.group] - rank[b.group] ||
+        (b.at ? Date.parse(b.at) : 0) - (a.at ? Date.parse(a.at) : 0)
+      );
+    });
+  const noticeInboxCounts = noticeInboxItems.reduce(
+    (counts, item) => ({
+      ...counts,
+      [item.group]: counts[item.group] + 1,
+    }),
+    {
+      attention: 0,
+      ready: 0,
+      in_flight: 0,
+      done: 0,
+    } satisfies Record<AssignmentNoticeGroup, number>,
+  );
   const unassignedWorkCount = assignableOpenQueueItems.filter(
     (item) => !assignedUserId(item) && !assignedUserName(item),
   ).length;
@@ -2310,6 +2436,12 @@ function OperationsWorkspace() {
                       );
                     })}
                   </div>
+                  {noticeInboxItems.length > 0 ? (
+                    <AssignmentNoticeInbox
+                      items={noticeInboxItems.slice(0, 4)}
+                      counts={noticeInboxCounts}
+                    />
+                  ) : null}
                 </div>
                 <div className="divide-y divide-border">
                   {filteredOpenQueueItems.map((item) => (
@@ -3453,6 +3585,66 @@ function WorkAssignmentControl({
               assignment.assignedByName ?? "Leasium"
             }. ${notificationFootnote}`
           : notificationFootnote}
+      </div>
+    </div>
+  );
+}
+
+function AssignmentNoticeInbox({
+  items,
+  counts,
+}: {
+  items: AssignmentNoticeInboxItem[];
+  counts: Record<AssignmentNoticeGroup, number>;
+}) {
+  const summary = [
+    { group: "attention", icon: <AlertTriangle size={13} /> },
+    { group: "ready", icon: <Send size={13} /> },
+    { group: "in_flight", icon: <Clock3 size={13} /> },
+    { group: "done", icon: <CheckCircle2 size={13} /> },
+  ] satisfies { group: AssignmentNoticeGroup; icon: ReactNode }[];
+
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex min-h-8 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
+          <MailCheck size={14} className="text-primary" />
+          Notice inbox
+        </span>
+        {summary.map((item) => (
+          <span
+            key={item.group}
+            className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground"
+          >
+            <span className="text-primary">{item.icon}</span>
+            {assignmentNoticeLabel(item.group)}
+            <span className="text-foreground">{counts[item.group]}</span>
+          </span>
+        ))}
+      </div>
+      <div className="mt-2 grid gap-2 lg:grid-cols-2 2xl:grid-cols-4">
+        {items.map((item) => (
+          <Link
+            key={item.id}
+            href={item.href}
+            className="grid min-h-[5.25rem] gap-1 rounded-lg border border-border bg-white px-3 py-2 text-xs transition duration-200 ease-leasium hover:border-primary/30 hover:bg-leasium-blue-soft"
+          >
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <span className="truncate font-semibold text-foreground">
+                {item.title}
+              </span>
+              <StatusBadge tone={item.tone}>{item.statusLabel}</StatusBadge>
+            </div>
+            <div className="line-clamp-2 text-muted-foreground">
+              {item.summary}
+            </div>
+            {item.meta ? (
+              <div className="truncate text-muted-foreground/80">
+                {item.meta}
+              </div>
+            ) : null}
+          </Link>
+        ))}
       </div>
     </div>
   );
