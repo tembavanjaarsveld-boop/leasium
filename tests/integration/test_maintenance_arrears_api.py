@@ -731,6 +731,26 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert audit.tool_output_summary is not None
     assert "no messages sent" in audit.tool_output_summary
 
+    scheduled_response = client.post(
+        "/api/v1/work-assignments/digests/run-scheduled",
+        json={"entity_id": entity_id, "cadence": "daily"},
+    )
+    assert scheduled_response.status_code == 200
+    scheduled_digest = scheduled_response.json()
+    assert scheduled_digest["operator_count"] == 1
+    assert scheduled_digest["work_item_count"] == 1
+
+    session.refresh(assignee)
+    assert len(assignee.notification_preferences["work_assignment_digest_history"]) == 2
+    scheduled_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.tool_name == "work_assignment.digest_generate_scheduled"
+        )
+    )
+    assert scheduled_audit is not None
+    assert scheduled_audit.actor == "cron:work_assignment_digest"
+    assert scheduled_audit.user_id is None
+
 
 def test_arrears_case_tracks_aged_balances_reminders_and_escalation(
     client: TestClient,

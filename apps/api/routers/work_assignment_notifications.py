@@ -14,6 +14,7 @@ from stewart.core.models import (
     AppUser,
     ArrearsCase,
     ArrearsCaseStatus,
+    Entity,
     MaintenanceWorkOrder,
     MaintenanceWorkOrderStatus,
     Obligation,
@@ -344,18 +345,20 @@ def _record_digest_receipt(
     member.notification_preferences = preferences
 
 
-@router.post("/digests/run", response_model=WorkAssignmentDigestRunRead)
-def run_work_assignment_digest(
+def _generate_work_assignment_digest(
     payload: WorkAssignmentDigestRun,
-    session: Annotated[Session, Depends(get_session)],
-    user: Annotated[CurrentUser, Depends(get_current_user)],
+    *,
+    session: Session,
+    organisation_id: UUID,
+    actor: str,
+    user_id: UUID | None,
+    tool_name: str,
 ) -> WorkAssignmentDigestRunRead:
-    assert_entity_role(session, user, payload.entity_id, READ_ROLES)
     members = session.scalars(
         select(AppUser)
         .join(UserEntityRole, UserEntityRole.user_id == AppUser.id)
         .where(
-            AppUser.organisation_id == user.organisation_id,
+            AppUser.organisation_id == organisation_id,
             AppUser.is_active.is_(True),
             UserEntityRole.entity_id == payload.entity_id,
         )
@@ -426,12 +429,12 @@ def run_work_assignment_digest(
     work_item_count = sum(digest.item_count for digest in digests)
     audit_log(
         session,
-        actor=user.actor,
-        user_id=user.id,
+        actor=actor,
+        user_id=user_id,
         entity_id=payload.entity_id,
         action="generate",
         target_table="work_assignment_digest",
-        tool_name="work_assignment.digest_generate",
+        tool_name=tool_name,
         tool_input=payload.model_dump(mode="json"),
         tool_output_summary=(
             f"Generated {payload.cadence} Work assignment digest preview for "
@@ -448,6 +451,43 @@ def run_work_assignment_digest(
         work_item_count=work_item_count,
         guardrails=DIGEST_GUARDRAILS,
         digests=digests,
+    )
+
+
+@router.post("/digests/run", response_model=WorkAssignmentDigestRunRead)
+def run_work_assignment_digest(
+    payload: WorkAssignmentDigestRun,
+    session: Annotated[Session, Depends(get_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> WorkAssignmentDigestRunRead:
+    assert_entity_role(session, user, payload.entity_id, READ_ROLES)
+    return _generate_work_assignment_digest(
+        payload,
+        session=session,
+        organisation_id=user.organisation_id,
+        actor=user.actor,
+        user_id=user.id,
+        tool_name="work_assignment.digest_generate",
+    )
+
+
+@router.post("/digests/run-scheduled", response_model=WorkAssignmentDigestRunRead)
+def run_scheduled_work_assignment_digest(
+    payload: WorkAssignmentDigestRun,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> WorkAssignmentDigestRunRead:
+    _assert_webhook_secret(request)
+    entity = session.get(Entity, payload.entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+    return _generate_work_assignment_digest(
+        payload,
+        session=session,
+        organisation_id=entity.organisation_id,
+        actor="cron:work_assignment_digest",
+        user_id=None,
+        tool_name="work_assignment.digest_generate_scheduled",
     )
 
 
