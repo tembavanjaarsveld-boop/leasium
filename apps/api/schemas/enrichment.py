@@ -70,3 +70,36 @@ class EnrichmentApplyRead(BaseModel):
     target: EnrichmentTargetRead
     applied: list[EnrichmentAppliedChange]
     skipped: list[EnrichmentSkippedSuggestion]
+
+
+class PropertyImageCandidate(BaseModel):
+    title: str = Field(min_length=1)
+    image_url: str = Field(min_length=1)
+    page_url: str | None = None
+    source: EnrichmentSource
+    confidence: float = Field(ge=0, le=1)
+    notes: str | None = None
+
+
+class PropertyImagePreviewRequest(BaseModel):
+    property_id: UUID
+    requested_count: int = Field(default=4, ge=1, le=6)
+
+
+class PropertyImagePreviewRead(BaseModel):
+    target: EnrichmentTargetRead
+    candidates: list[PropertyImageCandidate]
+    warnings: list[str] = Field(default_factory=list)
+    openai_response_id: str | None = None
+
+
+class PropertyImageApplyRequest(BaseModel):
+    property_id: UUID
+    candidate: PropertyImageCandidate
+
+
+class PropertyImageApplyRead(BaseModel):
+    target: EnrichmentTargetRead
+    selected_image: PropertyImageCandidate
+    document_id: UUID
+    warnings: list[str] = Field(default_factory=list)

@@ -48,6 +48,41 @@ PUBLIC_ENRICHMENT_SCHEMA: dict[str, Any] = {
     },
 }
 
+PROPERTY_IMAGE_CANDIDATES_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["candidates", "warnings"],
+    "properties": {
+        "candidates": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "title",
+                    "image_url",
+                    "page_url",
+                    "source_hint",
+                    "citation",
+                    "confidence",
+                    "notes",
+                ],
+                "properties": {
+                    "title": {"type": "string"},
+                    "image_url": {"type": "string"},
+                    "page_url": {"type": ["string", "null"]},
+                    "source_hint": {"type": "string"},
+                    "citation": {"type": "string"},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "notes": {"type": ["string", "null"]},
+                },
+            },
+        },
+        "warnings": {"type": "array", "items": {"type": "string"}, "maxItems": 8},
+    },
+}
+
 
 def suggest_public_enrichment(
     *,
@@ -127,4 +162,86 @@ def suggest_public_enrichment(
         raise PublicEnrichmentError("OpenAI enrichment response was not valid JSON.") from exc
     if not isinstance(extracted, dict):
         raise PublicEnrichmentError("OpenAI enrichment returned an unexpected shape.")
+    return extracted, body.get("id")
+
+
+def suggest_property_image_candidates(
+    *,
+    target_context: dict[str, Any],
+    settings: Settings,
+    requested_count: int = 4,
+) -> tuple[dict[str, Any], str | None]:
+    """Search public web sources for reviewable property image candidates."""
+
+    if not settings.openai_api_key:
+        raise PublicEnrichmentError("OpenAI API key is not configured.")
+
+    prompt = (
+        "Find public online image candidates for an Australian commercial property record. "
+        "Use web sources only. Prefer images from the property's official site, listing pages, "
+        "agency brochures, or reputable commercial property pages. Avoid maps, logos, floorplans, "
+        "people portraits, unrelated skyline photos, and private/social images. Return only direct "
+        "HTTPS image URLs that are likely to render in a browser, plus the page URL and citation. "
+        "If the property cannot be matched confidently, return no candidate and explain in "
+        "warnings. "
+        "The operator will review before saving, so keep notes concise and mention any uncertainty."
+    )
+    payload: dict[str, Any] = {
+        "model": settings.openai_model,
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt},
+                    {
+                        "type": "input_text",
+                        "text": json.dumps(
+                            {
+                                "target_context": target_context,
+                                "requested_count": max(1, min(6, requested_count)),
+                            },
+                            sort_keys=True,
+                        ),
+                    },
+                ],
+            }
+        ],
+        "tools": [{"type": "web_search_preview"}],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "property_image_candidates",
+                "strict": True,
+                "schema": PROPERTY_IMAGE_CANDIDATES_SCHEMA,
+            }
+        },
+    }
+    try:
+        with httpx.Client(timeout=90.0) as client:
+            response = client.post(
+                "https://api.openai.com/v1/responses",
+                headers={
+                    "Authorization": f"Bearer {settings.openai_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise PublicEnrichmentError(
+            f"OpenAI property image request failed with status {exc.response.status_code}."
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise PublicEnrichmentError("OpenAI property image request failed.") from exc
+
+    body = response.json()
+    output_text = _response_output_text(body)
+    if not output_text:
+        raise PublicEnrichmentError("OpenAI response did not include property image JSON.")
+    try:
+        extracted = json.loads(output_text)
+    except json.JSONDecodeError as exc:
+        raise PublicEnrichmentError("OpenAI property image response was not valid JSON.") from exc
+    if not isinstance(extracted, dict):
+        raise PublicEnrichmentError("OpenAI property image response had an unexpected shape.")
     return extracted, body.get("id")
