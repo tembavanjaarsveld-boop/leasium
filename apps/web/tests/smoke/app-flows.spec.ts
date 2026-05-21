@@ -296,6 +296,13 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(page.getByText("Closeout history")).toBeVisible();
   await expect(page.getByText("1 closeout photo")).toBeVisible();
   await expect(page.getByText("Source evidence")).toBeVisible();
+  await expect(page.getByText("Completion communications")).toBeVisible();
+  await expect(page.getByText("Owner update ready")).toBeVisible();
+  await expect(page.getByText("Contractor follow-up ready")).toBeVisible();
+  await expect(page.getByText("Tenant update ready")).toBeVisible();
+  await expect(
+    page.getByText("Review this copy before sending anything outside Leasium."),
+  ).toBeVisible();
   await page
     .getByRole("textbox", { name: "Comment" })
     .fill("Owner approved attendance tomorrow morning.");

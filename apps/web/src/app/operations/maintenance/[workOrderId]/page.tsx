@@ -391,6 +391,49 @@ function closeoutHistoryRows(
     .slice(0, 5);
 }
 
+function closeoutCommunicationDrafts({
+  workOrder,
+  linkedInvoiceDraft,
+  propertyLabel,
+  tenantLabel,
+  closeoutNote,
+  completedAt,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  linkedInvoiceDraft: InvoiceDraftRecord | null;
+  propertyLabel: string;
+  tenantLabel: string;
+  closeoutNote: string | null;
+  completedAt: string;
+}) {
+  const contractorLabel = workOrder.contractor_name ?? "the contractor";
+  const note = closeoutNote ?? "No closeout note was recorded.";
+  const billingLine = linkedInvoiceDraft
+    ? `Billing handoff: ${linkedInvoiceDraft.invoice_number ?? linkedInvoiceDraft.title} stays in Billing Readiness for dispatch and reconciliation.`
+    : "Billing handoff: no invoice is linked yet; Billing Readiness can be linked later.";
+
+  return {
+    generated_at: completedAt,
+    status: "draft",
+    owner_update: [
+      `Maintenance completed for ${propertyLabel}: ${workOrder.title}.`,
+      `Tenant: ${tenantLabel}. Contractor: ${contractorLabel}.`,
+      `Closeout: ${note}`,
+      billingLine,
+    ].join("\n"),
+    contractor_follow_up: [
+      `Thanks for completing ${workOrder.title}.`,
+      "Please send any final invoice, tax invoice, and remaining completion evidence for the file.",
+      `Closeout note recorded by Leasium: ${note}`,
+    ].join("\n"),
+    tenant_update: [
+      `The maintenance job "${workOrder.title}" has been marked complete.`,
+      `Closeout note: ${note}`,
+      "Please contact the property team if the issue reoccurs.",
+    ].join("\n"),
+  };
+}
+
 function contractorEmailTone(statusValue: string | null): Tone {
   if (["queued", "sent", "delivered", "opened"].includes(statusValue ?? "")) {
     return "success";
@@ -1024,6 +1067,21 @@ function MaintenanceDetailRoute() {
   const closeout = workOrder ? closeoutRecord(workOrder) : {};
   const savedCloseoutNote = metadataText(closeout.note);
   const savedCloseoutAt = metadataText(closeout.completed_at);
+  const closeoutCommunication = metadataRecord(closeout.communication);
+  const closeoutCommunicationRows = [
+    {
+      label: "Owner update ready",
+      body: metadataText(closeoutCommunication.owner_update),
+    },
+    {
+      label: "Contractor follow-up ready",
+      body: metadataText(closeoutCommunication.contractor_follow_up),
+    },
+    {
+      label: "Tenant update ready",
+      body: metadataText(closeoutCommunication.tenant_update),
+    },
+  ].filter((row): row is { label: string; body: string } => Boolean(row.body));
   const closeoutPhotos = workOrder
     ? closeoutPhotoRows(workOrder, documents)
     : [];
@@ -1377,6 +1435,14 @@ function MaintenanceDetailRoute() {
           photo_document_id: closeoutPhotoId,
           photo_document_ids: closeoutPhotoIds,
           history: [...existingHistory, closeoutHistoryEntry],
+          communication: closeoutCommunicationDrafts({
+            workOrder,
+            linkedInvoiceDraft,
+            propertyLabel: propertyName(properties, workOrder.property_id),
+            tenantLabel: tenantName(tenants, workOrder.tenant_id),
+            closeoutNote: closeoutNoteValue,
+            completedAt: closeoutCompletedAt,
+          }),
         },
       };
       return updateMaintenanceWorkOrder(workOrder.id, payload);
@@ -2135,6 +2201,30 @@ function MaintenanceDetailRoute() {
                             ) : null}
                           </div>
                         ))}
+                      </div>
+                    ) : null}
+                    {closeoutCommunicationRows.length ? (
+                      <div className="grid gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                        <div className="font-semibold text-foreground">
+                          Completion communications
+                        </div>
+                        {closeoutCommunicationRows.map((row) => (
+                          <div
+                            key={row.label}
+                            className="grid gap-1 rounded-md border border-border bg-white px-2 py-2"
+                          >
+                            <StatusBadge tone="primary">
+                              {row.label}
+                            </StatusBadge>
+                            <div className="whitespace-pre-line text-muted-foreground">
+                              {row.body}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="text-muted-foreground">
+                          Review this copy before sending anything outside
+                          Leasium.
+                        </div>
                       </div>
                     ) : null}
                     <div className="text-xs text-muted-foreground">

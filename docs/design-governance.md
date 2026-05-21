@@ -281,6 +281,8 @@ Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry
 
 2026-05-21 update: closeout history entries now resolve stored closeout photo document IDs into source evidence links beside the audit row. Remba should review whether source links inside the completion panel are useful enough there, or whether closeout evidence should move into a dedicated Evidence section once work orders support reopen/edit history.
 
+2026-05-21 update: completion now stores review-only owner, contractor, and tenant communication drafts in closeout metadata and shows them beside closeout history. No message is sent automatically. Remba should review whether the copy is useful for operators after closeout, whether tenant-facing completion text belongs here or in the tenant portal timeline, and whether owner updates need a separate approval/send workflow.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

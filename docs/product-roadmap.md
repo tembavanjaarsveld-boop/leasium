@@ -116,12 +116,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Maintenance invoice recovery path v1: linked maintenance invoice cards now show a billing-owned recovery path for approval, delivery prep, provider retry, dispatch, and payment follow-up, while Billing Readiness adds work-order status, approval, contractor context, and retry guidance to maintenance-linked provider failures. Pending Remba review.
 - [x] Maintenance closeout source links v1: closeout history entries now resolve their stored photo document IDs into source evidence links, so completion audit rows can open the exact uploaded closeout files. Pending Remba review.
 - [x] Contractor template/version history v1: contractor email attempts now keep provider template key/version on send receipts and attempt history, and the maintenance Contractor card surfaces the current and historical template/version used. Pending Remba review.
+- [x] Maintenance completion communication drafts v1: completing a work order now stores review-only owner, contractor, and tenant completion copy inside closeout metadata and surfaces it beside closeout history without sending anything automatically. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, and `20260521_0020_register_import_plans` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, simplified navigation/command center, Portfolio QA command-search placement, reusable evidence/source-trail pattern across Properties/Smart Intake/Tenants, tenant portal, tenant fresh-link recovery, invoice email action, and Operations workspace before treating them as UX complete.
-- [ ] Continue Operations polish with more explicit owner/contractor completion communication and eventual reopen/edit flows.
+- [ ] Continue Operations polish with eventual work-order reopen/edit flows, owner-visible completion review, and deeper activity/audit presentation.
 - [ ] Continue Xero from guided sync exceptions into bank-feed reconciliation depth, accounting snapshot guardrails, and clearer per-invoice handoff between Settings and Billing Readiness.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
 - [ ] Add branded template management, delivery preview/versioning, and provider receipt configuration for invoice delivery and tenant portal communications.
