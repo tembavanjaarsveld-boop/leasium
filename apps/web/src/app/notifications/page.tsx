@@ -33,10 +33,56 @@ import {
   type WorkAssignmentNotificationCenterItemRecord,
   type WorkAssignmentNoticeGroup,
 } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
+type NoticeFilter = "all" | WorkAssignmentNoticeGroup | "follow_up" | "failed";
+type DigestFilter =
+  | "all"
+  | "needs_send"
+  | "sent"
+  | "failed"
+  | "skipped"
+  | "recovery";
+
+const noticeFilterLabels: Record<NoticeFilter, string> = {
+  all: "All",
+  attention: "Attention",
+  ready: "Ready",
+  in_flight: "In flight",
+  done: "Done",
+  follow_up: "Follow-up due",
+  failed: "Failed email",
+};
+
+const digestFilterLabels: Record<DigestFilter, string> = {
+  all: "All",
+  needs_send: "Needs send",
+  sent: "Sent",
+  failed: "Failed",
+  skipped: "Skipped",
+  recovery: "Recovery",
+};
+
+const noticeFilters: NoticeFilter[] = [
+  "all",
+  "attention",
+  "in_flight",
+  "ready",
+  "follow_up",
+  "failed",
+];
+
+const digestFilters: DigestFilter[] = [
+  "all",
+  "needs_send",
+  "sent",
+  "failed",
+  "skipped",
+  "recovery",
+];
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) {
@@ -133,6 +179,73 @@ function digestRecoveryLabel(
     : "Send digest";
 }
 
+function matchesNoticeFilter(
+  notice: WorkAssignmentNotificationCenterItemRecord,
+  filter: NoticeFilter,
+) {
+  if (filter === "all") {
+    return true;
+  }
+  if (filter === "follow_up") {
+    return notice.follow_up_due;
+  }
+  if (filter === "failed") {
+    return notice.notification_status === "failed";
+  }
+  return notice.group === filter;
+}
+
+function matchesDigestFilter(
+  receipt: WorkAssignmentNotificationCenterDigestRecord,
+  filter: DigestFilter,
+) {
+  if (filter === "all") {
+    return true;
+  }
+  if (filter === "needs_send") {
+    return !receipt.message_sent;
+  }
+  if (filter === "sent") {
+    return receipt.message_sent;
+  }
+  if (filter === "recovery") {
+    return Boolean(
+      receipt.recovery_of_generated_at ||
+      receipt.delivery_trigger === "recovery",
+    );
+  }
+  return receipt.delivery_status === filter;
+}
+
+function FilterButton({
+  active,
+  children,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  children: ReactNode;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      className={cn(
+        "inline-flex min-h-9 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
+        active && "border-primary/25 bg-leasium-blue-soft text-primary",
+      )}
+      onClick={onClick}
+    >
+      <span>{children}</span>
+      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
+        {count}
+      </span>
+    </button>
+  );
+}
+
 function workHref(url: string | null) {
   if (!url) {
     return "/operations";
@@ -200,6 +313,8 @@ function NoticeRow({
 function NotificationsWorkspace() {
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
+  const [noticeFilter, setNoticeFilter] = useState<NoticeFilter>("all");
+  const [digestFilter, setDigestFilter] = useState<DigestFilter>("all");
 
   const entitiesQuery = useQuery({
     queryKey: ["notifications-entities"],
@@ -255,6 +370,44 @@ function NotificationsWorkspace() {
   });
 
   const center = centerQuery.data;
+  const noticeFilterCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        noticeFilters.map((filter) => [
+          filter,
+          center?.notices.filter((notice) =>
+            matchesNoticeFilter(notice, filter),
+          ).length ?? 0,
+        ]),
+      ) as Record<NoticeFilter, number>,
+    [center?.notices],
+  );
+  const digestFilterCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        digestFilters.map((filter) => [
+          filter,
+          center?.digest_receipts.filter((receipt) =>
+            matchesDigestFilter(receipt, filter),
+          ).length ?? 0,
+        ]),
+      ) as Record<DigestFilter, number>,
+    [center?.digest_receipts],
+  );
+  const filteredNotices = useMemo(
+    () =>
+      center?.notices.filter((notice) =>
+        matchesNoticeFilter(notice, noticeFilter),
+      ) ?? [],
+    [center?.notices, noticeFilter],
+  );
+  const filteredDigestReceipts = useMemo(
+    () =>
+      center?.digest_receipts.filter((receipt) =>
+        matchesDigestFilter(receipt, digestFilter),
+      ) ?? [],
+    [center?.digest_receipts, digestFilter],
+  );
   const countCards = useMemo(
     () => [
       {
@@ -390,17 +543,31 @@ function NotificationsWorkspace() {
               </span>
             </div>
           ) : null}
+          <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3">
+            {noticeFilters.map((filter) => (
+              <FilterButton
+                key={filter}
+                active={noticeFilter === filter}
+                count={noticeFilterCounts[filter]}
+                onClick={() => setNoticeFilter(filter)}
+              >
+                {noticeFilterLabels[filter]}
+              </FilterButton>
+            ))}
+          </div>
           <div>
-            {center?.notices.map((notice) => (
+            {filteredNotices.map((notice) => (
               <NoticeRow
                 key={`${notice.target_type}-${notice.target_id}`}
                 notice={notice}
               />
             ))}
-            {!centerQuery.isLoading && center?.notices.length === 0 ? (
+            {!centerQuery.isLoading &&
+            center &&
+            filteredNotices.length === 0 ? (
               <EmptyState
-                title="No work notices"
-                description="Assigned work notices will appear here once they are ready, sent, delivered, or need attention."
+                title="No matching work notices"
+                description="Change the notice filter to review another receipt state."
               />
             ) : null}
           </div>
@@ -419,7 +586,19 @@ function NotificationsWorkspace() {
           }
         >
           <div className="grid gap-3 p-4 md:grid-cols-2">
-            {center?.digest_receipts.map((receipt) => (
+            <div className="flex flex-wrap gap-2 md:col-span-2">
+              {digestFilters.map((filter) => (
+                <FilterButton
+                  key={filter}
+                  active={digestFilter === filter}
+                  count={digestFilterCounts[filter]}
+                  onClick={() => setDigestFilter(filter)}
+                >
+                  {digestFilterLabels[filter]}
+                </FilterButton>
+              ))}
+            </div>
+            {filteredDigestReceipts.map((receipt) => (
               <div
                 key={`${receipt.assignee_user_id}-${receipt.generated_at}`}
                 className="rounded-xl border border-border bg-white p-3 text-sm"
@@ -477,10 +656,12 @@ function NotificationsWorkspace() {
                 ) : null}
               </div>
             ))}
-            {!centerQuery.isLoading && center?.digest_receipts.length === 0 ? (
+            {!centerQuery.isLoading &&
+            center &&
+            filteredDigestReceipts.length === 0 ? (
               <EmptyState
-                title="No digest receipts"
-                description="Generated digest previews and approved email receipts will appear here."
+                title="No matching digest receipts"
+                description="Change the digest filter to review another delivery state."
               />
             ) : null}
           </div>
