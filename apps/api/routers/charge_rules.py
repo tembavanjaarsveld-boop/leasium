@@ -33,6 +33,7 @@ from stewart.core.settings import Settings, get_settings
 from stewart.integrations.communications import (
     DeliveryResult,
     InvoiceDeliveryEmail,
+    render_invoice_delivery_email_preview,
     send_invoice_delivery_email,
 )
 
@@ -246,20 +247,27 @@ def _invoice_money(cents: int, currency: str) -> str:
     return f"{currency} {amount:,.2f}"
 
 
-def _invoice_brand_metadata(draft: InvoiceDraft) -> dict[str, str | None]:
+def _invoice_brand_metadata(
+    draft: InvoiceDraft,
+    settings: Settings,
+) -> dict[str, str | None]:
     sender_name = draft.issuer_name or "Leasium Billing"
     return {
-        "template": "leasium_invoice_v1",
+        "template_key": settings.invoice_email_template_key,
+        "template_version": settings.invoice_email_template_version,
         "sender_name": sender_name,
         "reply_to": None,
         "footer": "Prepared in Leasium. External delivery requires approval.",
     }
 
 
-def _invoice_email_preview(draft: InvoiceDraft) -> dict[str, object]:
+def _invoice_email_preview(
+    draft: InvoiceDraft,
+    settings: Settings,
+) -> dict[str, object]:
     subject_number = draft.invoice_number or str(draft.id)[:8].upper()
     due = draft.due_date.isoformat() if draft.due_date else "the due date shown on the invoice"
-    brand = _invoice_brand_metadata(draft)
+    brand = _invoice_brand_metadata(draft, settings)
     body = (
         f"Hi {draft.recipient_name or 'there'},\n\n"
         f"Please find invoice {subject_number} for "
@@ -275,7 +283,55 @@ def _invoice_email_preview(draft: InvoiceDraft) -> dict[str, object]:
         "subject": f"Invoice {subject_number} from {draft.issuer_name or 'Leasium'}",
         "body": body,
         "brand": brand,
+        "template_key": settings.invoice_email_template_key,
+        "template_version": settings.invoice_email_template_version,
     }
+
+
+def _rendered_message_preview_payload(invite: InvoiceDeliveryEmail) -> dict[str, object | None]:
+    preview = render_invoice_delivery_email_preview(invite)
+    return {
+        "channel": preview.channel,
+        "provider": preview.provider,
+        "recipient": preview.recipient,
+        "subject": preview.subject,
+        "body_text": preview.body_text,
+        "template_key": preview.template_key,
+        "template_version": preview.template_version,
+        "action_label": preview.action_label,
+        "action_url": preview.action_url,
+    }
+
+
+def _invoice_delivery_preview_invite(
+    draft: InvoiceDraft,
+    pdf_artifact: dict[str, object],
+    settings: Settings,
+) -> InvoiceDeliveryEmail:
+    preview_path = f"/api/v1/invoice-drafts/{draft.id}/preview"
+    preview_url = (
+        f"{settings.public_api_url.rstrip('/')}{preview_path}"
+        if settings.public_api_url
+        else preview_path
+    )
+    due_label = draft.due_date.isoformat() if draft.due_date else "the due date on the invoice"
+    return InvoiceDeliveryEmail(
+        invoice_draft_id=draft.id,
+        entity_id=draft.entity_id,
+        invoice_number=draft.invoice_number,
+        title=draft.title,
+        issuer_name=draft.issuer_name,
+        recipient_name=draft.recipient_name,
+        recipient_email=draft.recipient_email,
+        preview_url=preview_url,
+        total_label=_invoice_money(draft.total_cents, draft.currency),
+        due_label=due_label,
+        pdf_document_id=_uuid_from_metadata(pdf_artifact.get("document_id")),
+        pdf_filename=cast(str | None, pdf_artifact.get("filename")),
+        pdf_content=None,
+        template_key=settings.invoice_email_template_key,
+        template_version=settings.invoice_email_template_version,
+    )
 
 
 def _invoice_rent_period_metadata(
@@ -619,12 +675,16 @@ def _prepare_invoice_delivery_metadata(
     draft: InvoiceDraft,
     user: CurrentUser,
     session: Session,
+    settings: Settings,
 ) -> tuple[dict[str, object], list[str]]:
     metadata = dict(draft.invoice_metadata or {})
     blockers = _invoice_draft_delivery_blockers(draft)
     prepared_at = utcnow().isoformat()
     pdf_artifact = _upsert_invoice_pdf_artifact(draft, metadata, user, session, prepared_at)
-    email_preview = _invoice_email_preview(draft)
+    email_preview = _invoice_email_preview(draft, settings)
+    rendered_preview = _rendered_message_preview_payload(
+        _invoice_delivery_preview_invite(draft, pdf_artifact, settings)
+    )
     existing_delivery_state = metadata.get("delivery_state")
     delivery_state = dict(metadata.get("delivery_state") or {})
     delivery_state.update(
@@ -650,13 +710,15 @@ def _prepare_invoice_delivery_metadata(
         "status": "drafted" if not blockers else "blocked",
         "prepared_at": prepared_at,
         "prepared_by_user_id": str(user.id),
-        "template": "leasium_invoice_v1",
+        "template_key": settings.invoice_email_template_key,
+        "template_version": settings.invoice_email_template_version,
         "to": email_preview["to"],
         "from_name": email_preview["from_name"],
         "reply_to": email_preview["reply_to"],
         "subject": email_preview["subject"],
         "body": email_preview["body"],
         "brand": email_preview["brand"],
+        "rendered_message_preview": rendered_preview,
         "pdf_document_id": pdf_artifact["document_id"],
     }
     delivery_email.setdefault(
@@ -677,7 +739,10 @@ def _prepare_invoice_delivery_metadata(
         "prepared_by_user_id": str(user.id),
         "preview_path": f"/api/v1/invoice-drafts/{draft.id}/preview",
         "pdf_artifact": pdf_artifact,
-        "email": email_preview,
+        "email": {
+            **email_preview,
+            "rendered_message_preview": rendered_preview,
+        },
     }
     metadata["posting_preparation"] = _invoice_posting_preparation(
         draft,
@@ -1798,6 +1863,7 @@ def prepare_invoice_draft_delivery(
     invoice_draft_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> InvoiceDraft:
     draft = _invoice_draft_for_access(invoice_draft_id, user, session, WRITE_ROLES)
     if draft.status == InvoiceDraftStatus.void:
@@ -1806,7 +1872,7 @@ def prepare_invoice_draft_delivery(
             detail="Void invoice drafts cannot be prepared for delivery.",
         )
 
-    metadata, blockers = _prepare_invoice_delivery_metadata(draft, user, session)
+    metadata, blockers = _prepare_invoice_delivery_metadata(draft, user, session, settings)
     draft.invoice_metadata = metadata
     if not blockers and draft.status == InvoiceDraftStatus.draft:
         draft.status = InvoiceDraftStatus.ready_for_approval
