@@ -25,14 +25,32 @@ export type SecurityRoleAssignment = {
   role: SecurityRole;
 };
 
+export type WorkAssignmentDigestCadence = "daily" | "weekly";
+
 export type SecurityWorkAssignmentDigestCadence = "off" | "daily" | "weekly";
+
+export type SecurityWorkAssignmentDigestReceiptRecord = {
+  event: string;
+  generated_at: string;
+  entity_id: string;
+  cadence: WorkAssignmentDigestCadence;
+  item_count: number;
+  ready_count: number;
+  attention_count: number;
+  in_flight_count: number;
+  done_count: number;
+  follow_up_due_count: number;
+  delivery_status: string;
+  message_sent: boolean;
+};
 
 export type SecurityNotificationPreferences = {
   work_assignment_email_enabled: boolean;
   work_assignment_digest_cadence: SecurityWorkAssignmentDigestCadence;
+  work_assignment_digest_last_generated_at: string | null;
+  work_assignment_digest_last_item_count: number | null;
+  work_assignment_digest_history: SecurityWorkAssignmentDigestReceiptRecord[];
 };
-
-export type WorkAssignmentDigestCadence = "daily" | "weekly";
 export type WorkAssignmentNoticeGroup =
   | "ready"
   | "in_flight"

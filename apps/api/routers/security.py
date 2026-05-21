@@ -46,6 +46,7 @@ from apps.api.schemas.security import (
     SecurityNotificationPreferences,
     SecurityOrganisationRead,
     SecurityRoleAssignment,
+    SecurityWorkAssignmentDigestReceipt,
     SecurityWorkspaceRead,
 )
 
@@ -209,10 +210,42 @@ def _notification_preferences(member: AppUser) -> SecurityNotificationPreference
     digest_cadence = raw.get("work_assignment_digest_cadence")
     if digest_cadence not in {"off", "daily", "weekly"}:
         digest_cadence = "daily"
+    raw_history = raw.get("work_assignment_digest_history")
+    history: list[SecurityWorkAssignmentDigestReceipt] = []
+    if isinstance(raw_history, list):
+        for receipt in raw_history:
+            if not isinstance(receipt, dict):
+                continue
+            try:
+                history.append(SecurityWorkAssignmentDigestReceipt.model_validate(receipt))
+            except ValueError:
+                continue
+    raw_last_generated_at = raw.get("work_assignment_digest_last_generated_at")
+    last_generated_at = (
+        raw_last_generated_at
+        if isinstance(raw_last_generated_at, (datetime, str))
+        else None
+    )
+    last_item_count = raw.get("work_assignment_digest_last_item_count")
     return SecurityNotificationPreferences(
         work_assignment_email_enabled=enabled if isinstance(enabled, bool) else True,
         work_assignment_digest_cadence=digest_cadence,
+        work_assignment_digest_last_generated_at=last_generated_at,
+        work_assignment_digest_last_item_count=last_item_count
+        if isinstance(last_item_count, int) and not isinstance(last_item_count, bool)
+        else None,
+        work_assignment_digest_history=history,
     )
+
+
+def _notification_preferences_for_write(
+    current: object,
+    payload: SecurityNotificationPreferences,
+) -> dict[str, object]:
+    preferences = dict(current) if isinstance(current, dict) else {}
+    preferences["work_assignment_email_enabled"] = payload.work_assignment_email_enabled
+    preferences["work_assignment_digest_cadence"] = payload.work_assignment_digest_cadence
+    return preferences
 
 
 def _member_read(
@@ -540,14 +573,20 @@ def create_security_member(
             email=email,
             display_name=payload.display_name.strip() or email,
             is_active=payload.is_active,
-            notification_preferences=payload.notification_preferences.model_dump(),
+            notification_preferences=_notification_preferences_for_write(
+                None,
+                payload.notification_preferences,
+            ),
         )
         session.add(member)
         session.flush()
     else:
         member.display_name = payload.display_name.strip() or member.display_name
         member.is_active = payload.is_active
-        member.notification_preferences = payload.notification_preferences.model_dump()
+        member.notification_preferences = _notification_preferences_for_write(
+            member.notification_preferences,
+            payload.notification_preferences,
+        )
     _replace_roles(session, user.organisation_id, member.id, assignments)
     result = _send_operator_invite(member, user, organisation, settings)
     audit_log(
@@ -706,7 +745,10 @@ def update_security_member(
             )
         _replace_roles(session, user.organisation_id, member.id, assignments)
     if payload.notification_preferences is not None:
-        member.notification_preferences = payload.notification_preferences.model_dump()
+        member.notification_preferences = _notification_preferences_for_write(
+            member.notification_preferences,
+            payload.notification_preferences,
+        )
     audit_log(
         session,
         actor=user.actor,

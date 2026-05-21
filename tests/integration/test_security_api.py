@@ -123,6 +123,9 @@ def test_security_workspace_lists_current_operator_and_auth_boundary(
     assert body["members"][0]["notification_preferences"] == {
         "work_assignment_email_enabled": True,
         "work_assignment_digest_cadence": "daily",
+        "work_assignment_digest_last_generated_at": None,
+        "work_assignment_digest_last_item_count": None,
+        "work_assignment_digest_history": [],
     }
     assert body["members"][0]["roles"] == [
         {
@@ -262,6 +265,31 @@ def test_owner_can_invite_and_update_operator_roles(
     assert created["invite_expires_at"] is not None
     assert created["roles"][0]["role"] == "ops"
     assert sent_urls
+    member = session.get(AppUser, UUID(member_id))
+    assert member is not None
+    member.notification_preferences = {
+        "work_assignment_email_enabled": True,
+        "work_assignment_digest_cadence": "daily",
+        "work_assignment_digest_last_generated_at": "2026-05-21T08:00:00+00:00",
+        "work_assignment_digest_last_item_count": 3,
+        "work_assignment_digest_history": [
+            {
+                "event": "digest_generated",
+                "generated_at": "2026-05-21T08:00:00+00:00",
+                "entity_id": str(entity.id),
+                "cadence": "daily",
+                "item_count": 3,
+                "ready_count": 2,
+                "attention_count": 1,
+                "in_flight_count": 0,
+                "done_count": 0,
+                "follow_up_due_count": 1,
+                "delivery_status": "previewed",
+                "message_sent": False,
+            }
+        ],
+    }
+    session.commit()
 
     update_response = client.patch(
         f"/api/v1/security/members/{member_id}",
@@ -283,12 +311,21 @@ def test_owner_can_invite_and_update_operator_roles(
     assert updated["roles"][0]["role"] == "viewer"
     assert updated["notification_preferences"]["work_assignment_email_enabled"] is False
     assert updated["notification_preferences"]["work_assignment_digest_cadence"] == "weekly"
+    assert updated["notification_preferences"]["work_assignment_digest_last_item_count"] == 3
+    assert (
+        updated["notification_preferences"]["work_assignment_digest_history"][0][
+            "delivery_status"
+        ]
+        == "previewed"
+    )
 
     member = session.get(AppUser, UUID(member_id))
     assert member is not None
     assert member.email == "ops.team@example.com"
     assert member.notification_preferences["work_assignment_email_enabled"] is False
     assert member.notification_preferences["work_assignment_digest_cadence"] == "weekly"
+    assert member.notification_preferences["work_assignment_digest_last_item_count"] == 3
+    assert member.notification_preferences["work_assignment_digest_history"][0]["item_count"] == 3
     role = session.scalar(
         select(UserEntityRole.role).where(
             UserEntityRole.user_id == member.id,

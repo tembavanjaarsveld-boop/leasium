@@ -326,6 +326,8 @@ Tenth 2026-05-21 follow-up: Operations can now generate a review-only Work diges
 
 Eleventh 2026-05-21 follow-up: generated Work digests now store per-operator preview receipts in notification preferences, including cadence, counts, follow-up count, delivery status `previewed`, and `message_sent: false`. Remba should review whether these receipts should become visible in Settings immediately or wait until cron/provider delivery is active.
 
+Twelfth 2026-05-21 follow-up: Settings now surfaces the latest Work digest preview receipt beside each operator's notification controls, including preview time, item count, follow-up count, cadence, and a `No messages sent` guardrail. Remba should review whether this compact receipt treatment is calm enough for the operator table or should move into a dedicated notification history panel before scheduled delivery is enabled.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

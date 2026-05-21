@@ -696,6 +696,8 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     page.getByRole("button", { name: "Mute work email" }).first(),
   ).toBeVisible();
   await expect(page.getByText("Daily digest").first()).toBeVisible();
+  await expect(page.getByText("Last digest preview").first()).toBeVisible();
+  await expect(page.getByText("No messages sent").first()).toBeVisible();
   await expect(
     page.getByLabel("Owner Operator work digest").first(),
   ).toBeVisible();

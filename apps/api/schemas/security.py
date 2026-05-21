@@ -21,9 +21,29 @@ class SecurityEntityRoleRead(BaseModel):
     role: UserRole
 
 
+class SecurityWorkAssignmentDigestReceipt(BaseModel):
+    event: str = "digest_generated"
+    generated_at: datetime
+    entity_id: UUID
+    cadence: Literal["daily", "weekly"]
+    item_count: int = 0
+    ready_count: int = 0
+    attention_count: int = 0
+    in_flight_count: int = 0
+    done_count: int = 0
+    follow_up_due_count: int = 0
+    delivery_status: str = "previewed"
+    message_sent: bool = False
+
+
 class SecurityNotificationPreferences(BaseModel):
     work_assignment_email_enabled: bool = True
     work_assignment_digest_cadence: Literal["off", "daily", "weekly"] = "daily"
+    work_assignment_digest_last_generated_at: datetime | None = None
+    work_assignment_digest_last_item_count: int | None = None
+    work_assignment_digest_history: list[SecurityWorkAssignmentDigestReceipt] = Field(
+        default_factory=list
+    )
 
 
 class SecurityCurrentUserRead(BaseModel):

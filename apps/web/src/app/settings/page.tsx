@@ -335,6 +335,45 @@ function digestCadenceLabel(value: SecurityWorkAssignmentDigestCadence) {
   return `${value[0].toUpperCase()}${value.slice(1)} digest`;
 }
 
+function latestDigestReceipt(member: SecurityMemberRecord) {
+  return (
+    member.notification_preferences.work_assignment_digest_history?.[0] ?? null
+  );
+}
+
+function DigestReceiptSummary({ member }: { member: SecurityMemberRecord }) {
+  const receipt = latestDigestReceipt(member);
+  if (!receipt) {
+    return (
+      <div className="mt-2 max-w-56 text-xs text-muted-foreground">
+        Controls Work queue notices and digest cadence.
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 grid max-w-72 gap-1 rounded-md border border-border bg-muted/30 p-2 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-foreground">
+          Last digest preview
+        </span>
+        <StatusBadge tone={receipt.message_sent ? "success" : "neutral"}>
+          {receipt.message_sent ? "Message sent" : "No messages sent"}
+        </StatusBadge>
+      </div>
+      <div className="text-muted-foreground">
+        {formatDateTime(receipt.generated_at)}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
+        <span>
+          {receipt.item_count} {receipt.item_count === 1 ? "item" : "items"}
+        </span>
+        <span>{receipt.follow_up_due_count} follow-up</span>
+        <span>{digestCadenceLabel(receipt.cadence)}</span>
+      </div>
+    </div>
+  );
+}
+
 function nextRolesForEntity(
   member: SecurityMemberRecord,
   entityId: string,
@@ -1455,9 +1494,7 @@ function SettingsWorkspace() {
                                 </Select>
                               </div>
                             </div>
-                            <div className="mt-2 max-w-56 text-xs text-muted-foreground">
-                              Controls Work queue notices and digest cadence.
-                            </div>
+                            <DigestReceiptSummary member={member} />
                           </td>
                           <td className="min-w-64 px-3 py-3">
                             <div className="flex flex-wrap gap-2">

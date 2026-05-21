@@ -1057,6 +1057,24 @@ const securityWorkspace = () => ({
       notification_preferences: {
         work_assignment_email_enabled: true,
         work_assignment_digest_cadence: "daily",
+        work_assignment_digest_last_generated_at: "2026-05-21T09:00:00.000Z",
+        work_assignment_digest_last_item_count: 4,
+        work_assignment_digest_history: [
+          {
+            event: "digest_generated",
+            generated_at: "2026-05-21T09:00:00.000Z",
+            entity_id: entityId,
+            cadence: "daily",
+            item_count: 4,
+            ready_count: 2,
+            attention_count: 1,
+            in_flight_count: 1,
+            done_count: 0,
+            follow_up_due_count: 2,
+            delivery_status: "previewed",
+            message_sent: false,
+          },
+        ],
       },
       created_at: "2026-05-01T00:00:00.000Z",
       roles: [
@@ -1081,6 +1099,9 @@ const securityWorkspace = () => ({
       notification_preferences: {
         work_assignment_email_enabled: true,
         work_assignment_digest_cadence: "daily",
+        work_assignment_digest_last_generated_at: null,
+        work_assignment_digest_last_item_count: null,
+        work_assignment_digest_history: [],
       },
       created_at: "2026-05-01T00:00:00.000Z",
       roles: [
