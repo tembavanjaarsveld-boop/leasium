@@ -232,9 +232,13 @@ test("notification center shows work notices and digest receipts", async ({
   await expect(
     page.getByText("Provider Notification Attempted").first(),
   ).toBeVisible();
+  await expect(
+    page.getByText("Retry the assignment email from Work."),
+  ).toBeVisible();
   await expect(page.getByText("Digest history")).toBeVisible();
   await expect(page.getByText("Owner Operator").first()).toBeVisible();
   await expect(page.getByText("No messages sent").first()).toBeVisible();
+  await expect(page.getByText("Send digest from this page.")).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Needs send 1/ }),
   ).toBeVisible();
@@ -247,6 +251,9 @@ test("notification center shows work notices and digest receipts", async ({
   ).toBeVisible();
   await expect(page.getByText("Email queued").first()).toBeVisible();
   await expect(page.getByText("Digest Delivery Attempted")).toBeVisible();
+  await expect(
+    page.getByText("Wait for the SendGrid delivery receipt."),
+  ).toBeVisible();
   await page.getByRole("button", { name: /Sent 1/ }).click();
   await expect(page.getByText("Owner Operator").first()).toBeVisible();
   await page.getByRole("button", { name: /^Email 1$/ }).click();

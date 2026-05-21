@@ -245,6 +245,46 @@ function digestRecoveryLabel(
     : "Send digest";
 }
 
+function noticeNextAction(notice: WorkAssignmentNotificationCenterItemRecord) {
+  if (notice.notification_status === "failed") {
+    return "Retry the assignment email from Work.";
+  }
+  if (notice.notification_status === "skipped") {
+    return "Check the operator's Work email preference, then retry from Work.";
+  }
+  if (notice.group === "ready") {
+    return "Send the assignment notice from Work.";
+  }
+  if (notice.group === "in_flight") {
+    return "Wait for the provider receipt or open Work to retry.";
+  }
+  if (notice.group === "done") {
+    return "No recovery needed.";
+  }
+  return "Open Work to review the notice state.";
+}
+
+function digestNextAction(
+  receipt: WorkAssignmentNotificationCenterDigestRecord,
+) {
+  if (!receipt.message_sent) {
+    return `${digestRecoveryLabel(receipt)} from this page.`;
+  }
+  if (receipt.delivery_status === "failed") {
+    return "Retry the digest from this page.";
+  }
+  if (receipt.delivery_status === "skipped") {
+    return "Check email preferences, then retry the digest.";
+  }
+  if (["queued", "sent"].includes(receipt.delivery_status)) {
+    return "Wait for the SendGrid delivery receipt.";
+  }
+  if (["delivered", "opened"].includes(receipt.delivery_status)) {
+    return "No recovery needed.";
+  }
+  return "Review the receipt before sending again.";
+}
+
 function matchesNoticeFilter(
   notice: WorkAssignmentNotificationCenterItemRecord,
   filter: NoticeFilter,
@@ -429,6 +469,10 @@ function NoticeRow({
           </span>
           {notice.provider ? <span>{label(notice.provider)}</span> : null}
           {template ? <span>{template}</span> : null}
+        </div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          <span className="font-semibold text-foreground">Next action:</span>{" "}
+          {noticeNextAction(notice)}
         </div>
         <ProviderHistoryStrip history={notice.provider_history} />
       </div>
@@ -828,6 +872,12 @@ function NotificationsWorkspace() {
                     {receipt.delivery_detail ? (
                       <div>{receipt.delivery_detail}</div>
                     ) : null}
+                    <div>
+                      <span className="font-semibold text-foreground">
+                        Next action:
+                      </span>{" "}
+                      {digestNextAction(receipt)}
+                    </div>
                     <div className="flex flex-wrap gap-x-3 gap-y-1">
                       <span>
                         {channelLabel(digestDeliveryChannel(receipt))}

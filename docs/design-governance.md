@@ -352,6 +352,8 @@ Twenty-second 2026-05-21 follow-up: the Work notifications panel now adds a comp
 
 Twenty-third 2026-05-21 follow-up: Notifications now exposes the latest provider history row for Work notices and digest receipts, including provider status, event name, timestamp, template/version, attempt count, and error detail where present. Remba should review whether this evidence should stay inline, collapse into a receipt details drawer, or become a support-only disclosure as non-email channels arrive.
 
+Twenty-fourth 2026-05-21 follow-up: Notifications now adds a plain-English `Next action` cue to Work notice and digest receipt rows, covering retry-from-Work, send/retry digest, wait-for-provider-receipt, preference cleanup, and no-recovery-needed states. Remba should review whether these cues reduce ambiguity or add too much row text, and whether future direct recovery actions should replace the cues once channel-specific actions are ready.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface
