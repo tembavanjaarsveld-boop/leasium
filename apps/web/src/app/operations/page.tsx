@@ -242,6 +242,32 @@ type AssigneeFilter =
   | `member:${string}`;
 type WorkAssignmentAction = "reminder_logged" | "escalation_queued";
 
+const ASSIGNMENT_EMAIL_DELIVERED_STATUSES = [
+  "queued",
+  "sent",
+  "delivered",
+  "opened",
+];
+const ASSIGNMENT_EMAIL_PROBLEM_STATUSES = ["failed", "skipped"];
+
+function assignmentEmailDelivered(assignment: WorkAssignment | null) {
+  return ASSIGNMENT_EMAIL_DELIVERED_STATUSES.includes(
+    assignment?.notificationStatus ?? "",
+  );
+}
+
+function assignmentEmailProblem(assignment: WorkAssignment | null) {
+  return ASSIGNMENT_EMAIL_PROBLEM_STATUSES.includes(
+    assignment?.notificationStatus ?? "",
+  );
+}
+
+function assignmentEmailReady(assignment: WorkAssignment | null) {
+  return Boolean(
+    assignment?.assignedEmail && assignment.notificationStatus === "ready",
+  );
+}
+
 type MaintenanceFormState = {
   title: string;
   description: string;
@@ -1296,6 +1322,16 @@ function OperationsWorkspace() {
     });
   };
 
+  function sendAssignmentNotificationRequest(item: AssignableQueueItem) {
+    if (item.kind === "maintenance") {
+      return sendMaintenanceWorkOrderAssignmentNotification(item.record.id);
+    }
+    if (item.kind === "arrears") {
+      return sendArrearsAssignmentNotification(item.record.id);
+    }
+    return sendObligationAssignmentNotification(item.record.id);
+  }
+
   const updateObligationMutation = useMutation({
     mutationFn: (payload: {
       obligation: ObligationRecord;
@@ -1382,6 +1418,17 @@ function OperationsWorkspace() {
     onSuccess: invalidateOperations,
   });
 
+  const sendReadyAssignmentNotificationsMutation = useMutation({
+    mutationFn: async (items: AssignableQueueItem[]) => {
+      const results = [];
+      for (const item of items) {
+        results.push(await sendAssignmentNotificationRequest(item));
+      }
+      return results;
+    },
+    onSuccess: invalidateOperations,
+  });
+
   const operationsLoading =
     entitiesQuery.isLoading ||
     (Boolean(selectedEntityId) &&
@@ -1438,6 +1485,11 @@ function OperationsWorkspace() {
   const filteredOpenQueueItems = openQueueItems.filter((item) =>
     matchesAssigneeFilter(item, assigneeFilter, currentUser?.id),
   );
+  const readyNotificationItems = filteredOpenQueueItems
+    .filter(isAssignableQueueItem)
+    .filter((item) =>
+      assignmentEmailReady(workAssignment(item.record.metadata)),
+    );
   const unassignedWorkCount = assignableOpenQueueItems.filter(
     (item) => !assignedUserId(item) && !assignedUserName(item),
   ).length;
@@ -1528,6 +1580,7 @@ function OperationsWorkspace() {
     sendMaintenanceAssignmentNotificationMutation.error ||
     sendArrearsAssignmentNotificationMutation.error ||
     sendObligationAssignmentNotificationMutation.error ||
+    sendReadyAssignmentNotificationsMutation.error ||
     securityWorkspaceQuery.error;
 
   const assignmentPending =
@@ -1536,7 +1589,8 @@ function OperationsWorkspace() {
     assignObligationMutation.isPending ||
     sendMaintenanceAssignmentNotificationMutation.isPending ||
     sendArrearsAssignmentNotificationMutation.isPending ||
-    sendObligationAssignmentNotificationMutation.isPending;
+    sendObligationAssignmentNotificationMutation.isPending ||
+    sendReadyAssignmentNotificationsMutation.isPending;
 
   function refresh() {
     securityWorkspaceQuery.refetch();
@@ -2098,27 +2152,49 @@ function OperationsWorkspace() {
                 description={selectedEntity?.name ?? "Current entity"}
                 icon={<ClipboardList size={17} className="text-primary" />}
                 actions={
-                  <Select
-                    aria-label="Queue assignee"
-                    value={assigneeFilter}
-                    onChange={(event) =>
-                      setAssigneeFilter(event.target.value as AssigneeFilter)
-                    }
-                    className="w-52"
-                  >
-                    <option value="all">All open work</option>
-                    <option value="unassigned">Unassigned</option>
-                    <option value="follow_up">Follow-up due</option>
-                    {currentUser ? <option value="me">My work</option> : null}
-                    {assignableMembers.map((member) => (
-                      <option
-                        key={member.id}
-                        value={memberAssigneeFilter(member.id)}
-                      >
-                        {memberLabel(member)}
-                      </option>
-                    ))}
-                  </Select>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <SecondaryButton
+                      type="button"
+                      className="h-10 px-3"
+                      disabled={
+                        assignmentPending || readyNotificationItems.length === 0
+                      }
+                      onClick={() =>
+                        sendReadyAssignmentNotificationsMutation.mutate(
+                          readyNotificationItems,
+                        )
+                      }
+                    >
+                      <Send size={15} />
+                      {sendReadyAssignmentNotificationsMutation.isPending
+                        ? "Sending"
+                        : "Send ready notices"}
+                      <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground">
+                        {readyNotificationItems.length}
+                      </span>
+                    </SecondaryButton>
+                    <Select
+                      aria-label="Queue assignee"
+                      value={assigneeFilter}
+                      onChange={(event) =>
+                        setAssigneeFilter(event.target.value as AssigneeFilter)
+                      }
+                      className="w-52"
+                    >
+                      <option value="all">All open work</option>
+                      <option value="unassigned">Unassigned</option>
+                      <option value="follow_up">Follow-up due</option>
+                      {currentUser ? <option value="me">My work</option> : null}
+                      {assignableMembers.map((member) => (
+                        <option
+                          key={member.id}
+                          value={memberAssigneeFilter(member.id)}
+                        >
+                          {memberLabel(member)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
                 }
               >
                 <div className="border-b border-border bg-muted/30 px-4 py-3">
@@ -3173,15 +3249,9 @@ function WorkAssignmentControl({
   const hasMembers = members.length > 0;
   const canAssign = Boolean(value) && value !== currentAssigneeId;
   const notificationReady = assignment?.notificationStatus === "ready";
-  const notificationDelivered = [
-    "queued",
-    "sent",
-    "delivered",
-    "opened",
-  ].includes(assignment?.notificationStatus ?? "");
-  const notificationProblem = ["failed", "skipped"].includes(
-    assignment?.notificationStatus ?? "",
-  );
+  const notificationDelivered = assignmentEmailDelivered(assignment);
+  const notificationProblem = assignmentEmailProblem(assignment);
+  const recentHistory = assignment?.history.slice(0, 3) ?? [];
   const reminderDue = Boolean(
     assignment?.reminderDueOn && dueRank(assignment.reminderDueOn) <= 0,
   );
@@ -3339,6 +3409,44 @@ function WorkAssignmentControl({
           </SecondaryButton>
         ) : null}
       </div>
+      {recentHistory.length > 0 ? (
+        <details className="rounded-lg border border-border bg-white px-2.5 py-2">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <History size={13} className="text-primary" />
+              Recent activity
+            </span>
+            <span>{recentHistory.length}</span>
+          </summary>
+          <div className="mt-2 grid gap-1.5">
+            {recentHistory.map((entry, index) => {
+              const meta = [
+                entry.at ? formatDateTime(entry.at) : null,
+                entry.actor_name,
+                entry.notification_status
+                  ? `Email ${label(entry.notification_status)}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" - ");
+
+              return (
+                <div
+                  key={`${entry.event}-${entry.at ?? index}`}
+                  className="rounded-md bg-muted/50 px-2 py-1.5 text-xs"
+                >
+                  <div className="font-medium text-foreground">
+                    {entry.summary ?? label(entry.event)}
+                  </div>
+                  {meta ? (
+                    <div className="mt-0.5 text-muted-foreground">{meta}</div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      ) : null}
       <div className="text-xs text-muted-foreground">
         {assignment?.assignedAt
           ? `Updated ${formatDateTime(assignment.assignedAt)} by ${

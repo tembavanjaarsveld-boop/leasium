@@ -124,9 +124,13 @@ test("operations workspace surfaces maintenance and arrears work", async ({
     page.getByText("Assigned to Temba van Jaarsveld").first(),
   ).toBeVisible();
   await expect(page.getByText("Notification ready").first()).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Send ready notices 1/ }),
+  ).toBeVisible();
   await expect(page.getByText("Reminder Today").first()).toBeVisible();
   await page.getByRole("button", { name: "Send notice" }).first().click();
   await expect(page.getByText("Email queued").first()).toBeVisible();
+  await expect(page.getByText("Recent activity").first()).toBeVisible();
   await page.getByRole("button", { name: "Log reminder" }).first().click();
   await expect(page.getByText("Reminder logged").first()).toBeVisible();
   await expect(
