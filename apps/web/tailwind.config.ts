@@ -48,10 +48,11 @@ const config: Config = {
         accent: "#27D8C2",
         warning: "#F79009",
         danger: "#F04438",
-        slate: "#344054"
+        slate: "#344054",
       },
       fontFamily: {
         sans: [
+          "var(--font-geist-sans)",
           "Geist",
           "Inter",
           "ui-sans-serif",
@@ -60,6 +61,13 @@ const config: Config = {
           "BlinkMacSystemFont",
           "Segoe UI",
           "sans-serif",
+        ],
+        mono: [
+          "var(--font-geist-mono)",
+          "SFMono-Regular",
+          "Consolas",
+          "Liberation Mono",
+          "monospace",
         ],
       },
       boxShadow: {
@@ -71,10 +79,10 @@ const config: Config = {
       },
       transitionTimingFunction: {
         leasium: "cubic-bezier(0.16, 1, 0.3, 1)",
-      }
-    }
+      },
+    },
   },
-  plugins: []
+  plugins: [],
 };
 
 export default config;

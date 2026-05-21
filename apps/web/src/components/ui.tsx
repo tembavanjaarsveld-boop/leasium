@@ -36,7 +36,10 @@ export function SecondaryButton({
   );
 }
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({
+  className,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       className={cn(
@@ -48,7 +51,10 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   );
 }
 
-export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select({
+  className,
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
       className={cn(
@@ -92,10 +98,14 @@ export function PageHeader({
       <div>
         <h2 className="text-xl font-semibold">{title}</h2>
         {description ? (
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">
+            {description}
+          </p>
         ) : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      ) : null}
     </section>
   );
 }
@@ -126,11 +136,13 @@ export function SectionPanel({
             {title ? (
               <div className="flex items-center gap-2">
                 {icon}
-                <h3 className="text-base font-semibold">{title}</h3>
+                <h3 className="text-[15px] font-semibold leading-5">{title}</h3>
               </div>
             ) : null}
             {description ? (
-              <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+              <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">
+                {description}
+              </p>
             ) : null}
           </div>
           {actions}
@@ -156,7 +168,12 @@ export function StatusBadge({
     primary: "bg-leasium-blue-soft text-leasium-blue-hover",
   };
   return (
-    <span className={cn("rounded-full px-2 py-1 text-xs font-semibold", tones[tone])}>
+    <span
+      className={cn(
+        "inline-flex min-h-6 items-center whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold leading-none",
+        tones[tone],
+      )}
+    >
       {children}
     </span>
   );
@@ -176,7 +193,9 @@ export function EmptyState({
       <div>
         <div className="text-sm font-semibold">{title}</div>
         {description ? (
-          <div className="mt-1 text-sm text-muted-foreground">{description}</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            {description}
+          </div>
         ) : null}
         {action ? <div className="mt-3">{action}</div> : null}
       </div>

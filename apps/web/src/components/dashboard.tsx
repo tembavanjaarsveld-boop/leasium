@@ -3355,10 +3355,10 @@ export function Dashboard({
                     !selectedEntityId || documentIntakeMutation.isPending
                   }
                   className={[
-                    "grid min-h-32 place-items-center rounded-md border border-dashed p-4 text-center transition",
+                    "grid min-h-32 place-items-center rounded-xl border border-dashed p-4 text-center transition",
                     dragActive
                       ? "border-primary bg-primary/5"
-                      : "border-border bg-muted/35 hover:border-primary/50 hover:bg-primary/5",
+                      : "border-primary/25 bg-leasium-blue-soft/25 hover:border-primary/50 hover:bg-primary/5",
                     !selectedEntityId || documentIntakeMutation.isPending
                       ? "cursor-not-allowed opacity-60"
                       : "",
@@ -3383,12 +3383,12 @@ export function Dashboard({
                     ) : (
                       <FileUp size={24} className="text-primary" />
                     )}
-                    <span className="font-semibold">
+                    <span className="text-[15px] font-semibold leading-5">
                       {documentIntakeMutation.isPending
                         ? "Uploading document..."
                         : "Drop a document here"}
                     </span>
-                    <span className="text-sm text-muted-foreground">
+                    <span className="max-w-sm text-sm leading-5 text-muted-foreground">
                       Lease, purchase contract, tenancy schedule, invoice,
                       certificate, handover file, or tenant document
                     </span>
@@ -3425,9 +3425,11 @@ export function Dashboard({
                     Add tenant
                   </Link>
                 </div>
-                <div className="overflow-hidden rounded-md border border-border">
-                  <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                    <span className="text-sm font-semibold">Review queue</span>
+                <div className="overflow-hidden rounded-xl border border-border">
+                  <div className="flex items-center justify-between border-b border-border bg-muted/25 px-3 py-2.5">
+                    <span className="text-sm font-semibold leading-5">
+                      Review queue
+                    </span>
                     <StatusBadge
                       tone={needsReviewCount ? "primary" : "neutral"}
                     >
@@ -3711,13 +3713,13 @@ export function Dashboard({
                       <Link
                         href="/properties"
                         key={item.id}
-                        className="grid gap-2 px-4 py-3 transition hover:bg-muted/60 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                        className="grid gap-2 px-4 py-3.5 transition hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start"
                       >
                         <div className="min-w-0">
-                          <div className="truncate font-medium">
+                          <div className="line-clamp-2 text-[15px] font-semibold leading-5 text-foreground">
                             {item.title}
                           </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
+                          <div className="mt-1 text-xs font-medium capitalize leading-4 text-muted-foreground">
                             {item.category.replaceAll("_", " ")}
                           </div>
                         </div>
@@ -3745,15 +3747,17 @@ export function Dashboard({
                       <Link
                         href="/properties"
                         key={event.id}
-                        className="block px-4 py-3 text-sm transition hover:bg-muted/60"
+                        className="block px-4 py-3.5 text-sm transition hover:bg-muted/50"
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="font-medium">{event.title}</span>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                          <span className="line-clamp-2 text-[15px] font-semibold leading-5 text-foreground">
+                            {event.title}
+                          </span>
                           <StatusBadge tone={event.tone}>
                             {dueLabel(event.date)}
                           </StatusBadge>
                         </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
+                        <div className="mt-1 text-xs font-medium capitalize leading-4 text-muted-foreground">
                           {event.meta}
                         </div>
                       </Link>
@@ -3777,23 +3781,23 @@ export function Dashboard({
                         <Link
                           href="/properties"
                           key={`${row.property_id}-${row.tenancy_unit_id}`}
-                          className="block px-4 py-3 text-sm transition hover:bg-muted/60"
+                          className="block px-4 py-3.5 text-sm transition hover:bg-muted/50"
                         >
-                          <div className="flex items-center justify-between gap-3">
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                             <div className="min-w-0">
-                              <div className="truncate font-medium">
+                              <div className="truncate text-[15px] font-semibold leading-5 text-foreground">
                                 {row.unit_label}
                               </div>
-                              <div className="text-xs text-muted-foreground">
+                              <div className="mt-0.5 truncate text-xs leading-4 text-muted-foreground">
                                 {row.property_name} -{" "}
                                 {row.tenant_name ?? "Vacant"}
                               </div>
                             </div>
-                            <span className="text-xs font-medium">
+                            <span className="pt-0.5 text-xs font-semibold tabular-nums text-foreground">
                               {formatMoney(row.charge_rules_total_cents)}
                             </span>
                           </div>
-                          <div className="mt-2 rounded bg-accent/10 px-2 py-1 text-xs">
+                          <div className="mt-2 rounded-md bg-muted/60 px-2.5 py-1.5 text-xs leading-4 text-muted-foreground">
                             {rowBlockers[0]}
                           </div>
                         </Link>
