@@ -717,6 +717,13 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert item["follow_up_due"] is True
     assert "/operations/maintenance/" in item["work_url"]
 
+    session.refresh(assignee)
+    receipt = assignee.notification_preferences["work_assignment_digest_history"][0]
+    assert receipt["event"] == "digest_generated"
+    assert receipt["delivery_status"] == "previewed"
+    assert receipt["message_sent"] is False
+    assert receipt["item_count"] == 1
+
     audit = session.scalar(
         select(AuditAction).where(AuditAction.tool_name == "work_assignment.digest_generate")
     )

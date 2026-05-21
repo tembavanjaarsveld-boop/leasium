@@ -314,6 +314,36 @@ def _group_count(
     return sum(1 for item in items if item.notification_group == group)
 
 
+def _record_digest_receipt(
+    member: AppUser,
+    *,
+    digest: WorkAssignmentDigestRead,
+    entity_id: UUID,
+    generated_at: datetime,
+) -> None:
+    preferences = _metadata_record(member.notification_preferences)
+    raw_history = preferences.get("work_assignment_digest_history")
+    history = list(raw_history) if isinstance(raw_history, list) else []
+    receipt = {
+        "event": "digest_generated",
+        "generated_at": generated_at.isoformat(),
+        "entity_id": str(entity_id),
+        "cadence": digest.cadence,
+        "item_count": digest.item_count,
+        "ready_count": digest.ready_count,
+        "attention_count": digest.attention_count,
+        "in_flight_count": digest.in_flight_count,
+        "done_count": digest.done_count,
+        "follow_up_due_count": digest.follow_up_due_count,
+        "delivery_status": "previewed",
+        "message_sent": False,
+    }
+    preferences["work_assignment_digest_last_generated_at"] = receipt["generated_at"]
+    preferences["work_assignment_digest_last_item_count"] = digest.item_count
+    preferences["work_assignment_digest_history"] = [receipt, *history][:10]
+    member.notification_preferences = preferences
+
+
 @router.post("/digests/run", response_model=WorkAssignmentDigestRunRead)
 def run_work_assignment_digest(
     payload: WorkAssignmentDigestRun,
@@ -385,6 +415,14 @@ def run_work_assignment_digest(
             digest.assignee_name,
         )
     )
+    generated_at = utcnow()
+    for digest in digests:
+        _record_digest_receipt(
+            members_by_id[digest.assignee_user_id],
+            digest=digest,
+            entity_id=payload.entity_id,
+            generated_at=generated_at,
+        )
     work_item_count = sum(digest.item_count for digest in digests)
     audit_log(
         session,
@@ -405,7 +443,7 @@ def run_work_assignment_digest(
     return WorkAssignmentDigestRunRead(
         entity_id=payload.entity_id,
         cadence=payload.cadence,
-        generated_at=utcnow(),
+        generated_at=generated_at,
         operator_count=len(digests),
         work_item_count=work_item_count,
         guardrails=DIGEST_GUARDRAILS,

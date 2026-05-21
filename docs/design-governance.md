@@ -324,6 +324,8 @@ Ninth 2026-05-21 follow-up: Settings now adds a Work digest cadence selector (`d
 
 Tenth 2026-05-21 follow-up: Operations can now generate a review-only Work digest preview for the selected daily or weekly cadence. The preview groups assigned work by operator, shows follow-up and provider-notice counts, links back to source work, and keeps a visible `No messages sent` guardrail. Remba should review whether digest generation belongs in the queue header, whether the preview is too dense for the first viewport, and whether this should move to a global notifications area once cron sending is introduced.
 
+Eleventh 2026-05-21 follow-up: generated Work digests now store per-operator preview receipts in notification preferences, including cadence, counts, follow-up count, delivery status `previewed`, and `message_sent: false`. Remba should review whether these receipts should become visible in Settings immediately or wait until cron/provider delivery is active.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface
