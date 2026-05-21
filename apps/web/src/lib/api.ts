@@ -141,6 +141,25 @@ export type WorkAssignmentNotificationCenterItemRecord = {
   event_at: string | null;
   follow_up_due: boolean;
   work_url: string | null;
+  provider_history: WorkAssignmentProviderHistoryRecord[];
+};
+
+export type WorkAssignmentProviderHistoryRecord = {
+  event: string | null;
+  channel: string | null;
+  status: string | null;
+  raw_event: string | null;
+  provider: string | null;
+  attempted_at: string | null;
+  received_at: string | null;
+  recipient_email: string | null;
+  provider_message_id: string | null;
+  error: string | null;
+  template_key: string | null;
+  template_version: string | null;
+  delivery_trigger: string | null;
+  recovery_of_generated_at: string | null;
+  delivery_attempt_count: number | null;
 };
 
 export type WorkAssignmentNotificationCenterDigestRecord = {
@@ -162,6 +181,7 @@ export type WorkAssignmentNotificationCenterDigestRecord = {
   delivery_trigger: string | null;
   recovery_of_generated_at: string | null;
   delivery_attempt_count: number;
+  provider_history: WorkAssignmentProviderHistoryRecord[];
 };
 
 export type WorkAssignmentNotificationCenterRecord = {

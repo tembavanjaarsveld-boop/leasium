@@ -350,6 +350,8 @@ Twenty-first 2026-05-21 follow-up: Settings now lets owner/admin operators edit 
 
 Twenty-second 2026-05-21 follow-up: the Work notifications panel now adds a compact template preview beside the editable notice/digest template defaults. It translates known keys into a plain title, shows the version badge, sample subject, delivery channel, and the content summary included in each email. Remba should review whether this is enough reassurance before saving or whether template management needs a dedicated preview modal with rendered email content.
 
+Twenty-third 2026-05-21 follow-up: Notifications now exposes the latest provider history row for Work notices and digest receipts, including provider status, event name, timestamp, template/version, attempt count, and error detail where present. Remba should review whether this evidence should stay inline, collapse into a receipt details drawer, or become a support-only disclosure as non-email channels arrive.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

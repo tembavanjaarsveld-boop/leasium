@@ -146,12 +146,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Work notification channel and template evidence v1: notification-center responses now expose optional channel, provider, template key, and template version evidence for Work notices and digest receipts; Notifications adds channel filters for notice and digest history without changing send behavior. Pending Remba review.
 - [x] Work notification template preferences v1: Settings lets owner/admin operators edit per-member assignment notice and digest template key/version defaults; provider sends and digest receipts use the reviewed operator defaults while preserving explicit send/retry approval. Pending Remba review.
 - [x] Work notification template preview v1: Settings now translates per-operator Work notice/digest template keys into a compact SendGrid email preview with version badges, sample subject, and included content summary before saving. Pending Remba review.
+- [x] Work notification provider history v1: Notifications now surfaces latest provider history rows for Work notices and digest receipts, including SendGrid status, event, timestamp, template/version, attempt count, and error detail where present. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, `20260521_0020_register_import_plans`, and `20260521_0021_operator_notification_preferences` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, simplified navigation/command center, Portfolio QA command-search placement, reusable evidence/source-trail pattern across Properties/Smart Intake/Tenants, tenant portal, tenant fresh-link recovery, invoice email action, Work assignment controls/workload/reminder/action/provider notice cues, and Operations workspace before treating them as UX complete.
-- [ ] Continue Work assignment from template preview into non-email provider wiring, channel-specific delivery recovery, and richer named template management.
+- [ ] Continue Work assignment from provider history into non-email provider wiring, per-channel recovery actions, and richer named template management.
 - [ ] Continue Operations polish with deeper activity/audit presentation, safer edit affordances on list rows, and owner/tenant-facing completion review paths.
 - [ ] Continue Xero from guided sync exceptions into accounting snapshot guardrails, stale reconciliation indicators, and richer accounting-readiness snapshots.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.

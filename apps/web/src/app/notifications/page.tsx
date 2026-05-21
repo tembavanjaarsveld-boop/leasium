@@ -31,6 +31,7 @@ import {
   runWorkAssignmentDigest,
   type WorkAssignmentNotificationCenterDigestRecord,
   type WorkAssignmentNotificationCenterItemRecord,
+  type WorkAssignmentProviderHistoryRecord,
   type WorkAssignmentNoticeGroup,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -161,6 +162,22 @@ function templateLabel(
     return null;
   }
   return [templateKey, templateVersion].filter(Boolean).join(" ");
+}
+
+function providerHistoryTone(status: string | null | undefined): StatusTone {
+  if (status && ["failed", "bounce", "dropped"].includes(status)) {
+    return "danger";
+  }
+  if (status && ["skipped", "attention", "deferred"].includes(status)) {
+    return "warning";
+  }
+  if (
+    status &&
+    ["queued", "sent", "delivered", "opened", "processed"].includes(status)
+  ) {
+    return "success";
+  }
+  return "neutral";
 }
 
 function groupTone(group: WorkAssignmentNoticeGroup): StatusTone {
@@ -344,6 +361,37 @@ function workHref(url: string | null) {
   }
 }
 
+function ProviderHistoryStrip({
+  history,
+}: {
+  history?: WorkAssignmentProviderHistoryRecord[] | null;
+}) {
+  const latest = history?.[0];
+  if (!latest) {
+    return null;
+  }
+  const timestamp = latest.received_at ?? latest.attempted_at;
+  const template = templateLabel(latest.template_key, latest.template_version);
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
+      <span className="font-semibold text-foreground">
+        Latest provider event
+      </span>
+      <StatusBadge tone={providerHistoryTone(latest.status)}>
+        {latest.status ? label(latest.status) : "Recorded"}
+      </StatusBadge>
+      {latest.event ? <span>{label(latest.event)}</span> : null}
+      {latest.provider ? <span>{label(latest.provider)}</span> : null}
+      {timestamp ? <span>{formatDateTime(timestamp)}</span> : null}
+      {template ? <span>{template}</span> : null}
+      {latest.delivery_attempt_count ? (
+        <span>Attempt {latest.delivery_attempt_count}</span>
+      ) : null}
+      {latest.error ? <span>{latest.error}</span> : null}
+    </div>
+  );
+}
+
 function NoticeRow({
   notice,
 }: {
@@ -382,6 +430,7 @@ function NoticeRow({
           {notice.provider ? <span>{label(notice.provider)}</span> : null}
           {template ? <span>{template}</span> : null}
         </div>
+        <ProviderHistoryStrip history={notice.provider_history} />
       </div>
       <div className="min-w-0 text-xs text-muted-foreground">
         <div className="font-semibold text-foreground">
@@ -795,6 +844,7 @@ function NotificationsWorkspace() {
                       <span>{receipt.follow_up_due_count} follow-up</span>
                     </div>
                   </div>
+                  <ProviderHistoryStrip history={receipt.provider_history} />
                   {!receipt.message_sent ? (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                       <span>

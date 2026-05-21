@@ -790,6 +790,7 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert center["digest_receipts"][0]["delivery_channel"] is None
     assert center["digest_receipts"][0]["template_key"] == "custom_work_digest"
     assert center["digest_receipts"][0]["template_version"] == "v3"
+    assert center["digest_receipts"][0]["provider_history"] == []
     assert center["guardrails"][0].startswith("Notification center is read-only")
 
     mark_read_response = client.post(
@@ -946,6 +947,12 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
     assert center["digest_receipts"][0]["template_version"] == "v3"
     assert center["digest_receipts"][0]["delivery_trigger"] == "scheduled"
     assert center["digest_receipts"][0]["delivery_attempt_count"] == 1
+    assert center["digest_receipts"][0]["provider_history"][0]["event"] == (
+        "digest_delivery_attempted"
+    )
+    assert center["digest_receipts"][0]["provider_history"][0]["template_key"] == (
+        "custom_work_digest"
+    )
 
     recovery_response = client.post(
         "/api/v1/work-assignments/digests/run",
@@ -990,6 +997,20 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
     assert receipt["delivery_status"] == "delivered"
     assert receipt["last_event"] == "delivered"
     assert receipt["provider_history"][0]["event"] == "digest_provider_receipt"
+
+    center_after_receipt_response = client.get(
+        "/api/v1/work-assignments/notification-center",
+        params={"entity_id": entity_id},
+    )
+    assert center_after_receipt_response.status_code == 200
+    center_after_receipt = center_after_receipt_response.json()
+    assert center_after_receipt["digest_receipts"][0]["delivery_status"] == "delivered"
+    assert center_after_receipt["digest_receipts"][0]["provider_history"][0]["event"] == (
+        "digest_provider_receipt"
+    )
+    assert center_after_receipt["digest_receipts"][0]["provider_history"][0]["status"] == (
+        "delivered"
+    )
 
     audit = session.scalar(
         select(AuditAction).where(

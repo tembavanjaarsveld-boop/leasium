@@ -44,6 +44,7 @@ from apps.api.schemas.work_assignments import (
     WorkAssignmentNotificationCenterItemRead,
     WorkAssignmentNotificationCenterRead,
     WorkAssignmentNotificationCenterReadState,
+    WorkAssignmentProviderHistoryRead,
 )
 from apps.api.work_assignments import (
     apply_work_assignment_delivery_receipt,
@@ -201,6 +202,36 @@ def _digest_preference(member: AppUser) -> str:
 
 def _metadata_list(value: Any) -> list[Any]:
     return list(value) if isinstance(value, list) else []
+
+
+def _metadata_int(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _provider_history_records(value: Any) -> list[WorkAssignmentProviderHistoryRead]:
+    records: list[WorkAssignmentProviderHistoryRead] = []
+    for entry in _metadata_list(value)[:5]:
+        record = _metadata_record(entry)
+        records.append(
+            WorkAssignmentProviderHistoryRead(
+                event=_metadata_text(record.get("event")),
+                channel=_metadata_text(record.get("channel")),
+                status=_metadata_text(record.get("status")),
+                raw_event=_metadata_text(record.get("raw_event")),
+                provider=_metadata_text(record.get("provider")),
+                attempted_at=_metadata_text(record.get("attempted_at")),
+                received_at=_metadata_text(record.get("received_at")),
+                recipient_email=_metadata_text(record.get("recipient_email")),
+                provider_message_id=_metadata_text(record.get("provider_message_id")),
+                error=_metadata_text(record.get("error")),
+                template_key=_metadata_text(record.get("template_key")),
+                template_version=_metadata_text(record.get("template_version")),
+                delivery_trigger=_metadata_text(record.get("delivery_trigger")),
+                recovery_of_generated_at=_metadata_text(record.get("recovery_of_generated_at")),
+                delivery_attempt_count=_metadata_int(record.get("delivery_attempt_count")),
+            )
+        )
+    return records
 
 
 def _notice_group(
@@ -372,6 +403,7 @@ def _notification_center_item(
         event_at=_latest_assignment_event_at(assignment),
         follow_up_due=_follow_up_due(assignment, today),
         work_url=f"{settings_base}{path}" if settings_base else path,
+        provider_history=_provider_history_records(notification.get("provider_history")),
     )
 
 
@@ -679,6 +711,7 @@ def _notification_center_digest_receipts(
                     delivery_attempt_count=attempt_count
                     if isinstance(attempt_count, int) and not isinstance(attempt_count, bool)
                     else 0,
+                    provider_history=_provider_history_records(record.get("provider_history")),
                 )
             )
     receipts.sort(key=lambda receipt: receipt.generated_at, reverse=True)

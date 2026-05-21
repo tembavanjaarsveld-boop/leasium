@@ -12,6 +12,24 @@ WorkAssignmentDigestDeliveryTrigger = Literal["manual", "scheduled", "recovery"]
 WorkAssignmentNoticeGroup = Literal["ready", "in_flight", "attention", "done"]
 
 
+class WorkAssignmentProviderHistoryRead(BaseModel):
+    event: str | None = None
+    channel: str | None = None
+    status: str | None = None
+    raw_event: str | None = None
+    provider: str | None = None
+    attempted_at: str | None = None
+    received_at: str | None = None
+    recipient_email: str | None = None
+    provider_message_id: str | None = None
+    error: str | None = None
+    template_key: str | None = None
+    template_version: str | None = None
+    delivery_trigger: str | None = None
+    recovery_of_generated_at: str | None = None
+    delivery_attempt_count: int | None = None
+
+
 class WorkAssignmentDigestRun(BaseModel):
     entity_id: UUID
     cadence: WorkAssignmentDigestCadence = "daily"
@@ -98,6 +116,7 @@ class WorkAssignmentNotificationCenterItemRead(BaseModel):
     event_at: datetime | None = None
     follow_up_due: bool = False
     work_url: str | None = None
+    provider_history: list[WorkAssignmentProviderHistoryRead] = Field(default_factory=list)
 
 
 class WorkAssignmentNotificationCenterDigestRead(BaseModel):
@@ -119,6 +138,7 @@ class WorkAssignmentNotificationCenterDigestRead(BaseModel):
     delivery_trigger: str | None = None
     recovery_of_generated_at: datetime | None = None
     delivery_attempt_count: int = 0
+    provider_history: list[WorkAssignmentProviderHistoryRead] = Field(default_factory=list)
 
 
 class WorkAssignmentNotificationCenterRead(BaseModel):
