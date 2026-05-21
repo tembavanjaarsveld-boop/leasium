@@ -123,12 +123,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Work assignment foundation v1: the Work queue and Maintenance/Arrears rows can assign maintenance jobs, arrears cases, and critical-date obligations to active platform members, store assignment history in metadata, and prepare an in-app notification receipt without sending provider email/SMS automatically. Pending Remba review.
 - [x] Work assignment workload filters v1: the Work queue now shows team workload counts, unassigned/assigned totals, urgent load, and assignee filters for all open work, unassigned work, the current operator, or a selected member. Pending Remba review.
 - [x] Work assignment reminder/escalation cues v1: new assignments now store an in-app reminder date and escalation watch date, the assignment control surfaces reminder/escalation badges with no-provider-send guardrails, and the Work queue can filter to assignment follow-ups due. Pending Remba review.
+- [x] Work assignment action runners v1: assignment controls now let operators explicitly log in-app reminders and queue assignment escalations, updating assignment status/history without sending provider email/SMS. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, and `20260521_0020_register_import_plans` migrations in hosted Neon/Render if auto-migrations do not run.
-- [ ] Remba review the new Smart Intake spreadsheet import panel, simplified navigation/command center, Portfolio QA command-search placement, reusable evidence/source-trail pattern across Properties/Smart Intake/Tenants, tenant portal, tenant fresh-link recovery, invoice email action, Work assignment controls/workload/reminder cues, and Operations workspace before treating them as UX complete.
-- [ ] Continue Work assignment into provider-backed member notifications and explicit reminder/escalation action runners once the in-app assignment pattern settles.
+- [ ] Remba review the new Smart Intake spreadsheet import panel, simplified navigation/command center, Portfolio QA command-search placement, reusable evidence/source-trail pattern across Properties/Smart Intake/Tenants, tenant portal, tenant fresh-link recovery, invoice email action, Work assignment controls/workload/reminder/action cues, and Operations workspace before treating them as UX complete.
+- [ ] Continue Work assignment into provider-backed member notifications once the in-app assignment pattern settles.
 - [ ] Continue Operations polish with deeper activity/audit presentation, safer edit affordances on list rows, and owner/tenant-facing completion review paths.
 - [ ] Continue Xero from guided sync exceptions into accounting snapshot guardrails, stale reconciliation indicators, and richer accounting-readiness snapshots.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.

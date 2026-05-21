@@ -308,6 +308,8 @@ Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry
 
 Second 2026-05-21 follow-up: new assignment metadata now prepares an in-app reminder date and escalation watch date, and the Work queue can filter to assignment follow-ups due. The row control shows `Reminder` and `Escalate` badges beside `Notification ready` while explicitly stating that no email/SMS has been sent. Remba should review whether these badges make ownership clearer or overload the assignment control, and whether follow-up filtering should become a first-class Work tab once provider-backed notifications exist.
 
+Third 2026-05-21 follow-up: assignment controls now include explicit `Log reminder` and `Queue escalation` actions. Both actions update assignment metadata/history only; they do not send provider email/SMS. Remba should review whether these actions belong inline with the assignee select or behind a secondary menu, and whether `Reminder logged`/`Escalation queued` receipts are plain enough for operators.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

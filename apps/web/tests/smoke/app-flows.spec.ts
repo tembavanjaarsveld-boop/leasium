@@ -125,14 +125,17 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   ).toBeVisible();
   await expect(page.getByText("Notification ready").first()).toBeVisible();
   await expect(page.getByText("Reminder Today").first()).toBeVisible();
+  await page.getByRole("button", { name: "Log reminder" }).first().click();
+  await expect(page.getByText("Reminder logged").first()).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Show Temba van Jaarsveld work, 1/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /Show assignment follow-ups, 1/ }),
+    page.getByRole("button", { name: /Show assignment follow-ups, 0/ }),
   ).toBeVisible();
   await page.getByLabel("Queue assignee").selectOption("follow_up");
-  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expect(page.getByText("No assignment follow-ups due")).toBeVisible();
+  await expect(page.getByText("Air conditioning fault")).not.toBeVisible();
   await expect(page.getByText("Bright Cafe arrears")).not.toBeVisible();
   await page
     .getByLabel("Queue assignee")

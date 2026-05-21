@@ -237,6 +237,7 @@ type AssigneeFilter =
   | "me"
   | "follow_up"
   | `member:${string}`;
+type WorkAssignmentAction = "reminder_logged" | "escalation_queued";
 
 type MaintenanceFormState = {
   title: string;
@@ -591,12 +592,97 @@ function assignmentFollowUpDue(assignment: WorkAssignment | null) {
   if (assignment.reminderStatus === "due") {
     return true;
   }
-  if (assignment.reminderDueOn && dueRank(assignment.reminderDueOn) <= 0) {
+  if (
+    assignment.reminderDueOn &&
+    dueRank(assignment.reminderDueOn) <= 0 &&
+    !["logged", "skipped"].includes(assignment.reminderStatus ?? "")
+  ) {
     return true;
   }
   return Boolean(
-    assignment.escalationDueOn && dueRank(assignment.escalationDueOn) <= 0,
+    assignment.escalationDueOn &&
+    dueRank(assignment.escalationDueOn) <= 0 &&
+    !["queued", "skipped", "resolved"].includes(
+      assignment.escalationStatus ?? "",
+    ),
   );
+}
+
+function assignmentActionMetadata({
+  metadata,
+  action,
+  currentUser,
+}: {
+  metadata: Record<string, unknown>;
+  action: WorkAssignmentAction;
+  currentUser:
+    | { id: string; email: string; display_name: string }
+    | null
+    | undefined;
+}) {
+  const raw = metadata[WORK_ASSIGNMENT_KEY];
+  if (!isPlainRecord(raw)) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const actorName =
+    currentUser?.display_name || currentUser?.email || "Leasium operator";
+  const reminder = isPlainRecord(raw.reminder) ? raw.reminder : {};
+  const escalation = isPlainRecord(raw.escalation) ? raw.escalation : {};
+  const notification = isPlainRecord(raw.notification) ? raw.notification : {};
+  const existingHistory = workAssignmentHistory(raw.history);
+  const assignedName = stringValue(raw, "assigned_user_name");
+
+  const actionSummary =
+    action === "reminder_logged"
+      ? `In-app assignment reminder logged${assignedName ? ` for ${assignedName}` : ""}.`
+      : `Assignment escalation queued${assignedName ? ` for ${assignedName}` : ""}.`;
+  const historyEntry = {
+    event: action,
+    at: now,
+    actor_user_id: currentUser?.id ?? null,
+    actor_name: actorName,
+    assigned_user_id: stringValue(raw, "assigned_user_id"),
+    assigned_user_name: assignedName,
+    assigned_user_email: stringValue(raw, "assigned_user_email"),
+    notification_status: stringValue(notification, "status"),
+    summary: actionSummary,
+  };
+
+  return {
+    ...metadata,
+    [WORK_ASSIGNMENT_KEY]: {
+      ...raw,
+      reminder:
+        action === "reminder_logged"
+          ? {
+              ...reminder,
+              status: "logged",
+              due_on: null,
+              logged_at: now,
+              logged_by_user_id: currentUser?.id ?? null,
+              logged_by_name: actorName,
+              detail:
+                "In-app assignment reminder was logged. Provider email/SMS was not sent.",
+            }
+          : reminder,
+      escalation:
+        action === "escalation_queued"
+          ? {
+              ...escalation,
+              status: "queued",
+              queued_at: now,
+              queued_by_user_id: currentUser?.id ?? null,
+              queued_by_name: actorName,
+              rule:
+                stringValue(escalation, "rule") ??
+                "Escalation queued by the operator.",
+            }
+          : escalation,
+      history: [historyEntry, ...existingHistory].slice(0, 10),
+    },
+  };
 }
 
 function assignmentWorkflowPlan({
@@ -1565,6 +1651,24 @@ function OperationsWorkspace() {
     });
   }
 
+  function actionMaintenance(
+    workOrder: MaintenanceWorkOrderRecord,
+    action: WorkAssignmentAction,
+  ) {
+    const metadata = assignmentActionMetadata({
+      metadata: workOrder.metadata,
+      action,
+      currentUser,
+    });
+    if (!metadata) {
+      return;
+    }
+    updateMaintenanceMutation.mutate({
+      id: workOrder.id,
+      data: { metadata },
+    });
+  }
+
   function assignArrears(arrearsCase: ArrearsCaseRecord, assigneeId: string) {
     const title = `${tenantName(tenants, arrearsCase.tenant_id)} arrears`;
     const metadata = nextAssignmentMetadata(
@@ -1587,6 +1691,24 @@ function OperationsWorkspace() {
     });
   }
 
+  function actionArrears(
+    arrearsCase: ArrearsCaseRecord,
+    action: WorkAssignmentAction,
+  ) {
+    const metadata = assignmentActionMetadata({
+      metadata: arrearsCase.metadata,
+      action,
+      currentUser,
+    });
+    if (!metadata) {
+      return;
+    }
+    updateArrearsMutation.mutate({
+      id: arrearsCase.id,
+      data: { metadata },
+    });
+  }
+
   function assignObligation(obligation: ObligationRecord, assigneeId: string) {
     const metadata = nextAssignmentMetadata(
       obligation.metadata,
@@ -1596,6 +1718,24 @@ function OperationsWorkspace() {
       obligation.due_date,
       obligationTone(obligation),
     );
+    if (!metadata) {
+      return;
+    }
+    assignObligationMutation.mutate({
+      obligation,
+      metadata,
+    });
+  }
+
+  function actionObligation(
+    obligation: ObligationRecord,
+    action: WorkAssignmentAction,
+  ) {
+    const metadata = assignmentActionMetadata({
+      metadata: obligation.metadata,
+      action,
+      currentUser,
+    });
     if (!metadata) {
       return;
     }
@@ -1617,16 +1757,33 @@ function OperationsWorkspace() {
     assignObligation(item.record, assigneeId);
   }
 
+  function actionQueueItem(
+    item: AssignableQueueItem,
+    action: WorkAssignmentAction,
+  ) {
+    if (item.kind === "maintenance") {
+      actionMaintenance(item.record, action);
+      return;
+    }
+    if (item.kind === "arrears") {
+      actionArrears(item.record, action);
+      return;
+    }
+    actionObligation(item.record, action);
+  }
+
   function renderAssignmentControl({
     itemId,
     title,
     metadata,
     onAssign,
+    onAction,
   }: {
     itemId: string;
     title: string;
     metadata: Record<string, unknown>;
     onAssign: (assigneeId: string) => void;
+    onAction: (action: WorkAssignmentAction) => void;
   }) {
     return (
       <WorkAssignmentControl
@@ -1636,6 +1793,7 @@ function OperationsWorkspace() {
         value={assignmentValue(itemId, metadata)}
         onChange={(value) => setAssignmentValue(itemId, value)}
         onAssign={onAssign}
+        onAction={onAction}
         disabled={assignmentPending}
         membersLoading={securityWorkspaceQuery.isLoading}
       />
@@ -2066,6 +2224,8 @@ function OperationsWorkspace() {
                               metadata: item.record.metadata,
                               onAssign: (assigneeId) =>
                                 assignQueueItem(item, assigneeId),
+                              onAction: (action) =>
+                                actionQueueItem(item, action),
                             })
                           : null}
                         {renderQueueActions(item)}
@@ -2525,6 +2685,8 @@ function OperationsWorkspace() {
                             metadata: workOrder.metadata,
                             onAssign: (assigneeId) =>
                               assignMaintenance(workOrder, assigneeId),
+                            onAction: (action) =>
+                              actionMaintenance(workOrder, action),
                           })}
                           <MaintenanceActions
                             workOrder={workOrder}
@@ -2890,6 +3052,8 @@ function OperationsWorkspace() {
                             metadata: arrearsCase.metadata,
                             onAssign: (assigneeId) =>
                               assignArrears(arrearsCase, assigneeId),
+                            onAction: (action) =>
+                              actionArrears(arrearsCase, action),
                           })}
                           <ArrearsActions
                             arrearsCase={arrearsCase}
@@ -2937,6 +3101,7 @@ function WorkAssignmentControl({
   value,
   onChange,
   onAssign,
+  onAction,
   disabled,
   membersLoading,
 }: {
@@ -2946,6 +3111,7 @@ function WorkAssignmentControl({
   value: string;
   onChange: (value: string) => void;
   onAssign: (assigneeId: string) => void;
+  onAction: (action: WorkAssignmentAction) => void;
   disabled: boolean;
   membersLoading: boolean;
 }) {
@@ -2958,6 +3124,22 @@ function WorkAssignmentControl({
   );
   const escalationDue = Boolean(
     assignment?.escalationDueOn && dueRank(assignment.escalationDueOn) <= 0,
+  );
+  const isAssigned = Boolean(
+    assignment?.assignedUserId || assignment?.assignedName,
+  );
+  const canLogReminder = Boolean(
+    isAssigned &&
+    (assignment?.reminderStatus === "due" ||
+      (assignment?.reminderDueOn && dueRank(assignment.reminderDueOn) <= 0)) &&
+    !["logged", "skipped"].includes(assignment?.reminderStatus ?? ""),
+  );
+  const canQueueEscalation = Boolean(
+    isAssigned &&
+    escalationDue &&
+    !["queued", "skipped", "resolved"].includes(
+      assignment?.escalationStatus ?? "",
+    ),
   );
 
   return (
@@ -2974,10 +3156,16 @@ function WorkAssignmentControl({
         {notificationReady ? (
           <StatusBadge tone="success">Notification ready</StatusBadge>
         ) : null}
+        {assignment?.reminderStatus === "logged" ? (
+          <StatusBadge tone="success">Reminder logged</StatusBadge>
+        ) : null}
         {assignment?.reminderDueOn ? (
           <StatusBadge tone={reminderDue ? "warning" : "neutral"}>
             Reminder {dueLabel(assignment.reminderDueOn)}
           </StatusBadge>
+        ) : null}
+        {assignment?.escalationStatus === "queued" ? (
+          <StatusBadge tone="warning">Escalation queued</StatusBadge>
         ) : null}
         {assignment?.escalationDueOn ? (
           <StatusBadge tone={escalationDue ? "danger" : "neutral"}>
@@ -3027,6 +3215,28 @@ function WorkAssignmentControl({
           >
             <Ban size={15} />
             Clear
+          </SecondaryButton>
+        ) : null}
+        {canLogReminder ? (
+          <SecondaryButton
+            type="button"
+            className="h-9 px-3"
+            disabled={disabled}
+            onClick={() => onAction("reminder_logged")}
+          >
+            <Clock3 size={15} />
+            Log reminder
+          </SecondaryButton>
+        ) : null}
+        {canQueueEscalation ? (
+          <SecondaryButton
+            type="button"
+            className="h-9 px-3"
+            disabled={disabled}
+            onClick={() => onAction("escalation_queued")}
+          >
+            <AlertTriangle size={15} />
+            Queue escalation
           </SecondaryButton>
         ) : null}
       </div>
