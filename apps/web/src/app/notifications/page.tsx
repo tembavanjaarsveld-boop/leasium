@@ -28,6 +28,9 @@ import {
   getWorkAssignmentNotificationCenter,
   listEntities,
   markWorkAssignmentNotificationCenterRead,
+  runWorkAssignmentDigest,
+  type WorkAssignmentDigestCadence,
+  type WorkAssignmentNotificationCenterDigestRecord,
   type WorkAssignmentNotificationCenterItemRecord,
   type WorkAssignmentNoticeGroup,
 } from "@/lib/api";
@@ -90,6 +93,45 @@ function groupIcon(group: WorkAssignmentNoticeGroup): ReactNode {
     return <CheckCircle2 size={15} />;
   }
   return <Clock3 size={15} />;
+}
+
+function digestReceiptTone(
+  receipt: WorkAssignmentNotificationCenterDigestRecord,
+): StatusTone {
+  if (receipt.message_sent) {
+    return "success";
+  }
+  if (receipt.delivery_status === "failed") {
+    return "danger";
+  }
+  if (receipt.delivery_status === "skipped") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function digestReceiptLabel(
+  receipt: WorkAssignmentNotificationCenterDigestRecord,
+) {
+  if (receipt.message_sent) {
+    return "Email queued";
+  }
+  if (receipt.delivery_status === "failed") {
+    return "Failed";
+  }
+  if (receipt.delivery_status === "skipped") {
+    return "Skipped";
+  }
+  return "No messages sent";
+}
+
+function digestRecoveryLabel(
+  receipt: WorkAssignmentNotificationCenterDigestRecord,
+) {
+  return receipt.delivery_status === "failed" ||
+    receipt.delivery_status === "skipped"
+    ? "Retry digest"
+    : "Send digest";
 }
 
 function workHref(url: string | null) {
@@ -192,6 +234,19 @@ function NotificationsWorkspace() {
   const markReadMutation = useMutation({
     mutationFn: () =>
       markWorkAssignmentNotificationCenterRead(selectedEntityId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["work-assignment-notification-center", selectedEntityId],
+      }),
+  });
+
+  const retryDigestMutation = useMutation({
+    mutationFn: (cadence: WorkAssignmentDigestCadence) =>
+      runWorkAssignmentDigest({
+        entity_id: selectedEntityId,
+        cadence,
+        send_email_approved: true,
+      }),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: ["work-assignment-notification-center", selectedEntityId],
@@ -377,10 +432,8 @@ function NotificationsWorkspace() {
                       {receipt.assignee_email}
                     </div>
                   </div>
-                  <StatusBadge
-                    tone={receipt.message_sent ? "success" : "neutral"}
-                  >
-                    {receipt.message_sent ? "Email queued" : "No messages sent"}
+                  <StatusBadge tone={digestReceiptTone(receipt)}>
+                    {digestReceiptLabel(receipt)}
                   </StatusBadge>
                 </div>
                 <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
@@ -397,6 +450,29 @@ function NotificationsWorkspace() {
                     <span>{receipt.follow_up_due_count} follow-up</span>
                   </div>
                 </div>
+                {!receipt.message_sent ? (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    <span>
+                      Sends the current {label(receipt.cadence).toLowerCase()}{" "}
+                      digest to matching operators.
+                    </span>
+                    <SecondaryButton
+                      type="button"
+                      className="h-9 px-2.5"
+                      disabled={
+                        !selectedEntityId || retryDigestMutation.isPending
+                      }
+                      onClick={() =>
+                        retryDigestMutation.mutate(receipt.cadence)
+                      }
+                    >
+                      <Send size={14} />
+                      {retryDigestMutation.isPending
+                        ? "Sending"
+                        : digestRecoveryLabel(receipt)}
+                    </SecondaryButton>
+                  </div>
+                ) : null}
               </div>
             ))}
             {!centerQuery.isLoading && center?.digest_receipts.length === 0 ? (

@@ -1292,6 +1292,7 @@ export async function mockLeasiumApi(
   let localInvoiceDrafts = jsonClone(invoiceDrafts);
   let tenantAccountLinked = options.tenantAccountLinked ?? false;
   let notificationCenterReadAt: string | null = null;
+  let digestReceiptSent = false;
   const tenantAccountLinkedToDifferentTenant =
     options.tenantAccountLinkedToDifferentTenant ?? false;
   let appliedContactMappings: XeroContactMapping[] = [];
@@ -3306,10 +3307,14 @@ export async function mockLeasiumApi(
             cadence: "daily",
             item_count: 4,
             follow_up_due_count: 2,
-            delivery_status: "previewed",
-            message_sent: false,
-            delivery_detail: null,
-            provider_message_id: null,
+            delivery_status: digestReceiptSent ? "queued" : "previewed",
+            message_sent: digestReceiptSent,
+            delivery_detail: digestReceiptSent
+              ? "Digest email was queued by SendGrid."
+              : null,
+            provider_message_id: digestReceiptSent
+              ? "sg-digest-smoke-retry"
+              : null,
           },
         ],
       });
@@ -3336,6 +3341,9 @@ export async function mockLeasiumApi(
         send_email_approved?: boolean;
       };
       const sendApproved = payload.send_email_approved === true;
+      if (sendApproved) {
+        digestReceiptSent = true;
+      }
       await fulfillJson(route, {
         entity_id: payload.entity_id ?? entityId,
         cadence: payload.cadence ?? "daily",

@@ -336,6 +336,8 @@ Fourteenth 2026-05-21 follow-up: Notifications now includes per-operator unread 
 
 Fifteenth 2026-05-21 follow-up: Work digests now have an explicit `Send digest` action in Operations, and scheduled digest endpoints only send provider-backed SendGrid emails when `send_email_approved` is present. Settings and Notifications show digest delivery receipts as `Email queued` or `No messages sent`, with delivery detail when available. Remba should review whether the second digest button feels clear enough beside `Generate digest`, and whether digest delivery history belongs in Notifications, Settings, or a dedicated notification preferences panel.
 
+Sixteenth 2026-05-21 follow-up: Notifications digest history now shows a direct `Send digest` / `Retry digest` recovery action on digest receipts that have not sent. The action uses the same explicit approved-send path and then refreshes receipt state. Remba should review whether the recovery copy makes it clear that the current cadence digest is sent to matching operators, not only the single historical receipt row.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

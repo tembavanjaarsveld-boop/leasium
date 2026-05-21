@@ -223,6 +223,11 @@ test("notification center shows work notices and digest receipts", async ({
   await expect(page.getByText("Digest history")).toBeVisible();
   await expect(page.getByText("Owner Operator").first()).toBeVisible();
   await expect(page.getByText("No messages sent").first()).toBeVisible();
+  await page.getByRole("button", { name: "Send digest" }).click();
+  await expect(
+    page.getByText("Digest email was queued by SendGrid."),
+  ).toBeVisible();
+  await expect(page.getByText("Email queued").first()).toBeVisible();
   await expect(page.getByText("3 unread")).toBeVisible();
   await page.getByRole("button", { name: "Mark reviewed" }).click();
   await expect(page.getByText("0 unread")).toBeVisible();
