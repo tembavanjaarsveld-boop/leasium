@@ -137,6 +137,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Work assignment notification center v1: `/notifications` and `/api/v1/work-assignments/notification-center` now centralise assignment notice states and digest preview receipts across maintenance, arrears, and critical dates, with a read-only guardrail and Work deep links. Pending Remba review.
 - [x] Work assignment notification read state v1: operators can mark the notification center reviewed per entity, storing a read timestamp in notification preferences and showing unread counts against notice and digest activity. Pending Remba review.
 - [x] Work assignment due-digest cron runner v1: `/api/v1/work-assignments/digests/run-due` lets a scheduler generate review-only daily, weekly, or all due digest previews across active entities without knowing each entity ID, using the shared webhook secret and skipping entities with no matching assigned work.
+- [x] Dashboard and Work urgency hierarchy polish v1: overdue/status pills now carry the warning emphasis while Dashboard command rows, Needs attention, Events, and Work queue titles use calmer medium-weight typography with muted metadata. Pending Remba review.
 
 ## Next Build Order
 

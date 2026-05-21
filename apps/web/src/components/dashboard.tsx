@@ -724,10 +724,10 @@ function DashboardCommandCenter({
                   </span>
                 </div>
                 <div className="min-w-0">
-                  <div className="line-clamp-2 text-[15px] font-semibold leading-5 text-foreground">
+                  <div className="line-clamp-2 text-[15px] font-medium leading-5 text-foreground">
                     {item.title}
                   </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium leading-4 text-muted-foreground">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-4 text-muted-foreground">
                     <StatusBadge tone={item.tone}>{item.chip}</StatusBadge>
                     <span>{item.area}</span>
                     <span
@@ -741,7 +741,7 @@ function DashboardCommandCenter({
                   </p>
                 </div>
                 <div className="col-start-2 flex min-w-0 items-center gap-2 md:col-start-auto md:justify-end md:self-center">
-                  <span className="truncate text-sm font-semibold text-primary md:whitespace-nowrap">
+                  <span className="truncate text-sm font-medium text-primary md:whitespace-nowrap">
                     {item.nextStep}
                   </span>
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border bg-white text-primary transition group-hover:border-primary/35 group-hover:bg-primary group-hover:text-white">
@@ -3719,10 +3719,10 @@ export function Dashboard({
                         className="grid gap-2 px-4 py-3.5 transition hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start"
                       >
                         <div className="min-w-0">
-                          <div className="line-clamp-2 text-[15px] font-semibold leading-5 text-foreground">
+                          <div className="line-clamp-2 text-[15px] font-medium leading-5 text-foreground">
                             {item.title}
                           </div>
-                          <div className="mt-1 text-xs font-medium capitalize leading-4 text-muted-foreground">
+                          <div className="mt-1 text-xs capitalize leading-4 text-muted-foreground">
                             {item.category.replaceAll("_", " ")}
                           </div>
                         </div>
@@ -3753,14 +3753,14 @@ export function Dashboard({
                         className="block px-4 py-3.5 text-sm transition hover:bg-muted/50"
                       >
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                          <span className="line-clamp-2 text-[15px] font-semibold leading-5 text-foreground">
+                          <span className="line-clamp-2 text-[15px] font-medium leading-5 text-foreground">
                             {event.title}
                           </span>
                           <StatusBadge tone={event.tone}>
                             {dueLabel(event.date)}
                           </StatusBadge>
                         </div>
-                        <div className="mt-1 text-xs font-medium capitalize leading-4 text-muted-foreground">
+                        <div className="mt-1 text-xs capitalize leading-4 text-muted-foreground">
                           {event.meta}
                         </div>
                       </Link>

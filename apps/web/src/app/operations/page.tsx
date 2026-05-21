@@ -2500,7 +2500,9 @@ function OperationsWorkspace() {
                     >
                       <Link href={item.href} className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold">{item.title}</span>
+                          <span className="text-[15px] font-medium leading-5 text-foreground">
+                            {item.title}
+                          </span>
                           <StatusBadge tone={item.tone}>
                             {queueDateLabel(item)}
                           </StatusBadge>
@@ -2511,7 +2513,7 @@ function OperationsWorkspace() {
                             {queueKindLabel(item)}
                           </StatusBadge>
                         </div>
-                        <p className="mt-1 text-sm text-muted-foreground">
+                        <p className="mt-1 text-sm leading-5 text-muted-foreground">
                           {item.description}
                         </p>
                       </Link>
