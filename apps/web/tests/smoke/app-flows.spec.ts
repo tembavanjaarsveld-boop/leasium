@@ -683,6 +683,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByText("Run idempotent Xero draft creation when ready."),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open Billing handoff" }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Create Xero drafts" }).click();
   await expect(page.getByText("Xero draft creation result")).toBeVisible();
@@ -690,6 +693,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     page.getByText("Xero draft invoice was created after explicit approval."),
   ).toBeVisible();
   await expect(page.getByText("xero-invoice-smoke-1").first()).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open dispatch handoff" }),
+  ).toBeVisible();
   await expect(
     page.getByText("Xero payment status needs review"),
   ).toBeVisible();
@@ -708,6 +714,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.getByRole("button", { name: "Apply provider payments" }).click();
   await expect(
     page.getByText("Payment status was reconciled locally."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open reconciliation handoff" }),
   ).toBeVisible();
   await expect(page.getByText("No Xero sync exceptions")).toBeVisible();
 
