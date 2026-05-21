@@ -122,6 +122,8 @@ def test_security_workspace_lists_current_operator_and_auth_boundary(
     assert body["can_manage_security"] is True
     assert body["members"][0]["notification_preferences"] == {
         "work_assignment_email_enabled": True,
+        "work_assignment_sms_enabled": False,
+        "work_assignment_sms_phone": None,
         "work_assignment_notice_template_key": "work_assignment_notification",
         "work_assignment_notice_template_version": "v1",
         "work_assignment_digest_cadence": "daily",
@@ -303,6 +305,8 @@ def test_owner_can_invite_and_update_operator_roles(
             "roles": [{"entity_id": str(entity.id), "role": "viewer"}],
             "notification_preferences": {
                 "work_assignment_email_enabled": False,
+                "work_assignment_sms_enabled": True,
+                "work_assignment_sms_phone": "+61400111222",
                 "work_assignment_digest_cadence": "weekly",
             },
         },
@@ -314,6 +318,8 @@ def test_owner_can_invite_and_update_operator_roles(
     assert updated["is_active"] is False
     assert updated["roles"][0]["role"] == "viewer"
     assert updated["notification_preferences"]["work_assignment_email_enabled"] is False
+    assert updated["notification_preferences"]["work_assignment_sms_enabled"] is True
+    assert updated["notification_preferences"]["work_assignment_sms_phone"] == "+61400111222"
     assert updated["notification_preferences"]["work_assignment_digest_cadence"] == "weekly"
     assert (
         updated["notification_preferences"]["work_assignment_notice_template_key"]
@@ -333,6 +339,8 @@ def test_owner_can_invite_and_update_operator_roles(
     assert member is not None
     assert member.email == "ops.team@example.com"
     assert member.notification_preferences["work_assignment_email_enabled"] is False
+    assert member.notification_preferences["work_assignment_sms_enabled"] is True
+    assert member.notification_preferences["work_assignment_sms_phone"] == "+61400111222"
     assert member.notification_preferences["work_assignment_digest_cadence"] == "weekly"
     assert (
         member.notification_preferences["work_assignment_notice_template_key"]

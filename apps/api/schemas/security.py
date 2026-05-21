@@ -47,6 +47,8 @@ class SecurityWorkAssignmentDigestReceipt(BaseModel):
 
 class SecurityNotificationPreferences(BaseModel):
     work_assignment_email_enabled: bool = True
+    work_assignment_sms_enabled: bool = False
+    work_assignment_sms_phone: str | None = Field(default=None, max_length=40)
     work_assignment_notice_template_key: str = "work_assignment_notification"
     work_assignment_notice_template_version: str = "v1"
     work_assignment_digest_cadence: Literal["off", "daily", "weekly"] = "daily"

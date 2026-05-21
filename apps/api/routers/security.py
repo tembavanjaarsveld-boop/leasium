@@ -205,6 +205,8 @@ def _notification_preferences(member: AppUser) -> SecurityNotificationPreference
         member.notification_preferences if isinstance(member.notification_preferences, dict) else {}
     )
     enabled = raw.get("work_assignment_email_enabled")
+    sms_enabled = raw.get("work_assignment_sms_enabled")
+    sms_phone = raw.get("work_assignment_sms_phone")
     digest_cadence = raw.get("work_assignment_digest_cadence")
     if digest_cadence not in {"off", "daily", "weekly"}:
         digest_cadence = "daily"
@@ -229,6 +231,10 @@ def _notification_preferences(member: AppUser) -> SecurityNotificationPreference
     last_item_count = raw.get("work_assignment_digest_last_item_count")
     return SecurityNotificationPreferences(
         work_assignment_email_enabled=enabled if isinstance(enabled, bool) else True,
+        work_assignment_sms_enabled=sms_enabled if isinstance(sms_enabled, bool) else False,
+        work_assignment_sms_phone=sms_phone.strip()
+        if isinstance(sms_phone, str) and sms_phone.strip()
+        else None,
         work_assignment_notice_template_key=notice_template_key
         if isinstance(notice_template_key, str) and notice_template_key.strip()
         else "work_assignment_notification",
@@ -256,6 +262,12 @@ def _notification_preferences_for_write(
 ) -> dict[str, object]:
     preferences = dict(current) if isinstance(current, dict) else {}
     preferences["work_assignment_email_enabled"] = payload.work_assignment_email_enabled
+    preferences["work_assignment_sms_enabled"] = payload.work_assignment_sms_enabled
+    preferences["work_assignment_sms_phone"] = (
+        payload.work_assignment_sms_phone.strip()
+        if payload.work_assignment_sms_phone and payload.work_assignment_sms_phone.strip()
+        else None
+    )
     preferences["work_assignment_notice_template_key"] = (
         payload.work_assignment_notice_template_key.strip() or "work_assignment_notification"
     )
