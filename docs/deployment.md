@@ -39,6 +39,7 @@ Set the API host environment from `.env.example`, with production values for:
 - `CORS_ALLOWED_ORIGINS`
 - `CORS_ALLOWED_ORIGIN_REGEX`
 - `OPENAI_API_KEY`
+- `SERPAPI_API_KEY` (only required for the property image preview/apply endpoints; without it the route returns 503 and no records mutate)
 - `S3_ENDPOINT_URL`
 - `S3_ACCESS_KEY_ID`
 - `S3_SECRET_ACCESS_KEY`

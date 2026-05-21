@@ -26,6 +26,12 @@ const unitId = "unit-1";
 const leaseId = "lease-1";
 const operatorId = "operator-1";
 const assigneeId = "operator-2";
+const propertyImageDocumentId = "document-property-image-1";
+const tinyPropertyImagePng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+  "base64",
+);
+
 const entities = [
   {
     id: entityId,
@@ -72,6 +78,24 @@ const properties = [
     xero_contact_id: "xero-owner-1",
     xero_tracking_category: "Queen Street",
     metadata: {
+      property_media: {
+        primary_image: {
+          title: "Queen Street Retail Centre frontage",
+          document_id: propertyImageDocumentId,
+          image_document_id: propertyImageDocumentId,
+          thumbnail_document_id: propertyImageDocumentId,
+          page_url: "https://example.com/queen-street-retail-centre",
+          source: {
+            source_hint: "Agency listing",
+            citation: "Listing photo for Queen Street Retail Centre.",
+            confidence: 0.82,
+            url: "https://example.com/queen-street-retail-centre",
+          },
+          confidence: 0.82,
+          notes: "Existing reviewed image.",
+          selected_at: "2026-05-20T00:00:00.000Z",
+        },
+      },
       source_citations: {
         owner_abn: {
           source_hint: "Purchase contract vendor schedule",
@@ -2618,6 +2642,14 @@ export async function mockLeasiumApi(
     };
   };
 
+  await page.route("https://images.example/**", async (route) => {
+    await route.fulfill({
+      body: tinyPropertyImagePng,
+      contentType: "image/png",
+      status: 200,
+    });
+  });
+
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const method = request.method();
@@ -3163,6 +3195,123 @@ export async function mockLeasiumApi(
       }
     }
 
+    if (
+      method === "GET" &&
+      path === `/documents/${propertyImageDocumentId}/download`
+    ) {
+      await route.fulfill({
+        body: tinyPropertyImagePng,
+        contentType: "image/png",
+        headers: corsHeaders,
+        status: 200,
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/public-enrichment/property-images/preview"
+    ) {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const requestedPropertyId =
+        typeof payload.property_id === "string"
+          ? payload.property_id
+          : propertyId;
+      const property =
+        properties.find((item) => item.id === requestedPropertyId) ??
+        properties[0];
+      await fulfillJson(route, {
+        target: {
+          target_type: "property",
+          target_id: property.id,
+          entity_id: property.entity_id,
+          display_name: property.name,
+          missing_fields: [],
+        },
+        candidates: [
+          {
+            title: "Queen Street awning frontage",
+            image_url: "https://images.example/queen-street-awning.jpg",
+            page_url: "https://example.com/queen-street-awning",
+            source: {
+              source_hint: "Agency listing",
+              citation: "Retail centre listing hero image.",
+              confidence: 0.88,
+              url: "https://example.com/queen-street-awning",
+            },
+            confidence: 0.88,
+            notes: "Best exterior match.",
+          },
+          {
+            title: "Queen Street corner view",
+            image_url: "https://images.example/queen-street-corner.jpg",
+            page_url: "https://example.com/queen-street-corner",
+            source: {
+              source_hint: "Commercial brochure",
+              citation: "Retail centre brochure exterior photo.",
+              confidence: 0.74,
+              url: "https://example.com/queen-street-corner",
+            },
+            confidence: 0.74,
+            notes: "Secondary exterior match.",
+          },
+        ],
+        warnings: [],
+        provider_response_id: "serpapi_property_images_1",
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/public-enrichment/property-images/apply"
+    ) {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const candidate = payload.candidate as Record<string, JsonBody>;
+      const requestedPropertyId =
+        typeof payload.property_id === "string"
+          ? payload.property_id
+          : propertyId;
+      const property = properties.find(
+        (item) => item.id === requestedPropertyId,
+      );
+      if (property) {
+        property.metadata = {
+          ...property.metadata,
+          property_media: {
+            ...((property.metadata.property_media as Record<
+              string,
+              JsonBody
+            >) ?? {}),
+            primary_image: {
+              ...candidate,
+              document_id: propertyImageDocumentId,
+              image_document_id: propertyImageDocumentId,
+              thumbnail_document_id: propertyImageDocumentId,
+              selected_at: "2026-05-20T01:00:00.000Z",
+            },
+          },
+        };
+      }
+      await fulfillJson(route, {
+        target: {
+          target_type: "property",
+          target_id: property?.id ?? requestedPropertyId,
+          entity_id: property?.entity_id ?? entityId,
+          display_name: property?.name ?? "Selected property",
+          missing_fields: [],
+        },
+        selected_image: {
+          ...candidate,
+          document_id: propertyImageDocumentId,
+          image_document_id: propertyImageDocumentId,
+          thumbnail_document_id: propertyImageDocumentId,
+        },
+        document_id: propertyImageDocumentId,
+        warnings: [],
+      });
+      return;
+    }
 
     if (method === "GET" && path === "/tenants") {
       await fulfillJson(route, tenants);

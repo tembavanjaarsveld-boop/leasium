@@ -48,42 +48,6 @@ PUBLIC_ENRICHMENT_SCHEMA: dict[str, Any] = {
     },
 }
 
-PROPERTY_IMAGE_CANDIDATES_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": ["candidates", "warnings"],
-    "properties": {
-        "candidates": {
-            "type": "array",
-            "maxItems": 6,
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": [
-                    "title",
-                    "image_url",
-                    "page_url",
-                    "source_hint",
-                    "citation",
-                    "confidence",
-                    "notes",
-                ],
-                "properties": {
-                    "title": {"type": "string"},
-                    "image_url": {"type": "string"},
-                    "page_url": {"type": ["string", "null"]},
-                    "source_hint": {"type": "string"},
-                    "citation": {"type": "string"},
-                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                    "notes": {"type": ["string", "null"]},
-                },
-            },
-        },
-        "warnings": {"type": "array", "items": {"type": "string"}, "maxItems": 8},
-    },
-}
-
-
 def suggest_public_enrichment(
     *,
     target_type: str,
@@ -163,3 +127,41 @@ def suggest_public_enrichment(
     if not isinstance(extracted, dict):
         raise PublicEnrichmentError("OpenAI enrichment returned an unexpected shape.")
     return extracted, body.get("id")
+
+
+def suggest_property_image_candidates(
+    *,
+    target_context: dict[str, Any],
+    settings: Settings,
+    requested_count: int = 4,
+) -> tuple[dict[str, Any], str | None]:
+    """Search Google Images via SerpAPI for property exterior photo candidates.
+
+    The previous OpenAI web-search implementation returned listing page URLs
+    instead of direct image file URLs, so the review surface rendered without
+    thumbnails. This implementation calls SerpAPI's Google Images endpoint
+    which returns verified direct image URLs alongside the source page link.
+    """
+    # Import locally so unit tests don't pay for the import when this helper
+    # is mocked at a higher layer.
+    from stewart.integrations.serpapi_image_search import (
+        PropertyImageSearchError,
+        search_property_images,
+    )
+
+    address = target_context.get("address") if isinstance(target_context, dict) else None
+    name = target_context.get("name") if isinstance(target_context, dict) else None
+    query = (address or name or "").strip() if isinstance(address or name, str) else ""
+    if not query:
+        raise PublicEnrichmentError(
+            "Cannot search property images without a property address or name."
+        )
+
+    try:
+        return search_property_images(
+            query=query,
+            settings=settings,
+            requested_count=max(1, min(6, requested_count)),
+        )
+    except PropertyImageSearchError as exc:
+        raise PublicEnrichmentError(str(exc)) from exc

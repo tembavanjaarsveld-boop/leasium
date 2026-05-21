@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     openai_model: str = "gpt-5.4-mini"
+    serpapi_api_key: str = ""
     lease_intake_max_bytes: int = 15_000_000
     document_max_bytes: int = 15_000_000
     xero_client_id: str = ""

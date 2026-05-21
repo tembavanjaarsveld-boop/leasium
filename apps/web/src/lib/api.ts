@@ -2175,6 +2175,29 @@ export type EnrichmentApplyRecord = {
   skipped: Array<{ field: string; value: string | null; reason: string }>;
 };
 
+export type PropertyImageCandidateRecord = {
+  title: string;
+  image_url: string;
+  page_url: string | null;
+  source: EnrichmentSource;
+  confidence: number;
+  notes: string | null;
+};
+
+export type PropertyImagePreviewRecord = {
+  target: EnrichmentPreviewRecord["target"];
+  candidates: PropertyImageCandidateRecord[];
+  warnings: string[];
+  provider_response_id: string | null;
+};
+
+export type PropertyImageApplyRecord = {
+  target: EnrichmentPreviewRecord["target"];
+  selected_image: PropertyImageCandidateRecord;
+  document_id: string;
+  warnings: string[];
+};
+
 export type LeaseIntakeExtraction = {
   property?: (Partial<PropertyPayload> & { address?: string | null }) | null;
   tenancy_unit?:
@@ -3244,6 +3267,16 @@ export function documentDownloadUrl(documentId: string) {
   return `${API_BASE}/documents/${documentId}/download`;
 }
 
+export async function downloadDocumentBlob(documentId: string) {
+  const response = await fetch(documentDownloadUrl(documentId), {
+    headers: await authHeaders(),
+  });
+  if (!response.ok) {
+    await parseResponse<never>(response);
+  }
+  return response.blob();
+}
+
 export function deleteDocument(documentId: string) {
   return request<void>(`/documents/${documentId}`, {
     method: "DELETE",
@@ -3862,4 +3895,30 @@ export function applyPublicEnrichment(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function previewPropertyImages(payload: {
+  property_id: string;
+  requested_count?: number;
+}) {
+  return request<PropertyImagePreviewRecord>(
+    "/public-enrichment/property-images/preview",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function applyPropertyImage(payload: {
+  property_id: string;
+  candidate: PropertyImageCandidateRecord;
+}) {
+  return request<PropertyImageApplyRecord>(
+    "/public-enrichment/property-images/apply",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }

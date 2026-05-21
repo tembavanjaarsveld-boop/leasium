@@ -726,6 +726,28 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
     page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
   ).toBeVisible();
   await expect(page).toHaveURL(/property_id=property-1/);
+  await expect(
+    page.getByAltText("Queen Street Retail Centre primary image"),
+  ).toBeVisible();
+  await expect(page.getByTestId("selected-property-image")).toHaveAttribute(
+    "src",
+    /.+/,
+  );
+  await page.getByRole("button", { name: "Find property images" }).click();
+  await expect(page.getByText("Queen Street awning frontage")).toBeVisible();
+  await expect(
+    page.getByTestId("property-image-candidate-preview").first(),
+  ).toBeVisible();
+  await expect(page.getByText("88% confidence").first()).toBeVisible();
+  await page.getByRole("button", { name: "Apply image" }).first().click();
+  await expect(page.getByText("Queen Street awning frontage")).toBeVisible();
+  await expect(page.getByTestId("selected-property-image")).toHaveAttribute(
+    "src",
+    /.+/,
+  );
+  await expect(page.getByTestId("selected-property-image")).toHaveClass(
+    /object-cover/,
+  );
   await expect(page.getByText("Queen Street Warehouse")).toBeVisible();
   await expect(page.getByText("Eagle Street Office")).toBeVisible();
 
