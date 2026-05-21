@@ -180,6 +180,11 @@ function metadataRecordList(value: unknown) {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
+function formText(data: FormData, key: string) {
+  const value = data.get(key);
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function templateVersionLabel(
   templateKey: string | null | undefined,
   templateVersion: string | null | undefined,
@@ -335,6 +340,23 @@ function closeoutRecord(workOrder: MaintenanceWorkOrderRecord) {
   return metadataRecord(workOrder.metadata.closeout);
 }
 
+function ownerReviewRecord(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecord(closeoutRecord(workOrder).owner_review);
+}
+
+function ownerReviewHistoryRows(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecordList(ownerReviewRecord(workOrder).history)
+    .map((entry) => ({
+      at: metadataText(entry.reviewed_at) ?? metadataText(entry.at),
+      note: metadataText(entry.note),
+      status: metadataText(entry.status) ?? "reviewed",
+    }))
+    .sort(
+      (a, b) => new Date(b.at ?? "").getTime() - new Date(a.at ?? "").getTime(),
+    )
+    .slice(0, 3);
+}
+
 function closeoutPhotoDocumentIds(workOrder: MaintenanceWorkOrderRecord) {
   const closeout = closeoutRecord(workOrder);
   return Array.from(
@@ -432,6 +454,26 @@ function closeoutCommunicationDrafts({
       "Please contact the property team if the issue reoccurs.",
     ].join("\n"),
   };
+}
+
+function reopenHistoryRows(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecordList(workOrder.metadata.reopen_history)
+    .map((entry) => ({
+      at: metadataText(entry.reopened_at) ?? metadataText(entry.at),
+      fromStatus: metadataText(entry.reopened_from),
+      previousCompletedAt: metadataText(entry.previous_completed_at),
+      reason: metadataText(entry.reason),
+    }))
+    .sort(
+      (a, b) => new Date(b.at ?? "").getTime() - new Date(a.at ?? "").getTime(),
+    )
+    .slice(0, 3);
+}
+
+function reopenedMaintenanceStatus(workOrder: MaintenanceWorkOrderRecord) {
+  return workOrder.approval_status === "pending"
+    ? "awaiting_approval"
+    : "in_progress";
 }
 
 function contractorEmailTone(statusValue: string | null): Tone {
@@ -1023,6 +1065,7 @@ function MaintenanceDetailRoute() {
   const [contractorEmailBody, setContractorEmailBody] = useState("");
   const [closeoutNoteDraft, setCloseoutNoteDraft] = useState("");
   const [closeoutPhoto, setCloseoutPhoto] = useState<File | null>(null);
+  const [ownerReviewNote, setOwnerReviewNote] = useState("");
   const [commentBody, setCommentBody] = useState("");
   const [commentVisibility, setCommentVisibility] = useState<
     "internal" | "contractor" | "tenant"
@@ -1068,6 +1111,11 @@ function MaintenanceDetailRoute() {
   const savedCloseoutNote = metadataText(closeout.note);
   const savedCloseoutAt = metadataText(closeout.completed_at);
   const closeoutCommunication = metadataRecord(closeout.communication);
+  const ownerUpdateCopy = metadataText(closeoutCommunication.owner_update);
+  const ownerReview = workOrder ? ownerReviewRecord(workOrder) : {};
+  const ownerReviewAt = metadataText(ownerReview.reviewed_at);
+  const ownerReviewNoteSaved = metadataText(ownerReview.note);
+  const ownerReviewHistory = workOrder ? ownerReviewHistoryRows(workOrder) : [];
   const closeoutCommunicationRows = [
     {
       label: "Owner update ready",
@@ -1088,6 +1136,7 @@ function MaintenanceDetailRoute() {
   const closeoutHistory = workOrder
     ? closeoutHistoryRows(workOrder, documents)
     : [];
+  const reopenHistory = workOrder ? reopenHistoryRows(workOrder) : [];
   const timeline = workOrder ? activityRows(workOrder) : [];
   const linkedInvoiceDraft = workOrder?.invoice_draft_id
     ? (invoiceDrafts.find((draft) => draft.id === workOrder.invoice_draft_id) ??
@@ -1204,6 +1253,8 @@ function MaintenanceDetailRoute() {
     () => (workOrder ? contractorEmailTemplates(workOrder) : []),
     [workOrder],
   );
+  const canReopenWorkOrder =
+    workOrder !== null && ["completed", "cancelled"].includes(workOrder.status);
 
   const refresh = () => {
     workOrderQuery.refetch();
@@ -1462,12 +1513,107 @@ function MaintenanceDetailRoute() {
     },
   });
 
+  const ownerReviewMutation = useMutation({
+    mutationFn: () => {
+      if (!workOrder) {
+        throw new Error("Work order is still loading.");
+      }
+      const existingCloseout = closeoutRecord(workOrder);
+      const communication = metadataRecord(existingCloseout.communication);
+      const ownerUpdate = metadataText(communication.owner_update);
+      if (!ownerUpdate) {
+        throw new Error("Complete the work order before owner review.");
+      }
+      const existingOwnerReview = metadataRecord(existingCloseout.owner_review);
+      const existingHistory = metadataRecordList(existingOwnerReview.history);
+      const reviewedAt = new Date().toISOString();
+      const note = ownerReviewNote.trim();
+      return updateMaintenanceWorkOrder(workOrder.id, {
+        metadata: {
+          closeout: {
+            ...existingCloseout,
+            owner_review: {
+              ...existingOwnerReview,
+              status: "reviewed",
+              reviewed_at: reviewedAt,
+              note: note || null,
+              owner_update: ownerUpdate,
+              history: [
+                ...existingHistory,
+                {
+                  status: "reviewed",
+                  reviewed_at: reviewedAt,
+                  note: note || null,
+                },
+              ],
+            },
+          },
+        },
+      });
+    },
+    onSuccess: () => {
+      setOwnerReviewNote("");
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-work-order", workOrderId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", entityId],
+      });
+    },
+  });
+
   const handleCloseoutSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!completionReadiness?.canComplete) {
       return;
     }
     closeoutMutation.mutate();
+  };
+
+  const handleDetailsSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!workOrder) {
+      return;
+    }
+    const data = new FormData(event.currentTarget);
+    const title = formText(data, "title") ?? workOrder.title;
+    const priority = formText(data, "priority") ?? workOrder.priority;
+    updateMutation.mutate({
+      title,
+      description: formText(data, "description"),
+      priority: priority as MaintenanceWorkOrderPayload["priority"],
+      contractor_name: formText(data, "contractor_name"),
+      contractor_email: formText(data, "contractor_email"),
+      contractor_phone: formText(data, "contractor_phone"),
+      due_date: formText(data, "due_date"),
+      notes: formText(data, "notes"),
+    });
+  };
+
+  const handleReopenWorkOrder = () => {
+    if (!workOrder || !canReopenWorkOrder) {
+      return;
+    }
+    const reopenedAt = new Date().toISOString();
+    const existingHistory = metadataRecordList(
+      workOrder.metadata.reopen_history,
+    );
+    updateMutation.mutate({
+      status: reopenedMaintenanceStatus(workOrder),
+      completed_at: null,
+      metadata: {
+        reopen_history: [
+          ...existingHistory,
+          {
+            reopened_at: reopenedAt,
+            reopened_from: workOrder.status,
+            previous_completed_at: workOrder.completed_at,
+            closeout_note: savedCloseoutNote,
+            reason: "Reopened from work-order detail.",
+          },
+        ],
+      },
+    });
   };
 
   return (
@@ -1497,6 +1643,20 @@ function MaintenanceDetailRoute() {
                 <RefreshCw size={15} />
                 Refresh
               </SecondaryButton>
+              {canReopenWorkOrder ? (
+                <Button
+                  type="button"
+                  disabled={updateMutation.isPending}
+                  onClick={handleReopenWorkOrder}
+                >
+                  {updateMutation.isPending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={15} />
+                  )}
+                  Reopen job
+                </Button>
+              ) : null}
             </div>
           }
         />
@@ -2000,6 +2160,107 @@ function MaintenanceDetailRoute() {
               </SectionPanel>
             </div>
 
+            <SectionPanel
+              title="Edit work-order details"
+              description="Correct the operational record without changing billing or provider delivery."
+              icon={<Wrench size={17} />}
+              actions={
+                <StatusBadge tone="neutral">
+                  Activity tracked on save
+                </StatusBadge>
+              }
+            >
+              <form
+                className="grid gap-4 p-4 text-sm lg:grid-cols-3"
+                onSubmit={handleDetailsSubmit}
+              >
+                <Field label="Work-order title">
+                  <Input
+                    name="title"
+                    defaultValue={workOrder.title}
+                    placeholder="Work order title"
+                  />
+                </Field>
+                <Field label="Priority">
+                  <Select name="priority" defaultValue={workOrder.priority}>
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </Select>
+                </Field>
+                <Field label="Due date">
+                  <Input
+                    name="due_date"
+                    type="date"
+                    defaultValue={workOrder.due_date?.slice(0, 10) ?? ""}
+                  />
+                </Field>
+                <Field label="Contractor name">
+                  <Input
+                    name="contractor_name"
+                    defaultValue={workOrder.contractor_name ?? ""}
+                    placeholder="Contractor or supplier"
+                  />
+                </Field>
+                <Field label="Contractor email">
+                  <Input
+                    name="contractor_email"
+                    type="email"
+                    defaultValue={workOrder.contractor_email ?? ""}
+                    placeholder="dispatch@example.com"
+                  />
+                </Field>
+                <Field label="Contractor phone">
+                  <Input
+                    name="contractor_phone"
+                    defaultValue={workOrder.contractor_phone ?? ""}
+                    placeholder="Phone"
+                  />
+                </Field>
+                <label className="grid gap-1.5 lg:col-span-3">
+                  <span className="font-medium text-foreground">
+                    Description
+                  </span>
+                  <textarea
+                    aria-label="Work-order description"
+                    name="description"
+                    defaultValue={workOrder.description ?? ""}
+                    rows={3}
+                    className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                    placeholder="Describe the maintenance issue."
+                  />
+                </label>
+                <label className="grid gap-1.5 lg:col-span-3">
+                  <span className="font-medium text-foreground">
+                    Operational note
+                  </span>
+                  <textarea
+                    aria-label="Operational note"
+                    name="notes"
+                    defaultValue={workOrder.notes ?? ""}
+                    rows={3}
+                    className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                    placeholder="Internal handling note for this job."
+                  />
+                </label>
+                <div className="flex flex-wrap items-center gap-2 lg:col-span-3">
+                  <Button type="submit" disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={16} />
+                    )}
+                    Save details
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    Billing links, tenant messages, and provider dispatch stay
+                    separate.
+                  </span>
+                </div>
+              </form>
+            </SectionPanel>
+
             {completionReadiness ? (
               <SectionPanel
                 title="Job completion handoff"
@@ -2203,6 +2464,39 @@ function MaintenanceDetailRoute() {
                         ))}
                       </div>
                     ) : null}
+                    {reopenHistory.length ? (
+                      <div className="grid gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs">
+                        <div className="font-semibold text-foreground">
+                          Reopen history
+                        </div>
+                        {reopenHistory.map((entry, index) => (
+                          <div
+                            key={`${entry.at ?? "reopen"}-${index}`}
+                            className="grid gap-1 border-t border-border pt-2 first:border-t-0 first:pt-0"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge tone="primary">
+                                Job reopened
+                              </StatusBadge>
+                              <span className="text-muted-foreground">
+                                {formatDateTime(entry.at)}
+                              </span>
+                            </div>
+                            <div className="text-muted-foreground">
+                              From {label(entry.fromStatus)}.{" "}
+                              {entry.previousCompletedAt
+                                ? `Previous completion ${formatDateTime(entry.previousCompletedAt)}.`
+                                : ""}
+                            </div>
+                            {entry.reason ? (
+                              <div className="text-muted-foreground">
+                                {entry.reason}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     {closeoutCommunicationRows.length ? (
                       <div className="grid gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
                         <div className="font-semibold text-foreground">
@@ -2225,6 +2519,94 @@ function MaintenanceDetailRoute() {
                           Review this copy before sending anything outside
                           Leasium.
                         </div>
+                      </div>
+                    ) : null}
+                    {ownerUpdateCopy ? (
+                      <div className="grid gap-2 rounded-md border border-leasium-blue/20 bg-leasium-blue/5 px-3 py-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-semibold text-foreground">
+                            Owner completion review
+                          </div>
+                          <StatusBadge
+                            tone={ownerReviewAt ? "success" : "warning"}
+                          >
+                            {ownerReviewAt
+                              ? "Owner review recorded"
+                              : "Needs owner review"}
+                          </StatusBadge>
+                        </div>
+                        <div className="whitespace-pre-line rounded-md border border-border bg-white px-2 py-2 text-muted-foreground">
+                          {ownerUpdateCopy}
+                        </div>
+                        {ownerReviewAt ? (
+                          <div className="grid gap-1 rounded-md border border-border bg-white px-2 py-2">
+                            <div className="font-semibold text-foreground">
+                              Owner review recorded
+                            </div>
+                            <div className="text-muted-foreground">
+                              {formatDateTime(ownerReviewAt)}
+                            </div>
+                            {ownerReviewNoteSaved ? (
+                              <div className="text-muted-foreground">
+                                {ownerReviewNoteSaved}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {ownerReviewHistory.length > 1 ? (
+                          <div className="grid gap-1 rounded-md border border-border bg-white px-2 py-2">
+                            <div className="font-semibold text-foreground">
+                              Review history
+                            </div>
+                            {ownerReviewHistory.map((entry, index) => (
+                              <div
+                                key={`${entry.at ?? "owner-review"}-${index}`}
+                                className="text-muted-foreground"
+                              >
+                                {label(entry.status)} {formatDateTime(entry.at)}
+                                {entry.note ? ` - ${entry.note}` : ""}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        <label className="grid gap-1.5">
+                          <span className="font-medium text-foreground">
+                            Owner review note
+                          </span>
+                          <textarea
+                            aria-label="Owner review note"
+                            value={ownerReviewNote}
+                            onChange={(event) =>
+                              setOwnerReviewNote(event.target.value)
+                            }
+                            rows={3}
+                            className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                            placeholder="Record owner approval, wording edits, or send readiness."
+                          />
+                        </label>
+                        <Button
+                          type="button"
+                          disabled={
+                            workOrder.status !== "completed" ||
+                            ownerReviewMutation.isPending
+                          }
+                          onClick={() => ownerReviewMutation.mutate()}
+                        >
+                          {ownerReviewMutation.isPending ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <CheckCircle2 size={16} />
+                          )}
+                          Mark owner reviewed
+                        </Button>
+                        <div className="text-muted-foreground">
+                          Review-only; no owner message is sent from this panel.
+                        </div>
+                        {ownerReviewMutation.error ? (
+                          <p className="text-sm text-danger">
+                            {friendlyError(ownerReviewMutation.error)}
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                     <div className="text-xs text-muted-foreground">

@@ -50,6 +50,12 @@ ACTIVITY_HISTORY_KEY = "activity_history"
 COMMENTS_KEY = "comments"
 CONTRACTOR_DELIVERY_KEY = "contractor_delivery"
 ACTIVITY_TRACKED_FIELDS = (
+    "title",
+    "description",
+    "property_id",
+    "tenancy_unit_id",
+    "tenant_id",
+    "lease_id",
     "status",
     "priority",
     "contractor_name",
@@ -67,6 +73,12 @@ ACTIVITY_TRACKED_FIELDS = (
     "notes",
 )
 ACTIVITY_FIELD_LABELS = {
+    "title": "title",
+    "description": "description",
+    "property_id": "property link",
+    "tenancy_unit_id": "unit link",
+    "tenant_id": "tenant link",
+    "lease_id": "lease link",
     "status": "status",
     "priority": "priority",
     "contractor_name": "contractor",

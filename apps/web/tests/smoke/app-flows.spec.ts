@@ -157,6 +157,18 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
     page.getByRole("heading", { name: "Quote documents" }),
   ).toBeVisible();
   await expect(page.getByText("shopfront-ac-photo.jpg")).toBeVisible();
+  await expect(page.getByText("Edit work-order details")).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Operational note" })
+    .fill(
+      "Needs owner approval before work proceeds. Confirm tenant access after 9am.",
+    );
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Operational note" }),
+  ).toHaveValue(
+    "Needs owner approval before work proceeds. Confirm tenant access after 9am.",
+  );
   await expect(page.getByLabel("Quote document")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Attach quote" }),
@@ -303,6 +315,24 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByText("Review this copy before sending anything outside Leasium."),
   ).toBeVisible();
+  await expect(page.getByText("Owner completion review")).toBeVisible();
+  await expect(page.getByText("Needs owner review")).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Owner review note" })
+    .fill("Owner reviewed completion copy before sending.");
+  await page.getByRole("button", { name: "Mark owner reviewed" }).click();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Owner review recorded$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Owner reviewed completion copy before sending."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Reopen job" }).click();
+  await expect(page.getByText("Job reopened")).toBeVisible();
+  await expect(page.getByText("Job completion not recorded")).toBeVisible();
   await page
     .getByRole("textbox", { name: "Comment" })
     .fill("Owner approved attendance tomorrow morning.");

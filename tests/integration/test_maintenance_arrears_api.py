@@ -253,6 +253,74 @@ def test_maintenance_work_order_rejects_cross_entity_document_links(
     assert response.status_code == 404
 
 
+def test_maintenance_work_order_reopen_and_basic_edits_are_audited(
+    client: TestClient,
+    session: Session,
+) -> None:
+    context = _lease_context(client, session)
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "Completed water leak",
+            "description": "Original closeout.",
+            "priority": "normal",
+            "status": "completed",
+            "completed_at": "2026-05-20T08:00:00Z",
+            "contractor_name": "Rapid Plumbing",
+            "notes": "Closed after contractor attended.",
+            "metadata": {
+                "closeout": {
+                    "note": "No further leak visible.",
+                    "completed_at": "2026-05-20T08:00:00Z",
+                }
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+
+    reopen_response = client.patch(
+        f"/api/v1/maintenance/work-orders/{work_order_id}",
+        json={
+            "title": "Reopened water leak",
+            "description": "Owner reported the leak returned after rain.",
+            "status": "in_progress",
+            "completed_at": None,
+            "metadata": {
+                "reopen_history": [
+                    {
+                        "reopened_at": "2026-05-21T01:00:00Z",
+                        "reopened_from": "completed",
+                        "previous_completed_at": "2026-05-20T08:00:00Z",
+                        "reason": "Reopened from work-order detail.",
+                    }
+                ]
+            },
+        },
+    )
+    assert reopen_response.status_code == 200
+    reopened = reopen_response.json()
+    assert reopened["title"] == "Reopened water leak"
+    assert reopened["description"] == "Owner reported the leak returned after rain."
+    assert reopened["status"] == "in_progress"
+    assert reopened["completed_at"] is None
+    assert reopened["metadata"]["closeout"]["note"] == "No further leak visible."
+    assert reopened["metadata"]["reopen_history"][0]["reopened_from"] == "completed"
+    history = reopened["metadata"]["activity_history"]
+    assert [entry["event"] for entry in history] == ["created", "updated"]
+    assert history[1]["status"] == "in_progress"
+    assert history[1]["summary"] == (
+        "Updated title, description, status, and completed date."
+    )
+
+    audit_rows = session.scalars(
+        select(AuditAction).where(AuditAction.target_table == "maintenance_work_order")
+    ).all()
+    assert [row.action for row in audit_rows] == ["create", "update"]
+
+
 def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
     client: TestClient,
     session: Session,
