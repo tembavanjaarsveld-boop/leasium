@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
+  CircleSlash,
   FileSpreadsheet,
   FileUp,
   Loader2,
@@ -85,6 +86,14 @@ function createdSummary(result: RegisterImportApplyRecord | null) {
     );
 }
 
+function recommendedActionIds(items: RegisterImportActionItem[]) {
+  return items
+    .filter(
+      (item) => item.default_decision === "approve" && !item.blockers.length,
+    )
+    .map((item) => item.id);
+}
+
 export function RegisterImportPanel({
   entityId,
   onApplied,
@@ -106,10 +115,18 @@ export function RegisterImportPanel({
   const approvedCount = selectedActionIds.length;
   const blockedCount =
     dryRun?.action_items.filter((item) => item.blockers.length).length ?? 0;
-  const recommendedCount =
+  const readyCount =
+    dryRun?.action_items.filter((item) => !item.blockers.length).length ?? 0;
+  const recommendedCount = dryRun
+    ? recommendedActionIds(dryRun.action_items).length
+    : 0;
+  const reviewCount =
     dryRun?.action_items.filter(
-      (item) => item.default_decision === "approve" && !item.blockers.length,
+      (item) => item.default_decision === "review" && !item.blockers.length,
     ).length ?? 0;
+  const ignoredCount = dryRun
+    ? Math.max(dryRun.action_items.length - approvedCount, 0)
+    : 0;
 
   useEffect(() => {
     if (dryRun && dryRun.entity_id !== entityId) {
@@ -129,14 +146,7 @@ export function RegisterImportPanel({
     },
     onSuccess: (result) => {
       setDryRun(result);
-      setSelectedActionIds(
-        result.action_items
-          .filter(
-            (item) =>
-              item.default_decision === "approve" && !item.blockers.length,
-          )
-          .map((item) => item.id),
-      );
+      setSelectedActionIds(recommendedActionIds(result.action_items));
     },
   });
 
@@ -235,20 +245,19 @@ export function RegisterImportPanel({
           {dryRun ? (
             <SecondaryButton
               type="button"
-              onClick={() =>
-                setSelectedActionIds(
-                  dryRun.action_items
-                    .filter(
-                      (item) =>
-                        item.default_decision === "approve" &&
-                        !item.blockers.length,
-                    )
-                    .map((item) => item.id),
-                )
-              }
+              onClick={() => setSelectedActionIds(recommendedActionIds(dryRun.action_items))}
             >
               <RefreshCw size={15} />
-              Recommended
+              Approve recommended
+            </SecondaryButton>
+          ) : null}
+          {dryRun ? (
+            <SecondaryButton
+              type="button"
+              onClick={() => setSelectedActionIds([])}
+            >
+              <CircleSlash size={15} />
+              Ignore all
             </SecondaryButton>
           ) : null}
         </div>
@@ -271,7 +280,7 @@ export function RegisterImportPanel({
 
         {dryRun ? (
           <>
-            <div className="grid gap-2 text-sm sm:grid-cols-4">
+            <div className="grid gap-2 text-sm sm:grid-cols-5">
               <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
                 <div className="text-xs text-muted-foreground">Workbook</div>
                 <div className="truncate font-semibold">{dryRun.filename}</div>
@@ -289,6 +298,10 @@ export function RegisterImportPanel({
                 <div className="font-semibold">
                   {formatNumber(recommendedCount)}
                 </div>
+              </div>
+              <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+                <div className="text-xs text-muted-foreground">Needs review</div>
+                <div className="font-semibold">{formatNumber(reviewCount)}</div>
               </div>
               <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
                 <div className="text-xs text-muted-foreground">Findings</div>
@@ -346,8 +359,8 @@ export function RegisterImportPanel({
                 <div className="text-sm font-semibold">Review actions</div>
                 <div className="text-xs text-muted-foreground">
                   {formatNumber(approvedCount)} approved,{" "}
-                  {formatNumber(dryRun.action_items.length - approvedCount)}{" "}
-                  ignored
+                  {formatNumber(ignoredCount)} ignored,{" "}
+                  {formatNumber(blockedCount)} blocked
                 </div>
               </div>
               <div className="max-h-96 divide-y divide-border overflow-auto">
@@ -388,16 +401,40 @@ export function RegisterImportPanel({
                             {[...item.blockers, ...item.warnings].join(" ")}
                           </span>
                         ) : null}
-                        {item.changes[0] ? (
-                          <span className="mt-1 block truncate text-xs text-muted-foreground">
-                            {item.changes[0].label}:{" "}
-                            {formatValue(item.changes[0].before)} to{" "}
-                            {formatValue(item.changes[0].after)}
+                        {item.changes.length ? (
+                          <span className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                            {item.changes.slice(0, 3).map((change) => (
+                              <span
+                                key={`${item.id}-${change.field}`}
+                                className="block truncate"
+                              >
+                                {change.label}: {formatValue(change.before)} to{" "}
+                                {formatValue(change.after)}
+                              </span>
+                            ))}
+                            {item.changes.length > 3 ? (
+                              <span className="block">
+                                +{formatNumber(item.changes.length - 3)} more
+                              </span>
+                            ) : null}
                           </span>
                         ) : null}
                       </span>
                       <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         {item.target.replaceAll("_", " ")}
+                        {item.blockers.length ? (
+                          <span className="mt-1 block normal-case text-danger">
+                            Blocked
+                          </span>
+                        ) : selectedActionSet.has(item.id) ? (
+                          <span className="mt-1 block normal-case text-[#027A48]">
+                            Approved
+                          </span>
+                        ) : (
+                          <span className="mt-1 block normal-case">
+                            Ignored
+                          </span>
+                        )}
                       </span>
                     </label>
                   );
@@ -406,6 +443,10 @@ export function RegisterImportPanel({
                   <EmptyState title="No register actions found." />
                 ) : null}
               </div>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {formatNumber(readyCount)} ready actions can be approved. Blocked rows stay locked
+              until the workbook is corrected or the importer is extended.
             </div>
           </>
         ) : (

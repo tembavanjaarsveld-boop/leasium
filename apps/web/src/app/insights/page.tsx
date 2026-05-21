@@ -52,6 +52,14 @@ import { cn } from "@/lib/utils";
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 type Tone = "neutral" | "success" | "warning" | "danger" | "primary";
+type AccountingReadinessView = NonNullable<
+  InsightsOverviewRecord["finance_snapshot"]["accounting_readiness"]
+> & {
+  generated_at?: string | null;
+  source?: string | null;
+  source_label?: string | null;
+  generated_source?: string | null;
+};
 
 function friendlyError(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
@@ -100,6 +108,126 @@ function formatMoney(cents: number | null | undefined) {
 
 function labelStatus(value: string | null | undefined) {
   return value ? value.replaceAll("_", " ") : "None";
+}
+
+function accountingTone(status: string | null | undefined) {
+  if (status === "ready") {
+    return "success" as const;
+  }
+  if (status === "stale" || status === "attention") {
+    return "warning" as const;
+  }
+  if (status === "missing") {
+    return "danger" as const;
+  }
+  return "neutral" as const;
+}
+
+function accountingCheckpointRows(accounting: AccountingReadinessView) {
+  return [
+    ["Posting preview", accounting.last_invoice_posting_preview_at],
+    ["Draft created", accounting.last_invoice_draft_create_at],
+    ["Provider dispatch", accounting.last_invoice_provider_dispatch_at],
+    ["Payment preview", accounting.last_payment_reconciliation_preview_at],
+    ["Payment apply", accounting.last_payment_reconciliation_apply_at],
+  ] as const;
+}
+
+function accountingSourceLabel(accounting: AccountingReadinessView) {
+  const source =
+    accounting.source_label ?? accounting.source ?? accounting.generated_source;
+  return source ? labelStatus(source) : "Live accounting";
+}
+
+function AccountingReadinessTrail({
+  accounting,
+}: {
+  accounting: AccountingReadinessView;
+}) {
+  const staleLabel =
+    accounting.stale_reconciliation && accounting.stale_after_days
+      ? `Stale after ${accounting.stale_after_days} days`
+      : accounting.stale_reconciliation
+        ? "Reconciliation stale"
+        : "Reconciliation current";
+  const sourceGeneratedAt =
+    accounting.generated_at ?? accounting.last_chart_tax_validation_at;
+
+  return (
+    <div className="grid gap-3 border-t border-border p-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="rounded-2xl border border-border bg-white p-4 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="font-semibold">Accounting readiness</div>
+            <p className="mt-1 text-muted-foreground">{accounting.summary}</p>
+          </div>
+          <StatusBadge tone={accountingTone(accounting.status)}>
+            {labelStatus(accounting.status)}
+          </StatusBadge>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          {accountingCheckpointRows(accounting).map(([checkpoint, value]) => (
+            <div
+              key={checkpoint}
+              className="rounded-xl border border-border bg-muted/35 p-3"
+            >
+              <div className="text-xs font-semibold uppercase text-muted-foreground">
+                {checkpoint}
+              </div>
+              <div className="mt-1 font-medium">{formatDateTime(value)}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <span className="rounded-full border border-border bg-muted/35 px-2.5 py-1">
+            Source {accountingSourceLabel(accounting)}
+          </span>
+          <span className="rounded-full border border-border bg-muted/35 px-2.5 py-1">
+            Checked {formatDateTime(sourceGeneratedAt)}
+          </span>
+          <span className="rounded-full border border-border bg-muted/35 px-2.5 py-1">
+            {staleLabel}
+          </span>
+          {accounting.last_payment_reconciliation_source ? (
+            <span className="rounded-full border border-border bg-muted/35 px-2.5 py-1">
+              Payment source{" "}
+              {labelStatus(accounting.last_payment_reconciliation_source)}
+            </span>
+          ) : null}
+          {accounting.last_payment_reconciliation_mode ? (
+            <span className="rounded-full border border-border bg-muted/35 px-2.5 py-1">
+              Payment mode {labelStatus(accounting.last_payment_reconciliation_mode)}
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+          <span>
+            Chart {accounting.chart_ready} ready / {accounting.chart_missing} missing
+          </span>
+          <span>
+            Tax {accounting.tax_ready} ready / {accounting.tax_missing} missing
+          </span>
+          <span>
+            Open in Xero {accounting.xero_linked_open_invoice_count}
+          </span>
+        </div>
+      </div>
+      <div className="rounded-2xl border border-border bg-muted/35 p-4 text-sm">
+        <div className="font-semibold">Guardrails</div>
+        <div className="mt-3 grid gap-2 text-muted-foreground">
+          {accounting.guardrails.map((guardrail) => (
+            <div key={guardrail} className="flex items-start gap-2">
+              <ShieldCheck size={15} className="mt-0.5 shrink-0 text-primary" />
+              <span>{guardrail}</span>
+            </div>
+          ))}
+          {!accounting.guardrails.length ? (
+            <div>No extra guardrails flagged.</div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function plural(value: number, singular: string, pluralLabel = `${singular}s`) {
@@ -403,6 +531,7 @@ function InsightsWorkspace() {
   const billing = overview?.billing_risk;
   const ownerSnapshot = overview?.owner_entity_snapshot;
   const financeSnapshot = overview?.finance_snapshot;
+  const accountingReadiness = financeSnapshot?.accounting_readiness;
   const leaseEventSnapshot = overview?.lease_event_snapshot;
   const snapshots = snapshotsQuery.data ?? [];
 
@@ -748,6 +877,13 @@ function InsightsWorkspace() {
                 title="Finance Snapshot"
                 description="A share-ready summary of billing readiness and draft invoice risk."
                 icon={<LineChart size={17} className="text-primary" />}
+                actions={
+                  accountingReadiness ? (
+                    <StatusBadge tone={accountingTone(accountingReadiness.status)}>
+                      Accounting {labelStatus(accountingReadiness.status)}
+                    </StatusBadge>
+                  ) : null
+                }
               >
                 <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
                   <CountPill
@@ -770,7 +906,17 @@ function InsightsWorkspace() {
                     label="Unpaid invoices"
                     value={financeSnapshot?.unpaid_invoice_count ?? 0}
                   />
+                  <CountPill
+                    label="Contacts ready"
+                    value={`${accountingReadiness?.contact_ready ?? 0} / ${
+                      (accountingReadiness?.contact_ready ?? 0) +
+                      (accountingReadiness?.contact_missing ?? 0)
+                    }`}
+                  />
                 </div>
+                {accountingReadiness ? (
+                  <AccountingReadinessTrail accounting={accountingReadiness} />
+                ) : null}
               </SectionPanel>
 
               <SectionPanel

@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
+  CircleSlash,
   FileSpreadsheet,
   Loader2,
   RefreshCw,
@@ -60,6 +61,14 @@ function summarizeCounts(values: Record<string, number>) {
   return entries
     .map(([key, count]) => `${count} ${targetLabel(key)}`)
     .join(", ");
+}
+
+function recommendedActionIds(items: RegisterImportActionItem[]) {
+  return items
+    .filter(
+      (item) => item.default_decision === "approve" && item.blockers.length === 0,
+    )
+    .map((item) => item.id);
 }
 
 function SpreadsheetImportWorkspace() {
@@ -141,7 +150,16 @@ function SpreadsheetImportWorkspace() {
     () => Object.values(approvedIds).filter(Boolean).length,
     [approvedIds],
   );
-  const blockerCount = plan?.findings.filter((item) => item.severity === "blocker").length ?? 0;
+  const blockedActionCount =
+    plan?.action_items.filter((item) => item.blockers.length > 0).length ?? 0;
+  const recommendedCount = plan ? recommendedActionIds(plan.action_items).length : 0;
+  const reviewCount =
+    plan?.action_items.filter(
+      (item) => item.default_decision === "review" && item.blockers.length === 0,
+    ).length ?? 0;
+  const ignoredCount = plan
+    ? Math.max(plan.action_items.length - approvedCount, 0)
+    : 0;
   const warningCount = plan?.findings.filter((item) => item.severity === "warning").length ?? 0;
 
   function reviewWorkbook(file: File | null | undefined) {
@@ -149,6 +167,30 @@ function SpreadsheetImportWorkspace() {
       return;
     }
     dryRunMutation.mutate(file);
+  }
+
+  function approveRecommended() {
+    if (!plan) {
+      return;
+    }
+    const recommendedIds = new Set(recommendedActionIds(plan.action_items));
+    setApprovedIds(
+      Object.fromEntries(
+        plan.action_items.map((item) => [
+          item.id,
+          recommendedIds.has(item.id),
+        ]),
+      ),
+    );
+  }
+
+  function ignoreAll() {
+    if (!plan) {
+      return;
+    }
+    setApprovedIds(
+      Object.fromEntries(plan.action_items.map((item) => [item.id, false])),
+    );
   }
 
   return (
@@ -227,7 +269,7 @@ function SpreadsheetImportWorkspace() {
             <div className="mt-1 text-sm font-medium">Tenancies</div>
           </div>
           <div className="rounded-2xl border border-border bg-white p-4 shadow-leasiumXs">
-            <div className="text-2xl font-semibold">{blockerCount}</div>
+            <div className="text-2xl font-semibold">{blockedActionCount}</div>
             <div className="mt-1 text-sm font-medium">Blockers</div>
           </div>
           <div className="rounded-2xl border border-border bg-white p-4 shadow-leasiumXs">
@@ -307,24 +349,52 @@ function SpreadsheetImportWorkspace() {
               description={plan.summary}
               icon={<FileSpreadsheet size={17} className="text-primary" />}
               actions={
-                <Button
-                  type="button"
-                  onClick={() => applyMutation.mutate()}
-                  disabled={
-                    !approvedCount ||
-                    applyMutation.isPending ||
-                    dryRunMutation.isPending
-                  }
-                >
-                  {applyMutation.isPending ? (
-                    <Loader2 size={15} className="animate-spin" />
-                  ) : (
-                    <CheckCircle2 size={15} />
-                  )}
-                  Apply approved
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <SecondaryButton type="button" onClick={approveRecommended}>
+                    <RefreshCw size={15} />
+                    Approve recommended
+                  </SecondaryButton>
+                  <SecondaryButton type="button" onClick={ignoreAll}>
+                    <CircleSlash size={15} />
+                    Ignore all
+                  </SecondaryButton>
+                  <Button
+                    type="button"
+                    onClick={() => applyMutation.mutate()}
+                    disabled={
+                      !approvedCount ||
+                      applyMutation.isPending ||
+                      dryRunMutation.isPending
+                    }
+                  >
+                    {applyMutation.isPending ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={15} />
+                    )}
+                    Apply approved
+                  </Button>
+                </div>
               }
             >
+              <div className="grid gap-2 border-b border-border p-3 text-sm sm:grid-cols-4">
+                <div className="rounded-xl border border-border bg-muted/40 p-3">
+                  <div className="text-xs uppercase text-muted-foreground">Approved</div>
+                  <div className="mt-1 font-semibold">{approvedCount}</div>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/40 p-3">
+                  <div className="text-xs uppercase text-muted-foreground">Recommended</div>
+                  <div className="mt-1 font-semibold">{recommendedCount}</div>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/40 p-3">
+                  <div className="text-xs uppercase text-muted-foreground">Needs review</div>
+                  <div className="mt-1 font-semibold">{reviewCount}</div>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/40 p-3">
+                  <div className="text-xs uppercase text-muted-foreground">Ignored</div>
+                  <div className="mt-1 font-semibold">{ignoredCount}</div>
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead className="bg-muted text-xs uppercase text-muted-foreground">
@@ -427,8 +497,8 @@ function SpreadsheetImportWorkspace() {
                 title="Workbook checks"
                 icon={<AlertTriangle size={17} className="text-primary" />}
                 actions={
-                  <StatusBadge tone={blockerCount ? "danger" : "success"}>
-                    {blockerCount ? `${blockerCount} blockers` : "Ready"}
+                  <StatusBadge tone={blockedActionCount ? "danger" : "success"}>
+                    {blockedActionCount ? `${blockedActionCount} blocked` : "Ready"}
                   </StatusBadge>
                 }
               >

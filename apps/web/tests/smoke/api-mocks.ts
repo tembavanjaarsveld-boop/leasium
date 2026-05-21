@@ -19,11 +19,18 @@ type XeroContactMapping = {
 
 const entityId = "entity-1";
 const propertyId = "property-1";
+const siblingPropertyId = "property-2";
+const otherOwnerPropertyId = "property-3";
 const tenantId = "tenant-1";
 const unitId = "unit-1";
 const leaseId = "lease-1";
 const operatorId = "operator-1";
 const assigneeId = "operator-2";
+const propertyImageDocumentId = "document-property-image-1";
+const tinyPropertyImagePng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+  "base64",
+);
 
 const entities = [
   {
@@ -71,6 +78,24 @@ const properties = [
     xero_contact_id: "xero-owner-1",
     xero_tracking_category: "Queen Street",
     metadata: {
+      property_media: {
+        primary_image: {
+          title: "Queen Street Retail Centre frontage",
+          document_id: propertyImageDocumentId,
+          image_document_id: propertyImageDocumentId,
+          thumbnail_document_id: propertyImageDocumentId,
+          page_url: "https://example.com/queen-street-retail-centre",
+          source: {
+            source_hint: "Agency listing",
+            citation: "Listing photo for Queen Street Retail Centre.",
+            confidence: 0.82,
+            url: "https://example.com/queen-street-retail-centre",
+          },
+          confidence: 0.82,
+          notes: "Existing reviewed image.",
+          selected_at: "2026-05-20T00:00:00.000Z",
+        },
+      },
       source_citations: {
         owner_abn: {
           source_hint: "Purchase contract vendor schedule",
@@ -112,7 +137,89 @@ const properties = [
           ],
         },
       ],
+      register_import_history: [
+        {
+          action_id: "register-action-property-1",
+          filename: "Acme portfolio register.xlsx",
+          sheet: "Properties",
+          row: 12,
+          source_hint: "Property register",
+          confidence: 0.87,
+          changes: [
+            {
+              field: "owner_abn",
+              before: null,
+              after: "22123456789",
+              source: {
+                source_hint: "Properties row 12",
+                citation: "Owner ABN",
+                confidence: 0.87,
+              },
+            },
+          ],
+        },
+      ],
     },
+  },
+  {
+    id: siblingPropertyId,
+    entity_id: entityId,
+    name: "Queen Street Warehouse",
+    street_address: "24 Queen Street",
+    suburb: "Brisbane City",
+    state: "QLD",
+    postcode: "4000",
+    country_code: "AU",
+    property_type: "commercial_industrial",
+    parcel_id: "L2-SP12345",
+    land_sqm: 1200,
+    building_sqm: 980,
+    parking_spaces: 8,
+    has_solar_pv: false,
+    ownership_structure: "trust",
+    owner_legal_name: "Queen Street Property Trust",
+    owner_abn: "22123456789",
+    trustee_name: "Queen Street Trustee Pty Ltd",
+    trust_name: null,
+    invoice_issuer_name: "Queen Street Trustee Pty Ltd",
+    billing_contact_name: "Mia Accounts",
+    billing_email: "owners@queenstreet.example",
+    invoice_reference: "QSW-",
+    ownership_split: null,
+    owner_gst_registered: true,
+    xero_contact_id: "xero-owner-1",
+    xero_tracking_category: "Queen Street Warehouse",
+    metadata: {},
+  },
+  {
+    id: otherOwnerPropertyId,
+    entity_id: entityId,
+    name: "Eagle Street Office",
+    street_address: "80 Eagle Street",
+    suburb: "Brisbane City",
+    state: "QLD",
+    postcode: "4000",
+    country_code: "AU",
+    property_type: "commercial_office",
+    parcel_id: "L3-SP12345",
+    land_sqm: 680,
+    building_sqm: 540,
+    parking_spaces: 6,
+    has_solar_pv: false,
+    ownership_structure: "trust",
+    owner_legal_name: "Eagle Street Property Trust",
+    owner_abn: null,
+    trustee_name: "Eagle Street Trustee Pty Ltd",
+    trust_name: null,
+    invoice_issuer_name: null,
+    billing_contact_name: null,
+    billing_email: null,
+    invoice_reference: "ESO-",
+    ownership_split: null,
+    owner_gst_registered: true,
+    xero_contact_id: "xero-owner-2",
+    xero_tracking_category: "Eagle Street Office",
+    metadata: {},
   },
 ];
 
@@ -166,7 +273,30 @@ const tenants = [
     contact_phone: "0400 333 444",
     billing_email: null,
     notes: null,
-    metadata: {},
+    metadata: {
+      register_import_history: [
+        {
+          action_id: "register-action-tenant-2",
+          filename: "Acme portfolio register.xlsx",
+          sheet: "Tenancies",
+          row: 28,
+          source_hint: "Tenant register",
+          confidence: 0.81,
+          changes: [
+            {
+              field: "trading_name",
+              before: null,
+              after: "Northwind Fitness",
+              source: {
+                source_hint: "Tenancies row 28",
+                citation: "Tenant trading name",
+                confidence: 0.81,
+              },
+            },
+          ],
+        },
+      ],
+    },
   },
 ];
 
@@ -526,6 +656,29 @@ const rentRoll = [
     xero_readiness_blockers: ["Missing Xero tax type"],
     invoice_readiness_blockers: [],
   },
+  {
+    entity_id: entityId,
+    entity_name: "Acme Holdings Pty Ltd",
+    property_id: siblingPropertyId,
+    property_name: "Queen Street Warehouse",
+    tenancy_unit_id: "unit-2",
+    unit_label: "Warehouse 1",
+    lease_id: "lease-2",
+    tenant_id: "tenant-2",
+    tenant_name: "Northwind Fitness",
+    lease_status: "active",
+    commencement_date: "2026-01-01",
+    expiry_date: "2029-12-31",
+    tenant_billing_email: null,
+    annual_rent_cents: 7200000,
+    rent_frequency: "monthly",
+    charge_rules: [],
+    charge_rules_total_cents: 600000,
+    next_due_date: "2026-06-01",
+    gst_readiness_blockers: [],
+    xero_readiness_blockers: [],
+    invoice_readiness_blockers: [],
+  },
 ];
 
 const billingDrafts = [
@@ -617,12 +770,30 @@ const invoiceDrafts = [
           to: "accounts@bright.example",
           subject: "Invoice INV-1001",
           body: "Please find your invoice attached.",
+          template_key: "invoice_delivery",
+          template_version: "v1",
+          rendered_message_preview: {
+            channel: "email",
+            provider: "sendgrid",
+            recipient: "accounts@bright.example",
+            subject: "Invoice INV-1001",
+            body_text: "Please find your invoice attached.",
+            template_key: "invoice_delivery",
+            template_version: "v1",
+            action_label: "View invoice preview",
+            action_url: "/api/v1/invoice-drafts/invoice-draft-1/preview",
+          },
         },
       },
       pdf_artifact: {
         document_id: "document-1",
       },
       delivery_email: {
+        draft: {
+          status: "drafted",
+          template_key: "invoice_delivery",
+          template_version: "v1",
+        },
         send: {
           status: "draft",
         },
@@ -688,12 +859,30 @@ const invoiceDrafts = [
           to: "accounts@bright.example",
           subject: "Invoice INV-1002",
           body: "Please find your invoice attached.",
+          template_key: "invoice_delivery",
+          template_version: "v1",
+          rendered_message_preview: {
+            channel: "email",
+            provider: "sendgrid",
+            recipient: "accounts@bright.example",
+            subject: "Invoice INV-1002",
+            body_text: "Please find your invoice attached.",
+            template_key: "invoice_delivery",
+            template_version: "v1",
+            action_label: "View invoice preview",
+            action_url: "/api/v1/invoice-drafts/invoice-draft-failed/preview",
+          },
         },
       },
       pdf_artifact: {
         document_id: "document-1",
       },
       delivery_email: {
+        draft: {
+          status: "drafted",
+          template_key: "invoice_delivery",
+          template_version: "v1",
+        },
         send: {
           status: "draft",
         },
@@ -1056,6 +1245,8 @@ const securityWorkspace = () => ({
       invite_accepted_at: "2026-05-01T00:00:00.000Z",
       notification_preferences: {
         work_assignment_email_enabled: true,
+        work_assignment_sms_enabled: true,
+        work_assignment_sms_phone: "+61400111222",
         work_assignment_notice_template_key: "work_assignment_notification",
         work_assignment_notice_template_version: "v1",
         work_assignment_digest_cadence: "daily",
@@ -1111,6 +1302,8 @@ const securityWorkspace = () => ({
       invite_accepted_at: "2026-05-01T00:00:00.000Z",
       notification_preferences: {
         work_assignment_email_enabled: true,
+        work_assignment_sms_enabled: false,
+        work_assignment_sms_phone: null,
         work_assignment_notice_template_key: "work_assignment_notification",
         work_assignment_notice_template_version: "v1",
         work_assignment_digest_cadence: "daily",
@@ -1188,6 +1381,119 @@ function jsonRecord(value: JsonBody | undefined) {
     return {};
   }
   return value;
+}
+
+function noticeChannelReceipt(overrides: { [key: string]: JsonBody }) {
+  return {
+    channel: "email",
+    label: "Email",
+    provider: null,
+    status: null,
+    detail: null,
+    recipient_email: null,
+    recipient_phone: null,
+    provider_message_id: null,
+    template_key: null,
+    template_version: null,
+    attempted_at: null,
+    sent_at: null,
+    receipt_at: null,
+    last_event: null,
+    delivery_trigger: null,
+    delivery_attempt_count: 0,
+    message_sent: false,
+    action_available: false,
+    provider_history: [],
+    rendered_message_preview: null,
+    ...overrides,
+  };
+}
+
+function renderedMessagePreview(overrides: { [key: string]: JsonBody }) {
+  return {
+    channel: "email",
+    provider: "sendgrid",
+    recipient_email: null,
+    recipient_phone: null,
+    subject: null,
+    body_text: "",
+    template_key: null,
+    template_version: null,
+    action_label: null,
+    action_url: null,
+    ...overrides,
+  };
+}
+
+function workNoticeEmailPreview(title: string) {
+  return renderedMessagePreview({
+    channel: "email",
+    provider: "sendgrid",
+    recipient_email: "temba@example.com",
+    subject: `Leasium work assigned: ${title}`,
+    body_text: [
+      "Hi Temba van Jaarsveld,",
+      "",
+      "Maintenance has been assigned to you in Leasium.",
+      "",
+      `Work: ${title}`,
+      "Due: 20 May 2026",
+      "Assigned in Leasium",
+      "Open work: /operations",
+      "",
+      "Please open Leasium to review the work, update status, or reassign if needed.",
+      "",
+      "Leasium",
+    ].join("\n"),
+    template_key: "work_assignment_notification",
+    template_version: "v1",
+    action_label: "Open assigned work",
+    action_url: "/operations",
+  });
+}
+
+function workNoticeSmsPreview(title: string) {
+  return renderedMessagePreview({
+    channel: "sms",
+    provider: "twilio",
+    recipient_phone: "+61400111222",
+    subject: null,
+    body_text: `Leasium: Maintenance assigned to Temba van Jaarsveld: ${title}. Due: 20 May 2026. /operations`,
+    template_key: "work_assignment_notification",
+    template_version: "v1",
+    action_label: "Open assigned work",
+    action_url: "/operations",
+  });
+}
+
+function workDigestMessagePreview() {
+  return renderedMessagePreview({
+    channel: "email",
+    provider: "sendgrid",
+    recipient_email: "owner@example.com",
+    subject: "Leasium Daily Work digest: 4 items",
+    body_text: [
+      "Hi Owner Operator,",
+      "",
+      "Your daily Leasium Work digest is ready.",
+      "",
+      "Open items: 4",
+      "Follow-ups due: 2",
+      "Attention: 1",
+      "Ready notices: 0",
+      "",
+      "- Air conditioning fault",
+      "  Type: Maintenance",
+      "  Due: 20 May 2026",
+      "  Status: requested",
+      "",
+      "Please open Leasium to review the work, update status, or reassign if needed.",
+      "",
+      "Leasium",
+    ].join("\n"),
+    template_key: "work_assignment_digest",
+    template_version: "v1",
+  });
 }
 
 function assignmentNotificationMetadata(
@@ -1308,6 +1614,8 @@ export async function mockLeasiumApi(
   let tenantAccountLinked = options.tenantAccountLinked ?? false;
   let notificationCenterReadAt: string | null = null;
   let digestReceiptSent = false;
+  let assignmentNoticeRetried = false;
+  let assignmentNoticeSmsSent = false;
   const tenantAccountLinkedToDifferentTenant =
     options.tenantAccountLinkedToDifferentTenant ?? false;
   let appliedContactMappings: XeroContactMapping[] = [];
@@ -1407,6 +1715,45 @@ export async function mockLeasiumApi(
         suggested_tax_type: "OUTPUT",
       });
     }
+    if (!xeroDraftCreated) {
+      issues.push({
+        id: "invoice-sync-invoice-draft-1",
+        kind: "invoice_sync",
+        severity: "warning",
+        label: "Approved invoice not synced",
+        detail: "INV-1001 is approved but not posted to Xero.",
+        action: xeroDraftApproved
+          ? "Run idempotent Xero draft creation when ready."
+          : "Approve Xero posting explicitly, then run idempotent draft creation.",
+        property_id: propertyId,
+        property_name: "Queen Street Retail Centre",
+        tenancy_unit_id: unitId,
+        unit_label: "Shop 3",
+        lease_id: leaseId,
+        tenant_id: tenantId,
+        tenant_name: "Bright Cafe",
+        charge_rule_id: null,
+        charge_type: null,
+        current_account_code: null,
+        current_tax_type: null,
+        suggested_account_code: null,
+        suggested_tax_type: null,
+      });
+    }
+    const approvedUnsyncedInvoiceCount = xeroDraftCreated ? 0 : 1;
+    const xeroLinkedOpenInvoiceCount =
+      xeroDraftCreated && !xeroPaymentApplied ? 1 : 0;
+    const readinessBlockerCount = issues.filter(
+      (issue) => issue.severity === "blocker",
+    ).length;
+    const readinessWarningCount = issues.filter(
+      (issue) => issue.severity === "warning",
+    ).length;
+    const freshnessStatus = !xeroDraftCreated
+      ? "attention"
+      : xeroPaymentApplied
+        ? "ready"
+        : "missing";
     return {
       provider: {
         configured: true,
@@ -1433,7 +1780,7 @@ export async function mockLeasiumApi(
       },
       invoice_sync: {
         total_invoice_drafts: 1,
-        approved_unsynced: xeroDraftCreated ? 0 : 1,
+        approved_unsynced: approvedUnsyncedInvoiceCount,
         synced: xeroDraftCreated ? 1 : 0,
         blocked: 0,
       },
@@ -1442,6 +1789,54 @@ export async function mockLeasiumApi(
         partially_paid: 0,
         paid: xeroPaymentApplied ? 1 : 0,
         reconciliation_ready: xeroPaymentApplied ? 1 : 0,
+      },
+      accounting_freshness: {
+        generated_at: "2026-05-20T01:00:00.000Z",
+        source: "local_metadata",
+        status: freshnessStatus,
+        summary: !xeroDraftCreated
+          ? "1 Xero readiness issue needs review; 1 approved invoice still need Xero draft creation."
+          : xeroPaymentApplied
+          ? "Payment reconciliation is fresh for open Xero-linked invoices."
+          : "1 open Xero-linked invoice needs a payment reconciliation preview.",
+        stale_after_days: 7,
+        stale_reconciliation: xeroDraftCreated && !xeroPaymentApplied,
+        readiness_issue_count: issues.length,
+        readiness_blocker_count: readinessBlockerCount,
+        readiness_warning_count: readinessWarningCount,
+        approved_unsynced_invoice_count: approvedUnsyncedInvoiceCount,
+        xero_linked_open_invoice_count: xeroLinkedOpenInvoiceCount,
+        last_contact_sync_at: xeroProviderConnected
+          ? "2026-05-20T00:00:00.000Z"
+          : null,
+        last_chart_tax_validation_at: chargeTaxType
+          ? "2026-05-20T00:10:00.000Z"
+          : null,
+        last_invoice_posting_preview_at: null,
+        last_invoice_draft_create_at: xeroDraftCreated
+          ? "2026-05-20T00:20:00.000Z"
+          : null,
+        last_invoice_provider_dispatch_at: null,
+        last_payment_reconciliation_preview_at: xeroPaymentApplied
+          ? "2026-05-20T00:30:00.000Z"
+          : null,
+        last_payment_reconciliation_apply_at: xeroPaymentApplied
+          ? "2026-05-20T00:35:00.000Z"
+          : null,
+        last_payment_reconciliation_at: xeroPaymentApplied
+          ? "2026-05-20T00:35:00.000Z"
+          : null,
+        last_payment_reconciliation_source: xeroPaymentApplied
+          ? "manual"
+          : null,
+        last_payment_reconciliation_mode: xeroPaymentApplied
+          ? "local_payment_status_apply"
+          : null,
+        guardrails: [
+          "Accounting freshness is calculated from local Leasium metadata only.",
+          "Loading Xero status does not refresh tokens, call Xero, post invoices, or reconcile payments.",
+          "Stale payment reconciliation is a review cue, not an automatic accounting action.",
+        ],
       },
       issues,
       guardrails: [
@@ -1886,8 +2281,191 @@ export async function mockLeasiumApi(
     ],
   });
 
+  const registerImportDryRun = () => ({
+    plan_id: "register-plan-1",
+    entity_id: entityId,
+    filename: "portfolio-import.xlsx",
+    sheets: [
+      {
+        name: "Properties",
+        rows: 3,
+        columns: ["Property", "Address", "Owner", "ABN"],
+      },
+    ],
+    actions: [
+      {
+        target: "property",
+        create: 1,
+        match: 0,
+        update: 1,
+        skip: 0,
+        review: 1,
+      },
+    ],
+    action_items: [
+      {
+        id: "register-action-1",
+        target: "property",
+        operation: "create",
+        label: "Create Queen Street Retail",
+        summary: "Create a new property from the workbook row.",
+        source: {
+          filename: "portfolio-import.xlsx",
+          sheet: "Properties",
+          row: 2,
+          source_hint: "Properties row 2",
+          confidence: 0.96,
+        },
+        changes: [
+          {
+            field: "name",
+            label: "Property name",
+            before: null,
+            after: "Queen Street Retail",
+            source: null,
+          },
+          {
+            field: "street_address",
+            label: "Street address",
+            before: null,
+            after: "100 Queen Street",
+            source: null,
+          },
+          {
+            field: "owner_abn",
+            label: "Owner ABN",
+            before: null,
+            after: "11 222 333 444",
+            source: null,
+          },
+        ],
+        payload: { name: "Queen Street Retail" },
+        blockers: [],
+        warnings: [],
+        default_decision: "approve",
+      },
+      {
+        id: "register-action-2",
+        target: "tenant",
+        operation: "update",
+        label: "Review Bright Cafe contact",
+        summary: "Update tenant contact details after operator review.",
+        source: {
+          filename: "portfolio-import.xlsx",
+          sheet: "Tenants",
+          row: 5,
+          source_hint: "Tenants row 5",
+          confidence: 0.81,
+        },
+        changes: [
+          {
+            field: "billing_email",
+            label: "Billing email",
+            before: "old@example.com",
+            after: "accounts@bright.example",
+            source: null,
+          },
+        ],
+        payload: { billing_email: "accounts@bright.example" },
+        blockers: [],
+        warnings: ["Existing tenant matched by name only."],
+        default_decision: "review",
+      },
+      {
+        id: "register-action-3",
+        target: "lease",
+        operation: "create",
+        label: "Create lease for missing unit",
+        summary: "Lease row cannot apply until the unit label is fixed.",
+        source: {
+          filename: "portfolio-import.xlsx",
+          sheet: "Leases",
+          row: 9,
+          source_hint: "Leases row 9",
+          confidence: 0.4,
+        },
+        changes: [
+          {
+            field: "unit_label",
+            label: "Unit",
+            before: null,
+            after: "",
+            source: null,
+          },
+        ],
+        payload: {},
+        blockers: ["Unit label is missing."],
+        warnings: [],
+        default_decision: "review",
+      },
+    ],
+    findings: [
+      {
+        severity: "warning",
+        message: "Existing tenant matched by name only.",
+        sheet: "Tenants",
+        row: 5,
+        field: "tenant",
+        source_value: "Bright Cafe",
+      },
+      {
+        severity: "blocker",
+        message: "Unit label is missing.",
+        sheet: "Leases",
+        row: 9,
+        field: "unit_label",
+        source_value: "",
+      },
+    ],
+    feature_candidates: [],
+    totals: { properties: 1, tenancies: 1, leases: 1 },
+    importable: true,
+    summary: "3 staged register actions from portfolio-import.xlsx.",
+  });
+
   const insightsOverview = () => {
     const xero = xeroStatus();
+  const accountingReadiness = {
+    generated_at: xero.accounting_freshness.generated_at,
+    source: xero.accounting_freshness.source,
+    status: xero.accounting_freshness.status,
+    summary: xero.accounting_freshness.summary,
+    readiness_issue_count: xero.accounting_freshness.readiness_issue_count,
+    readiness_blocker_count: xero.accounting_freshness.readiness_blocker_count,
+    readiness_warning_count: xero.accounting_freshness.readiness_warning_count,
+    stale_after_days: xero.accounting_freshness.stale_after_days,
+    contact_ready: xero.contact_mapping.ready,
+      contact_missing: xero.contact_mapping.missing,
+      chart_ready: xero.chart_mapping.ready,
+      chart_missing: xero.chart_mapping.missing,
+      tax_ready: xero.tax_mapping.ready,
+      tax_missing: xero.tax_mapping.missing,
+      approved_unsynced_invoice_count: xero.invoice_sync.approved_unsynced,
+      unpaid_invoice_count: xero.payment_reconciliation.unpaid,
+      stale_reconciliation: xero.accounting_freshness.stale_reconciliation,
+      xero_linked_open_invoice_count:
+        xero.accounting_freshness.xero_linked_open_invoice_count,
+      last_contact_sync_at: xero.accounting_freshness.last_contact_sync_at,
+      last_chart_tax_validation_at:
+        xero.accounting_freshness.last_chart_tax_validation_at,
+      last_invoice_posting_preview_at:
+        xero.accounting_freshness.last_invoice_posting_preview_at,
+      last_invoice_draft_create_at:
+        xero.accounting_freshness.last_invoice_draft_create_at,
+      last_invoice_provider_dispatch_at:
+        xero.accounting_freshness.last_invoice_provider_dispatch_at,
+      last_payment_reconciliation_preview_at:
+        xero.accounting_freshness.last_payment_reconciliation_preview_at,
+      last_payment_reconciliation_apply_at:
+        xero.accounting_freshness.last_payment_reconciliation_apply_at,
+      last_payment_reconciliation_at:
+        xero.accounting_freshness.last_payment_reconciliation_at,
+      last_payment_reconciliation_source:
+        xero.accounting_freshness.last_payment_reconciliation_source,
+      last_payment_reconciliation_mode:
+        xero.accounting_freshness.last_payment_reconciliation_mode,
+      guardrails: xero.accounting_freshness.guardrails,
+    };
     return {
       entity: {
         id: entityId,
@@ -2012,6 +2590,7 @@ export async function mockLeasiumApi(
         unpaid_invoice_count: 1,
         billing_draft_counts: { approved: 1 },
         invoice_draft_counts: { ready_for_approval: 1 },
+        accounting_readiness: accountingReadiness,
       },
       owner_entity_snapshot: {
         ownership_profile_counts: { trust: 1 },
@@ -2023,6 +2602,7 @@ export async function mockLeasiumApi(
         entity_gst_registered: true,
         xero_connected: Boolean(xeroTenantId),
         xero_last_sync_at: null,
+        accounting_readiness: accountingReadiness,
       },
       lease_event_snapshot: {
         active_lease_count: 1,
@@ -2061,6 +2641,14 @@ export async function mockLeasiumApi(
       ],
     };
   };
+
+  await page.route("https://images.example/**", async (route) => {
+    await route.fulfill({
+      body: tinyPropertyImagePng,
+      contentType: "image/png",
+      status: 200,
+    });
+  });
 
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
@@ -2127,6 +2715,51 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/insights/overview") {
       await fulfillJson(route, insightsOverview());
+      return;
+    }
+
+    if (method === "POST" && path === "/register-imports/dry-run") {
+      await fulfillJson(route, registerImportDryRun());
+      return;
+    }
+
+    if (method === "POST" && path === "/register-imports/apply") {
+      const payload = request.postDataJSON() as {
+        approved_action_ids?: string[];
+        ignored_action_ids?: string[];
+        filename?: string;
+      };
+      const approved = payload.approved_action_ids ?? [];
+      await fulfillJson(route, {
+        entity_id: entityId,
+        filename: payload.filename ?? "portfolio-import.xlsx",
+        applied_at: "2026-05-21T01:00:00.000Z",
+        requested: approved.length,
+        applied: approved.length,
+        skipped: payload.ignored_action_ids?.length ?? 0,
+        blocked: approved.includes("register-action-3") ? 1 : 0,
+        created: {
+          properties: approved.includes("register-action-1") ? 1 : 0,
+          tenants: 0,
+          leases: 0,
+        },
+        updated: {
+          tenants: approved.includes("register-action-2") ? 1 : 0,
+        },
+        ignored_action_ids: payload.ignored_action_ids ?? [],
+        results: approved.map((actionId) => ({
+          action_id: actionId,
+          target: actionId === "register-action-2" ? "tenant" : "property",
+          operation: actionId === "register-action-2" ? "update" : "create",
+          status: "applied",
+          message: "Applied reviewed register action.",
+          target_table:
+            actionId === "register-action-2" ? "tenant" : "property",
+          target_id: `${actionId}-target`,
+          created: actionId === "register-action-1" ? { properties: 1 } : {},
+          updated: actionId === "register-action-2" ? { tenants: 1 } : {},
+        })),
+      });
       return;
     }
 
@@ -2545,9 +3178,162 @@ export async function mockLeasiumApi(
       return;
     }
 
+    const premisePatchMatch = path.match(/^\/premises\/([^/]+)$/);
+    if (method === "PATCH" && premisePatchMatch) {
+      const propertyIndex = properties.findIndex(
+        (property) => property.id === premisePatchMatch[1],
+      );
+      if (propertyIndex >= 0) {
+        const payload = request.postDataJSON() as Record<string, JsonBody>;
+        const updated = {
+          ...properties[propertyIndex],
+          ...payload,
+        } as (typeof properties)[number];
+        properties.splice(propertyIndex, 1, updated);
+        await fulfillJson(route, updated);
+        return;
+      }
+    }
+
+    if (
+      method === "GET" &&
+      path === `/documents/${propertyImageDocumentId}/download`
+    ) {
+      await route.fulfill({
+        body: tinyPropertyImagePng,
+        contentType: "image/png",
+        headers: corsHeaders,
+        status: 200,
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/public-enrichment/property-images/preview"
+    ) {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const requestedPropertyId =
+        typeof payload.property_id === "string"
+          ? payload.property_id
+          : propertyId;
+      const property =
+        properties.find((item) => item.id === requestedPropertyId) ??
+        properties[0];
+      await fulfillJson(route, {
+        target: {
+          target_type: "property",
+          target_id: property.id,
+          entity_id: property.entity_id,
+          display_name: property.name,
+          missing_fields: [],
+        },
+        candidates: [
+          {
+            title: "Queen Street awning frontage",
+            image_url: "https://images.example/queen-street-awning.jpg",
+            page_url: "https://example.com/queen-street-awning",
+            source: {
+              source_hint: "Agency listing",
+              citation: "Retail centre listing hero image.",
+              confidence: 0.88,
+              url: "https://example.com/queen-street-awning",
+            },
+            confidence: 0.88,
+            notes: "Best exterior match.",
+          },
+          {
+            title: "Queen Street corner view",
+            image_url: "https://images.example/queen-street-corner.jpg",
+            page_url: "https://example.com/queen-street-corner",
+            source: {
+              source_hint: "Commercial brochure",
+              citation: "Retail centre brochure exterior photo.",
+              confidence: 0.74,
+              url: "https://example.com/queen-street-corner",
+            },
+            confidence: 0.74,
+            notes: "Secondary exterior match.",
+          },
+        ],
+        warnings: [],
+        openai_response_id: "resp_property_images_1",
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/public-enrichment/property-images/apply"
+    ) {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const candidate = payload.candidate as Record<string, JsonBody>;
+      const requestedPropertyId =
+        typeof payload.property_id === "string"
+          ? payload.property_id
+          : propertyId;
+      const property = properties.find(
+        (item) => item.id === requestedPropertyId,
+      );
+      if (property) {
+        property.metadata = {
+          ...property.metadata,
+          property_media: {
+            ...((property.metadata.property_media as Record<
+              string,
+              JsonBody
+            >) ?? {}),
+            primary_image: {
+              ...candidate,
+              document_id: propertyImageDocumentId,
+              image_document_id: propertyImageDocumentId,
+              thumbnail_document_id: propertyImageDocumentId,
+              selected_at: "2026-05-20T01:00:00.000Z",
+            },
+          },
+        };
+      }
+      await fulfillJson(route, {
+        target: {
+          target_type: "property",
+          target_id: property?.id ?? requestedPropertyId,
+          entity_id: property?.entity_id ?? entityId,
+          display_name: property?.name ?? "Selected property",
+          missing_fields: [],
+        },
+        selected_image: {
+          ...candidate,
+          document_id: propertyImageDocumentId,
+          image_document_id: propertyImageDocumentId,
+          thumbnail_document_id: propertyImageDocumentId,
+        },
+        document_id: propertyImageDocumentId,
+        warnings: [],
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/tenants") {
       await fulfillJson(route, tenants);
       return;
+    }
+
+    const tenantPatchMatch = path.match(/^\/tenants\/([^/]+)$/);
+    if (method === "PATCH" && tenantPatchMatch) {
+      const tenantIndex = tenants.findIndex(
+        (tenant) => tenant.id === tenantPatchMatch[1],
+      );
+      if (tenantIndex >= 0) {
+        const payload = request.postDataJSON() as Record<string, JsonBody>;
+        const updated = {
+          ...tenants[tenantIndex],
+          ...payload,
+          updated_at: "2026-05-21T00:00:00.000Z",
+        } as (typeof tenants)[number];
+        tenants.splice(tenantIndex, 1, updated);
+        await fulfillJson(route, updated);
+        return;
+      }
     }
 
     if (method === "GET" && path === `/tenants/${tenantId}`) {
@@ -2699,6 +3485,41 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/tenant-onboarding") {
       await fulfillJson(route, tenantOnboardings);
+      return;
+    }
+
+    if (method === "POST" && path === "/tenant-onboarding") {
+      const payload = request.postDataJSON() as {
+        lease_id?: string;
+        due_date?: string | null;
+        expires_at?: string | null;
+      };
+      const row = rentRoll.find((item) => item.lease_id === payload.lease_id);
+      const createdAt = "2026-05-21T00:05:00.000Z";
+      const created = {
+        id: `onboarding-${tenantOnboardings.length + 1}`,
+        entity_id: entityId,
+        lease_id: payload.lease_id ?? "lease-created",
+        tenant_id: row?.tenant_id ?? tenantId,
+        token: `tenant-token-${tenantOnboardings.length + 1}`,
+        status: "draft",
+        due_date: payload.due_date ?? "2026-05-28",
+        expires_at: payload.expires_at ?? "2026-06-11T23:59:59+10:00",
+        last_sent_at: null,
+        resent_at: null,
+        cancel_reason: null,
+        onboarding_url: `http://127.0.0.1:3000/onboarding/tenant-token-${tenantOnboardings.length + 1}`,
+        portal_url: `http://127.0.0.1:3000/tenant-portal/tenant-token-${tenantOnboardings.length + 1}`,
+        submitted_data: {},
+        submitted_at: null,
+        review_data: {},
+        delivery_data: {},
+        created_at: createdAt,
+        updated_at: createdAt,
+        deleted_at: null,
+      } as (typeof tenantOnboardings)[number];
+      tenantOnboardings.push(created);
+      await fulfillJson(route, created, 201);
       return;
     }
 
@@ -2998,6 +3819,133 @@ export async function mockLeasiumApi(
     if (
       method === "POST" &&
       path ===
+        "/maintenance/work-orders/work-order-1/contractor-delivery/send-sms"
+    ) {
+      const payload = request.postDataJSON() as {
+        body?: string;
+        include_comment?: boolean;
+      };
+      const body = (payload.body ?? "").trim();
+      const timestamp = "2026-05-20T01:25:00.000Z";
+      const existingDelivery = maintenanceWorkOrders[0].metadata
+        .contractor_delivery as Record<string, JsonBody> | undefined;
+      const existingSmsDelivery = existingDelivery?.sms as
+        | Record<string, JsonBody>
+        | undefined;
+      const existingReceipts = Array.isArray(existingSmsDelivery?.receipts)
+        ? existingSmsDelivery.receipts
+        : [];
+      const existingHistory = Array.isArray(existingSmsDelivery?.history)
+        ? existingSmsDelivery.history
+        : [];
+      const retryCount = existingHistory.length + 1;
+      const contractorDelivery = {
+        ...(existingDelivery ?? {}),
+        sms: {
+          send: {
+            status: "queued",
+            provider: "twilio",
+            attempted_at: timestamp,
+            sent_at: timestamp,
+            sent_by_user_id: operatorId,
+            provider_message_id: "SM-maintenance-1",
+            recipient_phone: "07 3000 1111",
+            body,
+            error: null,
+            template_key: "maintenance_contractor_sms",
+            template_version: "v1",
+            retry_count: retryCount,
+          },
+          receipts: [
+            {
+              received_at: timestamp,
+              channel: "sms",
+              status: "queued",
+              provider: "twilio",
+              recipient_phone: "07 3000 1111",
+              provider_message_id: "SM-maintenance-1",
+              error: null,
+              template_key: "maintenance_contractor_sms",
+              template_version: "v1",
+              retry_count: retryCount,
+            },
+            ...existingReceipts,
+          ],
+          history: [
+            ...existingHistory,
+            {
+              event: "provider_delivery_attempted",
+              at: timestamp,
+              user_id: operatorId,
+              provider: "twilio",
+              status: "queued",
+              recipient_phone: "07 3000 1111",
+              provider_message_id: "SM-maintenance-1",
+              error: null,
+              template_key: "maintenance_contractor_sms",
+              template_version: "v1",
+              retry_count: retryCount,
+            },
+          ],
+        },
+      };
+      const existingComments =
+        (maintenanceWorkOrders[0].metadata.comments as
+          | JsonBody[]
+          | undefined) ?? [];
+      const comments =
+        payload.include_comment === false
+          ? existingComments
+          : [
+              ...existingComments,
+              {
+                timestamp,
+                actor: operatorId,
+                visibility: "contractor",
+                body,
+              },
+            ];
+      const commentActivity =
+        payload.include_comment === false
+          ? []
+          : [
+              {
+                timestamp,
+                actor: operatorId,
+                source: "operator_api",
+                event: "comment_added",
+                visibility: "contractor",
+                summary: body,
+              },
+            ];
+      const metadata = {
+        ...maintenanceWorkOrders[0].metadata,
+        comments,
+        contractor_delivery: contractorDelivery,
+        activity_history: [
+          ...maintenanceWorkOrders[0].metadata.activity_history,
+          ...commentActivity,
+          {
+            timestamp,
+            actor: operatorId,
+            source: "operator_api",
+            event: "contractor_sms_attempted",
+            summary: "Contractor SMS queued.",
+            status: maintenanceWorkOrders[0].status,
+          },
+        ],
+      };
+      Object.assign(maintenanceWorkOrders[0], {
+        metadata,
+        updated_at: timestamp,
+      });
+      await fulfillJson(route, maintenanceWorkOrders[0]);
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path ===
         "/maintenance/work-orders/work-order-1/contractor-delivery/send-email"
     ) {
       const payload = request.postDataJSON() as {
@@ -3022,6 +3970,7 @@ export async function mockLeasiumApi(
         : [];
       const retryCount = existingHistory.length + 1;
       const contractorDelivery = {
+        ...(existingDelivery ?? {}),
         email: {
           send: {
             status: "queued",
@@ -3266,14 +4215,117 @@ export async function mockLeasiumApi(
         last_read_at: notificationCenterReadAt,
         unread_count: notificationCenterReadAt ? 0 : 3,
         notice_count: 2,
-        attention_count: 1,
+        attention_count: assignmentNoticeRetried ? 0 : 1,
         ready_count: 0,
-        in_flight_count: 1,
+        in_flight_count: assignmentNoticeRetried ? 2 : 1,
         done_count: 0,
         digest_receipt_count: 1,
         guardrails: [
           "Notification center is read-only; sending still requires explicit operator action.",
           "Digest receipts are preview receipts unless message_sent is true.",
+        ],
+        channels: [
+          {
+            channel: "email",
+            provider: "sendgrid",
+            label: "Email",
+            readiness: "actionable",
+            reason_code: "sendgrid_not_configured",
+            configured: false,
+            action_available: true,
+            detail:
+              "Email actions are available, but SendGrid is not fully configured.",
+            next_action:
+              "Configure SendGrid to queue provider emails instead of skipped receipts.",
+            setup_checks: [
+              {
+                key: "work_assignment_email_enabled",
+                label: "Work email toggle",
+                status: "ready",
+                detail: "Work assignment email delivery is enabled.",
+                value: null,
+              },
+              {
+                key: "sendgrid_sender",
+                label: "SendGrid sender",
+                status: "missing",
+                detail:
+                  "Add SendGrid API key and sender email environment variables.",
+                value: null,
+              },
+              {
+                key: "sendgrid_event_webhook",
+                label: "SendGrid event webhook",
+                status: "review",
+                detail:
+                  "Use this endpoint in SendGrid Event Webhook and configure the shared webhook secret outside Leasium.",
+                value:
+                  "https://api.leasium.test/api/v1/work-assignments/webhooks/sendgrid-events",
+              },
+            ],
+          },
+          {
+            channel: "sms",
+            provider: "twilio",
+            label: "SMS",
+            readiness: "actionable",
+            reason_code: "twilio_not_configured",
+            configured: false,
+            action_available: true,
+            detail:
+              "SMS actions are available, but Twilio is not fully configured.",
+            next_action:
+              "Configure Twilio to queue provider SMS instead of skipped receipts.",
+            setup_checks: [
+              {
+                key: "operator_sms_preferences",
+                label: "Operator SMS preferences",
+                status: "ready",
+                detail: "1 active operator SMS recipient configured.",
+                value: null,
+              },
+              {
+                key: "twilio_messaging",
+                label: "Twilio Messaging",
+                status: "missing",
+                detail:
+                  "Add Twilio credentials and a sender number or messaging service.",
+                value: null,
+              },
+              {
+                key: "twilio_status_callback",
+                label: "Twilio status callback",
+                status: "review",
+                detail:
+                  "Use this endpoint for Work SMS status callbacks and configure the shared webhook secret outside Leasium.",
+                value:
+                  "https://api.leasium.test/api/v1/work-assignments/webhooks/twilio-status",
+              },
+            ],
+          },
+          {
+            channel: "in_app",
+            provider: "leasium",
+            label: "In-app",
+            readiness: "read_only",
+            reason_code: "in_app_read_only",
+            configured: true,
+            action_available: false,
+            detail:
+              "In-app assignment receipts are recorded on work items and shown read-only here.",
+            next_action:
+              "Use Work assignment controls to update ownership and follow-up state.",
+            setup_checks: [
+              {
+                key: "leasium_receipts",
+                label: "Leasium receipts",
+                status: "ready",
+                detail:
+                  "In-app assignment receipts are stored in Leasium work metadata.",
+                value: null,
+              },
+            ],
+          },
         ],
         notices: [
           {
@@ -3305,6 +4357,7 @@ export async function mockLeasiumApi(
                 attempted_at: "2026-05-20T01:15:00.000Z",
                 received_at: null,
                 recipient_email: "temba@example.com",
+                recipient_phone: null,
                 provider_message_id: "sg-notice-smoke-1",
                 error: null,
                 template_key: "work_assignment_notification",
@@ -3314,18 +4367,75 @@ export async function mockLeasiumApi(
                 delivery_attempt_count: 1,
               },
             ],
+            sms_action_available: true,
+            sms_status: null,
+            sms_detail: null,
+            sms_provider: null,
+            sms_recipient_phone: null,
+            sms_provider_message_id: null,
+            sms_attempt_count: 0,
+            sms_provider_history: [],
+            channel_receipts: [
+              noticeChannelReceipt({
+                channel: "email",
+                label: "Email",
+                provider: "sendgrid",
+                status: "queued",
+                detail: "Assignment email was queued by SendGrid.",
+                recipient_email: "temba@example.com",
+                provider_message_id: "sg-notice-smoke-1",
+                template_key: "work_assignment_notification",
+                template_version: "v1",
+                attempted_at: "2026-05-20T01:15:00.000Z",
+                delivery_attempt_count: 1,
+                message_sent: true,
+                rendered_message_preview: workNoticeEmailPreview(
+                  "Air conditioning fault",
+                ),
+                provider_history: [
+                  {
+                    event: "provider_notification_attempted",
+                    channel: "email",
+                    status: "queued",
+                    raw_event: null,
+                    provider: "sendgrid",
+                    attempted_at: "2026-05-20T01:15:00.000Z",
+                    received_at: null,
+                    recipient_email: "temba@example.com",
+                    recipient_phone: null,
+                    provider_message_id: "sg-notice-smoke-1",
+                    error: null,
+                    template_key: "work_assignment_notification",
+                    template_version: "v1",
+                    delivery_trigger: null,
+                    recovery_of_generated_at: null,
+                    delivery_attempt_count: 1,
+                  },
+                ],
+              }),
+              noticeChannelReceipt({
+                channel: "sms",
+                label: "SMS",
+                provider: "twilio",
+                action_available: true,
+              }),
+            ],
           },
           {
             target_id: "arrears-1",
             target_type: "arrears_case",
             title: "Bright Cafe arrears",
-            summary: "Assignment notification email failed.",
+            summary: assignmentNoticeRetried
+              ? "Assignment notification email was queued."
+              : "Assignment notification email failed.",
             assignee_user_id: assigneeId,
             assignee_name: "Temba van Jaarsveld",
             assignee_email: "temba@example.com",
-            group: "attention",
-            notification_status: "failed",
-            notification_detail: "SendGrid returned 500.",
+            group: assignmentNoticeRetried ? "in_flight" : "attention",
+            notification_status: assignmentNoticeRetried ? "queued" : "failed",
+            notification_detail: assignmentNoticeRetried
+              ? "Assignment email was queued by SendGrid."
+              : "SendGrid returned 500.",
             channel: "email",
             provider: "sendgrid",
             template_key: "work_assignment_notification",
@@ -3335,6 +4445,28 @@ export async function mockLeasiumApi(
             follow_up_due: true,
             work_url: "/operations",
             provider_history: [
+              ...(assignmentNoticeRetried
+                ? [
+                    {
+                      event: "provider_notification_attempted",
+                      channel: "email",
+                      status: "queued",
+                      raw_event: null,
+                      provider: "sendgrid",
+                      attempted_at: "2026-05-21T10:10:00.000Z",
+                      received_at: null,
+                      recipient_email: "temba@example.com",
+                      recipient_phone: null,
+                      provider_message_id: "sg-notice-smoke-retry",
+                      error: null,
+                      template_key: "work_assignment_notification",
+                      template_version: "v1",
+                      delivery_trigger: null,
+                      recovery_of_generated_at: null,
+                      delivery_attempt_count: 2,
+                    },
+                  ]
+                : []),
               {
                 event: "provider_notification_attempted",
                 channel: "email",
@@ -3344,6 +4476,7 @@ export async function mockLeasiumApi(
                 attempted_at: "2026-05-20T00:30:00.000Z",
                 received_at: null,
                 recipient_email: "temba@example.com",
+                recipient_phone: null,
                 provider_message_id: "sg-notice-smoke-2",
                 error: "SendGrid returned 500.",
                 template_key: "work_assignment_notification",
@@ -3352,6 +4485,107 @@ export async function mockLeasiumApi(
                 recovery_of_generated_at: null,
                 delivery_attempt_count: 1,
               },
+            ],
+            sms_action_available: true,
+            sms_status: assignmentNoticeSmsSent ? "skipped" : null,
+            sms_detail: assignmentNoticeSmsSent
+              ? "Twilio Messaging is not configured."
+              : null,
+            sms_provider: assignmentNoticeSmsSent ? "twilio" : null,
+            sms_recipient_phone: assignmentNoticeSmsSent
+              ? "+61400111222"
+              : null,
+            sms_provider_message_id: null,
+            sms_attempt_count: assignmentNoticeSmsSent ? 1 : 0,
+            sms_provider_history: assignmentNoticeSmsSent
+              ? [
+                  {
+                    event: "provider_notification_attempted",
+                    channel: "sms",
+                    status: "skipped",
+                    raw_event: null,
+                    provider: "twilio",
+                    attempted_at: "2026-05-21T10:12:00.000Z",
+                    received_at: null,
+                    recipient_email: null,
+                    recipient_phone: "+61400111222",
+                    provider_message_id: null,
+                    error: "Twilio Messaging is not configured.",
+                    template_key: "work_assignment_notification",
+                    template_version: "v1",
+                    delivery_trigger: "manual",
+                    recovery_of_generated_at: null,
+                    delivery_attempt_count: 1,
+                  },
+                ]
+              : [],
+            channel_receipts: [
+              noticeChannelReceipt({
+                channel: "email",
+                label: "Email",
+                provider: "sendgrid",
+                status: assignmentNoticeRetried ? "queued" : "failed",
+                detail: assignmentNoticeRetried
+                  ? "Assignment email was queued by SendGrid."
+                  : "SendGrid returned 500.",
+                recipient_email: "temba@example.com",
+                provider_message_id: assignmentNoticeRetried
+                  ? "sg-notice-smoke-retry"
+                  : "sg-notice-smoke-2",
+                template_key: "work_assignment_notification",
+                template_version: "v1",
+                attempted_at: assignmentNoticeRetried
+                  ? "2026-05-21T10:10:00.000Z"
+                  : "2026-05-20T00:30:00.000Z",
+                delivery_attempt_count: assignmentNoticeRetried ? 2 : 1,
+                message_sent: assignmentNoticeRetried,
+                action_available: !assignmentNoticeRetried,
+                rendered_message_preview: workNoticeEmailPreview(
+                  "Bright Cafe arrears",
+                ),
+              }),
+              noticeChannelReceipt({
+                channel: "sms",
+                label: "SMS",
+                provider: "twilio",
+                status: assignmentNoticeSmsSent ? "skipped" : null,
+                detail: assignmentNoticeSmsSent
+                  ? "Twilio Messaging is not configured."
+                  : null,
+                recipient_phone: assignmentNoticeSmsSent
+                  ? "+61400111222"
+                  : null,
+                attempted_at: assignmentNoticeSmsSent
+                  ? "2026-05-21T10:12:00.000Z"
+                  : null,
+                delivery_attempt_count: assignmentNoticeSmsSent ? 1 : 0,
+                action_available: true,
+                rendered_message_preview: assignmentNoticeSmsSent
+                  ? workNoticeSmsPreview("Bright Cafe arrears")
+                  : null,
+                provider_history: assignmentNoticeSmsSent
+                  ? [
+                      {
+                        event: "provider_notification_attempted",
+                        channel: "sms",
+                        status: "skipped",
+                        raw_event: null,
+                        provider: "twilio",
+                        attempted_at: "2026-05-21T10:12:00.000Z",
+                        received_at: null,
+                        recipient_email: null,
+                        recipient_phone: "+61400111222",
+                        provider_message_id: null,
+                        error: "Twilio Messaging is not configured.",
+                        template_key: "work_assignment_notification",
+                        template_version: "v1",
+                        delivery_trigger: "manual",
+                        recovery_of_generated_at: null,
+                        delivery_attempt_count: 1,
+                      },
+                    ]
+                  : [],
+              }),
             ],
           },
         ],
@@ -3381,6 +4615,7 @@ export async function mockLeasiumApi(
               ? "2026-05-21T09:00:00.000Z"
               : null,
             delivery_attempt_count: digestReceiptSent ? 1 : 0,
+            rendered_message_preview: workDigestMessagePreview(),
             provider_history: digestReceiptSent
               ? [
                   {
@@ -3392,6 +4627,7 @@ export async function mockLeasiumApi(
                     attempted_at: "2026-05-21T10:00:00.000Z",
                     received_at: null,
                     recipient_email: "owner@example.com",
+                    recipient_phone: null,
                     provider_message_id: "sg-digest-smoke-retry",
                     error: null,
                     template_key: "work_assignment_digest",
@@ -3404,6 +4640,304 @@ export async function mockLeasiumApi(
               : [],
           },
         ],
+      });
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === "/work-assignments/notification-templates"
+    ) {
+      await fulfillJson(route, {
+        guardrails: [
+          "Template choices only set reviewed SendGrid metadata; they do not send messages.",
+          "Operator email and digest sends still require the existing explicit approval actions.",
+        ],
+        notice_templates: [
+          {
+            kind: "assignment_notice",
+            key: "work_assignment_notification",
+            name: "Standard assignment notice",
+            default_version: "v1",
+            channel: "email",
+            provider: "sendgrid",
+            subject_preview: "New Leasium work assigned",
+            content_summary:
+              "Includes the work title, due date, source workspace, and a link back to Leasium.",
+            recovery_summary:
+              "Use for normal assignment sends and retries from Work.",
+            is_system: true,
+          },
+          {
+            kind: "assignment_notice",
+            key: "work_assignment_follow_up",
+            name: "Follow-up assignment notice",
+            default_version: "v1",
+            channel: "email",
+            provider: "sendgrid",
+            subject_preview: "Leasium work follow-up needed",
+            content_summary:
+              "Emphasises due reminders, escalation watch dates, and the assigned operator.",
+            recovery_summary:
+              "Use when reminder or escalation cues are the reason for the send.",
+            is_system: true,
+          },
+        ],
+        digest_templates: [
+          {
+            kind: "digest",
+            key: "work_assignment_digest",
+            name: "Standard work digest",
+            default_version: "v1",
+            channel: "email",
+            provider: "sendgrid",
+            subject_preview: "Leasium daily or weekly Work digest",
+            content_summary:
+              "Groups assigned work by urgency, follow-up status, and source workspace.",
+            recovery_summary:
+              "Use for normal daily and weekly digest previews, sends, and retries.",
+            is_system: true,
+          },
+          {
+            kind: "digest",
+            key: "work_assignment_digest_owner_review",
+            name: "Owner review digest",
+            default_version: "v1",
+            channel: "email",
+            provider: "sendgrid",
+            subject_preview: "Leasium owner review digest",
+            content_summary:
+              "Highlights owner-facing review items, approvals, blockers, and overdue follow-ups.",
+            recovery_summary:
+              "Use for operators who need a higher-level review summary.",
+            is_system: true,
+          },
+        ],
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/work-assignments/notification-center/notices/send-email"
+    ) {
+      const payload = request.postDataJSON() as {
+        entity_id?: string;
+        target_id?: string;
+        target_type?: "maintenance_work_order" | "arrears_case" | "obligation";
+        delivery_trigger?: "manual" | "retry";
+      };
+      assignmentNoticeRetried = true;
+      await fulfillJson(route, {
+        entity_id: payload.entity_id ?? entityId,
+        target_type: payload.target_type ?? "arrears_case",
+        target_id: payload.target_id ?? "arrears-1",
+        status: "queued",
+        message_sent: true,
+        recipient_email: "temba@example.com",
+        provider: "sendgrid",
+        provider_message_id: "sg-notice-smoke-retry",
+        detail: "Assignment email was queued by SendGrid.",
+        template_key: "work_assignment_notification",
+        template_version: "v1",
+        attempted_at: "2026-05-21T10:10:00.000Z",
+        delivery_trigger: payload.delivery_trigger ?? "retry",
+        notice: {
+          target_id: payload.target_id ?? "arrears-1",
+          target_type: payload.target_type ?? "arrears_case",
+          title: "Bright Cafe arrears",
+          summary: "Assignment notification email was queued.",
+          assignee_user_id: assigneeId,
+          assignee_name: "Temba van Jaarsveld",
+          assignee_email: "temba@example.com",
+          group: "in_flight",
+          notification_status: "queued",
+          notification_detail: "Assignment email was queued by SendGrid.",
+          channel: "email",
+          provider: "sendgrid",
+          template_key: "work_assignment_notification",
+          template_version: "v1",
+          due_date: "2026-05-18",
+          event_at: "2026-05-21T10:10:00.000Z",
+          follow_up_due: true,
+          work_url: "/operations",
+          provider_history: [],
+          sms_action_available: true,
+          sms_status: null,
+          sms_detail: null,
+          sms_provider: null,
+          sms_recipient_phone: null,
+          sms_provider_message_id: null,
+          sms_attempt_count: 0,
+          sms_provider_history: [],
+          channel_receipts: [
+            noticeChannelReceipt({
+              channel: "email",
+              label: "Email",
+              provider: "sendgrid",
+              status: "queued",
+              detail: "Assignment email was queued by SendGrid.",
+              recipient_email: "temba@example.com",
+              provider_message_id: "sg-notice-smoke-retry",
+              template_key: "work_assignment_notification",
+              template_version: "v1",
+              attempted_at: "2026-05-21T10:10:00.000Z",
+              delivery_attempt_count: 2,
+              message_sent: true,
+              rendered_message_preview: workNoticeEmailPreview(
+                "Bright Cafe arrears",
+              ),
+            }),
+            noticeChannelReceipt({
+              channel: "sms",
+              label: "SMS",
+              provider: "twilio",
+              action_available: true,
+            }),
+          ],
+        },
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/work-assignments/notification-center/notices/send-sms"
+    ) {
+      const payload = request.postDataJSON() as {
+        entity_id?: string;
+        target_id?: string;
+        target_type?: "maintenance_work_order" | "arrears_case" | "obligation";
+        delivery_trigger?: "manual" | "retry";
+      };
+      assignmentNoticeSmsSent = true;
+      await fulfillJson(route, {
+        entity_id: payload.entity_id ?? entityId,
+        target_type: payload.target_type ?? "arrears_case",
+        target_id: payload.target_id ?? "arrears-1",
+        status: "skipped",
+        message_sent: false,
+        recipient_phone: "+61400111222",
+        provider: "twilio",
+        provider_message_id: null,
+        detail: "Twilio Messaging is not configured.",
+        template_key: "work_assignment_notification",
+        template_version: "v1",
+        attempted_at: "2026-05-21T10:12:00.000Z",
+        delivery_trigger: payload.delivery_trigger ?? "manual",
+        notice: {
+          target_id: payload.target_id ?? "arrears-1",
+          target_type: payload.target_type ?? "arrears_case",
+          title: "Bright Cafe arrears",
+          summary: assignmentNoticeRetried
+            ? "Assignment notification email was queued."
+            : "Assignment notification email failed.",
+          assignee_user_id: assigneeId,
+          assignee_name: "Temba van Jaarsveld",
+          assignee_email: "temba@example.com",
+          group: assignmentNoticeRetried ? "in_flight" : "attention",
+          notification_status: assignmentNoticeRetried ? "queued" : "failed",
+          notification_detail: assignmentNoticeRetried
+            ? "Assignment email was queued by SendGrid."
+            : "SendGrid returned 500.",
+          channel: "email",
+          provider: "sendgrid",
+          template_key: "work_assignment_notification",
+          template_version: "v1",
+          due_date: "2026-05-18",
+          event_at: "2026-05-21T10:12:00.000Z",
+          follow_up_due: true,
+          work_url: "/operations",
+          provider_history: [],
+          sms_action_available: true,
+          sms_status: "skipped",
+          sms_detail: "Twilio Messaging is not configured.",
+          sms_provider: "twilio",
+          sms_recipient_phone: "+61400111222",
+          sms_provider_message_id: null,
+          sms_attempt_count: 1,
+          sms_provider_history: [
+            {
+              event: "provider_notification_attempted",
+              channel: "sms",
+              status: "skipped",
+              raw_event: null,
+              provider: "twilio",
+              attempted_at: "2026-05-21T10:12:00.000Z",
+              received_at: null,
+              recipient_email: null,
+              recipient_phone: "+61400111222",
+              provider_message_id: null,
+              error: "Twilio Messaging is not configured.",
+              template_key: "work_assignment_notification",
+              template_version: "v1",
+              delivery_trigger: payload.delivery_trigger ?? "manual",
+              recovery_of_generated_at: null,
+              delivery_attempt_count: 1,
+            },
+          ],
+          channel_receipts: [
+            noticeChannelReceipt({
+              channel: "email",
+              label: "Email",
+              provider: "sendgrid",
+              status: assignmentNoticeRetried ? "queued" : "failed",
+              detail: assignmentNoticeRetried
+                ? "Assignment email was queued by SendGrid."
+                : "SendGrid returned 500.",
+              recipient_email: "temba@example.com",
+              provider_message_id: assignmentNoticeRetried
+                ? "sg-notice-smoke-retry"
+                : "sg-notice-smoke-2",
+              template_key: "work_assignment_notification",
+              template_version: "v1",
+              attempted_at: assignmentNoticeRetried
+                ? "2026-05-21T10:10:00.000Z"
+                : "2026-05-20T00:30:00.000Z",
+              delivery_attempt_count: assignmentNoticeRetried ? 2 : 1,
+              message_sent: assignmentNoticeRetried,
+              action_available: !assignmentNoticeRetried,
+              rendered_message_preview: workNoticeEmailPreview(
+                "Bright Cafe arrears",
+              ),
+            }),
+            noticeChannelReceipt({
+              channel: "sms",
+              label: "SMS",
+              provider: "twilio",
+              status: "skipped",
+              detail: "Twilio Messaging is not configured.",
+              recipient_phone: "+61400111222",
+              attempted_at: "2026-05-21T10:12:00.000Z",
+              delivery_trigger: payload.delivery_trigger ?? "manual",
+              delivery_attempt_count: 1,
+              action_available: true,
+              rendered_message_preview: workNoticeSmsPreview(
+                "Bright Cafe arrears",
+              ),
+              provider_history: [
+                {
+                  event: "provider_notification_attempted",
+                  channel: "sms",
+                  status: "skipped",
+                  raw_event: null,
+                  provider: "twilio",
+                  attempted_at: "2026-05-21T10:12:00.000Z",
+                  received_at: null,
+                  recipient_email: null,
+                  recipient_phone: "+61400111222",
+                  provider_message_id: null,
+                  error: "Twilio Messaging is not configured.",
+                  template_key: "work_assignment_notification",
+                  template_version: "v1",
+                  delivery_trigger: payload.delivery_trigger ?? "manual",
+                  recovery_of_generated_at: null,
+                  delivery_attempt_count: 1,
+                },
+              ],
+            }),
+          ],
+        },
       });
       return;
     }
@@ -3467,6 +5001,7 @@ export async function mockLeasiumApi(
               : "preview",
             recovery_of_generated_at: payload.recovery_of_generated_at ?? null,
             delivery_attempt_count: sendApproved ? 1 : 0,
+            rendered_message_preview: workDigestMessagePreview(),
             items: [
               {
                 target_id: "work-order-1",
@@ -3520,6 +5055,47 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/billing-drafts") {
       await fulfillJson(route, billingDrafts);
+      return;
+    }
+
+    if (method === "POST" && path === "/billing-drafts/from-charge-rules") {
+      const payload = request.postDataJSON() as {
+        entity_id?: string;
+        lease_ids?: string[];
+      };
+      const leaseIds = payload.lease_ids ?? [];
+      const existingLeaseIds = new Set(
+        billingDrafts.map((draft) => draft.lease_id),
+      );
+      const createdDrafts = leaseIds
+        .filter((leaseId) => !existingLeaseIds.has(leaseId))
+        .map((leaseId, index) => {
+          const row = rentRoll.find((item) => item.lease_id === leaseId);
+          return {
+            ...billingDrafts[0],
+            id: `billing-draft-created-${index + 1}`,
+            property_id: row?.property_id ?? propertyId,
+            tenancy_unit_id: row?.tenancy_unit_id ?? unitId,
+            tenant_id: row?.tenant_id ?? tenantId,
+            lease_id: leaseId,
+            status: "draft",
+            title: `${row?.tenant_name ?? "Tenant"} draft charges`,
+            total_cents: row?.charge_rules_total_cents ?? 0,
+            metadata: { source: "charge_rules" },
+            lines: [],
+            created_at: "2026-05-21T00:15:00.000Z",
+            updated_at: "2026-05-21T00:15:00.000Z",
+          } as (typeof billingDrafts)[number];
+        });
+      billingDrafts.push(...createdDrafts);
+      await fulfillJson(route, {
+        entity_id: payload.entity_id ?? entityId,
+        created: createdDrafts.length,
+        existing: leaseIds.length - createdDrafts.length,
+        skipped: 0,
+        drafts: createdDrafts,
+        skipped_rows: [],
+      });
       return;
     }
 

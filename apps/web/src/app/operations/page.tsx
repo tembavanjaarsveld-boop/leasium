@@ -73,6 +73,7 @@ import {
   updateObligation,
   type WorkAssignmentDigestCadence,
   type WorkAssignmentDigestRunRecord,
+  type WorkAssignmentRenderedMessagePreviewRecord,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -586,7 +587,16 @@ type MaintenanceActivityEntry = {
   action?: string;
   actor?: string;
   source?: string;
+  status?: string;
   summary?: string;
+  visibility?: string;
+};
+
+type MaintenanceTimelineEntry = {
+  at: string;
+  label: string;
+  detail: string;
+  meta: string[];
 };
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -994,10 +1004,27 @@ function maintenanceActivity(workOrder: MaintenanceWorkOrderRecord) {
         action: typeof entry.action === "string" ? entry.action : undefined,
         actor: typeof entry.actor === "string" ? entry.actor : undefined,
         source: typeof entry.source === "string" ? entry.source : undefined,
+        status: typeof entry.status === "string" ? entry.status : undefined,
         summary: typeof entry.summary === "string" ? entry.summary : undefined,
+        visibility:
+          typeof entry.visibility === "string" ? entry.visibility : undefined,
       }),
     )
     .filter((entry) => entry.summary || entry.event || entry.action);
+}
+
+function activityMeta(entry: {
+  actor?: string;
+  source?: string;
+  status?: string;
+  visibility?: string;
+}) {
+  return [
+    entry.visibility ? `${label(entry.visibility)} visible` : null,
+    entry.status ? label(entry.status) : null,
+    entry.source ? label(entry.source) : null,
+    entry.actor ? entry.actor : null,
+  ].filter((item): item is string => Boolean(item));
 }
 
 function obligationTone(obligation: ObligationRecord): Tone {
@@ -3751,6 +3778,50 @@ function digestDeliveryTone(result: WorkAssignmentDigestRunRecord) {
   return "neutral" as const;
 }
 
+function WorkDigestMessagePreview({
+  preview,
+}: {
+  preview: WorkAssignmentRenderedMessagePreviewRecord | null;
+}) {
+  if (!preview) {
+    return null;
+  }
+  return (
+    <details className="mt-2 rounded-md border border-border bg-muted/30">
+      <summary className="cursor-pointer px-2 py-1.5 text-xs font-semibold text-primary hover:text-leasium-blue-hover">
+        Message preview
+      </summary>
+      <div className="border-t border-border px-2 py-2 text-xs">
+        <div className="flex flex-wrap gap-2 text-muted-foreground">
+          <span>{label(preview.channel)}</span>
+          <span>{label(preview.provider)}</span>
+          {preview.template_key || preview.template_version ? (
+            <span>
+              {preview.template_key} {preview.template_version}
+            </span>
+          ) : null}
+        </div>
+        {preview.subject ? (
+          <div className="mt-2 font-semibold text-foreground">
+            {preview.subject}
+          </div>
+        ) : null}
+        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-white p-2 font-sans leading-5 text-muted-foreground">
+          {preview.body_text}
+        </pre>
+        {preview.action_label && preview.action_url ? (
+          <Link
+            href={digestItemHref(preview.action_url)}
+            className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-leasium-blue-hover"
+          >
+            {preview.action_label}
+          </Link>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
 function AssignmentDigestPreview({
   result,
 }: {
@@ -3832,6 +3903,9 @@ function AssignmentDigestPreview({
                 {digest.delivery_detail}
               </div>
             ) : null}
+            <WorkDigestMessagePreview
+              preview={digest.rendered_message_preview}
+            />
             <div className="mt-2 grid gap-1.5">
               {digest.items.slice(0, 3).map((item) => (
                 <Link
@@ -3898,21 +3972,24 @@ function maintenanceTimeline(workOrder: MaintenanceWorkOrderRecord) {
     at: entry.at ?? entry.timestamp ?? workOrder.updated_at,
     label: label(entry.event ?? entry.action ?? "Activity"),
     detail:
-      entry.summary ??
-      [entry.actor, entry.source].filter(Boolean).join(" - ") ??
+      entry.summary ||
+      [entry.actor, entry.source].filter(Boolean).join(" - ") ||
       "Maintenance activity updated.",
+    meta: activityMeta(entry),
   }));
   const derived = [
     {
       at: workOrder.requested_at,
       label: "Requested",
       detail: workOrder.source_reference || "Work order opened.",
+      meta: workOrder.status ? [label(workOrder.status)] : [],
     },
     workOrder.contractor_assigned_at
       ? {
           at: workOrder.contractor_assigned_at,
           label: "Contractor assigned",
           detail: workOrder.contractor_name || "Contractor added.",
+          meta: ["Contractor"],
         }
       : null,
     workOrder.approval_required
@@ -3924,6 +4001,7 @@ function maintenanceTimeline(workOrder: MaintenanceWorkOrderRecord) {
             (workOrder.quote_amount_cents
               ? `Quote ${formatMoney(workOrder.quote_amount_cents)}`
               : "Approval tracked."),
+          meta: [label(workOrder.approval_status)],
         }
       : null,
     workOrder.invoice_draft_id ||
@@ -3940,6 +4018,7 @@ function maintenanceTimeline(workOrder: MaintenanceWorkOrderRecord) {
           ]
             .filter(Boolean)
             .join(" - "),
+          meta: ["Billing"],
         }
       : null,
     workOrder.completed_at
@@ -3947,9 +4026,10 @@ function maintenanceTimeline(workOrder: MaintenanceWorkOrderRecord) {
           at: workOrder.completed_at,
           label: "Completed",
           detail: workOrder.notes || "Work order completed.",
+          meta: ["Completed"],
         }
       : null,
-  ].filter(Boolean) as { at: string; label: string; detail: string }[];
+  ].filter(Boolean) as MaintenanceTimelineEntry[];
 
   const combined = backendHistory.length ? backendHistory : derived;
   return combined
@@ -4197,6 +4277,14 @@ function MaintenanceDetailPanel({
                   <span className="text-xs text-muted-foreground">
                     {formatDateTime(entry.at)}
                   </span>
+                  {entry.meta.map((item) => (
+                    <span
+                      key={item}
+                      className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground"
+                    >
+                      {item}
+                    </span>
+                  ))}
                 </div>
                 <div className="text-muted-foreground">{entry.detail}</div>
               </div>
@@ -4311,20 +4399,13 @@ function MaintenanceActions({
           Start
         </SecondaryButton>
       ) : null}
-      <SecondaryButton
-        type="button"
-        className="h-9 px-3"
-        disabled={disabled}
-        onClick={() =>
-          onUpdate({
-            status: "completed",
-            completed_at: new Date().toISOString(),
-          })
-        }
+      <Link
+        className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+        href={`/operations/maintenance/${workOrder.id}`}
       >
         <CheckCircle2 size={15} className="text-leasium-success" />
-        Complete
-      </SecondaryButton>
+        Review completion
+      </Link>
     </div>
   );
 }

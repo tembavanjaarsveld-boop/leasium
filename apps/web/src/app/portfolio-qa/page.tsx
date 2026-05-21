@@ -3,9 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowRight,
+  Building2,
   CheckCircle2,
   ClipboardList,
   FileText,
+  History,
   Loader2,
   MailCheck,
   RefreshCw,
@@ -19,6 +22,13 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import {
+  EvidenceSourceTrail,
+  type EvidenceFieldChange,
+  type EvidenceHistoryRow,
+  type EvidenceSourceDocument,
+  type EvidenceSourceLocation,
+} from "@/components/evidence-drawer";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -44,6 +54,7 @@ import {
   listTenants,
   TenantPayload,
   TenantRecord,
+  updateProperty,
   updateTenant,
   type BillingDraftBatchRecord,
   type BillingDraftRecord,
@@ -77,6 +88,7 @@ type SourceRow = {
   detail: string;
   source: string;
   href: string;
+  evidence?: SourceEvidence;
 };
 
 type TenantPrepRow = {
@@ -97,6 +109,29 @@ type TenantContactDraft = {
   contact_email?: string;
   billing_email?: string;
   abn?: string;
+};
+
+type PropertyBillingDraft = {
+  owner_legal_name?: string;
+  owner_abn?: string;
+  trustee_name?: string;
+  trust_name?: string;
+  invoice_issuer_name?: string;
+  billing_contact_name?: string;
+  billing_email?: string;
+  ownership_split?: string;
+};
+
+type SourceEvidence = {
+  title: string;
+  description?: string;
+  sourceDocument?: string | EvidenceSourceDocument | null;
+  sourceLocation?: string | EvidenceSourceLocation | null;
+  confidence?: number | null;
+  appliedAt?: string | null;
+  appliedBy?: string | null;
+  changes?: EvidenceFieldChange[];
+  history?: EvidenceHistoryRow[];
 };
 
 const tabs: Array<{ id: QaTab; label: string; description: string }> = [
@@ -122,6 +157,18 @@ function addDays(days: number) {
   const date = new Date();
   date.setDate(date.getDate() + days);
   return dateOnly(date);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function textValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function dueRank(value: string | null | undefined) {
@@ -173,7 +220,7 @@ function cleanText(value: string | null | undefined) {
 
 function metadataText(metadata: Record<string, unknown>, key: string) {
   const value = metadata[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  return textValue(value);
 }
 
 function sourceLabel(metadata: Record<string, unknown>) {
@@ -199,6 +246,309 @@ function tenantName(tenant: TenantRecord) {
   return tenant.trading_name
     ? `${tenant.trading_name} (${tenant.legal_name})`
     : tenant.legal_name;
+}
+
+function fieldLabel(field: string) {
+  return field
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function shortId(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  return value.length > 10 ? `${value.slice(0, 8)}...` : value;
+}
+
+function sourceLocationFromParts({
+  sheet,
+  row,
+  sourceHint,
+}: {
+  sheet?: string | null;
+  row?: string | number | null;
+  sourceHint?: string | null;
+}): EvidenceSourceLocation | null {
+  if (sheet) {
+    return {
+      label: row ? `${sheet} row ${row}` : sheet,
+      detail: sourceHint ?? undefined,
+    };
+  }
+  if (sourceHint) {
+    return { label: sourceHint };
+  }
+  return null;
+}
+
+function citationLocation(value: unknown): EvidenceSourceLocation | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const sourceHint = textValue(value.source_hint);
+  const citation = textValue(value.citation);
+  const url = textValue(value.url);
+  const labelText = sourceHint ?? citation;
+  if (!labelText) {
+    return null;
+  }
+  return {
+    label: labelText,
+    href: url ?? undefined,
+    detail: sourceHint && citation ? citation : undefined,
+  };
+}
+
+function confidenceValue(value: unknown) {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return numberValue(value.confidence);
+}
+
+function evidenceChangesFromUnknown(changes: unknown): EvidenceFieldChange[] {
+  if (!Array.isArray(changes)) {
+    return [];
+  }
+  return changes
+    .map((change, index): EvidenceFieldChange | null => {
+      if (!isRecord(change)) {
+        return null;
+      }
+      const field = textValue(change.field);
+      if (!field) {
+        return null;
+      }
+      const source = isRecord(change.source) ? change.source : null;
+      return {
+        id: `${field}-${index}`,
+        field,
+        label: textValue(change.label) ?? fieldLabel(field),
+        before: change.before,
+        after: change.after,
+        sourceLocation: citationLocation(source),
+        confidence: confidenceValue(source),
+      } satisfies EvidenceFieldChange;
+    })
+    .filter((change): change is EvidenceFieldChange => change !== null);
+}
+
+function sourceHistoryRowsFromMetadata(metadata: Record<string, unknown>) {
+  const history = Array.isArray(metadata.register_import_history)
+    ? metadata.register_import_history
+    : isRecord(metadata.last_register_import)
+      ? [metadata.last_register_import]
+      : [];
+  return history.filter(isRecord);
+}
+
+function registerImportRows({
+  kind,
+  title,
+  href,
+  metadata,
+}: {
+  kind: string;
+  title: string;
+  href: string;
+  metadata: Record<string, unknown>;
+}): SourceRow[] {
+  return sourceHistoryRowsFromMetadata(metadata).map((entry, index) => {
+    const filename = textValue(entry.filename) ?? metadataText(metadata, "source_filename");
+    const sheet = textValue(entry.sheet) ?? metadataText(metadata, "source_sheet");
+    const row = textValue(entry.row) ?? numberValue(entry.row);
+    const sourceHint = textValue(entry.source_hint) ?? metadataText(metadata, "source_hint");
+    const changes = evidenceChangesFromUnknown(entry.changes);
+    return {
+      id: `${kind.toLowerCase()}-register-${title}-${index}`,
+      kind,
+      title,
+      detail:
+        [filename, sheet ? `${sheet}${row ? ` row ${row}` : ""}` : null]
+          .filter(Boolean)
+          .join(" / ") || sourceHint || "Register import",
+      source: "Register import",
+      href,
+      evidence: {
+        title: `${title} register import`,
+        description: "Workbook action, reviewed field changes, and source row provenance.",
+        sourceDocument: filename ? { label: filename, detail: "Imported workbook" } : "Imported workbook",
+        sourceLocation: sourceLocationFromParts({ sheet, row, sourceHint }),
+        confidence: numberValue(entry.confidence) ?? numberValue(metadata.confidence),
+        changes,
+        history: [
+          {
+            label: changes.length ? "Import action applied" : "Import source recorded",
+            description:
+              sourceHint ??
+              [filename, sheet ? `${sheet}${row ? ` row ${row}` : ""}` : null]
+                .filter(Boolean)
+                .join(" / "),
+            tone: changes.length ? "success" : "neutral",
+          },
+        ],
+      },
+    };
+  });
+}
+
+function citationRows({
+  kind,
+  title,
+  href,
+  metadata,
+}: {
+  kind: string;
+  title: string;
+  href: string;
+  metadata: Record<string, unknown>;
+}): SourceRow[] {
+  const citations = isRecord(metadata.source_citations) ? metadata.source_citations : null;
+  if (!citations) {
+    return [];
+  }
+  const changes = Object.entries(citations)
+    .map(([field, source], index): EvidenceFieldChange | null => {
+      const location = citationLocation(source);
+      if (!location) {
+        return null;
+      }
+      return {
+        id: `${field}-citation-${index}`,
+        field,
+        label: fieldLabel(field),
+        before: null,
+        after: textValue(isRecord(source) ? source.citation : null) ?? location.label,
+        sourceLocation: location,
+        confidence: confidenceValue(source),
+      } satisfies EvidenceFieldChange;
+    })
+    .filter((change): change is EvidenceFieldChange => change !== null);
+  if (!changes.length) {
+    return [];
+  }
+  return [
+    {
+      id: `${kind.toLowerCase()}-citations-${title}`,
+      kind,
+      title,
+      detail: `${changes.length} field citation${changes.length === 1 ? "" : "s"}`,
+      source: "Field citations",
+      href,
+      evidence: {
+        title: `${title} field citations`,
+        description: "Reviewed source citations stored against individual fields.",
+        sourceDocument: "Reviewed evidence",
+        changes,
+        history: changes.map((change) => ({
+          label: `${change.label ?? fieldLabel(change.field)} source recorded`,
+          description:
+            typeof change.sourceLocation === "string"
+              ? change.sourceLocation
+              : change.sourceLocation?.label,
+          tone: "primary",
+        })),
+      },
+    },
+  ];
+}
+
+function propertyApplyRows(property: PropertyRecord): SourceRow[] {
+  const history = Array.isArray(property.metadata.apply_change_history)
+    ? property.metadata.apply_change_history
+    : [];
+  return history.filter(isRecord).map((entry, index) => {
+    const intakeId = textValue(entry.document_intake_id);
+    const documentId = textValue(entry.document_id);
+    const documentType = textValue(entry.document_type);
+    const changes = evidenceChangesFromUnknown(entry.changes);
+    return {
+      id: `property-apply-${property.id}-${index}`,
+      kind: "Property",
+      title: property.name,
+      detail:
+        [documentType ? label(documentType) : null, shortId(intakeId) ?? shortId(documentId)]
+          .filter(Boolean)
+          .join(" / ") || "Smart Intake apply history",
+      source: "Smart Intake",
+      href: intakeId ? `/intake?review=${intakeId}` : `/properties?entity_id=${property.entity_id}&property_id=${property.id}`,
+      evidence: {
+        title: `${property.name} Smart Intake history`,
+        description: "Source document and before/after changes applied to this property.",
+        sourceDocument: {
+          label: documentType ? label(documentType) : "Smart Intake document",
+          href: intakeId ? `/intake?review=${intakeId}` : undefined,
+          detail: shortId(intakeId) ?? shortId(documentId) ?? undefined,
+        },
+        changes,
+        history: [
+          {
+            label: "Smart Intake changes applied",
+            description: changes.length
+              ? `${changes.length} field change${changes.length === 1 ? "" : "s"} recorded.`
+              : "No before/after field changes were stored.",
+            tone: changes.length ? "success" : "neutral",
+          },
+        ],
+      },
+    };
+  });
+}
+
+function tenantEnrichmentRows(tenant: TenantRecord): SourceRow[] {
+  const enrichment = isRecord(tenant.metadata.public_enrichment)
+    ? tenant.metadata.public_enrichment
+    : null;
+  const history = Array.isArray(enrichment?.apply_history)
+    ? enrichment.apply_history
+    : [];
+  return history.filter(isRecord).map((entry, index) => {
+    const field = textValue(entry.field) ?? "enrichment";
+    const source = isRecord(entry.source) ? entry.source : null;
+    const changes = [
+      {
+        id: `tenant-enrichment-${tenant.id}-${index}`,
+        field,
+        label: textValue(entry.label) ?? fieldLabel(field),
+        before: entry.before,
+        after: entry.after,
+        sourceLocation: citationLocation(source),
+        confidence: confidenceValue(source),
+      } satisfies EvidenceFieldChange,
+    ];
+    return {
+      id: `tenant-enrichment-${tenant.id}-${index}`,
+      kind: "Tenant",
+      title: tenantName(tenant),
+      detail: `${fieldLabel(field)} enriched from public source`,
+      source: "Public enrichment",
+      href: `/tenants/${tenant.id}`,
+      evidence: {
+        title: `${tenantName(tenant)} public enrichment`,
+        description: "Reviewed public-source field changes applied to this tenant.",
+        sourceDocument: {
+          label: "Public enrichment",
+          detail: textValue(entry.label) ?? fieldLabel(field),
+        },
+        sourceLocation: citationLocation(source),
+        confidence: confidenceValue(source),
+        appliedAt: textValue(entry.applied_at),
+        appliedBy: shortId(textValue(entry.applied_by_user_id)) ?? undefined,
+        changes,
+        history: [
+          {
+            label: `${fieldLabel(field)} enriched`,
+            description: textValue(isRecord(source) ? source.citation : null) ?? undefined,
+            occurredAt: textValue(entry.applied_at),
+            tone: "success",
+          },
+        ],
+      },
+    };
+  });
 }
 
 function severityTone(issue: QaIssue) {
@@ -396,6 +746,7 @@ function buildSources({
 }) {
   const rows: SourceRow[] = [];
   for (const property of properties) {
+    const href = `/properties?entity_id=${property.entity_id}&property_id=${property.id}`;
     if (sourceDetail(property.metadata) || metadataText(property.metadata, "portfolio_import_source")) {
       rows.push({
         id: `property-${property.id}`,
@@ -403,11 +754,27 @@ function buildSources({
         title: property.name,
         detail: sourceDetail(property.metadata) || property.street_address,
         source: sourceLabel(property.metadata),
-        href: `/properties?entity_id=${property.entity_id}&property_id=${property.id}`,
+        href,
       });
     }
+    rows.push(
+      ...registerImportRows({
+        kind: "Property",
+        title: property.name,
+        href,
+        metadata: property.metadata,
+      }),
+      ...propertyApplyRows(property),
+      ...citationRows({
+        kind: "Property",
+        title: property.name,
+        href,
+        metadata: property.metadata,
+      }),
+    );
   }
   for (const tenant of tenants) {
+    const href = `/tenants/${tenant.id}`;
     if (sourceDetail(tenant.metadata) || metadataText(tenant.metadata, "insurance_status")) {
       rows.push({
         id: `tenant-${tenant.id}`,
@@ -419,9 +786,24 @@ function buildSources({
             .filter(Boolean)
             .join(" / "),
         source: sourceLabel(tenant.metadata),
-        href: `/tenants/${tenant.id}`,
+        href,
       });
     }
+    rows.push(
+      ...registerImportRows({
+        kind: "Tenant",
+        title: tenantName(tenant),
+        href,
+        metadata: tenant.metadata,
+      }),
+      ...tenantEnrichmentRows(tenant),
+      ...citationRows({
+        kind: "Tenant",
+        title: tenantName(tenant),
+        href,
+        metadata: tenant.metadata,
+      }),
+    );
   }
   for (const obligation of obligations) {
     if (sourceDetail(obligation.metadata) || metadataText(obligation.metadata, "portfolio_import_key")) {
@@ -499,6 +881,27 @@ function buildTenantPrep(
     .sort((a, b) => Number(b.ready) - Number(a.ready) || a.tenantName.localeCompare(b.tenantName));
 }
 
+function tenantMissingContactFields(tenant: TenantRecord) {
+  return [
+    !tenant.contact_name ? "primary contact" : null,
+    !tenant.contact_email ? "contact email" : null,
+    !tenant.billing_email ? "billing email" : null,
+    !tenant.abn ? "ABN" : null,
+  ].filter((item): item is string => Boolean(item));
+}
+
+function propertyMissingBillingFields(property: PropertyRecord) {
+  const ownerScoped =
+    property.ownership_structure && property.ownership_structure !== "current_entity";
+  return [
+    ownerScoped && !property.owner_legal_name ? "legal owner" : null,
+    ownerScoped && !property.owner_abn ? "owner ABN" : null,
+    !property.invoice_issuer_name ? "invoice issuer" : null,
+    !property.billing_contact_name ? "billing contact" : null,
+    !property.billing_email ? "billing email" : null,
+  ].filter((item): item is string => Boolean(item));
+}
+
 function MetricCard({
   label: metricLabel,
   value,
@@ -540,8 +943,12 @@ function PortfolioQaWorkspace() {
   const [search, setSearch] = useState("");
   const [selectedLeaseIds, setSelectedLeaseIds] = useState<string[]>([]);
   const [tenantDrafts, setTenantDrafts] = useState<Record<string, TenantContactDraft>>({});
+  const [propertyDrafts, setPropertyDrafts] = useState<Record<string, PropertyBillingDraft>>({});
+  const [focusedTenantId, setFocusedTenantId] = useState<string | null>(null);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [billingBatch, setBillingBatch] = useState<BillingDraftBatchRecord | null>(null);
   const [onboardingResult, setOnboardingResult] = useState("");
+  const [propertyFixResult, setPropertyFixResult] = useState("");
 
   const entitiesQuery = useQuery({ queryKey: ["entities"], queryFn: listEntities });
   const entities = useMemo(() => entitiesQuery.data ?? [], [entitiesQuery.data]);
@@ -574,6 +981,18 @@ function PortfolioQaWorkspace() {
       window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
     }
   }, [selectedEntityId]);
+
+  useEffect(() => {
+    if (activeTab !== "contacts" || !focusedTenantId) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      document
+        .getElementById(`tenant-contact-${focusedTenantId}`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, focusedTenantId]);
 
   const propertiesQuery = useQuery({
     queryKey: ["properties", selectedEntityId],
@@ -636,7 +1055,10 @@ function PortfolioQaWorkspace() {
   );
 
   const tenantsNeedingContact = tenants.filter(
-    (tenant) => !tenant.contact_email || !tenant.billing_email || !tenant.abn || !tenant.contact_name,
+    (tenant) => tenantMissingContactFields(tenant).length > 0,
+  );
+  const propertiesNeedingBillingFix = properties.filter(
+    (property) => propertyMissingBillingFields(property).length > 0,
   );
   const readyPrepRows = tenantPrep.filter((row) => row.ready);
   const selectedReadyRows = tenantPrep.filter(
@@ -646,11 +1068,15 @@ function PortfolioQaWorkspace() {
     [issue.area, issue.title, issue.detail].join(" ").toLowerCase().includes(search.toLowerCase()),
   );
   const searchableSources = sources.filter((source) =>
-    [source.kind, source.title, source.detail, source.source]
+    [source.kind, source.title, source.detail, source.source, source.evidence?.title, source.evidence?.description]
       .join(" ")
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
+  const selectedSource =
+    searchableSources.find((source) => source.id === selectedSourceId) ??
+    searchableSources.find((source) => source.evidence) ??
+    null;
 
   const loading =
     entitiesQuery.isLoading ||
@@ -689,6 +1115,41 @@ function PortfolioQaWorkspace() {
       });
       queryClient.invalidateQueries({ queryKey: ["tenants", selectedEntityId] });
       queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
+    },
+  });
+
+  const updatePropertyMutation = useMutation({
+    mutationFn: ({
+      property,
+      draft,
+    }: {
+      property: PropertyRecord;
+      draft: PropertyBillingDraft;
+    }) =>
+      updateProperty(property.id, {
+        owner_legal_name: cleanText(draft.owner_legal_name ?? property.owner_legal_name ?? ""),
+        owner_abn: cleanText(draft.owner_abn ?? property.owner_abn ?? ""),
+        trustee_name: cleanText(draft.trustee_name ?? property.trustee_name ?? ""),
+        trust_name: cleanText(draft.trust_name ?? property.trust_name ?? ""),
+        invoice_issuer_name: cleanText(
+          draft.invoice_issuer_name ?? property.invoice_issuer_name ?? "",
+        ),
+        billing_contact_name: cleanText(
+          draft.billing_contact_name ?? property.billing_contact_name ?? "",
+        ),
+        billing_email: cleanText(draft.billing_email ?? property.billing_email ?? ""),
+        ownership_split: cleanText(draft.ownership_split ?? property.ownership_split ?? ""),
+      }),
+    onSuccess: (_property, variables) => {
+      setPropertyDrafts((current) => {
+        const next = { ...current };
+        delete next[variables.property.id];
+        return next;
+      });
+      setPropertyFixResult(`${variables.property.name} billing identity saved.`);
+      queryClient.invalidateQueries({ queryKey: ["properties", selectedEntityId] });
+      queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
+      queryClient.invalidateQueries({ queryKey: ["billing-drafts", selectedEntityId] });
     },
   });
 
@@ -744,6 +1205,10 @@ function PortfolioQaWorkspace() {
     return tenantDrafts[tenant.id]?.[field] ?? tenant[field] ?? "";
   }
 
+  function propertyDraftValue(property: PropertyRecord, field: keyof PropertyBillingDraft) {
+    return propertyDrafts[property.id]?.[field] ?? property[field] ?? "";
+  }
+
   function updateTenantDraft(tenantId: string, field: keyof TenantContactDraft, value: string) {
     setTenantDrafts((current) => ({
       ...current,
@@ -752,6 +1217,21 @@ function PortfolioQaWorkspace() {
         [field]: value,
       },
     }));
+  }
+
+  function updatePropertyDraft(propertyId: string, field: keyof PropertyBillingDraft, value: string) {
+    setPropertyDrafts((current) => ({
+      ...current,
+      [propertyId]: {
+        ...current[propertyId],
+        [field]: value,
+      },
+    }));
+  }
+
+  function openTenantContactFix(tenantId: string) {
+    setFocusedTenantId(tenantId);
+    setActiveTab("contacts");
   }
 
   function toggleLease(leaseId: string, checked: boolean) {
@@ -869,6 +1349,7 @@ function PortfolioQaWorkspace() {
         ) : null}
 
         {!loading && !error && activeTab === "issues" ? (
+          <>
           <SectionPanel
             title="Portfolio data QA"
             description="The highest-friction cleanup items from the live register."
@@ -905,6 +1386,121 @@ function PortfolioQaWorkspace() {
               <EmptyState title="No QA issues found" description="The imported register is clean for the current checks." />
             )}
           </SectionPanel>
+          <SectionPanel
+            title="Owner and billing guided fixes"
+            description="Patch the billing identity fields that block invoice approval, owner snapshots, and accounting readiness."
+            icon={<Building2 size={17} className="text-primary" />}
+          >
+            {propertyFixResult ? (
+              <div className="border-b border-border bg-primary/5 px-4 py-3 text-sm font-medium text-primary">
+                {propertyFixResult}
+              </div>
+            ) : null}
+            {propertiesNeedingBillingFix.length ? (
+              <div className="divide-y divide-border">
+                {propertiesNeedingBillingFix.map((property) => {
+                  const missingFields = propertyMissingBillingFields(property);
+                  return (
+                    <div
+                      key={property.id}
+                      className="grid gap-3 px-4 py-4 xl:grid-cols-[minmax(180px,0.9fr)_minmax(0,2fr)_auto] xl:items-end"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/properties?entity_id=${property.entity_id}&property_id=${property.id}`}
+                            className="font-semibold text-primary"
+                          >
+                            {property.name}
+                          </Link>
+                          <StatusBadge tone="warning">
+                            {missingFields.length} missing
+                          </StatusBadge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {missingFields.join(", ")}
+                        </p>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                        <Field label="Legal owner">
+                          <Input
+                            value={propertyDraftValue(property, "owner_legal_name")}
+                            onChange={(event) =>
+                              updatePropertyDraft(
+                                property.id,
+                                "owner_legal_name",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                        <Field label="Owner ABN">
+                          <Input
+                            value={propertyDraftValue(property, "owner_abn")}
+                            onChange={(event) =>
+                              updatePropertyDraft(property.id, "owner_abn", event.target.value)
+                            }
+                          />
+                        </Field>
+                        <Field label="Invoice issuer">
+                          <Input
+                            value={propertyDraftValue(property, "invoice_issuer_name")}
+                            onChange={(event) =>
+                              updatePropertyDraft(
+                                property.id,
+                                "invoice_issuer_name",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                        <Field label="Billing contact">
+                          <Input
+                            value={propertyDraftValue(property, "billing_contact_name")}
+                            onChange={(event) =>
+                              updatePropertyDraft(
+                                property.id,
+                                "billing_contact_name",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                        <Field label="Billing email">
+                          <Input
+                            value={propertyDraftValue(property, "billing_email")}
+                            onChange={(event) =>
+                              updatePropertyDraft(property.id, "billing_email", event.target.value)
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() =>
+                          updatePropertyMutation.mutate({
+                            property,
+                            draft: propertyDrafts[property.id] ?? {},
+                          })
+                        }
+                        disabled={updatePropertyMutation.isPending}
+                      >
+                        {updatePropertyMutation.isPending ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <Save size={15} />
+                        )}
+                        Save fix
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState title="Owner billing data is complete" description="No property owner or billing identity blockers are visible for this entity." />
+            )}
+          </SectionPanel>
+          </>
         ) : null}
 
         {!loading && !error && activeTab === "contacts" ? (
@@ -915,67 +1511,85 @@ function PortfolioQaWorkspace() {
           >
             {tenantsNeedingContact.length ? (
               <div className="divide-y divide-border">
-                {tenantsNeedingContact.map((tenant) => (
-                  <div key={tenant.id} className="grid gap-3 px-4 py-4 xl:grid-cols-[minmax(180px,1.1fr)_repeat(4,minmax(120px,1fr))_auto] xl:items-end">
-                    <div className="min-w-0">
-                      <Link href={`/tenants/${tenant.id}`} className="font-semibold text-primary">
-                        {tenantName(tenant)}
-                      </Link>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {[metadataText(tenant.metadata, "insurance_status"), metadataText(tenant.metadata, "arrears")]
-                          .filter(Boolean)
-                          .join(" / ") || "Imported tenant"}
-                      </p>
-                    </div>
-                    <Field label="Contact">
-                      <Input
-                        value={draftValue(tenant, "contact_name")}
-                        onChange={(event) =>
-                          updateTenantDraft(tenant.id, "contact_name", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Contact email">
-                      <Input
-                        value={draftValue(tenant, "contact_email")}
-                        onChange={(event) =>
-                          updateTenantDraft(tenant.id, "contact_email", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Billing email">
-                      <Input
-                        value={draftValue(tenant, "billing_email")}
-                        onChange={(event) =>
-                          updateTenantDraft(tenant.id, "billing_email", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="ABN">
-                      <Input
-                        value={draftValue(tenant, "abn")}
-                        onChange={(event) => updateTenantDraft(tenant.id, "abn", event.target.value)}
-                      />
-                    </Field>
-                    <Button
-                      type="button"
-                      onClick={() =>
-                        updateTenantMutation.mutate({
-                          tenant,
-                          draft: tenantDrafts[tenant.id] ?? {},
-                        })
-                      }
-                      disabled={updateTenantMutation.isPending}
-                    >
-                      {updateTenantMutation.isPending ? (
-                        <Loader2 size={15} className="animate-spin" />
-                      ) : (
-                        <Save size={15} />
+                {tenantsNeedingContact.map((tenant) => {
+                  const missingFields = tenantMissingContactFields(tenant);
+                  return (
+                    <div
+                      key={tenant.id}
+                      id={`tenant-contact-${tenant.id}`}
+                      className={cn(
+                        "grid gap-3 px-4 py-4 xl:grid-cols-[minmax(180px,1.1fr)_repeat(4,minmax(120px,1fr))_auto] xl:items-end",
+                        focusedTenantId === tenant.id && "bg-primary/5 ring-1 ring-inset ring-primary/20",
                       )}
-                      Save
-                    </Button>
-                  </div>
-                ))}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link href={`/tenants/${tenant.id}`} className="font-semibold text-primary">
+                            {tenantName(tenant)}
+                          </Link>
+                          <StatusBadge tone={missingFields.includes("contact email") ? "danger" : "warning"}>
+                            {missingFields.length} missing
+                          </StatusBadge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {missingFields.join(", ")}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {[metadataText(tenant.metadata, "insurance_status"), metadataText(tenant.metadata, "arrears")]
+                            .filter(Boolean)
+                            .join(" / ") || "Imported tenant"}
+                        </p>
+                      </div>
+                      <Field label="Contact">
+                        <Input
+                          value={draftValue(tenant, "contact_name")}
+                          onChange={(event) =>
+                            updateTenantDraft(tenant.id, "contact_name", event.target.value)
+                          }
+                        />
+                      </Field>
+                      <Field label="Contact email">
+                        <Input
+                          value={draftValue(tenant, "contact_email")}
+                          onChange={(event) =>
+                            updateTenantDraft(tenant.id, "contact_email", event.target.value)
+                          }
+                        />
+                      </Field>
+                      <Field label="Billing email">
+                        <Input
+                          value={draftValue(tenant, "billing_email")}
+                          onChange={(event) =>
+                            updateTenantDraft(tenant.id, "billing_email", event.target.value)
+                          }
+                        />
+                      </Field>
+                      <Field label="ABN">
+                        <Input
+                          value={draftValue(tenant, "abn")}
+                          onChange={(event) => updateTenantDraft(tenant.id, "abn", event.target.value)}
+                        />
+                      </Field>
+                      <Button
+                        type="button"
+                        onClick={() =>
+                          updateTenantMutation.mutate({
+                            tenant,
+                            draft: tenantDrafts[tenant.id] ?? {},
+                          })
+                        }
+                        disabled={updateTenantMutation.isPending}
+                      >
+                        {updateTenantMutation.isPending ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <Save size={15} />
+                        )}
+                        Save fix
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <EmptyState title="Tenant contact data is complete" description="Every tenant has the current cleanup fields filled." />
@@ -998,21 +1612,62 @@ function PortfolioQaWorkspace() {
             }
           >
             {searchableSources.length ? (
-              <div className="divide-y divide-border">
-                {searchableSources.map((source) => (
-                  <Link
-                    key={source.id}
-                    href={source.href}
-                    className="grid gap-3 px-4 py-4 transition hover:bg-muted/60 md:grid-cols-[120px_minmax(0,1fr)_minmax(180px,auto)] md:items-center"
-                  >
-                    <StatusBadge tone="neutral">{source.kind}</StatusBadge>
-                    <div className="min-w-0">
-                      <div className="font-semibold">{source.title}</div>
-                      <p className="mt-1 text-sm text-muted-foreground">{source.detail || "No row detail stored"}</p>
+              <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_minmax(320px,430px)]">
+                <div className="divide-y divide-border">
+                  {searchableSources.map((source) => (
+                    <div
+                      key={source.id}
+                      className={cn(
+                        "grid gap-3 px-4 py-4 transition md:grid-cols-[120px_minmax(0,1fr)_minmax(190px,auto)] md:items-center",
+                        selectedSource?.id === source.id ? "bg-primary/5" : "hover:bg-muted/60",
+                      )}
+                    >
+                      <StatusBadge tone={source.evidence ? "primary" : "neutral"}>
+                        {source.kind}
+                      </StatusBadge>
+                      <div className="min-w-0">
+                        <Link href={source.href} className="font-semibold text-primary">
+                          {source.title}
+                        </Link>
+                        <p className="mt-1 text-sm text-muted-foreground">{source.detail || "No row detail stored"}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                        <span className="text-sm font-semibold text-muted-foreground">{source.source}</span>
+                        {source.evidence ? (
+                          <SecondaryButton
+                            type="button"
+                            onClick={() => setSelectedSourceId(source.id)}
+                            className="min-h-9 px-3"
+                          >
+                            <History size={15} />
+                            Trail
+                          </SecondaryButton>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="text-sm font-semibold text-muted-foreground">{source.source}</div>
-                  </Link>
-                ))}
+                  ))}
+                </div>
+                <div className="border-t border-border p-4 xl:border-l xl:border-t-0">
+                  {selectedSource?.evidence ? (
+                    <EvidenceSourceTrail
+                      title={selectedSource.evidence.title}
+                      description={selectedSource.evidence.description}
+                      sourceDocument={selectedSource.evidence.sourceDocument}
+                      sourceLocation={selectedSource.evidence.sourceLocation}
+                      confidence={selectedSource.evidence.confidence}
+                      appliedAt={selectedSource.evidence.appliedAt}
+                      appliedBy={selectedSource.evidence.appliedBy}
+                      changes={selectedSource.evidence.changes ?? []}
+                      history={selectedSource.evidence.history ?? []}
+                      emptyMessage="No detailed source trail is attached to this row yet."
+                      className="shadow-none"
+                    />
+                  ) : (
+                    <div className="rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                      Select a row with a trail to inspect workbook rows, public enrichment, citations, and apply history.
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <EmptyState title="No source trails yet" description="Imported rows and document reviews will appear here as metadata is stored." />
@@ -1061,7 +1716,7 @@ function PortfolioQaWorkspace() {
             ) : null}
             <div className="divide-y divide-border">
               {tenantPrep.map((row) => (
-                <div key={row.id} className="grid gap-3 px-4 py-4 md:grid-cols-[32px_minmax(0,1fr)_minmax(170px,auto)_minmax(170px,auto)] md:items-center">
+                <div key={row.id} className="grid gap-3 px-4 py-4 md:grid-cols-[32px_minmax(0,1fr)_minmax(170px,auto)_minmax(170px,auto)_auto] md:items-center">
                   <input
                     type="checkbox"
                     className="h-4 w-4"
@@ -1084,6 +1739,46 @@ function PortfolioQaWorkspace() {
                   <div className="text-sm text-muted-foreground">{row.email ?? "No email"}</div>
                   <div className="text-sm font-medium text-muted-foreground">
                     {row.blockers.length ? row.blockers.join(" / ") : "Ready for batch invite"}
+                  </div>
+                  <div className="flex flex-wrap justify-start gap-2 md:justify-end">
+                    {row.ready && row.leaseId ? (
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          if (row.leaseId) {
+                            batchOnboardingMutation.mutate([row.leaseId]);
+                          }
+                        }}
+                        disabled={batchOnboardingMutation.isPending}
+                        className="min-h-9 px-3"
+                      >
+                        {batchOnboardingMutation.isPending ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <Send size={15} />
+                        )}
+                        Create invite
+                      </Button>
+                    ) : row.tenantId && row.blockers.some((blocker) => blocker.includes("email")) ? (
+                      <SecondaryButton
+                        type="button"
+                        onClick={() => openTenantContactFix(row.tenantId as string)}
+                        className="min-h-9 px-3"
+                      >
+                        <UserRound size={15} />
+                        Fix contact
+                      </SecondaryButton>
+                    ) : row.tenantId && row.onboarding ? (
+                      <Link
+                        href={`/tenants/${row.tenantId}`}
+                        className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                      >
+                        <ArrowRight size={15} />
+                        Recover link
+                      </Link>
+                    ) : (
+                      <span className="text-xs font-medium text-muted-foreground">Needs setup</span>
+                    )}
                   </div>
                 </div>
               ))}

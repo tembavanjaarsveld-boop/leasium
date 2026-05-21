@@ -8,6 +8,7 @@ import {
   Clock3,
   ExternalLink,
   MailCheck,
+  MessageSquare,
   RefreshCw,
   Send,
 } from "lucide-react";
@@ -29,10 +30,15 @@ import {
   listEntities,
   markWorkAssignmentNotificationCenterRead,
   runWorkAssignmentDigest,
+  sendWorkAssignmentNoticeEmail,
+  sendWorkAssignmentNoticeSms,
+  type WorkAssignmentNoticeChannelReceiptRecord,
   type WorkAssignmentNotificationCenterDigestRecord,
   type WorkAssignmentNotificationCenterItemRecord,
+  type WorkAssignmentNotificationChannelRecord,
   type WorkAssignmentProviderHistoryRecord,
   type WorkAssignmentNoticeGroup,
+  type WorkAssignmentRenderedMessagePreviewRecord,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -154,6 +160,45 @@ function channelLabel(value: string | null | undefined) {
   return "Unknown channel";
 }
 
+function channelReadinessTone(
+  channel: WorkAssignmentNotificationChannelRecord,
+): StatusTone {
+  if (channel.readiness === "actionable") {
+    return channel.configured || !channel.reason_code ? "success" : "warning";
+  }
+  if (channel.readiness === "read_only") {
+    return "neutral";
+  }
+  return "danger";
+}
+
+function channelReadinessLabel(readiness: string) {
+  if (readiness === "read_only") {
+    return "Read-only";
+  }
+  return label(readiness);
+}
+
+function setupCheckTone(status: string): StatusTone {
+  if (status === "ready") {
+    return "success";
+  }
+  if (status === "review") {
+    return "warning";
+  }
+  return "danger";
+}
+
+function setupCheckLabel(status: string) {
+  if (status === "ready") {
+    return "Ready";
+  }
+  if (status === "review") {
+    return "Review";
+  }
+  return "Missing";
+}
+
 function templateLabel(
   templateKey: string | null | undefined,
   templateVersion: string | null | undefined,
@@ -247,13 +292,13 @@ function digestRecoveryLabel(
 
 function noticeNextAction(notice: WorkAssignmentNotificationCenterItemRecord) {
   if (notice.notification_status === "failed") {
-    return "Retry the assignment email from Work.";
+    return "Retry the assignment email from this page.";
   }
   if (notice.notification_status === "skipped") {
-    return "Check the operator's Work email preference, then retry from Work.";
+    return "Check the operator's Work email preference, then retry from this page.";
   }
   if (notice.group === "ready") {
-    return "Send the assignment notice from Work.";
+    return "Send the assignment notice from this page.";
   }
   if (notice.group === "in_flight") {
     return "Wait for the provider receipt or open Work to retry.";
@@ -262,6 +307,109 @@ function noticeNextAction(notice: WorkAssignmentNotificationCenterItemRecord) {
     return "No recovery needed.";
   }
   return "Open Work to review the notice state.";
+}
+
+function canSendNotice(notice: WorkAssignmentNotificationCenterItemRecord) {
+  return (
+    notice.group === "ready" ||
+    notice.notification_status === "failed" ||
+    notice.notification_status === "skipped"
+  );
+}
+
+function noticeRecoveryLabel(notice: WorkAssignmentNotificationCenterItemRecord) {
+  return notice.notification_status === "failed" ||
+    notice.notification_status === "skipped"
+    ? "Retry notice"
+    : "Send notice";
+}
+
+function providerAttemptCount(
+  history: WorkAssignmentProviderHistoryRecord[] | null | undefined,
+) {
+  return (
+    history?.filter((event) => event.event === "provider_notification_attempted")
+      .length ?? 0
+  );
+}
+
+function noticeChannelReceipt(
+  notice: WorkAssignmentNotificationCenterItemRecord,
+  channel: "email" | "sms" | "in_app",
+): WorkAssignmentNoticeChannelReceiptRecord | null {
+  const projected = (notice.channel_receipts ?? []).find(
+    (receipt) => receipt.channel === channel,
+  );
+  if (projected) {
+    return projected;
+  }
+  if (channel === "email" && notice.notification_status) {
+    return {
+      channel: "email",
+      label: "Email",
+      provider: notice.provider,
+      status: notice.notification_status,
+      detail: notice.notification_detail,
+      recipient_email: notice.assignee_email,
+      recipient_phone: null,
+      provider_message_id: null,
+      template_key: notice.template_key,
+      template_version: notice.template_version,
+      attempted_at: notice.event_at,
+      sent_at: null,
+      receipt_at: null,
+      last_event: null,
+      delivery_trigger: null,
+      delivery_attempt_count: providerAttemptCount(notice.provider_history),
+      message_sent: noticeDeliverySent(notice.notification_status),
+      action_available: canSendNotice(notice),
+      provider_history: notice.provider_history,
+      rendered_message_preview: null,
+    };
+  }
+  if (channel === "sms" && (notice.sms_status || notice.sms_action_available)) {
+    return {
+      channel: "sms",
+      label: "SMS",
+      provider: notice.sms_provider,
+      status: notice.sms_status,
+      detail: notice.sms_detail,
+      recipient_email: null,
+      recipient_phone: notice.sms_recipient_phone,
+      provider_message_id: notice.sms_provider_message_id,
+      template_key: null,
+      template_version: null,
+      attempted_at: null,
+      sent_at: null,
+      receipt_at: null,
+      last_event: null,
+      delivery_trigger: null,
+      delivery_attempt_count: notice.sms_attempt_count,
+      message_sent: noticeDeliverySent(notice.sms_status),
+      action_available:
+        notice.sms_action_available && !noticeDeliverySent(notice.sms_status),
+      provider_history: notice.sms_provider_history,
+      rendered_message_preview: null,
+    };
+  }
+  return null;
+}
+
+function noticeDeliverySent(status: string | null | undefined) {
+  return ["queued", "sent", "delivered", "opened"].includes(status ?? "");
+}
+
+function canSendSmsNotice(notice: WorkAssignmentNotificationCenterItemRecord) {
+  return noticeChannelReceipt(notice, "sms")?.action_available ?? false;
+}
+
+function smsNoticeRecoveryLabel(
+  notice: WorkAssignmentNotificationCenterItemRecord,
+) {
+  const smsReceipt = noticeChannelReceipt(notice, "sms");
+  return smsReceipt?.status === "failed" || smsReceipt?.status === "skipped"
+    ? "Retry SMS"
+    : "Send SMS";
 }
 
 function digestNextAction(
@@ -328,7 +476,14 @@ function matchesNoticeChannelFilter(
   notice: WorkAssignmentNotificationCenterItemRecord,
   filter: DeliveryChannelFilter,
 ) {
-  return filter === "all" || noticeDeliveryChannel(notice) === filter;
+  if (filter === "all") {
+    return true;
+  }
+  if (filter === "email" || filter === "sms" || filter === "in_app") {
+    const receipt = noticeChannelReceipt(notice, filter);
+    return Boolean(receipt?.status || receipt?.action_available);
+  }
+  return noticeDeliveryChannel(notice) === filter;
 }
 
 function matchesDigestFilter(
@@ -401,6 +556,32 @@ function workHref(url: string | null) {
   }
 }
 
+function receiptRecipient(receipt: WorkAssignmentNoticeChannelReceiptRecord) {
+  return receipt.recipient_email ?? receipt.recipient_phone ?? null;
+}
+
+function receiptRows(receipt: WorkAssignmentNoticeChannelReceiptRecord) {
+  return [
+    ["Channel", channelLabel(receipt.channel)],
+    ["Status", receipt.status ? label(receipt.status) : null],
+    ["Provider", receipt.provider ? label(receipt.provider) : null],
+    ["Recipient", receiptRecipient(receipt)],
+    ["Message ID", receipt.provider_message_id],
+    ["Template", templateLabel(receipt.template_key, receipt.template_version)],
+    ["Trigger", receipt.delivery_trigger ? label(receipt.delivery_trigger) : null],
+    ["Attempted", formatDateTime(receipt.attempted_at)],
+    ["Sent", receipt.sent_at ? formatDateTime(receipt.sent_at) : null],
+    ["Receipt", receipt.receipt_at ? formatDateTime(receipt.receipt_at) : null],
+    ["Last event", receipt.last_event ? label(receipt.last_event) : null],
+    [
+      "Attempts",
+      receipt.delivery_attempt_count
+        ? String(receipt.delivery_attempt_count)
+        : null,
+    ],
+  ].filter((row): row is [string, string] => Boolean(row[1]));
+}
+
 function ProviderHistoryStrip({
   history,
 }: {
@@ -422,6 +603,7 @@ function ProviderHistoryStrip({
       </StatusBadge>
       {latest.event ? <span>{label(latest.event)}</span> : null}
       {latest.provider ? <span>{label(latest.provider)}</span> : null}
+      {latest.recipient_phone ? <span>{latest.recipient_phone}</span> : null}
       {timestamp ? <span>{formatDateTime(timestamp)}</span> : null}
       {template ? <span>{template}</span> : null}
       {latest.delivery_attempt_count ? (
@@ -432,16 +614,240 @@ function ProviderHistoryStrip({
   );
 }
 
-function NoticeRow({
-  notice,
+function MessagePreviewDisclosure({
+  preview,
 }: {
+  preview?: WorkAssignmentRenderedMessagePreviewRecord | null;
+}) {
+  if (!preview) {
+    return null;
+  }
+  const recipient = preview.recipient_email ?? preview.recipient_phone;
+  const template = templateLabel(preview.template_key, preview.template_version);
+  return (
+    <details className="mt-2 rounded-lg border border-border bg-white">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-leasium-blue-hover">
+        Message preview
+      </summary>
+      <div className="border-t border-border px-3 py-2 text-xs">
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
+          <span>{channelLabel(preview.channel)}</span>
+          <span>{label(preview.provider)}</span>
+          {recipient ? <span>{recipient}</span> : null}
+          {template ? <span>{template}</span> : null}
+        </div>
+        {preview.subject ? (
+          <div className="mt-2 font-semibold text-foreground">
+            {preview.subject}
+          </div>
+        ) : null}
+        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-muted/45 p-2 font-sans text-xs leading-5 text-muted-foreground">
+          {preview.body_text}
+        </pre>
+        {preview.action_label && preview.action_url ? (
+          <a
+            href={preview.action_url}
+            className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-leasium-blue-hover"
+          >
+            {preview.action_label}
+          </a>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+function ProviderSetupChecks({
+  channels,
+}: {
+  channels: WorkAssignmentNotificationChannelRecord[];
+}) {
+  const checks = channels.flatMap((channel) =>
+    (channel.setup_checks ?? []).map((check) => ({
+      ...check,
+      channelLabel: channel.label,
+    })),
+  );
+  if (!checks.length) {
+    return null;
+  }
+  const issueCount = checks.filter((check) => check.status !== "ready").length;
+  return (
+    <details className="rounded-lg border border-border bg-muted/20 text-xs md:col-span-3">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 font-semibold text-foreground">
+        <span>Provider setup checks</span>
+        <StatusBadge tone={issueCount ? "warning" : "success"}>
+          {issueCount ? `${issueCount} to review` : "Ready"}
+        </StatusBadge>
+      </summary>
+      <div className="grid gap-2 border-t border-border px-3 py-3 md:grid-cols-2">
+        {checks.map((check) => (
+          <div
+            key={`${check.channelLabel}-${check.key}`}
+            className="rounded-md border border-border bg-white px-3 py-2"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-semibold text-foreground">
+                {check.channelLabel} / {check.label}
+              </div>
+              <StatusBadge tone={setupCheckTone(check.status)}>
+                {setupCheckLabel(check.status)}
+              </StatusBadge>
+            </div>
+            <div className="mt-1 leading-5 text-muted-foreground">
+              {check.detail}
+            </div>
+            {check.value ? (
+              <div className="mt-2 break-all rounded-md bg-muted/45 px-2 py-1 font-mono text-[11px] leading-4 text-muted-foreground">
+                {check.value}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function ReceiptEvidenceDisclosure({
+  receipt,
+}: {
+  receipt: WorkAssignmentNoticeChannelReceiptRecord;
+}) {
+  const rows = receiptRows(receipt);
+  return (
+    <details className="mt-2 rounded-lg border border-border bg-white">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-leasium-blue-hover">
+        Receipt evidence
+      </summary>
+      <div className="border-t border-border px-3 py-2">
+        <div className="grid gap-1 text-xs">
+          {rows.map(([name, value]) => (
+            <div
+              key={name}
+              className="grid gap-1 sm:grid-cols-[7rem_1fr] sm:gap-3"
+            >
+              <span className="text-muted-foreground">{name}</span>
+              <span className="min-w-0 break-words font-medium text-foreground">
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+        {receipt.provider_history.length ? (
+          <div className="mt-3 border-t border-border pt-2">
+            <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+              Provider history
+            </div>
+            <div className="grid gap-2">
+              {receipt.provider_history.map((event, index) => {
+                const timestamp = event.received_at ?? event.attempted_at;
+                return (
+                  <div
+                    key={`${event.event ?? "event"}-${timestamp ?? index}`}
+                    className="rounded-md bg-muted/45 px-2 py-2 text-xs text-muted-foreground"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone={providerHistoryTone(event.status)}>
+                        {event.status ? label(event.status) : "Recorded"}
+                      </StatusBadge>
+                      {event.event ? (
+                        <span className="font-semibold text-foreground">
+                          {label(event.event)}
+                        </span>
+                      ) : null}
+                      {timestamp ? <span>{formatDateTime(timestamp)}</span> : null}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                      {event.provider ? <span>{label(event.provider)}</span> : null}
+                      {event.provider_message_id ? (
+                        <span>{event.provider_message_id}</span>
+                      ) : null}
+                      {event.recipient_email ? (
+                        <span>{event.recipient_email}</span>
+                      ) : null}
+                      {event.recipient_phone ? (
+                        <span>{event.recipient_phone}</span>
+                      ) : null}
+                      {event.delivery_attempt_count ? (
+                        <span>Attempt {event.delivery_attempt_count}</span>
+                      ) : null}
+                      {event.error ? <span>{event.error}</span> : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+function NoticeChannelReceiptCard({
+  receipt,
+}: {
+  receipt: WorkAssignmentNoticeChannelReceiptRecord;
+}) {
+  if (!receipt.status) {
+    return null;
+  }
+  const template = templateLabel(receipt.template_key, receipt.template_version);
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold text-foreground">{receipt.label}</span>
+        <StatusBadge tone={providerHistoryTone(receipt.status)}>
+          {label(receipt.status)}
+        </StatusBadge>
+        {receipt.provider ? <span>{label(receipt.provider)}</span> : null}
+        {receipt.recipient_phone ? <span>{receipt.recipient_phone}</span> : null}
+        {receipt.recipient_email ? <span>{receipt.recipient_email}</span> : null}
+        {receipt.delivery_attempt_count ? (
+          <span>Attempt {receipt.delivery_attempt_count}</span>
+        ) : null}
+        {template ? <span>{template}</span> : null}
+      </div>
+      {receipt.detail ? <div className="mt-1">{receipt.detail}</div> : null}
+      <ProviderHistoryStrip history={receipt.provider_history} />
+      <ReceiptEvidenceDisclosure receipt={receipt} />
+    </div>
+  );
+}
+
+function NoticeRow({
+  isSending,
+  isSendingSms,
+  notice,
+  onSend,
+  onSendSms,
+}: {
+  isSending: boolean;
+  isSendingSms: boolean;
   notice: WorkAssignmentNotificationCenterItemRecord;
+  onSend: (notice: WorkAssignmentNotificationCenterItemRecord) => void;
+  onSendSms: (notice: WorkAssignmentNotificationCenterItemRecord) => void;
 }) {
   const template = templateLabel(notice.template_key, notice.template_version);
+  const href = workHref(notice.work_url);
+  const emailReceipt = noticeChannelReceipt(notice, "email");
+  const projectedSidecarReceipts = (notice.channel_receipts ?? []).filter(
+    (receipt) => receipt.channel !== "email" && receipt.status,
+  );
+  const fallbackSmsReceipt = noticeChannelReceipt(notice, "sms");
+  const sidecarReceipts =
+    fallbackSmsReceipt?.status &&
+    !projectedSidecarReceipts.some((receipt) => receipt.channel === "sms")
+      ? [...projectedSidecarReceipts, fallbackSmsReceipt]
+      : projectedSidecarReceipts;
+  const messagePreviewReceipts = [emailReceipt, ...sidecarReceipts].filter(
+    (receipt): receipt is WorkAssignmentNoticeChannelReceiptRecord =>
+      Boolean(receipt?.rendered_message_preview),
+  );
   return (
-    <Link
-      href={workHref(notice.work_url)}
-      className="grid gap-3 border-t border-border px-4 py-4 text-sm transition duration-200 ease-leasium hover:bg-muted/45 md:grid-cols-[1fr_13rem_9rem]"
+    <div
+      className="grid gap-3 border-t border-border px-4 py-4 text-sm transition duration-200 ease-leasium hover:bg-muted/45 md:grid-cols-[1fr_13rem_11rem]"
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
@@ -470,11 +876,24 @@ function NoticeRow({
           {notice.provider ? <span>{label(notice.provider)}</span> : null}
           {template ? <span>{template}</span> : null}
         </div>
+        {messagePreviewReceipts.map((receipt) => (
+          <MessagePreviewDisclosure
+            key={`${notice.target_type}-${notice.target_id}-${receipt.channel}-preview`}
+            preview={receipt.rendered_message_preview}
+          />
+        ))}
         <div className="mt-2 text-xs text-muted-foreground">
           <span className="font-semibold text-foreground">Next action:</span>{" "}
           {noticeNextAction(notice)}
         </div>
         <ProviderHistoryStrip history={notice.provider_history} />
+        {emailReceipt ? <ReceiptEvidenceDisclosure receipt={emailReceipt} /> : null}
+        {sidecarReceipts.map((receipt) => (
+          <NoticeChannelReceiptCard
+            key={`${notice.target_type}-${notice.target_id}-${receipt.channel}`}
+            receipt={receipt}
+          />
+        ))}
       </div>
       <div className="min-w-0 text-xs text-muted-foreground">
         <div className="font-semibold text-foreground">
@@ -489,8 +908,41 @@ function NoticeRow({
           {notice.event_at ? formatDateTime(notice.event_at) : "No event yet"}
         </div>
         <div className="mt-1">Due {formatDate(notice.due_date)}</div>
+        <div className="mt-3 flex flex-wrap justify-start gap-2 md:justify-end">
+          {canSendNotice(notice) ? (
+            <SecondaryButton
+              type="button"
+              className="h-9 px-2.5"
+              disabled={isSending}
+              onClick={() => onSend(notice)}
+            >
+              <Send size={14} />
+              {isSending ? "Sending" : noticeRecoveryLabel(notice)}
+            </SecondaryButton>
+          ) : null}
+          {canSendSmsNotice(notice) ? (
+            <SecondaryButton
+              type="button"
+              className="h-9 px-2.5"
+              disabled={isSendingSms}
+              onClick={() => onSendSms(notice)}
+            >
+              <MessageSquare size={14} />
+              {isSendingSms
+                ? "Sending"
+                : smsNoticeRecoveryLabel(notice)}
+            </SecondaryButton>
+          ) : null}
+          <Link
+            href={href}
+            className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-border-strong bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+          >
+            <ExternalLink size={14} />
+            Open work
+          </Link>
+        </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -557,7 +1009,44 @@ function NotificationsWorkspace() {
       }),
   });
 
+  const sendNoticeMutation = useMutation({
+    mutationFn: (notice: WorkAssignmentNotificationCenterItemRecord) =>
+      sendWorkAssignmentNoticeEmail({
+        entity_id: selectedEntityId,
+        target_id: notice.target_id,
+        target_type: notice.target_type,
+        delivery_trigger:
+          notice.notification_status === "failed" ||
+          notice.notification_status === "skipped"
+            ? "retry"
+            : "manual",
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["work-assignment-notification-center", selectedEntityId],
+      }),
+  });
+
+  const sendSmsNoticeMutation = useMutation({
+    mutationFn: (notice: WorkAssignmentNotificationCenterItemRecord) =>
+      sendWorkAssignmentNoticeSms({
+        entity_id: selectedEntityId,
+        target_id: notice.target_id,
+        target_type: notice.target_type,
+        delivery_trigger:
+          noticeChannelReceipt(notice, "sms")?.status === "failed" ||
+          noticeChannelReceipt(notice, "sms")?.status === "skipped"
+            ? "retry"
+            : "manual",
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["work-assignment-notification-center", selectedEntityId],
+      }),
+  });
+
   const center = centerQuery.data;
+  const centerChannels = center?.channels ?? [];
   const noticeFilterCounts = useMemo(
     () =>
       Object.fromEntries(
@@ -755,8 +1244,42 @@ function NotificationsWorkspace() {
               <span>
                 {center.last_read_at
                   ? `Reviewed ${formatDateTime(center.last_read_at)}`
-                  : "Not reviewed yet"}
+                : "Not reviewed yet"}
               </span>
+            </div>
+          ) : null}
+          {centerChannels.length ? (
+            <div className="grid gap-2 border-b border-border px-4 py-3 md:grid-cols-3">
+              {centerChannels.map((channel) => (
+                <div
+                  key={channel.channel}
+                  className="rounded-xl border border-border bg-white p-3 text-xs"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold text-foreground">
+                      {channel.label}
+                    </span>
+                    <StatusBadge
+                      tone={channelReadinessTone(channel)}
+                    >
+                      {channel.label}{" "}
+                      {channelReadinessLabel(channel.readiness).toLowerCase()}
+                    </StatusBadge>
+                  </div>
+                  <div className="mt-2 leading-5 text-muted-foreground">
+                    {channel.detail}
+                  </div>
+                  {channel.next_action ? (
+                    <div className="mt-2 leading-5 text-muted-foreground">
+                      <span className="font-semibold text-foreground">
+                        Next:
+                      </span>{" "}
+                      {channel.next_action}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              <ProviderSetupChecks channels={centerChannels} />
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3">
@@ -790,7 +1313,19 @@ function NotificationsWorkspace() {
             {filteredNotices.map((notice) => (
               <NoticeRow
                 key={`${notice.target_type}-${notice.target_id}`}
+                isSending={
+                  sendNoticeMutation.isPending &&
+                  sendNoticeMutation.variables?.target_id === notice.target_id
+                }
+                isSendingSms={
+                  sendSmsNoticeMutation.isPending &&
+                  sendSmsNoticeMutation.variables?.target_id === notice.target_id
+                }
                 notice={notice}
+                onSend={(nextNotice) => sendNoticeMutation.mutate(nextNotice)}
+                onSendSms={(nextNotice) =>
+                  sendSmsNoticeMutation.mutate(nextNotice)
+                }
               />
             ))}
             {!centerQuery.isLoading &&
@@ -895,6 +1430,9 @@ function NotificationsWorkspace() {
                     </div>
                   </div>
                   <ProviderHistoryStrip history={receipt.provider_history} />
+                  <MessagePreviewDisclosure
+                    preview={receipt.rendered_message_preview}
+                  />
                   {!receipt.message_sent ? (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                       <span>

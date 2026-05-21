@@ -10,7 +10,9 @@ import {
   CheckCircle2,
   ClipboardList,
   Copy,
+  ExternalLink,
   FileText,
+  ImageIcon,
   Link2,
   Loader2,
   Pencil,
@@ -53,6 +55,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  applyPropertyImage,
   applyPublicEnrichment,
   applyLeaseIntake,
   cancelTenantOnboarding,
@@ -67,6 +70,7 @@ import {
   createTenantOnboarding,
   deleteLease,
   deleteTenancyUnit,
+  downloadDocumentBlob,
   EnrichmentSuggestion,
   getLeaseIntake,
   LeaseRecord,
@@ -82,6 +86,7 @@ import {
   listTenantOnboardings,
   listTenancyUnits,
   ObligationRecord,
+  PropertyImageCandidateRecord,
   PropertyRecord,
   PropertyType,
   TenantRecord,
@@ -89,10 +94,20 @@ import {
   TenancyUnitRecord,
   updateObligation,
   previewPublicEnrichment,
+  previewPropertyImages,
   updateLease,
   updateTenancyUnit,
   updateProperty,
 } from "@/lib/api";
+import {
+  ownershipChipClassName,
+  propertyMatchesOwnershipTag,
+  propertyOwnerLabels,
+  propertyOwnershipBadges,
+  propertyOwnershipPaletteMap,
+  propertyOwnershipTagDirectory,
+  propertyUsesOwnerBilling,
+} from "@/lib/property-ownership";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const PROPERTY_STORAGE_KEY = "leasium.property_id";
@@ -394,6 +409,18 @@ type PropertySourceCitation = {
   source_hint: string | null;
   citation: string | null;
   confidence: number | null;
+  url?: string | null;
+};
+
+type PropertyPrimaryImage = {
+  title: string;
+  imageUrl: string | null;
+  documentId: string | null;
+  pageUrl: string | null;
+  source: PropertySourceCitation | null;
+  confidence: number | null;
+  notes: string | null;
+  selectedAt: string | null;
 };
 
 type PropertyApplyChange = {
@@ -552,259 +579,6 @@ function ownershipStructureLabel(value: string | null | undefined) {
   );
 }
 
-function propertyUsesOwnerBilling(property: PropertyRecord | null | undefined) {
-  return ["property_owner", "trust", "split"].includes(
-    property?.ownership_structure ?? "current_entity",
-  );
-}
-
-type OwnershipChipPalette =
-  | "current"
-  | "sky"
-  | "teal"
-  | "cyan"
-  | "lavender"
-  | "indigo"
-  | "green"
-  | "lime"
-  | "amber"
-  | "rose"
-  | "pink"
-  | "peach"
-  | "slate";
-
-type OwnershipChip = {
-  label: string;
-  palette: OwnershipChipPalette;
-  title?: string;
-};
-
-function metadataTextValue(metadata: Record<string, unknown>, key: string) {
-  const value = metadata[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function normaliseOwnerLabel(value: string) {
-  return value.toLowerCase().replace(/&/g, "and").replace(/\s+/g, " ").trim();
-}
-
-function ownerLabelHash(value: string) {
-  let hash = 2166136261;
-  for (const char of normaliseOwnerLabel(value)) {
-    hash ^= char.charCodeAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-const ownerChipPaletteCycle: OwnershipChipPalette[] = [
-  "teal",
-  "indigo",
-  "green",
-  "rose",
-  "cyan",
-  "amber",
-  "lavender",
-  "lime",
-  "sky",
-  "pink",
-  "peach",
-];
-
-function splitOwnershipLabels(value: string | null | undefined) {
-  if (!value) {
-    return [];
-  }
-  const cleaned = value
-    .replace(/\b\d+(?:\.\d+)?\s*%/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!cleaned) {
-    return [];
-  }
-  return cleaned
-    .split(/\s*(?:;|\s\+\s|\s\/\s|\sand\s)\s*/i)
-    .map((item) => item.replace(/^[-:]+|[-:]+$/g, "").trim())
-    .filter(Boolean);
-}
-
-function addUniqueOwnerLabel(
-  labels: string[],
-  label: string | null | undefined,
-) {
-  const cleaned = label?.trim();
-  if (!cleaned) {
-    return;
-  }
-  if (
-    !labels.some(
-      (existing) =>
-        normaliseOwnerLabel(existing) === normaliseOwnerLabel(cleaned),
-    )
-  ) {
-    labels.push(cleaned);
-  }
-}
-
-function propertyOwnerLabels(
-  property: PropertyRecord,
-  currentEntityName?: string | null,
-) {
-  const labels: string[] = [];
-  const metadata = property.metadata ?? {};
-
-  if (property.ownership_structure === "split") {
-    splitOwnershipLabels(property.ownership_split).forEach((label) =>
-      addUniqueOwnerLabel(labels, label),
-    );
-  }
-
-  addUniqueOwnerLabel(labels, property.owner_legal_name);
-  addUniqueOwnerLabel(labels, property.trust_name);
-  addUniqueOwnerLabel(
-    labels,
-    metadataTextValue(metadata, "owning_entity_legal"),
-  );
-  addUniqueOwnerLabel(labels, metadataTextValue(metadata, "owning_entity"));
-
-  if (labels.length === 0 && !propertyUsesOwnerBilling(property)) {
-    addUniqueOwnerLabel(labels, currentEntityName);
-  }
-
-  if (labels.length === 0) {
-    addUniqueOwnerLabel(labels, property.invoice_issuer_name);
-  }
-
-  return labels;
-}
-
-function ownerPaletteForLabel(
-  label: string,
-  property: PropertyRecord,
-  currentEntityName?: string | null,
-  paletteByLabel?: Map<string, OwnershipChipPalette>,
-): OwnershipChipPalette {
-  if (
-    currentEntityName &&
-    normaliseOwnerLabel(label) === normaliseOwnerLabel(currentEntityName)
-  ) {
-    return "current";
-  }
-  const role = normaliseOwnerLabel(property.ownership_structure ?? "");
-  const owner = normaliseOwnerLabel(label);
-  if (role.includes("unknown") || owner.includes("unknown")) {
-    return "slate";
-  }
-  const assignedPalette = paletteByLabel?.get(owner);
-  if (assignedPalette) {
-    return assignedPalette;
-  }
-  return ownerChipPaletteCycle[
-    ownerLabelHash(label) % ownerChipPaletteCycle.length
-  ];
-}
-
-function ownershipChipClassName(palette: OwnershipChipPalette) {
-  const palettes: Record<OwnershipChipPalette, string> = {
-    current: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    sky: "border-[#BAE6FD] bg-[#F0F9FF] text-[#0369A1]",
-    teal: "border-[#99F6E4] bg-[#F0FDFA] text-[#0F766E]",
-    cyan: "border-[#A5F3FC] bg-[#ECFEFF] text-[#0E7490]",
-    lavender: "border-[#DDD6FE] bg-[#F5F3FF] text-[#5B21B6]",
-    indigo: "border-[#C7D2FE] bg-[#EEF2FF] text-[#3730A3]",
-    green: "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]",
-    lime: "border-[#D9F99D] bg-[#F7FEE7] text-[#4D7C0F]",
-    amber: "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    rose: "border-[#FECDD3] bg-[#FFF1F2] text-[#BE123C]",
-    pink: "border-[#FBCFE8] bg-[#FDF2F8] text-[#BE185D]",
-    peach: "border-[#FED7AA] bg-[#FFF7ED] text-[#C2410C]",
-    slate: "border-slate-200 bg-slate-100 text-slate-600",
-  };
-  return palettes[palette];
-}
-
-function propertyOwnershipPaletteMap(
-  properties: PropertyRecord[],
-  currentEntityName?: string | null,
-) {
-  const labelsByKey = new Map<string, string>();
-  for (const property of properties) {
-    for (const label of propertyOwnerLabels(property, currentEntityName)) {
-      labelsByKey.set(normaliseOwnerLabel(label), label);
-    }
-  }
-
-  const assignments = new Map<string, OwnershipChipPalette>();
-  const usedPalettes = new Set<OwnershipChipPalette>();
-  for (const [key, label] of [...labelsByKey.entries()].sort((a, b) =>
-    a[1].localeCompare(b[1]),
-  )) {
-    if (currentEntityName && key === normaliseOwnerLabel(currentEntityName)) {
-      assignments.set(key, "current");
-      continue;
-    }
-
-    const startIndex = ownerLabelHash(label) % ownerChipPaletteCycle.length;
-    let palette = ownerChipPaletteCycle[startIndex];
-    if (usedPalettes.size < ownerChipPaletteCycle.length) {
-      for (let offset = 0; offset < ownerChipPaletteCycle.length; offset += 1) {
-        const candidate =
-          ownerChipPaletteCycle[
-            (startIndex + offset) % ownerChipPaletteCycle.length
-          ];
-        if (!usedPalettes.has(candidate)) {
-          palette = candidate;
-          break;
-        }
-      }
-    }
-    assignments.set(key, palette);
-    usedPalettes.add(palette);
-  }
-  return assignments;
-}
-
-function propertyOwnershipBadges(
-  property: PropertyRecord | null | undefined,
-  currentEntityName?: string | null,
-  paletteByLabel?: Map<string, OwnershipChipPalette>,
-) {
-  if (!property) {
-    return [];
-  }
-  const labels = propertyOwnerLabels(property, currentEntityName);
-  if (labels.length === 0) {
-    return [
-      {
-        label: "Ownership unknown",
-        palette: "slate" as const,
-      },
-    ];
-  }
-
-  const visibleLabels = labels.slice(0, 2);
-  const badges: OwnershipChip[] = visibleLabels.map((label) => ({
-    label,
-    palette: ownerPaletteForLabel(
-      label,
-      property,
-      currentEntityName,
-      paletteByLabel,
-    ),
-    title: label,
-  }));
-
-  if (labels.length > visibleLabels.length) {
-    badges.push({
-      label: `+${labels.length - visibleLabels.length}`,
-      palette: "slate",
-      title: labels.slice(visibleLabels.length).join(", "),
-    });
-  }
-
-  return badges;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -829,10 +603,144 @@ function sourceCitation(value: unknown): PropertySourceCitation | null {
     source_hint: textValue(value.source_hint) ?? textValue(value.hint),
     citation: textValue(value.citation) ?? textValue(value.text),
     confidence: numberValue(value.confidence),
+    url: textValue(value.url),
   };
-  return source.source_hint || source.citation || source.confidence !== null
+  return source.source_hint ||
+    source.citation ||
+    source.confidence !== null ||
+    source.url
     ? source
     : null;
+}
+
+function httpsUrl(value: unknown) {
+  const url = textValue(value);
+  return url?.toLowerCase().startsWith("https://") ? url : null;
+}
+
+function directImageUrl(value: unknown) {
+  const url = textValue(value);
+  if (!url) {
+    return null;
+  }
+  const lowerUrl = url.toLowerCase();
+  return lowerUrl.startsWith("http://") ||
+    lowerUrl.startsWith("https://") ||
+    url.startsWith("/")
+    ? url
+    : null;
+}
+
+function propertyPrimaryImage(
+  property: PropertyRecord | null | undefined,
+): PropertyPrimaryImage | null {
+  const media = propertyMetadata(property).property_media;
+  if (!isRecord(media)) {
+    return null;
+  }
+  const primaryImage = media.primary_image;
+  if (!isRecord(primaryImage)) {
+    return null;
+  }
+  const documentId =
+    textValue(primaryImage.document_id) ??
+    textValue(primaryImage.image_document_id) ??
+    textValue(primaryImage.thumbnail_document_id);
+  const imageUrl =
+    directImageUrl(primaryImage.download_url) ??
+    directImageUrl(primaryImage.thumbnail_url) ??
+    (documentId ? null : httpsUrl(primaryImage.image_url));
+  if (!imageUrl && !documentId) {
+    return null;
+  }
+  return {
+    title: textValue(primaryImage.title) ?? property?.name ?? "Property image",
+    imageUrl,
+    documentId,
+    pageUrl: httpsUrl(primaryImage.page_url),
+    source: sourceCitation(primaryImage.source),
+    confidence: numberValue(primaryImage.confidence),
+    notes: textValue(primaryImage.notes),
+    selectedAt: textValue(primaryImage.selected_at),
+  };
+}
+
+function useDocumentImageUrl(image: PropertyPrimaryImage | null) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    setObjectUrl(null);
+    if (image?.imageUrl || !image?.documentId) {
+      return;
+    }
+
+    let isCurrent = true;
+    let nextObjectUrl: string | null = null;
+    downloadDocumentBlob(image.documentId)
+      .then((blob) => {
+        if (!isCurrent) {
+          return;
+        }
+        nextObjectUrl = URL.createObjectURL(blob);
+        setObjectUrl(nextObjectUrl);
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setObjectUrl(null);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+      if (nextObjectUrl) {
+        URL.revokeObjectURL(nextObjectUrl);
+      }
+    };
+  }, [image?.documentId, image?.imageUrl]);
+
+  return image?.imageUrl ?? objectUrl;
+}
+
+function StoredPropertyImage({
+  image,
+  alt,
+  className,
+  placeholderClassName,
+  iconSize = 16,
+  testId,
+}: {
+  image: PropertyPrimaryImage | null;
+  alt: string;
+  className: string;
+  placeholderClassName: string;
+  iconSize?: number;
+  testId?: string;
+}) {
+  const imageUrl = useDocumentImageUrl(image);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUrl]);
+
+  if (imageUrl && !imageFailed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        alt={alt}
+        className={className}
+        data-testid={testId}
+        onError={() => setImageFailed(true)}
+        src={imageUrl}
+      />
+    );
+  }
+
+  return (
+    <div className={placeholderClassName}>
+      <ImageIcon size={iconSize} />
+    </div>
+  );
 }
 
 function propertySourceCitations(property: PropertyRecord | null | undefined) {
@@ -1318,6 +1226,7 @@ function Workspace() {
   const propertyDocumentInputRef = useRef<HTMLInputElement>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string>("");
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
+  const [ownerTagFilter, setOwnerTagFilter] = useState<string>("");
   const [rentRollPropertyId, setRentRollPropertyId] = useState<string>("");
   const [rentRollAsOf, setRentRollAsOf] = useState<string>(() =>
     dateOnly(new Date()),
@@ -1346,6 +1255,18 @@ function Workspace() {
   const [billingProfileOpen, setBillingProfileOpen] = useState(false);
   const [propertyEnrichmentSuggestions, setPropertyEnrichmentSuggestions] =
     useState<EnrichmentSuggestion[]>([]);
+  const [propertyImageCandidates, setPropertyImageCandidates] = useState<
+    PropertyImageCandidateRecord[]
+  >([]);
+  const [propertyImageWarnings, setPropertyImageWarnings] = useState<string[]>(
+    [],
+  );
+  const [applyingPropertyImageUrl, setApplyingPropertyImageUrl] =
+    useState<string>("");
+  const [
+    failedPropertyImageCandidateUrls,
+    setFailedPropertyImageCandidateUrls,
+  ] = useState<Set<string>>(() => new Set());
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -1419,6 +1340,12 @@ function Workspace() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const ownerTag = params.get("owner_tag") ?? "";
+    setOwnerTagFilter((current) => (current === ownerTag ? current : ownerTag));
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get("entity_id");
     const stored =
       window.localStorage.getItem(ENTITY_STORAGE_KEY) ??
@@ -1465,6 +1392,10 @@ function Workspace() {
 
   useEffect(() => {
     setPropertyEnrichmentSuggestions([]);
+    setPropertyImageCandidates([]);
+    setPropertyImageWarnings([]);
+    setApplyingPropertyImageUrl("");
+    setFailedPropertyImageCandidateUrls(new Set());
   }, [selectedPropertyId]);
 
   const selectedEntity = useMemo(
@@ -1479,6 +1410,10 @@ function Workspace() {
       ),
     [propertiesQuery.data, selectedPropertyId],
   );
+  const selectedPropertyImage = useMemo(
+    () => propertyPrimaryImage(selectedProperty),
+    [selectedProperty],
+  );
   const ownershipPaletteByLabel = useMemo(
     () =>
       propertyOwnershipPaletteMap(
@@ -1487,6 +1422,31 @@ function Workspace() {
       ),
     [propertiesQuery.data, selectedEntity?.name],
   );
+  const ownershipTags = useMemo(
+    () =>
+      propertyOwnershipTagDirectory(
+        propertiesQuery.data ?? [],
+        selectedEntity?.name,
+      ),
+    [propertiesQuery.data, selectedEntity?.name],
+  );
+  const activeOwnerTag = useMemo(
+    () => ownershipTags.find((tag) => tag.key === ownerTagFilter) ?? null,
+    [ownershipTags, ownerTagFilter],
+  );
+  const displayedProperties = useMemo(() => {
+    const properties = propertiesQuery.data ?? [];
+    if (!ownerTagFilter) {
+      return properties;
+    }
+    return properties.filter((property) =>
+      propertyMatchesOwnershipTag(
+        property,
+        selectedEntity?.name,
+        ownerTagFilter,
+      ),
+    );
+  }, [ownerTagFilter, propertiesQuery.data, selectedEntity?.name]);
   const entitiesLoading =
     !entitiesQuery.data &&
     (entitiesQuery.isLoading || entitiesQuery.isFetching);
@@ -1717,7 +1677,7 @@ function Workspace() {
     if (!propertiesQuery.data) {
       return;
     }
-    const properties = propertiesQuery.data;
+    const properties = displayedProperties;
     if (properties.length === 0) {
       if (selectedPropertyId) {
         setSelectedPropertyId("");
@@ -1762,6 +1722,7 @@ function Workspace() {
     }
   }, [
     chargeRuleForm,
+    displayedProperties,
     leaseForm,
     obligationForm,
     propertiesQuery.data,
@@ -1855,6 +1816,48 @@ function Workspace() {
           rentRollAsOf,
         ],
       });
+    },
+  });
+
+  const previewPropertyImagesMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedPropertyId) {
+        throw new Error("Select a property first.");
+      }
+      return previewPropertyImages({
+        property_id: selectedPropertyId,
+        requested_count: 4,
+      });
+    },
+    onSuccess: (result) => {
+      setPropertyImageCandidates(result.candidates);
+      setPropertyImageWarnings(result.warnings);
+      setFailedPropertyImageCandidateUrls(new Set());
+    },
+  });
+
+  const applyPropertyImageMutation = useMutation({
+    mutationFn: (candidate: PropertyImageCandidateRecord) => {
+      if (!selectedPropertyId) {
+        throw new Error("Select a property first.");
+      }
+      return applyPropertyImage({
+        property_id: selectedPropertyId,
+        candidate,
+      });
+    },
+    onMutate: (candidate) => {
+      setApplyingPropertyImageUrl(candidate.image_url);
+    },
+    onSuccess: () => {
+      setPropertyImageCandidates([]);
+      setPropertyImageWarnings([]);
+      queryClient.invalidateQueries({
+        queryKey: ["properties", selectedEntityId],
+      });
+    },
+    onSettled: () => {
+      setApplyingPropertyImageUrl("");
     },
   });
 
@@ -2155,6 +2158,23 @@ function Workspace() {
     leaseForm.reset(defaultLeaseFormValues);
     chargeRuleForm.reset(defaultChargeRuleFormValues);
     obligationForm.setValue("lease_id", "");
+  }
+
+  function clearOwnerTagFilter() {
+    setOwnerTagFilter("");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("owner_tag");
+    window.history.replaceState(null, "", url);
+  }
+
+  function applyOwnerTagFilter(tagKey: string) {
+    if (!tagKey) {
+      return;
+    }
+    setOwnerTagFilter(tagKey);
+    const url = new URL(window.location.href);
+    url.searchParams.set("owner_tag", tagKey);
+    window.history.replaceState(null, "", url);
   }
 
   function startEdit(property: PropertyRecord) {
@@ -2515,7 +2535,12 @@ function Workspace() {
         <Select
           aria-label="Entity"
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
+          onChange={(event) => {
+            setSelectedEntityId(event.target.value);
+            if (ownerTagFilter) {
+              clearOwnerTagFilter();
+            }
+          }}
         >
           <option value="">
             {entitiesLoading ? "Loading entities..." : "Select entity"}
@@ -2540,7 +2565,15 @@ function Workspace() {
                   ? friendlyError(propertiesQuery.error)
                   : propertiesLoading
                     ? "Loading properties..."
-                    : `${propertiesQuery.data?.length ?? 0} active properties`}
+                    : ownerTagFilter
+                      ? activeOwnerTag
+                        ? `${activeOwnerTag.propertyCount} ${
+                            activeOwnerTag.propertyCount === 1
+                              ? "property"
+                              : "properties"
+                          } tagged ${activeOwnerTag.label}`
+                        : "0 properties for this ownership tag"
+                      : `${propertiesQuery.data?.length ?? 0} active properties`}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -4118,98 +4151,341 @@ function Workspace() {
           ) : null}
 
           {activeWorkspaceTab === "portfolio" ? (
-            <div className="overflow-hidden rounded-md border border-border bg-white">
-              <table className="w-full border-collapse text-left text-sm">
-                <thead className="bg-muted text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 font-semibold">Property</th>
-                    <th className="px-3 py-2 font-semibold">Type</th>
-                    <th className="px-3 py-2 font-semibold">Area</th>
-                    <th className="px-3 py-2 font-semibold">Parking</th>
-                    <th className="w-12 px-3 py-2" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {propertiesQuery.data?.map((property) => {
-                    const isSelected = property.id === selectedPropertyId;
-                    return (
-                      <tr
-                        key={property.id}
-                        className={`cursor-pointer border-t border-border transition hover:bg-muted/70 ${
-                          isSelected ? "bg-primary/5" : ""
-                        }`}
-                        onClick={() => selectProperty(property.id)}
-                      >
-                        <td className="px-3 py-3">
-                          <div className="font-medium">{property.name}</div>
-                          <div className="text-muted-foreground">
-                            {property.street_address}, {property.suburb}{" "}
-                            {property.state}
+            <div className="grid gap-3">
+              {ownerTagFilter ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="font-medium text-foreground">
+                      Ownership tag
+                    </span>
+                    <span
+                      className={`inline-flex max-w-[18rem] items-center truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 ${ownershipChipClassName(activeOwnerTag?.palette ?? "slate")}`}
+                      title={activeOwnerTag?.label ?? ownerTagFilter}
+                    >
+                      {activeOwnerTag?.label ?? ownerTagFilter}
+                    </span>
+                    <span className="text-muted-foreground">
+                      Showing properties with this ownership tag.
+                    </span>
+                  </div>
+                  <SecondaryButton
+                    type="button"
+                    className="h-8 px-2.5"
+                    onClick={clearOwnerTagFilter}
+                    aria-label="Clear ownership tag filter"
+                  >
+                    <X size={14} />
+                    Clear filter
+                  </SecondaryButton>
+                </div>
+              ) : null}
+
+              {selectedProperty ? (
+                <section className="overflow-hidden rounded-md border border-border bg-white">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <ImageIcon size={17} className="text-primary" />
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold">
+                          Property images
+                        </h3>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {selectedProperty.name}
+                        </p>
+                      </div>
+                    </div>
+                    <SecondaryButton
+                      type="button"
+                      className="h-9"
+                      disabled={
+                        !selectedPropertyId ||
+                        previewPropertyImagesMutation.isPending
+                      }
+                      onClick={() => previewPropertyImagesMutation.mutate()}
+                    >
+                      {previewPropertyImagesMutation.isPending ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Sparkles size={14} />
+                      )}
+                      Find property images
+                    </SecondaryButton>
+                  </div>
+                  <div className="grid gap-4 p-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+                    <div className="min-w-0">
+                      <div className="aspect-video overflow-hidden rounded-md border border-border bg-muted/40">
+                        <StoredPropertyImage
+                          alt={`${selectedProperty.name} primary image`}
+                          className="h-full w-full object-cover"
+                          image={selectedPropertyImage}
+                          placeholderClassName="grid h-full place-items-center text-muted-foreground"
+                          iconSize={22}
+                          testId="selected-property-image"
+                        />
+                      </div>
+                      {selectedPropertyImage ? (
+                        <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                          <div className="truncate font-medium text-foreground">
+                            {selectedPropertyImage.title}
                           </div>
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {propertyOwnershipBadges(
-                              property,
-                              selectedEntity?.name,
-                              ownershipPaletteByLabel,
-                            )
-                              .slice(0, 3)
-                              .map((badge) => (
-                                <span
-                                  key={badge.label}
-                                  title={badge.title ?? badge.label}
-                                  className={`inline-flex max-w-[14rem] items-center truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 ${ownershipChipClassName(badge.palette)}`}
-                                >
-                                  {badge.label}
-                                </span>
-                              ))}
+                          <div>
+                            {confidencePercent(selectedPropertyImage.confidence) ??
+                              "Reviewed image"}
                           </div>
-                        </td>
-                        <td className="px-3 py-3">
-                          {property.property_type.replaceAll("_", " ")}
-                        </td>
-                        <td className="px-3 py-3">
-                          {property.building_sqm ?? "-"}
-                        </td>
-                        <td className="px-3 py-3">
-                          {property.parking_spaces ?? "-"}
-                        </td>
-                        <td className="px-3 py-3">
-                          <SecondaryButton
-                            type="button"
-                            aria-label={`Edit ${property.name}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              startEdit(property);
-                            }}
-                            className="h-8 w-8 px-0"
-                          >
-                            <Pencil size={15} />
-                          </SecondaryButton>
+                          {selectedPropertyImage.pageUrl ? (
+                            <a
+                              href={selectedPropertyImage.pageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex min-w-0 items-center gap-1 text-primary hover:text-leasium-blue-hover"
+                            >
+                              <ExternalLink size={12} />
+                              <span className="truncate">Source page</span>
+                            </a>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          No reviewed image saved.
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      {propertyImageCandidates.length ? (
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          {propertyImageCandidates.map((candidate) => (
+                            <div
+                              key={candidate.image_url}
+                              className="overflow-hidden rounded-md border border-border bg-white"
+                            >
+                              <div className="aspect-video bg-muted/40">
+                                {failedPropertyImageCandidateUrls.has(
+                                  candidate.image_url,
+                                ) ? (
+                                  <div
+                                    className="grid h-full place-items-center text-muted-foreground"
+                                    data-testid="property-image-candidate-fallback"
+                                  >
+                                    <ImageIcon size={18} />
+                                  </div>
+                                ) : (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    alt={candidate.title}
+                                    className="h-full w-full object-cover"
+                                    data-testid="property-image-candidate-preview"
+                                    onError={() =>
+                                      setFailedPropertyImageCandidateUrls(
+                                        (failedUrls) =>
+                                          new Set(failedUrls).add(
+                                            candidate.image_url,
+                                          ),
+                                      )
+                                    }
+                                    referrerPolicy="no-referrer"
+                                    src={candidate.image_url}
+                                  />
+                                )}
+                              </div>
+                              <div className="grid gap-2 p-3 text-xs">
+                                <div className="font-semibold text-foreground">
+                                  {candidate.title}
+                                </div>
+                                <div className="text-muted-foreground">
+                                  {candidate.source.source_hint} -{" "}
+                                  {candidate.source.citation}
+                                </div>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <StatusBadge tone="neutral">
+                                    {confidencePercent(candidate.confidence)}
+                                  </StatusBadge>
+                                  <Button
+                                    type="button"
+                                    className="h-8 px-2.5 text-xs"
+                                    disabled={
+                                      applyPropertyImageMutation.isPending
+                                    }
+                                    onClick={() =>
+                                      applyPropertyImageMutation.mutate(
+                                        candidate,
+                                      )
+                                    }
+                                  >
+                                    {applyingPropertyImageUrl ===
+                                    candidate.image_url ? (
+                                      <Loader2
+                                        size={13}
+                                        className="animate-spin"
+                                      />
+                                    ) : (
+                                      <Check size={13} />
+                                    )}
+                                    Apply image
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-4 text-sm text-muted-foreground">
+                          Image candidates will appear here for review.
+                        </div>
+                      )}
+                      {propertyImageWarnings.length ? (
+                        <div className="mt-3 grid gap-1 text-xs text-warning">
+                          {propertyImageWarnings.map((warning) => (
+                            <div key={warning}>{warning}</div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {previewPropertyImagesMutation.error ||
+                      applyPropertyImageMutation.error ? (
+                        <div className="mt-3 text-xs text-danger">
+                          {friendlyError(
+                            previewPropertyImagesMutation.error ??
+                              applyPropertyImageMutation.error,
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
+              <div className="overflow-hidden rounded-md border border-border bg-white">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="w-28 px-3 py-2 font-semibold">Image</th>
+                      <th className="px-3 py-2 font-semibold">Property</th>
+                      <th className="px-3 py-2 font-semibold">Type</th>
+                      <th className="px-3 py-2 font-semibold">Area</th>
+                      <th className="px-3 py-2 font-semibold">Parking</th>
+                      <th className="w-12 px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedProperties.map((property) => {
+                      const isSelected = property.id === selectedPropertyId;
+                      const rowImage = propertyPrimaryImage(property);
+                      return (
+                        <tr
+                          key={property.id}
+                          className={`cursor-pointer border-t border-border transition hover:bg-muted/70 ${
+                            isSelected ? "bg-primary/5" : ""
+                          }`}
+                          onClick={() => selectProperty(property.id)}
+                        >
+                          <td className="px-3 py-3">
+                            <StoredPropertyImage
+                              alt={`${property.name} property image`}
+                              className="h-14 w-24 rounded-md border border-border object-cover"
+                              image={rowImage}
+                              placeholderClassName="grid h-14 w-24 place-items-center rounded-md border border-dashed border-border bg-muted/40 text-muted-foreground"
+                            />
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="font-medium">{property.name}</div>
+                            <div className="text-muted-foreground">
+                              {property.street_address}, {property.suburb}{" "}
+                              {property.state}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {propertyOwnershipBadges(
+                                property,
+                                selectedEntity?.name,
+                                ownershipPaletteByLabel,
+                              )
+                                .slice(0, 3)
+                                .map((badge) => {
+                                  const chipClassName = `inline-flex max-w-[14rem] items-center truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 ${ownershipChipClassName(badge.palette)}`;
+                                  if (!badge.tagKey) {
+                                    return (
+                                      <span
+                                        key={badge.label}
+                                        title={badge.title ?? badge.label}
+                                        className={chipClassName}
+                                      >
+                                        {badge.label}
+                                      </span>
+                                    );
+                                  }
+                                  const tagKey = badge.tagKey;
+                                  return (
+                                    <button
+                                      key={badge.label}
+                                      type="button"
+                                      title={badge.title ?? badge.label}
+                                      aria-label={`Filter by ownership tag ${badge.label}`}
+                                      className={`${chipClassName} cursor-pointer text-left transition hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary`}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        applyOwnerTagFilter(tagKey);
+                                      }}
+                                    >
+                                      {badge.label}
+                                    </button>
+                                  );
+                                })}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            {property.property_type.replaceAll("_", " ")}
+                          </td>
+                          <td className="px-3 py-3">
+                            {property.building_sqm ?? "-"}
+                          </td>
+                          <td className="px-3 py-3">
+                            {property.parking_spaces ?? "-"}
+                          </td>
+                          <td className="px-3 py-3">
+                            <SecondaryButton
+                              type="button"
+                              aria-label={`Edit ${property.name}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                startEdit(property);
+                              }}
+                              className="h-8 w-8 px-0"
+                            >
+                              <Pencil size={15} />
+                            </SecondaryButton>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {propertiesLoading ? (
+                      <tr>
+                        <td
+                          className="px-3 py-8 text-center text-muted-foreground"
+                          colSpan={6}
+                        >
+                          Loading properties...
                         </td>
                       </tr>
-                    );
-                  })}
-                  {propertiesLoading ? (
-                    <tr>
-                      <td
-                        className="px-3 py-8 text-center text-muted-foreground"
-                        colSpan={5}
-                      >
-                        Loading properties...
-                      </td>
-                    </tr>
-                  ) : propertiesQuery.data?.length === 0 ? (
-                    <tr>
-                      <td
-                        className="px-3 py-8 text-center text-muted-foreground"
-                        colSpan={5}
-                      >
-                        No active properties yet.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+                    ) : ownerTagFilter && displayedProperties.length === 0 ? (
+                      <tr>
+                        <td
+                          className="px-3 py-8 text-center text-muted-foreground"
+                          colSpan={6}
+                        >
+                          No properties match this ownership tag.
+                        </td>
+                      </tr>
+                    ) : propertiesQuery.data?.length === 0 ? (
+                      <tr>
+                        <td
+                          className="px-3 py-8 text-center text-muted-foreground"
+                          colSpan={6}
+                        >
+                          No active properties yet.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : null}
 

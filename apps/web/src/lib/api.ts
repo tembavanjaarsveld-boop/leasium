@@ -59,6 +59,8 @@ export type SecurityWorkAssignmentDigestReceiptRecord = {
 
 export type SecurityNotificationPreferences = {
   work_assignment_email_enabled: boolean;
+  work_assignment_sms_enabled: boolean;
+  work_assignment_sms_phone: string | null;
   work_assignment_notice_template_key: string;
   work_assignment_notice_template_version: string;
   work_assignment_digest_cadence: SecurityWorkAssignmentDigestCadence;
@@ -73,10 +75,36 @@ export type WorkAssignmentNoticeGroup =
   | "in_flight"
   | "attention"
   | "done";
+export type WorkAssignmentTargetType =
+  | "maintenance_work_order"
+  | "arrears_case"
+  | "obligation";
+export type WorkAssignmentNotificationTemplateKind =
+  | "assignment_notice"
+  | "digest";
+
+export type WorkAssignmentNotificationTemplateRecord = {
+  kind: WorkAssignmentNotificationTemplateKind;
+  key: string;
+  name: string;
+  default_version: string;
+  channel: "email";
+  provider: "sendgrid";
+  subject_preview: string;
+  content_summary: string;
+  recovery_summary: string | null;
+  is_system: boolean;
+};
+
+export type WorkAssignmentNotificationTemplateCatalogRecord = {
+  guardrails: string[];
+  notice_templates: WorkAssignmentNotificationTemplateRecord[];
+  digest_templates: WorkAssignmentNotificationTemplateRecord[];
+};
 
 export type WorkAssignmentDigestItemRecord = {
   target_id: string;
-  target_type: "maintenance_work_order" | "arrears_case" | "obligation";
+  target_type: WorkAssignmentTargetType;
   title: string;
   description: string | null;
   due_date: string | null;
@@ -109,6 +137,7 @@ export type WorkAssignmentDigestRecord = {
   delivery_trigger: string | null;
   recovery_of_generated_at: string | null;
   delivery_attempt_count: number;
+  rendered_message_preview: WorkAssignmentRenderedMessagePreviewRecord | null;
   items: WorkAssignmentDigestItemRecord[];
 };
 
@@ -122,9 +151,45 @@ export type WorkAssignmentDigestRunRecord = {
   digests: WorkAssignmentDigestRecord[];
 };
 
+export type WorkAssignmentRenderedMessagePreviewRecord = {
+  channel: "email" | "sms";
+  provider: string;
+  recipient_email: string | null;
+  recipient_phone: string | null;
+  subject: string | null;
+  body_text: string;
+  template_key: string | null;
+  template_version: string | null;
+  action_label: string | null;
+  action_url: string | null;
+};
+
+export type WorkAssignmentNoticeChannelReceiptRecord = {
+  channel: "email" | "sms" | "in_app";
+  label: string;
+  provider: string | null;
+  status: string | null;
+  detail: string | null;
+  recipient_email: string | null;
+  recipient_phone: string | null;
+  provider_message_id: string | null;
+  template_key: string | null;
+  template_version: string | null;
+  attempted_at: string | null;
+  sent_at: string | null;
+  receipt_at: string | null;
+  last_event: string | null;
+  delivery_trigger: string | null;
+  delivery_attempt_count: number;
+  message_sent: boolean;
+  action_available: boolean;
+  provider_history: WorkAssignmentProviderHistoryRecord[];
+  rendered_message_preview: WorkAssignmentRenderedMessagePreviewRecord | null;
+};
+
 export type WorkAssignmentNotificationCenterItemRecord = {
   target_id: string;
-  target_type: "maintenance_work_order" | "arrears_case" | "obligation";
+  target_type: WorkAssignmentTargetType;
   title: string;
   summary: string | null;
   assignee_user_id: string | null;
@@ -142,6 +207,70 @@ export type WorkAssignmentNotificationCenterItemRecord = {
   follow_up_due: boolean;
   work_url: string | null;
   provider_history: WorkAssignmentProviderHistoryRecord[];
+  sms_action_available: boolean;
+  sms_status: string | null;
+  sms_detail: string | null;
+  sms_provider: string | null;
+  sms_recipient_phone: string | null;
+  sms_provider_message_id: string | null;
+  sms_attempt_count: number;
+  sms_provider_history: WorkAssignmentProviderHistoryRecord[];
+  channel_receipts: WorkAssignmentNoticeChannelReceiptRecord[];
+};
+
+export type WorkAssignmentNotificationChannelRecord = {
+  channel: "email" | "sms" | "in_app";
+  provider: string;
+  label: string;
+  readiness: "actionable" | "blocked" | "read_only";
+  reason_code: string | null;
+  configured: boolean;
+  action_available: boolean;
+  detail: string;
+  next_action: string | null;
+  setup_checks?: WorkAssignmentNotificationSetupCheckRecord[];
+};
+
+export type WorkAssignmentNotificationSetupCheckRecord = {
+  key: string;
+  label: string;
+  status: "ready" | "missing" | "review";
+  detail: string;
+  value: string | null;
+};
+
+export type WorkAssignmentNoticeEmailSendRecord = {
+  entity_id: string;
+  target_type: WorkAssignmentTargetType;
+  target_id: string;
+  status: string;
+  message_sent: boolean;
+  recipient_email: string | null;
+  provider: string | null;
+  provider_message_id: string | null;
+  detail: string | null;
+  template_key: string | null;
+  template_version: string | null;
+  attempted_at: string | null;
+  delivery_trigger: "manual" | "retry" | "already_sent";
+  notice: WorkAssignmentNotificationCenterItemRecord;
+};
+
+export type WorkAssignmentNoticeSmsSendRecord = {
+  entity_id: string;
+  target_type: WorkAssignmentTargetType;
+  target_id: string;
+  status: string;
+  message_sent: boolean;
+  recipient_phone: string | null;
+  provider: string | null;
+  provider_message_id: string | null;
+  detail: string | null;
+  template_key: string | null;
+  template_version: string | null;
+  attempted_at: string | null;
+  delivery_trigger: "manual" | "retry" | "already_sent";
+  notice: WorkAssignmentNotificationCenterItemRecord;
 };
 
 export type WorkAssignmentProviderHistoryRecord = {
@@ -153,6 +282,7 @@ export type WorkAssignmentProviderHistoryRecord = {
   attempted_at: string | null;
   received_at: string | null;
   recipient_email: string | null;
+  recipient_phone: string | null;
   provider_message_id: string | null;
   error: string | null;
   template_key: string | null;
@@ -182,6 +312,7 @@ export type WorkAssignmentNotificationCenterDigestRecord = {
   recovery_of_generated_at: string | null;
   delivery_attempt_count: number;
   provider_history: WorkAssignmentProviderHistoryRecord[];
+  rendered_message_preview: WorkAssignmentRenderedMessagePreviewRecord | null;
 };
 
 export type WorkAssignmentNotificationCenterRecord = {
@@ -196,6 +327,7 @@ export type WorkAssignmentNotificationCenterRecord = {
   done_count: number;
   digest_receipt_count: number;
   guardrails: string[];
+  channels?: WorkAssignmentNotificationChannelRecord[];
   notices: WorkAssignmentNotificationCenterItemRecord[];
   digest_receipts: WorkAssignmentNotificationCenterDigestRecord[];
 };
@@ -1299,6 +1431,31 @@ export type XeroPaymentSummaryRecord = {
   reconciliation_ready: number;
 };
 
+export type XeroAccountingFreshnessRecord = {
+  generated_at: string;
+  source: "local_metadata";
+  status: "ready" | "stale" | "missing" | "attention";
+  summary: string;
+  stale_after_days: number;
+  stale_reconciliation: boolean;
+  readiness_issue_count: number;
+  readiness_blocker_count: number;
+  readiness_warning_count: number;
+  approved_unsynced_invoice_count: number;
+  xero_linked_open_invoice_count: number;
+  last_contact_sync_at: string | null;
+  last_chart_tax_validation_at: string | null;
+  last_invoice_posting_preview_at: string | null;
+  last_invoice_draft_create_at: string | null;
+  last_invoice_provider_dispatch_at: string | null;
+  last_payment_reconciliation_preview_at: string | null;
+  last_payment_reconciliation_apply_at: string | null;
+  last_payment_reconciliation_at: string | null;
+  last_payment_reconciliation_source: string | null;
+  last_payment_reconciliation_mode: string | null;
+  guardrails: string[];
+};
+
 export type XeroMappingIssueRecord = {
   id: string;
   kind: "connection" | "contact" | "chart" | "tax" | "invoice_sync" | "payment";
@@ -1395,6 +1552,7 @@ export type XeroStatusRecord = {
   tax_mapping: XeroReadinessSummaryRecord;
   invoice_sync: XeroInvoiceSyncSummaryRecord;
   payment_reconciliation: XeroPaymentSummaryRecord;
+  accounting_freshness: XeroAccountingFreshnessRecord;
   issues: XeroMappingIssueRecord[];
   guardrails: string[];
 };
@@ -1748,6 +1906,38 @@ export type BillingRiskRecord = {
   unpaid_invoice_count: number;
 };
 
+export type AccountingReadinessSnapshotRecord = {
+  generated_at: string | null;
+  source: string | null;
+  status: string;
+  summary: string;
+  stale_after_days: number | null;
+  contact_ready: number;
+  contact_missing: number;
+  chart_ready: number;
+  chart_missing: number;
+  tax_ready: number;
+  tax_missing: number;
+  readiness_issue_count: number;
+  readiness_blocker_count: number;
+  readiness_warning_count: number;
+  approved_unsynced_invoice_count: number;
+  unpaid_invoice_count: number;
+  stale_reconciliation: boolean;
+  xero_linked_open_invoice_count: number;
+  last_contact_sync_at: string | null;
+  last_chart_tax_validation_at: string | null;
+  last_invoice_posting_preview_at: string | null;
+  last_invoice_draft_create_at: string | null;
+  last_invoice_provider_dispatch_at: string | null;
+  last_payment_reconciliation_preview_at: string | null;
+  last_payment_reconciliation_apply_at: string | null;
+  last_payment_reconciliation_at: string | null;
+  last_payment_reconciliation_source: string | null;
+  last_payment_reconciliation_mode: string | null;
+  guardrails: string[];
+};
+
 export type FinanceSnapshotRecord = {
   configured_charges_cents: number;
   ready_to_bill_count: number;
@@ -1756,6 +1946,7 @@ export type FinanceSnapshotRecord = {
   unpaid_invoice_count: number;
   billing_draft_counts: Record<string, number>;
   invoice_draft_counts: Record<string, number>;
+  accounting_readiness?: AccountingReadinessSnapshotRecord | null;
 };
 
 export type OwnerEntitySnapshotRecord = {
@@ -1768,6 +1959,7 @@ export type OwnerEntitySnapshotRecord = {
   entity_gst_registered: boolean;
   xero_connected: boolean;
   xero_last_sync_at: string | null;
+  accounting_readiness?: AccountingReadinessSnapshotRecord | null;
 };
 
 export type LeaseEventRecord = {
@@ -1980,6 +2172,29 @@ export type EnrichmentApplyRecord = {
     storage: "record_field" | "metadata";
   }>;
   skipped: Array<{ field: string; value: string | null; reason: string }>;
+};
+
+export type PropertyImageCandidateRecord = {
+  title: string;
+  image_url: string;
+  page_url: string | null;
+  source: EnrichmentSource;
+  confidence: number;
+  notes: string | null;
+};
+
+export type PropertyImagePreviewRecord = {
+  target: EnrichmentPreviewRecord["target"];
+  candidates: PropertyImageCandidateRecord[];
+  warnings: string[];
+  openai_response_id: string | null;
+};
+
+export type PropertyImageApplyRecord = {
+  target: EnrichmentPreviewRecord["target"];
+  selected_image: PropertyImageCandidateRecord;
+  document_id: string;
+  warnings: string[];
 };
 
 export type LeaseIntakeExtraction = {
@@ -2825,6 +3040,22 @@ export function sendMaintenanceWorkOrderContractorEmail(
   );
 }
 
+export function sendMaintenanceWorkOrderContractorSms(
+  workOrderId: string,
+  payload: {
+    body: string;
+    include_comment?: boolean;
+  },
+) {
+  return request<MaintenanceWorkOrderRecord>(
+    `/maintenance/work-orders/${workOrderId}/contractor-delivery/send-sms`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export function sendMaintenanceWorkOrderAssignmentNotification(
   workOrderId: string,
 ) {
@@ -2887,6 +3118,42 @@ export function sendArrearsAssignmentNotification(arrearsCaseId: string) {
     `/arrears/cases/${arrearsCaseId}/assignment-notification/send-email`,
     {
       method: "POST",
+    },
+  );
+}
+
+export function getWorkAssignmentNotificationTemplates() {
+  return request<WorkAssignmentNotificationTemplateCatalogRecord>(
+    "/work-assignments/notification-templates",
+  );
+}
+
+export function sendWorkAssignmentNoticeEmail(payload: {
+  entity_id: string;
+  target_id: string;
+  target_type: WorkAssignmentTargetType;
+  delivery_trigger?: "manual" | "retry";
+}) {
+  return request<WorkAssignmentNoticeEmailSendRecord>(
+    "/work-assignments/notification-center/notices/send-email",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function sendWorkAssignmentNoticeSms(payload: {
+  entity_id: string;
+  target_id: string;
+  target_type: WorkAssignmentTargetType;
+  delivery_trigger?: "manual" | "retry";
+}) {
+  return request<WorkAssignmentNoticeSmsSendRecord>(
+    "/work-assignments/notification-center/notices/send-sms",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
     },
   );
 }
@@ -2997,6 +3264,16 @@ export function uploadDocument(payload: {
 
 export function documentDownloadUrl(documentId: string) {
   return `${API_BASE}/documents/${documentId}/download`;
+}
+
+export async function downloadDocumentBlob(documentId: string) {
+  const response = await fetch(documentDownloadUrl(documentId), {
+    headers: await authHeaders(),
+  });
+  if (!response.ok) {
+    await parseResponse<never>(response);
+  }
+  return response.blob();
 }
 
 export function deleteDocument(documentId: string) {
@@ -3617,4 +3894,30 @@ export function applyPublicEnrichment(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function previewPropertyImages(payload: {
+  property_id: string;
+  requested_count?: number;
+}) {
+  return request<PropertyImagePreviewRecord>(
+    "/public-enrichment/property-images/preview",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function applyPropertyImage(payload: {
+  property_id: string;
+  candidate: PropertyImageCandidateRecord;
+}) {
+  return request<PropertyImageApplyRecord>(
+    "/public-enrichment/property-images/apply",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }

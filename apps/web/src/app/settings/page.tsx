@@ -10,13 +10,17 @@ import {
   CheckCircle2,
   CircleDollarSign,
   ExternalLink,
+  FileText,
   KeyRound,
   Loader2,
+  MailCheck,
   PlugZap,
   RefreshCw,
   SearchCheck,
   Send,
   ShieldCheck,
+  Smartphone,
+  Tags,
   UserPlus,
   UsersRound,
 } from "lucide-react";
@@ -43,9 +47,11 @@ import {
   createSecurityMember,
   createXeroInvoiceDrafts,
   getSecurityWorkspace,
+  getWorkAssignmentNotificationTemplates,
   getXeroExceptionQueue,
   getXeroStatus,
   listEntities,
+  listProperties,
   previewXeroChartTaxValidation,
   previewXeroContactSync,
   previewXeroInvoicePosting,
@@ -68,6 +74,7 @@ import {
   type XeroInvoicePostingPreviewResultRecord,
   type XeroPaymentReconciliationRecord,
   type XeroPaymentReconciliationResultRecord,
+  type XeroAccountingFreshnessRecord,
   type SecurityMemberRecord,
   type SecurityMemberUpdatePayload,
   type SecurityNotificationPreferences,
@@ -76,7 +83,14 @@ import {
   type SecurityWorkAssignmentDigestCadence,
   type XeroMappingIssueRecord,
   type XeroReadinessSummaryRecord,
+  type WorkAssignmentNotificationTemplateCatalogRecord,
+  type WorkAssignmentNotificationTemplateKind,
+  type WorkAssignmentNotificationTemplateRecord,
 } from "@/lib/api";
+import {
+  ownershipChipClassName,
+  propertyOwnershipTagDirectory,
+} from "@/lib/property-ownership";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_XERO_ISSUES: XeroMappingIssueRecord[] = [];
@@ -89,6 +103,24 @@ type NotificationTemplateDraft = {
   noticeVersion: string;
   digestKey: string;
   digestVersion: string;
+};
+type CommunicationTemplateCard = {
+  id: string;
+  title: string;
+  audience: string;
+  channel: "email" | "sms" | "portal";
+  provider: string;
+  templateKey: string;
+  templateVersion: string;
+  brand: string;
+  subjectPreview: string;
+  bodyPreview: string;
+  actionLabel: string;
+  receiptLabel: string;
+  receiptEndpoint: string | null;
+  receiptDetail: string;
+  sourceLabel: string;
+  tone: StatusTone;
 };
 type XeroChargeRuleMappingInput = Pick<
   XeroMappingIssueRecord,
@@ -198,11 +230,39 @@ function exceptionKindLabel(kind: XeroExceptionQueueItemRecord["kind"]) {
   return kind.replaceAll("_", " ");
 }
 
+function statusLabel(value: string) {
+  return value.replaceAll("_", " ");
+}
+
 function readyTone(summary: XeroReadinessSummaryRecord): StatusTone {
   if (summary.total === 0) {
     return "neutral";
   }
   return summary.missing === 0 ? "success" : "warning";
+}
+
+function accountingFreshnessTone(
+  status: "ready" | "stale" | "missing" | "attention",
+): StatusTone {
+  if (status === "ready") {
+    return "success";
+  }
+  if (status === "missing") {
+    return "danger";
+  }
+  return "warning";
+}
+
+function accountingCheckpointRows(freshness: XeroAccountingFreshnessRecord) {
+  return [
+    ["Contact preview", freshness.last_contact_sync_at],
+    ["Chart/tax validation", freshness.last_chart_tax_validation_at],
+    ["Posting preview", freshness.last_invoice_posting_preview_at],
+    ["Xero draft", freshness.last_invoice_draft_create_at],
+    ["Provider dispatch", freshness.last_invoice_provider_dispatch_at],
+    ["Payment preview", freshness.last_payment_reconciliation_preview_at],
+    ["Payment apply", freshness.last_payment_reconciliation_apply_at],
+  ] as const;
 }
 
 function summaryLabel(summary: XeroReadinessSummaryRecord) {
@@ -329,6 +389,14 @@ function workAssignmentEmailEnabled(member: SecurityMemberRecord) {
   return member.notification_preferences.work_assignment_email_enabled;
 }
 
+function workAssignmentSmsEnabled(member: SecurityMemberRecord) {
+  return member.notification_preferences.work_assignment_sms_enabled;
+}
+
+function workAssignmentSmsPhone(member: SecurityMemberRecord) {
+  return member.notification_preferences.work_assignment_sms_phone ?? "";
+}
+
 function workAssignmentDigestCadence(member: SecurityMemberRecord) {
   return (
     member.notification_preferences.work_assignment_digest_cadence ?? "daily"
@@ -380,30 +448,286 @@ function templateDraftChanged(
 function notificationTemplateTitle(templateKey: string) {
   const titles: Record<string, string> = {
     work_assignment_notification: "Standard work assignment",
+    work_assignment_follow_up: "Follow-up assignment notice",
     work_assignment_digest: "Standard work digest",
+    work_assignment_digest_owner_review: "Owner review digest",
   };
   return titles[templateKey] ?? templateKey.replaceAll("_", " ");
+}
+
+function notificationTemplateByKey(
+  templates: WorkAssignmentNotificationTemplateRecord[] | undefined,
+  key: string,
+) {
+  return templates?.find((template) => template.key === key) ?? null;
+}
+
+function customNotificationTemplate(
+  kind: WorkAssignmentNotificationTemplateKind,
+  key: string,
+  version: string,
+): WorkAssignmentNotificationTemplateRecord {
+  const name = notificationTemplateTitle(key);
+  return {
+    kind,
+    key,
+    name,
+    default_version: version || "v1",
+    channel: "email",
+    provider: "sendgrid",
+    subject_preview:
+      kind === "digest"
+        ? "Leasium Work digest"
+        : "New Leasium work assigned",
+    content_summary:
+      "Custom template key stored on this operator; provider sends still require explicit approval.",
+    recovery_summary: null,
+    is_system: false,
+  };
+}
+
+function notificationTemplateOptions({
+  templates,
+  currentKey,
+  currentVersion,
+  kind,
+}: {
+  templates: WorkAssignmentNotificationTemplateRecord[] | undefined;
+  currentKey: string;
+  currentVersion: string;
+  kind: WorkAssignmentNotificationTemplateKind;
+}) {
+  const base = templates ?? [];
+  if (!currentKey || base.some((template) => template.key === currentKey)) {
+    return base;
+  }
+  return [
+    customNotificationTemplate(kind, currentKey, currentVersion),
+    ...base,
+  ];
 }
 
 function notificationTemplatePreview(
   member: SecurityMemberRecord,
   draft: NotificationTemplateDraft,
+  catalog: WorkAssignmentNotificationTemplateCatalogRecord | undefined,
 ) {
   const cleanDraft = normalisedTemplateDraft(draft);
+  const noticeTemplate = notificationTemplateByKey(
+    catalog?.notice_templates,
+    cleanDraft.noticeKey,
+  );
+  const digestTemplate = notificationTemplateByKey(
+    catalog?.digest_templates,
+    cleanDraft.digestKey,
+  );
   return {
-    noticeTitle: notificationTemplateTitle(cleanDraft.noticeKey),
-    noticeSubject: `New Leasium work assigned to ${member.display_name}`,
+    noticeTitle:
+      noticeTemplate?.name ?? notificationTemplateTitle(cleanDraft.noticeKey),
+    noticeSubject: `${
+      noticeTemplate?.subject_preview ?? "New Leasium work assigned"
+    } to ${member.display_name}`,
     noticeDetail:
+      noticeTemplate?.content_summary ??
       "Includes the work title, due date, source workspace, and a link back to Leasium.",
-    digestTitle: notificationTemplateTitle(cleanDraft.digestKey),
-    digestSubject: `${digestCadenceLabel(
-      workAssignmentDigestCadence(member),
-    )} for ${member.display_name}`,
+    digestTitle:
+      digestTemplate?.name ?? notificationTemplateTitle(cleanDraft.digestKey),
+    digestSubject: `${
+      digestTemplate?.subject_preview ??
+      digestCadenceLabel(workAssignmentDigestCadence(member))
+    } for ${member.display_name}`,
     digestDetail:
+      digestTemplate?.content_summary ??
       "Groups assigned work by urgency, follow-up status, and source workspace.",
     noticeVersion: cleanDraft.noticeVersion,
     digestVersion: cleanDraft.digestVersion,
+    noticeManaged: Boolean(noticeTemplate?.is_system),
+    digestManaged: Boolean(digestTemplate?.is_system),
   };
+}
+
+function communicationTemplateCatalog({
+  catalog,
+  brandName,
+}: {
+  catalog: WorkAssignmentNotificationTemplateCatalogRecord | undefined;
+  brandName: string;
+}): CommunicationTemplateCard[] {
+  const workNotice = notificationTemplateByKey(
+    catalog?.notice_templates,
+    "work_assignment_notification",
+  );
+  const workDigest = notificationTemplateByKey(
+    catalog?.digest_templates,
+    "work_assignment_digest",
+  );
+  return [
+    {
+      id: "invoice-delivery",
+      title: "Invoice delivery",
+      audience: "Tenants",
+      channel: "email",
+      provider: "SendGrid",
+      templateKey: "invoice_delivery",
+      templateVersion: "v1",
+      brand: brandName,
+      subjectPreview: "Invoice INV-1001",
+      bodyPreview:
+        "Approved invoice email with issuer, due date, total, and the generated PDF attached.",
+      actionLabel: "Billing Readiness prepares the draft, then sends after explicit approval.",
+      receiptLabel: "Invoice SendGrid events",
+      receiptEndpoint: "/api/v1/invoice-drafts/webhooks/sendgrid-events",
+      receiptDetail:
+        "Provider receipts update invoice delivery history and payment follow-up cues.",
+      sourceLabel: "Runtime setting",
+      tone: "primary",
+    },
+    {
+      id: "tenant-onboarding",
+      title: "Tenant onboarding invite",
+      audience: "Tenants",
+      channel: "email",
+      provider: "SendGrid",
+      templateKey: "tenant_onboarding_invite",
+      templateVersion: "v1",
+      brand: brandName,
+      subjectPreview: "Complete tenant onboarding",
+      bodyPreview:
+        "Invitation with property, unit, due date, expiry guidance, and review-first guardrails.",
+      actionLabel: "Tenant detail and Portfolio QA create reviewed invite links.",
+      receiptLabel: "Onboarding SendGrid events",
+      receiptEndpoint: "/api/v1/tenant-onboarding/webhooks/sendgrid-events",
+      receiptDetail:
+        "Receipts update onboarding delivery state without changing tenant profile data.",
+      sourceLabel: "Runtime setting",
+      tone: "primary",
+    },
+    {
+      id: "tenant-onboarding-sms",
+      title: "Tenant onboarding SMS",
+      audience: "Tenants",
+      channel: "sms",
+      provider: "Twilio",
+      templateKey: "tenant_onboarding_invite",
+      templateVersion: "v1",
+      brand: brandName,
+      subjectPreview: "SMS invite link",
+      bodyPreview:
+        "Short tenant onboarding reminder with a scoped link and expiry context.",
+      actionLabel: "Only sent when SMS delivery is explicitly reviewed and approved.",
+      receiptLabel: "Onboarding Twilio callbacks",
+      receiptEndpoint: "/api/v1/tenant-onboarding/webhooks/twilio-status",
+      receiptDetail:
+        "Callbacks record queued, delivered, failed, and recovery states on the onboarding row.",
+      sourceLabel: "Runtime setting",
+      tone: "neutral",
+    },
+    {
+      id: "work-assignment",
+      title: workNotice?.name ?? "Standard assignment notice",
+      audience: "Operators",
+      channel: "email",
+      provider: "SendGrid",
+      templateKey: workNotice?.key ?? "work_assignment_notification",
+      templateVersion: workNotice?.default_version ?? "v1",
+      brand: "Leasium",
+      subjectPreview:
+        workNotice?.subject_preview ?? "New Leasium work assigned",
+      bodyPreview:
+        workNotice?.content_summary ??
+        "Includes the work title, due date, source workspace, and a link back to Leasium.",
+      actionLabel: "Work rows and Notifications send notices only after operator action.",
+      receiptLabel: "Work SendGrid events",
+      receiptEndpoint: "/api/v1/work-assignments/webhooks/sendgrid-events",
+      receiptDetail:
+        "Receipts update maintenance, arrears, and critical-date assignment history.",
+      sourceLabel: workNotice?.is_system ? "Named template" : "Fallback",
+      tone: "success",
+    },
+    {
+      id: "work-digest",
+      title: workDigest?.name ?? "Standard work digest",
+      audience: "Operators",
+      channel: "email",
+      provider: "SendGrid",
+      templateKey: workDigest?.key ?? "work_assignment_digest",
+      templateVersion: workDigest?.default_version ?? "v1",
+      brand: "Leasium",
+      subjectPreview:
+        workDigest?.subject_preview ??
+        "Leasium daily or weekly Work digest",
+      bodyPreview:
+        workDigest?.content_summary ??
+        "Groups assigned work by urgency, follow-up status, and source workspace.",
+      actionLabel: "Digest previews stay review-only until send approval is explicit.",
+      receiptLabel: "Work digest SendGrid events",
+      receiptEndpoint: "/api/v1/work-assignments/webhooks/sendgrid-events",
+      receiptDetail:
+        "Digest receipts are stored against the operator notification history.",
+      sourceLabel: workDigest?.is_system ? "Named template" : "Fallback",
+      tone: "success",
+    },
+    {
+      id: "contractor-update",
+      title: "Maintenance contractor update",
+      audience: "Contractors",
+      channel: "email",
+      provider: "SendGrid",
+      templateKey: "maintenance_contractor_update",
+      templateVersion: "v1",
+      brand: "Leasium",
+      subjectPreview: "Maintenance update request",
+      bodyPreview:
+        "Reviewed contractor email with attendance, quote, completion evidence, or billing-document copy.",
+      actionLabel: "Maintenance detail pre-fills a template, then sends after review.",
+      receiptLabel: "Maintenance SendGrid events",
+      receiptEndpoint: "/api/v1/maintenance/webhooks/sendgrid-events",
+      receiptDetail:
+        "Receipts are shown in contractor provider history and work-order activity.",
+      sourceLabel: "Runtime setting",
+      tone: "primary",
+    },
+    {
+      id: "contractor-sms",
+      title: "Maintenance contractor SMS",
+      audience: "Contractors",
+      channel: "sms",
+      provider: "Twilio",
+      templateKey: "maintenance_contractor_sms",
+      templateVersion: "v1",
+      brand: "Leasium",
+      subjectPreview: "SMS contractor update",
+      bodyPreview:
+        "Short reviewed SMS for attendance windows, quote follow-up, or completion evidence.",
+      actionLabel: "Maintenance detail sends SMS separately from contractor email.",
+      receiptLabel: "Maintenance Twilio callbacks",
+      receiptEndpoint: "/api/v1/maintenance/webhooks/twilio-status",
+      receiptDetail:
+        "Callbacks update SMS attempt history and contractor delivery recovery cues.",
+      sourceLabel: "Runtime setting",
+      tone: "neutral",
+    },
+    {
+      id: "tenant-portal-preferences",
+      title: "Tenant portal notification preferences",
+      audience: "Tenants",
+      channel: "portal",
+      provider: "Leasium",
+      templateKey: "tenant_portal_preferences",
+      templateVersion: "v1",
+      brand: brandName,
+      subjectPreview: "Portal preference receipt",
+      bodyPreview:
+        "Tenant-facing saved receipt for billing email, compliance reminders, email, and SMS preferences.",
+      actionLabel: "Tenant portal stores preferences immediately inside the tenant boundary.",
+      receiptLabel: "Portal audit receipt",
+      receiptEndpoint: null,
+      receiptDetail:
+        "This is an in-app receipt; no provider webhook is required for the saved preference state.",
+      sourceLabel: "Portal UI",
+      tone: "neutral",
+    },
+  ];
 }
 
 function digestCadenceLabel(value: SecurityWorkAssignmentDigestCadence) {
@@ -557,6 +881,9 @@ function SettingsWorkspace() {
   const [notificationTemplateDrafts, setNotificationTemplateDrafts] = useState<
     Record<string, NotificationTemplateDraft>
   >({});
+  const [smsPhoneDrafts, setSmsPhoneDrafts] = useState<Record<string, string>>(
+    {},
+  );
   const xeroConnectionPanelRef = useRef<HTMLDivElement>(null);
   const xeroContactPreviewPanelRef = useRef<HTMLDivElement>(null);
   const xeroInvoicePostingPanelRef = useRef<HTMLDivElement>(null);
@@ -610,6 +937,20 @@ function SettingsWorkspace() {
     (entity) => entity.id === selectedEntityId,
   );
 
+  const propertiesQuery = useQuery({
+    queryKey: ["properties", selectedEntityId],
+    queryFn: () => listProperties(selectedEntityId),
+    enabled: Boolean(selectedEntityId) && activeTab === "organisation",
+  });
+
+  const ownershipTags = useMemo(
+    () =>
+      propertyOwnershipTagDirectory(
+        propertiesQuery.data ?? [],
+        selectedEntity?.name,
+      ),
+    [propertiesQuery.data, selectedEntity?.name],
+  );
   const xeroStatusQuery = useQuery({
     queryKey: ["xero-status", selectedEntityId],
     queryFn: () => getXeroStatus(selectedEntityId),
@@ -626,6 +967,28 @@ function SettingsWorkspace() {
     queryKey: ["security-workspace"],
     queryFn: getSecurityWorkspace,
   });
+
+  const notificationTemplateCatalogQuery = useQuery({
+    queryKey: ["work-assignment-notification-templates"],
+    queryFn: getWorkAssignmentNotificationTemplates,
+    enabled: activeTab === "security" || activeTab === "organisation",
+  });
+
+  const communicationTemplates = useMemo(
+    () =>
+      communicationTemplateCatalog({
+        catalog: notificationTemplateCatalogQuery.data,
+        brandName:
+          selectedEntity?.name ??
+          securityQuery.data?.organisation.name ??
+          "Leasium",
+      }),
+    [
+      notificationTemplateCatalogQuery.data,
+      securityQuery.data?.organisation.name,
+      selectedEntity?.name,
+    ],
+  );
 
   const refreshXeroViews = () => {
     queryClient.invalidateQueries({ queryKey: ["entities"] });
@@ -863,9 +1226,15 @@ function SettingsWorkspace() {
   const workEmailEnabledCount = selectedEntityRoleMembers.filter(
     workAssignmentEmailEnabled,
   ).length;
+  const workSmsReadyCount = selectedEntityRoleMembers.filter(
+    (member) => workAssignmentSmsEnabled(member) && workAssignmentSmsPhone(member),
+  ).length;
   const workDigestEnabledCount = selectedEntityRoleMembers.filter(
     (member) => workAssignmentDigestCadence(member) !== "off",
   ).length;
+  const workNotificationTemplateCount =
+    (notificationTemplateCatalogQuery.data?.notice_templates.length ?? 0) +
+    (notificationTemplateCatalogQuery.data?.digest_templates.length ?? 0);
   const selectedXeroContactMatchCount =
     xeroContactPreview?.suggested_matches.filter(
       (match) => selectedXeroContactMatches[xeroContactMatchKey(match)],
@@ -1604,8 +1973,14 @@ function SettingsWorkspace() {
                   <StatusBadge tone="success">
                     {workEmailEnabledCount} email on
                   </StatusBadge>
+                  <StatusBadge tone={workSmsReadyCount ? "primary" : "neutral"}>
+                    {workSmsReadyCount} SMS ready
+                  </StatusBadge>
                   <StatusBadge tone="primary">
                     {workDigestEnabledCount} digest on
+                  </StatusBadge>
+                  <StatusBadge tone="neutral">
+                    {workNotificationTemplateCount || "Loading"} templates
                   </StatusBadge>
                 </div>
               }
@@ -1627,13 +2002,32 @@ function SettingsWorkspace() {
                     member,
                     templateDraft,
                   );
+                  const noticeTemplateChoices = notificationTemplateOptions({
+                    templates:
+                      notificationTemplateCatalogQuery.data?.notice_templates,
+                    currentKey: cleanTemplateDraft.noticeKey,
+                    currentVersion: cleanTemplateDraft.noticeVersion,
+                    kind: "assignment_notice",
+                  });
+                  const digestTemplateChoices = notificationTemplateOptions({
+                    templates:
+                      notificationTemplateCatalogQuery.data?.digest_templates,
+                    currentKey: cleanTemplateDraft.digestKey,
+                    currentVersion: cleanTemplateDraft.digestVersion,
+                    kind: "digest",
+                  });
                   const templatePreview = notificationTemplatePreview(
                     member,
                     templateDraft,
+                    notificationTemplateCatalogQuery.data,
                   );
                   const canManageSecurity =
                     Boolean(securityQuery.data?.can_manage_security) &&
                     !isUpdating;
+                  const workSmsEnabled = workAssignmentSmsEnabled(member);
+                  const smsPhone = workAssignmentSmsPhone(member);
+                  const smsPhoneDraft = smsPhoneDrafts[member.id] ?? smsPhone;
+                  const smsPhoneChanged = smsPhoneDraft.trim() !== smsPhone;
                   const updateTemplateDraft = (
                     patch: Partial<NotificationTemplateDraft>,
                   ) =>
@@ -1670,6 +2064,17 @@ function SettingsWorkspace() {
                           >
                             {digestCadenceLabel(digestCadence)}
                           </StatusBadge>
+                          <StatusBadge
+                            tone={
+                              workSmsEnabled && smsPhone
+                                ? "primary"
+                                : "neutral"
+                            }
+                          >
+                            {workSmsEnabled && smsPhone
+                              ? "SMS ready"
+                              : "SMS not ready"}
+                          </StatusBadge>
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
                           {member.email}
@@ -1685,40 +2090,112 @@ function SettingsWorkspace() {
                         </div>
                       </div>
 
-                      <label className="flex min-h-11 items-start gap-3 text-sm">
-                        <input
-                          aria-label={`${member.display_name} assignment email notifications`}
-                          checked={workEmailEnabled}
-                          className="mt-1 h-4 w-4 accent-primary"
-                          disabled={!canManageSecurity}
-                          onChange={(event) =>
-                            memberMutation.mutate({
-                              memberId: member.id,
-                              payload: {
-                                notification_preferences:
-                                  nextNotificationPreferences(member, {
-                                    work_assignment_email_enabled:
-                                      event.target.checked,
-                                  }),
-                              },
-                            })
-                          }
-                          type="checkbox"
-                        />
-                        <span className="min-w-0">
-                          <span className="flex items-center gap-1 font-medium">
-                            {workEmailEnabled ? (
-                              <Bell size={14} />
+                      <div className="grid gap-3">
+                        <label className="flex min-h-11 items-start gap-3 text-sm">
+                          <input
+                            aria-label={`${member.display_name} assignment email notifications`}
+                            checked={workEmailEnabled}
+                            className="mt-1 h-4 w-4 accent-primary"
+                            disabled={!canManageSecurity}
+                            onChange={(event) =>
+                              memberMutation.mutate({
+                                memberId: member.id,
+                                payload: {
+                                  notification_preferences:
+                                    nextNotificationPreferences(member, {
+                                      work_assignment_email_enabled:
+                                        event.target.checked,
+                                    }),
+                                },
+                              })
+                            }
+                            type="checkbox"
+                          />
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-1 font-medium">
+                              {workEmailEnabled ? (
+                                <Bell size={14} />
+                              ) : (
+                                <BellOff size={14} />
+                              )}
+                              Assignment email
+                            </span>
+                            <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                              Immediate notice when assigned work is ready.
+                            </span>
+                          </span>
+                        </label>
+                        <div className="grid gap-2 rounded-xl border border-border bg-muted/20 p-3">
+                          <label className="flex items-start gap-3 text-sm">
+                            <input
+                              aria-label={`${member.display_name} assignment SMS notifications`}
+                              checked={workSmsEnabled}
+                              className="mt-1 h-4 w-4 accent-primary"
+                              disabled={!canManageSecurity}
+                              onChange={(event) =>
+                                memberMutation.mutate({
+                                  memberId: member.id,
+                                  payload: {
+                                    notification_preferences:
+                                      nextNotificationPreferences(member, {
+                                        work_assignment_sms_enabled:
+                                          event.target.checked,
+                                      }),
+                                  },
+                                })
+                              }
+                              type="checkbox"
+                            />
+                            <span className="min-w-0">
+                              <span className="flex items-center gap-1 font-medium">
+                                <Smartphone size={14} />
+                                Assignment SMS
+                              </span>
+                              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                                Stores a reviewed operator phone for future SMS recovery.
+                              </span>
+                            </span>
+                          </label>
+                          <Field label="SMS phone">
+                            <Input
+                              aria-label={`${member.display_name} assignment SMS phone`}
+                              placeholder="+61400111222"
+                              value={smsPhoneDraft}
+                              disabled={!canManageSecurity}
+                              onChange={(event) =>
+                                setSmsPhoneDrafts((drafts) => ({
+                                  ...drafts,
+                                  [member.id]: event.target.value,
+                                }))
+                              }
+                            />
+                          </Field>
+                          <SecondaryButton
+                            type="button"
+                            className="h-9 justify-self-start px-2.5"
+                            disabled={!canManageSecurity || !smsPhoneChanged}
+                            onClick={() =>
+                              memberMutation.mutate({
+                                memberId: member.id,
+                                payload: {
+                                  notification_preferences:
+                                    nextNotificationPreferences(member, {
+                                      work_assignment_sms_phone:
+                                        smsPhoneDraft.trim() || null,
+                                    }),
+                                },
+                              })
+                            }
+                          >
+                            {isUpdating ? (
+                              <Loader2 size={14} className="animate-spin" />
                             ) : (
-                              <BellOff size={14} />
+                              <CheckCircle2 size={14} />
                             )}
-                            Assignment email
-                          </span>
-                          <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                            Immediate notice when assigned work is ready.
-                          </span>
-                        </span>
-                      </label>
+                            Save SMS
+                          </SecondaryButton>
+                        </div>
+                      </div>
 
                       <div className="grid gap-2">
                         <Field label="Digest cadence">
@@ -1761,16 +2238,35 @@ function SettingsWorkspace() {
                         </div>
                         <div className="grid gap-2 sm:grid-cols-[1fr_88px]">
                           <Field label="Assignment notice">
-                            <Input
+                            <Select
                               aria-label={`${member.display_name} assignment notice template key`}
                               value={templateDraft.noticeKey}
                               disabled={!canManageSecurity}
                               onChange={(event) =>
-                                updateTemplateDraft({
-                                  noticeKey: event.target.value,
-                                })
+                                updateTemplateDraft(
+                                  noticeTemplateChoices.find(
+                                    (template) =>
+                                      template.key === event.target.value,
+                                  )?.default_version
+                                    ? {
+                                        noticeKey: event.target.value,
+                                        noticeVersion:
+                                          noticeTemplateChoices.find(
+                                            (template) =>
+                                              template.key ===
+                                              event.target.value,
+                                          )?.default_version ?? "v1",
+                                      }
+                                    : { noticeKey: event.target.value },
+                                )
                               }
-                            />
+                            >
+                              {noticeTemplateChoices.map((template) => (
+                                <option key={template.key} value={template.key}>
+                                  {template.name}
+                                </option>
+                              ))}
+                            </Select>
                           </Field>
                           <Field label="Version">
                             <Input
@@ -1787,16 +2283,35 @@ function SettingsWorkspace() {
                         </div>
                         <div className="grid gap-2 sm:grid-cols-[1fr_88px]">
                           <Field label="Digest">
-                            <Input
+                            <Select
                               aria-label={`${member.display_name} digest template key`}
                               value={templateDraft.digestKey}
                               disabled={!canManageSecurity}
                               onChange={(event) =>
-                                updateTemplateDraft({
-                                  digestKey: event.target.value,
-                                })
+                                updateTemplateDraft(
+                                  digestTemplateChoices.find(
+                                    (template) =>
+                                      template.key === event.target.value,
+                                  )?.default_version
+                                    ? {
+                                        digestKey: event.target.value,
+                                        digestVersion:
+                                          digestTemplateChoices.find(
+                                            (template) =>
+                                              template.key ===
+                                              event.target.value,
+                                          )?.default_version ?? "v1",
+                                      }
+                                    : { digestKey: event.target.value },
+                                )
                               }
-                            />
+                            >
+                              {digestTemplateChoices.map((template) => (
+                                <option key={template.key} value={template.key}>
+                                  {template.name}
+                                </option>
+                              ))}
+                            </Select>
                           </Field>
                           <Field label="Version">
                             <Input
@@ -1829,6 +2344,17 @@ function SettingsWorkspace() {
                                 <StatusBadge tone="neutral">
                                   {templatePreview.noticeVersion}
                                 </StatusBadge>
+                                <StatusBadge
+                                  tone={
+                                    templatePreview.noticeManaged
+                                      ? "primary"
+                                      : "neutral"
+                                  }
+                                >
+                                  {templatePreview.noticeManaged
+                                    ? "Named"
+                                    : "Custom"}
+                                </StatusBadge>
                               </div>
                               <div className="mt-1 text-muted-foreground">
                                 {templatePreview.noticeTitle}
@@ -1847,6 +2373,17 @@ function SettingsWorkspace() {
                                 </span>
                                 <StatusBadge tone="neutral">
                                   {templatePreview.digestVersion}
+                                </StatusBadge>
+                                <StatusBadge
+                                  tone={
+                                    templatePreview.digestManaged
+                                      ? "primary"
+                                      : "neutral"
+                                  }
+                                >
+                                  {templatePreview.digestManaged
+                                    ? "Named"
+                                    : "Custom"}
                                 </StatusBadge>
                               </div>
                               <div className="mt-1 text-muted-foreground">
@@ -1951,6 +2488,210 @@ function SettingsWorkspace() {
             </SectionPanel>
 
             <SectionPanel
+              title="Communication templates"
+              description="Shared template keys, previews, versions, and receipt endpoints for tenant, operator, invoice, and contractor messages."
+              icon={<FileText size={17} className="text-primary" />}
+              actions={
+                <div className="flex flex-wrap gap-2">
+                  <StatusBadge tone="primary">
+                    {communicationTemplates.length} templates
+                  </StatusBadge>
+                  <StatusBadge tone="neutral">Review-first sends</StatusBadge>
+                </div>
+              }
+            >
+              <div className="grid gap-3 p-4 xl:grid-cols-2">
+                {communicationTemplates.map((template) => (
+                  <div
+                    key={template.id}
+                    className="grid gap-3 rounded-md border border-border bg-muted/20 p-3 text-sm"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold">
+                            {template.title}
+                          </span>
+                          <StatusBadge tone={template.tone}>
+                            {template.channel === "sms"
+                              ? "SMS"
+                              : template.channel === "portal"
+                                ? "Portal"
+                                : "Email"}
+                          </StatusBadge>
+                          <StatusBadge tone="neutral">
+                            {template.templateVersion}
+                          </StatusBadge>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {template.audience} / {template.provider} /{" "}
+                          {template.brand}
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-white p-2 text-primary shadow-leasiumXs">
+                        {template.channel === "sms" ? (
+                          <Smartphone size={16} />
+                        ) : template.channel === "portal" ? (
+                          <Bell size={16} />
+                        ) : (
+                          <MailCheck size={16} />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2 rounded-md border border-border bg-white p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-semibold uppercase text-muted-foreground">
+                          {template.templateKey}
+                        </span>
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {template.sourceLabel}
+                        </span>
+                      </div>
+                      <div className="font-medium">
+                        {template.subjectPreview}
+                      </div>
+                      <div className="text-xs leading-5 text-muted-foreground">
+                        {template.bodyPreview}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <div className="rounded-md border border-border bg-white p-3">
+                        <div className="text-xs font-semibold uppercase text-muted-foreground">
+                          Delivery rule
+                        </div>
+                        <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {template.actionLabel}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-white p-3">
+                        <div className="text-xs font-semibold uppercase text-muted-foreground">
+                          {template.receiptLabel}
+                        </div>
+                        <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {template.receiptDetail}
+                        </div>
+                        {template.receiptEndpoint ? (
+                          <code className="mt-2 block break-all rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+                            {template.receiptEndpoint}
+                          </code>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SectionPanel>
+
+            <SectionPanel
+              title="Ownership tags"
+              description="Property owner and billing identity labels shown beneath property rows."
+              icon={<Tags size={17} className="text-primary" />}
+              actions={
+                selectedEntityId ? (
+                  <StatusBadge tone={ownershipTags.length ? "primary" : "neutral"}>
+                    {ownershipTags.length}{" "}
+                    {ownershipTags.length === 1 ? "tag" : "tags"}
+                  </StatusBadge>
+                ) : null
+              }
+            >
+              <div className="divide-y divide-border">
+                {propertiesQuery.isLoading ? (
+                  <div className="px-4 py-4 text-sm text-muted-foreground">
+                    Loading ownership tags...
+                  </div>
+                ) : null}
+                {propertiesQuery.error ? (
+                  <div className="px-4 py-4 text-sm text-danger">
+                    {propertiesQuery.error instanceof Error
+                      ? propertiesQuery.error.message
+                      : "Could not load ownership tags."}
+                  </div>
+                ) : null}
+                {!propertiesQuery.isLoading && ownershipTags.length ? (
+                  ownershipTags.map((tag) => (
+                    <div
+                      key={tag.key}
+                      className="grid gap-3 px-4 py-3 text-sm md:grid-cols-[minmax(0,1fr)_140px_minmax(260px,1.5fr)]"
+                    >
+                      <div className="min-w-0">
+                        <span
+                          className={`inline-flex max-w-full items-center truncate rounded-full border px-2.5 py-1 text-xs font-semibold leading-4 ${ownershipChipClassName(tag.palette)}`}
+                          title={tag.label}
+                        >
+                          {tag.label}
+                        </span>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {tag.sources.map((source) => (
+                            <span
+                              key={`${tag.key}-${source}`}
+                              className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                            >
+                              {source}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 md:block">
+                        <StatusBadge tone="neutral">
+                          {tag.propertyCount}{" "}
+                          {tag.propertyCount === 1 ? "property" : "properties"}
+                        </StatusBadge>
+                        <Link
+                          href={`/properties?entity_id=${selectedEntityId}&owner_tag=${encodeURIComponent(tag.key)}`}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-leasium-blue-hover md:mt-2"
+                        >
+                          <ExternalLink size={13} />
+                          Open tagged properties
+                        </Link>
+                      </div>
+                      <div className="grid gap-1">
+                        {tag.properties.slice(0, 3).map((property) => (
+                          <Link
+                            key={property.id}
+                            href={`/properties?entity_id=${selectedEntityId}&property_id=${property.id}`}
+                            className="min-w-0 text-sm font-medium text-primary hover:text-leasium-blue-hover"
+                          >
+                            <span className="block truncate">
+                              {property.name}
+                            </span>
+                            <span className="block truncate text-xs font-normal text-muted-foreground">
+                              {property.streetAddress}
+                              {property.suburb ? `, ${property.suburb}` : ""}
+                              {property.state ? ` ${property.state}` : ""}
+                            </span>
+                          </Link>
+                        ))}
+                        {tag.properties.length > 3 ? (
+                          <div className="text-xs text-muted-foreground">
+                            +{tag.properties.length - 3} more properties
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))
+                ) : null}
+                {!propertiesQuery.isLoading &&
+                !propertiesQuery.error &&
+                selectedEntityId &&
+                !ownershipTags.length ? (
+                  <EmptyState
+                    title="No ownership tags yet"
+                    description="Import or edit property ownership and billing identity data to build this directory."
+                  />
+                ) : null}
+                {!selectedEntityId ? (
+                  <EmptyState
+                    title="No entity selected"
+                    description="Choose an entity from the header to list property owner tags."
+                  />
+                ) : null}
+              </div>
+            </SectionPanel>
+
+            <SectionPanel
               title="Entity access map"
               description="Each entity carries its own roles so operators only see the portfolio slices they should."
               icon={<KeyRound size={17} className="text-primary" />}
@@ -2012,7 +2753,7 @@ function SettingsWorkspace() {
 
         {activeTab === "xero" && selectedEntityId && status ? (
           <>
-            <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
               <MetricCard
                 label="Connection"
                 value={status.connection.connected ? "Ready" : "Off"}
@@ -2053,7 +2794,98 @@ function SettingsWorkspace() {
                     : "neutral"
                 }
               />
+              <MetricCard
+                label="Freshness"
+                value={statusLabel(status.accounting_freshness.status)}
+                detail={status.accounting_freshness.summary}
+                tone={accountingFreshnessTone(
+                  status.accounting_freshness.status,
+                )}
+              />
             </section>
+
+            <SectionPanel
+              title="Accounting freshness snapshot"
+              description="Local checkpoint history used to decide whether Xero-linked invoices need another payment reconciliation review."
+              icon={<SearchCheck size={17} className="text-primary" />}
+              actions={
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge
+                    tone={accountingFreshnessTone(
+                      status.accounting_freshness.status,
+                    )}
+                  >
+                    {statusLabel(status.accounting_freshness.status)}
+                  </StatusBadge>
+                  {status.accounting_freshness.stale_reconciliation ? (
+                    <StatusBadge tone="warning">
+                      Reconciliation stale after{" "}
+                      {status.accounting_freshness.stale_after_days} days
+                    </StatusBadge>
+                  ) : null}
+                </div>
+              }
+            >
+              <div className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="grid gap-3">
+                  <p className="text-sm text-muted-foreground">
+                    {status.accounting_freshness.summary}
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {accountingCheckpointRows(status.accounting_freshness).map(
+                      ([checkpoint, value]) => (
+                        <div
+                          key={checkpoint}
+                          className="rounded-md border border-border bg-muted/25 p-3 text-sm"
+                        >
+                          <div className="text-xs font-semibold uppercase text-muted-foreground">
+                            {checkpoint}
+                          </div>
+                          <div className="mt-1 font-medium">
+                            {formatDateTime(value)}
+                          </div>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span>
+                      Xero-linked open invoices{" "}
+                      {
+                        status.accounting_freshness
+                          .xero_linked_open_invoice_count
+                      }
+                    </span>
+                    {status.accounting_freshness.last_payment_reconciliation_source ? (
+                      <span>
+                        Payment source{" "}
+                        {statusLabel(
+                          status.accounting_freshness
+                            .last_payment_reconciliation_source,
+                        )}
+                      </span>
+                    ) : null}
+                    {status.accounting_freshness.last_payment_reconciliation_mode ? (
+                      <span>
+                        Payment mode{" "}
+                        {statusLabel(
+                          status.accounting_freshness
+                            .last_payment_reconciliation_mode,
+                        )}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <ul className="grid content-start gap-2 text-sm text-muted-foreground">
+                  {status.accounting_freshness.guardrails.map((guardrail) => (
+                    <li key={guardrail} className="flex gap-2">
+                      <span className="mt-2 h-1.5 w-1.5 rounded-full bg-primary" />
+                      <span>{guardrail}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </SectionPanel>
 
             <SectionPanel
               title="Xero sync exception queue"

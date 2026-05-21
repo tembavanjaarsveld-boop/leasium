@@ -284,10 +284,20 @@ function invoiceDeliveryBlockers(draft: InvoiceDraftRecord) {
 function invoiceEmailPreview(draft: InvoiceDraftRecord) {
   const preview = metadataRecord(draft.metadata.delivery_preview);
   const email = metadataRecord(preview.email);
+  const rendered = metadataRecord(email.rendered_message_preview);
   return {
     to: metadataText(email.to),
     subject: metadataText(email.subject),
     body: metadataText(email.body),
+    bodyText: metadataText(rendered.body_text) ?? metadataText(email.body),
+    provider: metadataText(rendered.provider) ?? "sendgrid",
+    templateKey:
+      metadataText(email.template_key) ?? metadataText(rendered.template_key),
+    templateVersion:
+      metadataText(email.template_version) ??
+      metadataText(rendered.template_version),
+    actionLabel: metadataText(rendered.action_label),
+    actionUrl: metadataText(rendered.action_url),
   };
 }
 
@@ -1662,6 +1672,12 @@ function BillingReadinessWorkspace() {
                                       ? "Email draft"
                                       : "No email"}
                                 </StatusBadge>
+                                {emailPreview.templateKey ? (
+                                  <StatusBadge tone="neutral">
+                                    {emailPreview.templateKey}{" "}
+                                    {emailPreview.templateVersion ?? "v1"}
+                                  </StatusBadge>
+                                ) : null}
                                 <StatusBadge
                                   tone={
                                     paymentLabel === "paid"
@@ -1688,6 +1704,45 @@ function BillingReadinessWorkspace() {
                                 <div className="mt-2 line-clamp-2 text-muted-foreground">
                                   {emailPreview.subject}
                                 </div>
+                              ) : null}
+                              {emailPreview.bodyText ? (
+                                <details className="mt-2 rounded-lg border border-border bg-white">
+                                  <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-leasium-blue-hover">
+                                    Message preview
+                                  </summary>
+                                  <div className="border-t border-border px-3 py-2 text-xs">
+                                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
+                                      <span>Email</span>
+                                      <span>{emailPreview.provider}</span>
+                                      {emailPreview.to ? (
+                                        <span>{emailPreview.to}</span>
+                                      ) : null}
+                                      {emailPreview.templateKey ? (
+                                        <span>
+                                          {emailPreview.templateKey}{" "}
+                                          {emailPreview.templateVersion ?? "v1"}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    {emailPreview.subject ? (
+                                      <div className="mt-2 font-semibold text-foreground">
+                                        {emailPreview.subject}
+                                      </div>
+                                    ) : null}
+                                    <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap rounded-md bg-muted/45 p-2 font-sans text-xs leading-5 text-muted-foreground">
+                                      {emailPreview.bodyText}
+                                    </pre>
+                                    {emailPreview.actionLabel &&
+                                    emailPreview.actionUrl ? (
+                                      <a
+                                        href={emailPreview.actionUrl}
+                                        className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-leasium-blue-hover"
+                                      >
+                                        {emailPreview.actionLabel}
+                                      </a>
+                                    ) : null}
+                                  </div>
+                                </details>
                               ) : null}
                             </td>
                             <td className="px-3 py-3">

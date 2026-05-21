@@ -53,6 +53,7 @@ import {
   prepareInvoiceDraftDelivery,
   type PropertyRecord,
   sendMaintenanceWorkOrderContractorEmail,
+  sendMaintenanceWorkOrderContractorSms,
   type TenantRecord,
   updateMaintenanceWorkOrder,
   updateInvoiceDraft,
@@ -336,6 +337,59 @@ function contractorEmailHistoryRows(workOrder: MaintenanceWorkOrderRecord) {
     .slice(0, 5);
 }
 
+function contractorDeliverySms(workOrder: MaintenanceWorkOrderRecord) {
+  const delivery = metadataRecord(workOrder.metadata.contractor_delivery);
+  return metadataRecord(delivery.sms);
+}
+
+function contractorSmsSendState(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecord(contractorDeliverySms(workOrder).send);
+}
+
+function contractorSmsReceipts(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecordList(contractorDeliverySms(workOrder).receipts);
+}
+
+function contractorSmsHistory(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecordList(contractorDeliverySms(workOrder).history);
+}
+
+function contractorSmsHistoryRows(workOrder: MaintenanceWorkOrderRecord) {
+  const attemptRows = contractorSmsHistory(workOrder).map((entry) => ({
+    kind: "SMS attempt",
+    status: metadataText(entry.status) ?? metadataText(entry.event) ?? "sent",
+    at: metadataText(entry.at) ?? metadataText(entry.timestamp),
+    detail:
+      metadataText(entry.error) ??
+      metadataText(entry.recipient_phone) ??
+      metadataText(entry.provider) ??
+      "SMS provider attempt recorded.",
+    retryCount:
+      typeof entry.retry_count === "number" ? entry.retry_count : null,
+    templateKey: metadataText(entry.template_key),
+    templateVersion: metadataText(entry.template_version),
+  }));
+  const receiptRows = contractorSmsReceipts(workOrder).map((entry) => ({
+    kind: "SMS receipt",
+    status: metadataText(entry.status) ?? "recorded",
+    at: metadataText(entry.received_at) ?? metadataText(entry.at),
+    detail:
+      metadataText(entry.error) ??
+      metadataText(entry.recipient_phone) ??
+      metadataText(entry.provider) ??
+      "SMS provider receipt recorded.",
+    retryCount:
+      typeof entry.retry_count === "number" ? entry.retry_count : null,
+    templateKey: metadataText(entry.template_key),
+    templateVersion: metadataText(entry.template_version),
+  }));
+  return [...attemptRows, ...receiptRows]
+    .sort(
+      (a, b) => new Date(b.at ?? "").getTime() - new Date(a.at ?? "").getTime(),
+    )
+    .slice(0, 4);
+}
+
 function closeoutRecord(workOrder: MaintenanceWorkOrderRecord) {
   return metadataRecord(workOrder.metadata.closeout);
 }
@@ -527,6 +581,13 @@ function contractorEmailDefaultBody(workOrder: MaintenanceWorkOrderRecord) {
     `Priority: ${label(workOrder.priority)}`,
     `Due: ${formatDate(workOrder.due_date)}`,
   ].join("\n");
+}
+
+function contractorSmsDefaultBody(workOrder: MaintenanceWorkOrderRecord) {
+  return [
+    `Please confirm your first available attendance window for ${workOrder.title}.`,
+    `Due: ${formatDate(workOrder.due_date)}.`,
+  ].join(" ");
 }
 
 function contractorEmailTemplates(
@@ -987,11 +1048,17 @@ function activityRows(workOrder: MaintenanceWorkOrderRecord) {
             ? entry.action
             : "Activity",
       ),
+      meta: [
+        typeof entry.visibility === "string"
+          ? `${label(entry.visibility)} visible`
+          : null,
+        typeof entry.status === "string" ? label(entry.status) : null,
+        typeof entry.source === "string" ? label(entry.source) : null,
+        typeof entry.actor === "string" ? entry.actor : null,
+      ].filter((item): item is string => Boolean(item)),
       detail:
         typeof entry.summary === "string"
-          ? typeof entry.visibility === "string"
-            ? `${entry.summary} (${label(entry.visibility)})`
-            : entry.summary
+          ? entry.summary
           : [entry.actor, entry.source].filter(Boolean).join(" - ") ||
             "Maintenance activity updated.",
     }))
@@ -1063,6 +1130,7 @@ function MaintenanceDetailRoute() {
     useState<ContractorEmailTemplateKey>("custom");
   const [contractorEmailSubject, setContractorEmailSubject] = useState("");
   const [contractorEmailBody, setContractorEmailBody] = useState("");
+  const [contractorSmsBody, setContractorSmsBody] = useState("");
   const [closeoutNoteDraft, setCloseoutNoteDraft] = useState("");
   const [closeoutPhoto, setCloseoutPhoto] = useState<File | null>(null);
   const [ownerReviewNote, setOwnerReviewNote] = useState("");
@@ -1233,6 +1301,24 @@ function MaintenanceDetailRoute() {
   const contractorHistoryRows = workOrder
     ? contractorEmailHistoryRows(workOrder)
     : [];
+  const contractorSmsState = workOrder ? contractorSmsSendState(workOrder) : {};
+  const contractorSmsStatus =
+    metadataText(contractorSmsState.status) ?? "not_sent";
+  const contractorSmsError = metadataText(contractorSmsState.error);
+  const contractorSmsStoredBody = metadataText(contractorSmsState.body);
+  const contractorSmsRetryCount =
+    typeof contractorSmsState.retry_count === "number"
+      ? contractorSmsState.retry_count
+      : null;
+  const contractorSmsNeedsRecovery =
+    contractorEmailNeedsRecovery(contractorSmsStatus);
+  const contractorSmsRecoveryCopy = contractorEmailRecoveryCopy(
+    contractorSmsStatus,
+    contractorSmsError,
+  );
+  const contractorSmsRows = workOrder
+    ? contractorSmsHistoryRows(workOrder)
+    : [];
   const latestContractorReceipt = contractorReceiptRows[0] ?? null;
   const latestContractorReceiptStatus =
     metadataText(latestContractorReceipt?.status) ?? null;
@@ -1248,6 +1334,11 @@ function MaintenanceDetailRoute() {
     ? contractorNeedsRecovery && contractorSendSubject
       ? contractorSendSubject
       : contractorEmailDefaultSubject(workOrder)
+    : "";
+  const contractorSmsDefault = workOrder
+    ? contractorSmsNeedsRecovery && contractorSmsStoredBody
+      ? contractorSmsStoredBody
+      : contractorSmsDefaultBody(workOrder)
     : "";
   const contractorTemplateOptions = useMemo(
     () => (workOrder ? contractorEmailTemplates(workOrder) : []),
@@ -1401,6 +1492,28 @@ function MaintenanceDetailRoute() {
     },
   });
 
+  const contractorSmsMutation = useMutation({
+    mutationFn: () => {
+      if (!workOrder) {
+        throw new Error("Work order is still loading.");
+      }
+      return sendMaintenanceWorkOrderContractorSms(workOrderId, {
+        body: contractorSmsBody.trim() || contractorSmsDefault,
+        include_comment:
+          !contractorSmsNeedsRecovery || Boolean(contractorSmsBody.trim()),
+      });
+    },
+    onSuccess: () => {
+      setContractorSmsBody("");
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-work-order", workOrderId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", entityId],
+      });
+    },
+  });
+
   const handleContractorEmailTemplateChange = (
     templateKey: ContractorEmailTemplateKey,
   ) => {
@@ -1424,6 +1537,14 @@ function MaintenanceDetailRoute() {
       return;
     }
     contractorEmailMutation.mutate();
+  };
+
+  const handleContractorSmsSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!workOrder?.contractor_phone) {
+      return;
+    }
+    contractorSmsMutation.mutate();
   };
 
   const closeoutMutation = useMutation({
@@ -1749,10 +1870,13 @@ function MaintenanceDetailRoute() {
                     </div>
                     <div>
                       <dt className="text-muted-foreground">Contact</dt>
-                      <dd>
-                        {workOrder.contractor_email ??
-                          workOrder.contractor_phone ??
-                          "-"}
+                      <dd className="grid gap-0.5">
+                        <span>{workOrder.contractor_email ?? "-"}</span>
+                        {workOrder.contractor_phone ? (
+                          <span className="text-muted-foreground">
+                            {workOrder.contractor_phone}
+                          </span>
+                        ) : null}
                       </dd>
                     </div>
                   </dl>
@@ -1909,6 +2033,118 @@ function MaintenanceDetailRoute() {
                     {contractorEmailMutation.error ? (
                       <p className="text-sm text-danger">
                         {friendlyError(contractorEmailMutation.error)}
+                      </p>
+                    ) : null}
+                  </form>
+
+                  <form
+                    className="grid gap-3 rounded-md border border-border bg-white p-3"
+                    onSubmit={handleContractorSmsSubmit}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge
+                        tone={contractorEmailTone(contractorSmsStatus)}
+                      >
+                        {contractorSmsStatus === "not_sent"
+                          ? "SMS not sent"
+                          : `SMS ${label(contractorSmsStatus)}${
+                              contractorSmsRetryCount
+                                ? ` #${contractorSmsRetryCount}`
+                                : ""
+                            }`}
+                      </StatusBadge>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {workOrder.contractor_phone
+                        ? "Twilio send attempts and delivery receipts will be stored on this work order."
+                        : "Add a contractor phone number before sending an SMS."}
+                    </div>
+                    {contractorSmsRecoveryCopy ? (
+                      <div
+                        className={`rounded-md border p-2 text-xs ${
+                          contractorSmsNeedsRecovery
+                            ? "border-warning/30 bg-warning/10 text-warning"
+                            : "border-border bg-white text-muted-foreground"
+                        }`}
+                      >
+                        {contractorSmsRecoveryCopy}
+                      </div>
+                    ) : null}
+                    {contractorSmsRows.length ? (
+                      <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-2 text-xs">
+                        <div className="font-semibold text-foreground">
+                          SMS provider history
+                        </div>
+                        {contractorSmsRows.map((entry, index) => (
+                          <div
+                            key={`${entry.kind}-${entry.status}-${entry.at ?? index}`}
+                            className="grid gap-1 border-t border-border pt-2 first:border-t-0 first:pt-0"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge
+                                tone={contractorEmailTone(entry.status)}
+                              >
+                                {entry.kind} {label(entry.status)}
+                                {entry.retryCount
+                                  ? ` #${entry.retryCount}`
+                                  : ""}
+                              </StatusBadge>
+                              <span className="text-muted-foreground">
+                                {formatDateTime(entry.at)}
+                              </span>
+                            </div>
+                            <div className="text-muted-foreground">
+                              {entry.detail}
+                            </div>
+                            {entry.templateKey || entry.templateVersion ? (
+                              <div className="text-muted-foreground">
+                                {templateVersionLabel(
+                                  entry.templateKey,
+                                  entry.templateVersion,
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    <label className="grid gap-1.5">
+                      <span className="font-medium text-foreground">
+                        Contractor SMS message
+                      </span>
+                      <textarea
+                        aria-label="Contractor SMS message"
+                        value={contractorSmsBody}
+                        onChange={(event) =>
+                          setContractorSmsBody(event.target.value)
+                        }
+                        rows={3}
+                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        placeholder={contractorSmsDefault}
+                      />
+                    </label>
+                    <Button
+                      type="submit"
+                      disabled={
+                        !workOrder.contractor_phone ||
+                        contractorSmsMutation.isPending
+                      }
+                      title={
+                        workOrder.contractor_phone
+                          ? "Send an SMS update and keep the provider receipt on the work order."
+                          : "Add a contractor phone before sending."
+                      }
+                    >
+                      {contractorSmsMutation.isPending ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Send size={16} />
+                      )}
+                      {contractorSmsNeedsRecovery ? "Retry SMS" : "Send SMS"}
+                    </Button>
+                    {contractorSmsMutation.error ? (
+                      <p className="text-sm text-danger">
+                        {friendlyError(contractorSmsMutation.error)}
                       </p>
                     ) : null}
                   </form>
@@ -2764,9 +3000,19 @@ function MaintenanceDetailRoute() {
                       key={`${entry.at}-${entry.label}-${index}`}
                       className="grid gap-1 text-sm"
                     >
-                      <div className="font-medium">{entry.label}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatDateTime(entry.at)}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{entry.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDateTime(entry.at)}
+                        </span>
+                        {entry.meta.map((item) => (
+                          <span
+                            key={item}
+                            className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground"
+                          >
+                            {item}
+                          </span>
+                        ))}
                       </div>
                       <div className="text-muted-foreground">
                         {entry.detail}
