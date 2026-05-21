@@ -854,6 +854,7 @@ def send_work_order_assignment_notification_email(
         work_assignment_email_invite(
             metadata,
             target_id=work_order.id,
+            target_type="maintenance_work_order",
             entity_id=work_order.entity_id,
             work_kind="Maintenance",
             title=work_order.title,

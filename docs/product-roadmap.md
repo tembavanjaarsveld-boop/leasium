@@ -125,12 +125,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Work assignment reminder/escalation cues v1: new assignments now store an in-app reminder date and escalation watch date, the assignment control surfaces reminder/escalation badges with no-provider-send guardrails, and the Work queue can filter to assignment follow-ups due. Pending Remba review.
 - [x] Work assignment action runners v1: assignment controls now let operators explicitly log in-app reminders and queue assignment escalations, updating assignment status/history without sending provider email/SMS. Pending Remba review.
 - [x] Work assignment provider notice v1: assigned maintenance jobs, arrears cases, and critical-date obligations can now explicitly send or retry a SendGrid-backed operator email notice from the Work controls, with provider status, message ID, receipt history, and audit logs stored on the source record. Pending Remba review.
+- [x] Work assignment provider receipts v1: SendGrid event webhooks can now update assignment notice status across maintenance, arrears, and critical-date work from queued into delivered/opened/failed receipt history, using assignment custom args or message-id lookup. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, and `20260521_0020_register_import_plans` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, simplified navigation/command center, Portfolio QA command-search placement, reusable evidence/source-trail pattern across Properties/Smart Intake/Tenants, tenant portal, tenant fresh-link recovery, invoice email action, Work assignment controls/workload/reminder/action/provider notice cues, and Operations workspace before treating them as UX complete.
-- [ ] Continue Work assignment from explicit email notices into provider receipt webhooks, batch assignment notifications, and notification preference controls.
+- [ ] Continue Work assignment from provider receipts into batch assignment notifications, notification preference controls, and a calmer receipt/history presentation.
 - [ ] Continue Operations polish with deeper activity/audit presentation, safer edit affordances on list rows, and owner/tenant-facing completion review paths.
 - [ ] Continue Xero from guided sync exceptions into accounting snapshot guardrails, stale reconciliation indicators, and richer accounting-readiness snapshots.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.

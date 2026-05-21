@@ -176,6 +176,7 @@ def test_work_assignment_sendgrid_categories_are_deduplicated(
     result = send_work_assignment_email(
         WorkAssignmentEmail(
             target_id=target_id,
+            target_type="maintenance_work_order",
             entity_id=entity_id,
             work_kind="Maintenance",
             title="Replace shopfront lock",
@@ -197,4 +198,5 @@ def test_work_assignment_sendgrid_categories_are_deduplicated(
     assert isinstance(personalizations, list)
     custom_args = personalizations[0]["custom_args"]
     assert custom_args["work_assignment_target_id"] == str(target_id)
+    assert custom_args["work_assignment_target_type"] == "maintenance_work_order"
     assert custom_args["entity_id"] == str(entity_id)

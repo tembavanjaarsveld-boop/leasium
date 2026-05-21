@@ -130,6 +130,7 @@ class WorkAssignmentEmail:
     """Context needed to notify an operator about assigned work."""
 
     target_id: UUID
+    target_type: str
     entity_id: UUID
     work_kind: str
     title: str
@@ -369,7 +370,8 @@ def _work_assignment_html(invite: WorkAssignmentEmail) -> str:
         else ""
     )
     assigned_by = (
-        f'<p style="margin:4px 0 0;color:#475467;">Assigned by: {escape(invite.assigned_by_name)}</p>'
+        '<p style="margin:4px 0 0;color:#475467;">'
+        f"Assigned by: {escape(invite.assigned_by_name)}</p>"
         if invite.assigned_by_name
         else ""
     )
@@ -843,6 +845,7 @@ def send_work_assignment_email(
         "template_key": invite.template_key,
         "template_version": invite.template_version,
         "target_id": str(invite.target_id),
+        "target_type": invite.target_type,
         "entity_id": str(invite.entity_id),
         "work_kind": invite.work_kind,
         "subject": _work_assignment_subject(invite),
@@ -886,6 +889,7 @@ def send_work_assignment_email(
                 "subject": _work_assignment_subject(invite),
                 "custom_args": {
                     "work_assignment_target_id": str(invite.target_id),
+                    "work_assignment_target_type": invite.target_type,
                     "entity_id": str(invite.entity_id),
                     "work_kind": invite.work_kind,
                     "template_key": invite.template_key,

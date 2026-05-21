@@ -353,6 +353,7 @@ def send_arrears_assignment_notification_email(
         work_assignment_email_invite(
             metadata,
             target_id=arrears_case.id,
+            target_type="arrears_case",
             entity_id=arrears_case.entity_id,
             work_kind="Arrears",
             title=f"{tenant_name} arrears",

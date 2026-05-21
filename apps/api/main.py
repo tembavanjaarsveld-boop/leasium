@@ -24,6 +24,7 @@ from apps.api.routers import (
     tenant_onboarding,
     tenant_portal,
     tenants,
+    work_assignment_notifications,
     xero,
 )
 
@@ -60,6 +61,7 @@ app.include_router(leases.router, prefix="/api/v1")
 app.include_router(obligations.router, prefix="/api/v1")
 app.include_router(maintenance.router, prefix="/api/v1")
 app.include_router(arrears.router, prefix="/api/v1")
+app.include_router(work_assignment_notifications.router, prefix="/api/v1")
 app.include_router(lease_intakes.router, prefix="/api/v1")
 app.include_router(tenant_onboarding.router, prefix="/api/v1")
 app.include_router(tenant_portal.router, prefix="/api/v1")

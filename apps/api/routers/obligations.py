@@ -302,6 +302,7 @@ def send_obligation_assignment_notification_email(
         work_assignment_email_invite(
             metadata,
             target_id=obligation.id,
+            target_type="obligation",
             entity_id=obligation.entity_id,
             work_kind="Critical date",
             title=obligation.title,

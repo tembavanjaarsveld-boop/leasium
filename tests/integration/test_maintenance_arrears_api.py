@@ -507,6 +507,7 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
 
     def fake_send_work_assignment_email(invite: Any, settings_arg: Any) -> DeliveryResult:
         assert str(invite.target_id) == work_order_id
+        assert invite.target_type == "maintenance_work_order"
         assert invite.entity_id == UUID(context["entity_id"])
         assert invite.work_kind == "Maintenance"
         assert invite.title == "Replace shopfront lock"
@@ -556,11 +557,39 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
     assert assignment["history"][0]["event"] == "provider_notification_attempted"
     assert assignment["history"][0]["notification_status"] == "queued"
 
+    receipt_response = client.post(
+        "/api/v1/work-assignments/webhooks/sendgrid-events",
+        json=[
+            {
+                "work_assignment_target_id": work_order_id,
+                "work_assignment_target_type": "maintenance_work_order",
+                "sg_message_id": "sg-assignment-123",
+                "event": "delivered",
+                "email": settings.dev_user_email,
+            }
+        ],
+    )
+    assert receipt_response.status_code == 204
+    work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+    assert work_order is not None
+    assignment = work_order.work_order_metadata["work_assignment"]
+    notification = assignment["notification"]
+    assert notification["status"] == "delivered"
+    assert notification["last_event"] == "delivered"
+    assert notification["provider_history"][0]["event"] == (
+        "provider_notification_receipt"
+    )
+    assert assignment["history"][0]["event"] == "provider_notification_receipt"
+    assert assignment["history"][0]["notification_status"] == "delivered"
+
     audit_rows = session.scalars(
         select(AuditAction).where(AuditAction.target_table == "maintenance_work_order")
     ).all()
-    assert audit_rows[-1].action == "deliver"
-    assert audit_rows[-1].tool_name == "sendgrid.work_assignment"
+    assert [row.action for row in audit_rows[-2:]] == ["deliver", "receipt"]
+    assert [row.tool_name for row in audit_rows[-2:]] == [
+        "sendgrid.work_assignment",
+        "sendgrid.work_assignment_event_webhook",
+    ]
 
 
 def test_arrears_case_tracks_aged_balances_reminders_and_escalation(

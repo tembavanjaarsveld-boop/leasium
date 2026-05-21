@@ -7,11 +7,11 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-
-from apps.api.deps import CurrentUser
 from stewart.core.db import utcnow
 from stewart.core.settings import Settings
 from stewart.integrations.communications import DeliveryResult, WorkAssignmentEmail
+
+from apps.api.deps import CurrentUser
 
 WORK_ASSIGNMENT_KEY = "work_assignment"
 PROVIDER_SUCCESS_STATUSES = {"queued", "sent", "delivered", "opened"}
@@ -71,6 +71,7 @@ def work_assignment_email_invite(
     metadata: dict[str, Any] | None,
     *,
     target_id: UUID,
+    target_type: str,
     entity_id: UUID,
     work_kind: str,
     title: str,
@@ -96,6 +97,7 @@ def work_assignment_email_invite(
     normalised_due_date = due_date.date() if isinstance(due_date, datetime) else due_date
     return WorkAssignmentEmail(
         target_id=target_id,
+        target_type=target_type,
         entity_id=entity_id,
         work_kind=work_kind,
         title=title,
@@ -186,6 +188,105 @@ def record_work_assignment_delivery(
 
     assignment["notification"] = notification
     assignment["history"] = [history_entry, *existing_history][:10]
+    next_metadata[WORK_ASSIGNMENT_KEY] = assignment
+    return next_metadata
+
+
+def assignment_notification_message_matches(
+    metadata: dict[str, Any] | None,
+    provider_message_id: str,
+) -> bool:
+    assignment = _metadata_record((metadata or {}).get(WORK_ASSIGNMENT_KEY))
+    notification = _metadata_record(assignment.get("notification"))
+    if _metadata_text(notification.get("provider_message_id")) == provider_message_id:
+        return True
+    for receipt in _metadata_list(notification.get("provider_history")):
+        receipt_record = _metadata_record(receipt)
+        if _metadata_text(receipt_record.get("provider_message_id")) == provider_message_id:
+            return True
+    return False
+
+
+def work_assignment_receipt_status(raw_status: str) -> str:
+    value = raw_status.lower()
+    if value in {"processed", "deferred"}:
+        return "sent" if value == "processed" else "attention"
+    if value == "delivered":
+        return "delivered"
+    if value in {"open", "click"}:
+        return "opened"
+    if value in {"bounce", "dropped", "spamreport", "unsubscribe", "group_unsubscribe"}:
+        return "failed"
+    return "attention"
+
+
+def apply_work_assignment_delivery_receipt(
+    metadata: dict[str, Any] | None,
+    *,
+    raw_status: str,
+    provider_message_id: str | None,
+    event: dict[str, object],
+) -> dict[str, Any] | None:
+    assignment = _metadata_record((metadata or {}).get(WORK_ASSIGNMENT_KEY))
+    if not assignment:
+        return None
+    notification = _metadata_record(assignment.get("notification"))
+    if _metadata_text(notification.get("provider")) != "sendgrid":
+        return None
+
+    next_metadata = dict(metadata or {})
+    now = utcnow().isoformat()
+    status_value = work_assignment_receipt_status(raw_status)
+    recipient_value = event.get("email") or notification.get("recipient_email")
+    recipient = str(recipient_value) if recipient_value else None
+    message_id = provider_message_id or _metadata_text(notification.get("provider_message_id"))
+    notification.update(
+        {
+            "channel": "email",
+            "provider": "sendgrid",
+            "status": status_value,
+            "provider_message_id": message_id,
+            "receipt_at": now,
+            "last_event": raw_status,
+        }
+    )
+    if recipient:
+        notification["recipient_email"] = recipient
+    if status_value in {"sent", "delivered", "opened"} and not notification.get("sent_at"):
+        notification["sent_at"] = now
+    if status_value == "failed":
+        notification["error"] = str(
+            event.get("reason") or event.get("response") or event.get("event") or raw_status
+        )
+
+    receipt = {
+        "event": "provider_notification_receipt",
+        "channel": "email",
+        "status": status_value,
+        "raw_event": raw_status,
+        "provider": "sendgrid",
+        "received_at": now,
+        "recipient_email": recipient,
+        "provider_message_id": message_id,
+        "error": notification.get("error") if status_value == "failed" else None,
+        "template_key": notification.get("template_key"),
+        "template_version": notification.get("template_version"),
+    }
+    provider_history = _metadata_list(notification.get("provider_history"))
+    notification["provider_history"] = [receipt, *provider_history][:10]
+
+    history_entry = {
+        "event": "provider_notification_receipt",
+        "at": now,
+        "actor_name": "SendGrid",
+        "assigned_user_id": _metadata_text(assignment.get("assigned_user_id")),
+        "assigned_user_name": _metadata_text(assignment.get("assigned_user_name")),
+        "assigned_user_email": _metadata_text(assignment.get("assigned_user_email")),
+        "notification_status": status_value,
+        "summary": f"Assignment notification receipt {status_value}.",
+    }
+    assignment["notification"] = notification
+    assignment["history"] = [history_entry, *_metadata_list(assignment.get("history"))][:10]
     next_metadata[WORK_ASSIGNMENT_KEY] = assignment
     return next_metadata
 
