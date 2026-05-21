@@ -400,6 +400,9 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
   await expect(
     page.getByText("Queen Street Retail Centre").first(),
   ).toBeVisible();
+  await expect(
+    page.getByText("Queen Street Property Trust").first(),
+  ).toBeVisible();
 
   await page.getByRole("tab", { name: /Documents/ }).click();
 

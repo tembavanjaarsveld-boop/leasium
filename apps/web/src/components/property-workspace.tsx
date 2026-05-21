@@ -149,7 +149,11 @@ const propertySchema = z.object({
 });
 
 type PropertyFormValues = z.infer<typeof propertySchema>;
-type PropertyWorkspaceTab = "portfolio" | "operations" | "billing" | "documents";
+type PropertyWorkspaceTab =
+  | "portfolio"
+  | "operations"
+  | "billing"
+  | "documents";
 
 const propertyWorkspaceTabs: Array<{
   id: PropertyWorkspaceTab;
@@ -554,50 +558,178 @@ function propertyUsesOwnerBilling(property: PropertyRecord | null | undefined) {
   );
 }
 
-function propertyOwnershipBadges(property: PropertyRecord | null | undefined) {
+type OwnershipChipPalette =
+  | "current"
+  | "teal"
+  | "lavender"
+  | "green"
+  | "blue"
+  | "slate";
+
+type OwnershipChip = {
+  label: string;
+  palette: OwnershipChipPalette;
+  title?: string;
+};
+
+function metadataTextValue(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normaliseOwnerLabel(value: string) {
+  return value.toLowerCase().replace(/&/g, "and").replace(/\s+/g, " ").trim();
+}
+
+function ownerLabelHash(value: string) {
+  return [...normaliseOwnerLabel(value)].reduce(
+    (hash, char) => (hash * 31 + char.charCodeAt(0)) % 997,
+    7,
+  );
+}
+
+function splitOwnershipLabels(value: string | null | undefined) {
+  if (!value) {
+    return [];
+  }
+  const cleaned = value
+    .replace(/\b\d+(?:\.\d+)?\s*%/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) {
+    return [];
+  }
+  return cleaned
+    .split(/\s*(?:;|\s\+\s|\s\/\s|\sand\s)\s*/i)
+    .map((item) => item.replace(/^[-:]+|[-:]+$/g, "").trim())
+    .filter(Boolean);
+}
+
+function addUniqueOwnerLabel(
+  labels: string[],
+  label: string | null | undefined,
+) {
+  const cleaned = label?.trim();
+  if (!cleaned) {
+    return;
+  }
+  if (
+    !labels.some(
+      (existing) =>
+        normaliseOwnerLabel(existing) === normaliseOwnerLabel(cleaned),
+    )
+  ) {
+    labels.push(cleaned);
+  }
+}
+
+function propertyOwnerLabels(
+  property: PropertyRecord,
+  currentEntityName?: string | null,
+) {
+  const labels: string[] = [];
+  const metadata = property.metadata ?? {};
+
+  if (property.ownership_structure === "split") {
+    splitOwnershipLabels(property.ownership_split).forEach((label) =>
+      addUniqueOwnerLabel(labels, label),
+    );
+  }
+
+  addUniqueOwnerLabel(labels, property.owner_legal_name);
+  addUniqueOwnerLabel(labels, property.trust_name);
+  addUniqueOwnerLabel(
+    labels,
+    metadataTextValue(metadata, "owning_entity_legal"),
+  );
+  addUniqueOwnerLabel(labels, metadataTextValue(metadata, "owning_entity"));
+
+  if (labels.length === 0 && !propertyUsesOwnerBilling(property)) {
+    addUniqueOwnerLabel(labels, currentEntityName);
+  }
+
+  if (labels.length === 0) {
+    addUniqueOwnerLabel(labels, property.invoice_issuer_name);
+  }
+
+  return labels;
+}
+
+function ownerPaletteForLabel(
+  label: string,
+  property: PropertyRecord,
+  currentEntityName?: string | null,
+): OwnershipChipPalette {
+  if (
+    currentEntityName &&
+    normaliseOwnerLabel(label) === normaliseOwnerLabel(currentEntityName)
+  ) {
+    return "current";
+  }
+  const role = normaliseOwnerLabel(property.ownership_structure ?? "");
+  const owner = normaliseOwnerLabel(label);
+  if (role.includes("unknown") || owner.includes("unknown")) {
+    return "slate";
+  }
+  if (role.includes("related") || role.includes("subsidiary")) {
+    return "teal";
+  }
+  if (role.includes("trust") || owner.includes("trust")) {
+    return "lavender";
+  }
+  const palettes: OwnershipChipPalette[] = [
+    "teal",
+    "green",
+    "blue",
+    "lavender",
+  ];
+  return palettes[ownerLabelHash(label) % palettes.length];
+}
+
+function ownershipChipClassName(palette: OwnershipChipPalette) {
+  const palettes: Record<OwnershipChipPalette, string> = {
+    current: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
+    teal: "border-[#99F6E4] bg-[#F0FDFA] text-[#0F766E]",
+    lavender: "border-[#DDD6FE] bg-[#F5F3FF] text-[#5B21B6]",
+    green: "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]",
+    blue: "border-[#C7D2FE] bg-[#EEF2FF] text-[#3730A3]",
+    slate: "border-slate-200 bg-slate-100 text-slate-600",
+  };
+  return palettes[palette];
+}
+
+function propertyOwnershipBadges(
+  property: PropertyRecord | null | undefined,
+  currentEntityName?: string | null,
+) {
   if (!property) {
     return [];
   }
-  if (!propertyUsesOwnerBilling(property)) {
-    return [{ label: "Owned by current entity", tone: "neutral" as const }];
+  const labels = propertyOwnerLabels(property, currentEntityName);
+  if (labels.length === 0) {
+    return [
+      {
+        label: "Ownership unknown",
+        palette: "slate" as const,
+      },
+    ];
   }
 
-  const badges: Array<{
-    label: string;
-    tone: "neutral" | "success" | "warning" | "primary";
-  }> = [];
-  if (property.ownership_structure === "trust") {
-    badges.push({ label: "Trust", tone: "primary" });
+  const visibleLabels = labels.slice(0, 2);
+  const badges: OwnershipChip[] = visibleLabels.map((label) => ({
+    label,
+    palette: ownerPaletteForLabel(label, property, currentEntityName),
+    title: label,
+  }));
+
+  if (labels.length > visibleLabels.length) {
     badges.push({
-      label: property.trustee_name ? "Trustee set" : "Trustee missing",
-      tone: property.trustee_name ? "success" : "warning",
+      label: `+${labels.length - visibleLabels.length}`,
+      palette: "slate",
+      title: labels.slice(visibleLabels.length).join(", "),
     });
-  } else if (property.ownership_structure === "split") {
-    badges.push({ label: "Multiple owners", tone: "primary" });
-    badges.push({
-      label: property.ownership_split ? "Split recorded" : "Split incomplete",
-      tone: property.ownership_split ? "success" : "warning",
-    });
-  } else {
-    badges.push({ label: "Specific owner", tone: "primary" });
   }
-  badges.push({
-    label:
-      property.invoice_issuer_name || property.owner_legal_name
-        ? "Issuer set"
-        : "Issuer missing",
-    tone:
-      property.invoice_issuer_name || property.owner_legal_name
-        ? "success"
-        : "warning",
-  });
-  badges.push({
-    label: property.xero_contact_id ? "Xero mapped" : "Xero missing",
-    tone: property.xero_contact_id ? "success" : "warning",
-  });
-  if (!property.owner_abn) {
-    badges.push({ label: "ABN missing", tone: "warning" });
-  }
+
   return badges;
 }
 
@@ -745,8 +877,7 @@ function propertyEvidenceSourceLocation(
   }
   return {
     label,
-    detail:
-      source.source_hint && source.citation ? source.citation : undefined,
+    detail: source.source_hint && source.citation ? source.citation : undefined,
   };
 }
 
@@ -810,16 +941,24 @@ function shortId(value: string | null | undefined) {
   return value ? value.slice(0, 8) : null;
 }
 
-function billingIdentitySummary(property: PropertyRecord | null | undefined) {
+function billingIdentitySummary(
+  property: PropertyRecord | null | undefined,
+  currentEntityName?: string | null,
+) {
   if (!property) {
     return "Select a property to see billing identity.";
   }
+  const owners = propertyOwnerLabels(property, currentEntityName);
   if (!propertyUsesOwnerBilling(property)) {
-    return "Invoices use the current portfolio entity unless this property needs owner-specific billing.";
+    const owner = owners[0] ?? currentEntityName;
+    return owner
+      ? `${owner} is tagged as owner. Invoices still use the portfolio entity unless owner-specific billing is enabled.`
+      : "Invoices use the current portfolio entity unless this property needs owner-specific billing.";
   }
   return (
     property.invoice_issuer_name ??
     property.owner_legal_name ??
+    owners[0] ??
     property.trust_name ??
     "Ownership setup needs review"
   );
@@ -1269,7 +1408,8 @@ function Workspace() {
     [propertiesQuery.data, selectedPropertyId],
   );
   const entitiesLoading =
-    !entitiesQuery.data && (entitiesQuery.isLoading || entitiesQuery.isFetching);
+    !entitiesQuery.data &&
+    (entitiesQuery.isLoading || entitiesQuery.isFetching);
   const entitySelectionLoading =
     entitiesLoading ||
     (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
@@ -1628,7 +1768,12 @@ function Workspace() {
         queryKey: ["properties", selectedEntityId],
       });
       queryClient.invalidateQueries({
-        queryKey: ["rent-roll", selectedEntityId, rentRollPropertyId, rentRollAsOf],
+        queryKey: [
+          "rent-roll",
+          selectedEntityId,
+          rentRollPropertyId,
+          rentRollAsOf,
+        ],
       });
     },
   });
@@ -2350,7 +2495,9 @@ function Workspace() {
                 <div className="font-semibold">
                   Property data did not finish loading.
                 </div>
-                <div className="mt-1">{friendlyError(propertyWorkspaceError)}</div>
+                <div className="mt-1">
+                  {friendlyError(propertyWorkspaceError)}
+                </div>
               </div>
               <SecondaryButton
                 type="button"
@@ -2447,851 +2594,531 @@ function Workspace() {
           </div>
 
           {activeWorkspaceTab === "documents" ? (
-          <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumXs">
-            <div className="grid gap-4 p-4">
-              <div className="grid gap-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <FileText size={17} className="text-primary" />
-                    <div>
-                      <h2 className="text-base font-semibold">
-                        Add property document
-                      </h2>
-                      <p className="text-sm text-muted-foreground">
-                        Upload setup documents. Nothing is applied until review.
-                      </p>
+            <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumXs">
+              <div className="grid gap-4 p-4">
+                <div className="grid gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <FileText size={17} className="text-primary" />
+                      <div>
+                        <h2 className="text-base font-semibold">
+                          Add property document
+                        </h2>
+                        <p className="text-sm text-muted-foreground">
+                          Upload setup documents. Nothing is applied until
+                          review.
+                        </p>
+                      </div>
+                      {activeLeaseIntake ? (
+                        <span className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover">
+                          {intakeStatus}
+                        </span>
+                      ) : null}
                     </div>
-                    {activeLeaseIntake ? (
-                      <span className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover">
-                        {intakeStatus}
-                      </span>
-                    ) : null}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          propertyDocumentInputRef.current?.click()
+                        }
+                        disabled={
+                          !selectedEntityId ||
+                          propertyDocumentIntakeMutation.isPending
+                        }
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover disabled:pointer-events-none disabled:opacity-60"
+                      >
+                        <Plus size={15} />
+                        New property setup
+                      </button>
+                      <Link
+                        href="/intake"
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                      >
+                        <UploadCloud size={15} />
+                        Review document
+                      </Link>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => propertyDocumentInputRef.current?.click()}
+                  <label
+                    htmlFor="property-document-file"
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setPropertyDocumentDropActive(true);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setPropertyDocumentDropActive(true);
+                    }}
+                    onDragLeave={() => setPropertyDocumentDropActive(false)}
+                    onDrop={handlePropertyDocumentDrop}
+                    className={`grid min-h-36 cursor-pointer place-items-center gap-3 rounded-2xl border border-dashed px-4 py-8 text-center transition duration-200 ease-leasium ${
+                      propertyDocumentDropActive
+                        ? "border-primary bg-primary/5"
+                        : "border-border bg-muted/35 hover:border-primary/50 hover:bg-primary/5"
+                    } ${selectedEntityId ? "" : "cursor-not-allowed opacity-60"}`}
+                  >
+                    {propertyDocumentIntakeMutation.isPending ? (
+                      <Loader2
+                        size={24}
+                        className="animate-spin text-primary"
+                      />
+                    ) : (
+                      <UploadCloud size={26} className="text-primary" />
+                    )}
+                    <span className="grid gap-1">
+                      <span className="text-sm font-semibold">
+                        Drop a property document here
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        Lease, purchase contract, tenancy schedule, disclosure
+                        pack, handover file, or certificate
+                      </span>
+                    </span>
+                    <input
+                      id="property-document-file"
+                      ref={propertyDocumentInputRef}
+                      type="file"
+                      accept=".pdf,.docx,.txt,.md"
+                      className="sr-only"
                       disabled={
                         !selectedEntityId ||
                         propertyDocumentIntakeMutation.isPending
                       }
-                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover disabled:pointer-events-none disabled:opacity-60"
-                    >
-                      <Plus size={15} />
-                      New property setup
-                    </button>
-                    <Link
-                      href="/intake"
-                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
-                    >
-                      <UploadCloud size={15} />
-                      Review document
-                    </Link>
-                  </div>
-                </div>
-                <label
-                  htmlFor="property-document-file"
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setPropertyDocumentDropActive(true);
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    setPropertyDocumentDropActive(true);
-                  }}
-                  onDragLeave={() => setPropertyDocumentDropActive(false)}
-                  onDrop={handlePropertyDocumentDrop}
-                  className={`grid min-h-36 cursor-pointer place-items-center gap-3 rounded-2xl border border-dashed px-4 py-8 text-center transition duration-200 ease-leasium ${
-                    propertyDocumentDropActive
-                      ? "border-primary bg-primary/5"
-                      : "border-border bg-muted/35 hover:border-primary/50 hover:bg-primary/5"
-                  } ${selectedEntityId ? "" : "cursor-not-allowed opacity-60"}`}
-                >
-                  {propertyDocumentIntakeMutation.isPending ? (
-                    <Loader2 size={24} className="animate-spin text-primary" />
+                      onChange={handlePropertyDocumentInput}
+                    />
+                  </label>
+                  {selectedProperty ? (
+                    <p className="text-xs text-muted-foreground">
+                      Leasium will match this document against{" "}
+                      {selectedProperty.name} where possible.
+                    </p>
                   ) : (
-                    <UploadCloud size={26} className="text-primary" />
+                    <p className="text-xs text-muted-foreground">
+                      Select a property to update it, or upload a setup document
+                      to start a new property review.
+                    </p>
                   )}
-                  <span className="grid gap-1">
-                    <span className="text-sm font-semibold">
-                      Drop a property document here
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      Lease, purchase contract, tenancy schedule, disclosure
-                      pack, handover file, or certificate
-                    </span>
-                  </span>
-                  <input
-                    id="property-document-file"
-                    ref={propertyDocumentInputRef}
-                    type="file"
-                    accept=".pdf,.docx,.txt,.md"
-                    className="sr-only"
-                    disabled={
-                      !selectedEntityId ||
-                      propertyDocumentIntakeMutation.isPending
-                    }
-                    onChange={handlePropertyDocumentInput}
-                  />
-                </label>
-                {selectedProperty ? (
-                  <p className="text-xs text-muted-foreground">
-                    Leasium will match this document against{" "}
-                    {selectedProperty.name} where possible.
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Select a property to update it, or upload a setup document
-                    to start a new property review.
-                  </p>
-                )}
-                {propertyDocumentIntakeMutation.error ? (
-                  <p className="text-sm text-danger">
-                    {friendlyError(propertyDocumentIntakeMutation.error)}
-                  </p>
-                ) : null}
-                {leaseIntakeQuery.error ? (
-                  <p className="text-sm text-danger">
-                    {friendlyError(leaseIntakeQuery.error)}
-                  </p>
-                ) : null}
-              </div>
+                  {propertyDocumentIntakeMutation.error ? (
+                    <p className="text-sm text-danger">
+                      {friendlyError(propertyDocumentIntakeMutation.error)}
+                    </p>
+                  ) : null}
+                  {leaseIntakeQuery.error ? (
+                    <p className="text-sm text-danger">
+                      {friendlyError(leaseIntakeQuery.error)}
+                    </p>
+                  ) : null}
+                </div>
 
-              <div className="min-w-0 rounded-md border border-border bg-muted/25 p-4">
-                {activeLeaseIntake ? (
-                  <div className="grid gap-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold">
-                          {intakeFileName}
+                <div className="min-w-0 rounded-md border border-border bg-muted/25 p-4">
+                  {activeLeaseIntake ? (
+                    <div className="grid gap-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold">
+                            {intakeFileName}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Review the extracted details before adding them.
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          Review the extracted details before adding them.
-                        </div>
+                        <Button
+                          type="button"
+                          onClick={() =>
+                            activeLeaseIntakeId
+                              ? applyLeaseIntakeMutation.mutate({
+                                  intakeId: activeLeaseIntakeId,
+                                  reviewedData: reviewExtraction,
+                                  propertyId: leaseReviewPropertyId,
+                                  tenancyUnitId: leaseReviewUnitId,
+                                  tenantId: leaseReviewTenantId,
+                                })
+                              : null
+                          }
+                          disabled={
+                            !activeLeaseIntakeId ||
+                            !intakeReady ||
+                            intakeApplyBlockers.length > 0 ||
+                            isLeaseIntakeApplied(activeLeaseIntake) ||
+                            applyLeaseIntakeMutation.isPending
+                          }
+                        >
+                          {applyLeaseIntakeMutation.isPending ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <Check size={16} />
+                          )}
+                          {isLeaseIntakeApplied(activeLeaseIntake)
+                            ? "Applied"
+                            : "Apply lease"}
+                        </Button>
                       </div>
-                      <Button
-                        type="button"
-                        onClick={() =>
-                          activeLeaseIntakeId
-                            ? applyLeaseIntakeMutation.mutate({
-                                intakeId: activeLeaseIntakeId,
-                                reviewedData: reviewExtraction,
-                                propertyId: leaseReviewPropertyId,
-                                tenancyUnitId: leaseReviewUnitId,
-                                tenantId: leaseReviewTenantId,
-                              })
-                            : null
-                        }
-                        disabled={
-                          !activeLeaseIntakeId ||
-                          !intakeReady ||
-                          intakeApplyBlockers.length > 0 ||
-                          isLeaseIntakeApplied(activeLeaseIntake) ||
-                          applyLeaseIntakeMutation.isPending
-                        }
-                      >
-                        {applyLeaseIntakeMutation.isPending ? (
+
+                      {isLeaseIntakeFailed(activeLeaseIntake) ? (
+                        <div className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+                          {activeLeaseIntake.error ||
+                            activeLeaseIntake.error_message ||
+                            "This lease could not be read. Try another file."}
+                        </div>
+                      ) : null}
+
+                      {isLeaseIntakeProcessing(activeLeaseIntake) ? (
+                        <div className="flex items-center gap-2 rounded-md border border-border bg-white p-3 text-sm text-muted-foreground">
                           <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                          <Check size={16} />
-                        )}
-                        {isLeaseIntakeApplied(activeLeaseIntake)
-                          ? "Applied"
-                          : "Apply lease"}
-                      </Button>
-                    </div>
-
-                    {isLeaseIntakeFailed(activeLeaseIntake) ? (
-                      <div className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-                        {activeLeaseIntake.error ||
-                          activeLeaseIntake.error_message ||
-                          "This lease could not be read. Try another file."}
-                      </div>
-                    ) : null}
-
-                    {isLeaseIntakeProcessing(activeLeaseIntake) ? (
-                      <div className="flex items-center gap-2 rounded-md border border-border bg-white p-3 text-sm text-muted-foreground">
-                        <Loader2 size={16} className="animate-spin" />
-                        Reading the lease and preparing the review.
-                      </div>
-                    ) : null}
-
-                    {activeLeaseExtraction ? (
-                      <div className="grid gap-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-white px-4 py-3">
-                          <div>
-                            <div className="text-sm font-semibold">
-                              Review and edit
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              These values are what Leasium will apply.
-                            </div>
-                          </div>
-                          <SecondaryButton
-                            type="button"
-                            onClick={() =>
-                              setLeaseReviewDraft(
-                                cloneExtraction(activeLeaseExtraction),
-                              )
-                            }
-                            disabled={isLeaseIntakeApplied(activeLeaseIntake)}
-                          >
-                            <RefreshCw size={15} />
-                            Reset
-                          </SecondaryButton>
+                          Reading the lease and preparing the review.
                         </div>
+                      ) : null}
 
-                        {intakeApplyBlockers.length ? (
-                          <div className="rounded-md border border-accent/30 bg-accent/5 p-3 text-sm">
-                            <div className="font-semibold">Before applying</div>
-                            <ul className="mt-1 grid gap-1 text-muted-foreground">
-                              {intakeApplyBlockers.map((blocker) => (
-                                <li key={blocker}>{blocker}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : null}
-
-                        <div className="grid gap-4 xl:grid-cols-2">
-                          <div className="rounded-md border border-border bg-white">
-                            <div className="border-b border-border px-3 py-2 text-sm font-semibold">
-                              Property
-                            </div>
-                            <div className="grid gap-4 p-4">
-                              <Field label="Use existing">
-                                <Select
-                                  value={leaseReviewPropertyId}
-                                  onChange={(event) => {
-                                    setLeaseReviewPropertyId(
-                                      event.target.value,
-                                    );
-                                    setLeaseReviewUnitId("");
-                                  }}
-                                >
-                                  <option value="">Create from review</option>
-                                  {propertiesQuery.data?.map((property) => (
-                                    <option
-                                      key={property.id}
-                                      value={property.id}
-                                    >
-                                      {property.name}
-                                    </option>
-                                  ))}
-                                </Select>
-                              </Field>
-                              <Field label="Name">
-                                <Input
-                                  value={inputString(intakeProperty?.name)}
-                                  onChange={(event) =>
-                                    updateReviewSection(
-                                      "property",
-                                      "name",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
-                              </Field>
-                              <Field label="Street address">
-                                <Input
-                                  value={inputString(
-                                    intakeProperty?.street_address ??
-                                      intakeProperty?.address,
-                                  )}
-                                  onChange={(event) =>
-                                    updateReviewSection(
-                                      "property",
-                                      "street_address",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
-                              </Field>
-                              <div className="grid gap-3 sm:grid-cols-3">
-                                <Field label="Suburb">
-                                  <Input
-                                    value={inputString(intakeProperty?.suburb)}
-                                    onChange={(event) =>
-                                      updateReviewSection(
-                                        "property",
-                                        "suburb",
-                                        event.target.value,
-                                      )
-                                    }
-                                  />
-                                </Field>
-                                <Field label="State">
-                                  <Input
-                                    value={inputString(intakeProperty?.state)}
-                                    onChange={(event) =>
-                                      updateReviewSection(
-                                        "property",
-                                        "state",
-                                        event.target.value,
-                                      )
-                                    }
-                                  />
-                                </Field>
-                                <Field label="Postcode">
-                                  <Input
-                                    value={inputString(
-                                      intakeProperty?.postcode,
-                                    )}
-                                    onChange={(event) =>
-                                      updateReviewSection(
-                                        "property",
-                                        "postcode",
-                                        event.target.value,
-                                      )
-                                    }
-                                  />
-                                </Field>
+                      {activeLeaseExtraction ? (
+                        <div className="grid gap-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-white px-4 py-3">
+                            <div>
+                              <div className="text-sm font-semibold">
+                                Review and edit
                               </div>
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                <Field label="Type">
+                              <div className="text-xs text-muted-foreground">
+                                These values are what Leasium will apply.
+                              </div>
+                            </div>
+                            <SecondaryButton
+                              type="button"
+                              onClick={() =>
+                                setLeaseReviewDraft(
+                                  cloneExtraction(activeLeaseExtraction),
+                                )
+                              }
+                              disabled={isLeaseIntakeApplied(activeLeaseIntake)}
+                            >
+                              <RefreshCw size={15} />
+                              Reset
+                            </SecondaryButton>
+                          </div>
+
+                          {intakeApplyBlockers.length ? (
+                            <div className="rounded-md border border-accent/30 bg-accent/5 p-3 text-sm">
+                              <div className="font-semibold">
+                                Before applying
+                              </div>
+                              <ul className="mt-1 grid gap-1 text-muted-foreground">
+                                {intakeApplyBlockers.map((blocker) => (
+                                  <li key={blocker}>{blocker}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+
+                          <div className="grid gap-4 xl:grid-cols-2">
+                            <div className="rounded-md border border-border bg-white">
+                              <div className="border-b border-border px-3 py-2 text-sm font-semibold">
+                                Property
+                              </div>
+                              <div className="grid gap-4 p-4">
+                                <Field label="Use existing">
                                   <Select
-                                    value={
-                                      inputString(
-                                        intakeProperty?.property_type,
-                                      ) || "other"
-                                    }
-                                    onChange={(event) =>
-                                      updateReviewSection(
-                                        "property",
-                                        "property_type",
+                                    value={leaseReviewPropertyId}
+                                    onChange={(event) => {
+                                      setLeaseReviewPropertyId(
                                         event.target.value,
-                                      )
-                                    }
+                                      );
+                                      setLeaseReviewUnitId("");
+                                    }}
                                   >
-                                    {propertyTypes.map((type) => (
+                                    <option value="">Create from review</option>
+                                    {propertiesQuery.data?.map((property) => (
                                       <option
-                                        key={type.value}
-                                        value={type.value}
+                                        key={property.id}
+                                        value={property.id}
                                       >
-                                        {type.label}
+                                        {property.name}
                                       </option>
                                     ))}
                                   </Select>
                                 </Field>
-                                <Field label="Building sqm">
+                                <Field label="Name">
                                   <Input
-                                    type="number"
-                                    value={inputString(
-                                      intakeProperty?.building_sqm,
-                                    )}
+                                    value={inputString(intakeProperty?.name)}
                                     onChange={(event) =>
                                       updateReviewSection(
                                         "property",
-                                        "building_sqm",
+                                        "name",
                                         event.target.value,
                                       )
                                     }
                                   />
                                 </Field>
-                              </div>
-                              <details className="rounded-md border border-border bg-muted/25">
-                                <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">
-                                  Ownership & billing
-                                </summary>
-                                <div className="grid gap-3 border-t border-border p-3">
-                                  <Field label="Invoice from">
+                                <Field label="Street address">
+                                  <Input
+                                    value={inputString(
+                                      intakeProperty?.street_address ??
+                                        intakeProperty?.address,
+                                    )}
+                                    onChange={(event) =>
+                                      updateReviewSection(
+                                        "property",
+                                        "street_address",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </Field>
+                                <div className="grid gap-3 sm:grid-cols-3">
+                                  <Field label="Suburb">
+                                    <Input
+                                      value={inputString(
+                                        intakeProperty?.suburb,
+                                      )}
+                                      onChange={(event) =>
+                                        updateReviewSection(
+                                          "property",
+                                          "suburb",
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </Field>
+                                  <Field label="State">
+                                    <Input
+                                      value={inputString(intakeProperty?.state)}
+                                      onChange={(event) =>
+                                        updateReviewSection(
+                                          "property",
+                                          "state",
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </Field>
+                                  <Field label="Postcode">
+                                    <Input
+                                      value={inputString(
+                                        intakeProperty?.postcode,
+                                      )}
+                                      onChange={(event) =>
+                                        updateReviewSection(
+                                          "property",
+                                          "postcode",
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </Field>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <Field label="Type">
                                     <Select
                                       value={
                                         inputString(
-                                          intakeProperty?.ownership_structure,
-                                        ) || "current_entity"
+                                          intakeProperty?.property_type,
+                                        ) || "other"
                                       }
                                       onChange={(event) =>
                                         updateReviewSection(
                                           "property",
-                                          "ownership_structure",
+                                          "property_type",
                                           event.target.value,
                                         )
                                       }
                                     >
-                                      {ownershipStructures.map((structure) => (
+                                      {propertyTypes.map((type) => (
                                         <option
-                                          key={structure.value}
-                                          value={structure.value}
+                                          key={type.value}
+                                          value={type.value}
                                         >
-                                          {structure.label}
+                                          {type.label}
                                         </option>
                                       ))}
                                     </Select>
                                   </Field>
-                                  <Field label="Invoice issuer">
+                                  <Field label="Building sqm">
                                     <Input
+                                      type="number"
                                       value={inputString(
-                                        intakeProperty?.invoice_issuer_name,
+                                        intakeProperty?.building_sqm,
                                       )}
                                       onChange={(event) =>
                                         updateReviewSection(
                                           "property",
-                                          "invoice_issuer_name",
+                                          "building_sqm",
                                           event.target.value,
                                         )
                                       }
                                     />
                                   </Field>
-                                  <Field label="Legal owner">
-                                    <Input
-                                      value={inputString(
-                                        intakeProperty?.owner_legal_name,
-                                      )}
-                                      onChange={(event) =>
-                                        updateReviewSection(
-                                          "property",
-                                          "owner_legal_name",
-                                          event.target.value,
-                                        )
-                                      }
-                                    />
-                                  </Field>
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    <Field label="ABN">
-                                      <Input
-                                        value={inputString(
-                                          intakeProperty?.owner_abn,
-                                        )}
-                                        onChange={(event) =>
-                                          updateReviewSection(
-                                            "property",
-                                            "owner_abn",
-                                            event.target.value,
-                                          )
-                                        }
-                                      />
-                                    </Field>
-                                    <Field label="GST">
+                                </div>
+                                <details className="rounded-md border border-border bg-muted/25">
+                                  <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">
+                                    Ownership & billing
+                                  </summary>
+                                  <div className="grid gap-3 border-t border-border p-3">
+                                    <Field label="Invoice from">
                                       <Select
                                         value={
-                                          intakeProperty?.owner_gst_registered ===
-                                          true
-                                            ? "true"
-                                            : intakeProperty?.owner_gst_registered ===
-                                                false
-                                              ? "false"
-                                              : ""
+                                          inputString(
+                                            intakeProperty?.ownership_structure,
+                                          ) || "current_entity"
                                         }
                                         onChange={(event) =>
                                           updateReviewSection(
                                             "property",
-                                            "owner_gst_registered",
-                                            event.target.value === ""
-                                              ? null
-                                              : event.target.value === "true",
+                                            "ownership_structure",
+                                            event.target.value,
                                           )
                                         }
                                       >
-                                        <option value="">Not set</option>
-                                        <option value="true">Registered</option>
-                                        <option value="false">
-                                          Not registered
-                                        </option>
+                                        {ownershipStructures.map(
+                                          (structure) => (
+                                            <option
+                                              key={structure.value}
+                                              value={structure.value}
+                                            >
+                                              {structure.label}
+                                            </option>
+                                          ),
+                                        )}
                                       </Select>
                                     </Field>
-                                  </div>
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    <Field label="Trustee">
+                                    <Field label="Invoice issuer">
                                       <Input
                                         value={inputString(
-                                          intakeProperty?.trustee_name,
+                                          intakeProperty?.invoice_issuer_name,
                                         )}
                                         onChange={(event) =>
                                           updateReviewSection(
                                             "property",
-                                            "trustee_name",
+                                            "invoice_issuer_name",
                                             event.target.value,
                                           )
                                         }
                                       />
                                     </Field>
-                                    <Field label="Trust">
+                                    <Field label="Legal owner">
                                       <Input
                                         value={inputString(
-                                          intakeProperty?.trust_name,
+                                          intakeProperty?.owner_legal_name,
                                         )}
                                         onChange={(event) =>
                                           updateReviewSection(
                                             "property",
-                                            "trust_name",
+                                            "owner_legal_name",
                                             event.target.value,
                                           )
                                         }
                                       />
                                     </Field>
-                                  </div>
-                                  <Field label="Ownership split">
-                                    <Input
-                                      value={inputString(
-                                        intakeProperty?.ownership_split,
-                                      )}
-                                      onChange={(event) =>
-                                        updateReviewSection(
-                                          "property",
-                                          "ownership_split",
-                                          event.target.value,
-                                        )
-                                      }
-                                    />
-                                  </Field>
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    <Field label="Xero issuer">
-                                      <Input
-                                        value={inputString(
-                                          intakeProperty?.xero_contact_id,
-                                        )}
-                                        onChange={(event) =>
-                                          updateReviewSection(
-                                            "property",
-                                            "xero_contact_id",
-                                            event.target.value,
-                                          )
-                                        }
-                                      />
-                                    </Field>
-                                    <Field label="Tracking">
-                                      <Input
-                                        value={inputString(
-                                          intakeProperty?.xero_tracking_category,
-                                        )}
-                                        onChange={(event) =>
-                                          updateReviewSection(
-                                            "property",
-                                            "xero_tracking_category",
-                                            event.target.value,
-                                          )
-                                        }
-                                      />
-                                    </Field>
-                                  </div>
-                                </div>
-                              </details>
-                            </div>
-                          </div>
-
-                          <div className="rounded-md border border-border bg-white">
-                            <div className="border-b border-border px-3 py-2 text-sm font-semibold">
-                              Tenant
-                            </div>
-                            <div className="grid gap-4 p-4">
-                              <Field label="Use existing">
-                                <Select
-                                  value={leaseReviewTenantId}
-                                  onChange={(event) =>
-                                    setLeaseReviewTenantId(event.target.value)
-                                  }
-                                >
-                                  <option value="">Create from review</option>
-                                  {tenantsQuery.data?.map((tenant) => (
-                                    <option key={tenant.id} value={tenant.id}>
-                                      {tenantDisplayName(tenant)}
-                                    </option>
-                                  ))}
-                                </Select>
-                              </Field>
-                              <Field label="Legal name">
-                                <Input
-                                  value={inputString(
-                                    intakeTenant?.legal_name ??
-                                      intakeTenant?.name,
-                                  )}
-                                  onChange={(event) =>
-                                    updateReviewSection(
-                                      "tenant",
-                                      "legal_name",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
-                              </Field>
-                              <Field label="Trading as">
-                                <Input
-                                  value={inputString(
-                                    intakeTenant?.trading_name,
-                                  )}
-                                  onChange={(event) =>
-                                    updateReviewSection(
-                                      "tenant",
-                                      "trading_name",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
-                              </Field>
-                              <Field label="ABN">
-                                <Input
-                                  value={inputString(intakeTenant?.abn)}
-                                  onChange={(event) =>
-                                    updateReviewSection(
-                                      "tenant",
-                                      "abn",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
-                              </Field>
-                              <Field label="Billing email">
-                                <Input
-                                  type="email"
-                                  value={inputString(
-                                    intakeTenant?.billing_email ??
-                                      intakeTenant?.contact_email,
-                                  )}
-                                  onChange={(event) =>
-                                    updateReviewSection(
-                                      "tenant",
-                                      "billing_email",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
-                              </Field>
-                            </div>
-                          </div>
-
-                          <div className="rounded-md border border-border bg-white">
-                            <div className="border-b border-border px-3 py-2 text-sm font-semibold">
-                              Lease
-                            </div>
-                            <div className="grid gap-4 p-4">
-                              <Field label="Use existing unit">
-                                <Select
-                                  value={leaseReviewUnitId}
-                                  onChange={(event) =>
-                                    setLeaseReviewUnitId(event.target.value)
-                                  }
-                                  disabled={!leaseReviewPropertyId}
-                                >
-                                  <option value="">Create from review</option>
-                                  {leaseReviewUnitsQuery.data?.map((unit) => (
-                                    <option key={unit.id} value={unit.id}>
-                                      {unit.unit_label}
-                                    </option>
-                                  ))}
-                                </Select>
-                              </Field>
-                              <Field label="Unit">
-                                <Input
-                                  value={inputString(
-                                    intakeUnit?.unit_label ?? intakeUnit?.label,
-                                  )}
-                                  onChange={(event) =>
-                                    updateReviewSection(
-                                      "tenancy_unit",
-                                      "unit_label",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
-                              </Field>
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                <Field label="Start">
-                                  <Input
-                                    type="date"
-                                    value={inputString(
-                                      intakeLease?.commencement_date,
-                                    )}
-                                    onChange={(event) =>
-                                      updateReviewSection(
-                                        "lease",
-                                        "commencement_date",
-                                        event.target.value,
-                                      )
-                                    }
-                                  />
-                                </Field>
-                                <Field label="Expiry">
-                                  <Input
-                                    type="date"
-                                    value={inputString(
-                                      intakeLease?.expiry_date,
-                                    )}
-                                    onChange={(event) =>
-                                      updateReviewSection(
-                                        "lease",
-                                        "expiry_date",
-                                        event.target.value,
-                                      )
-                                    }
-                                  />
-                                </Field>
-                              </div>
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                <Field label="Annual rent">
-                                  <Input
-                                    type="number"
-                                    value={inputString(
-                                      draftAnnualRentCents(intakeLease)
-                                        ? (draftAnnualRentCents(intakeLease) ??
-                                            0) / 100
-                                        : "",
-                                    )}
-                                    onChange={(event) =>
-                                      updateReviewSection(
-                                        "lease",
-                                        "annual_rent_dollars",
-                                        event.target.value,
-                                      )
-                                    }
-                                  />
-                                </Field>
-                                <Field label="Frequency">
-                                  <Select
-                                    value={
-                                      inputString(
-                                        intakeLease?.rent_frequency,
-                                      ) || "annual"
-                                    }
-                                    onChange={(event) =>
-                                      updateReviewSection(
-                                        "lease",
-                                        "rent_frequency",
-                                        event.target.value,
-                                      )
-                                    }
-                                  >
-                                    {rentFrequencies.map((frequency) => (
-                                      <option
-                                        key={frequency.value}
-                                        value={frequency.value}
-                                      >
-                                        {frequency.label}
-                                      </option>
-                                    ))}
-                                  </Select>
-                                </Field>
-                              </div>
-                              <Field label="Next review">
-                                <Input
-                                  type="date"
-                                  value={inputString(
-                                    intakeLease?.next_review_date,
-                                  )}
-                                  onChange={(event) =>
-                                    updateReviewSection(
-                                      "lease",
-                                      "next_review_date",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
-                              </Field>
-                              <Field label="Options">
-                                <Input
-                                  value={inputString(
-                                    intakeLease?.option_summary,
-                                  )}
-                                  onChange={(event) =>
-                                    updateReviewSection(
-                                      "lease",
-                                      "option_summary",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
-                              </Field>
-                              <Field label="Security">
-                                <Input
-                                  value={inputString(
-                                    intakeLease?.security_summary,
-                                  )}
-                                  onChange={(event) =>
-                                    updateReviewSection(
-                                      "lease",
-                                      "security_summary",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
-                              </Field>
-                            </div>
-                          </div>
-
-                          <div className="rounded-md border border-border bg-white">
-                            <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                              <div className="text-sm font-semibold">
-                                Obligations
-                              </div>
-                              <SecondaryButton
-                                type="button"
-                                className="h-8"
-                                onClick={addReviewObligation}
-                              >
-                                <Plus size={14} />
-                                Add
-                              </SecondaryButton>
-                            </div>
-                            <div className="grid gap-4 p-4">
-                              {intakeObligations.length ? (
-                                intakeObligations.map((obligation, index) => (
-                                  <div
-                                    key={`${obligation.title ?? "obligation"}-${index}`}
-                                    className="grid gap-2 rounded border border-border bg-muted/30 p-2"
-                                  >
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="text-xs font-semibold text-muted-foreground">
-                                        Date {index + 1}
-                                      </div>
-                                      <SecondaryButton
-                                        type="button"
-                                        className="h-7 w-7 px-0"
-                                        onClick={() =>
-                                          removeReviewObligation(index)
-                                        }
-                                      >
-                                        <X size={13} />
-                                      </SecondaryButton>
-                                    </div>
-                                    <Field label="Title">
-                                      <Input
-                                        value={inputString(obligation.title)}
-                                        onChange={(event) =>
-                                          updateReviewObligation(
-                                            index,
-                                            "title",
-                                            event.target.value,
-                                          )
-                                        }
-                                      />
-                                    </Field>
-                                    <div className="grid gap-2 sm:grid-cols-2">
-                                      <Field label="Category">
-                                        <Select
-                                          value={
-                                            inputString(obligation.category) ||
-                                            "other"
-                                          }
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                      <Field label="ABN">
+                                        <Input
+                                          value={inputString(
+                                            intakeProperty?.owner_abn,
+                                          )}
                                           onChange={(event) =>
-                                            updateReviewObligation(
-                                              index,
-                                              "category",
+                                            updateReviewSection(
+                                              "property",
+                                              "owner_abn",
                                               event.target.value,
                                             )
                                           }
+                                        />
+                                      </Field>
+                                      <Field label="GST">
+                                        <Select
+                                          value={
+                                            intakeProperty?.owner_gst_registered ===
+                                            true
+                                              ? "true"
+                                              : intakeProperty?.owner_gst_registered ===
+                                                  false
+                                                ? "false"
+                                                : ""
+                                          }
+                                          onChange={(event) =>
+                                            updateReviewSection(
+                                              "property",
+                                              "owner_gst_registered",
+                                              event.target.value === ""
+                                                ? null
+                                                : event.target.value === "true",
+                                            )
+                                          }
                                         >
-                                          {obligationCategories.map(
-                                            (category) => (
-                                              <option
-                                                key={category.value}
-                                                value={category.value}
-                                              >
-                                                {category.label}
-                                              </option>
-                                            ),
-                                          )}
+                                          <option value="">Not set</option>
+                                          <option value="true">
+                                            Registered
+                                          </option>
+                                          <option value="false">
+                                            Not registered
+                                          </option>
                                         </Select>
                                       </Field>
-                                      <Field label="Due">
+                                    </div>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                      <Field label="Trustee">
                                         <Input
-                                          type="date"
                                           value={inputString(
-                                            obligation.due_date ??
-                                              obligation.due,
+                                            intakeProperty?.trustee_name,
                                           )}
                                           onChange={(event) =>
-                                            updateReviewObligation(
-                                              index,
-                                              "due_date",
+                                            updateReviewSection(
+                                              "property",
+                                              "trustee_name",
+                                              event.target.value,
+                                            )
+                                          }
+                                        />
+                                      </Field>
+                                      <Field label="Trust">
+                                        <Input
+                                          value={inputString(
+                                            intakeProperty?.trust_name,
+                                          )}
+                                          onChange={(event) =>
+                                            updateReviewSection(
+                                              "property",
+                                              "trust_name",
+                                              event.target.value,
+                                            )
+                                          }
+                                        />
+                                      </Field>
+                                    </div>
+                                    <Field label="Ownership split">
+                                      <Input
+                                        value={inputString(
+                                          intakeProperty?.ownership_split,
+                                        )}
+                                        onChange={(event) =>
+                                          updateReviewSection(
+                                            "property",
+                                            "ownership_split",
+                                            event.target.value,
+                                          )
+                                        }
+                                      />
+                                    </Field>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                      <Field label="Xero issuer">
+                                        <Input
+                                          value={inputString(
+                                            intakeProperty?.xero_contact_id,
+                                          )}
+                                          onChange={(event) =>
+                                            updateReviewSection(
+                                              "property",
+                                              "xero_contact_id",
+                                              event.target.value,
+                                            )
+                                          }
+                                        />
+                                      </Field>
+                                      <Field label="Tracking">
+                                        <Input
+                                          value={inputString(
+                                            intakeProperty?.xero_tracking_category,
+                                          )}
+                                          onChange={(event) =>
+                                            updateReviewSection(
+                                              "property",
+                                              "xero_tracking_category",
                                               event.target.value,
                                             )
                                           }
@@ -3299,332 +3126,417 @@ function Workspace() {
                                       </Field>
                                     </div>
                                   </div>
-                                ))
-                              ) : (
-                                <div className="text-sm text-muted-foreground">
-                                  No key dates found yet.
+                                </details>
+                              </div>
+                            </div>
+
+                            <div className="rounded-md border border-border bg-white">
+                              <div className="border-b border-border px-3 py-2 text-sm font-semibold">
+                                Tenant
+                              </div>
+                              <div className="grid gap-4 p-4">
+                                <Field label="Use existing">
+                                  <Select
+                                    value={leaseReviewTenantId}
+                                    onChange={(event) =>
+                                      setLeaseReviewTenantId(event.target.value)
+                                    }
+                                  >
+                                    <option value="">Create from review</option>
+                                    {tenantsQuery.data?.map((tenant) => (
+                                      <option key={tenant.id} value={tenant.id}>
+                                        {tenantDisplayName(tenant)}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                </Field>
+                                <Field label="Legal name">
+                                  <Input
+                                    value={inputString(
+                                      intakeTenant?.legal_name ??
+                                        intakeTenant?.name,
+                                    )}
+                                    onChange={(event) =>
+                                      updateReviewSection(
+                                        "tenant",
+                                        "legal_name",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </Field>
+                                <Field label="Trading as">
+                                  <Input
+                                    value={inputString(
+                                      intakeTenant?.trading_name,
+                                    )}
+                                    onChange={(event) =>
+                                      updateReviewSection(
+                                        "tenant",
+                                        "trading_name",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </Field>
+                                <Field label="ABN">
+                                  <Input
+                                    value={inputString(intakeTenant?.abn)}
+                                    onChange={(event) =>
+                                      updateReviewSection(
+                                        "tenant",
+                                        "abn",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </Field>
+                                <Field label="Billing email">
+                                  <Input
+                                    type="email"
+                                    value={inputString(
+                                      intakeTenant?.billing_email ??
+                                        intakeTenant?.contact_email,
+                                    )}
+                                    onChange={(event) =>
+                                      updateReviewSection(
+                                        "tenant",
+                                        "billing_email",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </Field>
+                              </div>
+                            </div>
+
+                            <div className="rounded-md border border-border bg-white">
+                              <div className="border-b border-border px-3 py-2 text-sm font-semibold">
+                                Lease
+                              </div>
+                              <div className="grid gap-4 p-4">
+                                <Field label="Use existing unit">
+                                  <Select
+                                    value={leaseReviewUnitId}
+                                    onChange={(event) =>
+                                      setLeaseReviewUnitId(event.target.value)
+                                    }
+                                    disabled={!leaseReviewPropertyId}
+                                  >
+                                    <option value="">Create from review</option>
+                                    {leaseReviewUnitsQuery.data?.map((unit) => (
+                                      <option key={unit.id} value={unit.id}>
+                                        {unit.unit_label}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                </Field>
+                                <Field label="Unit">
+                                  <Input
+                                    value={inputString(
+                                      intakeUnit?.unit_label ??
+                                        intakeUnit?.label,
+                                    )}
+                                    onChange={(event) =>
+                                      updateReviewSection(
+                                        "tenancy_unit",
+                                        "unit_label",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </Field>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <Field label="Start">
+                                    <Input
+                                      type="date"
+                                      value={inputString(
+                                        intakeLease?.commencement_date,
+                                      )}
+                                      onChange={(event) =>
+                                        updateReviewSection(
+                                          "lease",
+                                          "commencement_date",
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </Field>
+                                  <Field label="Expiry">
+                                    <Input
+                                      type="date"
+                                      value={inputString(
+                                        intakeLease?.expiry_date,
+                                      )}
+                                      onChange={(event) =>
+                                        updateReviewSection(
+                                          "lease",
+                                          "expiry_date",
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </Field>
                                 </div>
-                              )}
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <Field label="Annual rent">
+                                    <Input
+                                      type="number"
+                                      value={inputString(
+                                        draftAnnualRentCents(intakeLease)
+                                          ? (draftAnnualRentCents(
+                                              intakeLease,
+                                            ) ?? 0) / 100
+                                          : "",
+                                      )}
+                                      onChange={(event) =>
+                                        updateReviewSection(
+                                          "lease",
+                                          "annual_rent_dollars",
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </Field>
+                                  <Field label="Frequency">
+                                    <Select
+                                      value={
+                                        inputString(
+                                          intakeLease?.rent_frequency,
+                                        ) || "annual"
+                                      }
+                                      onChange={(event) =>
+                                        updateReviewSection(
+                                          "lease",
+                                          "rent_frequency",
+                                          event.target.value,
+                                        )
+                                      }
+                                    >
+                                      {rentFrequencies.map((frequency) => (
+                                        <option
+                                          key={frequency.value}
+                                          value={frequency.value}
+                                        >
+                                          {frequency.label}
+                                        </option>
+                                      ))}
+                                    </Select>
+                                  </Field>
+                                </div>
+                                <Field label="Next review">
+                                  <Input
+                                    type="date"
+                                    value={inputString(
+                                      intakeLease?.next_review_date,
+                                    )}
+                                    onChange={(event) =>
+                                      updateReviewSection(
+                                        "lease",
+                                        "next_review_date",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </Field>
+                                <Field label="Options">
+                                  <Input
+                                    value={inputString(
+                                      intakeLease?.option_summary,
+                                    )}
+                                    onChange={(event) =>
+                                      updateReviewSection(
+                                        "lease",
+                                        "option_summary",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </Field>
+                                <Field label="Security">
+                                  <Input
+                                    value={inputString(
+                                      intakeLease?.security_summary,
+                                    )}
+                                    onChange={(event) =>
+                                      updateReviewSection(
+                                        "lease",
+                                        "security_summary",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </Field>
+                              </div>
+                            </div>
+
+                            <div className="rounded-md border border-border bg-white">
+                              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                                <div className="text-sm font-semibold">
+                                  Obligations
+                                </div>
+                                <SecondaryButton
+                                  type="button"
+                                  className="h-8"
+                                  onClick={addReviewObligation}
+                                >
+                                  <Plus size={14} />
+                                  Add
+                                </SecondaryButton>
+                              </div>
+                              <div className="grid gap-4 p-4">
+                                {intakeObligations.length ? (
+                                  intakeObligations.map((obligation, index) => (
+                                    <div
+                                      key={`${obligation.title ?? "obligation"}-${index}`}
+                                      className="grid gap-2 rounded border border-border bg-muted/30 p-2"
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="text-xs font-semibold text-muted-foreground">
+                                          Date {index + 1}
+                                        </div>
+                                        <SecondaryButton
+                                          type="button"
+                                          className="h-7 w-7 px-0"
+                                          onClick={() =>
+                                            removeReviewObligation(index)
+                                          }
+                                        >
+                                          <X size={13} />
+                                        </SecondaryButton>
+                                      </div>
+                                      <Field label="Title">
+                                        <Input
+                                          value={inputString(obligation.title)}
+                                          onChange={(event) =>
+                                            updateReviewObligation(
+                                              index,
+                                              "title",
+                                              event.target.value,
+                                            )
+                                          }
+                                        />
+                                      </Field>
+                                      <div className="grid gap-2 sm:grid-cols-2">
+                                        <Field label="Category">
+                                          <Select
+                                            value={
+                                              inputString(
+                                                obligation.category,
+                                              ) || "other"
+                                            }
+                                            onChange={(event) =>
+                                              updateReviewObligation(
+                                                index,
+                                                "category",
+                                                event.target.value,
+                                              )
+                                            }
+                                          >
+                                            {obligationCategories.map(
+                                              (category) => (
+                                                <option
+                                                  key={category.value}
+                                                  value={category.value}
+                                                >
+                                                  {category.label}
+                                                </option>
+                                              ),
+                                            )}
+                                          </Select>
+                                        </Field>
+                                        <Field label="Due">
+                                          <Input
+                                            type="date"
+                                            value={inputString(
+                                              obligation.due_date ??
+                                                obligation.due,
+                                            )}
+                                            onChange={(event) =>
+                                              updateReviewObligation(
+                                                index,
+                                                "due_date",
+                                                event.target.value,
+                                              )
+                                            }
+                                          />
+                                        </Field>
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-sm text-muted-foreground">
+                                    No key dates found yet.
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ) : null}
+                      ) : null}
 
-                    {intakeNotes.length ? (
-                      <div className="rounded-md border border-border bg-white p-3 text-sm">
-                        <div className="mb-1 font-semibold">Check these</div>
-                        <ul className="grid gap-1 text-muted-foreground">
-                          {intakeNotes.map((note, index) => (
-                            <li key={`${note}-${index}`}>{note}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
+                      {intakeNotes.length ? (
+                        <div className="rounded-md border border-border bg-white p-3 text-sm">
+                          <div className="mb-1 font-semibold">Check these</div>
+                          <ul className="grid gap-1 text-muted-foreground">
+                            {intakeNotes.map((note, index) => (
+                              <li key={`${note}-${index}`}>{note}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
 
-                    {applyLeaseIntakeMutation.error ? (
-                      <p className="text-sm text-danger">
-                        {friendlyError(applyLeaseIntakeMutation.error)}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="grid min-h-48 place-items-center text-center">
-                    <div>
-                      <div className="text-sm font-semibold">
-                        Document review opens in the inbox
-                      </div>
-                      <div className="mt-1 text-sm text-muted-foreground">
-                        Nothing is applied until you review and approve the
-                        extracted details.
+                      {applyLeaseIntakeMutation.error ? (
+                        <p className="text-sm text-danger">
+                          {friendlyError(applyLeaseIntakeMutation.error)}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="grid min-h-48 place-items-center text-center">
+                      <div>
+                        <div className="text-sm font-semibold">
+                          Document review opens in the inbox
+                        </div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          Nothing is applied until you review and approve the
+                          extracted details.
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
           ) : null}
 
           {activeWorkspaceTab === "operations" ? (
-          <section className="mb-4 overflow-hidden rounded-md border border-border bg-white">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <ClipboardList size={17} className="text-primary" />
-                  <h2 className="text-base font-semibold">Attention</h2>
-                  {attentionCounts.overdue > 0 ? (
-                    <span className="rounded bg-danger/10 px-1.5 py-0.5 text-xs font-medium text-danger">
-                      {attentionCounts.overdue} overdue
-                    </span>
-                  ) : null}
-                  {attentionCounts.dueSoon > 0 ? (
-                    <span className="rounded bg-accent/10 px-1.5 py-0.5 text-xs font-medium">
-                      {attentionCounts.dueSoon} due soon
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {selectedProperty
-                    ? selectedProperty.name
-                    : (selectedEntity?.name ?? "Select an entity")}
-                </p>
-              </div>
-              <SecondaryButton
-                type="button"
-                onClick={() => obligationsQuery.refetch()}
-                disabled={!selectedEntityId}
-                className="h-8"
-              >
-                <RefreshCw size={15} />
-                Refresh
-              </SecondaryButton>
-            </div>
-
-            <div className="grid lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="min-w-0 divide-y divide-border">
-                {activeObligations.slice(0, 6).map((obligation) => {
-                  const status = dueStatus(obligation.due_date);
-                  const isCritical = obligation.priority <= 0;
-                  return (
-                    <div
-                      key={obligation.id}
-                      className="grid gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {isCritical ? (
-                            <AlertTriangle size={15} className="text-danger" />
-                          ) : null}
-                          <span className="font-medium">
-                            {obligation.title}
-                          </span>
-                          <span
-                            className={`rounded px-1.5 py-0.5 text-xs font-medium ${status.className}`}
-                          >
-                            {status.label}
-                          </span>
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                            {obligationPriorityLabel(obligation.priority)}
-                          </span>
-                        </div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">
-                          {obligation.category.replaceAll("_", " ")} -{" "}
-                          {obligationContext(obligation)}
-                          {obligation.owner_role
-                            ? ` - ${obligation.owner_role}`
-                            : ""}
-                        </div>
-                        {obligation.notes ? (
-                          <div className="mt-1 truncate text-xs text-muted-foreground">
-                            {obligation.notes}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="flex gap-2 sm:justify-end">
-                        <SecondaryButton
-                          type="button"
-                          aria-label={`Complete ${obligation.title}`}
-                          title="Complete"
-                          onClick={() =>
-                            updateObligationMutation.mutate({
-                              obligation,
-                              status: "completed",
-                            })
-                          }
-                          disabled={updateObligationMutation.isPending}
-                          className="h-8 w-8 px-0"
-                        >
-                          <CheckCircle2
-                            size={15}
-                            className="text-leasium-success"
-                          />
-                        </SecondaryButton>
-                        <SecondaryButton
-                          type="button"
-                          aria-label={`Waive ${obligation.title}`}
-                          title="Waive"
-                          onClick={() =>
-                            updateObligationMutation.mutate({
-                              obligation,
-                              status: "waived",
-                            })
-                          }
-                          disabled={updateObligationMutation.isPending}
-                          className="h-8 w-8 px-0"
-                        >
-                          <Ban size={15} className="text-danger" />
-                        </SecondaryButton>
-                      </div>
-                    </div>
-                  );
-                })}
-                {obligationsLoading ? (
-                  <div className="px-4 py-6 text-sm text-muted-foreground">
-                    Loading attention items...
+            <section className="mb-4 overflow-hidden rounded-md border border-border bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ClipboardList size={17} className="text-primary" />
+                    <h2 className="text-base font-semibold">Attention</h2>
+                    {attentionCounts.overdue > 0 ? (
+                      <span className="rounded bg-danger/10 px-1.5 py-0.5 text-xs font-medium text-danger">
+                        {attentionCounts.overdue} overdue
+                      </span>
+                    ) : null}
+                    {attentionCounts.dueSoon > 0 ? (
+                      <span className="rounded bg-accent/10 px-1.5 py-0.5 text-xs font-medium">
+                        {attentionCounts.dueSoon} due soon
+                      </span>
+                    ) : null}
                   </div>
-                ) : null}
-                {!obligationsLoading && activeObligations.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-muted-foreground">
-                    Nothing needs attention for this selection.
-                  </div>
-                ) : null}
-                {activeObligations.length > 6 ? (
-                  <div className="px-4 py-2 text-xs text-muted-foreground">
-                    Showing 6 of {activeObligations.length} open obligations.
-                  </div>
-                ) : null}
-              </div>
-
-              <form
-                className="grid gap-3 border-t border-border p-4 lg:border-l lg:border-t-0"
-                onSubmit={obligationForm.handleSubmit((values) =>
-                  obligationMutation.mutate(values),
-                )}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-semibold">Quick date</h3>
-                  <span className="text-xs text-muted-foreground">
-                    {selectedProperty ? "Property" : "Entity"}
-                  </span>
-                </div>
-                <Field
-                  label="Title"
-                  error={obligationForm.formState.errors.title?.message}
-                >
-                  <Input
-                    placeholder="Insurance renewal"
-                    {...obligationForm.register("title")}
-                  />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field
-                    label="Due"
-                    error={obligationForm.formState.errors.due_date?.message}
-                  >
-                    <Input
-                      type="date"
-                      {...obligationForm.register("due_date")}
-                    />
-                  </Field>
-                  <Field label="Priority">
-                    <Select {...obligationForm.register("priority")}>
-                      {obligationPriorities.map((priority) => (
-                        <option key={priority.value} value={priority.value}>
-                          {priority.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Category">
-                    <Select {...obligationForm.register("category")}>
-                      {obligationCategories.map((category) => (
-                        <option key={category.value} value={category.value}>
-                          {category.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Lease">
-                    <Select
-                      {...obligationForm.register("lease_id")}
-                      disabled={
-                        !selectedPropertyId || !leasesQuery.data?.length
-                      }
-                    >
-                      <option value="">Property level</option>
-                      {leasesQuery.data?.map((lease) => (
-                        <option key={lease.id} value={lease.id}>
-                          {leaseOptionLabel(lease)}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Owner">
-                    <Select {...obligationForm.register("owner_role")}>
-                      {obligationOwnerRoles.map((role) => (
-                        <option key={role.value} value={role.value}>
-                          {role.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Notes">
-                    <Input
-                      placeholder="Optional"
-                      {...obligationForm.register("notes")}
-                    />
-                  </Field>
-                </div>
-                <Button
-                  type="submit"
-                  disabled={!selectedEntityId || obligationMutation.isPending}
-                >
-                  <Plus size={16} />
-                  Add date
-                </Button>
-                {obligationMutation.error ? (
-                  <p className="text-sm text-danger">
-                    {obligationMutation.error.message}
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {selectedProperty
+                      ? selectedProperty.name
+                      : (selectedEntity?.name ?? "Select an entity")}
                   </p>
-                ) : null}
-                {updateObligationMutation.error ? (
-                  <p className="text-sm text-danger">
-                    {updateObligationMutation.error.message}
-                  </p>
-                ) : null}
-                {obligationsQuery.error ? (
-                  <p className="text-sm text-danger">
-                    {obligationsQuery.error.message}
-                  </p>
-                ) : null}
-              </form>
-            </div>
-          </section>
-          ) : null}
-
-          {activeWorkspaceTab === "billing" ? (
-          <section className="mb-4 overflow-hidden rounded-md border border-border bg-white">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <ReceiptText size={17} className="text-primary" />
-                  <h2 className="text-base font-semibold">Billing readiness</h2>
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Charge rules, Xero mapping, and invoice blockers before the
-                  invoicing module lands.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Select
-                  value={rentRollPropertyId}
-                  onChange={(event) =>
-                    setRentRollPropertyId(event.target.value)
-                  }
-                  disabled={!selectedEntityId}
-                  className="h-8 min-w-44"
-                >
-                  <option value="">All properties</option>
-                  {propertiesQuery.data?.map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.name}
-                    </option>
-                  ))}
-                </Select>
-                <Input
-                  type="date"
-                  value={rentRollAsOf}
-                  onChange={(event) => setRentRollAsOf(event.target.value)}
-                  className="h-8 w-36"
-                />
                 <SecondaryButton
                   type="button"
-                  onClick={() => rentRollQuery.refetch()}
+                  onClick={() => obligationsQuery.refetch()}
                   disabled={!selectedEntityId}
                   className="h-8"
                 >
@@ -3632,337 +3544,592 @@ function Workspace() {
                   Refresh
                 </SecondaryButton>
               </div>
-            </div>
 
-            <div className="grid lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="min-w-0 overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead className="bg-muted text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Tenancy</th>
-                      <th className="px-3 py-2 font-semibold">Rent</th>
-                      <th className="px-3 py-2 font-semibold">Rules</th>
-                      <th className="px-3 py-2 font-semibold">Next due</th>
-                      <th className="px-3 py-2 font-semibold">Ready</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rentRollLoading ? (
-                      <tr>
-                        <td
-                          className="px-3 py-8 text-center text-muted-foreground"
-                          colSpan={5}
-                        >
-                          Loading rent roll rows...
-                        </td>
-                      </tr>
-                    ) : null}
-                    {rentRollRows.slice(0, 8).map((row) => {
-                      const blockers = readinessBlockers(row);
-                      return (
-                        <tr
-                          key={`${row.property_id}-${row.tenancy_unit_id}`}
-                          className="border-t border-border align-top"
-                        >
-                          <td className="px-3 py-3">
-                            <div className="font-medium">{row.unit_label}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {row.property_name}
+              <div className="grid lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="min-w-0 divide-y divide-border">
+                  {activeObligations.slice(0, 6).map((obligation) => {
+                    const status = dueStatus(obligation.due_date);
+                    const isCritical = obligation.priority <= 0;
+                    return (
+                      <div
+                        key={obligation.id}
+                        className="grid gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {isCritical ? (
+                              <AlertTriangle
+                                size={15}
+                                className="text-danger"
+                              />
+                            ) : null}
+                            <span className="font-medium">
+                              {obligation.title}
+                            </span>
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-xs font-medium ${status.className}`}
+                            >
+                              {status.label}
+                            </span>
+                            <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                              {obligationPriorityLabel(obligation.priority)}
+                            </span>
+                          </div>
+                          <div className="mt-1 truncate text-xs text-muted-foreground">
+                            {obligation.category.replaceAll("_", " ")} -{" "}
+                            {obligationContext(obligation)}
+                            {obligation.owner_role
+                              ? ` - ${obligation.owner_role}`
+                              : ""}
+                          </div>
+                          {obligation.notes ? (
+                            <div className="mt-1 truncate text-xs text-muted-foreground">
+                              {obligation.notes}
                             </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {row.tenant_name ?? "Vacant"}
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-xs">
-                            <div>
-                              {formatRent(
-                                row.annual_rent_cents,
-                                row.rent_frequency,
-                              )}
-                            </div>
-                            <div className="text-muted-foreground">
-                              {row.lease_status?.replaceAll("_", " ") ??
-                                "No lease"}
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-xs">
-                            <div>
-                              {formatMoney(row.charge_rules_total_cents)}
-                            </div>
-                            <div className="text-muted-foreground">
-                              {row.charge_rules?.length ?? 0} rules
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-xs">
-                            {formatDate(row.next_due_date)}
-                          </td>
-                          <td className="px-3 py-3">
-                            {blockers.length ? (
-                              <div className="grid gap-1">
-                                {blockers.slice(0, 2).map((blocker) => (
-                                  <span
-                                    key={blocker}
-                                    className="rounded bg-accent/10 px-1.5 py-0.5 text-xs"
-                                  >
-                                    {blocker}
-                                  </span>
-                                ))}
-                                {blockers.length > 2 ? (
-                                  <span className="text-xs text-muted-foreground">
-                                    +{blockers.length - 2} more
-                                  </span>
-                                ) : null}
-                              </div>
-                            ) : (
-                              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-                                Ready
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {!rentRollLoading && rentRollRows.length === 0 ? (
-                      <tr>
-                        <td
-                          className="px-3 py-8 text-center text-muted-foreground"
-                          colSpan={5}
-                        >
-                          No rent roll rows for this selection.
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-                {rentRollRows.length > 8 ? (
-                  <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
-                    Showing 8 of {rentRollRows.length} rent roll rows.
+                          ) : null}
+                        </div>
+                        <div className="flex gap-2 sm:justify-end">
+                          <SecondaryButton
+                            type="button"
+                            aria-label={`Complete ${obligation.title}`}
+                            title="Complete"
+                            onClick={() =>
+                              updateObligationMutation.mutate({
+                                obligation,
+                                status: "completed",
+                              })
+                            }
+                            disabled={updateObligationMutation.isPending}
+                            className="h-8 w-8 px-0"
+                          >
+                            <CheckCircle2
+                              size={15}
+                              className="text-leasium-success"
+                            />
+                          </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            aria-label={`Waive ${obligation.title}`}
+                            title="Waive"
+                            onClick={() =>
+                              updateObligationMutation.mutate({
+                                obligation,
+                                status: "waived",
+                              })
+                            }
+                            disabled={updateObligationMutation.isPending}
+                            className="h-8 w-8 px-0"
+                          >
+                            <Ban size={15} className="text-danger" />
+                          </SecondaryButton>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {obligationsLoading ? (
+                    <div className="px-4 py-6 text-sm text-muted-foreground">
+                      Loading attention items...
+                    </div>
+                  ) : null}
+                  {!obligationsLoading && activeObligations.length === 0 ? (
+                    <div className="px-4 py-6 text-sm text-muted-foreground">
+                      Nothing needs attention for this selection.
+                    </div>
+                  ) : null}
+                  {activeObligations.length > 6 ? (
+                    <div className="px-4 py-2 text-xs text-muted-foreground">
+                      Showing 6 of {activeObligations.length} open obligations.
+                    </div>
+                  ) : null}
+                </div>
+
+                <form
+                  className="grid gap-3 border-t border-border p-4 lg:border-l lg:border-t-0"
+                  onSubmit={obligationForm.handleSubmit((values) =>
+                    obligationMutation.mutate(values),
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold">Quick date</h3>
+                    <span className="text-xs text-muted-foreground">
+                      {selectedProperty ? "Property" : "Entity"}
+                    </span>
                   </div>
-                ) : null}
+                  <Field
+                    label="Title"
+                    error={obligationForm.formState.errors.title?.message}
+                  >
+                    <Input
+                      placeholder="Insurance renewal"
+                      {...obligationForm.register("title")}
+                    />
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field
+                      label="Due"
+                      error={obligationForm.formState.errors.due_date?.message}
+                    >
+                      <Input
+                        type="date"
+                        {...obligationForm.register("due_date")}
+                      />
+                    </Field>
+                    <Field label="Priority">
+                      <Select {...obligationForm.register("priority")}>
+                        {obligationPriorities.map((priority) => (
+                          <option key={priority.value} value={priority.value}>
+                            {priority.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Category">
+                      <Select {...obligationForm.register("category")}>
+                        {obligationCategories.map((category) => (
+                          <option key={category.value} value={category.value}>
+                            {category.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Lease">
+                      <Select
+                        {...obligationForm.register("lease_id")}
+                        disabled={
+                          !selectedPropertyId || !leasesQuery.data?.length
+                        }
+                      >
+                        <option value="">Property level</option>
+                        {leasesQuery.data?.map((lease) => (
+                          <option key={lease.id} value={lease.id}>
+                            {leaseOptionLabel(lease)}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Owner">
+                      <Select {...obligationForm.register("owner_role")}>
+                        {obligationOwnerRoles.map((role) => (
+                          <option key={role.value} value={role.value}>
+                            {role.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Notes">
+                      <Input
+                        placeholder="Optional"
+                        {...obligationForm.register("notes")}
+                      />
+                    </Field>
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={!selectedEntityId || obligationMutation.isPending}
+                  >
+                    <Plus size={16} />
+                    Add date
+                  </Button>
+                  {obligationMutation.error ? (
+                    <p className="text-sm text-danger">
+                      {obligationMutation.error.message}
+                    </p>
+                  ) : null}
+                  {updateObligationMutation.error ? (
+                    <p className="text-sm text-danger">
+                      {updateObligationMutation.error.message}
+                    </p>
+                  ) : null}
+                  {obligationsQuery.error ? (
+                    <p className="text-sm text-danger">
+                      {obligationsQuery.error.message}
+                    </p>
+                  ) : null}
+                </form>
               </div>
+            </section>
+          ) : null}
 
-              <form
-                className="grid gap-3 border-t border-border p-4 lg:border-l lg:border-t-0"
-                onSubmit={chargeRuleForm.handleSubmit((values) =>
-                  chargeRuleMutation.mutate(values),
-                )}
-              >
+          {activeWorkspaceTab === "billing" ? (
+            <section className="mb-4 overflow-hidden rounded-md border border-border bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                 <div>
-                  <h3 className="text-sm font-semibold">Quick charge rule</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Add the recurring charge that will feed invoices.
+                  <div className="flex items-center gap-2">
+                    <ReceiptText size={17} className="text-primary" />
+                    <h2 className="text-base font-semibold">
+                      Billing readiness
+                    </h2>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Charge rules, Xero mapping, and invoice blockers before the
+                    invoicing module lands.
                   </p>
                 </div>
-                <Field
-                  label="Lease"
-                  error={chargeRuleForm.formState.errors.lease_id?.message}
-                >
+                <div className="flex flex-wrap items-center gap-2">
                   <Select
-                    {...chargeRuleForm.register("lease_id")}
-                    disabled={
-                      !selectedPropertyId ||
-                      leasesLoading ||
-                      !leasesQuery.data?.length
+                    value={rentRollPropertyId}
+                    onChange={(event) =>
+                      setRentRollPropertyId(event.target.value)
                     }
+                    disabled={!selectedEntityId}
+                    className="h-8 min-w-44"
                   >
-                    <option value="">
-                      {leasesLoading ? "Loading leases..." : "Select lease"}
-                    </option>
-                    {leasesQuery.data?.map((lease) => (
-                      <option key={lease.id} value={lease.id}>
-                        {leaseOptionLabel(lease)}
+                    <option value="">All properties</option>
+                    {propertiesQuery.data?.map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name}
                       </option>
                     ))}
                   </Select>
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Type">
-                    <Select {...chargeRuleForm.register("charge_type")}>
-                      {chargeTypes.map((type) => (
-                        <option key={type.value} value={type.value}>
-                          {type.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field
-                    label="Amount"
-                    error={chargeRuleForm.formState.errors.amount?.message}
+                  <Input
+                    type="date"
+                    value={rentRollAsOf}
+                    onChange={(event) => setRentRollAsOf(event.target.value)}
+                    className="h-8 w-36"
+                  />
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => rentRollQuery.refetch()}
+                    disabled={!selectedEntityId}
+                    className="h-8"
                   >
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      {...chargeRuleForm.register("amount")}
-                    />
-                  </Field>
+                    <RefreshCw size={15} />
+                    Refresh
+                  </SecondaryButton>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="GST">
-                    <Select {...chargeRuleForm.register("gst_treatment")}>
-                      {gstTreatments.map((treatment) => (
-                        <option key={treatment.value} value={treatment.value}>
-                          {treatment.label}
+              </div>
+
+              <div className="grid lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="min-w-0 overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Tenancy</th>
+                        <th className="px-3 py-2 font-semibold">Rent</th>
+                        <th className="px-3 py-2 font-semibold">Rules</th>
+                        <th className="px-3 py-2 font-semibold">Next due</th>
+                        <th className="px-3 py-2 font-semibold">Ready</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rentRollLoading ? (
+                        <tr>
+                          <td
+                            className="px-3 py-8 text-center text-muted-foreground"
+                            colSpan={5}
+                          >
+                            Loading rent roll rows...
+                          </td>
+                        </tr>
+                      ) : null}
+                      {rentRollRows.slice(0, 8).map((row) => {
+                        const blockers = readinessBlockers(row);
+                        return (
+                          <tr
+                            key={`${row.property_id}-${row.tenancy_unit_id}`}
+                            className="border-t border-border align-top"
+                          >
+                            <td className="px-3 py-3">
+                              <div className="font-medium">
+                                {row.unit_label}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {row.property_name}
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {row.tenant_name ?? "Vacant"}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-xs">
+                              <div>
+                                {formatRent(
+                                  row.annual_rent_cents,
+                                  row.rent_frequency,
+                                )}
+                              </div>
+                              <div className="text-muted-foreground">
+                                {row.lease_status?.replaceAll("_", " ") ??
+                                  "No lease"}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-xs">
+                              <div>
+                                {formatMoney(row.charge_rules_total_cents)}
+                              </div>
+                              <div className="text-muted-foreground">
+                                {row.charge_rules?.length ?? 0} rules
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-xs">
+                              {formatDate(row.next_due_date)}
+                            </td>
+                            <td className="px-3 py-3">
+                              {blockers.length ? (
+                                <div className="grid gap-1">
+                                  {blockers.slice(0, 2).map((blocker) => (
+                                    <span
+                                      key={blocker}
+                                      className="rounded bg-accent/10 px-1.5 py-0.5 text-xs"
+                                    >
+                                      {blocker}
+                                    </span>
+                                  ))}
+                                  {blockers.length > 2 ? (
+                                    <span className="text-xs text-muted-foreground">
+                                      +{blockers.length - 2} more
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
+                                  Ready
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {!rentRollLoading && rentRollRows.length === 0 ? (
+                        <tr>
+                          <td
+                            className="px-3 py-8 text-center text-muted-foreground"
+                            colSpan={5}
+                          >
+                            No rent roll rows for this selection.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                  {rentRollRows.length > 8 ? (
+                    <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+                      Showing 8 of {rentRollRows.length} rent roll rows.
+                    </div>
+                  ) : null}
+                </div>
+
+                <form
+                  className="grid gap-3 border-t border-border p-4 lg:border-l lg:border-t-0"
+                  onSubmit={chargeRuleForm.handleSubmit((values) =>
+                    chargeRuleMutation.mutate(values),
+                  )}
+                >
+                  <div>
+                    <h3 className="text-sm font-semibold">Quick charge rule</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Add the recurring charge that will feed invoices.
+                    </p>
+                  </div>
+                  <Field
+                    label="Lease"
+                    error={chargeRuleForm.formState.errors.lease_id?.message}
+                  >
+                    <Select
+                      {...chargeRuleForm.register("lease_id")}
+                      disabled={
+                        !selectedPropertyId ||
+                        leasesLoading ||
+                        !leasesQuery.data?.length
+                      }
+                    >
+                      <option value="">
+                        {leasesLoading ? "Loading leases..." : "Select lease"}
+                      </option>
+                      {leasesQuery.data?.map((lease) => (
+                        <option key={lease.id} value={lease.id}>
+                          {leaseOptionLabel(lease)}
                         </option>
                       ))}
                     </Select>
                   </Field>
-                  <Field
-                    label="Next due"
-                    error={
-                      chargeRuleForm.formState.errors.next_due_date?.message
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Type">
+                      <Select {...chargeRuleForm.register("charge_type")}>
+                        {chargeTypes.map((type) => (
+                          <option key={type.value} value={type.value}>
+                            {type.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field
+                      label="Amount"
+                      error={chargeRuleForm.formState.errors.amount?.message}
+                    >
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        {...chargeRuleForm.register("amount")}
+                      />
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="GST">
+                      <Select {...chargeRuleForm.register("gst_treatment")}>
+                        {gstTreatments.map((treatment) => (
+                          <option key={treatment.value} value={treatment.value}>
+                            {treatment.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field
+                      label="Next due"
+                      error={
+                        chargeRuleForm.formState.errors.next_due_date?.message
+                      }
+                    >
+                      <Input
+                        type="date"
+                        {...chargeRuleForm.register("next_due_date")}
+                      />
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Xero account">
+                      <Input
+                        placeholder="200"
+                        {...chargeRuleForm.register("xero_account_code")}
+                      />
+                    </Field>
+                    <Field label="Tax type">
+                      <Input
+                        placeholder="OUTPUT"
+                        {...chargeRuleForm.register("xero_tax_type")}
+                      />
+                    </Field>
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={
+                      !selectedEntityId ||
+                      !selectedPropertyId ||
+                      chargeRulesLoading ||
+                      leasesLoading ||
+                      chargeRuleMutation.isPending
                     }
                   >
-                    <Input
-                      type="date"
-                      {...chargeRuleForm.register("next_due_date")}
-                    />
-                  </Field>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Xero account">
-                    <Input
-                      placeholder="200"
-                      {...chargeRuleForm.register("xero_account_code")}
-                    />
-                  </Field>
-                  <Field label="Tax type">
-                    <Input
-                      placeholder="OUTPUT"
-                      {...chargeRuleForm.register("xero_tax_type")}
-                    />
-                  </Field>
-                </div>
-                <Button
-                  type="submit"
-                  disabled={
-                    !selectedEntityId ||
-                    !selectedPropertyId ||
-                    chargeRulesLoading ||
-                    leasesLoading ||
-                    chargeRuleMutation.isPending
-                  }
-                >
-                  <Plus size={16} />
-                  Add charge
-                </Button>
-                {chargeRuleMutation.error ? (
-                  <p className="text-sm text-danger">
-                    {friendlyError(chargeRuleMutation.error)}
-                  </p>
-                ) : null}
-                {rentRollQuery.error ? (
-                  <p className="text-sm text-danger">
-                    {friendlyError(rentRollQuery.error)}
-                  </p>
-                ) : null}
-                {chargeRulesQuery.error ? (
-                  <p className="text-sm text-danger">
-                    {friendlyError(chargeRulesQuery.error)}
-                  </p>
-                ) : null}
-              </form>
-            </div>
-          </section>
+                    <Plus size={16} />
+                    Add charge
+                  </Button>
+                  {chargeRuleMutation.error ? (
+                    <p className="text-sm text-danger">
+                      {friendlyError(chargeRuleMutation.error)}
+                    </p>
+                  ) : null}
+                  {rentRollQuery.error ? (
+                    <p className="text-sm text-danger">
+                      {friendlyError(rentRollQuery.error)}
+                    </p>
+                  ) : null}
+                  {chargeRulesQuery.error ? (
+                    <p className="text-sm text-danger">
+                      {friendlyError(chargeRulesQuery.error)}
+                    </p>
+                  ) : null}
+                </form>
+              </div>
+            </section>
           ) : null}
 
           {activeWorkspaceTab === "portfolio" ? (
-          <div className="overflow-hidden rounded-md border border-border bg-white">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead className="bg-muted text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-semibold">Property</th>
-                  <th className="px-3 py-2 font-semibold">Type</th>
-                  <th className="px-3 py-2 font-semibold">Area</th>
-                  <th className="px-3 py-2 font-semibold">Parking</th>
-                  <th className="w-12 px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {propertiesQuery.data?.map((property) => {
-                  const isSelected = property.id === selectedPropertyId;
-                  return (
-                    <tr
-                      key={property.id}
-                      className={`cursor-pointer border-t border-border transition hover:bg-muted/70 ${
-                        isSelected ? "bg-primary/5" : ""
-                      }`}
-                      onClick={() => selectProperty(property.id)}
-                    >
-                      <td className="px-3 py-3">
-                        <div className="font-medium">{property.name}</div>
-                        <div className="text-muted-foreground">
-                          {property.street_address}, {property.suburb}{" "}
-                          {property.state}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {propertyOwnershipBadges(property)
-                            .slice(0, 3)
-                            .map((badge) => (
-                              <span
-                                key={badge.label}
-                                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                  badge.tone === "success"
-                                    ? "bg-leasium-success-soft text-[#027A48]"
-                                    : badge.tone === "warning"
-                                      ? "bg-leasium-warning-soft text-[#B54708]"
-                                      : badge.tone === "primary"
-                                        ? "bg-leasium-blue-soft text-leasium-blue-hover"
-                                        : "bg-muted text-muted-foreground"
-                                }`}
-                              >
-                                {badge.label}
-                              </span>
-                            ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        {property.property_type.replaceAll("_", " ")}
-                      </td>
-                      <td className="px-3 py-3">
-                        {property.building_sqm ?? "-"}
-                      </td>
-                      <td className="px-3 py-3">
-                        {property.parking_spaces ?? "-"}
-                      </td>
-                      <td className="px-3 py-3">
-                        <SecondaryButton
-                          type="button"
-                          aria-label={`Edit ${property.name}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            startEdit(property);
-                          }}
-                          className="h-8 w-8 px-0"
-                        >
-                          <Pencil size={15} />
-                        </SecondaryButton>
+            <div className="overflow-hidden rounded-md border border-border bg-white">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Property</th>
+                    <th className="px-3 py-2 font-semibold">Type</th>
+                    <th className="px-3 py-2 font-semibold">Area</th>
+                    <th className="px-3 py-2 font-semibold">Parking</th>
+                    <th className="w-12 px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {propertiesQuery.data?.map((property) => {
+                    const isSelected = property.id === selectedPropertyId;
+                    return (
+                      <tr
+                        key={property.id}
+                        className={`cursor-pointer border-t border-border transition hover:bg-muted/70 ${
+                          isSelected ? "bg-primary/5" : ""
+                        }`}
+                        onClick={() => selectProperty(property.id)}
+                      >
+                        <td className="px-3 py-3">
+                          <div className="font-medium">{property.name}</div>
+                          <div className="text-muted-foreground">
+                            {property.street_address}, {property.suburb}{" "}
+                            {property.state}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {propertyOwnershipBadges(
+                              property,
+                              selectedEntity?.name,
+                            )
+                              .slice(0, 3)
+                              .map((badge) => (
+                                <span
+                                  key={badge.label}
+                                  title={badge.title ?? badge.label}
+                                  className={`inline-flex max-w-[14rem] items-center truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 ${ownershipChipClassName(badge.palette)}`}
+                                >
+                                  {badge.label}
+                                </span>
+                              ))}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          {property.property_type.replaceAll("_", " ")}
+                        </td>
+                        <td className="px-3 py-3">
+                          {property.building_sqm ?? "-"}
+                        </td>
+                        <td className="px-3 py-3">
+                          {property.parking_spaces ?? "-"}
+                        </td>
+                        <td className="px-3 py-3">
+                          <SecondaryButton
+                            type="button"
+                            aria-label={`Edit ${property.name}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              startEdit(property);
+                            }}
+                            className="h-8 w-8 px-0"
+                          >
+                            <Pencil size={15} />
+                          </SecondaryButton>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {propertiesLoading ? (
+                    <tr>
+                      <td
+                        className="px-3 py-8 text-center text-muted-foreground"
+                        colSpan={5}
+                      >
+                        Loading properties...
                       </td>
                     </tr>
-                  );
-                })}
-                {propertiesLoading ? (
-                  <tr>
-                    <td
-                      className="px-3 py-8 text-center text-muted-foreground"
-                      colSpan={5}
-                    >
-                      Loading properties...
-                    </td>
-                  </tr>
-                ) : propertiesQuery.data?.length === 0 ? (
-                  <tr>
-                    <td
-                      className="px-3 py-8 text-center text-muted-foreground"
-                      colSpan={5}
-                    >
-                      No active properties yet.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+                  ) : propertiesQuery.data?.length === 0 ? (
+                    <tr>
+                      <td
+                        className="px-3 py-8 text-center text-muted-foreground"
+                        colSpan={5}
+                      >
+                        No active properties yet.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           ) : null}
 
           {activeWorkspaceTab === "billing" && selectedProperty ? (
@@ -3976,7 +4143,10 @@ function Workspace() {
                     </h2>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {billingIdentitySummary(selectedProperty)}
+                    {billingIdentitySummary(
+                      selectedProperty,
+                      selectedEntity?.name,
+                    )}
                   </p>
                 </div>
                 <SecondaryButton
@@ -3991,26 +4161,22 @@ function Workspace() {
               <div className="grid gap-4 p-4 lg:grid-cols-[1fr_1fr]">
                 <div className="grid gap-2 text-sm">
                   <div className="flex flex-wrap gap-1">
-                    {propertyOwnershipBadges(selectedProperty).map((badge) => (
+                    {propertyOwnershipBadges(
+                      selectedProperty,
+                      selectedEntity?.name,
+                    ).map((badge) => (
                       <span
                         key={badge.label}
-                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                          badge.tone === "success"
-                            ? "bg-leasium-success-soft text-[#027A48]"
-                            : badge.tone === "warning"
-                              ? "bg-leasium-warning-soft text-[#B54708]"
-                              : badge.tone === "primary"
-                                ? "bg-leasium-blue-soft text-leasium-blue-hover"
-                                : "bg-muted text-muted-foreground"
-                        }`}
+                        title={badge.title ?? badge.label}
+                        className={`inline-flex max-w-[18rem] items-center truncate rounded-full border px-2.5 py-1 text-xs font-semibold leading-4 ${ownershipChipClassName(badge.palette)}`}
                       >
                         {badge.label}
                       </span>
                     ))}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Only appears as a billing blocker when this property is set
-                    to invoice via a specific owner, trust, or split.
+                    Owner tags use source-of-truth ownership data from the
+                    property record or latest reviewed workbook import.
                   </div>
                 </div>
                 <dl className="grid gap-2 text-sm sm:grid-cols-2">
@@ -4085,7 +4251,8 @@ function Workspace() {
                             </span>
                           </div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            {suggestion.source.source_hint} - {suggestion.source.citation}
+                            {suggestion.source.source_hint} -{" "}
+                            {suggestion.source.citation}
                           </div>
                         </div>
                       ))}
@@ -4104,7 +4271,8 @@ function Workspace() {
                     </div>
                   ) : (
                     <div className="text-xs text-muted-foreground">
-                      Missing owner ABNs, suburb, state, postcode, and registered names stay review-first with citations.
+                      Missing owner ABNs, suburb, state, postcode, and
+                      registered names stay review-first with citations.
                     </div>
                   )}
                   {previewPropertyEnrichmentMutation.error ||
@@ -4180,278 +4348,298 @@ function Workspace() {
           ) : null}
 
           {activeWorkspaceTab === "operations" ? (
-          <section className="mt-5 overflow-hidden rounded-md border border-border bg-white">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-              <div>
-                <h2 className="text-base font-semibold">
-                  {selectedProperty
-                    ? `${selectedProperty.name} units`
-                    : "Tenancy units"}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {unitsWorkspaceLoading
-                    ? "Loading units..."
-                    : `${tenancyUnitsQuery.data?.length ?? 0} units`}
-                  {tenancyUnitsQuery.data?.length
-                    ? ` - ${unitTotals.sqm} sqm - ${unitTotals.parking} parks`
-                    : ""}
-                  {tenancyUnitsQuery.data?.length
-                    ? ` - ${occupancyTotals.occupied} occupied / ${occupancyTotals.vacant} vacant`
-                    : ""}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  onClick={startUnitCreate}
-                  disabled={!selectedPropertyId}
-                >
-                  <Plus size={16} />
-                  Add unit
-                </Button>
-                <SecondaryButton
-                  type="button"
-                  onClick={() => {
-                    tenancyUnitsQuery.refetch();
-                    tenantsQuery.refetch();
-                    leasesQuery.refetch();
-                  }}
-                  disabled={!selectedPropertyId}
-                >
-                  <RefreshCw size={16} />
-                  Refresh
-                </SecondaryButton>
-              </div>
-            </div>
-
-            {selectedProperty ? (
-              <div>
-                <div className="min-w-0 overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-sm">
-                    <thead className="bg-muted text-xs uppercase text-muted-foreground">
-                      <tr>
-                        <th className="px-3 py-2 font-semibold">Unit</th>
-                        <th className="px-3 py-2 font-semibold">Occupant</th>
-                        <th className="px-3 py-2 font-semibold">Dates</th>
-                        <th className="px-3 py-2 font-semibold">
-                          Rent / review
-                        </th>
-                        <th className="w-24 px-3 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {unitsWorkspaceLoading ? (
-                        <tr>
-                          <td
-                            className="px-3 py-8 text-center text-muted-foreground"
-                            colSpan={5}
-                          >
-                            Loading units...
-                          </td>
-                        </tr>
-                      ) : null}
-                      {!unitsWorkspaceLoading
-                        ? tenancyUnitsQuery.data?.map((unit) => {
-                        const lease = pickUnitLease(leasesQuery.data, unit.id);
-                        const tenant = lease
-                          ? tenantsById.get(lease.tenant_id)
-                          : undefined;
-                        const onboarding = lease
-                          ? onboardingByLeaseId.get(lease.id)
-                          : undefined;
-                        const canCopyOnboarding =
-                          onboarding?.status === "sent" &&
-                          !isExpiredDateTime(onboarding.expires_at);
-                        const isOccupied =
-                          lease &&
-                          ["active", "holding_over", "pending"].includes(
-                            lease.status,
-                          );
-                        return (
-                          <tr
-                            key={unit.id}
-                            className="border-t border-border align-top"
-                          >
-                            <td className="px-3 py-3">
-                              <div className="font-medium">
-                                {unit.unit_label}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {unit.sqm ?? "-"} sqm -{" "}
-                                {unit.parking_spaces ?? "-"} parks
-                              </div>
-                            </td>
-                            <td className="px-3 py-3">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                                    isOccupied
-                                      ? "bg-primary/10 text-primary"
-                                      : "bg-muted text-muted-foreground"
-                                  }`}
-                                >
-                                  {lease
-                                    ? lease.status.replaceAll("_", " ")
-                                    : "vacant"}
-                                </span>
-                              </div>
-                              <div className="mt-1 font-medium">
-                                {lease ? tenantDisplayName(tenant) : "Vacant"}
-                              </div>
-                              {tenant?.contact_name || tenant?.contact_email ? (
-                                <div className="text-xs text-muted-foreground">
-                                  {[tenant.contact_name, tenant.contact_email]
-                                    .filter(Boolean)
-                                    .join(" - ")}
-                                </div>
-                              ) : null}
-                              {onboarding ? (
-                                <div className="mt-1 text-xs text-primary">
-                                  Onboarding{" "}
-                                  {onboarding.status.replaceAll("_", " ")}
-                                </div>
-                              ) : null}
-                            </td>
-                            <td className="px-3 py-3 text-xs">
-                              <div>
-                                Start: {formatDate(lease?.commencement_date)}
-                              </div>
-                              <div>
-                                Expiry: {formatDate(lease?.expiry_date)}
-                              </div>
-                            </td>
-                            <td className="px-3 py-3 text-xs">
-                              <div>
-                                {formatRent(
-                                  lease?.annual_rent_cents,
-                                  lease?.rent_frequency,
-                                )}
-                              </div>
-                              <div>
-                                Review: {formatDate(lease?.next_review_date)}
-                              </div>
-                              {lease?.outgoings_recoverable ? (
-                                <div className="text-muted-foreground">
-                                  Outgoings recoverable
-                                </div>
-                              ) : null}
-                            </td>
-                            <td className="px-3 py-3">
-                              <div className="flex justify-end gap-2">
-                                <SecondaryButton
-                                  type="button"
-                                  aria-label={
-                                    canCopyOnboarding
-                                      ? `Copy onboarding link for ${unit.unit_label}`
-                                      : onboarding
-                                        ? `Onboarding link unavailable for ${unit.unit_label}`
-                                        : `Create onboarding link for ${unit.unit_label}`
-                                  }
-                                  title={
-                                    onboarding && !canCopyOnboarding
-                                      ? "Open tenant detail to send a fresh link"
-                                      : undefined
-                                  }
-                                  onClick={() =>
-                                    lease ? startTenantOnboarding(lease) : null
-                                  }
-                                  disabled={
-                                    !lease ||
-                                    tenantOnboardingMutation.isPending ||
-                                    Boolean(onboarding && !canCopyOnboarding)
-                                  }
-                                  className="h-8 w-8 px-0 text-primary"
-                                >
-                                  {copiedOnboardingId === onboarding?.id ? (
-                                    <Check size={15} />
-                                  ) : canCopyOnboarding ? (
-                                    <Copy size={15} />
-                                  ) : (
-                                    <Link2 size={15} />
-                                  )}
-                                </SecondaryButton>
-                                {onboarding?.status === "sent" ? (
-                                  <SecondaryButton
-                                    type="button"
-                                    aria-label={`Cancel onboarding for ${unit.unit_label}`}
-                                    title="Cancel onboarding"
-                                    onClick={() =>
-                                      requestCancelTenantOnboarding(onboarding)
-                                    }
-                                    disabled={
-                                      cancelTenantOnboardingMutation.isPending
-                                    }
-                                    className="h-8 w-8 px-0 text-muted-foreground"
-                                  >
-                                    <Ban size={15} />
-                                  </SecondaryButton>
-                                ) : null}
-                                {lease ? (
-                                  <SecondaryButton
-                                    type="button"
-                                    onClick={() => startLeaseEdit(unit, lease)}
-                                    className="h-8 px-2"
-                                  >
-                                    <Pencil size={15} />
-                                    Edit lease
-                                  </SecondaryButton>
-                                ) : (
-                                  <Button
-                                    type="button"
-                                    onClick={() => startLeaseEdit(unit)}
-                                    className="h-8 px-2"
-                                  >
-                                    <Plus size={15} />
-                                    Add lease
-                                  </Button>
-                                )}
-                                <SecondaryButton
-                                  type="button"
-                                  title={`Edit ${unit.unit_label}`}
-                                  aria-label={`Edit ${unit.unit_label}`}
-                                  className="h-8 w-8 px-0"
-                                  onClick={() => startUnitEdit(unit)}
-                                >
-                                  <Pencil size={15} />
-                                </SecondaryButton>
-                                <SecondaryButton
-                                  type="button"
-                                  aria-label={`Delete ${unit.unit_label}`}
-                                  onClick={() => requestDeleteUnit(unit)}
-                                  disabled={deleteUnitMutation.isPending}
-                                  className="h-8 w-8 px-0 text-danger"
-                                >
-                                  <Trash2 size={15} />
-                                </SecondaryButton>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                        : null}
-                      {!unitsWorkspaceLoading &&
-                      tenancyUnitsQuery.data?.length === 0 ? (
-                        <tr>
-                          <td
-                            className="px-3 py-8 text-center text-muted-foreground"
-                            colSpan={5}
-                          >
-                            No units recorded for this property.
-                          </td>
-                        </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
+            <section className="mt-5 overflow-hidden rounded-md border border-border bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                <div>
+                  <h2 className="text-base font-semibold">
+                    {selectedProperty
+                      ? `${selectedProperty.name} units`
+                      : "Tenancy units"}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {unitsWorkspaceLoading
+                      ? "Loading units..."
+                      : `${tenancyUnitsQuery.data?.length ?? 0} units`}
+                    {tenancyUnitsQuery.data?.length
+                      ? ` - ${unitTotals.sqm} sqm - ${unitTotals.parking} parks`
+                      : ""}
+                    {tenancyUnitsQuery.data?.length
+                      ? ` - ${occupancyTotals.occupied} occupied / ${occupancyTotals.vacant} vacant`
+                      : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={startUnitCreate}
+                    disabled={!selectedPropertyId}
+                  >
+                    <Plus size={16} />
+                    Add unit
+                  </Button>
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => {
+                      tenancyUnitsQuery.refetch();
+                      tenantsQuery.refetch();
+                      leasesQuery.refetch();
+                    }}
+                    disabled={!selectedPropertyId}
+                  >
+                    <RefreshCw size={16} />
+                    Refresh
+                  </SecondaryButton>
                 </div>
               </div>
-            ) : (
-              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                {propertiesLoading
-                  ? "Loading selected property..."
-                  : "Select a property."}
-              </div>
-            )}
-          </section>
+
+              {selectedProperty ? (
+                <div>
+                  <div className="min-w-0 overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-sm">
+                      <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-semibold">Unit</th>
+                          <th className="px-3 py-2 font-semibold">Occupant</th>
+                          <th className="px-3 py-2 font-semibold">Dates</th>
+                          <th className="px-3 py-2 font-semibold">
+                            Rent / review
+                          </th>
+                          <th className="w-24 px-3 py-2" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unitsWorkspaceLoading ? (
+                          <tr>
+                            <td
+                              className="px-3 py-8 text-center text-muted-foreground"
+                              colSpan={5}
+                            >
+                              Loading units...
+                            </td>
+                          </tr>
+                        ) : null}
+                        {!unitsWorkspaceLoading
+                          ? tenancyUnitsQuery.data?.map((unit) => {
+                              const lease = pickUnitLease(
+                                leasesQuery.data,
+                                unit.id,
+                              );
+                              const tenant = lease
+                                ? tenantsById.get(lease.tenant_id)
+                                : undefined;
+                              const onboarding = lease
+                                ? onboardingByLeaseId.get(lease.id)
+                                : undefined;
+                              const canCopyOnboarding =
+                                onboarding?.status === "sent" &&
+                                !isExpiredDateTime(onboarding.expires_at);
+                              const isOccupied =
+                                lease &&
+                                ["active", "holding_over", "pending"].includes(
+                                  lease.status,
+                                );
+                              return (
+                                <tr
+                                  key={unit.id}
+                                  className="border-t border-border align-top"
+                                >
+                                  <td className="px-3 py-3">
+                                    <div className="font-medium">
+                                      {unit.unit_label}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {unit.sqm ?? "-"} sqm -{" "}
+                                      {unit.parking_spaces ?? "-"} parks
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                                          isOccupied
+                                            ? "bg-primary/10 text-primary"
+                                            : "bg-muted text-muted-foreground"
+                                        }`}
+                                      >
+                                        {lease
+                                          ? lease.status.replaceAll("_", " ")
+                                          : "vacant"}
+                                      </span>
+                                    </div>
+                                    <div className="mt-1 font-medium">
+                                      {lease
+                                        ? tenantDisplayName(tenant)
+                                        : "Vacant"}
+                                    </div>
+                                    {tenant?.contact_name ||
+                                    tenant?.contact_email ? (
+                                      <div className="text-xs text-muted-foreground">
+                                        {[
+                                          tenant.contact_name,
+                                          tenant.contact_email,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" - ")}
+                                      </div>
+                                    ) : null}
+                                    {onboarding ? (
+                                      <div className="mt-1 text-xs text-primary">
+                                        Onboarding{" "}
+                                        {onboarding.status.replaceAll("_", " ")}
+                                      </div>
+                                    ) : null}
+                                  </td>
+                                  <td className="px-3 py-3 text-xs">
+                                    <div>
+                                      Start:{" "}
+                                      {formatDate(lease?.commencement_date)}
+                                    </div>
+                                    <div>
+                                      Expiry: {formatDate(lease?.expiry_date)}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-3 text-xs">
+                                    <div>
+                                      {formatRent(
+                                        lease?.annual_rent_cents,
+                                        lease?.rent_frequency,
+                                      )}
+                                    </div>
+                                    <div>
+                                      Review:{" "}
+                                      {formatDate(lease?.next_review_date)}
+                                    </div>
+                                    {lease?.outgoings_recoverable ? (
+                                      <div className="text-muted-foreground">
+                                        Outgoings recoverable
+                                      </div>
+                                    ) : null}
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    <div className="flex justify-end gap-2">
+                                      <SecondaryButton
+                                        type="button"
+                                        aria-label={
+                                          canCopyOnboarding
+                                            ? `Copy onboarding link for ${unit.unit_label}`
+                                            : onboarding
+                                              ? `Onboarding link unavailable for ${unit.unit_label}`
+                                              : `Create onboarding link for ${unit.unit_label}`
+                                        }
+                                        title={
+                                          onboarding && !canCopyOnboarding
+                                            ? "Open tenant detail to send a fresh link"
+                                            : undefined
+                                        }
+                                        onClick={() =>
+                                          lease
+                                            ? startTenantOnboarding(lease)
+                                            : null
+                                        }
+                                        disabled={
+                                          !lease ||
+                                          tenantOnboardingMutation.isPending ||
+                                          Boolean(
+                                            onboarding && !canCopyOnboarding,
+                                          )
+                                        }
+                                        className="h-8 w-8 px-0 text-primary"
+                                      >
+                                        {copiedOnboardingId ===
+                                        onboarding?.id ? (
+                                          <Check size={15} />
+                                        ) : canCopyOnboarding ? (
+                                          <Copy size={15} />
+                                        ) : (
+                                          <Link2 size={15} />
+                                        )}
+                                      </SecondaryButton>
+                                      {onboarding?.status === "sent" ? (
+                                        <SecondaryButton
+                                          type="button"
+                                          aria-label={`Cancel onboarding for ${unit.unit_label}`}
+                                          title="Cancel onboarding"
+                                          onClick={() =>
+                                            requestCancelTenantOnboarding(
+                                              onboarding,
+                                            )
+                                          }
+                                          disabled={
+                                            cancelTenantOnboardingMutation.isPending
+                                          }
+                                          className="h-8 w-8 px-0 text-muted-foreground"
+                                        >
+                                          <Ban size={15} />
+                                        </SecondaryButton>
+                                      ) : null}
+                                      {lease ? (
+                                        <SecondaryButton
+                                          type="button"
+                                          onClick={() =>
+                                            startLeaseEdit(unit, lease)
+                                          }
+                                          className="h-8 px-2"
+                                        >
+                                          <Pencil size={15} />
+                                          Edit lease
+                                        </SecondaryButton>
+                                      ) : (
+                                        <Button
+                                          type="button"
+                                          onClick={() => startLeaseEdit(unit)}
+                                          className="h-8 px-2"
+                                        >
+                                          <Plus size={15} />
+                                          Add lease
+                                        </Button>
+                                      )}
+                                      <SecondaryButton
+                                        type="button"
+                                        title={`Edit ${unit.unit_label}`}
+                                        aria-label={`Edit ${unit.unit_label}`}
+                                        className="h-8 w-8 px-0"
+                                        onClick={() => startUnitEdit(unit)}
+                                      >
+                                        <Pencil size={15} />
+                                      </SecondaryButton>
+                                      <SecondaryButton
+                                        type="button"
+                                        aria-label={`Delete ${unit.unit_label}`}
+                                        onClick={() => requestDeleteUnit(unit)}
+                                        disabled={deleteUnitMutation.isPending}
+                                        className="h-8 w-8 px-0 text-danger"
+                                      >
+                                        <Trash2 size={15} />
+                                      </SecondaryButton>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          : null}
+                        {!unitsWorkspaceLoading &&
+                        tenancyUnitsQuery.data?.length === 0 ? (
+                          <tr>
+                            <td
+                              className="px-3 py-8 text-center text-muted-foreground"
+                              colSpan={5}
+                            >
+                              No units recorded for this property.
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  {propertiesLoading
+                    ? "Loading selected property..."
+                    : "Select a property."}
+                </div>
+              )}
+            </section>
           ) : null}
         </section>
 
@@ -4859,198 +5047,209 @@ function Workspace() {
               onClick={closePropertyEditor}
             />
             <aside className="relative h-full w-full max-w-xl overflow-y-auto border-l border-border bg-white p-4 shadow-xl">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 id="property-editor-title" className="text-base font-semibold">
-              {editing ? "Edit property" : "New property"}
-            </h2>
-            <SecondaryButton
-              type="button"
-              aria-label="Close property editor"
-              onClick={closePropertyEditor}
-              className="h-8 w-8 px-0"
-            >
-              <X size={15} />
-            </SecondaryButton>
-          </div>
+              <div className="mb-4 flex items-center justify-between">
+                <h2
+                  id="property-editor-title"
+                  className="text-base font-semibold"
+                >
+                  {editing ? "Edit property" : "New property"}
+                </h2>
+                <SecondaryButton
+                  type="button"
+                  aria-label="Close property editor"
+                  onClick={closePropertyEditor}
+                  className="h-8 w-8 px-0"
+                >
+                  <X size={15} />
+                </SecondaryButton>
+              </div>
 
-          <form
-            className="grid gap-3"
-            onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
-          >
-            <Field label="Name" error={form.formState.errors.name?.message}>
-              <Input {...form.register("name")} />
-            </Field>
-            <Field
-              label="Street address"
-              error={form.formState.errors.street_address?.message}
-            >
-              <Input {...form.register("street_address")} />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Suburb">
-                <Input {...form.register("suburb")} />
-              </Field>
-              <Field label="State">
-                <Input {...form.register("state")} />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Postcode">
-                <Input {...form.register("postcode")} />
-              </Field>
-              <Field label="Type">
-                <Select {...form.register("property_type")}>
-                  {propertyTypes.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Building sqm">
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  {...form.register("building_sqm")}
-                />
-              </Field>
-              <Field label="Parking">
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  {...form.register("parking_spaces")}
-                />
-              </Field>
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                {...form.register("has_solar_pv")}
-              />
-              Solar PV
-            </label>
-            <details
-              className="rounded-xl border border-border bg-muted/25"
-              open={billingProfileOpen}
-              onToggle={(event) =>
-                setBillingProfileOpen(event.currentTarget.open)
-              }
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-semibold">
-                <span>Ownership & billing identity</span>
-                <span className="text-xs font-medium text-muted-foreground">
-                  {billingProfileOpen ? "Hide" : "Show"}
-                </span>
-              </summary>
-              <div className="grid gap-3 border-t border-border px-3 py-3">
-                <Field label="Invoice from">
-                  <Select {...form.register("ownership_structure")}>
-                    {ownershipStructures.map((structure) => (
-                      <option key={structure.value} value={structure.value}>
-                        {structure.label}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
-                {showOwnershipFields ? (
-                  <>
-                    <Field label="Invoice issuer">
-                      <Input
-                        placeholder="Trustee Pty Ltd"
-                        {...form.register("invoice_issuer_name")}
-                      />
-                    </Field>
-                    <Field label="Legal owner">
-                      <Input
-                        placeholder="Property Trust or Owner Pty Ltd"
-                        {...form.register("owner_legal_name")}
-                      />
-                    </Field>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="ABN">
-                        <Input {...form.register("owner_abn")} />
-                      </Field>
-                      <Field label="GST">
-                        <Select {...form.register("owner_gst_registered")}>
-                          <option value="">Not set</option>
-                          <option value="true">Registered</option>
-                          <option value="false">Not registered</option>
-                        </Select>
-                      </Field>
-                    </div>
-                    {ownershipStructure === "trust" ? (
-                      <div className="grid gap-3">
-                        <Field label="Trustee">
-                          <Input {...form.register("trustee_name")} />
-                        </Field>
-                        <Field label="Trust">
-                          <Input {...form.register("trust_name")} />
-                        </Field>
-                      </div>
-                    ) : null}
-                    {ownershipStructure === "split" ? (
-                      <Field label="Ownership split">
-                        <Input
-                          placeholder="60% Owner A / 40% Owner B"
-                          {...form.register("ownership_split")}
-                        />
-                      </Field>
-                    ) : null}
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Xero issuer">
-                        <Input
-                          placeholder="Contact ID"
-                          {...form.register("xero_contact_id")}
-                        />
-                      </Field>
-                      <Field label="Tracking">
-                        <Input
-                          placeholder="Property or owner"
-                          {...form.register("xero_tracking_category")}
-                        />
-                      </Field>
-                    </div>
-                  </>
-                ) : (
-                  <div className="rounded-md border border-border bg-white p-3 text-sm text-muted-foreground">
-                    Owned by the current portfolio entity. Add a specific owner,
-                    trust, or split only when invoices need that identity.
-                  </div>
+              <form
+                className="grid gap-3"
+                onSubmit={form.handleSubmit((values) =>
+                  mutation.mutate(values),
                 )}
-
+              >
+                <Field label="Name" error={form.formState.errors.name?.message}>
+                  <Input {...form.register("name")} />
+                </Field>
+                <Field
+                  label="Street address"
+                  error={form.formState.errors.street_address?.message}
+                >
+                  <Input {...form.register("street_address")} />
+                </Field>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Billing contact">
-                    <Input {...form.register("billing_contact_name")} />
+                  <Field label="Suburb">
+                    <Input {...form.register("suburb")} />
                   </Field>
-                  <Field label="Billing email">
-                    <Input type="email" {...form.register("billing_email")} />
+                  <Field label="State">
+                    <Input {...form.register("state")} />
                   </Field>
                 </div>
-                <Field label="Invoice reference">
-                  <Input
-                    placeholder="Optional prefix or note"
-                    {...form.register("invoice_reference")}
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Postcode">
+                    <Input {...form.register("postcode")} />
+                  </Field>
+                  <Field label="Type">
+                    <Select {...form.register("property_type")}>
+                      {propertyTypes.map((type) => (
+                        <option key={type.value} value={type.value}>
+                          {type.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Building sqm">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      {...form.register("building_sqm")}
+                    />
+                  </Field>
+                  <Field label="Parking">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      {...form.register("parking_spaces")}
+                    />
+                  </Field>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    {...form.register("has_solar_pv")}
                   />
-                </Field>
-              </div>
-            </details>
-            <Button
-              type="submit"
-              disabled={!selectedEntityId || mutation.isPending}
-            >
-              {editing ? <Check size={16} /> : <Plus size={16} />}
-              {editing ? "Save property" : "Add property"}
-            </Button>
-            {mutation.error ? (
-              <p className="text-sm text-danger">{mutation.error.message}</p>
-            ) : null}
-          </form>
+                  Solar PV
+                </label>
+                <details
+                  className="rounded-xl border border-border bg-muted/25"
+                  open={billingProfileOpen}
+                  onToggle={(event) =>
+                    setBillingProfileOpen(event.currentTarget.open)
+                  }
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-semibold">
+                    <span>Ownership & billing identity</span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {billingProfileOpen ? "Hide" : "Show"}
+                    </span>
+                  </summary>
+                  <div className="grid gap-3 border-t border-border px-3 py-3">
+                    <Field label="Invoice from">
+                      <Select {...form.register("ownership_structure")}>
+                        {ownershipStructures.map((structure) => (
+                          <option key={structure.value} value={structure.value}>
+                            {structure.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+
+                    {showOwnershipFields ? (
+                      <>
+                        <Field label="Invoice issuer">
+                          <Input
+                            placeholder="Trustee Pty Ltd"
+                            {...form.register("invoice_issuer_name")}
+                          />
+                        </Field>
+                        <Field label="Legal owner">
+                          <Input
+                            placeholder="Property Trust or Owner Pty Ltd"
+                            {...form.register("owner_legal_name")}
+                          />
+                        </Field>
+                        <div className="grid grid-cols-2 gap-3">
+                          <Field label="ABN">
+                            <Input {...form.register("owner_abn")} />
+                          </Field>
+                          <Field label="GST">
+                            <Select {...form.register("owner_gst_registered")}>
+                              <option value="">Not set</option>
+                              <option value="true">Registered</option>
+                              <option value="false">Not registered</option>
+                            </Select>
+                          </Field>
+                        </div>
+                        {ownershipStructure === "trust" ? (
+                          <div className="grid gap-3">
+                            <Field label="Trustee">
+                              <Input {...form.register("trustee_name")} />
+                            </Field>
+                            <Field label="Trust">
+                              <Input {...form.register("trust_name")} />
+                            </Field>
+                          </div>
+                        ) : null}
+                        {ownershipStructure === "split" ? (
+                          <Field label="Ownership split">
+                            <Input
+                              placeholder="60% Owner A / 40% Owner B"
+                              {...form.register("ownership_split")}
+                            />
+                          </Field>
+                        ) : null}
+                        <div className="grid grid-cols-2 gap-3">
+                          <Field label="Xero issuer">
+                            <Input
+                              placeholder="Contact ID"
+                              {...form.register("xero_contact_id")}
+                            />
+                          </Field>
+                          <Field label="Tracking">
+                            <Input
+                              placeholder="Property or owner"
+                              {...form.register("xero_tracking_category")}
+                            />
+                          </Field>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-md border border-border bg-white p-3 text-sm text-muted-foreground">
+                        Owned by the current portfolio entity. Add a specific
+                        owner, trust, or split only when invoices need that
+                        identity.
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Billing contact">
+                        <Input {...form.register("billing_contact_name")} />
+                      </Field>
+                      <Field label="Billing email">
+                        <Input
+                          type="email"
+                          {...form.register("billing_email")}
+                        />
+                      </Field>
+                    </div>
+                    <Field label="Invoice reference">
+                      <Input
+                        placeholder="Optional prefix or note"
+                        {...form.register("invoice_reference")}
+                      />
+                    </Field>
+                  </div>
+                </details>
+                <Button
+                  type="submit"
+                  disabled={!selectedEntityId || mutation.isPending}
+                >
+                  {editing ? <Check size={16} /> : <Plus size={16} />}
+                  {editing ? "Save property" : "Add property"}
+                </Button>
+                {mutation.error ? (
+                  <p className="text-sm text-danger">
+                    {mutation.error.message}
+                  </p>
+                ) : null}
+              </form>
             </aside>
           </div>
         ) : null}

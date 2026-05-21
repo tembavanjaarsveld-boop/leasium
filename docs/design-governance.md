@@ -94,6 +94,12 @@ Progress notes:
   Operations, Billing, and Documents, and the property create/edit form has
   moved out of the always-visible side rail into a focused overlay. This is a
   first-pass fix for the overloaded workspace and remains pending Remba review.
+- 2026-05-21: Property rows now use source-backed owner/entity chips instead
+  of repeating `Owned by current entity`. Current-entity ownership shows the
+  active entity name, workbook/imported owner names use stable soft pastel
+  chips, split ownership collapses after two labels, and unknown ownership uses
+  a neutral slate chip. Remba reviewed the direction and asked that tags stay
+  compact metadata, not warnings or decorative rainbow labels.
 - 2026-05-20: `/billing-readiness` now has task-zone tabs for Readiness,
   Billing drafts, Invoice prep, and Delivery & payments. The blocker action
   queue lives with rent-roll readiness, while preparation/approval work is
