@@ -597,6 +597,102 @@ function invoiceRecoveryReasons(draft: InvoiceDraftRecord) {
   return reasons;
 }
 
+function invoiceRecoveryPath(draft: InvoiceDraftRecord) {
+  const deliveryState = invoiceDeliveryState(draft);
+  const sendState = invoiceDeliverySend(draft);
+  const paymentStatus = invoicePaymentStatus(draft);
+  const xeroSync = invoiceXeroSync(draft);
+  const postingPreparation = invoicePostingPreparation(draft);
+  const xeroApproval = invoiceXeroPostingApproval(draft);
+  const providerDispatch = invoiceProviderDispatch(draft);
+  const providerDispatchXero = metadataRecord(providerDispatch.xero);
+  const providerReceipts = invoiceProviderReceipts(draft);
+  const latestXeroReceipt =
+    providerReceipts.find(
+      (receipt) => metadataText(receipt.provider) === "xero",
+    ) ?? null;
+  const deliveryReady = deliveryState.delivery_ready === true;
+  const xeroApproved = metadataText(xeroApproval.state) === "approved";
+  const xeroSynced = xeroSync.xero_synced === true;
+  const emailSent =
+    deliveryState.tenant_email_sent === true ||
+    ["queued", "sent", "delivered", "opened"].includes(
+      metadataText(sendState.status) ?? "",
+    );
+  const xeroFailed =
+    metadataText(postingPreparation.external_posting_status) ===
+      "provider_failed" ||
+    metadataText(providerDispatchXero.status) === "failed" ||
+    metadataText(latestXeroReceipt?.status) === "failed";
+  const emailFailed = metadataText(sendState.status) === "failed";
+  const paymentLabel = metadataText(paymentStatus.status) ?? "unpaid";
+  const reasons = invoiceRecoveryReasons(draft);
+  const steps: Array<{ label: string; detail: string; tone: Tone }> = [];
+
+  if (draft.status !== "approved") {
+    steps.push({
+      label: "Approve invoice",
+      detail:
+        "Finish internal invoice approval before tenant email or Xero dispatch.",
+      tone: "warning",
+    });
+  } else if (!deliveryReady) {
+    steps.push({
+      label: "Prepare delivery",
+      detail:
+        "Prepare the invoice preview, PDF artifact, and tenant email draft.",
+      tone: "warning",
+    });
+  } else if (!xeroApproved) {
+    steps.push({
+      label: "Xero approval pending",
+      detail: "Approve Xero posting in Settings before provider dispatch.",
+      tone: "warning",
+    });
+  } else if (xeroFailed || emailFailed) {
+    steps.push({
+      label: "Retry provider dispatch",
+      detail:
+        reasons[0] ??
+        "Recover the provider failure from Billing Readiness before payment follow-up.",
+      tone: "danger",
+    });
+  } else if (!xeroSynced || !emailSent) {
+    steps.push({
+      label: "Ready for dispatch",
+      detail:
+        "Billing Readiness can create or reuse the Xero draft, then send tenant email.",
+      tone: "primary",
+    });
+  } else if (paymentLabel !== "paid") {
+    steps.push({
+      label: "Reconcile payment",
+      detail:
+        "Provider delivery is recorded; payment status still needs follow-up.",
+      tone: "primary",
+    });
+  } else {
+    steps.push({
+      label: "No recovery needed",
+      detail: "Invoice dispatch and payment status are complete.",
+      tone: "success",
+    });
+  }
+
+  const tone: Tone = steps.some((step) => step.tone === "danger")
+    ? "danger"
+    : steps.some((step) => step.tone === "warning")
+      ? "warning"
+      : steps.some((step) => step.tone === "primary")
+        ? "primary"
+        : "success";
+
+  return {
+    tone,
+    steps,
+  };
+}
+
 function maintenanceCompletionReadiness(
   workOrder: MaintenanceWorkOrderRecord,
   linkedInvoiceDraft: InvoiceDraftRecord | null,
@@ -955,6 +1051,9 @@ function MaintenanceDetailRoute() {
   const linkedInvoiceRecoveryReasons = linkedInvoiceDraft
     ? invoiceRecoveryReasons(linkedInvoiceDraft)
     : [];
+  const linkedInvoiceRecoveryPath = linkedInvoiceDraft
+    ? invoiceRecoveryPath(linkedInvoiceDraft)
+    : null;
   const completionReadiness = workOrder
     ? maintenanceCompletionReadiness(
         workOrder,
@@ -1642,6 +1741,36 @@ function MaintenanceDetailRoute() {
                             <ArrowUpRight size={14} />
                             Recover in Billing
                           </Link>
+                        </div>
+                      ) : null}
+                      {linkedInvoiceRecoveryPath ? (
+                        <div className="grid gap-2 rounded-md border border-border bg-white p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge tone={linkedInvoiceRecoveryPath.tone}>
+                              Billing recovery path
+                            </StatusBadge>
+                            <span className="text-xs font-semibold text-muted-foreground">
+                              Dispatch, retry, and payment follow-up stay in
+                              Billing Readiness.
+                            </span>
+                          </div>
+                          <div className="grid gap-2">
+                            {linkedInvoiceRecoveryPath.steps.map((step) => (
+                              <div
+                                key={step.label}
+                                className="grid gap-1 rounded-md border border-border bg-muted/30 px-2 py-2"
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <StatusBadge tone={step.tone}>
+                                    {step.label}
+                                  </StatusBadge>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {step.detail}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ) : null}
                       <div className="flex flex-wrap gap-2">

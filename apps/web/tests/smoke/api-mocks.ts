@@ -644,6 +644,113 @@ const invoiceDrafts = [
     updated_at: "2026-05-01T00:00:00.000Z",
     deleted_at: null,
   },
+  {
+    id: "invoice-draft-failed",
+    entity_id: entityId,
+    billing_draft_id: "billing-draft-1",
+    property_id: propertyId,
+    tenancy_unit_id: unitId,
+    tenant_id: tenantId,
+    lease_id: leaseId,
+    document_id: "document-1",
+    document_intake_id: "intake-1",
+    status: "approved",
+    invoice_number: "INV-1002",
+    title: "Maintenance recovery invoice",
+    currency: "AUD",
+    issue_date: "2026-05-02",
+    due_date: "2026-05-16",
+    subtotal_cents: 800000,
+    gst_cents: 80000,
+    total_cents: 880000,
+    issuer_name: "Queen Street Trustee Pty Ltd",
+    issuer_abn: "22123456789",
+    recipient_name: "Bright Cafe Pty Ltd",
+    recipient_email: "accounts@bright.example",
+    notes: "Approved maintenance-linked invoice with provider failure.",
+    metadata: {
+      readiness_blockers: [],
+      delivery_state: {
+        pdf_preview_generated: true,
+        pdf_artifact_stored: true,
+        tenant_email_prepared: true,
+        delivery_ready: true,
+        tenant_email_sent: false,
+      },
+      delivery_preview: {
+        email: {
+          to: "accounts@bright.example",
+          subject: "Invoice INV-1002",
+          body: "Please find your invoice attached.",
+        },
+      },
+      pdf_artifact: {
+        document_id: "document-1",
+      },
+      delivery_email: {
+        send: {
+          status: "draft",
+        },
+      },
+      payment_status: {
+        status: "unpaid",
+      },
+      xero_posting_approval: {
+        state: "approved",
+        approved: true,
+        approved_at: "2026-05-19T10:25:00.000Z",
+        idempotency_key: "xero-draft-invoice-draft-failed",
+      },
+      posting_preparation: {
+        external_posting_status: "provider_failed",
+        xero_sync_allowed: true,
+        xero_sync_requested: true,
+        xero_synced: false,
+        last_provider_status: "failed",
+        last_provider_reason: "Xero provider returned validation error.",
+        provider_retry_count: 1,
+      },
+      provider_dispatch: {
+        xero: {
+          provider: "xero",
+          status: "failed",
+          reason: "Xero provider returned validation error.",
+          received_at: "2026-05-20T02:00:00.000Z",
+          retry_count: 1,
+        },
+      },
+      provider_status_receipts: [
+        {
+          provider: "xero",
+          status: "failed",
+          reason: "Xero provider returned validation error.",
+          received_at: "2026-05-20T02:00:00.000Z",
+          retry_count: 1,
+        },
+      ],
+      xero_sync: {
+        xero_synced: false,
+      },
+    },
+    lines: [
+      {
+        id: "invoice-draft-line-failed",
+        invoice_draft_id: "invoice-draft-failed",
+        billing_draft_line_id: "billing-draft-line-1",
+        description: "Maintenance recovery",
+        amount_cents: 800000,
+        gst_cents: 80000,
+        currency: "AUD",
+        source_hint: "Maintenance invoice",
+        metadata: {},
+        created_at: "2026-05-01T00:00:00.000Z",
+        deleted_at: null,
+      },
+    ],
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-05-01T00:00:00.000Z",
+    deleted_at: null,
+  },
 ];
 
 const documentIntakes = [

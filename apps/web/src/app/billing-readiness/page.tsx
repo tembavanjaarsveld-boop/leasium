@@ -2068,6 +2068,32 @@ function BillingReadinessWorkspace() {
                                     {providerExceptionReason}
                                   </div>
                                   {linkedWorkOrder ? (
+                                    <div className="grid gap-1 rounded-md border border-border bg-white p-2 text-muted-foreground">
+                                      <div>
+                                        Work order{" "}
+                                        {linkedWorkOrder.status.replaceAll(
+                                          "_",
+                                          " ",
+                                        )}{" "}
+                                        / approval{" "}
+                                        {linkedWorkOrder.approval_status.replaceAll(
+                                          "_",
+                                          " ",
+                                        )}
+                                      </div>
+                                      <div>
+                                        Contractor{" "}
+                                        {linkedWorkOrder.contractor_name ??
+                                          "not assigned"}
+                                      </div>
+                                      <div>
+                                        Retry dispatch here, then return to the
+                                        work order once the provider receipt
+                                        clears.
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                  {linkedWorkOrder ? (
                                     <Link
                                       href={`/operations/maintenance/${linkedWorkOrder.id}`}
                                       className="inline-flex min-h-8 w-fit items-center gap-2 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"

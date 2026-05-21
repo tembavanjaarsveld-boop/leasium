@@ -69,9 +69,9 @@ Priority fixes before treating the current UX as signed off:
 - Billing Readiness needs Remba re-review now that its first-pass task-zone
   split is in place. Confirm the Readiness, Billing drafts, Invoice prep, and
   Delivery & payments tabs each make the primary next action obvious.
-- Tenant detail still shows placeholder lease context such as `Property context
-  pending` and `Unit context pending` even when the tenant is linked to the
-  seeded portfolio. Fix the context label or underlying detail payload before
+- Tenant detail still shows placeholder lease context such as `Property context pending`
+  and `Unit context pending` even when the tenant is linked to the seeded
+  portfolio. Fix the context label or underlying detail payload before
   treating tenant detail as fully signed off.
 - Public onboarding should identify the tenant/business in the first viewport
   and provide clearer due/expiry reassurance. The current first impression is
@@ -264,6 +264,8 @@ Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry
 2026-05-21 update: the Contractor card on maintenance detail now includes an explicit provider-backed email action, latest send/receipt badges, editable subject/message fields, and a work-order activity receipt. Queued provider messages become contractor-visible comments for operator history, while tenant portal timelines continue hiding contractor-only activity. Remba should review whether contractor communication belongs in the first-viewport card, whether the SendGrid receipt language is too operational, and whether retry/recovery should be visually separate from ordinary updates.
 
 2026-05-21 update: contractor delivery recovery now changes failed/skipped/attention states into a visible recovery note and `Retry update` action, with attempt numbers and no duplicate contractor comment unless the operator edits the message. Maintenance-linked invoice exceptions now show a compact recovery panel in Billing Readiness and a recovery prompt on the work-order invoice card. Remba should review whether the warning color and retry placement feel urgent enough without overwhelming the job detail page.
+
+2026-05-21 update: linked maintenance invoice cards now include a Billing recovery path panel so operators can see whether the next step is invoice approval, delivery prep, provider retry, dispatch, or payment follow-up. Billing Readiness provider-failure rows now include linked work-order status, approval state, contractor name, and the retry/return path. Remba should review whether this extra context helps operators recover exceptions faster or makes the Delivery & payments row too dense.
 
 2026-05-21 update: maintenance work-order detail now includes a Job completion handoff checklist with job completion, approval, contractor, evidence, invoice linkage, invoice delivery readiness, and provider recovery checks. The same panel carries Start job and Complete job actions, while making clear that Billing Readiness owns invoice dispatch and payment follow-up after Operations closes the job. Remba should review whether this panel belongs between the summary cards and evidence/activity, whether the checklist density is right for first-use operators, and whether Complete job should be more visually restrained.
 

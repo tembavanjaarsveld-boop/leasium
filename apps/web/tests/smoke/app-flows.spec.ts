@@ -92,10 +92,15 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
 
   await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
   await expect(page.getByText("Needs Xero approval").first()).toBeVisible();
+  const primaryDispatchRow = page.getByRole("row").filter({
+    hasText: "INV-1001",
+  });
   await expect(
-    page.getByRole("button", { exact: true, name: "Dispatch" }),
+    primaryDispatchRow.getByRole("button", { exact: true, name: "Dispatch" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Email" })).toBeVisible();
+  await expect(
+    primaryDispatchRow.getByRole("button", { name: "Email" }),
+  ).toBeVisible();
 });
 
 test("operations workspace surfaces maintenance and arrears work", async ({
@@ -226,7 +231,7 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   ).toBeVisible();
   await page
     .getByLabel("Linked maintenance invoice")
-    .selectOption("invoice-draft-1");
+    .selectOption("invoice-draft-failed");
   await page.getByRole("button", { name: "Link" }).click();
   await expect(page.getByText("Invoice linked")).toBeVisible();
   await expect(page.getByText("Invoice delivery ready")).toBeVisible();
@@ -244,7 +249,23 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       .first(),
   ).toBeVisible();
   await expect(
-    page.getByText("Approve Xero posting in Settings"),
+    page
+      .locator("span")
+      .filter({ hasText: /^Recovery needed$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Xero provider returned validation error.").first(),
+  ).toBeVisible();
+  await expect(page.getByText("Billing recovery path")).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Retry provider dispatch$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Recover in Billing" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Preview" })).toBeVisible();
   await expect(page.getByRole("link", { name: "PDF" })).toBeVisible();
@@ -279,11 +300,21 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByText("Owner approved attendance tomorrow morning. (Tenant)"),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Review billing handoff" }).click();
+  await page.getByRole("link", { name: "Recover in Billing" }).click();
   await expect(page).toHaveURL(/\/billing-readiness\?/);
   await expect(page.getByText("Operations handoff")).toBeVisible();
   await expect(
     page.getByText("Maintenance: Air conditioning fault"),
+  ).toBeVisible();
+  await expect(page.getByText("Maintenance-linked invoice")).toBeVisible();
+  await expect(page.getByText("Contractor Cool Air Services")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Retry dispatch here, then return to the work order once the provider receipt clears.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Retry dispatch" }),
   ).toBeVisible();
 });
 
@@ -672,19 +703,27 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.goto("/billing-readiness");
   await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
   await expect(page.getByText("Xero DRAFT").first()).toBeVisible();
-  await page.getByRole("button", { exact: true, name: "Dispatch" }).click();
+  const primaryDispatchRow = page.getByRole("row").filter({
+    hasText: "INV-1001",
+  });
+  await primaryDispatchRow
+    .getByRole("button", { exact: true, name: "Dispatch" })
+    .click();
   await expect(page.getByText("Xero receipt created #1")).toBeVisible();
   await expect(
     page.getByText("Xero draft and tenant email are recorded."),
   ).toBeVisible();
-  await expect(page.getByText("Provider history")).toBeVisible();
+  await expect(primaryDispatchRow.getByText("Provider history")).toBeVisible();
   await expect(
     page.getByText("Payment status was reconciled locally."),
   ).toBeVisible();
   await page.getByRole("button", { name: /Complete/ }).click();
   await expect(page.getByText("INV-1001").first()).toBeVisible();
   await page.getByRole("button", { name: /Unpaid/ }).click();
-  await expect(page.getByText("No invoices match this filter")).toBeVisible();
+  await expect(page.getByText("INV-1002").first()).toBeVisible();
+  await expect(
+    page.getByRole("row").filter({ hasText: "INV-1001" }),
+  ).toHaveCount(0);
 });
 
 test("insights shows overview, exceptions, activity, and owner snapshot", async ({
