@@ -758,6 +758,8 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert center_response.status_code == 200
     center = center_response.json()
     assert center["notice_count"] == 1
+    assert center["unread_count"] == 3
+    assert center["last_read_at"] is None
     assert center["ready_count"] == 1
     assert center["digest_receipt_count"] == 2
     assert center["notices"][0]["title"] == "Digest-ready maintenance job"
@@ -765,6 +767,29 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert center["notices"][0]["assignee_user_id"] == str(assignee.id)
     assert center["digest_receipts"][0]["delivery_status"] == "previewed"
     assert center["guardrails"][0].startswith("Notification center is read-only")
+
+    mark_read_response = client.post(
+        "/api/v1/work-assignments/notification-center/mark-read",
+        params={"entity_id": entity_id},
+    )
+    assert mark_read_response.status_code == 200
+    read_state = mark_read_response.json()
+    assert read_state["unread_count"] == 0
+    assert read_state["read_at"] is not None
+
+    center_after_read_response = client.get(
+        "/api/v1/work-assignments/notification-center",
+        params={"entity_id": entity_id},
+    )
+    assert center_after_read_response.status_code == 200
+    center_after_read = center_after_read_response.json()
+    assert center_after_read["unread_count"] == 0
+    assert center_after_read["last_read_at"] == read_state["read_at"]
+    session.refresh(assignee)
+    stored_read_at = assignee.notification_preferences[
+        "work_assignment_notification_center_read_at"
+    ][entity_id]
+    assert stored_read_at.replace("+00:00", "Z") == read_state["read_at"]
 
 
 def test_arrears_case_tracks_aged_balances_reminders_and_escalation(

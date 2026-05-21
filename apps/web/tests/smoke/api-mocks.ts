@@ -1289,6 +1289,7 @@ export async function mockLeasiumApi(
   let xeroPaymentApplied = false;
   let localInvoiceDrafts = jsonClone(invoiceDrafts);
   let tenantAccountLinked = options.tenantAccountLinked ?? false;
+  let notificationCenterReadAt: string | null = null;
   const tenantAccountLinkedToDifferentTenant =
     options.tenantAccountLinkedToDifferentTenant ?? false;
   let appliedContactMappings: XeroContactMapping[] = [];
@@ -3244,6 +3245,8 @@ export async function mockLeasiumApi(
       await fulfillJson(route, {
         entity_id: url.searchParams.get("entity_id") ?? entityId,
         generated_at: "2026-05-21T10:00:00.000Z",
+        last_read_at: notificationCenterReadAt,
+        unread_count: notificationCenterReadAt ? 0 : 3,
         notice_count: 2,
         attention_count: 1,
         ready_count: 0,
@@ -3305,6 +3308,19 @@ export async function mockLeasiumApi(
             message_sent: false,
           },
         ],
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/work-assignments/notification-center/mark-read"
+    ) {
+      notificationCenterReadAt = "2026-05-21T10:05:00.000Z";
+      await fulfillJson(route, {
+        entity_id: url.searchParams.get("entity_id") ?? entityId,
+        read_at: notificationCenterReadAt,
+        unread_count: 0,
       });
       return;
     }

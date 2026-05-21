@@ -132,6 +132,8 @@ export type WorkAssignmentNotificationCenterDigestRecord = {
 export type WorkAssignmentNotificationCenterRecord = {
   entity_id: string;
   generated_at: string;
+  last_read_at: string | null;
+  unread_count: number;
   notice_count: number;
   attention_count: number;
   ready_count: number;
@@ -141,6 +143,12 @@ export type WorkAssignmentNotificationCenterRecord = {
   guardrails: string[];
   notices: WorkAssignmentNotificationCenterItemRecord[];
   digest_receipts: WorkAssignmentNotificationCenterDigestRecord[];
+};
+
+export type WorkAssignmentNotificationCenterReadStateRecord = {
+  entity_id: string;
+  read_at: string;
+  unread_count: number;
 };
 
 export type SecurityEntityRoleRecord = SecurityRoleAssignment & {
@@ -2845,6 +2853,14 @@ export function getWorkAssignmentNotificationCenter(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
   return request<WorkAssignmentNotificationCenterRecord>(
     `/work-assignments/notification-center?${params.toString()}`,
+  );
+}
+
+export function markWorkAssignmentNotificationCenterRead(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<WorkAssignmentNotificationCenterReadStateRecord>(
+    `/work-assignments/notification-center/mark-read?${params.toString()}`,
+    { method: "POST" },
   );
 }
 

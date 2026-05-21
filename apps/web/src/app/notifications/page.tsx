@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Bell,
@@ -27,6 +27,7 @@ import {
 import {
   getWorkAssignmentNotificationCenter,
   listEntities,
+  markWorkAssignmentNotificationCenterRead,
   type WorkAssignmentNotificationCenterItemRecord,
   type WorkAssignmentNoticeGroup,
 } from "@/lib/api";
@@ -156,6 +157,7 @@ function NoticeRow({
 }
 
 function NotificationsWorkspace() {
+  const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
 
   const entitiesQuery = useQuery({
@@ -187,9 +189,23 @@ function NotificationsWorkspace() {
     enabled: Boolean(selectedEntityId),
   });
 
+  const markReadMutation = useMutation({
+    mutationFn: () =>
+      markWorkAssignmentNotificationCenterRead(selectedEntityId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["work-assignment-notification-center", selectedEntityId],
+      }),
+  });
+
   const center = centerQuery.data;
   const countCards = useMemo(
     () => [
+      {
+        label: "Unread",
+        value: center?.unread_count ?? 0,
+        tone: "primary" as StatusTone,
+      },
       {
         label: "Attention",
         value: center?.attention_count ?? 0,
@@ -245,21 +261,41 @@ function NotificationsWorkspace() {
               : "Choose an entity to review work notices and digest receipts."
           }
           actions={
-            <SecondaryButton
-              type="button"
-              disabled={!selectedEntityId || centerQuery.isFetching}
-              onClick={() => centerQuery.refetch()}
-            >
-              <RefreshCw
-                size={15}
-                className={centerQuery.isFetching ? "animate-spin" : ""}
-              />
-              Refresh
-            </SecondaryButton>
+            <>
+              {center ? (
+                <StatusBadge tone={center.unread_count ? "primary" : "neutral"}>
+                  {center.unread_count} unread
+                </StatusBadge>
+              ) : null}
+              <SecondaryButton
+                type="button"
+                disabled={
+                  !selectedEntityId ||
+                  !center ||
+                  center.unread_count === 0 ||
+                  markReadMutation.isPending
+                }
+                onClick={() => markReadMutation.mutate()}
+              >
+                <CheckCircle2 size={15} />
+                Mark reviewed
+              </SecondaryButton>
+              <SecondaryButton
+                type="button"
+                disabled={!selectedEntityId || centerQuery.isFetching}
+                onClick={() => centerQuery.refetch()}
+              >
+                <RefreshCw
+                  size={15}
+                  className={centerQuery.isFetching ? "animate-spin" : ""}
+                />
+                Refresh
+              </SecondaryButton>
+            </>
           }
         />
 
-        <div className="grid gap-3 md:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           {countCards.map((card) => (
             <div
               key={card.label}
@@ -289,8 +325,13 @@ function NotificationsWorkspace() {
           }
         >
           {center?.guardrails.length ? (
-            <div className="border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-              {center.guardrails[0]}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+              <span>{center.guardrails[0]}</span>
+              <span>
+                {center.last_read_at
+                  ? `Reviewed ${formatDateTime(center.last_read_at)}`
+                  : "Not reviewed yet"}
+              </span>
             </div>
           ) : null}
           <div>

@@ -34,6 +34,7 @@ from apps.api.schemas.work_assignments import (
     WorkAssignmentNotificationCenterDigestRead,
     WorkAssignmentNotificationCenterItemRead,
     WorkAssignmentNotificationCenterRead,
+    WorkAssignmentNotificationCenterReadState,
 )
 from apps.api.work_assignments import (
     apply_work_assignment_delivery_receipt,
@@ -69,6 +70,7 @@ NOTIFICATION_CENTER_GUARDRAILS = [
     "Notification center is read-only; sending still requires explicit operator action.",
     "Digest receipts are preview receipts unless message_sent is true.",
 ]
+NOTIFICATION_CENTER_READ_KEY = "work_assignment_notification_center_read_at"
 
 
 def _assert_webhook_secret(request: Request) -> None:
@@ -486,6 +488,43 @@ def _entity_assignment_members(
     ).all()
 
 
+def _notification_center_read_at(member: AppUser | None, entity_id: UUID) -> datetime | None:
+    if member is None:
+        return None
+    preferences = _metadata_record(member.notification_preferences)
+    read_map = _metadata_record(preferences.get(NOTIFICATION_CENTER_READ_KEY))
+    return _metadata_datetime(read_map.get(str(entity_id)))
+
+
+def _notification_center_unread_count(
+    notices: list[WorkAssignmentNotificationCenterItemRead],
+    digest_receipts: list[WorkAssignmentNotificationCenterDigestRead],
+    last_read_at: datetime | None,
+) -> int:
+    if last_read_at is None:
+        return len(notices) + len(digest_receipts)
+    return sum(
+        1
+        for item in notices
+        if item.event_at is not None and item.event_at > last_read_at
+    ) + sum(1 for receipt in digest_receipts if receipt.generated_at > last_read_at)
+
+
+def _latest_notification_center_activity_at(
+    notices: list[WorkAssignmentNotificationCenterItemRead],
+    digest_receipts: list[WorkAssignmentNotificationCenterDigestRead],
+) -> datetime | None:
+    activity = [
+        timestamp
+        for timestamp in [
+            *(item.event_at for item in notices),
+            *(receipt.generated_at for receipt in digest_receipts),
+        ]
+        if timestamp is not None
+    ]
+    return max(activity) if activity else None
+
+
 @router.get("/notification-center", response_model=WorkAssignmentNotificationCenterRead)
 def get_work_assignment_notification_center(
     entity_id: Annotated[UUID, Query()],
@@ -517,9 +556,17 @@ def get_work_assignment_notification_center(
         entity_id=entity_id,
     )
     digest_receipts = _notification_center_digest_receipts(members, entity_id)
+    current_member = session.get(AppUser, user.id)
+    last_read_at = _notification_center_read_at(current_member, entity_id)
     return WorkAssignmentNotificationCenterRead(
         entity_id=entity_id,
         generated_at=utcnow(),
+        last_read_at=last_read_at,
+        unread_count=_notification_center_unread_count(
+            notices,
+            digest_receipts,
+            last_read_at,
+        ),
         notice_count=len(notices),
         attention_count=sum(1 for item in notices if item.group == "attention"),
         ready_count=sum(1 for item in notices if item.group == "ready"),
@@ -529,6 +576,62 @@ def get_work_assignment_notification_center(
         guardrails=NOTIFICATION_CENTER_GUARDRAILS,
         notices=notices[:50],
         digest_receipts=digest_receipts,
+    )
+
+
+@router.post(
+    "/notification-center/mark-read",
+    response_model=WorkAssignmentNotificationCenterReadState,
+)
+def mark_work_assignment_notification_center_read(
+    entity_id: Annotated[UUID, Query()],
+    session: Annotated[Session, Depends(get_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> WorkAssignmentNotificationCenterReadState:
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    member = session.get(AppUser, user.id)
+    if member is None or member.organisation_id != user.organisation_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operator not found.")
+    settings = get_settings()
+    frontend_base = settings.frontend_url.strip().rstrip("/") or None
+    today = utcnow().date()
+    notices = [
+        item
+        for target in _open_assignment_targets(session, entity_id)
+        if (item := _notification_center_item(target, frontend_base, today)) is not None
+    ]
+    members = _entity_assignment_members(
+        session,
+        organisation_id=user.organisation_id,
+        entity_id=entity_id,
+    )
+    digest_receipts = _notification_center_digest_receipts(members, entity_id)
+    now = utcnow()
+    latest_activity_at = _latest_notification_center_activity_at(notices, digest_receipts)
+    read_at = max(now, latest_activity_at) if latest_activity_at is not None else now
+    preferences = _metadata_record(member.notification_preferences)
+    read_map = _metadata_record(preferences.get(NOTIFICATION_CENTER_READ_KEY))
+    read_map[str(entity_id)] = read_at.isoformat()
+    preferences[NOTIFICATION_CENTER_READ_KEY] = read_map
+    member.notification_preferences = preferences
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity_id,
+        action="update",
+        target_table="app_user",
+        target_id=member.id,
+        tool_name="work_assignment.notification_center_mark_read",
+        tool_input={"entity_id": str(entity_id)},
+        tool_output_summary="Marked Work notification center reviewed for this entity.",
+        data_classification="internal",
+    )
+    session.commit()
+    return WorkAssignmentNotificationCenterReadState(
+        entity_id=entity_id,
+        read_at=read_at,
+        unread_count=0,
     )
 
 

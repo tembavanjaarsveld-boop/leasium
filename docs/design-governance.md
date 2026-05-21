@@ -330,6 +330,8 @@ Twelfth 2026-05-21 follow-up: Settings now surfaces the latest Work digest previ
 
 Thirteenth 2026-05-21 follow-up: a global Notifications page and top-bar bell now collect Work assignment notice states and digest preview receipts across maintenance, arrears, and critical-date work. The page is read-only, keeps explicit guardrails, and links back to Work for action. Remba should review whether the bell placement adds pressure to the already dense header, whether Notifications should be a full nav item later, and whether the page needs read/unread state before provider delivery expands beyond email.
 
+Fourteenth 2026-05-21 follow-up: Notifications now includes per-operator unread counts and a `Mark reviewed` action that records the entity-specific review timestamp in notification preferences. Remba should review whether the unread count creates helpful urgency or too much inbox pressure, and whether review state should be visible from the bell itself once real delivery scheduling is enabled.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

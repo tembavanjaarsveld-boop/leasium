@@ -90,6 +90,8 @@ class WorkAssignmentNotificationCenterDigestRead(BaseModel):
 class WorkAssignmentNotificationCenterRead(BaseModel):
     entity_id: UUID
     generated_at: datetime
+    last_read_at: datetime | None = None
+    unread_count: int = 0
     notice_count: int
     attention_count: int = 0
     ready_count: int = 0
@@ -101,3 +103,9 @@ class WorkAssignmentNotificationCenterRead(BaseModel):
     digest_receipts: list[WorkAssignmentNotificationCenterDigestRead] = Field(
         default_factory=list
     )
+
+
+class WorkAssignmentNotificationCenterReadState(BaseModel):
+    entity_id: UUID
+    read_at: datetime
+    unread_count: int = 0
