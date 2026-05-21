@@ -344,6 +344,8 @@ Eighteenth 2026-05-21 follow-up: Settings now moves Work email and digest cadenc
 
 Nineteenth 2026-05-21 follow-up: Notifications now has segmented filters for Work notices and digest receipt history. Notice filters cover attention, in-flight, ready, follow-up due, and failed email states; digest filters cover needs-send, sent, failed, skipped, and recovery receipts. Remba should review whether the filter labels are operational enough, whether the count chips create useful confidence, and whether these filters should become saved views once non-email channels are added.
 
+Twentieth 2026-05-21 follow-up: notification-center data now exposes channel, provider, template key, and template version evidence for Work notice and digest receipts, and Notifications adds channel filters for notices and digest history. Remba should review whether channel filtering is useful before SMS/push Work delivery exists, whether template/version text is too technical for operators, and whether this evidence should move into a receipt detail drawer later.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

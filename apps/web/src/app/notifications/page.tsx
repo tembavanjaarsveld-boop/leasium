@@ -39,6 +39,7 @@ const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type NoticeFilter = "all" | WorkAssignmentNoticeGroup | "follow_up" | "failed";
+type DeliveryChannelFilter = "all" | "email" | "sms" | "in_app" | "preview";
 type DigestFilter =
   | "all"
   | "needs_send"
@@ -66,6 +67,14 @@ const digestFilterLabels: Record<DigestFilter, string> = {
   recovery: "Recovery",
 };
 
+const deliveryChannelFilterLabels: Record<DeliveryChannelFilter, string> = {
+  all: "All channels",
+  email: "Email",
+  sms: "SMS",
+  in_app: "In-app",
+  preview: "Preview only",
+};
+
 const noticeFilters: NoticeFilter[] = [
   "all",
   "attention",
@@ -75,6 +84,13 @@ const noticeFilters: NoticeFilter[] = [
   "failed",
 ];
 
+const noticeChannelFilters: DeliveryChannelFilter[] = [
+  "all",
+  "email",
+  "sms",
+  "in_app",
+];
+
 const digestFilters: DigestFilter[] = [
   "all",
   "needs_send",
@@ -82,6 +98,13 @@ const digestFilters: DigestFilter[] = [
   "failed",
   "skipped",
   "recovery",
+];
+
+const digestChannelFilters: DeliveryChannelFilter[] = [
+  "all",
+  "email",
+  "sms",
+  "preview",
 ];
 
 function formatDateTime(value: string | null | undefined) {
@@ -112,6 +135,32 @@ function label(value: string) {
   return value
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function channelLabel(value: string | null | undefined) {
+  if (value === "sms") {
+    return "SMS";
+  }
+  if (value === "in_app") {
+    return "In-app";
+  }
+  if (value === "preview") {
+    return "Preview only";
+  }
+  if (value === "email") {
+    return "Email";
+  }
+  return "Unknown channel";
+}
+
+function templateLabel(
+  templateKey: string | null | undefined,
+  templateVersion: string | null | undefined,
+) {
+  if (!templateKey && !templateVersion) {
+    return null;
+  }
+  return [templateKey, templateVersion].filter(Boolean).join(" ");
 }
 
 function groupTone(group: WorkAssignmentNoticeGroup): StatusTone {
@@ -195,6 +244,36 @@ function matchesNoticeFilter(
   return notice.group === filter;
 }
 
+function noticeDeliveryChannel(
+  notice: WorkAssignmentNotificationCenterItemRecord,
+): DeliveryChannelFilter {
+  if (notice.channel === "email" || notice.channel === "sms") {
+    return notice.channel;
+  }
+  return "in_app";
+}
+
+function digestDeliveryChannel(
+  receipt: WorkAssignmentNotificationCenterDigestRecord,
+): DeliveryChannelFilter {
+  if (
+    receipt.delivery_channel === "email" ||
+    receipt.delivery_channel === "sms"
+  ) {
+    return receipt.delivery_channel;
+  }
+  return receipt.message_sent || receipt.provider_message_id
+    ? "email"
+    : "preview";
+}
+
+function matchesNoticeChannelFilter(
+  notice: WorkAssignmentNotificationCenterItemRecord,
+  filter: DeliveryChannelFilter,
+) {
+  return filter === "all" || noticeDeliveryChannel(notice) === filter;
+}
+
 function matchesDigestFilter(
   receipt: WorkAssignmentNotificationCenterDigestRecord,
   filter: DigestFilter,
@@ -215,6 +294,13 @@ function matchesDigestFilter(
     );
   }
   return receipt.delivery_status === filter;
+}
+
+function matchesDigestChannelFilter(
+  receipt: WorkAssignmentNotificationCenterDigestRecord,
+  filter: DeliveryChannelFilter,
+) {
+  return filter === "all" || digestDeliveryChannel(receipt) === filter;
 }
 
 function FilterButton({
@@ -263,6 +349,7 @@ function NoticeRow({
 }: {
   notice: WorkAssignmentNotificationCenterItemRecord;
 }) {
+  const template = templateLabel(notice.template_key, notice.template_version);
   return (
     <Link
       href={workHref(notice.work_url)}
@@ -288,8 +375,12 @@ function NoticeRow({
         </div>
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>{label(notice.target_type)}</span>
-          <span>Email {label(notice.notification_status)}</span>
+          <span>
+            {channelLabel(noticeDeliveryChannel(notice))}{" "}
+            {label(notice.notification_status)}
+          </span>
           {notice.provider ? <span>{label(notice.provider)}</span> : null}
+          {template ? <span>{template}</span> : null}
         </div>
       </div>
       <div className="min-w-0 text-xs text-muted-foreground">
@@ -314,7 +405,11 @@ function NotificationsWorkspace() {
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [noticeFilter, setNoticeFilter] = useState<NoticeFilter>("all");
+  const [noticeChannelFilter, setNoticeChannelFilter] =
+    useState<DeliveryChannelFilter>("all");
   const [digestFilter, setDigestFilter] = useState<DigestFilter>("all");
+  const [digestChannelFilter, setDigestChannelFilter] =
+    useState<DeliveryChannelFilter>("all");
 
   const entitiesQuery = useQuery({
     queryKey: ["notifications-entities"],
@@ -382,6 +477,18 @@ function NotificationsWorkspace() {
       ) as Record<NoticeFilter, number>,
     [center?.notices],
   );
+  const noticeChannelFilterCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        noticeChannelFilters.map((filter) => [
+          filter,
+          center?.notices.filter((notice) =>
+            matchesNoticeChannelFilter(notice, filter),
+          ).length ?? 0,
+        ]),
+      ) as Record<DeliveryChannelFilter, number>,
+    [center?.notices],
+  );
   const digestFilterCounts = useMemo(
     () =>
       Object.fromEntries(
@@ -394,19 +501,35 @@ function NotificationsWorkspace() {
       ) as Record<DigestFilter, number>,
     [center?.digest_receipts],
   );
+  const digestChannelFilterCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        digestChannelFilters.map((filter) => [
+          filter,
+          center?.digest_receipts.filter((receipt) =>
+            matchesDigestChannelFilter(receipt, filter),
+          ).length ?? 0,
+        ]),
+      ) as Record<DeliveryChannelFilter, number>,
+    [center?.digest_receipts],
+  );
   const filteredNotices = useMemo(
     () =>
-      center?.notices.filter((notice) =>
-        matchesNoticeFilter(notice, noticeFilter),
+      center?.notices.filter(
+        (notice) =>
+          matchesNoticeFilter(notice, noticeFilter) &&
+          matchesNoticeChannelFilter(notice, noticeChannelFilter),
       ) ?? [],
-    [center?.notices, noticeFilter],
+    [center?.notices, noticeChannelFilter, noticeFilter],
   );
   const filteredDigestReceipts = useMemo(
     () =>
-      center?.digest_receipts.filter((receipt) =>
-        matchesDigestFilter(receipt, digestFilter),
+      center?.digest_receipts.filter(
+        (receipt) =>
+          matchesDigestFilter(receipt, digestFilter) &&
+          matchesDigestChannelFilter(receipt, digestChannelFilter),
       ) ?? [],
-    [center?.digest_receipts, digestFilter],
+    [center?.digest_receipts, digestChannelFilter, digestFilter],
   );
   const countCards = useMemo(
     () => [
@@ -555,6 +678,21 @@ function NotificationsWorkspace() {
               </FilterButton>
             ))}
           </div>
+          <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/20 px-4 py-3">
+            <span className="text-xs font-semibold uppercase text-muted-foreground">
+              Channel
+            </span>
+            {noticeChannelFilters.map((filter) => (
+              <FilterButton
+                key={filter}
+                active={noticeChannelFilter === filter}
+                count={noticeChannelFilterCounts[filter]}
+                onClick={() => setNoticeChannelFilter(filter)}
+              >
+                {deliveryChannelFilterLabels[filter]}
+              </FilterButton>
+            ))}
+          </div>
           <div>
             {filteredNotices.map((notice) => (
               <NoticeRow
@@ -598,64 +736,92 @@ function NotificationsWorkspace() {
                 </FilterButton>
               ))}
             </div>
-            {filteredDigestReceipts.map((receipt) => (
-              <div
-                key={`${receipt.assignee_user_id}-${receipt.generated_at}`}
-                className="rounded-xl border border-border bg-white p-3 text-sm"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate font-semibold">
-                      {receipt.assignee_name}
+            <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+              <span className="text-xs font-semibold uppercase text-muted-foreground">
+                Channel
+              </span>
+              {digestChannelFilters.map((filter) => (
+                <FilterButton
+                  key={filter}
+                  active={digestChannelFilter === filter}
+                  count={digestChannelFilterCounts[filter]}
+                  onClick={() => setDigestChannelFilter(filter)}
+                >
+                  {deliveryChannelFilterLabels[filter]}
+                </FilterButton>
+              ))}
+            </div>
+            {filteredDigestReceipts.map((receipt) => {
+              const template = templateLabel(
+                receipt.template_key,
+                receipt.template_version,
+              );
+              return (
+                <div
+                  key={`${receipt.assignee_user_id}-${receipt.generated_at}`}
+                  className="rounded-xl border border-border bg-white p-3 text-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">
+                        {receipt.assignee_name}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {receipt.assignee_email}
+                      </div>
                     </div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {receipt.assignee_email}
+                    <StatusBadge tone={digestReceiptTone(receipt)}>
+                      {digestReceiptLabel(receipt)}
+                    </StatusBadge>
+                  </div>
+                  <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
+                    <div>{formatDateTime(receipt.generated_at)}</div>
+                    {receipt.delivery_detail ? (
+                      <div>{receipt.delivery_detail}</div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      <span>
+                        {channelLabel(digestDeliveryChannel(receipt))}
+                        {receipt.provider
+                          ? ` / ${label(receipt.provider)}`
+                          : ""}
+                      </span>
+                      {template ? <span>{template}</span> : null}
+                      <span>{label(receipt.cadence)} digest</span>
+                      <span>
+                        {receipt.item_count}{" "}
+                        {receipt.item_count === 1 ? "item" : "items"}
+                      </span>
+                      <span>{receipt.follow_up_due_count} follow-up</span>
                     </div>
                   </div>
-                  <StatusBadge tone={digestReceiptTone(receipt)}>
-                    {digestReceiptLabel(receipt)}
-                  </StatusBadge>
-                </div>
-                <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
-                  <div>{formatDateTime(receipt.generated_at)}</div>
-                  {receipt.delivery_detail ? (
-                    <div>{receipt.delivery_detail}</div>
+                  {!receipt.message_sent ? (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                      <span>
+                        Sends the current {label(receipt.cadence).toLowerCase()}{" "}
+                        digest to matching operators.
+                        {receipt.delivery_attempt_count > 0
+                          ? ` Attempt ${receipt.delivery_attempt_count + 1}.`
+                          : ""}
+                      </span>
+                      <SecondaryButton
+                        type="button"
+                        className="h-9 px-2.5"
+                        disabled={
+                          !selectedEntityId || retryDigestMutation.isPending
+                        }
+                        onClick={() => retryDigestMutation.mutate(receipt)}
+                      >
+                        <Send size={14} />
+                        {retryDigestMutation.isPending
+                          ? "Sending"
+                          : digestRecoveryLabel(receipt)}
+                      </SecondaryButton>
+                    </div>
                   ) : null}
-                  <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    <span>{label(receipt.cadence)} digest</span>
-                    <span>
-                      {receipt.item_count}{" "}
-                      {receipt.item_count === 1 ? "item" : "items"}
-                    </span>
-                    <span>{receipt.follow_up_due_count} follow-up</span>
-                  </div>
                 </div>
-                {!receipt.message_sent ? (
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    <span>
-                      Sends the current {label(receipt.cadence).toLowerCase()}{" "}
-                      digest to matching operators.
-                      {receipt.delivery_attempt_count > 0
-                        ? ` Attempt ${receipt.delivery_attempt_count + 1}.`
-                        : ""}
-                    </span>
-                    <SecondaryButton
-                      type="button"
-                      className="h-9 px-2.5"
-                      disabled={
-                        !selectedEntityId || retryDigestMutation.isPending
-                      }
-                      onClick={() => retryDigestMutation.mutate(receipt)}
-                    >
-                      <Send size={14} />
-                      {retryDigestMutation.isPending
-                        ? "Sending"
-                        : digestRecoveryLabel(receipt)}
-                    </SecondaryButton>
-                  </div>
-                ) : null}
-              </div>
-            ))}
+              );
+            })}
             {!centerQuery.isLoading &&
             center &&
             filteredDigestReceipts.length === 0 ? (

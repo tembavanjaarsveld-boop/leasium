@@ -366,6 +366,8 @@ def _notification_center_item(
         or _metadata_text(notification.get("error")),
         channel=_metadata_text(notification.get("channel")),
         provider=_metadata_text(notification.get("provider")),
+        template_key=_metadata_text(notification.get("template_key")),
+        template_version=_metadata_text(notification.get("template_version")),
         due_date=_target_due_date(target),
         event_at=_latest_assignment_event_at(assignment),
         follow_up_due=_follow_up_due(assignment, today),
@@ -546,6 +548,7 @@ def _record_digest_receipt(
     delivery_status = str(result_dict.get("status") or "previewed")
     delivery_detail = _digest_delivery_detail(delivery_result)
     delivery_trigger = payload.delivery_trigger if delivery_result is not None else "preview"
+    result_metadata = _metadata_record(result_dict.get("metadata"))
     recovery_of = (
         payload.recovery_of_generated_at.isoformat()
         if payload.recovery_of_generated_at is not None
@@ -569,6 +572,8 @@ def _record_digest_receipt(
                 "recipient_email": result_dict.get("recipient"),
                 "provider_message_id": result_dict.get("provider_message_id"),
                 "error": result_dict.get("error"),
+                "template_key": result_metadata.get("template_key"),
+                "template_version": result_metadata.get("template_version"),
                 "delivery_trigger": delivery_trigger,
                 "recovery_of_generated_at": recovery_of,
                 "delivery_attempt_count": delivery_attempt_count,
@@ -595,6 +600,8 @@ def _record_digest_receipt(
         "provider": result_dict.get("provider"),
         "provider_message_id": result_dict.get("provider_message_id"),
         "recipient_email": result_dict.get("recipient"),
+        "template_key": result_metadata.get("template_key") or "work_assignment_digest",
+        "template_version": result_metadata.get("template_version") or "v1",
         "delivery_attempted_at": result_dict.get("attempted_at"),
         "provider_history": provider_history,
     }
@@ -624,6 +631,8 @@ def _notification_center_digest_receipts(
             follow_up_due_count = record.get("follow_up_due_count")
             message_sent = record.get("message_sent")
             attempt_count = record.get("delivery_attempt_count")
+            delivery_channel = _metadata_text(record.get("delivery_channel"))
+            provider = _metadata_text(record.get("provider"))
             receipts.append(
                 WorkAssignmentNotificationCenterDigestRead(
                     assignee_user_id=member.id,
@@ -641,7 +650,12 @@ def _notification_center_digest_receipts(
                     delivery_status=_metadata_text(record.get("delivery_status")) or "previewed",
                     message_sent=message_sent if isinstance(message_sent, bool) else False,
                     delivery_detail=_metadata_text(record.get("delivery_detail")),
+                    delivery_channel=delivery_channel,
+                    provider=provider,
                     provider_message_id=_metadata_text(record.get("provider_message_id")),
+                    template_key=_metadata_text(record.get("template_key"))
+                    or "work_assignment_digest",
+                    template_version=_metadata_text(record.get("template_version")) or "v1",
                     delivery_trigger=_metadata_text(record.get("delivery_trigger")),
                     recovery_of_generated_at=_metadata_datetime(
                         record.get("recovery_of_generated_at")

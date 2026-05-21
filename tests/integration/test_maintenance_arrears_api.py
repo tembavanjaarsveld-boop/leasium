@@ -774,6 +774,9 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert center["notices"][0]["group"] == "ready"
     assert center["notices"][0]["assignee_user_id"] == str(assignee.id)
     assert center["digest_receipts"][0]["delivery_status"] == "previewed"
+    assert center["digest_receipts"][0]["delivery_channel"] is None
+    assert center["digest_receipts"][0]["template_key"] == "work_assignment_digest"
+    assert center["digest_receipts"][0]["template_version"] == "v1"
     assert center["guardrails"][0].startswith("Notification center is read-only")
 
     mark_read_response = client.post(
@@ -919,7 +922,11 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
     center = center_response.json()
     assert center["digest_receipts"][0]["delivery_status"] == "queued"
     assert center["digest_receipts"][0]["message_sent"] is True
+    assert center["digest_receipts"][0]["delivery_channel"] == "email"
+    assert center["digest_receipts"][0]["provider"] == "sendgrid"
     assert center["digest_receipts"][0]["provider_message_id"] == "sg-digest-1"
+    assert center["digest_receipts"][0]["template_key"] == "work_assignment_digest"
+    assert center["digest_receipts"][0]["template_version"] == "v1"
     assert center["digest_receipts"][0]["delivery_trigger"] == "scheduled"
     assert center["digest_receipts"][0]["delivery_attempt_count"] == 1
 

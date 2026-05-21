@@ -92,6 +92,8 @@ class WorkAssignmentNotificationCenterItemRead(BaseModel):
     notification_detail: str | None = None
     channel: str | None = None
     provider: str | None = None
+    template_key: str | None = None
+    template_version: str | None = None
     due_date: date | None = None
     event_at: datetime | None = None
     follow_up_due: bool = False
@@ -109,7 +111,11 @@ class WorkAssignmentNotificationCenterDigestRead(BaseModel):
     delivery_status: str = "previewed"
     message_sent: bool = False
     delivery_detail: str | None = None
+    delivery_channel: str | None = None
+    provider: str | None = None
     provider_message_id: str | None = None
+    template_key: str | None = None
+    template_version: str | None = None
     delivery_trigger: str | None = None
     recovery_of_generated_at: datetime | None = None
     delivery_attempt_count: int = 0

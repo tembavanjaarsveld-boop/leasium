@@ -127,6 +127,8 @@ export type WorkAssignmentNotificationCenterItemRecord = {
   notification_detail: string | null;
   channel: string | null;
   provider: string | null;
+  template_key: string | null;
+  template_version: string | null;
   due_date: string | null;
   event_at: string | null;
   follow_up_due: boolean;
@@ -144,7 +146,11 @@ export type WorkAssignmentNotificationCenterDigestRecord = {
   delivery_status: string;
   message_sent: boolean;
   delivery_detail: string | null;
+  delivery_channel: string | null;
+  provider: string | null;
   provider_message_id: string | null;
+  template_key: string | null;
+  template_version: string | null;
   delivery_trigger: string | null;
   recovery_of_generated_at: string | null;
   delivery_attempt_count: number;

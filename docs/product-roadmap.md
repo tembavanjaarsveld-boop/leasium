@@ -143,12 +143,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Work assignment digest recovery audit v1: digest delivery receipts now preserve delivery trigger, recovery source timestamp, provider attempt rows, and delivery attempt count so manual, scheduled, and recovery sends can be distinguished in Notifications and audit history. Pending Remba review.
 - [x] Work notification preferences panel v1: Settings now has a dedicated Work notifications panel for per-operator assignment email toggles, digest cadence, latest digest receipts, and preference status counts, while the Users and roles table stays focused on access control. Pending Remba review.
 - [x] Work notification history filters v1: Notifications now filters Work notices by attention, in-flight, ready, follow-up, and failed email state, and filters digest receipts by needs-send, sent, failed, skipped, and recovery state while keeping send/retry actions explicit. Pending Remba review.
+- [x] Work notification channel and template evidence v1: notification-center responses now expose optional channel, provider, template key, and template version evidence for Work notices and digest receipts; Notifications adds channel filters for notice and digest history without changing send behavior. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, `20260521_0020_register_import_plans`, and `20260521_0021_operator_notification_preferences` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, simplified navigation/command center, Portfolio QA command-search placement, reusable evidence/source-trail pattern across Properties/Smart Intake/Tenants, tenant portal, tenant fresh-link recovery, invoice email action, Work assignment controls/workload/reminder/action/provider notice cues, and Operations workspace before treating them as UX complete.
-- [ ] Continue Work assignment from digest recovery audit, the dedicated preferences panel, and notification history filters into per-channel delivery receipts beyond email and template/version preferences.
+- [ ] Continue Work assignment from channel/template evidence into editable notification template preferences, non-email provider wiring, and channel-specific delivery recovery.
 - [ ] Continue Operations polish with deeper activity/audit presentation, safer edit affordances on list rows, and owner/tenant-facing completion review paths.
 - [ ] Continue Xero from guided sync exceptions into accounting snapshot guardrails, stale reconciliation indicators, and richer accounting-readiness snapshots.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.
