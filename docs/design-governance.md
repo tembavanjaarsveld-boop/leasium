@@ -289,6 +289,8 @@ Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry
 
 2026-05-21 update: completion now stores review-only owner, contractor, and tenant communication drafts in closeout metadata and shows them beside closeout history. No message is sent automatically. Remba should review whether the copy is useful for operators after closeout, whether tenant-facing completion text belongs here or in the tenant portal timeline, and whether owner updates need a separate approval/send workflow.
 
+2026-05-21 update: the Work queue and Maintenance/Arrears rows now include member assignment controls for maintenance jobs, arrears cases, and critical-date obligations. Assignment stores a compact history and an in-app notification-ready receipt in record metadata; it does not send provider email/SMS automatically. Remba should review whether assignment belongs in queue rows, row detail, or a side panel; whether the control density is acceptable on laptops; and whether `Notification ready` is clear enough before provider-backed notifications are added.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

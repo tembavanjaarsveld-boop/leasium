@@ -113,9 +113,20 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   ).toBeVisible();
   await expect(page.getByText("Air conditioning fault")).toBeVisible();
   await expect(page.getByText("Bright Cafe arrears")).toBeVisible();
+  await page
+    .getByLabel("Assignee for Air conditioning fault")
+    .selectOption({ label: "Temba van Jaarsveld" });
+  await page.getByRole("button", { name: "Assign" }).first().click();
+  await expect(
+    page.getByText("Assigned to Temba van Jaarsveld").first(),
+  ).toBeVisible();
+  await expect(page.getByText("Notification ready").first()).toBeVisible();
 
   await page.getByRole("tab", { name: /Maintenance/ }).click();
   await expect(page.getByText("Cool Air Services")).toBeVisible();
+  await expect(
+    page.getByText("Assigned to Temba van Jaarsveld").first(),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Detail" }).click();
   await expect(page.getByText("Approval", { exact: true })).toBeVisible();
   await expect(page.getByText("$640").first()).toBeVisible();

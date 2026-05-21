@@ -120,11 +120,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Contractor template/version history v1: contractor email attempts now keep provider template key/version on send receipts and attempt history, and the maintenance Contractor card surfaces the current and historical template/version used. Pending Remba review.
 - [x] Maintenance completion communication drafts v1: completing a work order now stores review-only owner, contractor, and tenant completion copy inside closeout metadata and surfaces it beside closeout history without sending anything automatically. Pending Remba review.
 - [x] Maintenance reopen/edit and owner review v1: work-order detail now supports basic record corrections with expanded activity tracking, explicit reopen from completed/cancelled jobs with reopen history, and review-only owner completion receipt capture before any external message is sent. Pending Remba review.
+- [x] Work assignment foundation v1: the Work queue and Maintenance/Arrears rows can assign maintenance jobs, arrears cases, and critical-date obligations to active platform members, store assignment history in metadata, and prepare an in-app notification receipt without sending provider email/SMS automatically. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, and `20260521_0020_register_import_plans` migrations in hosted Neon/Render if auto-migrations do not run.
-- [ ] Remba review the new Smart Intake spreadsheet import panel, simplified navigation/command center, Portfolio QA command-search placement, reusable evidence/source-trail pattern across Properties/Smart Intake/Tenants, tenant portal, tenant fresh-link recovery, invoice email action, and Operations workspace before treating them as UX complete.
+- [ ] Remba review the new Smart Intake spreadsheet import panel, simplified navigation/command center, Portfolio QA command-search placement, reusable evidence/source-trail pattern across Properties/Smart Intake/Tenants, tenant portal, tenant fresh-link recovery, invoice email action, Work assignment controls, and Operations workspace before treating them as UX complete.
+- [ ] Continue Work assignment into provider-backed member notifications, assignment reminders, assignee workload filters, and escalation rules once the in-app assignment pattern settles.
 - [ ] Continue Operations polish with deeper activity/audit presentation, safer edit affordances on list rows, and owner/tenant-facing completion review paths.
 - [ ] Continue Xero from guided sync exceptions into accounting snapshot guardrails, stale reconciliation indicators, and richer accounting-readiness snapshots.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.

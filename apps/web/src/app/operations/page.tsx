@@ -53,6 +53,7 @@ import {
   listMaintenanceWorkOrders,
   listObligations,
   listProperties,
+  getSecurityWorkspace,
   listTenantOnboardings,
   listTenants,
   type MaintenancePriority,
@@ -60,6 +61,7 @@ import {
   type MaintenanceWorkOrderStatus,
   type ObligationRecord,
   type PropertyRecord,
+  type SecurityMemberRecord,
   type TenantOnboardingRecord,
   type TenantRecord,
   updateArrearsCase,
@@ -77,10 +79,18 @@ const EMPTY_INTAKES: DocumentIntakeRecord[] = [];
 const EMPTY_MAINTENANCE: MaintenanceWorkOrderRecord[] = [];
 const EMPTY_ARREARS: ArrearsCaseRecord[] = [];
 const EMPTY_INVOICE_DRAFTS: InvoiceDraftRecord[] = [];
+const EMPTY_MEMBERS: SecurityMemberRecord[] = [];
+const WORK_ASSIGNMENT_KEY = "work_assignment";
+const WORK_ASSIGNMENT_TEMPLATE_KEY = "work_assignment_notification";
+const WORK_ASSIGNMENT_TEMPLATE_VERSION = "v1";
 
 const tabs = [
   { id: "queue", label: "Queue", description: "All operational work" },
-  { id: "maintenance", label: "Maintenance", description: "Repairs and approvals" },
+  {
+    id: "maintenance",
+    label: "Maintenance",
+    description: "Repairs and approvals",
+  },
   { id: "arrears", label: "Arrears", description: "Balances and escalation" },
 ] as const;
 
@@ -95,7 +105,12 @@ const maintenanceStatuses: MaintenanceWorkOrderStatus[] = [
   "cancelled",
 ];
 
-const maintenancePriorities: MaintenancePriority[] = ["low", "normal", "high", "urgent"];
+const maintenancePriorities: MaintenancePriority[] = [
+  "low",
+  "normal",
+  "high",
+  "urgent",
+];
 const arrearsStatuses: ArrearsCaseStatus[] = [
   "monitoring",
   "active",
@@ -182,6 +197,33 @@ type QueueItem =
       record: ArrearsCaseRecord;
       completed: boolean;
     };
+
+type AssignableQueueItem = Extract<
+  QueueItem,
+  { kind: "obligation" | "maintenance" | "arrears" }
+>;
+
+type WorkAssignmentHistoryEntry = {
+  event: string;
+  at: string | null;
+  actor_name: string | null;
+  assigned_user_name: string | null;
+  assigned_user_email: string | null;
+  summary: string | null;
+  notification_status: string | null;
+};
+
+type WorkAssignment = {
+  assignedUserId: string | null;
+  assignedName: string | null;
+  assignedEmail: string | null;
+  assignedRole: string | null;
+  assignedAt: string | null;
+  assignedByName: string | null;
+  notificationStatus: string | null;
+  notificationDetail: string | null;
+  history: WorkAssignmentHistoryEntry[];
+};
 
 type MaintenanceFormState = {
   title: string;
@@ -347,11 +389,20 @@ function label(value: string | null | undefined) {
   return value ? value.replaceAll("_", " ") : "None";
 }
 
-function propertyName(properties: PropertyRecord[], propertyId: string | null | undefined) {
-  return properties.find((property) => property.id === propertyId)?.name ?? "No property";
+function propertyName(
+  properties: PropertyRecord[],
+  propertyId: string | null | undefined,
+) {
+  return (
+    properties.find((property) => property.id === propertyId)?.name ??
+    "No property"
+  );
 }
 
-function tenantName(tenants: TenantRecord[], tenantId: string | null | undefined) {
+function tenantName(
+  tenants: TenantRecord[],
+  tenantId: string | null | undefined,
+) {
   const tenant = tenants.find((item) => item.id === tenantId);
   return tenant?.trading_name || tenant?.legal_name || "No tenant";
 }
@@ -367,7 +418,10 @@ function invoiceDraftLabel(draft: InvoiceDraftRecord) {
     .join(" - ");
 }
 
-function invoiceDraftName(drafts: InvoiceDraftRecord[], invoiceDraftId: string | null) {
+function invoiceDraftName(
+  drafts: InvoiceDraftRecord[],
+  invoiceDraftId: string | null,
+) {
   if (!invoiceDraftId) {
     return null;
   }
@@ -389,6 +443,165 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
+function stringValue(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function workAssignmentHistory(raw: unknown): WorkAssignmentHistoryEntry[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter(isPlainRecord).map((entry) => ({
+    event: stringValue(entry, "event") ?? "assigned",
+    at: stringValue(entry, "at"),
+    actor_name: stringValue(entry, "actor_name"),
+    assigned_user_name: stringValue(entry, "assigned_user_name"),
+    assigned_user_email: stringValue(entry, "assigned_user_email"),
+    summary: stringValue(entry, "summary"),
+    notification_status: stringValue(entry, "notification_status"),
+  }));
+}
+
+function workAssignment(
+  metadata: Record<string, unknown> | null | undefined,
+): WorkAssignment | null {
+  const raw = metadata?.[WORK_ASSIGNMENT_KEY];
+  if (!isPlainRecord(raw)) {
+    return null;
+  }
+  const notification = isPlainRecord(raw.notification) ? raw.notification : {};
+  const assignedUserId = stringValue(raw, "assigned_user_id");
+  const assignedName = stringValue(raw, "assigned_user_name");
+  const history = workAssignmentHistory(raw.history);
+  if (!assignedUserId && !assignedName && history.length === 0) {
+    return null;
+  }
+  return {
+    assignedUserId,
+    assignedName,
+    assignedEmail: stringValue(raw, "assigned_user_email"),
+    assignedRole: stringValue(raw, "assigned_role"),
+    assignedAt: stringValue(raw, "assigned_at"),
+    assignedByName: stringValue(raw, "assigned_by_name"),
+    notificationStatus: stringValue(notification, "status"),
+    notificationDetail: stringValue(notification, "detail"),
+    history,
+  };
+}
+
+function memberEntityRole(member: SecurityMemberRecord, entityId: string) {
+  return member.roles.find((role) => role.entity_id === entityId)?.role ?? null;
+}
+
+function memberLabel(member: SecurityMemberRecord) {
+  return member.display_name || member.email;
+}
+
+function memberCanReceiveWork(member: SecurityMemberRecord, entityId: string) {
+  const role = memberEntityRole(member, entityId);
+  return Boolean(member.is_active && role && role !== "viewer");
+}
+
+function isAssignableQueueItem(item: QueueItem): item is AssignableQueueItem {
+  return (
+    item.kind === "obligation" ||
+    item.kind === "maintenance" ||
+    item.kind === "arrears"
+  );
+}
+
+function assignmentMetadata({
+  metadata,
+  assignee,
+  currentUser,
+  entityId,
+  title,
+  kind,
+}: {
+  metadata: Record<string, unknown>;
+  assignee: SecurityMemberRecord | null;
+  currentUser:
+    | { id: string; email: string; display_name: string }
+    | null
+    | undefined;
+  entityId: string;
+  title: string;
+  kind: string;
+}) {
+  const now = new Date().toISOString();
+  const existing = workAssignment(metadata);
+  const existingHistory = existing?.history ?? [];
+  const actorName =
+    currentUser?.display_name || currentUser?.email || "Leasium operator";
+  const assigneeName = assignee ? memberLabel(assignee) : null;
+  const notificationStatus = assignee ? "ready" : "skipped";
+  const summary = assigneeName
+    ? `${kind} assigned to ${assigneeName}.`
+    : `${kind} assignment cleared.`;
+  const historyEntry = {
+    event: assignee ? "assigned" : "cleared",
+    at: now,
+    actor_user_id: currentUser?.id ?? null,
+    actor_name: actorName,
+    assigned_user_id: assignee?.id ?? null,
+    assigned_user_name: assigneeName,
+    assigned_user_email: assignee?.email ?? null,
+    notification_status: notificationStatus,
+    summary,
+  };
+
+  return {
+    ...metadata,
+    [WORK_ASSIGNMENT_KEY]: {
+      assigned_user_id: assignee?.id ?? null,
+      assigned_user_name: assigneeName,
+      assigned_user_email: assignee?.email ?? null,
+      assigned_role: assignee ? memberEntityRole(assignee, entityId) : null,
+      assigned_at: now,
+      assigned_by_user_id: currentUser?.id ?? null,
+      assigned_by_name: actorName,
+      work_title: title,
+      work_kind: kind,
+      notification: {
+        channel: "in_app",
+        provider: "leasium",
+        status: notificationStatus,
+        recipient_email: assignee?.email ?? null,
+        template_key: WORK_ASSIGNMENT_TEMPLATE_KEY,
+        template_version: WORK_ASSIGNMENT_TEMPLATE_VERSION,
+        prepared_at: now,
+        detail: assignee
+          ? "Assignment notification is ready inside Leasium. Provider email/SMS delivery is a separate approval step."
+          : "Assignment was cleared; no notification was prepared.",
+      },
+      history: [historyEntry, ...existingHistory].slice(0, 10),
+    },
+  };
+}
+
+function obligationUpdateData(
+  obligation: ObligationRecord,
+  overrides: Parameters<typeof updateObligation>[1],
+): Parameters<typeof updateObligation>[1] {
+  return {
+    entity_id: obligation.entity_id,
+    property_id: obligation.property_id,
+    tenancy_unit_id: obligation.tenancy_unit_id,
+    lease_id: obligation.lease_id,
+    title: obligation.title,
+    category: obligation.category,
+    status: obligation.status,
+    due_date: obligation.due_date,
+    priority: obligation.priority,
+    owner_role: obligation.owner_role,
+    notes: obligation.notes,
+    metadata: obligation.metadata,
+    completed_at: obligation.completed_at,
+    ...overrides,
+  };
+}
+
 function maintenanceActivity(workOrder: MaintenanceWorkOrderRecord) {
   const raw = workOrder.metadata?.activity_history;
   if (!Array.isArray(raw)) {
@@ -396,15 +609,18 @@ function maintenanceActivity(workOrder: MaintenanceWorkOrderRecord) {
   }
   return raw
     .filter(isPlainRecord)
-    .map((entry): MaintenanceActivityEntry => ({
-      at: typeof entry.at === "string" ? entry.at : undefined,
-      timestamp: typeof entry.timestamp === "string" ? entry.timestamp : undefined,
-      event: typeof entry.event === "string" ? entry.event : undefined,
-      action: typeof entry.action === "string" ? entry.action : undefined,
-      actor: typeof entry.actor === "string" ? entry.actor : undefined,
-      source: typeof entry.source === "string" ? entry.source : undefined,
-      summary: typeof entry.summary === "string" ? entry.summary : undefined,
-    }))
+    .map(
+      (entry): MaintenanceActivityEntry => ({
+        at: typeof entry.at === "string" ? entry.at : undefined,
+        timestamp:
+          typeof entry.timestamp === "string" ? entry.timestamp : undefined,
+        event: typeof entry.event === "string" ? entry.event : undefined,
+        action: typeof entry.action === "string" ? entry.action : undefined,
+        actor: typeof entry.actor === "string" ? entry.actor : undefined,
+        source: typeof entry.source === "string" ? entry.source : undefined,
+        summary: typeof entry.summary === "string" ? entry.summary : undefined,
+      }),
+    )
     .filter((entry) => entry.summary || entry.event || entry.action);
 }
 
@@ -439,9 +655,13 @@ function onboardingTone(onboarding: TenantOnboardingRecord): Tone {
 }
 
 function intakeIsOpen(intake: DocumentIntakeRecord) {
-  return ["uploaded", "reading", "ready_for_review", "needs_attention", "failed"].includes(
-    intake.status,
-  );
+  return [
+    "uploaded",
+    "reading",
+    "ready_for_review",
+    "needs_attention",
+    "failed",
+  ].includes(intake.status);
 }
 
 function intakeTone(intake: DocumentIntakeRecord): Tone {
@@ -604,7 +824,9 @@ function buildQueueItems(
         : "Tenant onboarding follow-up",
     description: [
       label(onboarding.status),
-      onboarding.last_sent_at ? `Sent ${formatDateTime(onboarding.last_sent_at)}` : null,
+      onboarding.last_sent_at
+        ? `Sent ${formatDateTime(onboarding.last_sent_at)}`
+        : null,
     ]
       .filter(Boolean)
       .join(" - "),
@@ -644,7 +866,9 @@ function buildQueueItems(
     description: [
       propertyName(properties, workOrder.property_id),
       tenantName(tenants, workOrder.tenant_id),
-      workOrder.contractor_name ? `Contractor: ${workOrder.contractor_name}` : null,
+      workOrder.contractor_name
+        ? `Contractor: ${workOrder.contractor_name}`
+        : null,
     ]
       .filter(Boolean)
       .join(" - "),
@@ -663,7 +887,9 @@ function buildQueueItems(
     description: [
       formatMoney(arrearsCase.total_balance_cents, arrearsCase.currency),
       propertyName(properties, arrearsCase.property_id),
-      arrearsCase.dispute_status !== "none" ? `Dispute: ${label(arrearsCase.dispute_status)}` : null,
+      arrearsCase.dispute_status !== "none"
+        ? `Dispute: ${label(arrearsCase.dispute_status)}`
+        : null,
     ]
       .filter(Boolean)
       .join(" - "),
@@ -705,14 +931,27 @@ function buildQueueItems(
 function OperationsWorkspace() {
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [activeTab, setActiveTab] = useState<OperationsTab>("queue");
-  const [maintenanceStatus, setMaintenanceStatus] = useState<MaintenanceWorkOrderStatus | "all">("all");
-  const [maintenancePriority, setMaintenancePriority] = useState<MaintenancePriority | "all">("all");
-  const [arrearsStatus, setArrearsStatus] = useState<ArrearsCaseStatus | "all">("all");
+  const [maintenanceStatus, setMaintenanceStatus] = useState<
+    MaintenanceWorkOrderStatus | "all"
+  >("all");
+  const [maintenancePriority, setMaintenancePriority] = useState<
+    MaintenancePriority | "all"
+  >("all");
+  const [arrearsStatus, setArrearsStatus] = useState<ArrearsCaseStatus | "all">(
+    "all",
+  );
   const [maintenanceFormOpen, setMaintenanceFormOpen] = useState(false);
   const [arrearsFormOpen, setArrearsFormOpen] = useState(false);
-  const [expandedMaintenanceId, setExpandedMaintenanceId] = useState<string | null>(null);
-  const [maintenanceForm, setMaintenanceForm] = useState<MaintenanceFormState>(emptyMaintenanceForm);
-  const [arrearsForm, setArrearsForm] = useState<ArrearsFormState>(emptyArrearsForm);
+  const [expandedMaintenanceId, setExpandedMaintenanceId] = useState<
+    string | null
+  >(null);
+  const [assignmentDrafts, setAssignmentDrafts] = useState<
+    Record<string, string>
+  >({});
+  const [maintenanceForm, setMaintenanceForm] =
+    useState<MaintenanceFormState>(emptyMaintenanceForm);
+  const [arrearsForm, setArrearsForm] =
+    useState<ArrearsFormState>(emptyArrearsForm);
   const queryClient = useQueryClient();
 
   const entitiesQuery = useQuery({
@@ -720,9 +959,16 @@ function OperationsWorkspace() {
     queryFn: listEntities,
   });
 
+  const securityWorkspaceQuery = useQuery({
+    queryKey: ["operations-security-workspace"],
+    queryFn: getSecurityWorkspace,
+  });
+
   useEffect(() => {
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    const accessibleIds = new Set((entitiesQuery.data ?? []).map((entity) => entity.id));
+    const accessibleIds = new Set(
+      (entitiesQuery.data ?? []).map((entity) => entity.id),
+    );
     const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
     const next = stored && accessibleIds.has(stored) ? stored : firstEntity;
     if (!selectedEntityId && next) {
@@ -789,58 +1035,82 @@ function OperationsWorkspace() {
   });
 
   const invalidateOperations = () => {
-    queryClient.invalidateQueries({ queryKey: ["operations-obligations", selectedEntityId] });
-    queryClient.invalidateQueries({ queryKey: ["operations-maintenance", selectedEntityId] });
-    queryClient.invalidateQueries({ queryKey: ["operations-arrears", selectedEntityId] });
+    queryClient.invalidateQueries({
+      queryKey: ["operations-obligations", selectedEntityId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["operations-maintenance", selectedEntityId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["operations-arrears", selectedEntityId],
+    });
   };
 
   const updateObligationMutation = useMutation({
-    mutationFn: (payload: { obligation: ObligationRecord; status: "completed" | "waived" }) =>
-      updateObligation(payload.obligation.id, {
-        entity_id: payload.obligation.entity_id,
-        property_id: payload.obligation.property_id,
-        tenancy_unit_id: payload.obligation.tenancy_unit_id,
-        lease_id: payload.obligation.lease_id,
-        title: payload.obligation.title,
-        category: payload.obligation.category,
-        status: payload.status,
-        due_date: payload.obligation.due_date,
-        priority: payload.obligation.priority,
-        owner_role: payload.obligation.owner_role,
-        notes: payload.obligation.notes,
-        metadata: payload.obligation.metadata,
-        completed_at: payload.status === "completed" ? new Date().toISOString() : null,
-      }),
+    mutationFn: (payload: {
+      obligation: ObligationRecord;
+      status: "completed" | "waived";
+    }) =>
+      updateObligation(
+        payload.obligation.id,
+        obligationUpdateData(payload.obligation, {
+          status: payload.status,
+          completed_at:
+            payload.status === "completed" ? new Date().toISOString() : null,
+        }),
+      ),
+    onSuccess: invalidateOperations,
+  });
+
+  const assignObligationMutation = useMutation({
+    mutationFn: (payload: {
+      obligation: ObligationRecord;
+      metadata: Record<string, unknown>;
+    }) =>
+      updateObligation(
+        payload.obligation.id,
+        obligationUpdateData(payload.obligation, {
+          metadata: payload.metadata,
+        }),
+      ),
     onSuccess: invalidateOperations,
   });
 
   const createMaintenanceMutation = useMutation({
     mutationFn: createMaintenanceWorkOrder,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["operations-maintenance", selectedEntityId] });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", selectedEntityId],
+      });
       setMaintenanceForm(emptyMaintenanceForm);
       setMaintenanceFormOpen(false);
     },
   });
 
   const updateMaintenanceMutation = useMutation({
-    mutationFn: (payload: { id: string; data: Parameters<typeof updateMaintenanceWorkOrder>[1] }) =>
-      updateMaintenanceWorkOrder(payload.id, payload.data),
+    mutationFn: (payload: {
+      id: string;
+      data: Parameters<typeof updateMaintenanceWorkOrder>[1];
+    }) => updateMaintenanceWorkOrder(payload.id, payload.data),
     onSuccess: invalidateOperations,
   });
 
   const createArrearsMutation = useMutation({
     mutationFn: createArrearsCase,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["operations-arrears", selectedEntityId] });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-arrears", selectedEntityId],
+      });
       setArrearsForm(emptyArrearsForm);
       setArrearsFormOpen(false);
     },
   });
 
   const updateArrearsMutation = useMutation({
-    mutationFn: (payload: { id: string; data: Parameters<typeof updateArrearsCase>[1] }) =>
-      updateArrearsCase(payload.id, payload.data),
+    mutationFn: (payload: {
+      id: string;
+      data: Parameters<typeof updateArrearsCase>[1];
+    }) => updateArrearsCase(payload.id, payload.data),
     onSuccess: invalidateOperations,
   });
 
@@ -856,6 +1126,7 @@ function OperationsWorkspace() {
         invoiceDraftsQuery.isLoading ||
         arrearsQuery.isLoading));
 
+  const currentUser = securityWorkspaceQuery.data?.current_user ?? null;
   const properties = propertiesQuery.data ?? EMPTY_PROPERTIES;
   const tenants = tenantsQuery.data ?? EMPTY_TENANTS;
   const obligations = obligationsQuery.data ?? EMPTY_OBLIGATIONS;
@@ -864,6 +1135,13 @@ function OperationsWorkspace() {
   const maintenance = maintenanceQuery.data ?? EMPTY_MAINTENANCE;
   const arrears = arrearsQuery.data ?? EMPTY_ARREARS;
   const invoiceDrafts = invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS;
+  const assignableMembers = useMemo(
+    () =>
+      (securityWorkspaceQuery.data?.members ?? EMPTY_MEMBERS)
+        .filter((member) => memberCanReceiveWork(member, selectedEntityId))
+        .sort((a, b) => memberLabel(a).localeCompare(memberLabel(b))),
+    [securityWorkspaceQuery.data?.members, selectedEntityId],
+  );
 
   const queueItems = useMemo(
     () =>
@@ -876,17 +1154,27 @@ function OperationsWorkspace() {
         properties,
         tenants,
       ),
-    [arrears, intakes, maintenance, obligations, onboardings, properties, tenants],
+    [
+      arrears,
+      intakes,
+      maintenance,
+      obligations,
+      onboardings,
+      properties,
+      tenants,
+    ],
   );
 
   const openQueueItems = queueItems.filter((item) => !item.completed);
   const urgentMaintenance = maintenance.filter(
-    (item) => maintenanceIsOpen(item) && ["urgent", "high"].includes(item.priority),
+    (item) =>
+      maintenanceIsOpen(item) && ["urgent", "high"].includes(item.priority),
   );
   const awaitingApproval = maintenance.filter(
     (item) =>
       maintenanceIsOpen(item) &&
-      (item.status === "awaiting_approval" || item.approval_status === "pending"),
+      (item.status === "awaiting_approval" ||
+        item.approval_status === "pending"),
   );
   const activeArrears = arrears.filter(arrearsIsOpen);
   const disputedArrears = activeArrears.filter((item) =>
@@ -900,7 +1188,10 @@ function OperationsWorkspace() {
     if (maintenanceStatus !== "all" && item.status !== maintenanceStatus) {
       return false;
     }
-    if (maintenancePriority !== "all" && item.priority !== maintenancePriority) {
+    if (
+      maintenancePriority !== "all" &&
+      item.priority !== maintenancePriority
+    ) {
       return false;
     }
     return true;
@@ -927,9 +1218,17 @@ function OperationsWorkspace() {
     updateMaintenanceMutation.error ||
     createArrearsMutation.error ||
     updateArrearsMutation.error ||
-    updateObligationMutation.error;
+    updateObligationMutation.error ||
+    assignObligationMutation.error ||
+    securityWorkspaceQuery.error;
+
+  const assignmentPending =
+    updateMaintenanceMutation.isPending ||
+    updateArrearsMutation.isPending ||
+    assignObligationMutation.isPending;
 
   function refresh() {
+    securityWorkspaceQuery.refetch();
     propertiesQuery.refetch();
     tenantsQuery.refetch();
     obligationsQuery.refetch();
@@ -953,19 +1252,25 @@ function OperationsWorkspace() {
       property_id: maintenanceForm.property_id || null,
       tenant_id: maintenanceForm.tenant_id || null,
       priority: maintenanceForm.priority,
-      status: maintenanceForm.approval_required ? "awaiting_approval" : maintenanceForm.status,
+      status: maintenanceForm.approval_required
+        ? "awaiting_approval"
+        : maintenanceForm.status,
       due_date: maintenanceForm.due_date || null,
       contractor_name: optionalString(maintenanceForm.contractor_name),
       contractor_email: optionalString(maintenanceForm.contractor_email),
       contractor_phone: optionalString(maintenanceForm.contractor_phone),
       quote_amount_cents: quoteAmount || null,
       approval_required: maintenanceForm.approval_required,
-      approval_status: maintenanceForm.approval_required ? "pending" : "not_required",
-      approval_limit_cents: dollarsToCents(maintenanceForm.approval_limit) || null,
+      approval_status: maintenanceForm.approval_required
+        ? "pending"
+        : "not_required",
+      approval_limit_cents:
+        dollarsToCents(maintenanceForm.approval_limit) || null,
       approval_notes: optionalString(maintenanceForm.approval_notes),
       source_reference: optionalString(maintenanceForm.source_reference),
       invoice_reference: optionalString(maintenanceForm.invoice_reference),
-      invoice_amount_cents: dollarsToCents(maintenanceForm.invoice_amount) || null,
+      invoice_amount_cents:
+        dollarsToCents(maintenanceForm.invoice_amount) || null,
       notes: optionalString(maintenanceForm.notes),
       metadata: { source: "operator_operations_workspace" },
     });
@@ -992,13 +1297,141 @@ function OperationsWorkspace() {
       dispute_status: arrearsForm.dispute_status,
       escalation_status: arrearsForm.escalation_status,
       promise_to_pay_date: arrearsForm.promise_to_pay_date || null,
-      promise_to_pay_amount_cents: dollarsToCents(arrearsForm.promise_to_pay_amount) || null,
+      promise_to_pay_amount_cents:
+        dollarsToCents(arrearsForm.promise_to_pay_amount) || null,
       notes: optionalString(arrearsForm.notes),
       metadata: {
         source: "operator_operations_workspace",
         tenant_name: tenant?.trading_name || tenant?.legal_name || null,
       },
     });
+  }
+
+  function assignmentValue(itemId: string, metadata: Record<string, unknown>) {
+    return (
+      assignmentDrafts[itemId] ?? workAssignment(metadata)?.assignedUserId ?? ""
+    );
+  }
+
+  function setAssignmentValue(itemId: string, value: string) {
+    setAssignmentDrafts((current) => ({
+      ...current,
+      [itemId]: value,
+    }));
+  }
+
+  function nextAssignmentMetadata(
+    metadata: Record<string, unknown>,
+    assigneeId: string,
+    title: string,
+    kind: string,
+  ) {
+    const assignee = assigneeId
+      ? (assignableMembers.find((member) => member.id === assigneeId) ?? null)
+      : null;
+    if (assigneeId && !assignee) {
+      return null;
+    }
+    return assignmentMetadata({
+      metadata,
+      assignee,
+      currentUser,
+      entityId: selectedEntityId,
+      title,
+      kind,
+    });
+  }
+
+  function assignMaintenance(
+    workOrder: MaintenanceWorkOrderRecord,
+    assigneeId: string,
+  ) {
+    const metadata = nextAssignmentMetadata(
+      workOrder.metadata,
+      assigneeId,
+      workOrder.title,
+      "Maintenance",
+    );
+    if (!metadata) {
+      return;
+    }
+    updateMaintenanceMutation.mutate({
+      id: workOrder.id,
+      data: { metadata },
+    });
+  }
+
+  function assignArrears(arrearsCase: ArrearsCaseRecord, assigneeId: string) {
+    const title = `${tenantName(tenants, arrearsCase.tenant_id)} arrears`;
+    const metadata = nextAssignmentMetadata(
+      arrearsCase.metadata,
+      assigneeId,
+      title,
+      "Arrears",
+    );
+    if (!metadata) {
+      return;
+    }
+    updateArrearsMutation.mutate({
+      id: arrearsCase.id,
+      data: {
+        assigned_user_id: assigneeId || null,
+        metadata,
+      },
+    });
+  }
+
+  function assignObligation(obligation: ObligationRecord, assigneeId: string) {
+    const metadata = nextAssignmentMetadata(
+      obligation.metadata,
+      assigneeId,
+      obligation.title,
+      "Critical date",
+    );
+    if (!metadata) {
+      return;
+    }
+    assignObligationMutation.mutate({
+      obligation,
+      metadata,
+    });
+  }
+
+  function assignQueueItem(item: AssignableQueueItem, assigneeId: string) {
+    if (item.kind === "maintenance") {
+      assignMaintenance(item.record, assigneeId);
+      return;
+    }
+    if (item.kind === "arrears") {
+      assignArrears(item.record, assigneeId);
+      return;
+    }
+    assignObligation(item.record, assigneeId);
+  }
+
+  function renderAssignmentControl({
+    itemId,
+    title,
+    metadata,
+    onAssign,
+  }: {
+    itemId: string;
+    title: string;
+    metadata: Record<string, unknown>;
+    onAssign: (assigneeId: string) => void;
+  }) {
+    return (
+      <WorkAssignmentControl
+        title={title}
+        assignment={workAssignment(metadata)}
+        members={assignableMembers}
+        value={assignmentValue(itemId, metadata)}
+        onChange={(value) => setAssignmentValue(itemId, value)}
+        onAssign={onAssign}
+        disabled={assignmentPending}
+        membersLoading={securityWorkspaceQuery.isLoading}
+      />
+    );
   }
 
   function renderQueueActions(item: QueueItem) {
@@ -1041,7 +1474,10 @@ function OperationsWorkspace() {
     }
     if (item.kind === "onboarding") {
       return (
-        <Link className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted" href="/tenants">
+        <Link
+          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+          href="/tenants"
+        >
           <MailCheck size={15} />
           Open tenants
         </Link>
@@ -1049,7 +1485,10 @@ function OperationsWorkspace() {
     }
     if (item.kind === "document_intake") {
       return (
-        <Link className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted" href="/intake">
+        <Link
+          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+          href="/intake"
+        >
           <Sparkles size={15} />
           Review
         </Link>
@@ -1059,7 +1498,9 @@ function OperationsWorkspace() {
       return (
         <MaintenanceActions
           workOrder={item.record}
-          onUpdate={(data) => updateMaintenanceMutation.mutate({ id: item.record.id, data })}
+          onUpdate={(data) =>
+            updateMaintenanceMutation.mutate({ id: item.record.id, data })
+          }
           disabled={updateMaintenanceMutation.isPending}
         />
       );
@@ -1067,7 +1508,9 @@ function OperationsWorkspace() {
     return (
       <ArrearsActions
         arrearsCase={item.record}
-        onUpdate={(data) => updateArrearsMutation.mutate({ id: item.record.id, data })}
+        onUpdate={(data) =>
+          updateArrearsMutation.mutate({ id: item.record.id, data })
+        }
         disabled={updateArrearsMutation.isPending}
       />
     );
@@ -1096,7 +1539,11 @@ function OperationsWorkspace() {
           description="Maintenance, arrears, tenant follow-ups, critical dates, and document exceptions."
           actions={
             <div className="flex flex-wrap gap-2">
-              <SecondaryButton type="button" onClick={refresh} disabled={!selectedEntityId}>
+              <SecondaryButton
+                type="button"
+                onClick={refresh}
+                disabled={!selectedEntityId}
+              >
                 <RefreshCw size={15} />
                 Refresh
               </SecondaryButton>
@@ -1135,15 +1582,25 @@ function OperationsWorkspace() {
         {operationsLoading ? (
           <SectionPanel
             title="Loading operations"
-            description={selectedEntity ? selectedEntity.name : "Finding the active entity."}
+            description={
+              selectedEntity
+                ? selectedEntity.name
+                : "Finding the active entity."
+            }
             icon={<RefreshCw size={17} className="animate-spin text-primary" />}
             actions={<StatusBadge tone="neutral">Loading</StatusBadge>}
             className="border-primary/20 bg-primary/5"
           >
             <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-3">
-              <div className="rounded-xl border border-border bg-white px-3 py-2">Queue</div>
-              <div className="rounded-xl border border-border bg-white px-3 py-2">Maintenance</div>
-              <div className="rounded-xl border border-border bg-white px-3 py-2">Arrears</div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Queue
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Maintenance
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Arrears
+              </div>
             </div>
           </SectionPanel>
         ) : null}
@@ -1214,7 +1671,12 @@ function OperationsWorkspace() {
                     )}
                   >
                     <span className="text-sm font-semibold">{tab.label}</span>
-                    <span className={cn("text-xs", isActive && "text-primary-foreground/80")}>
+                    <span
+                      className={cn(
+                        "text-xs",
+                        isActive && "text-primary-foreground/80",
+                      )}
+                    >
                       {tab.description}
                     </span>
                   </button>
@@ -1237,15 +1699,30 @@ function OperationsWorkspace() {
                       <Link href={item.href} className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-semibold">{item.title}</span>
-                          <StatusBadge tone={item.tone}>{item.chip}</StatusBadge>
+                          <StatusBadge tone={item.tone}>
+                            {item.chip}
+                          </StatusBadge>
                           <StatusBadge tone={queueKindTone(item)}>
                             {queueKindLabel(item)}
                           </StatusBadge>
                         </div>
-                        <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {item.description}
+                        </p>
                       </Link>
                       <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                        <StatusBadge tone={item.tone}>{queueDateLabel(item)}</StatusBadge>
+                        <StatusBadge tone={item.tone}>
+                          {queueDateLabel(item)}
+                        </StatusBadge>
+                        {isAssignableQueueItem(item)
+                          ? renderAssignmentControl({
+                              itemId: item.id,
+                              title: item.title,
+                              metadata: item.record.metadata,
+                              onAssign: (assigneeId) =>
+                                assignQueueItem(item, assigneeId),
+                            })
+                          : null}
                         {renderQueueActions(item)}
                       </div>
                     </div>
@@ -1292,7 +1769,10 @@ function OperationsWorkspace() {
                     description="Track a tenant request, contractor job, approval, or invoice reference."
                     icon={<Wrench size={17} className="text-primary" />}
                   >
-                    <form onSubmit={submitMaintenance} className="grid gap-3 p-4 md:grid-cols-2">
+                    <form
+                      onSubmit={submitMaintenance}
+                      className="grid gap-3 p-4 md:grid-cols-2"
+                    >
                       <Field label="Title">
                         <Input
                           value={maintenanceForm.title}
@@ -1311,7 +1791,8 @@ function OperationsWorkspace() {
                           onChange={(event) =>
                             setMaintenanceForm((current) => ({
                               ...current,
-                              priority: event.target.value as MaintenancePriority,
+                              priority: event.target
+                                .value as MaintenancePriority,
                             }))
                           }
                         >
@@ -1476,7 +1957,9 @@ function OperationsWorkspace() {
                         Approval required
                       </label>
                       <label className="grid gap-1.5 text-sm md:col-span-2">
-                        <span className="font-medium text-foreground">Approval notes</span>
+                        <span className="font-medium text-foreground">
+                          Approval notes
+                        </span>
                         <textarea
                           value={maintenanceForm.approval_notes}
                           onChange={(event) =>
@@ -1490,7 +1973,9 @@ function OperationsWorkspace() {
                         />
                       </label>
                       <label className="grid gap-1.5 text-sm md:col-span-2">
-                        <span className="font-medium text-foreground">Description</span>
+                        <span className="font-medium text-foreground">
+                          Description
+                        </span>
                         <textarea
                           value={maintenanceForm.description}
                           onChange={(event) =>
@@ -1504,7 +1989,9 @@ function OperationsWorkspace() {
                         />
                       </label>
                       <label className="grid gap-1.5 text-sm md:col-span-2">
-                        <span className="font-medium text-foreground">Internal notes</span>
+                        <span className="font-medium text-foreground">
+                          Internal notes
+                        </span>
                         <textarea
                           value={maintenanceForm.notes}
                           onChange={(event) =>
@@ -1520,7 +2007,10 @@ function OperationsWorkspace() {
                       <div className="flex flex-wrap gap-2 md:col-span-2">
                         <Button
                           type="submit"
-                          disabled={!maintenanceForm.title.trim() || createMaintenanceMutation.isPending}
+                          disabled={
+                            !maintenanceForm.title.trim() ||
+                            createMaintenanceMutation.isPending
+                          }
                         >
                           <Plus size={15} />
                           Create work order
@@ -1546,7 +2036,11 @@ function OperationsWorkspace() {
                         aria-label="Maintenance status"
                         value={maintenanceStatus}
                         onChange={(event) =>
-                          setMaintenanceStatus(event.target.value as MaintenanceWorkOrderStatus | "all")
+                          setMaintenanceStatus(
+                            event.target.value as
+                              | MaintenanceWorkOrderStatus
+                              | "all",
+                          )
                         }
                         className="w-40"
                       >
@@ -1561,7 +2055,9 @@ function OperationsWorkspace() {
                         aria-label="Maintenance priority"
                         value={maintenancePriority}
                         onChange={(event) =>
-                          setMaintenancePriority(event.target.value as MaintenancePriority | "all")
+                          setMaintenancePriority(
+                            event.target.value as MaintenancePriority | "all",
+                          )
                         }
                         className="w-40"
                       >
@@ -1592,11 +2088,31 @@ function OperationsWorkspace() {
                             <StatusBadge tone={maintenanceTone(workOrder)}>
                               {label(workOrder.status)}
                             </StatusBadge>
-                            <StatusBadge tone={workOrder.priority === "urgent" ? "danger" : workOrder.priority === "high" ? "warning" : "neutral"}>
+                            <StatusBadge
+                              tone={
+                                workOrder.priority === "urgent"
+                                  ? "danger"
+                                  : workOrder.priority === "high"
+                                    ? "warning"
+                                    : "neutral"
+                              }
+                            >
                               {label(workOrder.priority)}
                             </StatusBadge>
                             {workOrder.approval_status === "pending" ? (
-                              <StatusBadge tone="warning">Approval pending</StatusBadge>
+                              <StatusBadge tone="warning">
+                                Approval pending
+                              </StatusBadge>
+                            ) : null}
+                            {workAssignment(workOrder.metadata)
+                              ?.assignedName ? (
+                              <StatusBadge tone="primary">
+                                Assigned to{" "}
+                                {
+                                  workAssignment(workOrder.metadata)
+                                    ?.assignedName
+                                }
+                              </StatusBadge>
                             ) : null}
                           </div>
                           <p className="mt-1 text-sm text-muted-foreground">
@@ -1610,34 +2126,56 @@ function OperationsWorkspace() {
                           </p>
                           <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
                             <span>Due {dueLabel(workOrder.due_date)}</span>
-                            <span>Requested {formatDateTime(workOrder.requested_at)}</span>
-                            {workOrder.contractor_name ? <span>{workOrder.contractor_name}</span> : null}
-                            {workOrder.invoice_draft_id || workOrder.invoice_reference ? (
+                            <span>
+                              Requested {formatDateTime(workOrder.requested_at)}
+                            </span>
+                            {workOrder.contractor_name ? (
+                              <span>{workOrder.contractor_name}</span>
+                            ) : null}
+                            {workOrder.invoice_draft_id ||
+                            workOrder.invoice_reference ? (
                               <span>
                                 Invoice{" "}
-                                {invoiceDraftName(invoiceDrafts, workOrder.invoice_draft_id) ??
+                                {invoiceDraftName(
+                                  invoiceDrafts,
+                                  workOrder.invoice_draft_id,
+                                ) ??
                                   workOrder.invoice_reference ??
                                   "linked"}
                               </span>
                             ) : null}
                             {workOrder.quote_amount_cents ? (
-                              <span>{formatMoney(workOrder.quote_amount_cents)}</span>
+                              <span>
+                                {formatMoney(workOrder.quote_amount_cents)}
+                              </span>
                             ) : null}
                           </div>
                         </div>
-                        <MaintenanceActions
-                          workOrder={workOrder}
-                          onUpdate={(data) =>
-                            updateMaintenanceMutation.mutate({ id: workOrder.id, data })
-                          }
-                          disabled={updateMaintenanceMutation.isPending}
-                          expanded={expandedMaintenanceId === workOrder.id}
-                          onToggleDetails={() =>
-                            setExpandedMaintenanceId((current) =>
-                              current === workOrder.id ? null : workOrder.id,
-                            )
-                          }
-                        />
+                        <div className="grid gap-2 xl:justify-items-end">
+                          {renderAssignmentControl({
+                            itemId: `maintenance-${workOrder.id}`,
+                            title: workOrder.title,
+                            metadata: workOrder.metadata,
+                            onAssign: (assigneeId) =>
+                              assignMaintenance(workOrder, assigneeId),
+                          })}
+                          <MaintenanceActions
+                            workOrder={workOrder}
+                            onUpdate={(data) =>
+                              updateMaintenanceMutation.mutate({
+                                id: workOrder.id,
+                                data,
+                              })
+                            }
+                            disabled={updateMaintenanceMutation.isPending}
+                            expanded={expandedMaintenanceId === workOrder.id}
+                            onToggleDetails={() =>
+                              setExpandedMaintenanceId((current) =>
+                                current === workOrder.id ? null : workOrder.id,
+                              )
+                            }
+                          />
+                        </div>
                         {expandedMaintenanceId === workOrder.id ? (
                           <div className="xl:col-span-2">
                             <MaintenanceDetailPanel
@@ -1685,7 +2223,10 @@ function OperationsWorkspace() {
                     description="Track ageing, reminders, disputes, promise-to-pay, and escalation."
                     icon={<HandCoins size={17} className="text-primary" />}
                   >
-                    <form onSubmit={submitArrears} className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+                    <form
+                      onSubmit={submitArrears}
+                      className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3"
+                    >
                       <Field label="Tenant">
                         <Select
                           value={arrearsForm.tenant_id}
@@ -1744,7 +2285,11 @@ function OperationsWorkspace() {
                         <Field key={key} label={fieldLabel}>
                           <Input
                             inputMode="decimal"
-                            value={arrearsForm[key as keyof ArrearsFormState] as string}
+                            value={
+                              arrearsForm[
+                                key as keyof ArrearsFormState
+                              ] as string
+                            }
                             onChange={(event) =>
                               setArrearsForm((current) => ({
                                 ...current,
@@ -1760,7 +2305,8 @@ function OperationsWorkspace() {
                           onChange={(event) =>
                             setArrearsForm((current) => ({
                               ...current,
-                              dispute_status: event.target.value as ArrearsDisputeStatus,
+                              dispute_status: event.target
+                                .value as ArrearsDisputeStatus,
                             }))
                           }
                         >
@@ -1777,7 +2323,8 @@ function OperationsWorkspace() {
                           onChange={(event) =>
                             setArrearsForm((current) => ({
                               ...current,
-                              escalation_status: event.target.value as ArrearsEscalationStatus,
+                              escalation_status: event.target
+                                .value as ArrearsEscalationStatus,
                             }))
                           }
                         >
@@ -1813,7 +2360,9 @@ function OperationsWorkspace() {
                         />
                       </Field>
                       <label className="grid gap-1.5 text-sm md:col-span-2 xl:col-span-3">
-                        <span className="font-medium text-foreground">Notes</span>
+                        <span className="font-medium text-foreground">
+                          Notes
+                        </span>
                         <textarea
                           value={arrearsForm.notes}
                           onChange={(event) =>
@@ -1829,12 +2378,18 @@ function OperationsWorkspace() {
                       <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-3">
                         <Button
                           type="submit"
-                          disabled={!arrearsForm.tenant_id || createArrearsMutation.isPending}
+                          disabled={
+                            !arrearsForm.tenant_id ||
+                            createArrearsMutation.isPending
+                          }
                         >
                           <Plus size={15} />
                           Create arrears case
                         </Button>
-                        <SecondaryButton type="button" onClick={() => setArrearsFormOpen(false)}>
+                        <SecondaryButton
+                          type="button"
+                          onClick={() => setArrearsFormOpen(false)}
+                        >
                           Cancel
                         </SecondaryButton>
                       </div>
@@ -1851,7 +2406,9 @@ function OperationsWorkspace() {
                       aria-label="Arrears status"
                       value={arrearsStatus}
                       onChange={(event) =>
-                        setArrearsStatus(event.target.value as ArrearsCaseStatus | "all")
+                        setArrearsStatus(
+                          event.target.value as ArrearsCaseStatus | "all",
+                        )
                       }
                       className="w-44"
                     >
@@ -1876,14 +2433,33 @@ function OperationsWorkspace() {
                               {tenantName(tenants, arrearsCase.tenant_id)}
                             </span>
                             <StatusBadge tone={arrearsTone(arrearsCase)}>
-                              {formatMoney(arrearsCase.total_balance_cents, arrearsCase.currency)}
+                              {formatMoney(
+                                arrearsCase.total_balance_cents,
+                                arrearsCase.currency,
+                              )}
                             </StatusBadge>
-                            <StatusBadge tone={arrearsIsOpen(arrearsCase) ? "warning" : "success"}>
+                            <StatusBadge
+                              tone={
+                                arrearsIsOpen(arrearsCase)
+                                  ? "warning"
+                                  : "success"
+                              }
+                            >
                               {label(arrearsCase.status)}
                             </StatusBadge>
                             {arrearsCase.dispute_status !== "none" ? (
                               <StatusBadge tone="danger">
                                 {label(arrearsCase.dispute_status)}
+                              </StatusBadge>
+                            ) : null}
+                            {workAssignment(arrearsCase.metadata)
+                              ?.assignedName ? (
+                              <StatusBadge tone="primary">
+                                Assigned to{" "}
+                                {
+                                  workAssignment(arrearsCase.metadata)
+                                    ?.assignedName
+                                }
                               </StatusBadge>
                             ) : null}
                           </div>
@@ -1899,26 +2475,62 @@ function OperationsWorkspace() {
                               .join(" - ")}
                           </p>
                           <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-5">
-                            <span>Current {formatMoney(arrearsCase.balance_current_cents)}</span>
-                            <span>1-30 {formatMoney(arrearsCase.balance_1_30_cents)}</span>
-                            <span>31-60 {formatMoney(arrearsCase.balance_31_60_cents)}</span>
-                            <span>61-90 {formatMoney(arrearsCase.balance_61_90_cents)}</span>
-                            <span>90+ {formatMoney(arrearsCase.balance_90_plus_cents)}</span>
+                            <span>
+                              Current{" "}
+                              {formatMoney(arrearsCase.balance_current_cents)}
+                            </span>
+                            <span>
+                              1-30 {formatMoney(arrearsCase.balance_1_30_cents)}
+                            </span>
+                            <span>
+                              31-60{" "}
+                              {formatMoney(arrearsCase.balance_31_60_cents)}
+                            </span>
+                            <span>
+                              61-90{" "}
+                              {formatMoney(arrearsCase.balance_61_90_cents)}
+                            </span>
+                            <span>
+                              90+{" "}
+                              {formatMoney(arrearsCase.balance_90_plus_cents)}
+                            </span>
                           </div>
                         </div>
                         <div className="grid gap-2">
                           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                            <StatusBadge tone={dueRank(arrearsCase.next_reminder_on) <= 0 ? "warning" : "neutral"}>
+                            <StatusBadge
+                              tone={
+                                dueRank(arrearsCase.next_reminder_on) <= 0
+                                  ? "warning"
+                                  : "neutral"
+                              }
+                            >
                               Reminder {dueLabel(arrearsCase.next_reminder_on)}
                             </StatusBadge>
-                            <StatusBadge tone={arrearsCase.escalation_status === "none" ? "neutral" : "danger"}>
+                            <StatusBadge
+                              tone={
+                                arrearsCase.escalation_status === "none"
+                                  ? "neutral"
+                                  : "danger"
+                              }
+                            >
                               {label(arrearsCase.escalation_status)}
                             </StatusBadge>
                           </div>
+                          {renderAssignmentControl({
+                            itemId: `arrears-${arrearsCase.id}`,
+                            title: `${tenantName(tenants, arrearsCase.tenant_id)} arrears`,
+                            metadata: arrearsCase.metadata,
+                            onAssign: (assigneeId) =>
+                              assignArrears(arrearsCase, assigneeId),
+                          })}
                           <ArrearsActions
                             arrearsCase={arrearsCase}
                             onUpdate={(data) =>
-                              updateArrearsMutation.mutate({ id: arrearsCase.id, data })
+                              updateArrearsMutation.mutate({
+                                id: arrearsCase.id,
+                                data,
+                              })
                             }
                             disabled={updateArrearsMutation.isPending}
                           />
@@ -1930,7 +2542,10 @@ function OperationsWorkspace() {
                         title="No arrears cases"
                         description="Open balances, disputes, reminder schedules, and escalation work will appear here."
                         action={
-                          <SecondaryButton type="button" onClick={() => setArrearsFormOpen(true)}>
+                          <SecondaryButton
+                            type="button"
+                            onClick={() => setArrearsFormOpen(true)}
+                          >
                             <Plus size={15} />
                             Arrears case
                           </SecondaryButton>
@@ -1948,6 +2563,101 @@ function OperationsWorkspace() {
   );
 }
 
+function WorkAssignmentControl({
+  title,
+  assignment,
+  members,
+  value,
+  onChange,
+  onAssign,
+  disabled,
+  membersLoading,
+}: {
+  title: string;
+  assignment: WorkAssignment | null;
+  members: SecurityMemberRecord[];
+  value: string;
+  onChange: (value: string) => void;
+  onAssign: (assigneeId: string) => void;
+  disabled: boolean;
+  membersLoading: boolean;
+}) {
+  const currentAssigneeId = assignment?.assignedUserId ?? "";
+  const hasMembers = members.length > 0;
+  const canAssign = Boolean(value) && value !== currentAssigneeId;
+  const notificationReady = assignment?.notificationStatus === "ready";
+
+  return (
+    <div className="grid min-w-[min(100%,22rem)] gap-2 rounded-xl border border-border bg-muted/30 p-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex size-7 items-center justify-center rounded-lg bg-white text-primary shadow-leasiumXs">
+          <UserRound size={15} />
+        </span>
+        <span className="font-semibold">
+          {assignment?.assignedName
+            ? `Assigned to ${assignment.assignedName}`
+            : "Unassigned"}
+        </span>
+        {notificationReady ? (
+          <StatusBadge tone="success">Notification ready</StatusBadge>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          aria-label={`Assignee for ${title}`}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled || membersLoading || !hasMembers}
+          className="h-9 w-44"
+        >
+          <option value="">
+            {membersLoading
+              ? "Loading members"
+              : hasMembers
+                ? "Choose assignee"
+                : "No members"}
+          </option>
+          {members.map((member) => (
+            <option key={member.id} value={member.id}>
+              {memberLabel(member)}
+            </option>
+          ))}
+        </Select>
+        <SecondaryButton
+          type="button"
+          className="h-9 px-3"
+          disabled={disabled || !canAssign}
+          onClick={() => onAssign(value)}
+        >
+          <MailCheck size={15} />
+          Assign
+        </SecondaryButton>
+        {assignment?.assignedUserId ? (
+          <SecondaryButton
+            type="button"
+            className="h-9 px-3"
+            disabled={disabled}
+            onClick={() => {
+              onChange("");
+              onAssign("");
+            }}
+          >
+            <Ban size={15} />
+            Clear
+          </SecondaryButton>
+        ) : null}
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {assignment?.assignedAt
+          ? `Updated ${formatDateTime(assignment.assignedAt)} by ${
+              assignment.assignedByName ?? "Leasium"
+            }.`
+          : "Assign the owner and prepare the Leasium notification."}
+      </div>
+    </div>
+  );
+}
+
 function MetricCard({
   icon,
   label: metricLabel,
@@ -1962,7 +2672,9 @@ function MetricCard({
   return (
     <div className="rounded-2xl border border-border bg-white p-4 shadow-leasiumXs">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold text-muted-foreground">{metricLabel}</span>
+        <span className="text-sm font-semibold text-muted-foreground">
+          {metricLabel}
+        </span>
         {icon}
       </div>
       <div className="mt-3 text-3xl font-semibold">{value}</div>
@@ -2004,7 +2716,9 @@ function maintenanceTimeline(workOrder: MaintenanceWorkOrderRecord) {
               : "Approval tracked."),
         }
       : null,
-    workOrder.invoice_draft_id || workOrder.invoice_reference || workOrder.invoice_amount_cents
+    workOrder.invoice_draft_id ||
+    workOrder.invoice_reference ||
+    workOrder.invoice_amount_cents
       ? {
           at: workOrder.updated_at,
           label: "Invoice linked",
@@ -2063,9 +2777,13 @@ function MaintenanceDetailPanel({
     ) {
       return false;
     }
-    return draft.status === "approved" || draft.id === workOrder.invoice_draft_id;
+    return (
+      draft.status === "approved" || draft.id === workOrder.invoice_draft_id
+    );
   });
-  const [invoiceDraftId, setInvoiceDraftId] = useState(workOrder.invoice_draft_id ?? "");
+  const [invoiceDraftId, setInvoiceDraftId] = useState(
+    workOrder.invoice_draft_id ?? "",
+  );
   const selectedInvoiceDraft = matchingInvoiceDrafts.find(
     (draft) => draft.id === invoiceDraftId,
   );
@@ -2102,7 +2820,9 @@ function MaintenanceDetailPanel({
             </div>
             <div>
               <dt className="text-muted-foreground">Status</dt>
-              <dd className="font-medium">{label(workOrder.approval_status)}</dd>
+              <dd className="font-medium">
+                {label(workOrder.approval_status)}
+              </dd>
             </div>
             {workOrder.approval_notes ? (
               <div>
@@ -2158,7 +2878,9 @@ function MaintenanceDetailPanel({
           <dl className="mt-3 grid gap-2 text-sm">
             <div>
               <dt className="text-muted-foreground">Name</dt>
-              <dd className="font-medium">{workOrder.contractor_name || "Not assigned"}</dd>
+              <dd className="font-medium">
+                {workOrder.contractor_name || "Not assigned"}
+              </dd>
             </div>
             {workOrder.contractor_email ? (
               <div>
@@ -2218,7 +2940,8 @@ function MaintenanceDetailPanel({
                       selectedInvoiceDraft?.title ??
                       workOrder.invoice_reference,
                     invoice_amount_cents:
-                      selectedInvoiceDraft?.total_cents ?? workOrder.invoice_amount_cents,
+                      selectedInvoiceDraft?.total_cents ??
+                      workOrder.invoice_amount_cents,
                   })
                 }
               >
@@ -2255,7 +2978,10 @@ function MaintenanceDetailPanel({
           </div>
           <div className="mt-3 grid gap-2">
             {timeline.map((entry, index) => (
-              <div key={`${entry.label}-${entry.at}-${index}`} className="grid gap-1 text-sm">
+              <div
+                key={`${entry.label}-${entry.at}-${index}`}
+                className="grid gap-1 text-sm"
+              >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{entry.label}</span>
                   <span className="text-xs text-muted-foreground">
@@ -2283,8 +3009,12 @@ function MaintenanceDetailPanel({
           <div>
             <dt className="text-muted-foreground">Attachments</dt>
             <dd>
-              {workOrder.document_ids.length + workOrder.photo_document_ids.length} file
-              {workOrder.document_ids.length + workOrder.photo_document_ids.length === 1
+              {workOrder.document_ids.length +
+                workOrder.photo_document_ids.length}{" "}
+              file
+              {workOrder.document_ids.length +
+                workOrder.photo_document_ids.length ===
+              1
                 ? ""
                 : "s"}
             </dd>
@@ -2342,7 +3072,8 @@ function MaintenanceActions({
           Triaged
         </SecondaryButton>
       ) : null}
-      {workOrder.approval_status === "pending" || workOrder.status === "awaiting_approval" ? (
+      {workOrder.approval_status === "pending" ||
+      workOrder.status === "awaiting_approval" ? (
         <SecondaryButton
           type="button"
           className="h-9 px-3"
@@ -2375,7 +3106,10 @@ function MaintenanceActions({
         className="h-9 px-3"
         disabled={disabled}
         onClick={() =>
-          onUpdate({ status: "completed", completed_at: new Date().toISOString() })
+          onUpdate({
+            status: "completed",
+            completed_at: new Date().toISOString(),
+          })
         }
       >
         <CheckCircle2 size={15} className="text-leasium-success" />
@@ -2395,7 +3129,9 @@ function ArrearsActions({
   disabled: boolean;
 }) {
   if (!arrearsIsOpen(arrearsCase)) {
-    return <StatusBadge tone="success">{label(arrearsCase.status)}</StatusBadge>;
+    return (
+      <StatusBadge tone="success">{label(arrearsCase.status)}</StatusBadge>
+    );
   }
 
   return (

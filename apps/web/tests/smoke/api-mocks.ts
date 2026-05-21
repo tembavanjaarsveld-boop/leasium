@@ -23,6 +23,7 @@ const tenantId = "tenant-1";
 const unitId = "unit-1";
 const leaseId = "lease-1";
 const operatorId = "operator-1";
+const assigneeId = "operator-2";
 
 const entities = [
   {
@@ -1059,6 +1060,26 @@ const securityWorkspace = () => ({
           entity_id: entityId,
           entity_name: "Acme Holdings Pty Ltd",
           role: "owner",
+        },
+      ],
+    },
+    {
+      id: assigneeId,
+      email: "temba@example.com",
+      display_name: "Temba van Jaarsveld",
+      is_active: true,
+      login_linked: true,
+      invite_email_status: "accepted",
+      invite_email_detail: "Provider login is linked for this operator.",
+      invite_sent_at: "2026-05-01T00:00:00.000Z",
+      invite_expires_at: "2026-05-04T00:00:00.000Z",
+      invite_accepted_at: "2026-05-01T00:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+      roles: [
+        {
+          entity_id: entityId,
+          entity_name: "Acme Holdings Pty Ltd",
+          role: "ops",
         },
       ],
     },
@@ -2803,6 +2824,20 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "PATCH" && path === "/obligations/obligation-1") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const nextPayload = { ...payload };
+      if ("metadata" in nextPayload) {
+        nextPayload.metadata = {
+          ...jsonRecord(obligations[0].metadata),
+          ...jsonRecord(nextPayload.metadata),
+        };
+      }
+      Object.assign(obligations[0], nextPayload);
+      await fulfillJson(route, obligations[0]);
+      return;
+    }
+
     if (method === "GET" && path === "/maintenance/work-orders") {
       await fulfillJson(route, maintenanceWorkOrders);
       return;
@@ -3032,7 +3067,14 @@ export async function mockLeasiumApi(
 
     if (method === "PATCH" && path === "/arrears/cases/arrears-1") {
       const payload = request.postDataJSON() as Record<string, JsonBody>;
-      Object.assign(arrearsCases[0], payload, {
+      const nextPayload = { ...payload };
+      if ("metadata" in nextPayload) {
+        nextPayload.metadata = {
+          ...jsonRecord(arrearsCases[0].metadata),
+          ...jsonRecord(nextPayload.metadata),
+        };
+      }
+      Object.assign(arrearsCases[0], nextPayload, {
         updated_at: "2026-05-20T01:00:00.000Z",
       });
       await fulfillJson(route, arrearsCases[0]);
