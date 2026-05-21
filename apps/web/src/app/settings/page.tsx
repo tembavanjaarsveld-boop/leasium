@@ -377,6 +377,35 @@ function templateDraftChanged(
   );
 }
 
+function notificationTemplateTitle(templateKey: string) {
+  const titles: Record<string, string> = {
+    work_assignment_notification: "Standard work assignment",
+    work_assignment_digest: "Standard work digest",
+  };
+  return titles[templateKey] ?? templateKey.replaceAll("_", " ");
+}
+
+function notificationTemplatePreview(
+  member: SecurityMemberRecord,
+  draft: NotificationTemplateDraft,
+) {
+  const cleanDraft = normalisedTemplateDraft(draft);
+  return {
+    noticeTitle: notificationTemplateTitle(cleanDraft.noticeKey),
+    noticeSubject: `New Leasium work assigned to ${member.display_name}`,
+    noticeDetail:
+      "Includes the work title, due date, source workspace, and a link back to Leasium.",
+    digestTitle: notificationTemplateTitle(cleanDraft.digestKey),
+    digestSubject: `${digestCadenceLabel(
+      workAssignmentDigestCadence(member),
+    )} for ${member.display_name}`,
+    digestDetail:
+      "Groups assigned work by urgency, follow-up status, and source workspace.",
+    noticeVersion: cleanDraft.noticeVersion,
+    digestVersion: cleanDraft.digestVersion,
+  };
+}
+
 function digestCadenceLabel(value: SecurityWorkAssignmentDigestCadence) {
   if (value === "off") {
     return "Digest off";
@@ -1598,6 +1627,10 @@ function SettingsWorkspace() {
                     member,
                     templateDraft,
                   );
+                  const templatePreview = notificationTemplatePreview(
+                    member,
+                    templateDraft,
+                  );
                   const canManageSecurity =
                     Boolean(securityQuery.data?.can_manage_security) &&
                     !isUpdating;
@@ -1777,6 +1810,56 @@ function SettingsWorkspace() {
                               }
                             />
                           </Field>
+                        </div>
+                        <div className="grid gap-2 rounded-lg border border-border bg-white p-3 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-semibold text-foreground">
+                              Template preview
+                            </span>
+                            <StatusBadge tone="primary">
+                              SendGrid email
+                            </StatusBadge>
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium text-foreground">
+                                  Notice
+                                </span>
+                                <StatusBadge tone="neutral">
+                                  {templatePreview.noticeVersion}
+                                </StatusBadge>
+                              </div>
+                              <div className="mt-1 text-muted-foreground">
+                                {templatePreview.noticeTitle}
+                              </div>
+                              <div className="mt-2 font-medium text-foreground">
+                                {templatePreview.noticeSubject}
+                              </div>
+                              <div className="mt-1 leading-5 text-muted-foreground">
+                                {templatePreview.noticeDetail}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium text-foreground">
+                                  Digest
+                                </span>
+                                <StatusBadge tone="neutral">
+                                  {templatePreview.digestVersion}
+                                </StatusBadge>
+                              </div>
+                              <div className="mt-1 text-muted-foreground">
+                                {templatePreview.digestTitle}
+                              </div>
+                              <div className="mt-2 font-medium text-foreground">
+                                {templatePreview.digestSubject}
+                              </div>
+                              <div className="mt-1 leading-5 text-muted-foreground">
+                                {templatePreview.digestDetail}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                         <SecondaryButton
                           type="button"

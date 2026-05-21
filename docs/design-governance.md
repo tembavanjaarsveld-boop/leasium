@@ -348,6 +348,8 @@ Twentieth 2026-05-21 follow-up: notification-center data now exposes channel, pr
 
 Twenty-first 2026-05-21 follow-up: Settings now lets owner/admin operators edit per-member Work assignment notice and digest template key/version defaults. Provider sends still require explicit Send/Retry approval, and receipts expose the template used. Remba should review whether template keys are too implementation-heavy for this panel, whether these should become named template choices, and whether template editing belongs in Security or a future Communications settings tab.
 
+Twenty-second 2026-05-21 follow-up: the Work notifications panel now adds a compact template preview beside the editable notice/digest template defaults. It translates known keys into a plain title, shows the version badge, sample subject, delivery channel, and the content summary included in each email. Remba should review whether this is enough reassurance before saving or whether template management needs a dedicated preview modal with rendered email content.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

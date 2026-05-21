@@ -752,6 +752,10 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByLabel("Owner Operator digest template key").first(),
   ).toHaveValue("work_assignment_digest");
+  await expect(page.getByText("Template preview").first()).toBeVisible();
+  await expect(
+    page.getByText("New Leasium work assigned to Owner Operator").first(),
+  ).toBeVisible();
   await expect(page.getByText("Daily digest").first()).toBeVisible();
   await expect(page.getByText("Last digest").first()).toBeVisible();
   await expect(page.getByText("No messages sent").first()).toBeVisible();
