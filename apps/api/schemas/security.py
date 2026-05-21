@@ -1,6 +1,7 @@
 """Schemas for operator security and organisation access management."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -22,6 +23,7 @@ class SecurityEntityRoleRead(BaseModel):
 
 class SecurityNotificationPreferences(BaseModel):
     work_assignment_email_enabled: bool = True
+    work_assignment_digest_cadence: Literal["off", "daily", "weekly"] = "daily"
 
 
 class SecurityCurrentUserRead(BaseModel):

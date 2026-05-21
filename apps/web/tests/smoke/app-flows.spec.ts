@@ -688,6 +688,10 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Mute work email" }).first(),
   ).toBeVisible();
+  await expect(page.getByText("Daily digest").first()).toBeVisible();
+  await expect(
+    page.getByLabel("Owner Operator work digest").first(),
+  ).toBeVisible();
 
   await page.getByRole("tab", { name: "Xero" }).click();
   await expect(page.getByText("Xero sync exception queue")).toBeVisible();

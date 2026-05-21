@@ -72,6 +72,7 @@ import {
   type SecurityMemberUpdatePayload,
   type SecurityRole,
   type SecurityRoleAssignment,
+  type SecurityWorkAssignmentDigestCadence,
   type XeroMappingIssueRecord,
   type XeroReadinessSummaryRecord,
 } from "@/lib/api";
@@ -319,6 +320,19 @@ function inviteLabel(member: SecurityMemberRecord) {
 
 function workAssignmentEmailEnabled(member: SecurityMemberRecord) {
   return member.notification_preferences.work_assignment_email_enabled;
+}
+
+function workAssignmentDigestCadence(member: SecurityMemberRecord) {
+  return (
+    member.notification_preferences.work_assignment_digest_cadence ?? "daily"
+  );
+}
+
+function digestCadenceLabel(value: SecurityWorkAssignmentDigestCadence) {
+  if (value === "off") {
+    return "Digest off";
+  }
+  return `${value[0].toUpperCase()}${value.slice(1)} digest`;
 }
 
 function nextRolesForEntity(
@@ -1277,6 +1291,7 @@ function SettingsWorkspace() {
                         resendInviteMutation.variables === member.id;
                       const workEmailEnabled =
                         workAssignmentEmailEnabled(member);
+                      const digestCadence = workAssignmentDigestCadence(member);
                       return (
                         <tr
                           key={member.id}
@@ -1361,47 +1376,87 @@ function SettingsWorkspace() {
                             </div>
                           </td>
                           <td className="min-w-64 px-3 py-3">
-                            <div className="flex flex-wrap gap-2">
-                              <StatusBadge
-                                tone={workEmailEnabled ? "success" : "neutral"}
-                              >
-                                {workEmailEnabled
-                                  ? "Work email on"
-                                  : "Work email off"}
-                              </StatusBadge>
-                              <SecondaryButton
-                                type="button"
-                                className="h-9 px-3"
-                                disabled={
-                                  isUpdating ||
-                                  !securityQuery.data?.can_manage_security
-                                }
-                                onClick={() =>
-                                  memberMutation.mutate({
-                                    memberId: member.id,
-                                    payload: {
-                                      notification_preferences: {
-                                        ...member.notification_preferences,
-                                        work_assignment_email_enabled:
-                                          !workEmailEnabled,
+                            <div className="grid gap-2">
+                              <div className="flex flex-wrap gap-2">
+                                <StatusBadge
+                                  tone={
+                                    workEmailEnabled ? "success" : "neutral"
+                                  }
+                                >
+                                  {workEmailEnabled
+                                    ? "Work email on"
+                                    : "Work email off"}
+                                </StatusBadge>
+                                <SecondaryButton
+                                  type="button"
+                                  className="h-9 px-3"
+                                  disabled={
+                                    isUpdating ||
+                                    !securityQuery.data?.can_manage_security
+                                  }
+                                  onClick={() =>
+                                    memberMutation.mutate({
+                                      memberId: member.id,
+                                      payload: {
+                                        notification_preferences: {
+                                          ...member.notification_preferences,
+                                          work_assignment_email_enabled:
+                                            !workEmailEnabled,
+                                        },
                                       },
-                                    },
-                                  })
-                                }
-                              >
-                                {workEmailEnabled ? (
-                                  <BellOff size={14} />
-                                ) : (
-                                  <Bell size={14} />
-                                )}
-                                {workEmailEnabled
-                                  ? "Mute work email"
-                                  : "Enable work email"}
-                              </SecondaryButton>
+                                    })
+                                  }
+                                >
+                                  {workEmailEnabled ? (
+                                    <BellOff size={14} />
+                                  ) : (
+                                    <Bell size={14} />
+                                  )}
+                                  {workEmailEnabled
+                                    ? "Mute work email"
+                                    : "Enable work email"}
+                                </SecondaryButton>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <StatusBadge
+                                  tone={
+                                    digestCadence === "off"
+                                      ? "neutral"
+                                      : "primary"
+                                  }
+                                >
+                                  {digestCadenceLabel(digestCadence)}
+                                </StatusBadge>
+                                <Select
+                                  aria-label={`${member.display_name} work digest`}
+                                  className="h-9 w-36"
+                                  value={digestCadence}
+                                  disabled={
+                                    isUpdating ||
+                                    !securityQuery.data?.can_manage_security
+                                  }
+                                  onChange={(event) =>
+                                    memberMutation.mutate({
+                                      memberId: member.id,
+                                      payload: {
+                                        notification_preferences: {
+                                          ...member.notification_preferences,
+                                          work_assignment_digest_cadence: event
+                                            .target
+                                            .value as SecurityWorkAssignmentDigestCadence,
+                                        },
+                                      },
+                                    })
+                                  }
+                                >
+                                  <option value="daily">Daily digest</option>
+                                  <option value="weekly">Weekly digest</option>
+                                  <option value="off">Digest off</option>
+                                </Select>
+                              </div>
                             </div>
                             <div className="mt-2 max-w-56 text-xs text-muted-foreground">
-                              Controls Work queue Send notice emails for this
-                              operator.
+                              Controls Work queue notices and digest cadence.
                             </div>
                           </td>
                           <td className="min-w-64 px-3 py-3">

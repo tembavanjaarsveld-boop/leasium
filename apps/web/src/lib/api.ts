@@ -25,8 +25,11 @@ export type SecurityRoleAssignment = {
   role: SecurityRole;
 };
 
+export type SecurityWorkAssignmentDigestCadence = "off" | "daily" | "weekly";
+
 export type SecurityNotificationPreferences = {
   work_assignment_email_enabled: boolean;
+  work_assignment_digest_cadence: SecurityWorkAssignmentDigestCadence;
 };
 
 export type SecurityEntityRoleRecord = SecurityRoleAssignment & {

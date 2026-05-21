@@ -206,8 +206,12 @@ def _notification_preferences(member: AppUser) -> SecurityNotificationPreference
         else {}
     )
     enabled = raw.get("work_assignment_email_enabled")
+    digest_cadence = raw.get("work_assignment_digest_cadence")
+    if digest_cadence not in {"off", "daily", "weekly"}:
+        digest_cadence = "daily"
     return SecurityNotificationPreferences(
-        work_assignment_email_enabled=enabled if isinstance(enabled, bool) else True
+        work_assignment_email_enabled=enabled if isinstance(enabled, bool) else True,
+        work_assignment_digest_cadence=digest_cadence,
     )
 
 

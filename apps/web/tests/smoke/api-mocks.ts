@@ -1056,6 +1056,7 @@ const securityWorkspace = () => ({
       invite_accepted_at: "2026-05-01T00:00:00.000Z",
       notification_preferences: {
         work_assignment_email_enabled: true,
+        work_assignment_digest_cadence: "daily",
       },
       created_at: "2026-05-01T00:00:00.000Z",
       roles: [
@@ -1079,6 +1080,7 @@ const securityWorkspace = () => ({
       invite_accepted_at: "2026-05-01T00:00:00.000Z",
       notification_preferences: {
         work_assignment_email_enabled: true,
+        work_assignment_digest_cadence: "daily",
       },
       created_at: "2026-05-01T00:00:00.000Z",
       roles: [
