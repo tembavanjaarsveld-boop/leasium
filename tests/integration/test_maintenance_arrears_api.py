@@ -649,6 +649,82 @@ def test_maintenance_assignment_notification_respects_operator_email_preference(
     assert notification["error"] == "Assignment email disabled by operator preference."
 
 
+def test_work_assignment_digest_runner_generates_review_only_operator_digest(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    settings = get_settings()
+    assignee = session.get(AppUser, settings.dev_user_id)
+    assert assignee is not None
+    assignee.notification_preferences = {
+        "work_assignment_email_enabled": True,
+        "work_assignment_digest_cadence": "daily",
+    }
+    session.commit()
+
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": entity_id,
+            "title": "Digest-ready maintenance job",
+            "description": "Air conditioning follow-up needs owner attention.",
+            "priority": "urgent",
+            "status": "requested",
+            "due_date": "2026-05-21",
+            "metadata": {
+                "work_assignment": {
+                    "assigned_user_id": str(assignee.id),
+                    "assigned_user_name": assignee.display_name,
+                    "assigned_user_email": assignee.email,
+                    "assigned_at": "2026-05-21T08:00:00Z",
+                    "reminder": {
+                        "status": "due",
+                        "due_on": "2026-05-21",
+                    },
+                    "escalation": {
+                        "status": "watching",
+                        "due_on": "2026-05-22",
+                    },
+                    "notification": {
+                        "status": "ready",
+                        "detail": "Assignment notice is ready.",
+                    },
+                }
+            },
+        },
+    )
+    assert create_response.status_code == 201
+
+    digest_response = client.post(
+        "/api/v1/work-assignments/digests/run",
+        json={"entity_id": entity_id, "cadence": "daily"},
+    )
+
+    assert digest_response.status_code == 200
+    digest = digest_response.json()
+    assert digest["operator_count"] == 1
+    assert digest["work_item_count"] == 1
+    assert digest["guardrails"][0].startswith("Digest generation is review-only")
+    operator_digest = digest["digests"][0]
+    assert operator_digest["assignee_user_id"] == str(assignee.id)
+    assert operator_digest["ready_count"] == 1
+    assert operator_digest["follow_up_due_count"] == 1
+    item = operator_digest["items"][0]
+    assert item["title"] == "Digest-ready maintenance job"
+    assert item["target_type"] == "maintenance_work_order"
+    assert item["notification_group"] == "ready"
+    assert item["follow_up_due"] is True
+    assert "/operations/maintenance/" in item["work_url"]
+
+    audit = session.scalar(
+        select(AuditAction).where(AuditAction.tool_name == "work_assignment.digest_generate")
+    )
+    assert audit is not None
+    assert audit.tool_output_summary is not None
+    assert "no messages sent" in audit.tool_output_summary
+
+
 def test_arrears_case_tracks_aged_balances_reminders_and_escalation(
     client: TestClient,
     session: Session,

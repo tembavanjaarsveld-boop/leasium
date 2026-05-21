@@ -56,6 +56,7 @@ import {
   getSecurityWorkspace,
   listTenantOnboardings,
   listTenants,
+  runWorkAssignmentDigest,
   type MaintenancePriority,
   type MaintenanceWorkOrderRecord,
   type MaintenanceWorkOrderStatus,
@@ -70,6 +71,8 @@ import {
   updateArrearsCase,
   updateMaintenanceWorkOrder,
   updateObligation,
+  type WorkAssignmentDigestCadence,
+  type WorkAssignmentDigestRunRecord,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -1322,6 +1325,10 @@ function OperationsWorkspace() {
   const [assignmentDrafts, setAssignmentDrafts] = useState<
     Record<string, string>
   >({});
+  const [digestCadence, setDigestCadence] =
+    useState<WorkAssignmentDigestCadence>("daily");
+  const [digestResult, setDigestResult] =
+    useState<WorkAssignmentDigestRunRecord | null>(null);
   const [maintenanceForm, setMaintenanceForm] =
     useState<MaintenanceFormState>(emptyMaintenanceForm);
   const [arrearsForm, setArrearsForm] =
@@ -1527,6 +1534,15 @@ function OperationsWorkspace() {
     onSuccess: invalidateOperations,
   });
 
+  const workAssignmentDigestMutation = useMutation({
+    mutationFn: () =>
+      runWorkAssignmentDigest({
+        entity_id: selectedEntityId,
+        cadence: digestCadence,
+      }),
+    onSuccess: (result) => setDigestResult(result),
+  });
+
   const operationsLoading =
     entitiesQuery.isLoading ||
     (Boolean(selectedEntityId) &&
@@ -1707,6 +1723,7 @@ function OperationsWorkspace() {
     sendArrearsAssignmentNotificationMutation.error ||
     sendObligationAssignmentNotificationMutation.error ||
     sendReadyAssignmentNotificationsMutation.error ||
+    workAssignmentDigestMutation.error ||
     securityWorkspaceQuery.error;
 
   const assignmentPending =
@@ -2300,6 +2317,35 @@ function OperationsWorkspace() {
                       </span>
                     </SecondaryButton>
                     <Select
+                      aria-label="Digest cadence"
+                      value={digestCadence}
+                      onChange={(event) =>
+                        setDigestCadence(
+                          event.target.value as WorkAssignmentDigestCadence,
+                        )
+                      }
+                      className="w-36"
+                    >
+                      <option value="daily">Daily digest</option>
+                      <option value="weekly">Weekly digest</option>
+                    </Select>
+                    <SecondaryButton
+                      type="button"
+                      className="h-10 px-3"
+                      disabled={
+                        !selectedEntityId ||
+                        workAssignmentDigestMutation.isPending
+                      }
+                      onClick={() => workAssignmentDigestMutation.mutate()}
+                    >
+                      {workAssignmentDigestMutation.isPending ? (
+                        <RefreshCw size={15} className="animate-spin" />
+                      ) : (
+                        <ReceiptText size={15} />
+                      )}
+                      Generate digest
+                    </SecondaryButton>
+                    <Select
                       aria-label="Queue assignee"
                       value={assigneeFilter}
                       onChange={(event) =>
@@ -2441,6 +2487,9 @@ function OperationsWorkspace() {
                       items={noticeInboxItems.slice(0, 4)}
                       counts={noticeInboxCounts}
                     />
+                  ) : null}
+                  {digestResult ? (
+                    <AssignmentDigestPreview result={digestResult} />
                   ) : null}
                 </div>
                 <div className="divide-y divide-border">
@@ -3645,6 +3694,122 @@ function AssignmentNoticeInbox({
             ) : null}
           </Link>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function digestItemHref(workUrl: string | null) {
+  if (!workUrl) {
+    return "/operations";
+  }
+  try {
+    const url = new URL(workUrl);
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return workUrl;
+  }
+}
+
+function AssignmentDigestPreview({
+  result,
+}: {
+  result: WorkAssignmentDigestRunRecord;
+}) {
+  return (
+    <div className="mt-3 rounded-xl border border-primary/20 bg-leasium-blue-soft p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-sm font-semibold">Work digest generated</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {formatDateTime(result.generated_at)} - {result.operator_count}{" "}
+            operators - {result.work_item_count} items
+          </div>
+        </div>
+        <StatusBadge tone="neutral">No messages sent</StatusBadge>
+      </div>
+      {result.guardrails.length > 0 ? (
+        <div className="mt-2 rounded-lg border border-border bg-white px-3 py-2 text-xs text-muted-foreground">
+          {result.guardrails[0]}
+        </div>
+      ) : null}
+      <div className="mt-3 grid gap-2 lg:grid-cols-2">
+        {result.digests.slice(0, 4).map((digest) => (
+          <div
+            key={digest.assignee_user_id}
+            className="rounded-lg border border-border bg-white p-3 text-sm"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate font-semibold">
+                  {digest.assignee_name}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {digest.assignee_email}
+                </div>
+              </div>
+              <StatusBadge tone="primary">
+                {digest.item_count} {digest.item_count === 1 ? "item" : "items"}
+              </StatusBadge>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {digest.follow_up_due_count ? (
+                <StatusBadge tone="warning">
+                  {digest.follow_up_due_count} follow-up
+                </StatusBadge>
+              ) : null}
+              {digest.attention_count ? (
+                <StatusBadge tone="danger">
+                  {digest.attention_count} attention
+                </StatusBadge>
+              ) : null}
+              {digest.ready_count ? (
+                <StatusBadge tone="primary">
+                  {digest.ready_count} ready
+                </StatusBadge>
+              ) : null}
+              {digest.in_flight_count ? (
+                <StatusBadge tone="warning">
+                  {digest.in_flight_count} in flight
+                </StatusBadge>
+              ) : null}
+              {digest.done_count ? (
+                <StatusBadge tone="success">
+                  {digest.done_count} done
+                </StatusBadge>
+              ) : null}
+            </div>
+            <div className="mt-2 grid gap-1.5">
+              {digest.items.slice(0, 3).map((item) => (
+                <Link
+                  key={item.target_id}
+                  href={digestItemHref(item.work_url)}
+                  className="rounded-md bg-muted/50 px-2 py-1.5 text-xs hover:bg-muted"
+                >
+                  <div className="font-medium text-foreground">
+                    {item.title}
+                  </div>
+                  <div className="mt-0.5 text-muted-foreground">
+                    {[
+                      item.notification_group
+                        ? assignmentNoticeLabel(item.notification_group)
+                        : null,
+                      item.follow_up_due ? "Follow-up due" : null,
+                      item.due_date ? `Due ${formatDate(item.due_date)}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" - ")}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
+        {result.digests.length === 0 ? (
+          <div className="rounded-lg border border-border bg-white p-3 text-sm text-muted-foreground">
+            No operators have assigned work matching this digest cadence.
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -3219,6 +3219,56 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "POST" && path === "/work-assignments/digests/run") {
+      const payload = request.postDataJSON() as {
+        entity_id?: string;
+        cadence?: "daily" | "weekly";
+      };
+      await fulfillJson(route, {
+        entity_id: payload.entity_id ?? entityId,
+        cadence: payload.cadence ?? "daily",
+        generated_at: "2026-05-21T02:30:00.000Z",
+        operator_count: 1,
+        work_item_count: 1,
+        guardrails: [
+          "Digest generation is review-only; it does not send email, SMS, or push notifications.",
+        ],
+        digests: [
+          {
+            assignee_user_id: assigneeId,
+            assignee_name: "Temba van Jaarsveld",
+            assignee_email: "temba@example.com",
+            cadence: payload.cadence ?? "daily",
+            item_count: 1,
+            ready_count: 0,
+            attention_count: 0,
+            in_flight_count: 1,
+            done_count: 0,
+            follow_up_due_count: 0,
+            items: [
+              {
+                target_id: "work-order-1",
+                target_type: "maintenance_work_order",
+                title: "Air conditioning fault",
+                description: "Tenant says the unit is not cooling.",
+                due_date: "2026-05-21",
+                status: "requested",
+                priority: "urgent",
+                notification_status: "queued",
+                notification_group: "in_flight",
+                notification_detail: "Assignment email was queued by SendGrid.",
+                reminder_due_on: null,
+                escalation_due_on: "2026-05-22",
+                follow_up_due: false,
+                work_url: "/operations/maintenance/work-order-1",
+              },
+            ],
+          },
+        ],
+      });
+      return;
+    }
+
     if (method === "POST" && path === "/arrears/cases") {
       const payload = request.postDataJSON() as Record<string, JsonBody>;
       const total =

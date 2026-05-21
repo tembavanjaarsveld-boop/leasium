@@ -32,6 +32,54 @@ export type SecurityNotificationPreferences = {
   work_assignment_digest_cadence: SecurityWorkAssignmentDigestCadence;
 };
 
+export type WorkAssignmentDigestCadence = "daily" | "weekly";
+export type WorkAssignmentNoticeGroup =
+  | "ready"
+  | "in_flight"
+  | "attention"
+  | "done";
+
+export type WorkAssignmentDigestItemRecord = {
+  target_id: string;
+  target_type: "maintenance_work_order" | "arrears_case" | "obligation";
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  status: string;
+  priority: string | null;
+  notification_status: string | null;
+  notification_group: WorkAssignmentNoticeGroup | null;
+  notification_detail: string | null;
+  reminder_due_on: string | null;
+  escalation_due_on: string | null;
+  follow_up_due: boolean;
+  work_url: string | null;
+};
+
+export type WorkAssignmentDigestRecord = {
+  assignee_user_id: string;
+  assignee_name: string;
+  assignee_email: string;
+  cadence: WorkAssignmentDigestCadence;
+  item_count: number;
+  ready_count: number;
+  attention_count: number;
+  in_flight_count: number;
+  done_count: number;
+  follow_up_due_count: number;
+  items: WorkAssignmentDigestItemRecord[];
+};
+
+export type WorkAssignmentDigestRunRecord = {
+  entity_id: string;
+  cadence: WorkAssignmentDigestCadence;
+  generated_at: string;
+  operator_count: number;
+  work_item_count: number;
+  guardrails: string[];
+  digests: WorkAssignmentDigestRecord[];
+};
+
 export type SecurityEntityRoleRecord = SecurityRoleAssignment & {
   entity_name: string;
 };
@@ -2713,6 +2761,19 @@ export function sendArrearsAssignmentNotification(arrearsCaseId: string) {
     `/arrears/cases/${arrearsCaseId}/assignment-notification/send-email`,
     {
       method: "POST",
+    },
+  );
+}
+
+export function runWorkAssignmentDigest(payload: {
+  entity_id: string;
+  cadence?: WorkAssignmentDigestCadence;
+}) {
+  return request<WorkAssignmentDigestRunRecord>(
+    "/work-assignments/digests/run",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
     },
   );
 }

@@ -44,6 +44,10 @@ def _metadata_uuid(value: Any) -> UUID | None:
         return None
 
 
+def work_assignment_record(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    return _metadata_record((metadata or {}).get(WORK_ASSIGNMENT_KEY))
+
+
 def _template_key(settings: Settings, assignment: dict[str, Any]) -> str:
     notification = _metadata_record(assignment.get("notification"))
     return (

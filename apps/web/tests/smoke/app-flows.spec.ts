@@ -135,6 +135,9 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await page.getByRole("button", { name: "Send notice" }).first().click();
   await expect(page.getByText("Email queued").first()).toBeVisible();
   await expect(page.getByText("Recent activity").first()).toBeVisible();
+  await page.getByRole("button", { name: "Generate digest" }).click();
+  await expect(page.getByText("Work digest generated")).toBeVisible();
+  await expect(page.getByText("No messages sent")).toBeVisible();
   await page.getByRole("button", { name: "Log reminder" }).first().click();
   await expect(page.getByText("Reminder logged").first()).toBeVisible();
   await expect(
@@ -145,7 +148,9 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   ).toBeVisible();
   await page.getByLabel("Queue assignee").selectOption("follow_up");
   await expect(page.getByText("No assignment follow-ups due")).toBeVisible();
-  await expect(page.getByText("Air conditioning fault")).not.toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Air conditioning fault 1d/ }),
+  ).not.toBeVisible();
   await expect(page.getByText("Bright Cafe arrears")).not.toBeVisible();
   await page
     .getByLabel("Queue assignee")
@@ -156,7 +161,9 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expect(page.getByText("Bright Cafe arrears")).not.toBeVisible();
   await page.getByLabel("Queue assignee").selectOption("unassigned");
   await expect(page.getByText("Insurance certificate renewal")).toBeVisible();
-  await expect(page.getByText("Air conditioning fault")).not.toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Air conditioning fault 1d/ }),
+  ).not.toBeVisible();
   await page.getByLabel("Queue assignee").selectOption("all");
 
   await page.getByRole("tab", { name: /Maintenance/ }).click();
