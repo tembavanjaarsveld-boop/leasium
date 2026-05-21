@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     contractor_email_enabled: bool = True
     contractor_email_template_key: str = "maintenance_contractor_update"
     contractor_email_template_version: str = "v1"
+    contractor_sms_enabled: bool = True
+    contractor_sms_template_key: str = "maintenance_contractor_sms"
+    contractor_sms_template_version: str = "v1"
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_messaging_service_sid: str = ""

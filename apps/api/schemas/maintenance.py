@@ -96,6 +96,11 @@ class MaintenanceWorkOrderContractorEmailSend(BaseModel):
     include_comment: bool = True
 
 
+class MaintenanceWorkOrderContractorSmsSend(BaseModel):
+    body: str = Field(min_length=1, max_length=800)
+    include_comment: bool = True
+
+
 class MaintenanceWorkOrderRead(ApiModel):
     id: UUID
     entity_id: UUID

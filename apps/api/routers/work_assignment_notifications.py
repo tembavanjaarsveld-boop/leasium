@@ -3,6 +3,7 @@
 import secrets
 from datetime import date, datetime
 from typing import Annotated, Any
+from urllib.parse import parse_qs
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -22,12 +23,18 @@ from stewart.core.models import (
     UserEntityRole,
     UserRole,
 )
-from stewart.core.settings import get_settings
+from stewart.core.settings import Settings, get_settings
 from stewart.integrations.communications import (
     DeliveryResult,
+    RenderedMessagePreview,
     WorkAssignmentDigestEmail,
     WorkAssignmentDigestEmailItem,
+    render_work_assignment_digest_email_preview,
+    render_work_assignment_email_preview,
+    render_work_assignment_sms_preview,
     send_work_assignment_digest_email,
+    send_work_assignment_email,
+    send_work_assignment_sms,
 )
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
@@ -39,18 +46,42 @@ from apps.api.schemas.work_assignments import (
     WorkAssignmentDigestRead,
     WorkAssignmentDigestRun,
     WorkAssignmentDigestRunRead,
+    WorkAssignmentNoticeChannelReceiptRead,
+    WorkAssignmentNoticeEmailSend,
+    WorkAssignmentNoticeEmailSendRead,
     WorkAssignmentNoticeGroup,
+    WorkAssignmentNoticeSmsSend,
+    WorkAssignmentNoticeSmsSendRead,
     WorkAssignmentNotificationCenterDigestRead,
     WorkAssignmentNotificationCenterItemRead,
     WorkAssignmentNotificationCenterRead,
     WorkAssignmentNotificationCenterReadState,
+    WorkAssignmentNotificationChannelRead,
+    WorkAssignmentNotificationSetupCheckRead,
+    WorkAssignmentNotificationTemplateCatalogRead,
+    WorkAssignmentNotificationTemplateRead,
     WorkAssignmentProviderHistoryRead,
+    WorkAssignmentRenderedMessagePreviewRead,
 )
 from apps.api.work_assignments import (
     apply_work_assignment_delivery_receipt,
+    apply_work_assignment_sms_delivery_receipt,
+    assigned_work_assignment_user,
     assignment_notification_message_matches,
+    assignment_notification_sent,
+    assignment_notification_sent_for_channel,
+    assignment_notification_sms_message_matches,
+    record_work_assignment_delivery,
+    record_work_assignment_sms_delivery,
+    work_assignment_email_invite,
+    work_assignment_email_preference_enabled,
+    work_assignment_email_preference_skipped_result,
     work_assignment_receipt_status,
     work_assignment_record,
+    work_assignment_sms_invite,
+    work_assignment_sms_preference_skipped_result,
+    work_assignment_sms_recipient,
+    work_url,
 )
 
 router = APIRouter(prefix="/work-assignments", tags=["work-assignments"])
@@ -69,6 +100,7 @@ ASSIGNMENT_TARGET_TYPES = {
 WorkAssignmentTarget = MaintenanceWorkOrder | ArrearsCase | Obligation
 
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
+WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 DIGEST_GUARDRAILS = [
     "Digest generation is review-only; it does not send email, SMS, or push notifications.",
     "Only active operators whose Work digest cadence matches this run are included.",
@@ -96,7 +128,58 @@ NOTIFICATION_CENTER_GUARDRAILS = [
     "Notification center is read-only; sending still requires explicit operator action.",
     "Digest receipts are preview receipts unless message_sent is true.",
 ]
+NOTIFICATION_TEMPLATE_GUARDRAILS = [
+    "Template choices only set reviewed SendGrid metadata; they do not send messages.",
+    "Operator email and digest sends still require the existing explicit approval actions.",
+]
 NOTIFICATION_CENTER_READ_KEY = "work_assignment_notification_center_read_at"
+
+SYSTEM_NOTICE_TEMPLATES = [
+    WorkAssignmentNotificationTemplateRead(
+        kind="assignment_notice",
+        key="work_assignment_notification",
+        name="Standard assignment notice",
+        default_version="v1",
+        subject_preview="New Leasium work assigned",
+        content_summary=(
+            "Includes the work title, due date, source workspace, and a link back to Leasium."
+        ),
+        recovery_summary="Use for normal assignment sends and retries from Work.",
+    ),
+    WorkAssignmentNotificationTemplateRead(
+        kind="assignment_notice",
+        key="work_assignment_follow_up",
+        name="Follow-up assignment notice",
+        default_version="v1",
+        subject_preview="Leasium work follow-up needed",
+        content_summary=(
+            "Emphasises due reminders, escalation watch dates, and the assigned operator."
+        ),
+        recovery_summary="Use when reminder or escalation cues are the reason for the send.",
+    ),
+]
+SYSTEM_DIGEST_TEMPLATES = [
+    WorkAssignmentNotificationTemplateRead(
+        kind="digest",
+        key="work_assignment_digest",
+        name="Standard work digest",
+        default_version="v1",
+        subject_preview="Leasium daily or weekly Work digest",
+        content_summary="Groups assigned work by urgency, follow-up status, and source workspace.",
+        recovery_summary="Use for normal daily and weekly digest previews, sends, and retries.",
+    ),
+    WorkAssignmentNotificationTemplateRead(
+        kind="digest",
+        key="work_assignment_digest_owner_review",
+        name="Owner review digest",
+        default_version="v1",
+        subject_preview="Leasium owner review digest",
+        content_summary=(
+            "Highlights owner-facing review items, approvals, blockers, and overdue follow-ups."
+        ),
+        recovery_summary="Use for operators who need a higher-level review summary.",
+    ),
+]
 
 
 def _assert_webhook_secret(request: Request) -> None:
@@ -208,6 +291,50 @@ def _metadata_int(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def _template_catalog_with_configured_defaults(
+    settings: Settings,
+) -> WorkAssignmentNotificationTemplateCatalogRead:
+    notice_templates = list(SYSTEM_NOTICE_TEMPLATES)
+    configured_notice_key = _metadata_text(settings.work_assignment_email_template_key)
+    configured_notice_version = (
+        _metadata_text(settings.work_assignment_email_template_version) or "v1"
+    )
+    if configured_notice_key and all(
+        template.key != configured_notice_key for template in notice_templates
+    ):
+        notice_templates.insert(
+            0,
+            WorkAssignmentNotificationTemplateRead(
+                kind="assignment_notice",
+                key=configured_notice_key,
+                name="Configured assignment notice",
+                default_version=configured_notice_version,
+                subject_preview="New Leasium work assigned",
+                content_summary=(
+                    "Uses the configured default assignment notice key from the API environment."
+                ),
+                recovery_summary="Use when this environment has a custom SendGrid category.",
+                is_system=False,
+            ),
+        )
+
+    return WorkAssignmentNotificationTemplateCatalogRead(
+        guardrails=NOTIFICATION_TEMPLATE_GUARDRAILS,
+        notice_templates=notice_templates,
+        digest_templates=list(SYSTEM_DIGEST_TEMPLATES),
+    )
+
+
+@router.get(
+    "/notification-templates",
+    response_model=WorkAssignmentNotificationTemplateCatalogRead,
+)
+def list_work_assignment_notification_templates(
+    _user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> WorkAssignmentNotificationTemplateCatalogRead:
+    return _template_catalog_with_configured_defaults(get_settings())
+
+
 def _provider_history_records(value: Any) -> list[WorkAssignmentProviderHistoryRead]:
     records: list[WorkAssignmentProviderHistoryRead] = []
     for entry in _metadata_list(value)[:5]:
@@ -222,6 +349,7 @@ def _provider_history_records(value: Any) -> list[WorkAssignmentProviderHistoryR
                 attempted_at=_metadata_text(record.get("attempted_at")),
                 received_at=_metadata_text(record.get("received_at")),
                 recipient_email=_metadata_text(record.get("recipient_email")),
+                recipient_phone=_metadata_text(record.get("recipient_phone")),
                 provider_message_id=_metadata_text(record.get("provider_message_id")),
                 error=_metadata_text(record.get("error")),
                 template_key=_metadata_text(record.get("template_key")),
@@ -232,6 +360,275 @@ def _provider_history_records(value: Any) -> list[WorkAssignmentProviderHistoryR
             )
         )
     return records
+
+
+def _rendered_message_preview_payload(
+    preview: RenderedMessagePreview,
+) -> dict[str, str | None]:
+    return {
+        "channel": preview.channel,
+        "provider": preview.provider,
+        "recipient": preview.recipient,
+        "subject": preview.subject,
+        "body_text": preview.body_text,
+        "template_key": preview.template_key,
+        "template_version": preview.template_version,
+        "action_label": preview.action_label,
+        "action_url": preview.action_url,
+    }
+
+
+def _rendered_message_preview_read(
+    value: RenderedMessagePreview | dict[str, Any] | None,
+) -> WorkAssignmentRenderedMessagePreviewRead | None:
+    if value is None:
+        return None
+    record = (
+        _rendered_message_preview_payload(value)
+        if isinstance(value, RenderedMessagePreview)
+        else _metadata_record(value)
+    )
+    channel = _metadata_text(record.get("channel"))
+    provider = _metadata_text(record.get("provider"))
+    body_text = _metadata_text(record.get("body_text"))
+    if channel not in {"email", "sms"} or provider is None or body_text is None:
+        return None
+    recipient = _metadata_text(record.get("recipient"))
+    return WorkAssignmentRenderedMessagePreviewRead(
+        channel=channel,  # type: ignore[arg-type]
+        provider=provider,
+        recipient_email=recipient if channel == "email" else None,
+        recipient_phone=recipient if channel == "sms" else None,
+        subject=_metadata_text(record.get("subject")),
+        body_text=body_text,
+        template_key=_metadata_text(record.get("template_key")),
+        template_version=_metadata_text(record.get("template_version")),
+        action_label=_metadata_text(record.get("action_label")),
+        action_url=_metadata_text(record.get("action_url")),
+    )
+
+
+def _public_api_endpoint(settings: Settings, path: str) -> str | None:
+    base_url = settings.public_api_url.strip().rstrip("/")
+    if not base_url:
+        return None
+    return f"{base_url}{path}"
+
+
+def _setup_check(
+    *,
+    key: str,
+    label: str,
+    ready: bool,
+    ready_detail: str,
+    missing_detail: str,
+    value: str | None = None,
+) -> WorkAssignmentNotificationSetupCheckRead:
+    return WorkAssignmentNotificationSetupCheckRead(
+        key=key,
+        label=label,
+        status="ready" if ready else "missing",
+        detail=ready_detail if ready else missing_detail,
+        value=value if ready else None,
+    )
+
+
+def _setup_review_check(
+    *,
+    key: str,
+    label: str,
+    ready: bool,
+    ready_detail: str,
+    missing_detail: str,
+    value: str | None = None,
+) -> WorkAssignmentNotificationSetupCheckRead:
+    return WorkAssignmentNotificationSetupCheckRead(
+        key=key,
+        label=label,
+        status="review" if ready else "missing",
+        detail=ready_detail if ready else missing_detail,
+        value=value if ready else None,
+    )
+
+
+def _email_setup_checks(
+    settings: Settings,
+) -> list[WorkAssignmentNotificationSetupCheckRead]:
+    webhook_url = _public_api_endpoint(
+        settings,
+        "/api/v1/work-assignments/webhooks/sendgrid-events",
+    )
+    return [
+        _setup_check(
+            key="work_assignment_email_enabled",
+            label="Work email toggle",
+            ready=settings.work_assignment_email_enabled,
+            ready_detail="Work assignment email delivery is enabled.",
+            missing_detail="Enable Work assignment email before provider delivery can queue.",
+        ),
+        _setup_check(
+            key="sendgrid_sender",
+            label="SendGrid sender",
+            ready=bool(settings.sendgrid_api_key and settings.sendgrid_from_email),
+            ready_detail="SendGrid API key and sender email are configured.",
+            missing_detail="Add SendGrid API key and sender email environment variables.",
+            value=settings.sendgrid_from_email or None,
+        ),
+        _setup_review_check(
+            key="sendgrid_event_webhook",
+            label="SendGrid event webhook",
+            ready=bool(webhook_url and settings.communications_webhook_secret),
+            ready_detail=(
+                "Use this endpoint in SendGrid Event Webhook and configure the shared "
+                "webhook secret outside Leasium."
+            ),
+            missing_detail=(
+                "Set PUBLIC_API_URL and COMMUNICATIONS_WEBHOOK_SECRET before configuring "
+                "the SendGrid event endpoint."
+            ),
+            value=webhook_url,
+        ),
+    ]
+
+
+def _sms_setup_checks(
+    settings: Settings,
+    *,
+    sms_prepared_count: int,
+) -> list[WorkAssignmentNotificationSetupCheckRead]:
+    callback_url = _public_api_endpoint(
+        settings,
+        "/api/v1/work-assignments/webhooks/twilio-status",
+    )
+    sms_recipient_label = "recipient" if sms_prepared_count == 1 else "recipients"
+    return [
+        _setup_check(
+            key="operator_sms_preferences",
+            label="Operator SMS preferences",
+            ready=sms_prepared_count > 0,
+            ready_detail=(
+                f"{sms_prepared_count} active operator SMS {sms_recipient_label} configured."
+            ),
+            missing_detail="Add reviewed operator SMS preferences before sending Work SMS.",
+        ),
+        _setup_check(
+            key="twilio_messaging",
+            label="Twilio Messaging",
+            ready=bool(
+                settings.twilio_account_sid
+                and settings.twilio_auth_token
+                and (settings.twilio_messaging_service_sid or settings.twilio_from_phone)
+            ),
+            ready_detail="Twilio credentials and sender or messaging service are configured.",
+            missing_detail="Add Twilio credentials and a sender number or messaging service.",
+        ),
+        _setup_review_check(
+            key="twilio_status_callback",
+            label="Twilio status callback",
+            ready=bool(callback_url and settings.communications_webhook_secret),
+            ready_detail=(
+                "Use this endpoint for Work SMS status callbacks and configure the shared "
+                "webhook secret outside Leasium."
+            ),
+            missing_detail=(
+                "Set PUBLIC_API_URL and COMMUNICATIONS_WEBHOOK_SECRET before configuring "
+                "the Twilio status callback endpoint."
+            ),
+            value=callback_url,
+        ),
+    ]
+
+
+def _notification_center_channels(
+    settings: Settings,
+    members: list[AppUser],
+) -> list[WorkAssignmentNotificationChannelRead]:
+    email_configured = bool(
+        settings.work_assignment_email_enabled
+        and settings.sendgrid_api_key
+        and settings.sendgrid_from_email
+    )
+    sms_configured = bool(
+        settings.twilio_account_sid
+        and settings.twilio_auth_token
+        and (settings.twilio_messaging_service_sid or settings.twilio_from_phone)
+    )
+    sms_prepared_count = sum(
+        1 for member in members if work_assignment_sms_recipient(member) is not None
+    )
+    email_setup_checks = _email_setup_checks(settings)
+    sms_setup_checks = _sms_setup_checks(settings, sms_prepared_count=sms_prepared_count)
+    if sms_prepared_count == 0:
+        sms_readiness = "blocked"
+        sms_reason = "no_operator_phone"
+        sms_detail = "No active operator has SMS enabled with a reviewed phone number."
+        sms_next_action = "Add reviewed operator phone/preferences before sending SMS notices."
+        sms_action_available = False
+    elif not sms_configured:
+        sms_readiness = "actionable"
+        sms_reason = "twilio_not_configured"
+        sms_detail = "SMS actions are available, but Twilio is not fully configured."
+        sms_next_action = "Configure Twilio to queue provider SMS instead of skipped receipts."
+        sms_action_available = True
+    else:
+        sms_readiness = "actionable"
+        sms_reason = None
+        sms_detail = "Work notice SMS sends and retries use Twilio."
+        sms_next_action = None
+        sms_action_available = True
+    return [
+        WorkAssignmentNotificationChannelRead(
+            channel="email",
+            provider="sendgrid",
+            label="Email",
+            readiness="actionable",
+            reason_code=None if email_configured else "sendgrid_not_configured",
+            configured=email_configured,
+            action_available=True,
+            detail=(
+                "Work notice sends and retries use SendGrid email."
+                if email_configured
+                else "Email actions are available, but SendGrid is not fully configured."
+            ),
+            next_action=None
+            if email_configured
+            else "Configure SendGrid to queue provider emails instead of skipped receipts.",
+            setup_checks=email_setup_checks,
+        ),
+        WorkAssignmentNotificationChannelRead(
+            channel="sms",
+            provider="twilio",
+            label="SMS",
+            readiness=sms_readiness,  # type: ignore[arg-type]
+            reason_code=sms_reason,
+            configured=sms_configured,
+            action_available=sms_action_available,
+            detail=sms_detail,
+            next_action=sms_next_action,
+            setup_checks=sms_setup_checks,
+        ),
+        WorkAssignmentNotificationChannelRead(
+            channel="in_app",
+            provider="leasium",
+            label="In-app",
+            readiness="read_only",
+            reason_code="in_app_read_only",
+            configured=True,
+            action_available=False,
+            detail=(
+                "In-app assignment receipts are recorded on work items and shown read-only here."
+            ),
+            next_action="Use Work assignment controls to update ownership and follow-up state.",
+            setup_checks=[
+                WorkAssignmentNotificationSetupCheckRead(
+                    key="leasium_receipts",
+                    label="Leasium receipts",
+                    status="ready",
+                    detail="In-app assignment receipts are stored in Leasium work metadata.",
+                )
+            ],
+        ),
+    ]
 
 
 def _notice_group(
@@ -247,6 +644,66 @@ def _notice_group(
     if notification_status in {"delivered", "opened"}:
         return "done"
     return None
+
+
+def _notice_message_sent(status_value: str | None) -> bool:
+    return status_value in {"queued", "sent", "delivered", "opened"}
+
+
+def _notice_delivery_attempt_count(record: dict[str, Any]) -> int:
+    attempt_count = _metadata_int(record.get("attempt_count"))
+    if attempt_count is not None:
+        return attempt_count
+    delivery_attempt_count = _metadata_int(record.get("delivery_attempt_count"))
+    if delivery_attempt_count is not None:
+        return delivery_attempt_count
+    history = [_metadata_record(entry) for entry in _metadata_list(record.get("provider_history"))]
+    attempted_history = [
+        entry
+        for entry in history
+        if _metadata_text(entry.get("event")) == "provider_notification_attempted"
+    ]
+    history_counts = [
+        count
+        for entry in attempted_history
+        if (count := _metadata_int(entry.get("delivery_attempt_count"))) is not None
+    ]
+    return max(history_counts) if history_counts else len(attempted_history)
+
+
+def _notice_channel_receipt_read(
+    *,
+    channel: str,
+    label: str,
+    record: dict[str, Any],
+    action_available: bool,
+    rendered_message_preview: RenderedMessagePreview | None = None,
+) -> WorkAssignmentNoticeChannelReceiptRead | None:
+    status_value = _metadata_text(record.get("status"))
+    if status_value is None and not action_available:
+        return None
+    return WorkAssignmentNoticeChannelReceiptRead(
+        channel=channel,  # type: ignore[arg-type]
+        label=label,
+        provider=_metadata_text(record.get("provider")),
+        status=status_value,
+        detail=_metadata_text(record.get("detail")) or _metadata_text(record.get("error")),
+        recipient_email=_metadata_text(record.get("recipient_email")),
+        recipient_phone=_metadata_text(record.get("recipient_phone")),
+        provider_message_id=_metadata_text(record.get("provider_message_id")),
+        template_key=_metadata_text(record.get("template_key")),
+        template_version=_metadata_text(record.get("template_version")),
+        attempted_at=_metadata_text(record.get("attempted_at")),
+        sent_at=_metadata_text(record.get("sent_at")),
+        receipt_at=_metadata_text(record.get("receipt_at")),
+        last_event=_metadata_text(record.get("last_event")),
+        delivery_trigger=_metadata_text(record.get("delivery_trigger")),
+        delivery_attempt_count=_notice_delivery_attempt_count(record),
+        message_sent=_notice_message_sent(status_value),
+        action_available=action_available,
+        provider_history=_provider_history_records(record.get("provider_history")),
+        rendered_message_preview=_rendered_message_preview_read(rendered_message_preview),
+    )
 
 
 def _follow_up_due(assignment: dict[str, Any], today: date) -> bool:
@@ -301,6 +758,14 @@ def _target_priority(target: WorkAssignmentTarget) -> str | None:
     if isinstance(target, ArrearsCase):
         return "arrears"
     return str(target.priority)
+
+
+def _target_work_kind(target: WorkAssignmentTarget) -> str:
+    if isinstance(target, MaintenanceWorkOrder):
+        return "Maintenance"
+    if isinstance(target, ArrearsCase):
+        return "Arrears"
+    return "Critical date"
 
 
 def _target_url(target: WorkAssignmentTarget) -> str:
@@ -363,6 +828,7 @@ def _notification_center_item(
     target: WorkAssignmentTarget,
     settings_base: str | None,
     today: date,
+    session: Session | None = None,
 ) -> WorkAssignmentNotificationCenterItemRead | None:
     assignment = work_assignment_record(_target_metadata(target))
     assigned_user_id = _metadata_uuid(assignment.get("assigned_user_id"))
@@ -370,6 +836,8 @@ def _notification_center_item(
     if assigned_user_id is None and assigned_name is None:
         return None
     notification = _metadata_record(assignment.get("notification"))
+    channels = _metadata_record(notification.get("channels"))
+    sms_channel = _metadata_record(channels.get("sms"))
     status_value = _metadata_text(notification.get("status"))
     assigned_email = _metadata_text(assignment.get("assigned_user_email"))
     group = _notice_group(status_value, assigned_email)
@@ -380,7 +848,73 @@ def _notification_center_item(
         if _metadata_list(assignment.get("history"))
         else {}
     )
+    assigned_app_user = assigned_work_assignment_user(_target_metadata(target), session)
+    sms_action_available = work_assignment_sms_recipient(assigned_app_user) is not None
+    email_action_available = group == "ready" or status_value in {"failed", "skipped"}
+    sms_status = _metadata_text(sms_channel.get("status"))
+    sms_receipt_action_available = sms_action_available and not _notice_message_sent(sms_status)
+    settings = get_settings()
     path = _target_url(target)
+    preview_work_url = work_url(settings, path)
+    email_preview: RenderedMessagePreview | None = None
+    sms_preview: RenderedMessagePreview | None = None
+    try:
+        email_preview = render_work_assignment_email_preview(
+            work_assignment_email_invite(
+                _target_metadata(target),
+                target_id=target.id,
+                target_type=_target_table(target),
+                entity_id=target.entity_id,
+                work_kind=_target_work_kind(target),
+                title=_target_title(target),
+                description=_target_description(target),
+                due_date=_target_due_date(target),
+                work_url=preview_work_url,
+                settings=settings,
+                session=session,
+            )
+        )
+    except HTTPException:
+        email_preview = None
+    if sms_action_available or sms_status is not None:
+        try:
+            sms_preview = render_work_assignment_sms_preview(
+                work_assignment_sms_invite(
+                    _target_metadata(target),
+                    target_id=target.id,
+                    target_type=_target_table(target),
+                    entity_id=target.entity_id,
+                    work_kind=_target_work_kind(target),
+                    title=_target_title(target),
+                    description=_target_description(target),
+                    due_date=_target_due_date(target),
+                    work_url=preview_work_url,
+                    settings=settings,
+                    session=session,
+                )
+            )
+        except HTTPException:
+            sms_preview = None
+    channel_receipts = [
+        receipt
+        for receipt in [
+            _notice_channel_receipt_read(
+                channel="email",
+                label="Email",
+                record=notification,
+                action_available=email_action_available,
+                rendered_message_preview=email_preview,
+            ),
+            _notice_channel_receipt_read(
+                channel="sms",
+                label="SMS",
+                record=sms_channel,
+                action_available=sms_receipt_action_available,
+                rendered_message_preview=sms_preview,
+            ),
+        ]
+        if receipt is not None
+    ]
     return WorkAssignmentNotificationCenterItemRead(
         target_id=target.id,
         target_type=_target_table(target),  # type: ignore[arg-type]
@@ -404,6 +938,16 @@ def _notification_center_item(
         follow_up_due=_follow_up_due(assignment, today),
         work_url=f"{settings_base}{path}" if settings_base else path,
         provider_history=_provider_history_records(notification.get("provider_history")),
+        sms_action_available=sms_action_available,
+        sms_status=sms_status,
+        sms_detail=_metadata_text(sms_channel.get("detail"))
+        or _metadata_text(sms_channel.get("error")),
+        sms_provider=_metadata_text(sms_channel.get("provider")),
+        sms_recipient_phone=_metadata_text(sms_channel.get("recipient_phone")),
+        sms_provider_message_id=_metadata_text(sms_channel.get("provider_message_id")),
+        sms_attempt_count=_metadata_int(sms_channel.get("attempt_count")) or 0,
+        sms_provider_history=_provider_history_records(sms_channel.get("provider_history")),
+        channel_receipts=channel_receipts,
     )
 
 
@@ -607,6 +1151,16 @@ def _record_digest_receipt(
         cadence=digest.cadence,
         delivery_result=delivery_result,
     )
+    rendered_message_preview = _rendered_message_preview_payload(
+        render_work_assignment_digest_email_preview(
+            _digest_email_invite(
+                digest,
+                member,
+                entity_id=entity_id,
+                generated_at=generated_at,
+            )
+        )
+    )
     provider_history = []
     if delivery_result is not None:
         provider_history.append(
@@ -650,6 +1204,7 @@ def _record_digest_receipt(
         "template_key": result_metadata.get("template_key") or _digest_template_key(member),
         "template_version": result_metadata.get("template_version")
         or _digest_template_version(member),
+        "rendered_message_preview": rendered_message_preview,
         "delivery_attempted_at": result_dict.get("attempted_at"),
         "provider_history": provider_history,
     }
@@ -712,6 +1267,9 @@ def _notification_center_digest_receipts(
                     if isinstance(attempt_count, int) and not isinstance(attempt_count, bool)
                     else 0,
                     provider_history=_provider_history_records(record.get("provider_history")),
+                    rendered_message_preview=_rendered_message_preview_read(
+                        record.get("rendered_message_preview")
+                    ),
                 )
             )
     receipts.sort(key=lambda receipt: receipt.generated_at, reverse=True)
@@ -914,7 +1472,7 @@ def get_work_assignment_notification_center(
     notices = [
         item
         for target in _open_assignment_targets(session, entity_id)
-        if (item := _notification_center_item(target, frontend_base, today)) is not None
+        if (item := _notification_center_item(target, frontend_base, today, session)) is not None
     ]
     group_rank = {"attention": 0, "ready": 1, "in_flight": 2, "done": 3}
     notices.sort(
@@ -950,6 +1508,7 @@ def get_work_assignment_notification_center(
         done_count=sum(1 for item in notices if item.group == "done"),
         digest_receipt_count=len(digest_receipts),
         guardrails=NOTIFICATION_CENTER_GUARDRAILS,
+        channels=_notification_center_channels(settings, members),
         notices=notices[:50],
         digest_receipts=digest_receipts,
     )
@@ -974,7 +1533,7 @@ def mark_work_assignment_notification_center_read(
     notices = [
         item
         for target in _open_assignment_targets(session, entity_id)
-        if (item := _notification_center_item(target, frontend_base, today)) is not None
+        if (item := _notification_center_item(target, frontend_base, today, session)) is not None
     ]
     members = _entity_assignment_members(
         session,
@@ -1119,6 +1678,9 @@ def _generate_work_assignment_digest(
         )
         attempt_count = receipt.get("delivery_attempt_count")
         digest.delivery_attempt_count = attempt_count if isinstance(attempt_count, int) else 0
+        digest.rendered_message_preview = _rendered_message_preview_read(
+            receipt.get("rendered_message_preview")
+        )
     work_item_count = sum(digest.item_count for digest in digests)
     sent_count = sum(1 for digest in digests if digest.message_sent)
     delivery_summary = (
@@ -1270,6 +1832,282 @@ def _get_target_by_id(
     )
 
 
+@router.post(
+    "/notification-center/notices/send-email",
+    response_model=WorkAssignmentNoticeEmailSendRead,
+)
+def send_work_assignment_notice_email_from_notification_center(
+    payload: WorkAssignmentNoticeEmailSend,
+    session: Annotated[Session, Depends(get_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> WorkAssignmentNoticeEmailSendRead:
+    target = _get_target_by_id(session, payload.target_id, payload.target_type)
+    if target is None or target.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assigned work not found.",
+        )
+    if target.entity_id != payload.entity_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assigned work not found.",
+        )
+    assert_entity_role(session, user, target.entity_id, WRITE_ROLES)
+
+    metadata = _metadata_record(_target_metadata(target))
+    settings = get_settings()
+    delivery_status = "already_sent"
+    message_sent = True
+    recipient_email: str | None = None
+    provider: str | None = None
+    provider_message_id: str | None = None
+    detail = "Assignment notification email has already been sent."
+    template_key: str | None = None
+    template_version: str | None = None
+    attempted_at: str | None = None
+    delivery_trigger = payload.delivery_trigger
+
+    notification = _metadata_record(work_assignment_record(metadata).get("notification"))
+    if assignment_notification_sent(metadata):
+        recipient_email = _metadata_text(notification.get("recipient_email"))
+        provider = _metadata_text(notification.get("provider"))
+        provider_message_id = _metadata_text(notification.get("provider_message_id"))
+        template_key = _metadata_text(notification.get("template_key"))
+        template_version = _metadata_text(notification.get("template_version"))
+        attempted_at = _metadata_text(notification.get("attempted_at"))
+    else:
+        path = _target_url(target)
+        invite = work_assignment_email_invite(
+            metadata,
+            target_id=target.id,
+            target_type=_target_table(target),
+            entity_id=target.entity_id,
+            work_kind=_target_work_kind(target),
+            title=_target_title(target),
+            description=_target_description(target),
+            due_date=_target_due_date(target),
+            work_url=work_url(settings, path),
+            settings=settings,
+            session=session,
+        )
+        result = (
+            send_work_assignment_email(invite, settings)
+            if work_assignment_email_preference_enabled(metadata, session)
+            else work_assignment_email_preference_skipped_result(invite)
+        )
+        next_metadata = record_work_assignment_delivery(
+            metadata,
+            result=result,
+            user=user,
+        )
+        result_dict = result.to_dict()
+        delivery_status = result.status
+        message_sent = result.status in {"queued", "sent", "delivered", "opened"}
+        recipient_email = result.recipient
+        provider = result.provider
+        provider_message_id = result.provider_message_id
+        detail = result.error or (
+            "Assignment email was queued by SendGrid."
+            if message_sent
+            else "Assignment email was not sent."
+        )
+        result_metadata = _metadata_record(result_dict.get("metadata"))
+        template_key = _metadata_text(result_metadata.get("template_key"))
+        template_version = _metadata_text(result_metadata.get("template_version"))
+        attempted_at = _metadata_text(result_dict.get("attempted_at"))
+        _set_target_metadata(target, next_metadata)
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=target.entity_id,
+            action="deliver",
+            target_table=_target_table(target),
+            target_id=target.id,
+            tool_name="sendgrid.work_assignment.notification_center",
+            tool_input={
+                "target_id": str(target.id),
+                "target_type": _target_table(target),
+                "recipient_email": result.recipient,
+                "provider": result.provider,
+                "status": result.status,
+            },
+            tool_output_summary=(
+                f"Attempted assignment notification delivery via "
+                f"{result.provider}: {result.status}."
+            ),
+            data_classification="confidential",
+        )
+        session.commit()
+        session.refresh(target)
+
+    frontend_base = settings.frontend_url.strip().rstrip("/") or None
+    item = _notification_center_item(target, frontend_base, utcnow().date(), session)
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Assignment notice is not ready to send.",
+        )
+    return WorkAssignmentNoticeEmailSendRead(
+        entity_id=target.entity_id,
+        target_type=_target_table(target),  # type: ignore[arg-type]
+        target_id=target.id,
+        status=delivery_status,
+        message_sent=message_sent,
+        recipient_email=recipient_email,
+        provider=provider,
+        provider_message_id=provider_message_id,
+        detail=detail,
+        template_key=template_key,
+        template_version=template_version,
+        attempted_at=attempted_at,
+        delivery_trigger=delivery_trigger,
+        notice=item,
+    )
+
+
+@router.post(
+    "/notification-center/notices/send-sms",
+    response_model=WorkAssignmentNoticeSmsSendRead,
+)
+def send_work_assignment_notice_sms_from_notification_center(
+    payload: WorkAssignmentNoticeSmsSend,
+    session: Annotated[Session, Depends(get_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> WorkAssignmentNoticeSmsSendRead:
+    target = _get_target_by_id(session, payload.target_id, payload.target_type)
+    if target is None or target.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assigned work not found.",
+        )
+    if target.entity_id != payload.entity_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assigned work not found.",
+        )
+    assert_entity_role(session, user, target.entity_id, WRITE_ROLES)
+
+    metadata = _metadata_record(_target_metadata(target))
+    settings = get_settings()
+    delivery_status = "already_sent"
+    message_sent = True
+    recipient_phone: str | None = None
+    provider: str | None = None
+    provider_message_id: str | None = None
+    detail = "Assignment notification SMS has already been sent."
+    template_key: str | None = None
+    template_version: str | None = None
+    attempted_at: str | None = None
+    delivery_trigger = payload.delivery_trigger
+
+    notification = _metadata_record(work_assignment_record(metadata).get("notification"))
+    channels = _metadata_record(notification.get("channels"))
+    sms_channel = _metadata_record(channels.get("sms"))
+    if assignment_notification_sent_for_channel(
+        metadata,
+        channel="sms",
+        provider="twilio",
+    ):
+        recipient_phone = _metadata_text(sms_channel.get("recipient_phone"))
+        provider = _metadata_text(sms_channel.get("provider"))
+        provider_message_id = _metadata_text(sms_channel.get("provider_message_id"))
+        template_key = _metadata_text(sms_channel.get("template_key"))
+        template_version = _metadata_text(sms_channel.get("template_version"))
+        attempted_at = _metadata_text(sms_channel.get("attempted_at"))
+        delivery_trigger = "already_sent"
+    else:
+        path = _target_url(target)
+        invite = work_assignment_sms_invite(
+            metadata,
+            target_id=target.id,
+            target_type=_target_table(target),
+            entity_id=target.entity_id,
+            work_kind=_target_work_kind(target),
+            title=_target_title(target),
+            description=_target_description(target),
+            due_date=_target_due_date(target),
+            work_url=work_url(settings, path),
+            settings=settings,
+            session=session,
+        )
+        result = (
+            send_work_assignment_sms(invite, settings)
+            if invite.assignee_phone is not None
+            else work_assignment_sms_preference_skipped_result(invite)
+        )
+        next_metadata = record_work_assignment_sms_delivery(
+            metadata,
+            result=result,
+            user=user,
+            delivery_trigger=payload.delivery_trigger,
+        )
+        result_dict = result.to_dict()
+        delivery_status = result.status
+        message_sent = result.status in {"queued", "sent", "delivered", "opened"}
+        recipient_phone = result.recipient
+        provider = result.provider
+        provider_message_id = result.provider_message_id
+        detail = result.error or (
+            "Assignment SMS was queued by Twilio."
+            if message_sent
+            else "Assignment SMS was not sent."
+        )
+        result_metadata = _metadata_record(result_dict.get("metadata"))
+        template_key = _metadata_text(result_metadata.get("template_key"))
+        template_version = _metadata_text(result_metadata.get("template_version"))
+        attempted_at = _metadata_text(result_dict.get("attempted_at"))
+        _set_target_metadata(target, next_metadata)
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=target.entity_id,
+            action="deliver",
+            target_table=_target_table(target),
+            target_id=target.id,
+            tool_name="twilio.work_assignment.notification_center",
+            tool_input={
+                "target_id": str(target.id),
+                "target_type": _target_table(target),
+                "recipient_phone": result.recipient,
+                "provider": result.provider,
+                "status": result.status,
+            },
+            tool_output_summary=(
+                f"Attempted assignment notification SMS via "
+                f"{result.provider}: {result.status}."
+            ),
+            data_classification="confidential",
+        )
+        session.commit()
+        session.refresh(target)
+
+    frontend_base = settings.frontend_url.strip().rstrip("/") or None
+    item = _notification_center_item(target, frontend_base, utcnow().date(), session)
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Assignment notice is not ready to send SMS.",
+        )
+    return WorkAssignmentNoticeSmsSendRead(
+        entity_id=target.entity_id,
+        target_type=_target_table(target),  # type: ignore[arg-type]
+        target_id=target.id,
+        status=delivery_status,
+        message_sent=message_sent,
+        recipient_phone=recipient_phone,
+        provider=provider,
+        provider_message_id=provider_message_id,
+        detail=detail,
+        template_key=template_key,
+        template_version=template_version,
+        attempted_at=attempted_at,
+        delivery_trigger=delivery_trigger,
+        notice=item,
+    )
+
+
 def _find_target_by_message_id(
     session: Session,
     provider_message_id: str,
@@ -1284,6 +2122,27 @@ def _find_target_by_message_id(
     for targets in target_sets:
         for target in targets:
             if assignment_notification_message_matches(
+                _target_metadata(target),
+                provider_message_id,
+            ):
+                return target
+    return None
+
+
+def _find_target_by_sms_message_id(
+    session: Session,
+    provider_message_id: str,
+) -> WorkAssignmentTarget | None:
+    target_sets = (
+        session.scalars(
+            select(MaintenanceWorkOrder).where(MaintenanceWorkOrder.deleted_at.is_(None))
+        ).all(),
+        session.scalars(select(ArrearsCase).where(ArrearsCase.deleted_at.is_(None))).all(),
+        session.scalars(select(Obligation).where(Obligation.deleted_at.is_(None))).all(),
+    )
+    for targets in target_sets:
+        for target in targets:
+            if assignment_notification_sms_message_matches(
                 _target_metadata(target),
                 provider_message_id,
             ):
@@ -1312,6 +2171,47 @@ def _target_from_event(
     if target is None or target.deleted_at is not None:
         return None
     return target
+
+
+@router.post("/webhooks/twilio-status", status_code=status.HTTP_204_NO_CONTENT)
+async def record_work_assignment_twilio_delivery_status(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    _assert_webhook_secret(request)
+    body = (await request.body()).decode()
+    payload = {key: values[0] for key, values in parse_qs(body).items() if values}
+    message_sid = payload.get("MessageSid") or payload.get("SmsSid")
+    message_status = payload.get("MessageStatus") or payload.get("SmsStatus")
+    if not message_sid or not message_status:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    target = _find_target_by_sms_message_id(session, message_sid)
+    if target is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    metadata = apply_work_assignment_sms_delivery_receipt(
+        _target_metadata(target),
+        raw_status=message_status,
+        provider_message_id=message_sid,
+        event=payload,
+    )
+    if metadata is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    _set_target_metadata(target, metadata)
+    audit_log(
+        session,
+        actor="provider:twilio",
+        entity_id=target.entity_id,
+        action="receipt",
+        target_table=_target_table(target),
+        target_id=target.id,
+        tool_name="twilio.work_assignment_status_callback",
+        tool_input={"channel": "sms", "status": message_status},
+        tool_output_summary="Recorded Twilio assignment notification receipt.",
+        data_classification="confidential",
+    )
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/webhooks/sendgrid-events", status_code=status.HTTP_204_NO_CONTENT)

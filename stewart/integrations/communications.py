@@ -46,6 +46,21 @@ class DeliveryResult:
 
 
 @dataclass(frozen=True)
+class RenderedMessagePreview:
+    """Rendered outbound message content for review surfaces."""
+
+    channel: DeliveryChannel
+    provider: str
+    recipient: str | None
+    subject: str | None
+    body_text: str
+    template_key: str
+    template_version: str
+    action_label: str | None = None
+    action_url: str | None = None
+
+
+@dataclass(frozen=True)
 class TenantOnboardingInvite:
     """Context needed to send an onboarding invite."""
 
@@ -126,6 +141,28 @@ class ContractorWorkOrderEmail:
 
 
 @dataclass(frozen=True)
+class ContractorWorkOrderSms:
+    """Context needed to send a contractor maintenance SMS update."""
+
+    work_order_id: UUID
+    entity_id: UUID
+    title: str
+    description: str | None
+    priority: str
+    status: str
+    property_name: str
+    property_address: str | None
+    unit_label: str | None
+    tenant_name: str | None
+    contractor_name: str | None
+    contractor_phone: str | None
+    due_date: date | None
+    body: str
+    template_key: str
+    template_version: str
+
+
+@dataclass(frozen=True)
 class WorkAssignmentEmail:
     """Context needed to notify an operator about assigned work."""
 
@@ -138,6 +175,25 @@ class WorkAssignmentEmail:
     due_date: date | None
     assignee_name: str | None
     assignee_email: str | None
+    assigned_by_name: str | None
+    work_url: str | None
+    template_key: str
+    template_version: str
+
+
+@dataclass(frozen=True)
+class WorkAssignmentSms:
+    """Context needed to send an assigned-work SMS to an operator."""
+
+    target_id: UUID
+    target_type: str
+    entity_id: UUID
+    work_kind: str
+    title: str
+    description: str | None
+    due_date: date | None
+    assignee_name: str | None
+    assignee_phone: str | None
     assigned_by_name: str | None
     work_url: str | None
     template_key: str
@@ -396,6 +452,16 @@ def _work_assignment_text(invite: WorkAssignmentEmail) -> str:
     )
 
 
+def _work_assignment_sms_body(invite: WorkAssignmentSms) -> str:
+    due = _date_label(invite.due_date)
+    work_url = f" {invite.work_url}" if invite.work_url else ""
+    return (
+        f"Leasium: {invite.work_kind} assigned"
+        f"{f' to {invite.assignee_name}' if invite.assignee_name else ''}: "
+        f"{invite.title}. Due: {due}.{work_url}"
+    )
+
+
 def _work_assignment_html(invite: WorkAssignmentEmail) -> str:
     greeting = f"Hi {escape(invite.assignee_name)}," if invite.assignee_name else "Hi,"
     work_url = (
@@ -511,6 +577,70 @@ def _work_assignment_digest_html(invite: WorkAssignmentDigestEmail) -> str:
     """
 
 
+def render_work_assignment_email_preview(
+    invite: WorkAssignmentEmail,
+) -> RenderedMessagePreview:
+    return RenderedMessagePreview(
+        channel="email",
+        provider="sendgrid",
+        recipient=invite.assignee_email,
+        subject=_work_assignment_subject(invite),
+        body_text=_work_assignment_text(invite),
+        template_key=invite.template_key,
+        template_version=invite.template_version,
+        action_label="Open assigned work" if invite.work_url else None,
+        action_url=invite.work_url,
+    )
+
+
+def render_work_assignment_sms_preview(
+    invite: WorkAssignmentSms,
+) -> RenderedMessagePreview:
+    return RenderedMessagePreview(
+        channel="sms",
+        provider="twilio",
+        recipient=invite.assignee_phone,
+        subject=None,
+        body_text=_work_assignment_sms_body(invite),
+        template_key=invite.template_key,
+        template_version=invite.template_version,
+        action_label="Open assigned work" if invite.work_url else None,
+        action_url=invite.work_url,
+    )
+
+
+def render_contractor_work_order_sms_preview(
+    invite: ContractorWorkOrderSms,
+) -> RenderedMessagePreview:
+    return RenderedMessagePreview(
+        channel="sms",
+        provider="twilio",
+        recipient=invite.contractor_phone,
+        subject=None,
+        body_text=_contractor_sms_body(invite),
+        template_key=invite.template_key,
+        template_version=invite.template_version,
+        action_label=None,
+        action_url=None,
+    )
+
+
+def render_work_assignment_digest_email_preview(
+    invite: WorkAssignmentDigestEmail,
+) -> RenderedMessagePreview:
+    return RenderedMessagePreview(
+        channel="email",
+        provider="sendgrid",
+        recipient=invite.assignee_email,
+        subject=_work_assignment_digest_subject(invite),
+        body_text=_work_assignment_digest_text(invite),
+        template_key=invite.template_key,
+        template_version=invite.template_version,
+        action_label=None,
+        action_url=None,
+    )
+
+
 def _sms_body(invite: TenantOnboardingInvite) -> str:
     due = _date_label(invite.due_date)
     return (
@@ -523,6 +653,27 @@ def _twilio_status_callback_url(settings: Settings) -> str | None:
     if not settings.public_api_url:
         return None
     url = f"{settings.public_api_url.rstrip('/')}/api/v1/tenant-onboarding/webhooks/twilio-status"
+    if settings.communications_webhook_secret:
+        return f"{url}?{urlencode({'token': settings.communications_webhook_secret})}"
+    return url
+
+
+def _twilio_work_assignment_status_callback_url(settings: Settings) -> str | None:
+    if not settings.public_api_url:
+        return None
+    url = f"{settings.public_api_url.rstrip('/')}/api/v1/work-assignments/webhooks/twilio-status"
+    if settings.communications_webhook_secret:
+        return f"{url}?{urlencode({'token': settings.communications_webhook_secret})}"
+    return url
+
+
+def _twilio_maintenance_contractor_status_callback_url(settings: Settings) -> str | None:
+    if not settings.public_api_url:
+        return None
+    url = (
+        f"{settings.public_api_url.rstrip('/')}"
+        "/api/v1/maintenance/work-orders/webhooks/twilio-status"
+    )
     if settings.communications_webhook_secret:
         return f"{url}?{urlencode({'token': settings.communications_webhook_secret})}"
     return url
@@ -770,6 +921,22 @@ def _invoice_email_html(invite: InvoiceDeliveryEmail) -> str:
     """
 
 
+def render_invoice_delivery_email_preview(
+    invite: InvoiceDeliveryEmail,
+) -> RenderedMessagePreview:
+    return RenderedMessagePreview(
+        channel="email",
+        provider="sendgrid",
+        recipient=invite.recipient_email,
+        subject=_invoice_email_subject(invite),
+        body_text=_invoice_email_text(invite),
+        template_key=invite.template_key,
+        template_version=invite.template_version,
+        action_label="View invoice preview" if invite.preview_url else None,
+        action_url=invite.preview_url,
+    )
+
+
 def _contractor_email_text(invite: ContractorWorkOrderEmail) -> str:
     greeting = f"Hi {invite.contractor_name}," if invite.contractor_name else "Hi,"
     context = [
@@ -797,6 +964,15 @@ def _contractor_email_text(invite: ContractorWorkOrderEmail) -> str:
             "Leasium",
         ]
     )
+
+
+def _contractor_sms_body(invite: ContractorWorkOrderSms) -> str:
+    location = invite.property_name
+    if invite.unit_label:
+        location = f"{location} {invite.unit_label}"
+    due = _date_label(invite.due_date)
+    details = f" Job: {invite.title}. Due: {due}. Location: {location}."
+    return f"Leasium contractor update: {invite.body.strip()}{details}"
 
 
 def _contractor_email_html(invite: ContractorWorkOrderEmail) -> str:
@@ -953,6 +1129,112 @@ def send_contractor_work_order_email(
         )
 
 
+def send_contractor_work_order_sms(
+    invite: ContractorWorkOrderSms,
+    settings: Settings,
+) -> DeliveryResult:
+    """Send a maintenance work-order SMS update to the assigned contractor."""
+
+    recipient = _clean(invite.contractor_phone)
+    preview = render_contractor_work_order_sms_preview(invite)
+    metadata: dict[str, str | None] = {
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "maintenance_work_order_id": str(invite.work_order_id),
+        "entity_id": str(invite.entity_id),
+    }
+    if not settings.contractor_sms_enabled:
+        return DeliveryResult(
+            channel="sms",
+            status="skipped",
+            provider="twilio",
+            recipient=recipient,
+            error="Contractor SMS disabled.",
+            metadata=metadata,
+        )
+    if recipient is None:
+        return DeliveryResult(
+            channel="sms",
+            status="skipped",
+            provider="twilio",
+            error="No contractor SMS recipient.",
+            metadata=metadata,
+        )
+    if not recipient.startswith("+"):
+        return DeliveryResult(
+            channel="sms",
+            status="skipped",
+            provider="twilio",
+            recipient=recipient,
+            error="SMS recipient must be in E.164 format.",
+            metadata=metadata,
+        )
+    if (
+        not settings.twilio_account_sid
+        or not settings.twilio_auth_token
+        or not (settings.twilio_messaging_service_sid or settings.twilio_from_phone)
+    ):
+        return DeliveryResult(
+            channel="sms",
+            status="skipped",
+            provider="twilio",
+            recipient=recipient,
+            error="Twilio Messaging is not configured.",
+            metadata=metadata,
+        )
+
+    data = {
+        "To": recipient,
+        "Body": preview.body_text,
+    }
+    if settings.twilio_messaging_service_sid:
+        data["MessagingServiceSid"] = settings.twilio_messaging_service_sid
+    else:
+        data["From"] = settings.twilio_from_phone
+    status_callback_url = _twilio_maintenance_contractor_status_callback_url(settings)
+    if status_callback_url:
+        data["StatusCallback"] = status_callback_url
+
+    url = (
+        f"{settings.twilio_api_base_url.rstrip('/')}/2010-04-01/Accounts/"
+        f"{settings.twilio_account_sid}/Messages.json"
+    )
+    try:
+        with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
+            response = client.post(
+                url,
+                data=data,
+                auth=(settings.twilio_account_sid, settings.twilio_auth_token),
+            )
+        if 200 <= response.status_code < 300:
+            body = response.json()
+            return DeliveryResult(
+                channel="sms",
+                status="queued",
+                provider="twilio",
+                recipient=recipient,
+                provider_message_id=body.get("sid"),
+                metadata=metadata,
+            )
+        return DeliveryResult(
+            channel="sms",
+            status="failed",
+            provider="twilio",
+            recipient=recipient,
+            error=f"Twilio returned {response.status_code}.",
+            metadata=metadata,
+        )
+    except (httpx.HTTPError, ValueError) as exc:
+        return DeliveryResult(
+            channel="sms",
+            status="failed",
+            provider="twilio",
+            recipient=recipient,
+            error=str(exc),
+            metadata=metadata,
+        )
+
+
 def send_work_assignment_email(
     invite: WorkAssignmentEmail,
     settings: Settings,
@@ -960,6 +1242,7 @@ def send_work_assignment_email(
     """Send an assigned-work notification to an operator."""
 
     recipient = _clean(invite.assignee_email)
+    preview = render_work_assignment_email_preview(invite)
     metadata: dict[str, str | None] = {
         "template_key": invite.template_key,
         "template_version": invite.template_version,
@@ -967,7 +1250,7 @@ def send_work_assignment_email(
         "target_type": invite.target_type,
         "entity_id": str(invite.entity_id),
         "work_kind": invite.work_kind,
-        "subject": _work_assignment_subject(invite),
+        "subject": preview.subject,
     }
     if not settings.work_assignment_email_enabled:
         return DeliveryResult(
@@ -1005,7 +1288,7 @@ def send_work_assignment_email(
                         **({"name": invite.assignee_name} if invite.assignee_name else {}),
                     }
                 ],
-                "subject": _work_assignment_subject(invite),
+                "subject": preview.subject,
                 "custom_args": {
                     "work_assignment_target_id": str(invite.target_id),
                     "work_assignment_target_type": invite.target_type,
@@ -1021,7 +1304,7 @@ def send_work_assignment_email(
             "name": settings.sendgrid_from_name,
         },
         "content": [
-            {"type": "text/plain", "value": _work_assignment_text(invite)},
+            {"type": "text/plain", "value": preview.body_text},
             {"type": "text/html", "value": _work_assignment_html(invite)},
         ],
         "categories": _categories("work_assignment", invite.template_key),
@@ -1064,6 +1347,105 @@ def send_work_assignment_email(
         )
 
 
+def send_work_assignment_sms(
+    invite: WorkAssignmentSms,
+    settings: Settings,
+) -> DeliveryResult:
+    """Send an assigned-work SMS to an operator."""
+
+    recipient = _clean(invite.assignee_phone)
+    preview = render_work_assignment_sms_preview(invite)
+    metadata: dict[str, str | None] = {
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "target_id": str(invite.target_id),
+        "target_type": invite.target_type,
+        "entity_id": str(invite.entity_id),
+        "work_kind": invite.work_kind,
+    }
+    if recipient is None:
+        return DeliveryResult(
+            channel="sms",
+            status="skipped",
+            provider="twilio",
+            error="No assignment SMS recipient.",
+            metadata=metadata,
+        )
+    if not recipient.startswith("+"):
+        return DeliveryResult(
+            channel="sms",
+            status="skipped",
+            provider="twilio",
+            recipient=recipient,
+            error="SMS recipient must be in E.164 format.",
+            metadata=metadata,
+        )
+    if (
+        not settings.twilio_account_sid
+        or not settings.twilio_auth_token
+        or not (settings.twilio_messaging_service_sid or settings.twilio_from_phone)
+    ):
+        return DeliveryResult(
+            channel="sms",
+            status="skipped",
+            provider="twilio",
+            recipient=recipient,
+            error="Twilio Messaging is not configured.",
+            metadata=metadata,
+        )
+
+    data = {
+        "To": recipient,
+        "Body": preview.body_text,
+    }
+    if settings.twilio_messaging_service_sid:
+        data["MessagingServiceSid"] = settings.twilio_messaging_service_sid
+    else:
+        data["From"] = settings.twilio_from_phone
+    status_callback_url = _twilio_work_assignment_status_callback_url(settings)
+    if status_callback_url:
+        data["StatusCallback"] = status_callback_url
+
+    url = (
+        f"{settings.twilio_api_base_url.rstrip('/')}/2010-04-01/Accounts/"
+        f"{settings.twilio_account_sid}/Messages.json"
+    )
+    try:
+        with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
+            response = client.post(
+                url,
+                data=data,
+                auth=(settings.twilio_account_sid, settings.twilio_auth_token),
+            )
+        if 200 <= response.status_code < 300:
+            body = response.json()
+            return DeliveryResult(
+                channel="sms",
+                status="queued",
+                provider="twilio",
+                recipient=recipient,
+                provider_message_id=body.get("sid"),
+                metadata=metadata,
+            )
+        return DeliveryResult(
+            channel="sms",
+            status="failed",
+            provider="twilio",
+            recipient=recipient,
+            error=f"Twilio returned {response.status_code}.",
+            metadata=metadata,
+        )
+    except (httpx.HTTPError, ValueError) as exc:
+        return DeliveryResult(
+            channel="sms",
+            status="failed",
+            provider="twilio",
+            recipient=recipient,
+            error=str(exc),
+            metadata=metadata,
+        )
+
+
 def send_work_assignment_digest_email(
     invite: WorkAssignmentDigestEmail,
     settings: Settings,
@@ -1071,7 +1453,7 @@ def send_work_assignment_digest_email(
     """Send an approved Work digest email to an operator."""
 
     recipient = _clean(invite.assignee_email)
-    subject = _work_assignment_digest_subject(invite)
+    preview = render_work_assignment_digest_email_preview(invite)
     metadata: dict[str, str | None] = {
         "template_key": invite.template_key,
         "template_version": invite.template_version,
@@ -1079,7 +1461,7 @@ def send_work_assignment_digest_email(
         "assignee_user_id": str(invite.assignee_user_id),
         "cadence": invite.cadence,
         "generated_at": invite.generated_at.isoformat(),
-        "subject": subject,
+        "subject": preview.subject,
     }
     if not settings.work_assignment_email_enabled:
         return DeliveryResult(
@@ -1117,7 +1499,7 @@ def send_work_assignment_digest_email(
                         **({"name": invite.assignee_name} if invite.assignee_name else {}),
                     }
                 ],
-                "subject": subject,
+                "subject": preview.subject,
                 "custom_args": {
                     "work_assignment_digest_entity_id": str(invite.entity_id),
                     "work_assignment_digest_assignee_user_id": str(invite.assignee_user_id),
@@ -1133,7 +1515,7 @@ def send_work_assignment_digest_email(
             "name": settings.sendgrid_from_name,
         },
         "content": [
-            {"type": "text/plain", "value": _work_assignment_digest_text(invite)},
+            {"type": "text/plain", "value": preview.body_text},
             {"type": "text/html", "value": _work_assignment_digest_html(invite)},
         ],
         "categories": _categories("work_assignment_digest", invite.template_key),

@@ -4,6 +4,7 @@ import secrets
 from datetime import date, datetime
 from enum import Enum
 from typing import Annotated, Any, cast
+from urllib.parse import parse_qs
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -28,8 +29,10 @@ from stewart.core.models import (
 from stewart.core.settings import get_settings
 from stewart.integrations.communications import (
     ContractorWorkOrderEmail,
+    ContractorWorkOrderSms,
     DeliveryResult,
     send_contractor_work_order_email,
+    send_contractor_work_order_sms,
     send_work_assignment_email,
 )
 
@@ -37,6 +40,7 @@ from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get
 from apps.api.schemas.maintenance import (
     MaintenanceWorkOrderCommentCreate,
     MaintenanceWorkOrderContractorEmailSend,
+    MaintenanceWorkOrderContractorSmsSend,
     MaintenanceWorkOrderCreate,
     MaintenanceWorkOrderRead,
     MaintenanceWorkOrderUpdate,
@@ -247,6 +251,40 @@ def _contractor_work_order_email(
     )
 
 
+def _contractor_work_order_sms(
+    work_order: MaintenanceWorkOrder,
+    payload: MaintenanceWorkOrderContractorSmsSend,
+    session: Session,
+) -> ContractorWorkOrderSms:
+    settings = get_settings()
+    prop = session.get(Property, work_order.property_id) if work_order.property_id else None
+    unit = (
+        session.get(TenancyUnit, work_order.tenancy_unit_id) if work_order.tenancy_unit_id else None
+    )
+    tenant = session.get(Tenant, work_order.tenant_id) if work_order.tenant_id else None
+    tenant_name = None
+    if tenant is not None:
+        tenant_name = tenant.trading_name or tenant.legal_name
+    return ContractorWorkOrderSms(
+        work_order_id=work_order.id,
+        entity_id=work_order.entity_id,
+        title=work_order.title,
+        description=work_order.description,
+        priority=str(_activity_value(work_order.priority)),
+        status=str(_activity_value(work_order.status)),
+        property_name=prop.name if prop is not None else "Portfolio",
+        property_address=_property_address(prop),
+        unit_label=unit.unit_label if unit is not None else None,
+        tenant_name=tenant_name,
+        contractor_name=work_order.contractor_name,
+        contractor_phone=work_order.contractor_phone,
+        due_date=work_order.due_date,
+        body=payload.body.strip(),
+        template_key=settings.contractor_sms_template_key,
+        template_version=settings.contractor_sms_template_version,
+    )
+
+
 def _record_contractor_provider_delivery(
     work_order: MaintenanceWorkOrder,
     metadata: dict[str, Any] | None,
@@ -336,6 +374,92 @@ def _record_contractor_provider_delivery(
     )
 
 
+def _record_contractor_sms_provider_delivery(
+    work_order: MaintenanceWorkOrder,
+    metadata: dict[str, Any] | None,
+    *,
+    invite: ContractorWorkOrderSms,
+    result: DeliveryResult,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    result_dict = result.to_dict()
+    status_value = str(result_dict.get("status") or "failed")
+    recorded_at = str(result_dict.get("attempted_at") or utcnow().isoformat())
+    delivery_metadata = dict(metadata or {})
+    contractor_delivery = _delivery_dict(delivery_metadata.get(CONTRACTOR_DELIVERY_KEY))
+    sms_delivery = _delivery_dict(contractor_delivery.get("sms"))
+    delivered = status_value in {"queued", "sent", "delivered", "opened"}
+    history = _delivery_list(sms_delivery.get("history"))
+    retry_count = (
+        sum(
+            1
+            for entry in history
+            if isinstance(entry, dict) and entry.get("event") == "provider_delivery_attempted"
+        )
+        + 1
+    )
+
+    sms_delivery["send"] = {
+        "status": status_value,
+        "provider": result_dict.get("provider") or "twilio",
+        "attempted_at": recorded_at,
+        "sent_at": recorded_at if delivered else None,
+        "sent_by_user_id": str(user.id),
+        "provider_message_id": result_dict.get("provider_message_id"),
+        "recipient_phone": result_dict.get("recipient") or work_order.contractor_phone,
+        "body": invite.body,
+        "error": result_dict.get("error"),
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "retry_count": retry_count,
+    }
+    receipts = _delivery_list(sms_delivery.get("receipts"))
+    receipts.insert(
+        0,
+        {
+            "received_at": recorded_at,
+            "channel": "sms",
+            "status": status_value,
+            "provider": result_dict.get("provider") or "twilio",
+            "recipient_phone": result_dict.get("recipient") or work_order.contractor_phone,
+            "provider_message_id": result_dict.get("provider_message_id"),
+            "error": result_dict.get("error"),
+            "template_key": invite.template_key,
+            "template_version": invite.template_version,
+            "retry_count": retry_count,
+        },
+    )
+    history.append(
+        {
+            "event": "provider_delivery_attempted",
+            "at": recorded_at,
+            "user_id": str(user.id),
+            "provider": result_dict.get("provider") or "twilio",
+            "status": status_value,
+            "recipient_phone": result_dict.get("recipient") or work_order.contractor_phone,
+            "provider_message_id": result_dict.get("provider_message_id"),
+            "error": result_dict.get("error"),
+            "template_key": invite.template_key,
+            "template_version": invite.template_version,
+            "retry_count": retry_count,
+        }
+    )
+    sms_delivery["receipts"] = receipts[:20]
+    sms_delivery["history"] = history
+    contractor_delivery["sms"] = sms_delivery
+    delivery_metadata[CONTRACTOR_DELIVERY_KEY] = contractor_delivery
+    return _append_activity_history(
+        delivery_metadata,
+        _activity_entry(
+            actor=user.actor,
+            source="operator_api",
+            event="contractor_sms_attempted",
+            summary=f"Contractor SMS {status_value}.",
+            status_value=work_order.status,
+        ),
+    )
+
+
 def _assert_webhook_secret(request: Request) -> None:
     secret = get_settings().communications_webhook_secret
     if not secret:
@@ -361,6 +485,19 @@ def _contractor_email_receipt_status(raw_status: str) -> str:
     return "attention"
 
 
+def _contractor_sms_receipt_status(raw_status: str) -> str:
+    value = raw_status.lower()
+    if value in {"accepted", "queued", "sending"}:
+        return "queued"
+    if value == "sent":
+        return "sent"
+    if value == "delivered":
+        return "delivered"
+    if value in {"undelivered", "failed"}:
+        return "failed"
+    return "attention"
+
+
 def _find_work_order_by_message_id(
     session: Session,
     provider_message_id: str,
@@ -381,6 +518,37 @@ def _find_work_order_by_message_id(
         ):
             return work_order
         receipts = email_delivery.get("receipts") if isinstance(email_delivery, dict) else None
+        if not isinstance(receipts, list):
+            continue
+        for receipt in receipts:
+            if (
+                isinstance(receipt, dict)
+                and receipt.get("provider_message_id") == provider_message_id
+            ):
+                return work_order
+    return None
+
+
+def _find_work_order_by_sms_message_id(
+    session: Session,
+    provider_message_id: str,
+) -> MaintenanceWorkOrder | None:
+    rows = session.scalars(
+        select(MaintenanceWorkOrder).where(MaintenanceWorkOrder.deleted_at.is_(None))
+    ).all()
+    for work_order in rows:
+        metadata = work_order.work_order_metadata or {}
+        contractor_delivery = metadata.get(CONTRACTOR_DELIVERY_KEY)
+        sms_delivery = (
+            contractor_delivery.get("sms") if isinstance(contractor_delivery, dict) else None
+        )
+        send_state = sms_delivery.get("send") if isinstance(sms_delivery, dict) else None
+        if (
+            isinstance(send_state, dict)
+            and send_state.get("provider_message_id") == provider_message_id
+        ):
+            return work_order
+        receipts = sms_delivery.get("receipts") if isinstance(sms_delivery, dict) else None
         if not isinstance(receipts, list):
             continue
         for receipt in receipts:
@@ -460,6 +628,88 @@ def _apply_contractor_email_receipt(
             source="sendgrid_webhook",
             event="contractor_email_receipt",
             summary=f"Contractor email receipt {status_value}.",
+            status_value=work_order.status,
+        ),
+    )
+
+
+def _apply_contractor_sms_receipt(
+    work_order: MaintenanceWorkOrder,
+    raw_status: str,
+    provider_message_id: str | None,
+    event: dict[str, object],
+) -> None:
+    now = utcnow().isoformat()
+    status_value = _contractor_sms_receipt_status(raw_status)
+    metadata = dict(work_order.work_order_metadata or {})
+    contractor_delivery = _delivery_dict(metadata.get(CONTRACTOR_DELIVERY_KEY))
+    sms_delivery = _delivery_dict(contractor_delivery.get("sms"))
+    send_state = _delivery_dict(sms_delivery.get("send"))
+    retry_count = (
+        send_state.get("retry_count") if isinstance(send_state.get("retry_count"), int) else None
+    )
+    send_state.update(
+        {
+            "status": status_value,
+            "provider": "twilio",
+            "provider_message_id": provider_message_id or send_state.get("provider_message_id"),
+            "receipt_at": now,
+            "last_event": raw_status,
+        }
+    )
+    recipient_value = event.get("To") or event.get("to") or send_state.get("recipient_phone")
+    if recipient_value:
+        send_state["recipient_phone"] = str(recipient_value)
+    if status_value in {"sent", "delivered"} and not send_state.get("sent_at"):
+        send_state["sent_at"] = now
+    if status_value == "failed":
+        send_state["error"] = str(
+            event.get("ErrorCode")
+            or event.get("ErrorMessage")
+            or event.get("MessageStatus")
+            or raw_status
+        )
+    sms_delivery["send"] = send_state
+    receipts = _delivery_list(sms_delivery.get("receipts"))
+    receipts.insert(
+        0,
+        {
+            "received_at": now,
+            "channel": "sms",
+            "status": status_value,
+            "event": raw_status,
+            "provider": "twilio",
+            "recipient_phone": send_state.get("recipient_phone") or work_order.contractor_phone,
+            "provider_message_id": provider_message_id,
+            "error": send_state.get("error") if status_value == "failed" else None,
+            "template_key": send_state.get("template_key"),
+            "template_version": send_state.get("template_version"),
+            "retry_count": retry_count,
+        },
+    )
+    history = _delivery_list(sms_delivery.get("history"))
+    history.append(
+        {
+            "event": "provider_delivery_receipt",
+            "at": now,
+            "provider": "twilio",
+            "status": status_value,
+            "raw_event": raw_status,
+            "provider_message_id": provider_message_id,
+            "retry_count": retry_count,
+        }
+    )
+    sms_delivery["receipts"] = receipts[:20]
+    sms_delivery["history"] = history
+    contractor_delivery["sms"] = sms_delivery
+    metadata[CONTRACTOR_DELIVERY_KEY] = contractor_delivery
+    work_order.work_order_metadata = _append_activity_history(
+        metadata,
+        _activity_entry(
+            actor="provider:twilio",
+            source="twilio_webhook",
+            event="contractor_sms_receipt",
+            summary=f"Contractor SMS receipt {status_value}.",
             status_value=work_order.status,
         ),
     )
@@ -838,6 +1088,66 @@ def send_work_order_contractor_email(
 
 
 @router.post(
+    "/{work_order_id}/contractor-delivery/send-sms",
+    response_model=MaintenanceWorkOrderRead,
+)
+def send_work_order_contractor_sms(
+    work_order_id: UUID,
+    payload: MaintenanceWorkOrderContractorSmsSend,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> MaintenanceWorkOrder:
+    work_order = _work_order_for_user(work_order_id, user, session, WRITE_ROLES)
+    body = payload.body.strip()
+    if not body:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Contractor SMS body cannot be blank.",
+        )
+
+    invite = _contractor_work_order_sms(work_order, payload, session)
+    settings = get_settings()
+    result = send_contractor_work_order_sms(invite, settings)
+    metadata = dict(work_order.work_order_metadata or {})
+    if payload.include_comment and result.status in {"queued", "sent", "delivered", "opened"}:
+        metadata = _append_comment(
+            metadata,
+            actor=user.actor,
+            body=body,
+            visibility="contractor",
+        )
+    work_order.work_order_metadata = _record_contractor_sms_provider_delivery(
+        work_order,
+        metadata,
+        invite=invite,
+        result=result,
+        user=user,
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=work_order.entity_id,
+        action="deliver",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="twilio.maintenance_contractor",
+        tool_input={
+            "maintenance_work_order_id": str(work_order.id),
+            "recipient_phone": work_order.contractor_phone,
+            "provider": result.provider,
+            "status": result.status,
+        },
+        tool_output_summary=(
+            f"Attempted contractor SMS delivery via {result.provider}: {result.status}."
+        ),
+    )
+    session.commit()
+    session.refresh(work_order)
+    return work_order
+
+
+@router.post(
     "/{work_order_id}/assignment-notification/send-email",
     response_model=MaintenanceWorkOrderRead,
 )
@@ -943,6 +1253,44 @@ async def record_maintenance_sendgrid_delivery_events(
             tool_output_summary="Recorded SendGrid contractor email receipt.",
             data_classification="confidential",
         )
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/webhooks/twilio-status", status_code=status.HTTP_204_NO_CONTENT)
+async def record_maintenance_twilio_delivery_status(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    _assert_webhook_secret(request)
+    body = (await request.body()).decode()
+    payload = {key: values[0] for key, values in parse_qs(body).items() if values}
+    message_sid = payload.get("MessageSid") or payload.get("SmsSid")
+    message_status = payload.get("MessageStatus") or payload.get("SmsStatus")
+    if not message_sid or not message_status:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    work_order = _find_work_order_by_sms_message_id(session, message_sid)
+    if work_order is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    _apply_contractor_sms_receipt(
+        work_order,
+        message_status,
+        message_sid,
+        payload,
+    )
+    audit_log(
+        session,
+        actor="provider:twilio",
+        entity_id=work_order.entity_id,
+        action="receipt",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="twilio.maintenance_contractor_status_callback",
+        tool_input={"channel": "sms", "status": message_status},
+        tool_output_summary="Recorded Twilio contractor SMS receipt.",
+        data_classification="confidential",
+    )
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

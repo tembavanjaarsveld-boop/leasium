@@ -440,6 +440,132 @@ def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
     )
 
 
+def test_maintenance_work_order_sends_contractor_sms_and_records_receipt(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    context = _lease_context(client, session)
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "Replace shopfront lock",
+            "description": "Tenant reported the rear lock is sticking.",
+            "priority": "normal",
+            "contractor_name": "Rapid Locksmiths",
+            "contractor_email": "dispatch@rapidlocks.example",
+            "contractor_phone": "+61400111222",
+            "status": "assigned",
+            "due_date": "2026-05-28",
+            "metadata": {
+                "contractor_delivery": {
+                    "email": {
+                        "send": {
+                            "status": "queued",
+                            "provider": "sendgrid",
+                            "recipient_email": "dispatch@rapidlocks.example",
+                        }
+                    }
+                }
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+
+    attempts: list[str] = []
+
+    def fake_send_contractor_work_order_sms(invite: Any, settings: Any) -> DeliveryResult:
+        assert invite.contractor_phone == "+61400111222"
+        assert invite.body == "Please text back your first available attendance window."
+        assert invite.template_key == "maintenance_contractor_sms"
+        assert settings.contractor_sms_template_key == "maintenance_contractor_sms"
+        attempts.append(str(invite.work_order_id))
+        if len(attempts) == 1:
+            return DeliveryResult(
+                channel="sms",
+                status="failed",
+                provider="twilio",
+                recipient=invite.contractor_phone,
+                provider_message_id="SM-maintenance-failed",
+                error="Twilio returned 500.",
+            )
+        return DeliveryResult(
+            channel="sms",
+            status="queued",
+            provider="twilio",
+            recipient=invite.contractor_phone,
+            provider_message_id="SM-maintenance-123",
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.maintenance.send_contractor_work_order_sms",
+        fake_send_contractor_work_order_sms,
+    )
+    send_response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/contractor-delivery/send-sms",
+        json={"body": "Please text back your first available attendance window."},
+    )
+    assert send_response.status_code == 200
+    failed = send_response.json()
+    contractor_delivery = failed["metadata"]["contractor_delivery"]
+    assert contractor_delivery["email"]["send"]["status"] == "queued"
+    failed_sms_delivery = contractor_delivery["sms"]
+    assert failed_sms_delivery["send"]["status"] == "failed"
+    assert failed_sms_delivery["send"]["retry_count"] == 1
+    assert failed_sms_delivery["send"]["template_key"] == "maintenance_contractor_sms"
+    assert failed_sms_delivery["send"]["template_version"] == "v1"
+    assert failed_sms_delivery["receipts"][0]["status"] == "failed"
+    assert failed_sms_delivery["receipts"][0]["retry_count"] == 1
+    assert failed["metadata"].get("comments", []) == []
+
+    retry_response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/contractor-delivery/send-sms",
+        json={"body": "Please text back your first available attendance window."},
+    )
+    assert retry_response.status_code == 200
+    sent = retry_response.json()
+    sms_delivery = sent["metadata"]["contractor_delivery"]["sms"]
+    assert sms_delivery["send"]["status"] == "queued"
+    assert sms_delivery["send"]["provider"] == "twilio"
+    assert sms_delivery["send"]["provider_message_id"] == "SM-maintenance-123"
+    assert sms_delivery["send"]["retry_count"] == 2
+    assert sms_delivery["receipts"][0]["status"] == "queued"
+    assert sms_delivery["receipts"][0]["retry_count"] == 2
+    assert sms_delivery["receipts"][0]["template_version"] == "v1"
+    assert sms_delivery["receipts"][1]["status"] == "failed"
+    assert sms_delivery["history"][1]["template_key"] == "maintenance_contractor_sms"
+    assert sent["metadata"]["comments"][-1]["visibility"] == "contractor"
+    assert sent["metadata"]["comments"][-1]["body"] == (
+        "Please text back your first available attendance window."
+    )
+    assert sent["metadata"]["activity_history"][-1]["event"] == "contractor_sms_attempted"
+
+    receipt_response = client.post(
+        "/api/v1/maintenance/work-orders/webhooks/twilio-status",
+        data={
+            "MessageSid": "SM-maintenance-123",
+            "MessageStatus": "delivered",
+            "To": "+61400111222",
+        },
+    )
+    assert receipt_response.status_code == 204
+    work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+    assert work_order is not None
+    sms_delivery = work_order.work_order_metadata["contractor_delivery"]["sms"]
+    assert sms_delivery["send"]["status"] == "delivered"
+    assert sms_delivery["receipts"][0]["event"] == "delivered"
+    assert sms_delivery["receipts"][0]["retry_count"] == 2
+    assert work_order.work_order_metadata["contractor_delivery"]["email"]["send"]["status"] == (
+        "queued"
+    )
+    assert work_order.work_order_metadata["activity_history"][-1]["event"] == (
+        "contractor_sms_receipt"
+    )
+
+
 def test_maintenance_work_order_sends_assignment_notification_and_records_provider_attempt(
     client: TestClient,
     session: Session,
@@ -552,7 +678,10 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
     assert notification["recipient_email"] == settings.dev_user_email
     assert notification["template_key"] == "custom_work_notice"
     assert notification["template_version"] == "v2"
+    assert notification["attempt_count"] == 1
+    assert notification["delivery_attempt_count"] == 1
     assert notification["provider_history"][0]["event"] == ("provider_notification_attempted")
+    assert notification["provider_history"][0]["delivery_attempt_count"] == 1
     assert assignment["history"][0]["event"] == "provider_notification_attempted"
     assert assignment["history"][0]["notification_status"] == "queued"
 
@@ -575,9 +704,40 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
     notification = assignment["notification"]
     assert notification["status"] == "delivered"
     assert notification["last_event"] == "delivered"
+    assert notification["attempt_count"] == 1
+    assert notification["delivery_attempt_count"] == 1
     assert notification["provider_history"][0]["event"] == ("provider_notification_receipt")
+    assert notification["provider_history"][0]["delivery_attempt_count"] == 1
     assert assignment["history"][0]["event"] == "provider_notification_receipt"
     assert assignment["history"][0]["notification_status"] == "delivered"
+
+    center_response = client.get(
+        "/api/v1/work-assignments/notification-center",
+        params={"entity_id": context["entity_id"]},
+    )
+    assert center_response.status_code == 200
+    notice = next(
+        notice
+        for notice in center_response.json()["notices"]
+        if notice["target_id"] == work_order_id
+    )
+    email_receipt = next(
+        receipt for receipt in notice["channel_receipts"] if receipt["channel"] == "email"
+    )
+    assert email_receipt["status"] == "delivered"
+    assert email_receipt["last_event"] == "delivered"
+    assert email_receipt["receipt_at"] is not None
+    assert email_receipt["delivery_attempt_count"] == 1
+    assert email_receipt["provider_history"][0]["event"] == "provider_notification_receipt"
+    preview = email_receipt["rendered_message_preview"]
+    assert preview["channel"] == "email"
+    assert preview["provider"] == "sendgrid"
+    assert preview["recipient_email"] == settings.dev_user_email
+    assert preview["subject"] == "Leasium work assigned: Replace shopfront lock"
+    assert "Maintenance has been assigned to you in Leasium." in preview["body_text"]
+    assert "Work: Replace shopfront lock" in preview["body_text"]
+    assert preview["template_key"] == "custom_work_notice"
+    assert preview["template_version"] == "v2"
 
     audit_rows = session.scalars(
         select(AuditAction).where(AuditAction.target_table == "maintenance_work_order")
@@ -646,6 +806,301 @@ def test_maintenance_assignment_notification_respects_operator_email_preference(
     assert notification["error"] == "Assignment email disabled by operator preference."
 
 
+def test_notification_center_can_retry_assignment_notice_email(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    context = _lease_context(client, session)
+    settings = get_settings()
+    assignee = session.get(AppUser, settings.dev_user_id)
+    assert assignee is not None
+    assignee.notification_preferences = {
+        "work_assignment_email_enabled": True,
+        "work_assignment_notice_template_key": "custom_work_notice",
+        "work_assignment_notice_template_version": "v2",
+    }
+    session.commit()
+
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "Retryable notice job",
+            "status": "assigned",
+            "metadata": {
+                "work_assignment": {
+                    "assigned_user_id": str(settings.dev_user_id),
+                    "assigned_user_name": settings.dev_user_name,
+                    "assigned_user_email": settings.dev_user_email,
+                    "notification": {
+                        "channel": "email",
+                        "provider": "sendgrid",
+                        "status": "failed",
+                        "recipient_email": settings.dev_user_email,
+                        "template_key": "work_assignment_notification",
+                        "template_version": "v1",
+                        "provider_history": [
+                            {
+                                "event": "provider_notification_attempted",
+                                "status": "failed",
+                                "provider": "sendgrid",
+                            }
+                        ],
+                    },
+                    "history": [],
+                }
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+    attempts: list[str] = []
+
+    def fake_send_work_assignment_email(invite: Any, settings_arg: Any) -> DeliveryResult:
+        assert str(invite.target_id) == work_order_id
+        assert invite.target_type == "maintenance_work_order"
+        assert invite.template_key == "custom_work_notice"
+        assert invite.template_version == "v2"
+        attempts.append(str(invite.target_id))
+        return DeliveryResult(
+            channel="email",
+            status="queued",
+            provider="sendgrid",
+            attempted_at="2026-05-21T10:10:00+00:00",
+            recipient=invite.assignee_email,
+            provider_message_id="sg-notification-center-1",
+            metadata={
+                "template_key": invite.template_key,
+                "template_version": invite.template_version,
+            },
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.work_assignment_notifications.send_work_assignment_email",
+        fake_send_work_assignment_email,
+    )
+
+    payload = {
+        "entity_id": context["entity_id"],
+        "target_id": work_order_id,
+        "target_type": "maintenance_work_order",
+        "delivery_trigger": "retry",
+    }
+    send_response = client.post(
+        "/api/v1/work-assignments/notification-center/notices/send-email",
+        json=payload,
+    )
+
+    assert send_response.status_code == 200
+    body = send_response.json()
+    assert body["status"] == "queued"
+    assert body["message_sent"] is True
+    assert body["provider_message_id"] == "sg-notification-center-1"
+    assert body["template_key"] == "custom_work_notice"
+    assert body["notice"]["notification_status"] == "queued"
+    assert body["notice"]["group"] == "in_flight"
+    assert attempts == [work_order_id]
+
+    work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+    assert work_order is not None
+    notification = work_order.work_order_metadata["work_assignment"]["notification"]
+    assert notification["provider_history"][0]["status"] == "queued"
+    assert notification["provider_history"][1]["status"] == "failed"
+
+    second_response = client.post(
+        "/api/v1/work-assignments/notification-center/notices/send-email",
+        json=payload,
+    )
+    assert second_response.status_code == 200
+    assert second_response.json()["status"] == "already_sent"
+    assert attempts == [work_order_id]
+
+    wrong_entity_response = client.post(
+        "/api/v1/work-assignments/notification-center/notices/send-email",
+        json={
+            **payload,
+            "entity_id": "00000000-0000-7000-8000-000000099999",
+        },
+    )
+    assert wrong_entity_response.status_code == 404
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.tool_name == "sendgrid.work_assignment.notification_center"
+        )
+    )
+    assert audit is not None
+    assert audit.action == "deliver"
+
+
+def test_notification_center_can_send_assignment_notice_sms_without_clobbering_email(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    context = _lease_context(client, session)
+    settings = get_settings()
+    assignee = session.get(AppUser, settings.dev_user_id)
+    assert assignee is not None
+    assignee.notification_preferences = {
+        "work_assignment_email_enabled": True,
+        "work_assignment_sms_enabled": True,
+        "work_assignment_sms_phone": "+61400111222",
+    }
+    session.commit()
+
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "SMS-ready notice job",
+            "status": "assigned",
+            "metadata": {
+                "work_assignment": {
+                    "assigned_user_id": str(settings.dev_user_id),
+                    "assigned_user_name": settings.dev_user_name,
+                    "assigned_user_email": settings.dev_user_email,
+                    "notification": {
+                        "channel": "email",
+                        "provider": "sendgrid",
+                        "status": "queued",
+                        "recipient_email": settings.dev_user_email,
+                        "provider_message_id": "sg-existing-email",
+                        "template_key": "work_assignment_notification",
+                        "template_version": "v1",
+                        "provider_history": [
+                            {
+                                "event": "provider_notification_attempted",
+                                "channel": "email",
+                                "status": "queued",
+                                "provider": "sendgrid",
+                                "provider_message_id": "sg-existing-email",
+                            }
+                        ],
+                    },
+                    "history": [],
+                }
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+    attempts: list[str] = []
+
+    def fake_send_work_assignment_sms(invite: Any, settings_arg: Any) -> DeliveryResult:
+        assert str(invite.target_id) == work_order_id
+        assert invite.target_type == "maintenance_work_order"
+        assert invite.assignee_phone == "+61400111222"
+        attempts.append(str(invite.target_id))
+        return DeliveryResult(
+            channel="sms",
+            status="queued",
+            provider="twilio",
+            attempted_at="2026-05-21T10:12:00+00:00",
+            recipient=invite.assignee_phone,
+            provider_message_id="SM-notification-center-1",
+            metadata={
+                "template_key": invite.template_key,
+                "template_version": invite.template_version,
+            },
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.work_assignment_notifications.send_work_assignment_sms",
+        fake_send_work_assignment_sms,
+    )
+
+    payload = {
+        "entity_id": context["entity_id"],
+        "target_id": work_order_id,
+        "target_type": "maintenance_work_order",
+        "delivery_trigger": "manual",
+    }
+    send_response = client.post(
+        "/api/v1/work-assignments/notification-center/notices/send-sms",
+        json=payload,
+    )
+
+    assert send_response.status_code == 200
+    body = send_response.json()
+    assert body["status"] == "queued"
+    assert body["message_sent"] is True
+    assert body["recipient_phone"] == "+61400111222"
+    assert body["provider_message_id"] == "SM-notification-center-1"
+    assert body["notice"]["notification_status"] == "queued"
+    assert body["notice"]["group"] == "in_flight"
+    assert body["notice"]["sms_status"] == "queued"
+    channel_receipts = {
+        receipt["channel"]: receipt for receipt in body["notice"]["channel_receipts"]
+    }
+    assert channel_receipts["email"]["status"] == "queued"
+    assert channel_receipts["email"]["provider"] == "sendgrid"
+    assert channel_receipts["sms"]["status"] == "queued"
+    assert channel_receipts["sms"]["provider"] == "twilio"
+    assert channel_receipts["sms"]["recipient_phone"] == "+61400111222"
+    assert channel_receipts["sms"]["message_sent"] is True
+    sms_preview = channel_receipts["sms"]["rendered_message_preview"]
+    assert sms_preview["channel"] == "sms"
+    assert sms_preview["provider"] == "twilio"
+    assert sms_preview["recipient_phone"] == "+61400111222"
+    assert sms_preview["subject"] is None
+    assert "Leasium: Maintenance assigned" in sms_preview["body_text"]
+    assert "SMS-ready notice job" in sms_preview["body_text"]
+    assert attempts == [work_order_id]
+
+    work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+    assert work_order is not None
+    notification = work_order.work_order_metadata["work_assignment"]["notification"]
+    assert notification["channel"] == "email"
+    assert notification["provider"] == "sendgrid"
+    assert notification["status"] == "queued"
+    assert notification["provider_message_id"] == "sg-existing-email"
+    assert notification["provider_history"][0]["channel"] == "email"
+    sms_channel = notification["channels"]["sms"]
+    assert sms_channel["status"] == "queued"
+    assert sms_channel["provider"] == "twilio"
+    assert sms_channel["provider_message_id"] == "SM-notification-center-1"
+    assert sms_channel["provider_history"][0]["channel"] == "sms"
+    assert sms_channel["provider_history"][0]["delivery_attempt_count"] == 1
+
+    second_response = client.post(
+        "/api/v1/work-assignments/notification-center/notices/send-sms",
+        json=payload,
+    )
+    assert second_response.status_code == 200
+    assert second_response.json()["status"] == "already_sent"
+    assert attempts == [work_order_id]
+
+    receipt_response = client.post(
+        "/api/v1/work-assignments/webhooks/twilio-status",
+        data={
+            "MessageSid": "SM-notification-center-1",
+            "MessageStatus": "delivered",
+            "To": "+61400111222",
+        },
+    )
+    assert receipt_response.status_code == 204
+    session.refresh(work_order)
+    notification = work_order.work_order_metadata["work_assignment"]["notification"]
+    assert notification["status"] == "queued"
+    assert notification["provider_message_id"] == "sg-existing-email"
+    sms_channel = notification["channels"]["sms"]
+    assert sms_channel["status"] == "delivered"
+    assert sms_channel["last_event"] == "delivered"
+    assert sms_channel["provider_history"][0]["event"] == "provider_notification_receipt"
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.tool_name == "twilio.work_assignment.notification_center"
+        )
+    )
+    assert audit is not None
+    assert audit.action == "deliver"
+
+
 def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     client: TestClient,
     session: Session,
@@ -709,6 +1164,14 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert operator_digest["assignee_user_id"] == str(assignee.id)
     assert operator_digest["ready_count"] == 1
     assert operator_digest["follow_up_due_count"] == 1
+    operator_preview = operator_digest["rendered_message_preview"]
+    assert operator_preview["channel"] == "email"
+    assert operator_preview["provider"] == "sendgrid"
+    assert operator_preview["recipient_email"] == assignee.email
+    assert operator_preview["subject"] == "Leasium Daily Work digest: 1 items"
+    assert "Digest-ready maintenance job" in operator_preview["body_text"]
+    assert operator_preview["template_key"] == "custom_work_digest"
+    assert operator_preview["template_version"] == "v3"
     item = operator_digest["items"][0]
     assert item["title"] == "Digest-ready maintenance job"
     assert item["target_type"] == "maintenance_work_order"
@@ -791,7 +1254,36 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert center["digest_receipts"][0]["template_key"] == "custom_work_digest"
     assert center["digest_receipts"][0]["template_version"] == "v3"
     assert center["digest_receipts"][0]["provider_history"] == []
+    digest_preview = center["digest_receipts"][0]["rendered_message_preview"]
+    assert digest_preview["channel"] == "email"
+    assert digest_preview["provider"] == "sendgrid"
+    assert digest_preview["recipient_email"] == assignee.email
+    assert digest_preview["subject"] == "Leasium Daily Work digest: 1 items"
+    assert "Digest-ready maintenance job" in digest_preview["body_text"]
+    assert digest_preview["template_key"] == "custom_work_digest"
+    assert digest_preview["template_version"] == "v3"
     assert center["guardrails"][0].startswith("Notification center is read-only")
+    assert center["channels"][0]["channel"] == "email"
+    assert center["channels"][0]["readiness"] == "actionable"
+    assert center["channels"][0]["reason_code"] == "sendgrid_not_configured"
+    assert center["channels"][0]["action_available"] is True
+    email_checks = {check["key"]: check for check in center["channels"][0]["setup_checks"]}
+    assert email_checks["work_assignment_email_enabled"]["status"] == "ready"
+    assert email_checks["sendgrid_sender"]["status"] == "missing"
+    assert email_checks["sendgrid_event_webhook"]["status"] == "missing"
+    assert email_checks["sendgrid_event_webhook"]["value"] is None
+    assert center["channels"][1]["channel"] == "sms"
+    assert center["channels"][1]["readiness"] == "blocked"
+    assert center["channels"][1]["reason_code"] == "no_operator_phone"
+    assert center["channels"][1]["action_available"] is False
+    sms_checks = {check["key"]: check for check in center["channels"][1]["setup_checks"]}
+    assert sms_checks["operator_sms_preferences"]["status"] == "missing"
+    assert sms_checks["twilio_messaging"]["status"] == "missing"
+    assert sms_checks["twilio_status_callback"]["status"] == "missing"
+    assert sms_checks["twilio_status_callback"]["value"] is None
+    assert center["channels"][2]["readiness"] == "read_only"
+    assert center["channels"][2]["setup_checks"][0]["key"] == "leasium_receipts"
+    assert center["channels"][2]["setup_checks"][0]["status"] == "ready"
 
     mark_read_response = client.post(
         "/api/v1/work-assignments/notification-center/mark-read",
@@ -815,6 +1307,83 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
         "work_assignment_notification_center_read_at"
     ][entity_id]
     assert stored_read_at.replace("+00:00", "Z") == read_state["read_at"]
+
+
+def test_notification_center_provider_setup_checks_hide_secrets(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    entity_id = _entity_id(session)
+    settings = get_settings()
+    assignee = session.get(AppUser, settings.dev_user_id)
+    assert assignee is not None
+    assignee.notification_preferences = {
+        "work_assignment_email_enabled": True,
+        "work_assignment_sms_enabled": True,
+        "work_assignment_sms_phone": "+61400111222",
+    }
+    session.commit()
+    configured_settings = settings.model_copy(
+        update={
+            "public_api_url": "https://api.leasium.test",
+            "communications_webhook_secret": "super-secret",
+            "sendgrid_api_key": "sendgrid-secret",
+            "sendgrid_from_email": "ops@leasium.test",
+            "twilio_account_sid": "AC123",
+            "twilio_auth_token": "twilio-secret",
+            "twilio_messaging_service_sid": "MG123",
+        }
+    )
+    monkeypatch.setattr(
+        "apps.api.routers.work_assignment_notifications.get_settings",
+        lambda: configured_settings,
+    )
+
+    response = client.get(
+        "/api/v1/work-assignments/notification-center",
+        params={"entity_id": entity_id},
+    )
+
+    assert response.status_code == 200
+    center = response.json()
+    email_checks = {check["key"]: check for check in center["channels"][0]["setup_checks"]}
+    assert email_checks["sendgrid_sender"]["status"] == "ready"
+    assert email_checks["sendgrid_sender"]["value"] == "ops@leasium.test"
+    assert email_checks["sendgrid_event_webhook"]["status"] == "review"
+    assert email_checks["sendgrid_event_webhook"]["value"] == (
+        "https://api.leasium.test/api/v1/work-assignments/webhooks/sendgrid-events"
+    )
+    assert "sendgrid-secret" not in str(email_checks)
+    assert "super-secret" not in str(email_checks)
+
+    sms_checks = {check["key"]: check for check in center["channels"][1]["setup_checks"]}
+    assert sms_checks["operator_sms_preferences"]["status"] == "ready"
+    assert sms_checks["twilio_messaging"]["status"] == "ready"
+    assert sms_checks["twilio_status_callback"]["status"] == "review"
+    assert sms_checks["twilio_status_callback"]["value"] == (
+        "https://api.leasium.test/api/v1/work-assignments/webhooks/twilio-status"
+    )
+    assert "twilio-secret" not in str(sms_checks)
+    assert "super-secret" not in str(sms_checks)
+    assert "token=" not in sms_checks["twilio_status_callback"]["value"]
+
+
+def test_work_assignment_notification_template_catalog(client: TestClient) -> None:
+    response = client.get("/api/v1/work-assignments/notification-templates")
+
+    assert response.status_code == 200
+    catalog = response.json()
+    assert catalog["guardrails"][0].startswith("Template choices only set reviewed")
+    assert catalog["notice_templates"][0]["key"] == "work_assignment_notification"
+    assert catalog["notice_templates"][0]["name"] == "Standard assignment notice"
+    assert catalog["notice_templates"][0]["provider"] == "sendgrid"
+    assert catalog["digest_templates"][0]["key"] == "work_assignment_digest"
+    assert catalog["digest_templates"][0]["default_version"] == "v1"
+    assert any(
+        template["key"] == "work_assignment_digest_owner_review"
+        for template in catalog["digest_templates"]
+    )
 
 
 def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
@@ -953,6 +1522,11 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
     assert center["digest_receipts"][0]["provider_history"][0]["template_key"] == (
         "custom_work_digest"
     )
+    delivery_preview = center["digest_receipts"][0]["rendered_message_preview"]
+    assert delivery_preview["subject"] == "Leasium Daily Work digest: 1 items"
+    assert "Digest delivery maintenance job" in delivery_preview["body_text"]
+    assert delivery_preview["template_key"] == "custom_work_digest"
+    assert delivery_preview["template_version"] == "v3"
 
     recovery_response = client.post(
         "/api/v1/work-assignments/digests/run",
