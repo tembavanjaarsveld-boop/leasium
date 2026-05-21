@@ -144,6 +144,40 @@ class WorkAssignmentEmail:
     template_version: str
 
 
+@dataclass(frozen=True)
+class WorkAssignmentDigestEmailItem:
+    """One item inside a Work assignment digest email."""
+
+    title: str
+    work_kind: str
+    due_date: date | None
+    status: str
+    priority: str | None
+    follow_up_due: bool
+    work_url: str | None
+
+
+@dataclass(frozen=True)
+class WorkAssignmentDigestEmail:
+    """Context needed to send a reviewed Work digest to an operator."""
+
+    entity_id: UUID
+    assignee_user_id: UUID
+    assignee_name: str
+    assignee_email: str | None
+    cadence: str
+    generated_at: datetime
+    item_count: int
+    follow_up_due_count: int
+    ready_count: int
+    attention_count: int
+    in_flight_count: int
+    done_count: int
+    items: list[WorkAssignmentDigestEmailItem]
+    template_key: str
+    template_version: str
+
+
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
@@ -209,6 +243,11 @@ def _operator_invite_subject(invite: OperatorInviteEmail) -> str:
 
 def _work_assignment_subject(invite: WorkAssignmentEmail) -> str:
     return f"Leasium work assigned: {invite.title}"
+
+
+def _work_assignment_digest_subject(invite: WorkAssignmentDigestEmail) -> str:
+    cadence = invite.cadence.capitalize()
+    return f"Leasium {cadence} Work digest: {invite.item_count} items"
 
 
 def _email_text(invite: TenantOnboardingInvite) -> str:
@@ -386,6 +425,86 @@ def _work_assignment_html(invite: WorkAssignmentEmail) -> str:
         {description}
       </div>
       {work_url}
+      <p>Please open Leasium to review the work, update status, or reassign if needed.</p>
+      <p>Leasium</p>
+    </div>
+    """
+
+
+def _work_assignment_digest_text(invite: WorkAssignmentDigestEmail) -> str:
+    greeting = f"Hi {invite.assignee_name}," if invite.assignee_name else "Hi,"
+    lines = [
+        greeting,
+        "",
+        f"Your {invite.cadence} Leasium Work digest is ready.",
+        "",
+        f"Open items: {invite.item_count}",
+        f"Follow-ups due: {invite.follow_up_due_count}",
+        f"Attention: {invite.attention_count}",
+        f"Ready notices: {invite.ready_count}",
+        "",
+    ]
+    for item in invite.items[:10]:
+        follow_up = " - follow-up due" if item.follow_up_due else ""
+        lines.extend(
+            [
+                f"- {item.title}{follow_up}",
+                f"  Type: {item.work_kind}",
+                f"  Due: {_date_label(item.due_date)}",
+                f"  Status: {item.status}",
+            ]
+        )
+        if item.work_url:
+            lines.append(f"  Open: {item.work_url}")
+    lines.extend(
+        [
+            "",
+            "Please open Leasium to review the work, update status, or reassign if needed.",
+            "",
+            "Leasium",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _work_assignment_digest_html(invite: WorkAssignmentDigestEmail) -> str:
+    greeting = f"Hi {escape(invite.assignee_name)}," if invite.assignee_name else "Hi,"
+    item_rows = []
+    for item in invite.items[:10]:
+        link = (
+            f'<a href="{escape(item.work_url)}" style="color:#245BFF;">Open</a>'
+            if item.work_url
+            else ""
+        )
+        follow_up = (
+            '<span style="color:#B42318;font-weight:700;">Follow-up due</span>'
+            if item.follow_up_due
+            else ""
+        )
+        item_rows.append(
+            f"""
+            <div style="border-top:1px solid #E4E7EC;padding:14px 0;">
+              <p style="margin:0;font-weight:700;">{escape(item.title)}</p>
+              <p style="margin:6px 0 0;color:#475467;">
+                {escape(item.work_kind)} · Due {escape(_date_label(item.due_date))} ·
+                Status {escape(item.status)}
+              </p>
+              <p style="margin:6px 0 0;color:#475467;">{follow_up} {link}</p>
+            </div>
+            """
+        )
+    return f"""
+    <div style="font-family:Inter,Arial,sans-serif;line-height:1.55;color:#172033">
+      <p>{greeting}</p>
+      <p>Your {escape(invite.cadence)} Leasium Work digest is ready.</p>
+      <div style="border:1px solid #E4E7EC;border-radius:12px;padding:16px;margin:18px 0;">
+        <p style="margin:0;font-weight:700;">{invite.item_count} open items</p>
+        <p style="margin:8px 0 0;color:#475467;">
+          {invite.follow_up_due_count} follow-ups · {invite.attention_count} attention ·
+          {invite.ready_count} ready notices
+        </p>
+        {"".join(item_rows)}
+      </div>
       <p>Please open Leasium to review the work, update status, or reassign if needed.</p>
       <p>Leasium</p>
     </div>
@@ -906,6 +1025,118 @@ def send_work_assignment_email(
             {"type": "text/html", "value": _work_assignment_html(invite)},
         ],
         "categories": _categories("work_assignment", invite.template_key),
+    }
+    try:
+        with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
+            response = client.post(
+                settings.sendgrid_mail_send_url,
+                headers={
+                    "Authorization": f"Bearer {settings.sendgrid_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if 200 <= response.status_code < 300:
+            return DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient=recipient,
+                provider_message_id=response.headers.get("x-message-id"),
+                metadata=metadata,
+            )
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=_sendgrid_error(response),
+            metadata=metadata,
+        )
+    except httpx.HTTPError as exc:
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=str(exc),
+            metadata=metadata,
+        )
+
+
+def send_work_assignment_digest_email(
+    invite: WorkAssignmentDigestEmail,
+    settings: Settings,
+) -> DeliveryResult:
+    """Send an approved Work digest email to an operator."""
+
+    recipient = _clean(invite.assignee_email)
+    subject = _work_assignment_digest_subject(invite)
+    metadata: dict[str, str | None] = {
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "entity_id": str(invite.entity_id),
+        "assignee_user_id": str(invite.assignee_user_id),
+        "cadence": invite.cadence,
+        "generated_at": invite.generated_at.isoformat(),
+        "subject": subject,
+    }
+    if not settings.work_assignment_email_enabled:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="Work assignment email disabled.",
+            metadata=metadata,
+        )
+    if recipient is None:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            error="No digest email recipient.",
+            metadata=metadata,
+        )
+    if not settings.sendgrid_api_key or not settings.sendgrid_from_email:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="SendGrid is not configured.",
+            metadata=metadata,
+        )
+
+    payload = {
+        "personalizations": [
+            {
+                "to": [
+                    {
+                        "email": recipient,
+                        **({"name": invite.assignee_name} if invite.assignee_name else {}),
+                    }
+                ],
+                "subject": subject,
+                "custom_args": {
+                    "work_assignment_digest_entity_id": str(invite.entity_id),
+                    "work_assignment_digest_assignee_user_id": str(invite.assignee_user_id),
+                    "work_assignment_digest_cadence": invite.cadence,
+                    "work_assignment_digest_generated_at": invite.generated_at.isoformat(),
+                    "template_key": invite.template_key,
+                    "template_version": invite.template_version,
+                },
+            }
+        ],
+        "from": {
+            "email": settings.sendgrid_from_email,
+            "name": settings.sendgrid_from_name,
+        },
+        "content": [
+            {"type": "text/plain", "value": _work_assignment_digest_text(invite)},
+            {"type": "text/html", "value": _work_assignment_digest_html(invite)},
+        ],
+        "categories": _categories("work_assignment_digest", invite.template_key),
     }
     try:
         with httpx.Client(timeout=settings.communications_timeout_seconds) as client:

@@ -93,6 +93,13 @@ active operator's digest cadence. For a single known entity, cron can still call
 `/api/v1/work-assignments/digests/run-scheduled` with an explicit
 `{"entity_id":"...","cadence":"daily"}` or weekly payload.
 
+Digest email delivery stays explicit. To send provider-backed SendGrid digest
+emails, call the same endpoints with `send_email_approved=true` in the JSON
+payload for `/run-scheduled`, or the `send_email_approved=true` query parameter
+for `/run-due`. Leasium records queued/skipped/failed digest receipts in
+operator notification history and accepts SendGrid digest events through
+`/api/v1/work-assignments/webhooks/sendgrid-events`.
+
 Operator invite delivery also uses the SendGrid key/from settings above. Invite
 links point to `/accept-invite?token=...`; the raw token is sent once by email,
 while only a hash is stored in the database. On a clean production database,

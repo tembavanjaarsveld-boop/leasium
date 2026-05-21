@@ -23,6 +23,12 @@ from stewart.core.models import (
     UserRole,
 )
 from stewart.core.settings import get_settings
+from stewart.integrations.communications import (
+    DeliveryResult,
+    WorkAssignmentDigestEmail,
+    WorkAssignmentDigestEmailItem,
+    send_work_assignment_digest_email,
+)
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.work_assignments import (
@@ -42,6 +48,7 @@ from apps.api.schemas.work_assignments import (
 from apps.api.work_assignments import (
     apply_work_assignment_delivery_receipt,
     assignment_notification_message_matches,
+    work_assignment_receipt_status,
     work_assignment_record,
 )
 
@@ -69,10 +76,20 @@ DIGEST_GUARDRAILS = [
         "and critical-date work."
     ),
 ]
+DIGEST_DELIVERY_GUARDRAILS = [
+    "Digest email delivery only runs when send_email_approved is explicitly true.",
+    "Only active operators whose Work digest cadence matches this run are included.",
+    "SendGrid failures and preference skips are stored as receipt history for review.",
+]
 DUE_DIGEST_GUARDRAILS = [
     "Due digest runs are review-only; they do not send email, SMS, or push notifications.",
     "Cron callers do not need entity IDs; active entities are scanned for matching assigned work.",
     "Only active operators whose digest cadence matches the run are included.",
+]
+DUE_DIGEST_DELIVERY_GUARDRAILS = [
+    "Due digest email delivery only runs when send_email_approved is explicitly true.",
+    "Cron callers do not need entity IDs; active entities are scanned for matching assigned work.",
+    "SendGrid failures and preference skips are stored as receipt history for review.",
 ]
 NOTIFICATION_CENTER_GUARDRAILS = [
     "Notification center is read-only; sending still requires explicit operator action.",
@@ -408,16 +425,105 @@ def _group_count(
     return sum(1 for item in items if item.notification_group == group)
 
 
+def _digest_message_sent(status_value: str) -> bool:
+    return status_value in {"queued", "sent", "delivered", "opened"}
+
+
+def _digest_delivery_detail(result: DeliveryResult | None) -> str | None:
+    if result is None:
+        return None
+    if result.status in {"queued", "sent", "delivered", "opened"}:
+        return "Digest email was queued by SendGrid."
+    return result.error or "Digest email was not sent."
+
+
+def _digest_email_preference_enabled(member: AppUser) -> bool:
+    preferences = _metadata_record(member.notification_preferences)
+    enabled = preferences.get("work_assignment_email_enabled")
+    return enabled if isinstance(enabled, bool) else True
+
+
+def _digest_email_preference_skipped_result(
+    digest: WorkAssignmentDigestRead,
+    *,
+    entity_id: UUID,
+    generated_at: datetime,
+) -> DeliveryResult:
+    return DeliveryResult(
+        channel="email",
+        status="skipped",
+        provider="sendgrid",
+        recipient=digest.assignee_email,
+        error="Assignment email disabled by operator preference.",
+        metadata={
+            "template_key": "work_assignment_digest",
+            "template_version": "v1",
+            "entity_id": str(entity_id),
+            "assignee_user_id": str(digest.assignee_user_id),
+            "cadence": digest.cadence,
+            "generated_at": generated_at.isoformat(),
+        },
+    )
+
+
+def _digest_work_kind(item: WorkAssignmentDigestItemRead) -> str:
+    if item.target_type == "maintenance_work_order":
+        return "Maintenance"
+    if item.target_type == "arrears_case":
+        return "Arrears"
+    return "Critical date"
+
+
+def _digest_email_invite(
+    digest: WorkAssignmentDigestRead,
+    *,
+    entity_id: UUID,
+    generated_at: datetime,
+) -> WorkAssignmentDigestEmail:
+    return WorkAssignmentDigestEmail(
+        entity_id=entity_id,
+        assignee_user_id=digest.assignee_user_id,
+        assignee_name=digest.assignee_name,
+        assignee_email=digest.assignee_email,
+        cadence=digest.cadence,
+        generated_at=generated_at,
+        item_count=digest.item_count,
+        follow_up_due_count=digest.follow_up_due_count,
+        ready_count=digest.ready_count,
+        attention_count=digest.attention_count,
+        in_flight_count=digest.in_flight_count,
+        done_count=digest.done_count,
+        items=[
+            WorkAssignmentDigestEmailItem(
+                title=item.title,
+                work_kind=_digest_work_kind(item),
+                due_date=item.due_date,
+                status=item.status,
+                priority=item.priority,
+                follow_up_due=item.follow_up_due,
+                work_url=item.work_url,
+            )
+            for item in digest.items
+        ],
+        template_key="work_assignment_digest",
+        template_version="v1",
+    )
+
+
 def _record_digest_receipt(
     member: AppUser,
     *,
     digest: WorkAssignmentDigestRead,
     entity_id: UUID,
     generated_at: datetime,
+    delivery_result: DeliveryResult | None = None,
 ) -> None:
     preferences = _metadata_record(member.notification_preferences)
     raw_history = preferences.get("work_assignment_digest_history")
     history = list(raw_history) if isinstance(raw_history, list) else []
+    result_dict = delivery_result.to_dict() if delivery_result is not None else {}
+    delivery_status = str(result_dict.get("status") or "previewed")
+    delivery_detail = _digest_delivery_detail(delivery_result)
     receipt = {
         "event": "digest_generated",
         "generated_at": generated_at.isoformat(),
@@ -429,8 +535,14 @@ def _record_digest_receipt(
         "in_flight_count": digest.in_flight_count,
         "done_count": digest.done_count,
         "follow_up_due_count": digest.follow_up_due_count,
-        "delivery_status": "previewed",
-        "message_sent": False,
+        "delivery_status": delivery_status,
+        "message_sent": _digest_message_sent(delivery_status),
+        "delivery_detail": delivery_detail,
+        "delivery_channel": result_dict.get("channel"),
+        "provider": result_dict.get("provider"),
+        "provider_message_id": result_dict.get("provider_message_id"),
+        "recipient_email": result_dict.get("recipient"),
+        "delivery_attempted_at": result_dict.get("attempted_at"),
     }
     preferences["work_assignment_digest_last_generated_at"] = receipt["generated_at"]
     preferences["work_assignment_digest_last_item_count"] = digest.item_count
@@ -470,13 +582,119 @@ def _notification_center_digest_receipts(
                     if isinstance(follow_up_due_count, int)
                     and not isinstance(follow_up_due_count, bool)
                     else 0,
-                    delivery_status=_metadata_text(record.get("delivery_status"))
-                    or "previewed",
+                    delivery_status=_metadata_text(record.get("delivery_status")) or "previewed",
                     message_sent=message_sent if isinstance(message_sent, bool) else False,
+                    delivery_detail=_metadata_text(record.get("delivery_detail")),
+                    provider_message_id=_metadata_text(record.get("provider_message_id")),
                 )
             )
     receipts.sort(key=lambda receipt: receipt.generated_at, reverse=True)
     return receipts[:20]
+
+
+def _apply_digest_delivery_receipt(
+    session: Session,
+    *,
+    event: dict[str, object],
+    provider_message_id: str | None,
+    raw_status: str,
+) -> bool:
+    raw_assignee_id = event.get("work_assignment_digest_assignee_user_id")
+    if not isinstance(raw_assignee_id, str):
+        return False
+    try:
+        assignee_id = UUID(raw_assignee_id)
+    except ValueError:
+        return False
+    member = session.get(AppUser, assignee_id)
+    if member is None:
+        return False
+
+    raw_entity_id = event.get("work_assignment_digest_entity_id")
+    entity_id = _metadata_uuid(raw_entity_id) if isinstance(raw_entity_id, str) else None
+    raw_generated_at = event.get("work_assignment_digest_generated_at")
+    generated_at = (
+        _metadata_datetime(raw_generated_at) if isinstance(raw_generated_at, str) else None
+    )
+
+    preferences = _metadata_record(member.notification_preferences)
+    history = [
+        _metadata_record(receipt)
+        for receipt in _metadata_list(preferences.get("work_assignment_digest_history"))
+    ]
+    match_index: int | None = None
+    for index, receipt in enumerate(history):
+        if (
+            provider_message_id
+            and _metadata_text(receipt.get("provider_message_id")) == provider_message_id
+        ):
+            match_index = index
+            break
+        if (
+            entity_id is not None
+            and _metadata_uuid(receipt.get("entity_id")) == entity_id
+            and generated_at is not None
+            and _metadata_datetime(receipt.get("generated_at")) == generated_at
+        ):
+            match_index = index
+            break
+    if match_index is None:
+        return False
+
+    now = utcnow().isoformat()
+    status_value = work_assignment_receipt_status(raw_status)
+    receipt = history[match_index]
+    recipient_value = event.get("email") or receipt.get("recipient_email")
+    recipient = str(recipient_value) if recipient_value else None
+    if provider_message_id:
+        receipt["provider_message_id"] = provider_message_id
+    if recipient:
+        receipt["recipient_email"] = recipient
+    receipt["delivery_status"] = status_value
+    receipt["message_sent"] = bool(receipt.get("message_sent")) or _digest_message_sent(
+        status_value
+    )
+    receipt["last_event"] = raw_status
+    receipt["receipt_at"] = now
+    if status_value == "failed":
+        receipt["delivery_detail"] = str(
+            event.get("reason") or event.get("response") or event.get("event") or raw_status
+        )
+    elif status_value in {"sent", "delivered", "opened"}:
+        receipt["delivery_detail"] = f"Digest email {status_value}."
+
+    provider_history = [
+        {
+            "event": "digest_provider_receipt",
+            "channel": "email",
+            "status": status_value,
+            "raw_event": raw_status,
+            "provider": "sendgrid",
+            "received_at": now,
+            "recipient_email": recipient,
+            "provider_message_id": receipt.get("provider_message_id"),
+            "error": receipt.get("delivery_detail") if status_value == "failed" else None,
+        },
+        *_metadata_list(receipt.get("provider_history")),
+    ]
+    receipt["provider_history"] = provider_history[:10]
+    history[match_index] = receipt
+    preferences["work_assignment_digest_history"] = history[:10]
+    member.notification_preferences = preferences
+    audit_log(
+        session,
+        actor="provider:sendgrid",
+        user_id=member.id,
+        entity_id=entity_id,
+        action="receipt",
+        target_table="app_user",
+        target_id=member.id,
+        tool_name="sendgrid.work_assignment_digest_event_webhook",
+        tool_input={"channel": "email", "status": raw_status},
+        tool_output_summary="Recorded SendGrid Work digest receipt.",
+        data_classification="confidential",
+    )
+    return True
 
 
 def _entity_assignment_members(
@@ -535,9 +753,7 @@ def _notification_center_unread_count(
     if last_read_at is None:
         return len(notices) + len(digest_receipts)
     return sum(
-        1
-        for item in notices
-        if item.event_at is not None and item.event_at > last_read_at
+        1 for item in notices if item.event_at is not None and item.event_at > last_read_at
     ) + sum(1 for receipt in digest_receipts if receipt.generated_at > last_read_at)
 
 
@@ -681,9 +897,7 @@ def _generate_work_assignment_digest(
         entity_id=payload.entity_id,
     )
     members_by_id = {
-        member.id: member
-        for member in members
-        if _digest_preference(member) == payload.cadence
+        member.id: member for member in members if _digest_preference(member) == payload.cadence
     }
     settings = get_settings()
     frontend_base = settings.frontend_url.strip().rstrip("/") or None
@@ -737,13 +951,43 @@ def _generate_work_assignment_digest(
     )
     generated_at = utcnow()
     for digest in digests:
+        delivery_result: DeliveryResult | None = None
+        if payload.send_email_approved:
+            member = members_by_id[digest.assignee_user_id]
+            delivery_result = (
+                send_work_assignment_digest_email(
+                    _digest_email_invite(
+                        digest,
+                        entity_id=payload.entity_id,
+                        generated_at=generated_at,
+                    ),
+                    settings,
+                )
+                if _digest_email_preference_enabled(member)
+                else _digest_email_preference_skipped_result(
+                    digest,
+                    entity_id=payload.entity_id,
+                    generated_at=generated_at,
+                )
+            )
+            digest.delivery_status = delivery_result.status
+            digest.message_sent = _digest_message_sent(delivery_result.status)
+            digest.delivery_detail = _digest_delivery_detail(delivery_result)
+            digest.provider_message_id = delivery_result.provider_message_id
         _record_digest_receipt(
             members_by_id[digest.assignee_user_id],
             digest=digest,
             entity_id=payload.entity_id,
             generated_at=generated_at,
+            delivery_result=delivery_result,
         )
     work_item_count = sum(digest.item_count for digest in digests)
+    sent_count = sum(1 for digest in digests if digest.message_sent)
+    delivery_summary = (
+        f"attempted digest email delivery for {len(digests)} operators; {sent_count} queued/sent."
+        if payload.send_email_approved
+        else "no messages sent."
+    )
     audit_log(
         session,
         actor=actor,
@@ -754,8 +998,8 @@ def _generate_work_assignment_digest(
         tool_name=tool_name,
         tool_input=payload.model_dump(mode="json"),
         tool_output_summary=(
-            f"Generated {payload.cadence} Work assignment digest preview for "
-            f"{len(digests)} operators and {work_item_count} items; no messages sent."
+            f"Generated {payload.cadence} Work assignment digest for "
+            f"{len(digests)} operators and {work_item_count} items; {delivery_summary}"
         ),
         data_classification="confidential",
     )
@@ -766,7 +1010,9 @@ def _generate_work_assignment_digest(
         generated_at=generated_at,
         operator_count=len(digests),
         work_item_count=work_item_count,
-        guardrails=DIGEST_GUARDRAILS,
+        guardrails=(
+            DIGEST_DELIVERY_GUARDRAILS if payload.send_email_approved else DIGEST_GUARDRAILS
+        ),
         digests=digests,
     )
 
@@ -813,6 +1059,7 @@ def run_due_work_assignment_digests(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
     cadence: Annotated[WorkAssignmentDigestDueCadence, Query()] = "daily",
+    send_email_approved: Annotated[bool, Query()] = False,
 ) -> WorkAssignmentDigestDueRunRead:
     _assert_webhook_secret(request)
     entities = session.scalars(
@@ -838,7 +1085,11 @@ def run_due_work_assignment_digests(
                 continue
             runs.append(
                 _generate_work_assignment_digest(
-                    WorkAssignmentDigestRun(entity_id=entity.id, cadence=digest_cadence),
+                    WorkAssignmentDigestRun(
+                        entity_id=entity.id,
+                        cadence=digest_cadence,
+                        send_email_approved=send_email_approved,
+                    ),
                     session=session,
                     organisation_id=entity.organisation_id,
                     actor="cron:work_assignment_digest_due",
@@ -853,7 +1104,9 @@ def run_due_work_assignment_digests(
         run_count=len(runs),
         operator_count=sum(run.operator_count for run in runs),
         work_item_count=sum(run.work_item_count for run in runs),
-        guardrails=DUE_DIGEST_GUARDRAILS,
+        guardrails=(
+            DUE_DIGEST_DELIVERY_GUARDRAILS if send_email_approved else DUE_DIGEST_GUARDRAILS
+        ),
         runs=runs,
     )
 
@@ -936,6 +1189,13 @@ async def record_work_assignment_sendgrid_delivery_events(
             continue
         message_id = event.get("sg_message_id") or event.get("sg-message-id")
         provider_message_id = str(message_id) if message_id else None
+        if _apply_digest_delivery_receipt(
+            session,
+            event=event,
+            provider_message_id=provider_message_id,
+            raw_status=raw_status,
+        ):
+            continue
         target = _target_from_event(session, event, provider_message_id)
         if target is None:
             continue

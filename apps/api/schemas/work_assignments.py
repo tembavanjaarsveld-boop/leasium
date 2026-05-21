@@ -14,6 +14,7 @@ WorkAssignmentNoticeGroup = Literal["ready", "in_flight", "attention", "done"]
 class WorkAssignmentDigestRun(BaseModel):
     entity_id: UUID
     cadence: WorkAssignmentDigestCadence = "daily"
+    send_email_approved: bool = False
 
 
 class WorkAssignmentDigestItemRead(BaseModel):
@@ -44,6 +45,10 @@ class WorkAssignmentDigestRead(BaseModel):
     in_flight_count: int = 0
     done_count: int = 0
     follow_up_due_count: int = 0
+    delivery_status: str = "previewed"
+    message_sent: bool = False
+    delivery_detail: str | None = None
+    provider_message_id: str | None = None
     items: list[WorkAssignmentDigestItemRead] = Field(default_factory=list)
 
 
@@ -97,6 +102,8 @@ class WorkAssignmentNotificationCenterDigestRead(BaseModel):
     follow_up_due_count: int = 0
     delivery_status: str = "previewed"
     message_sent: bool = False
+    delivery_detail: str | None = None
+    provider_message_id: str | None = None
 
 
 class WorkAssignmentNotificationCenterRead(BaseModel):
@@ -112,9 +119,7 @@ class WorkAssignmentNotificationCenterRead(BaseModel):
     digest_receipt_count: int = 0
     guardrails: list[str] = Field(default_factory=list)
     notices: list[WorkAssignmentNotificationCenterItemRead] = Field(default_factory=list)
-    digest_receipts: list[WorkAssignmentNotificationCenterDigestRead] = Field(
-        default_factory=list
-    )
+    digest_receipts: list[WorkAssignmentNotificationCenterDigestRead] = Field(default_factory=list)
 
 
 class WorkAssignmentNotificationCenterReadState(BaseModel):

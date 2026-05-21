@@ -138,12 +138,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Work assignment notification read state v1: operators can mark the notification center reviewed per entity, storing a read timestamp in notification preferences and showing unread counts against notice and digest activity. Pending Remba review.
 - [x] Work assignment due-digest cron runner v1: `/api/v1/work-assignments/digests/run-due` lets a scheduler generate review-only daily, weekly, or all due digest previews across active entities without knowing each entity ID, using the shared webhook secret and skipping entities with no matching assigned work.
 - [x] Dashboard and Work urgency hierarchy polish v1: overdue/status pills now carry the warning emphasis while Dashboard command rows, Needs attention, Events, and Work queue titles use calmer medium-weight typography with muted metadata. Pending Remba review.
+- [x] Work assignment digest email approval v1: manual and scheduled digest runs can send SendGrid-backed operator digest emails only when `send_email_approved` is explicit, store queued/skipped/failed delivery receipts in operator notification history, accept SendGrid digest webhooks, and surface digest delivery state in Operations, Settings, and Notifications. Pending Remba review.
 
 ## Next Build Order
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, `20260521_0020_register_import_plans`, and `20260521_0021_operator_notification_preferences` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, simplified navigation/command center, Portfolio QA command-search placement, reusable evidence/source-trail pattern across Properties/Smart Intake/Tenants, tenant portal, tenant fresh-link recovery, invoice email action, Work assignment controls/workload/reminder/action/provider notice cues, and Operations workspace before treating them as UX complete.
-- [ ] Continue Work assignment from due-digest cron runner into provider-backed scheduled delivery approvals, per-channel delivery receipts beyond email, and notification preference UX beyond the operator table.
+- [ ] Continue Work assignment from digest email approval into per-channel delivery receipts beyond email, richer notification preference UX beyond the operator table, and digest retry/recovery controls.
 - [ ] Continue Operations polish with deeper activity/audit presentation, safer edit affordances on list rows, and owner/tenant-facing completion review paths.
 - [ ] Continue Xero from guided sync exceptions into accounting snapshot guardrails, stale reconciliation indicators, and richer accounting-readiness snapshots.
 - [ ] Deepen Portfolio QA cleanup into guided fix flows for contact enrichment, missing owner/billing data, onboarding batch creation, and import-source history.

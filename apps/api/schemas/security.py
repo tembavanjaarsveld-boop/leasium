@@ -34,6 +34,8 @@ class SecurityWorkAssignmentDigestReceipt(BaseModel):
     follow_up_due_count: int = 0
     delivery_status: str = "previewed"
     message_sent: bool = False
+    delivery_detail: str | None = None
+    provider_message_id: str | None = None
 
 
 class SecurityNotificationPreferences(BaseModel):

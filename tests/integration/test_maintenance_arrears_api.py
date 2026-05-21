@@ -311,9 +311,7 @@ def test_maintenance_work_order_reopen_and_basic_edits_are_audited(
     history = reopened["metadata"]["activity_history"]
     assert [entry["event"] for entry in history] == ["created", "updated"]
     assert history[1]["status"] == "in_progress"
-    assert history[1]["summary"] == (
-        "Updated title, description, status, and completed date."
-    )
+    assert history[1]["summary"] == ("Updated title, description, status, and completed date.")
 
     audit_rows = session.scalars(
         select(AuditAction).where(AuditAction.target_table == "maintenance_work_order")
@@ -385,15 +383,11 @@ def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
     failed_email_delivery = failed["metadata"]["contractor_delivery"]["email"]
     assert failed_email_delivery["send"]["status"] == "failed"
     assert failed_email_delivery["send"]["retry_count"] == 1
-    assert failed_email_delivery["send"]["template_key"] == (
-        "maintenance_contractor_update"
-    )
+    assert failed_email_delivery["send"]["template_key"] == ("maintenance_contractor_update")
     assert failed_email_delivery["send"]["template_version"] == "v1"
     assert failed_email_delivery["receipts"][0]["status"] == "failed"
     assert failed_email_delivery["receipts"][0]["retry_count"] == 1
-    assert failed_email_delivery["receipts"][0]["template_key"] == (
-        "maintenance_contractor_update"
-    )
+    assert failed_email_delivery["receipts"][0]["template_key"] == ("maintenance_contractor_update")
     assert failed_email_delivery["history"][0]["template_version"] == "v1"
     assert failed["metadata"].get("comments", []) == []
 
@@ -416,9 +410,7 @@ def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
     assert email_delivery["receipts"][0]["template_version"] == "v1"
     assert email_delivery["receipts"][1]["status"] == "failed"
     assert email_delivery["receipts"][1]["retry_count"] == 1
-    assert email_delivery["history"][1]["template_key"] == (
-        "maintenance_contractor_update"
-    )
+    assert email_delivery["history"][1]["template_key"] == ("maintenance_contractor_update")
     assert sent["metadata"]["comments"][-1]["visibility"] == "contractor"
     assert sent["metadata"]["comments"][-1]["body"] == (
         "Please confirm your first available attendance window."
@@ -513,9 +505,7 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
         assert invite.title == "Replace shopfront lock"
         assert invite.assignee_email == settings.dev_user_email
         assert invite.template_key == "work_assignment_notification"
-        assert settings_arg.work_assignment_email_template_key == (
-            "work_assignment_notification"
-        )
+        assert settings_arg.work_assignment_email_template_key == ("work_assignment_notification")
         assert invite.work_url is None or invite.work_url.endswith(
             f"/operations/maintenance/{work_order_id}"
         )
@@ -551,9 +541,7 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
     assert notification["provider_message_id"] == "sg-assignment-123"
     assert notification["recipient_email"] == settings.dev_user_email
     assert notification["template_key"] == "work_assignment_notification"
-    assert notification["provider_history"][0]["event"] == (
-        "provider_notification_attempted"
-    )
+    assert notification["provider_history"][0]["event"] == ("provider_notification_attempted")
     assert assignment["history"][0]["event"] == "provider_notification_attempted"
     assert assignment["history"][0]["notification_status"] == "queued"
 
@@ -576,9 +564,7 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
     notification = assignment["notification"]
     assert notification["status"] == "delivered"
     assert notification["last_event"] == "delivered"
-    assert notification["provider_history"][0]["event"] == (
-        "provider_notification_receipt"
-    )
+    assert notification["provider_history"][0]["event"] == ("provider_notification_receipt")
     assert assignment["history"][0]["event"] == "provider_notification_receipt"
     assert assignment["history"][0]["notification_status"] == "delivered"
 
@@ -812,6 +798,149 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
         "work_assignment_notification_center_read_at"
     ][entity_id]
     assert stored_read_at.replace("+00:00", "Z") == read_state["read_at"]
+
+
+def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    entity_id = _entity_id(session)
+    settings = get_settings()
+    assignee = session.get(AppUser, settings.dev_user_id)
+    assert assignee is not None
+    assignee.notification_preferences = {
+        "work_assignment_email_enabled": True,
+        "work_assignment_digest_cadence": "daily",
+    }
+    session.commit()
+
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": entity_id,
+            "title": "Digest delivery maintenance job",
+            "description": "Digest email should include this work item.",
+            "priority": "high",
+            "status": "requested",
+            "due_date": "2026-05-21",
+            "metadata": {
+                "work_assignment": {
+                    "assigned_user_id": str(assignee.id),
+                    "assigned_user_name": assignee.display_name,
+                    "assigned_user_email": assignee.email,
+                    "assigned_at": "2026-05-21T08:00:00Z",
+                    "notification": {
+                        "status": "ready",
+                        "detail": "Assignment notice is ready.",
+                    },
+                }
+            },
+        },
+    )
+    assert create_response.status_code == 201
+
+    attempts: list[str] = []
+
+    def fake_send_work_assignment_digest_email(invite: Any, settings_arg: Any) -> DeliveryResult:
+        assert invite.entity_id == UUID(entity_id)
+        assert invite.assignee_user_id == assignee.id
+        assert invite.assignee_email == assignee.email
+        assert invite.cadence == "daily"
+        assert invite.item_count == 1
+        assert invite.items[0].title == "Digest delivery maintenance job"
+        assert settings_arg.work_assignment_email_template_key == ("work_assignment_notification")
+        attempts.append(str(invite.assignee_user_id))
+        return DeliveryResult(
+            channel="email",
+            status="queued",
+            provider="sendgrid",
+            attempted_at="2026-05-21T09:00:00+00:00",
+            recipient=invite.assignee_email,
+            provider_message_id="sg-digest-123",
+            metadata={
+                "template_key": invite.template_key,
+                "template_version": invite.template_version,
+                "entity_id": str(invite.entity_id),
+                "assignee_user_id": str(invite.assignee_user_id),
+                "cadence": invite.cadence,
+                "generated_at": invite.generated_at.isoformat(),
+            },
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.work_assignment_notifications.send_work_assignment_digest_email",
+        fake_send_work_assignment_digest_email,
+    )
+
+    preview_response = client.post(
+        "/api/v1/work-assignments/digests/run-scheduled",
+        json={"entity_id": entity_id, "cadence": "daily"},
+    )
+    assert preview_response.status_code == 200
+    assert attempts == []
+    assert preview_response.json()["digests"][0]["message_sent"] is False
+
+    delivery_response = client.post(
+        "/api/v1/work-assignments/digests/run-scheduled",
+        json={
+            "entity_id": entity_id,
+            "cadence": "daily",
+            "send_email_approved": True,
+        },
+    )
+    assert delivery_response.status_code == 200
+    delivered = delivery_response.json()
+    assert delivered["guardrails"][0].startswith("Digest email delivery only")
+    assert attempts == [str(assignee.id)]
+    operator_digest = delivered["digests"][0]
+    assert operator_digest["delivery_status"] == "queued"
+    assert operator_digest["message_sent"] is True
+    assert operator_digest["provider_message_id"] == "sg-digest-123"
+
+    session.refresh(assignee)
+    receipt = assignee.notification_preferences["work_assignment_digest_history"][0]
+    assert receipt["delivery_status"] == "queued"
+    assert receipt["message_sent"] is True
+    assert receipt["provider_message_id"] == "sg-digest-123"
+    assert receipt["recipient_email"] == assignee.email
+
+    center_response = client.get(
+        "/api/v1/work-assignments/notification-center",
+        params={"entity_id": entity_id},
+    )
+    assert center_response.status_code == 200
+    center = center_response.json()
+    assert center["digest_receipts"][0]["delivery_status"] == "queued"
+    assert center["digest_receipts"][0]["message_sent"] is True
+    assert center["digest_receipts"][0]["provider_message_id"] == "sg-digest-123"
+
+    receipt_response = client.post(
+        "/api/v1/work-assignments/webhooks/sendgrid-events",
+        json=[
+            {
+                "work_assignment_digest_entity_id": entity_id,
+                "work_assignment_digest_assignee_user_id": str(assignee.id),
+                "sg_message_id": "sg-digest-123",
+                "event": "delivered",
+                "email": assignee.email,
+            }
+        ],
+    )
+    assert receipt_response.status_code == 204
+    session.refresh(assignee)
+    receipt = assignee.notification_preferences["work_assignment_digest_history"][0]
+    assert receipt["delivery_status"] == "delivered"
+    assert receipt["last_event"] == "delivered"
+    assert receipt["provider_history"][0]["event"] == "digest_provider_receipt"
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.tool_name == "sendgrid.work_assignment_digest_event_webhook"
+        )
+    )
+    assert audit is not None
+    assert audit.target_table == "app_user"
 
 
 def test_arrears_case_tracks_aged_balances_reminders_and_escalation(

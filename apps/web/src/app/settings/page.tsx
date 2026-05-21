@@ -353,16 +353,17 @@ function DigestReceiptSummary({ member }: { member: SecurityMemberRecord }) {
   return (
     <div className="mt-2 grid max-w-72 gap-1 rounded-md border border-border bg-muted/30 p-2 text-xs">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold text-foreground">
-          Last digest preview
-        </span>
+        <span className="font-semibold text-foreground">Last digest</span>
         <StatusBadge tone={receipt.message_sent ? "success" : "neutral"}>
-          {receipt.message_sent ? "Message sent" : "No messages sent"}
+          {receipt.message_sent ? "Email queued" : "No messages sent"}
         </StatusBadge>
       </div>
       <div className="text-muted-foreground">
         {formatDateTime(receipt.generated_at)}
       </div>
+      {receipt.delivery_detail ? (
+        <div className="text-muted-foreground">{receipt.delivery_detail}</div>
+      ) : null}
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
         <span>
           {receipt.item_count} {receipt.item_count === 1 ? "item" : "items"}

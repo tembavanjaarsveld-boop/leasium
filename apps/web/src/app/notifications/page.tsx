@@ -352,7 +352,7 @@ function NotificationsWorkspace() {
 
         <SectionPanel
           title="Digest history"
-          description="Preview receipts from manually generated or scheduled Work digests."
+          description="Receipts from manually generated, scheduled, or approved Work digest emails."
           icon={<MailCheck size={17} className="text-primary" />}
           actions={
             center ? (
@@ -380,11 +380,14 @@ function NotificationsWorkspace() {
                   <StatusBadge
                     tone={receipt.message_sent ? "success" : "neutral"}
                   >
-                    {receipt.message_sent ? "Message sent" : "No messages sent"}
+                    {receipt.message_sent ? "Email queued" : "No messages sent"}
                   </StatusBadge>
                 </div>
                 <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
                   <div>{formatDateTime(receipt.generated_at)}</div>
+                  {receipt.delivery_detail ? (
+                    <div>{receipt.delivery_detail}</div>
+                  ) : null}
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
                     <span>{label(receipt.cadence)} digest</span>
                     <span>
@@ -399,7 +402,7 @@ function NotificationsWorkspace() {
             {!centerQuery.isLoading && center?.digest_receipts.length === 0 ? (
               <EmptyState
                 title="No digest receipts"
-                description="Generated digest previews will appear here before scheduled delivery is enabled."
+                description="Generated digest previews and approved email receipts will appear here."
               />
             ) : null}
           </div>

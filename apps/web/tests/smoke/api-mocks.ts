@@ -1073,6 +1073,8 @@ const securityWorkspace = () => ({
             follow_up_due_count: 2,
             delivery_status: "previewed",
             message_sent: false,
+            delivery_detail: null,
+            provider_message_id: null,
           },
         ],
       },
@@ -3306,6 +3308,8 @@ export async function mockLeasiumApi(
             follow_up_due_count: 2,
             delivery_status: "previewed",
             message_sent: false,
+            delivery_detail: null,
+            provider_message_id: null,
           },
         ],
       });
@@ -3329,7 +3333,9 @@ export async function mockLeasiumApi(
       const payload = request.postDataJSON() as {
         entity_id?: string;
         cadence?: "daily" | "weekly";
+        send_email_approved?: boolean;
       };
+      const sendApproved = payload.send_email_approved === true;
       await fulfillJson(route, {
         entity_id: payload.entity_id ?? entityId,
         cadence: payload.cadence ?? "daily",
@@ -3337,7 +3343,9 @@ export async function mockLeasiumApi(
         operator_count: 1,
         work_item_count: 1,
         guardrails: [
-          "Digest generation is review-only; it does not send email, SMS, or push notifications.",
+          sendApproved
+            ? "Digest email delivery only runs when send_email_approved is explicitly true."
+            : "Digest generation is review-only; it does not send email, SMS, or push notifications.",
         ],
         digests: [
           {
@@ -3351,6 +3359,12 @@ export async function mockLeasiumApi(
             in_flight_count: 1,
             done_count: 0,
             follow_up_due_count: 0,
+            delivery_status: sendApproved ? "queued" : "previewed",
+            message_sent: sendApproved,
+            delivery_detail: sendApproved
+              ? "Digest email was queued by SendGrid."
+              : null,
+            provider_message_id: sendApproved ? "sg-digest-smoke-1" : null,
             items: [
               {
                 target_id: "work-order-1",

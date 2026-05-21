@@ -1535,10 +1535,11 @@ function OperationsWorkspace() {
   });
 
   const workAssignmentDigestMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (sendEmailApproved: boolean = false) =>
       runWorkAssignmentDigest({
         entity_id: selectedEntityId,
         cadence: digestCadence,
+        send_email_approved: sendEmailApproved,
       }),
     onSuccess: (result) => setDigestResult(result),
   });
@@ -2336,7 +2337,7 @@ function OperationsWorkspace() {
                         !selectedEntityId ||
                         workAssignmentDigestMutation.isPending
                       }
-                      onClick={() => workAssignmentDigestMutation.mutate()}
+                      onClick={() => workAssignmentDigestMutation.mutate(false)}
                     >
                       {workAssignmentDigestMutation.isPending ? (
                         <RefreshCw size={15} className="animate-spin" />
@@ -2344,6 +2345,18 @@ function OperationsWorkspace() {
                         <ReceiptText size={15} />
                       )}
                       Generate digest
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      className="h-10 px-3"
+                      disabled={
+                        !selectedEntityId ||
+                        workAssignmentDigestMutation.isPending
+                      }
+                      onClick={() => workAssignmentDigestMutation.mutate(true)}
+                    >
+                      <Send size={15} />
+                      Send digest
                     </SecondaryButton>
                     <Select
                       aria-label="Queue assignee"
@@ -3713,6 +3726,31 @@ function digestItemHref(workUrl: string | null) {
   }
 }
 
+function digestDeliveryLabel(result: WorkAssignmentDigestRunRecord) {
+  const sent = result.digests.filter((digest) => digest.message_sent).length;
+  const attempted = result.digests.some(
+    (digest) =>
+      digest.delivery_status && digest.delivery_status !== "previewed",
+  );
+  if (sent > 0) {
+    return `${sent} email${sent === 1 ? "" : "s"} queued`;
+  }
+  return attempted ? "No emails sent" : "No messages sent";
+}
+
+function digestDeliveryTone(result: WorkAssignmentDigestRunRecord) {
+  if (result.digests.some((digest) => digest.message_sent)) {
+    return "success" as const;
+  }
+  if (result.digests.some((digest) => digest.delivery_status === "failed")) {
+    return "danger" as const;
+  }
+  if (result.digests.some((digest) => digest.delivery_status === "skipped")) {
+    return "warning" as const;
+  }
+  return "neutral" as const;
+}
+
 function AssignmentDigestPreview({
   result,
 }: {
@@ -3728,7 +3766,9 @@ function AssignmentDigestPreview({
             operators - {result.work_item_count} items
           </div>
         </div>
-        <StatusBadge tone="neutral">No messages sent</StatusBadge>
+        <StatusBadge tone={digestDeliveryTone(result)}>
+          {digestDeliveryLabel(result)}
+        </StatusBadge>
       </div>
       {result.guardrails.length > 0 ? (
         <div className="mt-2 rounded-lg border border-border bg-white px-3 py-2 text-xs text-muted-foreground">
@@ -3755,6 +3795,12 @@ function AssignmentDigestPreview({
               </StatusBadge>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
+              {digest.delivery_status &&
+              digest.delivery_status !== "previewed" ? (
+                <StatusBadge tone={digest.message_sent ? "success" : "warning"}>
+                  {label(digest.delivery_status)}
+                </StatusBadge>
+              ) : null}
               {digest.follow_up_due_count ? (
                 <StatusBadge tone="warning">
                   {digest.follow_up_due_count} follow-up
@@ -3781,6 +3827,11 @@ function AssignmentDigestPreview({
                 </StatusBadge>
               ) : null}
             </div>
+            {digest.delivery_detail ? (
+              <div className="mt-2 rounded-md bg-muted/60 px-2 py-1.5 text-xs text-muted-foreground">
+                {digest.delivery_detail}
+              </div>
+            ) : null}
             <div className="mt-2 grid gap-1.5">
               {digest.items.slice(0, 3).map((item) => (
                 <Link

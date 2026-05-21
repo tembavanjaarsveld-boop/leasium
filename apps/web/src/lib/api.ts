@@ -42,6 +42,8 @@ export type SecurityWorkAssignmentDigestReceiptRecord = {
   follow_up_due_count: number;
   delivery_status: string;
   message_sent: boolean;
+  delivery_detail: string | null;
+  provider_message_id: string | null;
 };
 
 export type SecurityNotificationPreferences = {
@@ -85,6 +87,10 @@ export type WorkAssignmentDigestRecord = {
   in_flight_count: number;
   done_count: number;
   follow_up_due_count: number;
+  delivery_status: string;
+  message_sent: boolean;
+  delivery_detail: string | null;
+  provider_message_id: string | null;
   items: WorkAssignmentDigestItemRecord[];
 };
 
@@ -127,6 +133,8 @@ export type WorkAssignmentNotificationCenterDigestRecord = {
   follow_up_due_count: number;
   delivery_status: string;
   message_sent: boolean;
+  delivery_detail: string | null;
+  provider_message_id: string | null;
 };
 
 export type WorkAssignmentNotificationCenterRecord = {
@@ -2839,6 +2847,7 @@ export function sendArrearsAssignmentNotification(arrearsCaseId: string) {
 export function runWorkAssignmentDigest(payload: {
   entity_id: string;
   cadence?: WorkAssignmentDigestCadence;
+  send_email_approved?: boolean;
 }) {
   return request<WorkAssignmentDigestRunRecord>(
     "/work-assignments/digests/run",

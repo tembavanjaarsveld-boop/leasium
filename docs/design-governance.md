@@ -334,6 +334,8 @@ Thirteenth 2026-05-21 follow-up: a global Notifications page and top-bar bell no
 
 Fourteenth 2026-05-21 follow-up: Notifications now includes per-operator unread counts and a `Mark reviewed` action that records the entity-specific review timestamp in notification preferences. Remba should review whether the unread count creates helpful urgency or too much inbox pressure, and whether review state should be visible from the bell itself once real delivery scheduling is enabled.
 
+Fifteenth 2026-05-21 follow-up: Work digests now have an explicit `Send digest` action in Operations, and scheduled digest endpoints only send provider-backed SendGrid emails when `send_email_approved` is present. Settings and Notifications show digest delivery receipts as `Email queued` or `No messages sent`, with delivery detail when available. Remba should review whether the second digest button feels clear enough beside `Generate digest`, and whether digest delivery history belongs in Notifications, Settings, or a dedicated notification preferences panel.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

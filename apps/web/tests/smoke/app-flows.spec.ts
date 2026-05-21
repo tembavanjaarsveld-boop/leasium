@@ -138,6 +138,11 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await page.getByRole("button", { name: "Generate digest" }).click();
   await expect(page.getByText("Work digest generated")).toBeVisible();
   await expect(page.getByText("No messages sent")).toBeVisible();
+  await page.getByRole("button", { name: "Send digest" }).click();
+  await expect(page.getByText("1 email queued")).toBeVisible();
+  await expect(
+    page.getByText("Digest email was queued by SendGrid."),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Log reminder" }).first().click();
   await expect(page.getByText("Reminder logged").first()).toBeVisible();
   await expect(
@@ -718,7 +723,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     page.getByRole("button", { name: "Mute work email" }).first(),
   ).toBeVisible();
   await expect(page.getByText("Daily digest").first()).toBeVisible();
-  await expect(page.getByText("Last digest preview").first()).toBeVisible();
+  await expect(page.getByText("Last digest").first()).toBeVisible();
   await expect(page.getByText("No messages sent").first()).toBeVisible();
   await expect(
     page.getByLabel("Owner Operator work digest").first(),

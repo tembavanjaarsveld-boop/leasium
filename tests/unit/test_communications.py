@@ -12,9 +12,12 @@ from stewart.integrations.communications import (
     ContractorWorkOrderEmail,
     OperatorInviteEmail,
     TenantOnboardingInvite,
+    WorkAssignmentDigestEmail,
+    WorkAssignmentDigestEmailItem,
     WorkAssignmentEmail,
     send_contractor_work_order_email,
     send_operator_invite_email,
+    send_work_assignment_digest_email,
     send_work_assignment_email,
 )
 
@@ -200,3 +203,57 @@ def test_work_assignment_sendgrid_categories_are_deduplicated(
     assert custom_args["work_assignment_target_id"] == str(target_id)
     assert custom_args["work_assignment_target_type"] == "maintenance_work_order"
     assert custom_args["entity_id"] == str(entity_id)
+
+
+def test_work_assignment_digest_sendgrid_categories_and_args(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payloads: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "stewart.integrations.communications.httpx.Client",
+        lambda **kwargs: _CaptureClient(payloads),
+    )
+
+    entity_id = uuid4()
+    assignee_id = uuid4()
+    generated_at = datetime(2026, 5, 21, 8, 0, tzinfo=UTC)
+    result = send_work_assignment_digest_email(
+        WorkAssignmentDigestEmail(
+            entity_id=entity_id,
+            assignee_user_id=assignee_id,
+            assignee_name="Temba van Jaarsveld",
+            assignee_email="temba@example.com",
+            cadence="daily",
+            generated_at=generated_at,
+            item_count=1,
+            follow_up_due_count=1,
+            ready_count=1,
+            attention_count=0,
+            in_flight_count=0,
+            done_count=0,
+            items=[
+                WorkAssignmentDigestEmailItem(
+                    title="Replace shopfront lock",
+                    work_kind="Maintenance",
+                    due_date=date(2026, 5, 28),
+                    status="requested",
+                    priority="urgent",
+                    follow_up_due=True,
+                    work_url="https://leasium.vercel.app/operations/maintenance/test",
+                )
+            ],
+            template_key="work_assignment_digest",
+            template_version="v1",
+        ),
+        _settings(),
+    )
+
+    assert result.status == "queued"
+    assert payloads[0]["categories"] == ["work_assignment_digest"]
+    personalizations = payloads[0]["personalizations"]
+    assert isinstance(personalizations, list)
+    custom_args = personalizations[0]["custom_args"]
+    assert custom_args["work_assignment_digest_entity_id"] == str(entity_id)
+    assert custom_args["work_assignment_digest_assignee_user_id"] == str(assignee_id)
+    assert custom_args["work_assignment_digest_cadence"] == "daily"
+    assert custom_args["work_assignment_digest_generated_at"] == generated_at.isoformat()
