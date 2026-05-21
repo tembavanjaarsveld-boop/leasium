@@ -21,9 +21,17 @@ from stewart.core.models import (
     UserEntityRole,
     UserRole,
 )
+from stewart.core.settings import get_settings
+from stewart.integrations.communications import send_work_assignment_email
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.arrears import ArrearsCaseCreate, ArrearsCaseRead, ArrearsCaseUpdate
+from apps.api.work_assignments import (
+    assignment_notification_sent,
+    record_work_assignment_delivery,
+    work_assignment_email_invite,
+    work_url,
+)
 
 router = APIRouter(prefix="/arrears/cases", tags=["arrears"])
 
@@ -318,6 +326,67 @@ def update_arrears_case(
         action="update",
         target_table="arrears_case",
         target_id=arrears_case.id,
+    )
+    session.commit()
+    session.refresh(arrears_case)
+    return arrears_case
+
+
+@router.post(
+    "/{arrears_case_id}/assignment-notification/send-email",
+    response_model=ArrearsCaseRead,
+)
+def send_arrears_assignment_notification_email(
+    arrears_case_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> ArrearsCase:
+    arrears_case = _arrears_case_for_user(arrears_case_id, user, session, WRITE_ROLES)
+    metadata = dict(arrears_case.arrears_metadata or {})
+    if assignment_notification_sent(metadata):
+        return arrears_case
+
+    tenant = session.get(Tenant, arrears_case.tenant_id)
+    tenant_name = (tenant.trading_name or tenant.legal_name) if tenant is not None else "Tenant"
+    settings = get_settings()
+    result = send_work_assignment_email(
+        work_assignment_email_invite(
+            metadata,
+            target_id=arrears_case.id,
+            entity_id=arrears_case.entity_id,
+            work_kind="Arrears",
+            title=f"{tenant_name} arrears",
+            description=arrears_case.notes,
+            due_date=arrears_case.next_reminder_on,
+            work_url=work_url(settings, "/operations"),
+            settings=settings,
+        ),
+        settings,
+    )
+    arrears_case.arrears_metadata = record_work_assignment_delivery(
+        metadata,
+        result=result,
+        user=user,
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=arrears_case.entity_id,
+        action="deliver",
+        target_table="arrears_case",
+        target_id=arrears_case.id,
+        tool_name="sendgrid.work_assignment",
+        tool_input={
+            "arrears_case_id": str(arrears_case.id),
+            "recipient_email": result.recipient,
+            "provider": result.provider,
+            "status": result.status,
+        },
+        tool_output_summary=(
+            f"Attempted assignment notification delivery via {result.provider}: "
+            f"{result.status}."
+        ),
     )
     session.commit()
     session.refresh(arrears_case)

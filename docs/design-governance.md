@@ -310,6 +310,8 @@ Second 2026-05-21 follow-up: new assignment metadata now prepares an in-app remi
 
 Third 2026-05-21 follow-up: assignment controls now include explicit `Log reminder` and `Queue escalation` actions. Both actions update assignment metadata/history only; they do not send provider email/SMS. Remba should review whether these actions belong inline with the assignee select or behind a secondary menu, and whether `Reminder logged`/`Escalation queued` receipts are plain enough for operators.
 
+Fourth 2026-05-21 follow-up: assignment controls now include explicit `Send notice`/`Retry notice` actions for provider-backed SendGrid email to the assigned operator. The controls show `Email queued`/failed/skipped receipts and keep the send action human-triggered. Remba should review whether provider notices belong inline, whether `Send notice` is the right operator-facing copy, and whether receipt state should expand into a side panel once webhook receipts and notification preferences are added.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface

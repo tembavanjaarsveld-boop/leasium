@@ -30,6 +30,7 @@ from stewart.integrations.communications import (
     ContractorWorkOrderEmail,
     DeliveryResult,
     send_contractor_work_order_email,
+    send_work_assignment_email,
 )
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
@@ -39,6 +40,12 @@ from apps.api.schemas.maintenance import (
     MaintenanceWorkOrderCreate,
     MaintenanceWorkOrderRead,
     MaintenanceWorkOrderUpdate,
+)
+from apps.api.work_assignments import (
+    assignment_notification_sent,
+    record_work_assignment_delivery,
+    work_assignment_email_invite,
+    work_url,
 )
 
 router = APIRouter(prefix="/maintenance/work-orders", tags=["maintenance"])
@@ -821,6 +828,65 @@ def send_work_order_contractor_email(
         },
         tool_output_summary=(
             f"Attempted contractor email delivery via {result.provider}: {result.status}."
+        ),
+    )
+    session.commit()
+    session.refresh(work_order)
+    return work_order
+
+
+@router.post(
+    "/{work_order_id}/assignment-notification/send-email",
+    response_model=MaintenanceWorkOrderRead,
+)
+def send_work_order_assignment_notification_email(
+    work_order_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> MaintenanceWorkOrder:
+    work_order = _work_order_for_user(work_order_id, user, session, WRITE_ROLES)
+    metadata = dict(work_order.work_order_metadata or {})
+    if assignment_notification_sent(metadata):
+        return work_order
+
+    settings = get_settings()
+    result = send_work_assignment_email(
+        work_assignment_email_invite(
+            metadata,
+            target_id=work_order.id,
+            entity_id=work_order.entity_id,
+            work_kind="Maintenance",
+            title=work_order.title,
+            description=work_order.description,
+            due_date=work_order.due_date,
+            work_url=work_url(settings, f"/operations/maintenance/{work_order.id}"),
+            settings=settings,
+        ),
+        settings,
+    )
+    work_order.work_order_metadata = record_work_assignment_delivery(
+        metadata,
+        result=result,
+        user=user,
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=work_order.entity_id,
+        action="deliver",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="sendgrid.work_assignment",
+        tool_input={
+            "maintenance_work_order_id": str(work_order.id),
+            "recipient_email": result.recipient,
+            "provider": result.provider,
+            "status": result.status,
+        },
+        tool_output_summary=(
+            f"Attempted assignment notification delivery via {result.provider}: "
+            f"{result.status}."
         ),
     )
     session.commit()

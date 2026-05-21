@@ -64,6 +64,9 @@ import {
   type SecurityMemberRecord,
   type TenantOnboardingRecord,
   type TenantRecord,
+  sendArrearsAssignmentNotification,
+  sendMaintenanceWorkOrderAssignmentNotification,
+  sendObligationAssignmentNotification,
   updateArrearsCase,
   updateMaintenanceWorkOrder,
   updateObligation,
@@ -1323,6 +1326,12 @@ function OperationsWorkspace() {
     onSuccess: invalidateOperations,
   });
 
+  const sendObligationAssignmentNotificationMutation = useMutation({
+    mutationFn: (obligation: ObligationRecord) =>
+      sendObligationAssignmentNotification(obligation.id),
+    onSuccess: invalidateOperations,
+  });
+
   const createMaintenanceMutation = useMutation({
     mutationFn: createMaintenanceWorkOrder,
     onSuccess: () => {
@@ -1342,6 +1351,12 @@ function OperationsWorkspace() {
     onSuccess: invalidateOperations,
   });
 
+  const sendMaintenanceAssignmentNotificationMutation = useMutation({
+    mutationFn: (workOrder: MaintenanceWorkOrderRecord) =>
+      sendMaintenanceWorkOrderAssignmentNotification(workOrder.id),
+    onSuccess: invalidateOperations,
+  });
+
   const createArrearsMutation = useMutation({
     mutationFn: createArrearsCase,
     onSuccess: () => {
@@ -1358,6 +1373,12 @@ function OperationsWorkspace() {
       id: string;
       data: Parameters<typeof updateArrearsCase>[1];
     }) => updateArrearsCase(payload.id, payload.data),
+    onSuccess: invalidateOperations,
+  });
+
+  const sendArrearsAssignmentNotificationMutation = useMutation({
+    mutationFn: (arrearsCase: ArrearsCaseRecord) =>
+      sendArrearsAssignmentNotification(arrearsCase.id),
     onSuccess: invalidateOperations,
   });
 
@@ -1504,12 +1525,18 @@ function OperationsWorkspace() {
     updateArrearsMutation.error ||
     updateObligationMutation.error ||
     assignObligationMutation.error ||
+    sendMaintenanceAssignmentNotificationMutation.error ||
+    sendArrearsAssignmentNotificationMutation.error ||
+    sendObligationAssignmentNotificationMutation.error ||
     securityWorkspaceQuery.error;
 
   const assignmentPending =
     updateMaintenanceMutation.isPending ||
     updateArrearsMutation.isPending ||
-    assignObligationMutation.isPending;
+    assignObligationMutation.isPending ||
+    sendMaintenanceAssignmentNotificationMutation.isPending ||
+    sendArrearsAssignmentNotificationMutation.isPending ||
+    sendObligationAssignmentNotificationMutation.isPending;
 
   function refresh() {
     securityWorkspaceQuery.refetch();
@@ -1772,18 +1799,32 @@ function OperationsWorkspace() {
     actionObligation(item.record, action);
   }
 
+  function sendAssignmentNotification(item: AssignableQueueItem) {
+    if (item.kind === "maintenance") {
+      sendMaintenanceAssignmentNotificationMutation.mutate(item.record);
+      return;
+    }
+    if (item.kind === "arrears") {
+      sendArrearsAssignmentNotificationMutation.mutate(item.record);
+      return;
+    }
+    sendObligationAssignmentNotificationMutation.mutate(item.record);
+  }
+
   function renderAssignmentControl({
     itemId,
     title,
     metadata,
     onAssign,
     onAction,
+    onNotify,
   }: {
     itemId: string;
     title: string;
     metadata: Record<string, unknown>;
     onAssign: (assigneeId: string) => void;
     onAction: (action: WorkAssignmentAction) => void;
+    onNotify: () => void;
   }) {
     return (
       <WorkAssignmentControl
@@ -1794,6 +1835,7 @@ function OperationsWorkspace() {
         onChange={(value) => setAssignmentValue(itemId, value)}
         onAssign={onAssign}
         onAction={onAction}
+        onNotify={onNotify}
         disabled={assignmentPending}
         membersLoading={securityWorkspaceQuery.isLoading}
       />
@@ -2226,6 +2268,7 @@ function OperationsWorkspace() {
                                 assignQueueItem(item, assigneeId),
                               onAction: (action) =>
                                 actionQueueItem(item, action),
+                              onNotify: () => sendAssignmentNotification(item),
                             })
                           : null}
                         {renderQueueActions(item)}
@@ -2687,6 +2730,10 @@ function OperationsWorkspace() {
                               assignMaintenance(workOrder, assigneeId),
                             onAction: (action) =>
                               actionMaintenance(workOrder, action),
+                            onNotify: () =>
+                              sendMaintenanceAssignmentNotificationMutation.mutate(
+                                workOrder,
+                              ),
                           })}
                           <MaintenanceActions
                             workOrder={workOrder}
@@ -3054,6 +3101,10 @@ function OperationsWorkspace() {
                               assignArrears(arrearsCase, assigneeId),
                             onAction: (action) =>
                               actionArrears(arrearsCase, action),
+                            onNotify: () =>
+                              sendArrearsAssignmentNotificationMutation.mutate(
+                                arrearsCase,
+                              ),
                           })}
                           <ArrearsActions
                             arrearsCase={arrearsCase}
@@ -3102,6 +3153,7 @@ function WorkAssignmentControl({
   onChange,
   onAssign,
   onAction,
+  onNotify,
   disabled,
   membersLoading,
 }: {
@@ -3112,6 +3164,7 @@ function WorkAssignmentControl({
   onChange: (value: string) => void;
   onAssign: (assigneeId: string) => void;
   onAction: (action: WorkAssignmentAction) => void;
+  onNotify: () => void;
   disabled: boolean;
   membersLoading: boolean;
 }) {
@@ -3119,6 +3172,15 @@ function WorkAssignmentControl({
   const hasMembers = members.length > 0;
   const canAssign = Boolean(value) && value !== currentAssigneeId;
   const notificationReady = assignment?.notificationStatus === "ready";
+  const notificationDelivered = [
+    "queued",
+    "sent",
+    "delivered",
+    "opened",
+  ].includes(assignment?.notificationStatus ?? "");
+  const notificationProblem = ["failed", "skipped"].includes(
+    assignment?.notificationStatus ?? "",
+  );
   const reminderDue = Boolean(
     assignment?.reminderDueOn && dueRank(assignment.reminderDueOn) <= 0,
   );
@@ -3141,6 +3203,21 @@ function WorkAssignmentControl({
       assignment?.escalationStatus ?? "",
     ),
   );
+  const canSendNotice = Boolean(
+    isAssigned && assignment?.assignedEmail && !notificationDelivered,
+  );
+  const notificationFootnote = notificationDelivered
+    ? `Provider email ${label(assignment?.notificationStatus)}${
+        assignment?.assignedEmail ? ` to ${assignment.assignedEmail}` : ""
+      }.`
+    : notificationProblem
+      ? assignment?.notificationDetail ||
+        `Provider email ${label(assignment?.notificationStatus)}.`
+      : notificationReady
+        ? "Ready to send the assignment email when an operator approves it."
+        : assignment?.assignedAt
+          ? "In-app reminder only; provider email has not been sent."
+          : "Assign the owner and prepare the Leasium notification.";
 
   return (
     <div className="grid min-w-[min(100%,22rem)] gap-2 rounded-xl border border-border bg-muted/30 p-2 text-sm">
@@ -3155,6 +3232,16 @@ function WorkAssignmentControl({
         </span>
         {notificationReady ? (
           <StatusBadge tone="success">Notification ready</StatusBadge>
+        ) : null}
+        {notificationDelivered ? (
+          <StatusBadge tone="success">
+            Email {label(assignment?.notificationStatus)}
+          </StatusBadge>
+        ) : null}
+        {notificationProblem ? (
+          <StatusBadge tone="warning">
+            Email {label(assignment?.notificationStatus)}
+          </StatusBadge>
         ) : null}
         {assignment?.reminderStatus === "logged" ? (
           <StatusBadge tone="success">Reminder logged</StatusBadge>
@@ -3239,13 +3326,24 @@ function WorkAssignmentControl({
             Queue escalation
           </SecondaryButton>
         ) : null}
+        {canSendNotice ? (
+          <SecondaryButton
+            type="button"
+            className="h-9 px-3"
+            disabled={disabled}
+            onClick={onNotify}
+          >
+            <Send size={15} />
+            {notificationProblem ? "Retry notice" : "Send notice"}
+          </SecondaryButton>
+        ) : null}
       </div>
       <div className="text-xs text-muted-foreground">
         {assignment?.assignedAt
           ? `Updated ${formatDateTime(assignment.assignedAt)} by ${
               assignment.assignedByName ?? "Leasium"
-            }. In-app reminder only; no email/SMS sent.`
-          : "Assign the owner and prepare the Leasium notification."}
+            }. ${notificationFootnote}`
+          : notificationFootnote}
       </div>
     </div>
   );

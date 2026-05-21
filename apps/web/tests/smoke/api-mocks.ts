@@ -1144,6 +1144,91 @@ function jsonRecord(value: JsonBody | undefined) {
   return value;
 }
 
+function assignmentNotificationMetadata(
+  value: JsonBody | undefined,
+  targetId: string,
+) {
+  const metadata = { ...jsonRecord(value) };
+  const assignment = { ...jsonRecord(metadata.work_assignment) };
+  const notification = { ...jsonRecord(assignment.notification) };
+  const providerHistory = Array.isArray(notification.provider_history)
+    ? notification.provider_history
+    : [];
+  const assignmentHistory = Array.isArray(assignment.history)
+    ? assignment.history
+    : [];
+  const timestamp = "2026-05-20T01:15:00.000Z";
+  const recipient =
+    typeof assignment.assigned_user_email === "string" &&
+    assignment.assigned_user_email.trim()
+      ? assignment.assigned_user_email
+      : "temba@example.com";
+  const templateKey =
+    typeof notification.template_key === "string" && notification.template_key
+      ? notification.template_key
+      : "work_assignment_notification";
+  const templateVersion =
+    typeof notification.template_version === "string" &&
+    notification.template_version
+      ? notification.template_version
+      : "v1";
+  const receipt = {
+    event: "provider_notification_attempted",
+    channel: "email",
+    status: "queued",
+    provider: "sendgrid",
+    attempted_at: timestamp,
+    sent_at: timestamp,
+    sent_by_user_id: operatorId,
+    sent_by_name: "Owner Operator",
+    recipient_email: recipient,
+    provider_message_id: `sg-assignment-${targetId}`,
+    error: null,
+    template_key: templateKey,
+    template_version: templateVersion,
+  };
+  const historyEntry = {
+    event: "provider_notification_attempted",
+    at: timestamp,
+    actor_user_id: operatorId,
+    actor_name: "Owner Operator",
+    assigned_user_id:
+      typeof assignment.assigned_user_id === "string"
+        ? assignment.assigned_user_id
+        : null,
+    assigned_user_name:
+      typeof assignment.assigned_user_name === "string"
+        ? assignment.assigned_user_name
+        : null,
+    assigned_user_email: recipient,
+    notification_status: "queued",
+    summary: "Assignment notification email was queued.",
+  };
+
+  metadata.work_assignment = {
+    ...assignment,
+    notification: {
+      ...notification,
+      channel: "email",
+      provider: "sendgrid",
+      status: "queued",
+      recipient_email: recipient,
+      provider_message_id: `sg-assignment-${targetId}`,
+      attempted_at: timestamp,
+      sent_at: timestamp,
+      sent_by_user_id: operatorId,
+      sent_by_name: "Owner Operator",
+      error: null,
+      template_key: templateKey,
+      template_version: templateVersion,
+      detail: "Assignment email was queued by SendGrid.",
+      provider_history: [receipt, ...providerHistory].slice(0, 10),
+    },
+    history: [historyEntry, ...assignmentHistory].slice(0, 10),
+  };
+  return metadata;
+}
+
 function multipartField(body: string, name: string) {
   const match = body.match(
     new RegExp(`name="${name}"\\r?\\n\\r?\\n([^\\r\\n]*)`),
@@ -2838,6 +2923,20 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (
+      method === "POST" &&
+      path === "/obligations/obligation-1/assignment-notification/send-email"
+    ) {
+      Object.assign(obligations[0], {
+        metadata: assignmentNotificationMetadata(
+          obligations[0].metadata,
+          obligations[0].id,
+        ),
+      });
+      await fulfillJson(route, obligations[0]);
+      return;
+    }
+
     if (method === "GET" && path === "/maintenance/work-orders") {
       await fulfillJson(route, maintenanceWorkOrders);
       return;
@@ -2982,6 +3081,22 @@ export async function mockLeasiumApi(
 
     if (
       method === "POST" &&
+      path ===
+        "/maintenance/work-orders/work-order-1/assignment-notification/send-email"
+    ) {
+      Object.assign(maintenanceWorkOrders[0], {
+        metadata: assignmentNotificationMetadata(
+          maintenanceWorkOrders[0].metadata,
+          maintenanceWorkOrders[0].id,
+        ),
+        updated_at: "2026-05-20T01:15:00.000Z",
+      });
+      await fulfillJson(route, maintenanceWorkOrders[0]);
+      return;
+    }
+
+    if (
+      method === "POST" &&
       path === "/maintenance/work-orders/work-order-1/comments"
     ) {
       const payload = request.postDataJSON() as {
@@ -3076,6 +3191,21 @@ export async function mockLeasiumApi(
       }
       Object.assign(arrearsCases[0], nextPayload, {
         updated_at: "2026-05-20T01:00:00.000Z",
+      });
+      await fulfillJson(route, arrearsCases[0]);
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/arrears/cases/arrears-1/assignment-notification/send-email"
+    ) {
+      Object.assign(arrearsCases[0], {
+        metadata: assignmentNotificationMetadata(
+          arrearsCases[0].metadata,
+          arrearsCases[0].id,
+        ),
+        updated_at: "2026-05-20T01:15:00.000Z",
       });
       await fulfillJson(route, arrearsCases[0]);
       return;

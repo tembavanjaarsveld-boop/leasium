@@ -12,8 +12,10 @@ from stewart.integrations.communications import (
     ContractorWorkOrderEmail,
     OperatorInviteEmail,
     TenantOnboardingInvite,
+    WorkAssignmentEmail,
     send_contractor_work_order_email,
     send_operator_invite_email,
+    send_work_assignment_email,
 )
 
 
@@ -158,3 +160,41 @@ def test_contractor_work_order_sendgrid_categories_are_deduplicated(
     assert isinstance(personalizations, list)
     custom_args = personalizations[0]["custom_args"]
     assert custom_args["maintenance_work_order_id"] == str(work_order_id)
+
+
+def test_work_assignment_sendgrid_categories_are_deduplicated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payloads: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "stewart.integrations.communications.httpx.Client",
+        lambda **kwargs: _CaptureClient(payloads),
+    )
+
+    target_id = uuid4()
+    entity_id = uuid4()
+    result = send_work_assignment_email(
+        WorkAssignmentEmail(
+            target_id=target_id,
+            entity_id=entity_id,
+            work_kind="Maintenance",
+            title="Replace shopfront lock",
+            description="Rear lock is sticking.",
+            due_date=date(2026, 5, 28),
+            assignee_name="Temba van Jaarsveld",
+            assignee_email="temba@example.com",
+            assigned_by_name="Owner Operator",
+            work_url="https://leasium.vercel.app/operations/maintenance/test",
+            template_key="work_assignment",
+            template_version="v1",
+        ),
+        _settings(),
+    )
+
+    assert result.status == "queued"
+    assert payloads[0]["categories"] == ["work_assignment"]
+    personalizations = payloads[0]["personalizations"]
+    assert isinstance(personalizations, list)
+    custom_args = personalizations[0]["custom_args"]
+    assert custom_args["work_assignment_target_id"] == str(target_id)
+    assert custom_args["entity_id"] == str(entity_id)

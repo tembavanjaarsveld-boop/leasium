@@ -448,6 +448,121 @@ def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
     )
 
 
+def test_maintenance_work_order_sends_assignment_notification_and_records_provider_attempt(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    context = _lease_context(client, session)
+    settings = get_settings()
+    assignment_metadata = {
+        "work_assignment": {
+            "assigned_user_id": str(settings.dev_user_id),
+            "assigned_user_name": settings.dev_user_name,
+            "assigned_user_email": settings.dev_user_email,
+            "assigned_role": "owner",
+            "assigned_at": "2026-05-20T00:00:00Z",
+            "assigned_by_user_id": str(settings.dev_user_id),
+            "assigned_by_name": settings.dev_user_name,
+            "work_title": "Replace shopfront lock",
+            "work_kind": "Maintenance",
+            "notification": {
+                "channel": "in_app",
+                "provider": "leasium",
+                "status": "ready",
+                "recipient_email": settings.dev_user_email,
+                "template_key": "work_assignment_notification",
+                "template_version": "v1",
+            },
+            "history": [
+                {
+                    "event": "assigned",
+                    "at": "2026-05-20T00:00:00Z",
+                    "actor_name": settings.dev_user_name,
+                    "assigned_user_name": settings.dev_user_name,
+                    "assigned_user_email": settings.dev_user_email,
+                    "notification_status": "ready",
+                    "summary": "Maintenance assigned to Temba van Jaarsveld.",
+                }
+            ],
+        }
+    }
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "Replace shopfront lock",
+            "description": "Tenant reported the rear lock is sticking.",
+            "priority": "normal",
+            "status": "assigned",
+            "due_date": "2026-05-28",
+            "metadata": assignment_metadata,
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+
+    attempts: list[str] = []
+
+    def fake_send_work_assignment_email(invite: Any, settings_arg: Any) -> DeliveryResult:
+        assert str(invite.target_id) == work_order_id
+        assert invite.entity_id == UUID(context["entity_id"])
+        assert invite.work_kind == "Maintenance"
+        assert invite.title == "Replace shopfront lock"
+        assert invite.assignee_email == settings.dev_user_email
+        assert invite.template_key == "work_assignment_notification"
+        assert settings_arg.work_assignment_email_template_key == (
+            "work_assignment_notification"
+        )
+        assert invite.work_url is None or invite.work_url.endswith(
+            f"/operations/maintenance/{work_order_id}"
+        )
+        attempts.append(str(invite.target_id))
+        return DeliveryResult(
+            channel="email",
+            status="queued",
+            provider="sendgrid",
+            attempted_at="2026-05-20T01:15:00+00:00",
+            recipient=invite.assignee_email,
+            provider_message_id="sg-assignment-123",
+            metadata={
+                "template_key": invite.template_key,
+                "template_version": invite.template_version,
+            },
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.maintenance.send_work_assignment_email",
+        fake_send_work_assignment_email,
+    )
+
+    send_response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/assignment-notification/send-email"
+    )
+    assert send_response.status_code == 200
+    assert attempts == [work_order_id]
+    sent = send_response.json()
+    assignment = sent["metadata"]["work_assignment"]
+    notification = assignment["notification"]
+    assert notification["status"] == "queued"
+    assert notification["provider"] == "sendgrid"
+    assert notification["provider_message_id"] == "sg-assignment-123"
+    assert notification["recipient_email"] == settings.dev_user_email
+    assert notification["template_key"] == "work_assignment_notification"
+    assert notification["provider_history"][0]["event"] == (
+        "provider_notification_attempted"
+    )
+    assert assignment["history"][0]["event"] == "provider_notification_attempted"
+    assert assignment["history"][0]["notification_status"] == "queued"
+
+    audit_rows = session.scalars(
+        select(AuditAction).where(AuditAction.target_table == "maintenance_work_order")
+    ).all()
+    assert audit_rows[-1].action == "deliver"
+    assert audit_rows[-1].tool_name == "sendgrid.work_assignment"
+
+
 def test_arrears_case_tracks_aged_balances_reminders_and_escalation(
     client: TestClient,
     session: Session,

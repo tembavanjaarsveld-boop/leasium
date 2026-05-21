@@ -19,9 +19,17 @@ from stewart.core.models import (
     Tenant,
     UserRole,
 )
+from stewart.core.settings import get_settings
+from stewart.integrations.communications import send_work_assignment_email
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.register import ObligationCreate, ObligationRead, ObligationUpdate
+from apps.api.work_assignments import (
+    assignment_notification_sent,
+    record_work_assignment_delivery,
+    work_assignment_email_invite,
+    work_url,
+)
 
 router = APIRouter(prefix="/obligations", tags=["obligations"])
 
@@ -272,6 +280,62 @@ def update_obligation(
         action="update",
         target_table="obligation",
         target_id=obligation.id,
+    )
+    session.commit()
+    session.refresh(obligation)
+    return obligation
+
+
+@router.post("/{obligation_id}/assignment-notification/send-email", response_model=ObligationRead)
+def send_obligation_assignment_notification_email(
+    obligation_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Obligation:
+    obligation = _get_obligation_for_user(obligation_id, user, session, WRITE_ROLES)
+    metadata = dict(obligation.obligation_metadata or {})
+    if assignment_notification_sent(metadata):
+        return obligation
+
+    settings = get_settings()
+    result = send_work_assignment_email(
+        work_assignment_email_invite(
+            metadata,
+            target_id=obligation.id,
+            entity_id=obligation.entity_id,
+            work_kind="Critical date",
+            title=obligation.title,
+            description=obligation.notes,
+            due_date=obligation.due_date,
+            work_url=work_url(settings, "/properties"),
+            settings=settings,
+        ),
+        settings,
+    )
+    obligation.obligation_metadata = record_work_assignment_delivery(
+        metadata,
+        result=result,
+        user=user,
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=obligation.entity_id,
+        action="deliver",
+        target_table="obligation",
+        target_id=obligation.id,
+        tool_name="sendgrid.work_assignment",
+        tool_input={
+            "obligation_id": str(obligation.id),
+            "recipient_email": result.recipient,
+            "provider": result.provider,
+            "status": result.status,
+        },
+        tool_output_summary=(
+            f"Attempted assignment notification delivery via {result.provider}: "
+            f"{result.status}."
+        ),
     )
     session.commit()
     session.refresh(obligation)

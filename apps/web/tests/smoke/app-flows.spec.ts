@@ -125,6 +125,8 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   ).toBeVisible();
   await expect(page.getByText("Notification ready").first()).toBeVisible();
   await expect(page.getByText("Reminder Today").first()).toBeVisible();
+  await page.getByRole("button", { name: "Send notice" }).first().click();
+  await expect(page.getByText("Email queued").first()).toBeVisible();
   await page.getByRole("button", { name: "Log reminder" }).first().click();
   await expect(page.getByText("Reminder logged").first()).toBeVisible();
   await expect(

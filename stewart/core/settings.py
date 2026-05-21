@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     operator_invite_email_enabled: bool = True
     operator_invite_template_key: str = "operator_invite"
     operator_invite_template_version: str = "v1"
+    work_assignment_email_enabled: bool = True
+    work_assignment_email_template_key: str = "work_assignment_notification"
+    work_assignment_email_template_version: str = "v1"
 
     anthropic_api_key: str = ""
     openai_api_key: str = ""

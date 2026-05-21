@@ -125,6 +125,24 @@ class ContractorWorkOrderEmail:
     template_version: str
 
 
+@dataclass(frozen=True)
+class WorkAssignmentEmail:
+    """Context needed to notify an operator about assigned work."""
+
+    target_id: UUID
+    entity_id: UUID
+    work_kind: str
+    title: str
+    description: str | None
+    due_date: date | None
+    assignee_name: str | None
+    assignee_email: str | None
+    assigned_by_name: str | None
+    work_url: str | None
+    template_key: str
+    template_version: str
+
+
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
@@ -186,6 +204,10 @@ def _email_subject(invite: TenantOnboardingInvite) -> str:
 
 def _operator_invite_subject(invite: OperatorInviteEmail) -> str:
     return f"Join {invite.organisation_name} on Leasium"
+
+
+def _work_assignment_subject(invite: WorkAssignmentEmail) -> str:
+    return f"Leasium work assigned: {invite.title}"
 
 
 def _email_text(invite: TenantOnboardingInvite) -> str:
@@ -302,6 +324,68 @@ def _operator_invite_html(invite: OperatorInviteEmail) -> str:
           This invite expires on {escape(_date_label(invite.expires_at))}.
         </p>
       </div>
+    </div>
+    """
+
+
+def _work_assignment_text(invite: WorkAssignmentEmail) -> str:
+    greeting = f"Hi {invite.assignee_name}," if invite.assignee_name else "Hi,"
+    work_url = f"\nOpen work: {invite.work_url}" if invite.work_url else ""
+    assigned_by = (
+        f"Assigned by: {invite.assigned_by_name}"
+        if invite.assigned_by_name
+        else "Assigned in Leasium"
+    )
+    description = f"\nDetails: {invite.description}" if invite.description else ""
+    return "\n".join(
+        [
+            greeting,
+            "",
+            f"{invite.work_kind} has been assigned to you in Leasium.",
+            "",
+            f"Work: {invite.title}",
+            f"Due: {_date_label(invite.due_date)}",
+            assigned_by,
+            description.strip(),
+            work_url.strip(),
+            "",
+            "Please open Leasium to review the work, update status, or reassign if needed.",
+            "",
+            "Leasium",
+        ]
+    )
+
+
+def _work_assignment_html(invite: WorkAssignmentEmail) -> str:
+    greeting = f"Hi {escape(invite.assignee_name)}," if invite.assignee_name else "Hi,"
+    work_url = (
+        f'<p><a href="{escape(invite.work_url)}">Open assigned work</a></p>'
+        if invite.work_url
+        else ""
+    )
+    description = (
+        f'<p style="margin:12px 0 0;color:#475467;">{escape(invite.description)}</p>'
+        if invite.description
+        else ""
+    )
+    assigned_by = (
+        f'<p style="margin:4px 0 0;color:#475467;">Assigned by: {escape(invite.assigned_by_name)}</p>'
+        if invite.assigned_by_name
+        else ""
+    )
+    return f"""
+    <div style="font-family:Inter,Arial,sans-serif;line-height:1.55;color:#172033">
+      <p>{greeting}</p>
+      <p>{escape(invite.work_kind)} has been assigned to you in Leasium.</p>
+      <div style="border:1px solid #E4E7EC;border-radius:12px;padding:16px;margin:18px 0;">
+        <p style="margin:0;font-weight:700;">{escape(invite.title)}</p>
+        <p style="margin:10px 0 0;color:#475467;">Due: {escape(_date_label(invite.due_date))}</p>
+        {assigned_by}
+        {description}
+      </div>
+      {work_url}
+      <p>Please open Leasium to review the work, update status, or reassign if needed.</p>
+      <p>Leasium</p>
     </div>
     """
 
@@ -709,6 +793,115 @@ def send_contractor_work_order_email(
             {"type": "text/html", "value": _contractor_email_html(invite)},
         ],
         "categories": _categories("maintenance_contractor", invite.template_key),
+    }
+    try:
+        with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
+            response = client.post(
+                settings.sendgrid_mail_send_url,
+                headers={
+                    "Authorization": f"Bearer {settings.sendgrid_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if 200 <= response.status_code < 300:
+            return DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient=recipient,
+                provider_message_id=response.headers.get("x-message-id"),
+                metadata=metadata,
+            )
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=_sendgrid_error(response),
+            metadata=metadata,
+        )
+    except httpx.HTTPError as exc:
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=str(exc),
+            metadata=metadata,
+        )
+
+
+def send_work_assignment_email(
+    invite: WorkAssignmentEmail,
+    settings: Settings,
+) -> DeliveryResult:
+    """Send an assigned-work notification to an operator."""
+
+    recipient = _clean(invite.assignee_email)
+    metadata: dict[str, str | None] = {
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "target_id": str(invite.target_id),
+        "entity_id": str(invite.entity_id),
+        "work_kind": invite.work_kind,
+        "subject": _work_assignment_subject(invite),
+    }
+    if not settings.work_assignment_email_enabled:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="Work assignment email disabled.",
+            metadata=metadata,
+        )
+    if recipient is None:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            error="No assignment email recipient.",
+            metadata=metadata,
+        )
+    if not settings.sendgrid_api_key or not settings.sendgrid_from_email:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="SendGrid is not configured.",
+            metadata=metadata,
+        )
+
+    payload = {
+        "personalizations": [
+            {
+                "to": [
+                    {
+                        "email": recipient,
+                        **({"name": invite.assignee_name} if invite.assignee_name else {}),
+                    }
+                ],
+                "subject": _work_assignment_subject(invite),
+                "custom_args": {
+                    "work_assignment_target_id": str(invite.target_id),
+                    "entity_id": str(invite.entity_id),
+                    "work_kind": invite.work_kind,
+                    "template_key": invite.template_key,
+                    "template_version": invite.template_version,
+                },
+            }
+        ],
+        "from": {
+            "email": settings.sendgrid_from_email,
+            "name": settings.sendgrid_from_name,
+        },
+        "content": [
+            {"type": "text/plain", "value": _work_assignment_text(invite)},
+            {"type": "text/html", "value": _work_assignment_html(invite)},
+        ],
+        "categories": _categories("work_assignment", invite.template_key),
     }
     try:
         with httpx.Client(timeout=settings.communications_timeout_seconds) as client:

@@ -2540,6 +2540,15 @@ export function updateObligation(
   });
 }
 
+export function sendObligationAssignmentNotification(obligationId: string) {
+  return request<ObligationRecord>(
+    `/obligations/${obligationId}/assignment-notification/send-email`,
+    {
+      method: "POST",
+    },
+  );
+}
+
 export function deleteObligation(obligationId: string) {
   return request<void>(`/obligations/${obligationId}`, {
     method: "DELETE",
@@ -2632,6 +2641,17 @@ export function sendMaintenanceWorkOrderContractorEmail(
   );
 }
 
+export function sendMaintenanceWorkOrderAssignmentNotification(
+  workOrderId: string,
+) {
+  return request<MaintenanceWorkOrderRecord>(
+    `/maintenance/work-orders/${workOrderId}/assignment-notification/send-email`,
+    {
+      method: "POST",
+    },
+  );
+}
+
 export function deleteMaintenanceWorkOrder(workOrderId: string) {
   return request<void>(`/maintenance/work-orders/${workOrderId}`, {
     method: "DELETE",
@@ -2676,6 +2696,15 @@ export function updateArrearsCase(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function sendArrearsAssignmentNotification(arrearsCaseId: string) {
+  return request<ArrearsCaseRecord>(
+    `/arrears/cases/${arrearsCaseId}/assignment-notification/send-email`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function deleteArrearsCase(arrearsCaseId: string) {
