@@ -2470,6 +2470,58 @@ export function askLeasium(payload: { entity_id: string; question: string }) {
   });
 }
 
+export type ActivityActorKind =
+  | "operator"
+  | "system"
+  | "tenant"
+  | "external"
+  | "unknown";
+
+export type ActivityActionKind =
+  | "create"
+  | "update"
+  | "apply"
+  | "review"
+  | "approve"
+  | "deliver"
+  | "remind"
+  | "revoke"
+  | "query"
+  | "delete"
+  | "other";
+
+export type ActivityFeedItemRecord = {
+  id: string;
+  occurred_at: string;
+  actor: string;
+  actor_kind: ActivityActorKind;
+  action: string;
+  action_kind: ActivityActionKind;
+  action_label: string;
+  summary: string;
+  target_table: string | null;
+  target_id: string | null;
+  target_label: string | null;
+  target_href: string | null;
+  tool_name: string | null;
+  outcome: string;
+  error_message: string | null;
+};
+
+export type ActivityFeedRecord = {
+  items: ActivityFeedItemRecord[];
+  has_more: boolean;
+  next_cursor: string | null;
+};
+
+export function listActivityFeed(entityId: string, limit = 30) {
+  const params = new URLSearchParams({
+    entity_id: entityId,
+    limit: String(limit),
+  });
+  return request<ActivityFeedRecord>(`/activity-feed?${params.toString()}`);
+}
+
 export function getXeroExceptionQueue(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
   return request<XeroExceptionQueueRecord>(

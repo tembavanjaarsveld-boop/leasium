@@ -138,6 +138,27 @@ test("dashboard Ask Leasium panel answers with cited record", async ({
   ).toBeVisible();
 });
 
+test("dashboard activity feed groups recent audit rows", async ({ page }) => {
+  await page.goto("/");
+
+  const activityPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Recent activity" }),
+  });
+  await expect(activityPanel).toBeVisible();
+  await expect(
+    activityPanel.getByText(
+      "Approved invoice INV-1001 for May rent and outgoings.",
+    ),
+  ).toBeVisible();
+  await expect(activityPanel.getByText("Today")).toBeVisible();
+  await expect(activityPanel.getByText("Yesterday")).toBeVisible();
+  await expect(
+    activityPanel.getByRole("link", {
+      name: /Approved INV-1001/,
+    }),
+  ).toBeVisible();
+});
+
 test("portfolio QA guides cleanup fixes and source trails", async ({
   page,
 }) => {

@@ -2793,6 +2793,69 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/activity-feed") {
+      await fulfillJson(route, {
+        items: [
+          {
+            id: "0193a000-0000-7000-a000-000000000001",
+            occurred_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+            actor: "Temba van Jaarsveld",
+            actor_kind: "operator",
+            action: "approve",
+            action_kind: "approve",
+            action_label: "Approved",
+            summary: "Approved invoice INV-1001 for May rent and outgoings.",
+            target_table: "invoice_draft",
+            target_id: "0193a000-0000-7000-b000-000000000001",
+            target_label: "INV-1001",
+            target_href: "/billing-readiness",
+            tool_name: null,
+            outcome: "success",
+            error_message: null,
+          },
+          {
+            id: "0193a000-0000-7000-a000-000000000002",
+            occurred_at: new Date(Date.now() - 2 * 3600_000).toISOString(),
+            actor: "Temba van Jaarsveld",
+            actor_kind: "operator",
+            action: "apply",
+            action_kind: "apply",
+            action_label: "Applied",
+            summary:
+              "Applied Smart Intake review for May rent schedule (4 charges).",
+            target_table: "document_intake",
+            target_id: "0193a000-0000-7000-c000-000000000001",
+            target_label: "May Rent Schedule",
+            target_href: "/intake",
+            tool_name: null,
+            outcome: "success",
+            error_message: null,
+          },
+          {
+            id: "0193a000-0000-7000-a000-000000000003",
+            occurred_at: new Date(Date.now() - 26 * 3600_000).toISOString(),
+            actor: "System",
+            actor_kind: "system",
+            action: "reminder",
+            action_kind: "remind",
+            action_label: "Reminded",
+            summary:
+              "Sent overdue insurance certificate reminder to Queen Street Retail Centre.",
+            target_table: "obligation",
+            target_id: "0193a000-0000-7000-d000-000000000001",
+            target_label: "Insurance certificate renewal",
+            target_href: "/operations",
+            tool_name: null,
+            outcome: "success",
+            error_message: null,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      });
+      return;
+    }
+
     if (method === "POST" && path === "/ai/ask") {
       await fulfillJson(route, {
         answer:
