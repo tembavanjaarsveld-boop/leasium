@@ -199,7 +199,7 @@ Tier 2 follows after the highest-leverage Tier 1 items land.
 
 ### Tier 3 — bigger bets, post internal-period
 
-- [ ] Inline-editable tables on Properties, Tenants, Operations.
+- [~] Tier 3 v1: Inline-editable cells on the Tenants table. New reusable `<InlineEditCell>` component (`apps/web/src/components/inline-edit-cell.tsx`) supports click-to-edit, Enter/blur to commit, Escape to cancel, pencil affordance on hover, loading spinner during save, inline error on failure, and rollback. `/tenants` Contact column now wires it for contact_name, contact_email, and contact_phone with optimistic React Query cache patching against PATCH `/api/v1/tenants/{id}`. Properties + Operations and the full record `/tenants/[id]` page still ship as v2/v3 follow-ups. Pending Remba review.
 - [ ] Saved views per operator (named filter combinations).
 - [ ] Notion-style multi-view (table / board / calendar) for Properties.
 - [ ] AI inbox processor (Re-Leased Credia Action equivalent — operator approval still required).

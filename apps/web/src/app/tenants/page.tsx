@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { DetailDrawer } from "@/components/detail-drawer";
+import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -39,6 +40,7 @@ import {
   TenantOnboardingRecord,
   TenantPayload,
   TenantRecord,
+  updateTenant,
 } from "@/lib/api";
 import {
   onboardingDeliveryDetail,
@@ -397,6 +399,40 @@ function TenantWorkspace() {
     },
   });
 
+  // Inline-edit handler for tenant contact fields. Optimistic update
+  // patches the React Query cache immediately so the row reflects the
+  // change without a refetch; if PATCH fails we roll back to the
+  // previous list and rethrow so InlineEditCell surfaces the error.
+  async function saveTenantField(
+    tenantId: string,
+    field: "contact_email" | "contact_phone" | "billing_email" | "contact_name",
+    next: string | null,
+  ): Promise<void> {
+    const queryKey = ["tenants", selectedEntityId];
+    const previous =
+      queryClient.getQueryData<TenantRecord[]>(queryKey) ?? null;
+    if (previous) {
+      queryClient.setQueryData<TenantRecord[]>(
+        queryKey,
+        previous.map((row) =>
+          row.id === tenantId ? { ...row, [field]: next } : row,
+        ),
+      );
+    }
+    try {
+      await updateTenant(tenantId, { [field]: next });
+      // The PATCH response is already reflected by the optimistic
+      // update; trigger a background revalidation so other derived
+      // queries (drawer, lease summaries) stay aligned.
+      queryClient.invalidateQueries({ queryKey });
+    } catch (err) {
+      if (previous) {
+        queryClient.setQueryData(queryKey, previous);
+      }
+      throw err;
+    }
+  }
+
   function updateField(field: keyof TenantForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -656,9 +692,40 @@ function TenantWorkspace() {
                         {dueLabel(onboarding?.due_date)}
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-xs">
-                      <div>{tenant.contact_name ?? "-"}</div>
-                      <div className="text-muted-foreground">{tenant.contact_email ?? tenant.contact_phone ?? "-"}</div>
+                    <td
+                      className="px-3 py-3 text-xs"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="grid gap-0.5">
+                        <InlineEditCell
+                          value={tenant.contact_name}
+                          ariaLabel={`Contact name for ${tenantName(tenant)}`}
+                          placeholder="Add contact name"
+                          onSave={(next) =>
+                            saveTenantField(tenant.id, "contact_name", next)
+                          }
+                        />
+                        <InlineEditCell
+                          value={tenant.contact_email}
+                          ariaLabel={`Contact email for ${tenantName(tenant)}`}
+                          placeholder="Add email"
+                          type="email"
+                          className="text-muted-foreground"
+                          onSave={(next) =>
+                            saveTenantField(tenant.id, "contact_email", next)
+                          }
+                        />
+                        <InlineEditCell
+                          value={tenant.contact_phone}
+                          ariaLabel={`Contact phone for ${tenantName(tenant)}`}
+                          placeholder="Add phone"
+                          type="tel"
+                          className="text-muted-foreground"
+                          onSave={(next) =>
+                            saveTenantField(tenant.id, "contact_phone", next)
+                          }
+                        />
+                      </div>
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap gap-2">

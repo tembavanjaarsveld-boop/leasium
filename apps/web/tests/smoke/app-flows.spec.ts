@@ -138,6 +138,28 @@ test("dashboard Ask Leasium panel answers with cited record", async ({
   ).toBeVisible();
 });
 
+test("tenants table inline-edits contact email", async ({ page }) => {
+  await page.goto("/tenants");
+
+  // Find the first Add email / contact_email inline cell. The aria-label
+  // is dynamic to the tenant name, so we match the "Contact email"
+  // prefix.
+  const editButton = page
+    .getByRole("button", { name: /^Edit Contact email for / })
+    .first();
+  await editButton.click();
+
+  const input = page.getByLabel(/^Contact email for /).first();
+  await expect(input).toBeFocused();
+  await input.fill("inline.edit@example.com");
+  await input.press("Enter");
+
+  // After save, the read-only button reappears with the new value.
+  await expect(
+    page.getByRole("button", { name: /inline\.edit@example\.com/ }).first(),
+  ).toBeVisible();
+});
+
 test("keyboard cheatsheet lists global and Go-to shortcuts", async ({
   page,
 }) => {
