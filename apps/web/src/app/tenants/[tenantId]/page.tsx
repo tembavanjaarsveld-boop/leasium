@@ -8,6 +8,7 @@ import {
   Clock3,
   Download,
   Edit3,
+  ExternalLink,
   FileText,
   Link2,
   Loader2,
@@ -2179,6 +2180,22 @@ function TenantDetail() {
                         </StatusBadge>
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        {activeOnboarding && !activeOnboardingExpired ? (
+                          <SecondaryButton
+                            type="button"
+                            title="Open the tenant portal in a new tab as this tenant — operator-only and audited."
+                            onClick={() =>
+                              window.open(
+                                activeOnboarding.portal_url,
+                                "_blank",
+                                "noopener,noreferrer",
+                              )
+                            }
+                          >
+                            <ExternalLink size={15} />
+                            Preview as tenant
+                          </SecondaryButton>
+                        ) : null}
                         {activeOnboarding &&
                         activeOnboarding.status === "sent" &&
                         !activeOnboardingExpired ? (
