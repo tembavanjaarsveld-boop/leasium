@@ -63,6 +63,10 @@ import {
   TenantRecord,
   TenantOnboardingRecord,
 } from "@/lib/api";
+import {
+  portfolioOccupancyTotals,
+  propertyOccupancyFromRentRoll,
+} from "@/lib/property-occupancy";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const DEMO_MODE_STORAGE_KEY = "leasium.demo_mode";
@@ -2758,6 +2762,30 @@ export function Dashboard({
     () => (demoMode ? demoRentRows : (rentRollQuery.data ?? [])),
     [demoMode, demoRentRows, rentRollQuery.data],
   );
+  const portfolioOccupancy = useMemo(() => {
+    const properties = demoMode ? [] : (propertiesQuery.data ?? []);
+    if (!properties.length) {
+      return null;
+    }
+    const occupancies = properties.map((property) =>
+      propertyOccupancyFromRentRoll(property, displayRentRoll),
+    );
+    return portfolioOccupancyTotals(occupancies);
+  }, [demoMode, displayRentRoll, propertiesQuery.data]);
+  const propertiesOccupancySummary = useMemo(() => {
+    if (!portfolioOccupancy) {
+      return null;
+    }
+    const leasedTotal =
+      portfolioOccupancy.leased + portfolioOccupancy.leasedInternal;
+    const parts: string[] = [];
+    if (leasedTotal > 0) parts.push(`${leasedTotal} leased`);
+    if (portfolioOccupancy.partial > 0)
+      parts.push(`${portfolioOccupancy.partial} partial`);
+    if (portfolioOccupancy.vacant > 0)
+      parts.push(`${portfolioOccupancy.vacant} vacant`);
+    return parts.length ? parts.join(" · ") : null;
+  }, [portfolioOccupancy]);
   const displayOnboardings = useMemo(
     () => (demoMode ? demoOnboardingRows : (onboardingQuery.data ?? [])),
     [demoMode, demoOnboardingRows, onboardingQuery.data],
@@ -3184,7 +3212,8 @@ export function Dashboard({
               propertiesLoading
                 ? "Loading live property data."
                 : displayPropertiesCount
-                  ? "Open the portfolio workspace."
+                  ? (propertiesOccupancySummary ??
+                    "Open the portfolio workspace.")
                   : "Create or import your first property."
             }
             icon={<Layers3 size={17} />}
