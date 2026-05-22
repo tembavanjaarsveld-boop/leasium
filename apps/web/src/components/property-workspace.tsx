@@ -4541,8 +4541,8 @@ function Workspace() {
                 </div>
               ) : null}
 
-              <div className="overflow-hidden rounded-md border border-border bg-white">
-                <table className="w-full border-collapse text-left text-sm">
+              <div className="overflow-x-auto rounded-md border border-border bg-white">
+                <table className="w-full min-w-[640px] border-collapse text-left text-sm">
                   <thead className="bg-muted text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="w-28 px-3 py-2 font-semibold">Image</th>

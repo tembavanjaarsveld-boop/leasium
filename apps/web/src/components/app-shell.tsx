@@ -441,7 +441,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       ) : null}
 
       <header className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-2 min-[1600px]:max-w-none">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 py-2 min-[1600px]:max-w-none">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
@@ -450,7 +450,12 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           >
             <Menu size={15} />
           </button>
-          <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
+          {children ? (
+            <div className="order-last w-full min-w-0 sm:order-none sm:ml-auto sm:w-auto sm:min-w-40 sm:max-w-xs">
+              {children}
+            </div>
+          ) : null}
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:ml-0">
             <button
               type="button"
               onClick={() => setCommandOpen(true)}
@@ -465,7 +470,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               onClick={() => setCheatsheetOpen(true)}
               aria-label="Show keyboard shortcuts"
               title="Keyboard shortcuts (?)"
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+              className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted sm:inline-flex"
             >
               <Keyboard size={15} />
             </button>
@@ -481,9 +486,6 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             >
               <Bell size={15} />
             </Link>
-            {children ? (
-              <div className="min-w-40 flex-1 sm:max-w-xs">{children}</div>
-            ) : null}
             {clerkConfigured ? (
               <div className="flex h-10 shrink-0 items-center">
                 <OperatorUserControl />
