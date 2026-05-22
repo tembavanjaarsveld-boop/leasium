@@ -100,10 +100,14 @@ import {
   updateProperty,
 } from "@/lib/api";
 import {
+  nextExpiryChipClassName,
+  nextExpiryChipLabel,
   occupancyBadgeClassName,
   occupancyBadgeLabel,
+  type NextLeaseExpiry,
   type PropertyOccupancy,
   type PropertyOccupancyStatus,
+  propertyNextExpiryFromRentRoll,
   propertyOccupancyFromRentRoll,
 } from "@/lib/property-occupancy";
 import {
@@ -1453,6 +1457,18 @@ function Workspace() {
     const properties = propertiesQuery.data ?? [];
     for (const property of properties) {
       map.set(property.id, propertyOccupancyFromRentRoll(property, rows));
+    }
+    return map;
+  }, [propertiesQuery.data, rentRollQuery.data]);
+  const nextExpiryByPropertyId = useMemo(() => {
+    const rows = rentRollQuery.data ?? [];
+    const map = new Map<string, NextLeaseExpiry>();
+    const properties = propertiesQuery.data ?? [];
+    for (const property of properties) {
+      const expiry = propertyNextExpiryFromRentRoll(property.id, rows);
+      if (expiry) {
+        map.set(property.id, expiry);
+      }
     }
     return map;
   }, [propertiesQuery.data, rentRollQuery.data]);
@@ -4496,6 +4512,24 @@ function Workspace() {
                                     }
                                   >
                                     {occupancyBadgeLabel(occupancy)}
+                                  </span>
+                                );
+                              })()}
+                              {(() => {
+                                const expiry = nextExpiryByPropertyId.get(
+                                  property.id,
+                                );
+                                if (!expiry) {
+                                  return null;
+                                }
+                                return (
+                                  <span
+                                    className={nextExpiryChipClassName(
+                                      expiry.daysUntil,
+                                    )}
+                                    title={`Earliest active lease expires ${expiry.date}.`}
+                                  >
+                                    {nextExpiryChipLabel(expiry)}
                                   </span>
                                 );
                               })()}

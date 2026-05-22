@@ -157,6 +157,12 @@ export function occupancyBadgeLabel(occupancy: PropertyOccupancy) {
   return `Leased · ${occupancy.leasedUnits} / ${occupancy.totalUnits}${suffix}`;
 }
 
+export type NextLeaseExpiry = {
+  date: string;
+  daysUntil: number;
+  unitId: string;
+};
+
 export type PortfolioOccupancyTotals = {
   total: number;
   leased: number;
@@ -165,6 +171,60 @@ export type PortfolioOccupancyTotals = {
   vacant: number;
   unknown: number;
 };
+
+export function propertyNextExpiryFromRentRoll(
+  propertyId: string,
+  rentRollRows: ReadonlyArray<
+    RentRollOccupancyRow & {
+      expiry_date?: string | null;
+    }
+  >,
+  windowDays: number = 120,
+  asOf: Date = new Date(),
+): NextLeaseExpiry | null {
+  let best: NextLeaseExpiry | null = null;
+  for (const row of rentRollRows) {
+    if (row.property_id !== propertyId) continue;
+    if (!row.lease_id || !row.lease_status) continue;
+    if (!OCCUPIED_LEASE_STATUSES.has(row.lease_status)) continue;
+    const rawDate = row.expiry_date;
+    if (typeof rawDate !== "string" || !rawDate) continue;
+    const parsed = new Date(`${rawDate.slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) continue;
+    const daysUntil = Math.round(
+      (parsed.getTime() - asOf.getTime()) / 86_400_000,
+    );
+    if (daysUntil < 0 || daysUntil > windowDays) continue;
+    if (!best || daysUntil < best.daysUntil) {
+      best = {
+        date: rawDate.slice(0, 10),
+        daysUntil,
+        unitId: row.tenancy_unit_id,
+      };
+    }
+  }
+  return best;
+}
+
+export function nextExpiryChipClassName(daysUntil: number) {
+  if (daysUntil < 30) {
+    return "inline-flex items-center rounded-full border border-leasium-danger-strong/30 bg-leasium-danger-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#B42318]";
+  }
+  if (daysUntil < 60) {
+    return "inline-flex items-center rounded-full border border-leasium-warning-strong/30 bg-leasium-warning-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#B54708]";
+  }
+  return "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-semibold leading-4 text-muted-foreground";
+}
+
+export function nextExpiryChipLabel(expiry: NextLeaseExpiry) {
+  if (expiry.daysUntil === 0) {
+    return "Expires today";
+  }
+  if (expiry.daysUntil === 1) {
+    return "Expires in 1 day";
+  }
+  return `Expires in ${expiry.daysUntil} days`;
+}
 
 export function portfolioOccupancyTotals(
   occupancies: Iterable<PropertyOccupancy>,
