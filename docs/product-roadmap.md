@@ -186,7 +186,7 @@ Tier 2 follows after the highest-leverage Tier 1 items land.
 ### Tier 1 — UX review (active, next 2-3 weeks)
 
 - [x] Tier 1 (d) v1: URL-persistent filters across the Properties (`occupancy`, `owner_tag`), Tenants (`tenant_filter`, `q`), and Operations (`tab`, `assignee`, `maintenance_status`, `maintenance_priority`, `arrears_status`) tables. Operators can bookmark and share filtered views; filters hydrate from query string on mount and write back via `history.replaceState`. Pending Remba review.
-- [ ] Tier 1 (c): Dashboard metric trend deltas + sparklines on `DashboardMetricCard` (Stripe-style "↑ 12% vs last week" + 7-day mini chart) so the dashboard reads as exceptions, not just counts.
+- [x] Tier 1 (c) v1: Dashboard metric trend deltas + sparklines. `DashboardMetricCard` now accepts an optional `trend: { delta, series[], direction, label }` and renders a coloured 7-day SVG sparkline + delta badge (Stripe-style "↓ 2 vs last week"). v1 wires the trend on the Operations card from `obligationsQuery` (lower-better palette so closing more than you open shows green). Property/tenant trends defer until the read API exposes `created_at`/`deleted_at` or a dedicated `/dashboard/metric-trends` backend endpoint lands. Pending Remba review.
 - [ ] Tier 1 (b): Generic `<DetailDrawer>` component, then migrate Properties and Tenants row-click off full-page navigation onto the drawer (keep `/properties/[id]` / `/tenants/[id]` as deep-link routes).
 - [ ] Tier 1 (a): Convert the wrapping top-bar nav into a 240-280px left sidebar matching the design source-of-truth's command-centre layout. Frees the top bar for workspace switcher, environment chip, Cmd+K, account menu, future "Ask" widget.
 
