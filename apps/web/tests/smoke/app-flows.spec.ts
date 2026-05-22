@@ -138,6 +138,25 @@ test("dashboard Ask Leasium panel answers with cited record", async ({
   ).toBeVisible();
 });
 
+test("keyboard cheatsheet lists global and Go-to shortcuts", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Show keyboard shortcuts" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Keyboard shortcuts" }),
+  ).toBeVisible();
+  await expect(page.getByText("Open command search")).toBeVisible();
+  await expect(page.getByText("Show this keyboard cheatsheet")).toBeVisible();
+  await expect(page.getByText("Dashboard").last()).toBeVisible();
+  await expect(page.getByText("Properties").last()).toBeVisible();
+  await expect(page.getByText("Tenants").last()).toBeVisible();
+  // The Go-to legend itself appears in the cheatsheet.
+  await expect(page.getByText("Go to (press G, then…)")).toBeVisible();
+});
+
 test("dashboard activity feed groups recent audit rows", async ({ page }) => {
   await page.goto("/");
 
