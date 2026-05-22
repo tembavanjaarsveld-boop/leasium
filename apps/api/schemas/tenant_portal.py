@@ -1,7 +1,7 @@
 """Schemas for the tenant-facing portal."""
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -77,6 +77,8 @@ class TenantPortalOnboardingRead(BaseModel):
     submitted_at: datetime | None
     last_sent_at: datetime | None
     document_count: int
+    submitted_data: dict[str, Any] | None = None
+    portal_invite_sent_at: datetime | None = None
 
 
 class TenantPortalDocumentRead(BaseModel):

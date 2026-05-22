@@ -39,6 +39,7 @@ from stewart.integrations.communications import (
     DeliveryResult,
     TenantOnboardingInvite,
     send_tenant_onboarding_invite,
+    send_tenant_portal_invite,
 )
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
@@ -757,6 +758,101 @@ def _deliver_onboarding_link(
         )
 
 
+def _deliver_portal_invite(
+    onboarding: TenantOnboarding,
+    lease: Lease,
+    prop: Property,
+    tenant: Tenant,
+    user: CurrentUser,
+    session: Session,
+) -> list[DeliveryResult]:
+    """Send a portal-account claim invite tied to this onboarding row.
+
+    The portal invite is a separate operator action from the onboarding link.
+    It uses its own SendGrid template and a URL pointing at the tenant portal
+    (where the tenant signs in via Clerk and the existing portal-account claim
+    flow links them to this onboarding). Delivery receipts are recorded under
+    ``delivery_data['portal_invite']`` so the tenant dashboard and operator
+    surface can both show when the link was last sent.
+    """
+
+    unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+    if unit is None or unit.deleted_at is not None:
+        return []
+    settings = get_settings()
+    invite = TenantOnboardingInvite(
+        onboarding_id=onboarding.id,
+        entity_id=onboarding.entity_id,
+        tenant_name=tenant.trading_name or tenant.legal_name,
+        contact_name=tenant.contact_name,
+        contact_email=tenant.contact_email or tenant.billing_email,
+        contact_phone=tenant.contact_phone,
+        property_name=prop.name,
+        property_address=_property_address(prop),
+        unit_label=unit.unit_label,
+        onboarding_url=_portal_url(onboarding.token),
+        due_date=onboarding.due_date,
+        expires_at=onboarding.expires_at,
+        brand_name=settings.tenant_onboarding_brand_name,
+        template_key=settings.tenant_portal_invite_template_key,
+        template_version=settings.tenant_portal_invite_template_version,
+    )
+    results = send_tenant_portal_invite(invite, settings)
+    now = utcnow()
+    delivery = dict(onboarding.delivery_data or {})
+    receipts = []
+    for result in results:
+        receipts.append(
+            {
+                "channel": result.channel,
+                "status": result.status,
+                "provider": result.provider,
+                "recipient": _masked_recipient(result.recipient),
+                "provider_message_id": result.provider_message_id,
+                "error": result.error,
+                "metadata": result.metadata,
+            }
+        )
+    delivery["portal_invite"] = {
+        "sent_at": now.isoformat(),
+        "sent_by_user_id": str(user.id),
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "receipts": receipts,
+    }
+    history_raw = delivery.get("portal_invite_history")
+    history = (
+        [item for item in history_raw if isinstance(item, dict)]
+        if isinstance(history_raw, list)
+        else []
+    )
+    history.append(delivery["portal_invite"])
+    delivery["portal_invite_history"] = history[-5:]
+    onboarding.delivery_data = delivery
+    for result in results:
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=onboarding.entity_id,
+            action="portal_invite",
+            target_table="tenant_onboarding",
+            target_id=onboarding.id,
+            tool_name=f"twilio.{result.provider}"
+            if result.channel == "sms"
+            else f"sendgrid.{result.provider}",
+            tool_input={
+                "channel": result.channel,
+                "recipient": _masked_recipient(result.recipient),
+            },
+            tool_output_summary=f"portal_invite {result.channel} {result.status}",
+            outcome=(AuditOutcome.error if result.status == "failed" else AuditOutcome.success),
+            error_message=result.error if result.status == "failed" else None,
+            data_classification="confidential",
+        )
+    return results
+
+
 def _is_expired(row: TenantOnboarding) -> bool:
     if row.expires_at is None:
         return False
@@ -1204,6 +1300,38 @@ def resend_tenant_onboarding(
     session.refresh(onboarding)
     lease, prop, tenant = _lease_scope(onboarding.lease_id, session)
     _deliver_onboarding_link(onboarding, lease, prop, tenant, user, session, "resend")
+    session.commit()
+    session.refresh(onboarding)
+    return _read(onboarding)
+
+
+@router.post("/{onboarding_id}/send-portal-invite", response_model=TenantOnboardingRead)
+def send_tenant_onboarding_portal_invite(
+    onboarding_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantOnboardingRead:
+    """Send the tenant a portal-account claim link.
+
+    Operator-triggered. Builds an invite pointing at the tenant portal (where
+    the tenant signs in with Clerk and the existing claim flow links them to
+    this onboarding row). Never mutates the tenant record. The onboarding row
+    must be live (``sent`` and not expired).
+    """
+
+    onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)
+    if onboarding.status != TenantOnboardingStatus.sent:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only sent onboarding rows can receive a portal invite.",
+        )
+    if _is_expired(onboarding):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Expired onboarding links cannot send portal invites.",
+        )
+    lease, prop, tenant = _lease_scope(onboarding.lease_id, session)
+    _deliver_portal_invite(onboarding, lease, prop, tenant, user, session)
     session.commit()
     session.refresh(onboarding)
     return _read(onboarding)

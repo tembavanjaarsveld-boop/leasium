@@ -479,3 +479,76 @@ def test_tenant_onboarding_reminder_run_is_due_and_idempotent(
     reminders = onboarding.delivery_data["reminders"]
     assert reminders["schedule"][0]["status"] == "sent"
     assert reminders["next_reminder_at"] == reminders["schedule"][1]["scheduled_at"]
+
+
+def test_tenant_onboarding_send_portal_invite_records_delivery_and_audits(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    sends: list[str] = []
+
+    def fake_portal_send(invite, settings):  # noqa: ANN001, ARG001
+        sends.append(invite.template_key)
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+                provider_message_id="portal-invite-1",
+                metadata={"template_key": invite.template_key},
+            ),
+            DeliveryResult(
+                channel="sms",
+                status="skipped",
+                provider="twilio",
+                error="No SMS recipient.",
+            ),
+        ]
+
+    monkeypatch.setattr(tenant_onboarding_router, "send_tenant_portal_invite", fake_portal_send)
+    lease_id = _lease_id(client, session)
+    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    assert create_response.status_code == 201
+    onboarding_id = create_response.json()["id"]
+
+    invite_response = client.post(
+        f"/api/v1/tenant-onboarding/{onboarding_id}/send-portal-invite",
+    )
+    assert invite_response.status_code == 200
+    body = invite_response.json()
+    assert body["status"] == "sent"
+    portal_invite = body["delivery_data"]["portal_invite"]
+    assert portal_invite["template_key"] == "tenant_portal_invite"
+    assert {receipt["channel"] for receipt in portal_invite["receipts"]} == {"email", "sms"}
+    assert sends == ["tenant_portal_invite"]
+    history = body["delivery_data"].get("portal_invite_history") or []
+    assert len(history) == 1
+
+
+def test_tenant_onboarding_send_portal_invite_rejects_submitted_or_expired(
+    client: TestClient,
+    session: Session,
+) -> None:
+    lease_id = _lease_id(client, session)
+    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    assert create_response.status_code == 201
+    onboarding_id = create_response.json()["id"]
+    token = create_response.json()["token"]
+
+    submit_response = client.post(
+        f"/api/v1/tenant-onboarding/public/{token}/submit",
+        json={
+            "legal_name": "Submitted Tenant Pty Ltd",
+            "contact_name": "Sam Submitted",
+            "contact_email": "sam@example.com",
+            "accepted": True,
+        },
+    )
+    assert submit_response.status_code == 200
+
+    reject_response = client.post(
+        f"/api/v1/tenant-onboarding/{onboarding_id}/send-portal-invite",
+    )
+    assert reject_response.status_code == 409

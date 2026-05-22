@@ -1055,3 +1055,64 @@ def test_tenant_portal_can_create_maintenance_request_with_scoped_documents(
         },
     )
     assert cross_scope_document_response.status_code == 404
+
+
+def test_tenant_portal_onboarding_submit_writes_submitted_data(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+
+    response = client.post(
+        "/api/v1/tenant-portal/onboarding/submit",
+        headers={"x-tenant-portal-token": scope["token"]},
+        json={
+            "legal_name": "Portal Tenant Submitted Pty Ltd",
+            "trading_name": "Portal One",
+            "contact_name": "Avery Tenant",
+            "contact_email": "avery@portal-one.example",
+            "contact_phone": "+61 400 111 222",
+            "insurance_confirmed": True,
+            "accepted": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["onboarding"]["status"] == "submitted"
+    assert body["onboarding"]["submitted_at"] is not None
+    assert body["onboarding"]["submitted_data"]["legal_name"] == "Portal Tenant Submitted Pty Ltd"
+    assert body["onboarding"]["submitted_data"]["insurance_confirmed"] is True
+
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    assert onboarding.status == TenantOnboardingStatus.submitted
+    assert onboarding.submitted_data["legal_name"] == "Portal Tenant Submitted Pty Ltd"
+    # Tenant record itself must NOT be mutated until operator clicks Apply.
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    assert tenant.legal_name == "Portal Tenant One Pty Ltd"
+
+
+def test_tenant_portal_onboarding_submit_rejects_non_sent_status(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    onboarding.status = TenantOnboardingStatus.submitted
+    session.commit()
+
+    response = client.post(
+        "/api/v1/tenant-portal/onboarding/submit",
+        headers={"x-tenant-portal-token": scope["token"]},
+        json={
+            "legal_name": "Portal Tenant Pty Ltd",
+            "contact_name": "Avery Tenant",
+            "contact_email": "avery@portal-one.example",
+            "accepted": True,
+        },
+    )
+
+    assert response.status_code == 409

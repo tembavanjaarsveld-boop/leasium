@@ -44,6 +44,7 @@ from stewart.core.models import (
 from stewart.core.settings import Settings, get_settings
 
 from apps.api.deps import get_session
+from apps.api.schemas.tenant_onboarding import TenantOnboardingSubmit
 from apps.api.schemas.tenant_portal import (
     TenantPortalAccountClaimCreate,
     TenantPortalAccountLifecycleRead,
@@ -827,6 +828,22 @@ def _notification_preferences(tenant: Tenant) -> TenantPortalNotificationPrefere
     )
 
 
+def _portal_invite_sent_at(delivery_data: dict[str, object] | None) -> datetime | None:
+    """Return the timestamp of the last portal-invite delivery, if any.
+
+    The operator-triggered portal invite records its receipts under
+    ``delivery_data['portal_invite']`` so the tenant dashboard can show when the
+    account-claim link was last sent.
+    """
+
+    if not isinstance(delivery_data, dict):
+        return None
+    section = delivery_data.get("portal_invite")
+    if not isinstance(section, dict):
+        return None
+    return _parse_iso_datetime(section.get("sent_at"))
+
+
 def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
     documents = _tenant_documents(scope, session)
     invoices = _portal_invoices(scope, session)
@@ -877,6 +894,8 @@ def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
             submitted_at=scope.onboarding.submitted_at,
             last_sent_at=scope.onboarding.last_sent_at,
             document_count=len(documents),
+            submitted_data=scope.onboarding.submitted_data or None,
+            portal_invite_sent_at=_portal_invite_sent_at(scope.onboarding.delivery_data),
         ),
         compliance=_compliance(scope, documents),
         invoices=[_invoice_read(invoice) for invoice in invoices],
@@ -1283,6 +1302,67 @@ def create_tenant_portal_maintenance_request(
     session.commit()
     session.refresh(work_order)
     return _maintenance_request_read(work_order)
+
+
+@router.post("/onboarding/submit", response_model=TenantPortalRead)
+def submit_tenant_portal_onboarding(
+    payload: TenantOnboardingSubmit,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+    x_tenant_portal_token: Annotated[str | None, Header()] = None,
+) -> TenantPortalRead:
+    """Tenant-facing onboarding submit from inside the authenticated portal.
+
+    Mirrors the public ``/tenant-onboarding/public/{token}/submit`` endpoint —
+    writes the payload to ``submitted_data`` and moves the onboarding row to
+    ``submitted``. The operator still has to review and apply before any tenant
+    record is mutated; this endpoint never touches the tenant table directly.
+    """
+
+    scope = _portal_scope_for_request(
+        request,
+        session,
+        settings,
+        authorization=authorization,
+        header_token=x_tenant_portal_token,
+    )
+    onboarding = scope.onboarding
+    if onboarding.status != TenantOnboardingStatus.sent:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only sent onboarding can be submitted from the tenant portal.",
+        )
+    if not payload.accepted:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Acceptance is required.",
+        )
+    data = payload.model_dump(mode="json")
+    onboarding.status = TenantOnboardingStatus.submitted
+    onboarding.submitted_data = data
+    onboarding.submitted_at = utcnow()
+    delivery = onboarding.delivery_data or {}
+    reminders = delivery.get("reminders")
+    if isinstance(reminders, dict):
+        reminders = {**reminders, "completed": True, "completed_reason": "submitted"}
+        delivery = {**delivery, "reminders": reminders}
+        onboarding.delivery_data = delivery
+    audit_log(
+        session,
+        actor=scope.auth.actor,
+        entity_id=onboarding.entity_id,
+        action="submit",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+        outcome=AuditOutcome.success,
+        tool_name="tenant_portal.onboarding_submit",
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(onboarding)
+    return _portal_read(scope, session)
 
 
 @router.patch("/notification-preferences", response_model=TenantPortalNotificationPreferencesRead)

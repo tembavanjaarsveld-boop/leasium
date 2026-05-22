@@ -100,6 +100,8 @@ class Settings(BaseSettings):
     tenant_onboarding_brand_name: str = "Leasium"
     tenant_onboarding_template_key: str = "tenant_onboarding_invite"
     tenant_onboarding_template_version: str = "v1"
+    tenant_portal_invite_template_key: str = "tenant_portal_invite"
+    tenant_portal_invite_template_version: str = "v1"
     slack_webhook_url: str = ""
 
     @field_validator("database_url", "test_database_url", mode="before")

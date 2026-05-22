@@ -1809,3 +1809,20 @@ def send_tenant_onboarding_invite(
         _send_email(invite, settings),
         _send_sms(invite, settings),
     ]
+
+
+def send_tenant_portal_invite(
+    invite: TenantOnboardingInvite,
+    settings: Settings,
+) -> list[DeliveryResult]:
+    """Send a portal-account claim invite by email + SMS.
+
+    Reuses the TenantOnboardingInvite dataclass and the same SendGrid/Twilio pipes;
+    callers are expected to set ``template_key``/``template_version`` to the portal
+    invite template and ``onboarding_url`` to the portal claim URL.
+    """
+
+    return [
+        _send_email(invite, settings),
+        _send_sms(invite, settings),
+    ]
