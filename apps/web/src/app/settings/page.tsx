@@ -1524,7 +1524,7 @@ function SettingsWorkspace() {
             <button
               key={tab.id}
               aria-selected={activeTab === tab.id}
-              className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition duration-200 ease-leasium ${
+              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition duration-200 ease-leasium ${
                 activeTab === tab.id
                   ? "bg-primary text-primary-foreground shadow-leasiumXs"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
