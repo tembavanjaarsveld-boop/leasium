@@ -6,6 +6,7 @@ from stewart.core.settings import get_settings
 
 from apps.api.routers import (
     arrears,
+    branded_templates,
     charge_rules,
     document_intakes,
     documents,
@@ -74,3 +75,4 @@ app.include_router(enrichment.router, prefix="/api/v1")
 app.include_router(xero.router, prefix="/api/v1")
 app.include_router(insights.router, prefix="/api/v1")
 app.include_router(system.router, prefix="/api/v1")
+app.include_router(branded_templates.router, prefix="/api/v1")

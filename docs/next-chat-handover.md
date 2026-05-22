@@ -305,6 +305,7 @@ The current unstaged slice is broad but coherent:
   - `20260520_0019_tenant_portal_accounts`
   - `20260521_0020_register_import_plans`
   - `20260521_0021_operator_notification_preferences`
+  - `20260522_0022_branded_communication_templates`
 - Provider setup still has external-console work:
   - SendGrid templates/event webhook configuration; notification-center readiness shows the bare Work event webhook endpoint only.
   - Twilio SMS callback/template setup; notification-center readiness shows the bare Work status callback endpoint only.

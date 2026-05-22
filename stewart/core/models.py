@@ -301,6 +301,9 @@ class Entity(Base):
     tenant_portal_accounts: Mapped[list["TenantPortalAccount"]] = relationship(
         back_populates="entity"
     )
+    branded_communication_templates: Mapped[
+        list["BrandedCommunicationTemplate"]
+    ] = relationship(back_populates="entity")
     documents: Mapped[list["StoredDocument"]] = relationship(back_populates="entity")
     document_intakes: Mapped[list["DocumentIntake"]] = relationship(back_populates="entity")
     register_import_plans: Mapped[list["RegisterImportPlan"]] = relationship(
@@ -946,6 +949,84 @@ Index(
     "tenant_portal_account_tenant_idx",
     TenantPortalAccount.tenant_id,
     postgresql_where=TenantPortalAccount.deleted_at.is_(None),
+)
+
+
+class BrandedCommunicationTemplate(Base):
+    """Editable per-entity branded communication template.
+
+    Templates are organisation-customisable variants of the system defaults
+    that ship in code (work_assignment_notification, invoice_delivery,
+    maintenance_contractor_update, etc.). The active record for a given
+    (entity_id, key, version) is the editable override; if no record exists,
+    sends fall back to the in-code defaults.
+
+    is_system flags records seeded by code and protects them from
+    user-deletion; operators can still edit subject/body/notes on system rows.
+    """
+
+    __tablename__ = "branded_communication_template"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid7
+    )
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    key: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[str] = mapped_column(Text, nullable=False, default="v1")
+    channel: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    subject_template: Mapped[str | None] = mapped_column(Text)
+    body_template: Mapped[str] = mapped_column(Text, nullable=False)
+    action_label: Mapped[str | None] = mapped_column(Text)
+    action_url_template: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    template_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "template_metadata", JsonbCompat, nullable=False, default=dict
+    )
+
+    entity: Mapped[Entity] = relationship(
+        back_populates="branded_communication_templates"
+    )
+
+
+Index(
+    "branded_communication_template_entity_active_idx",
+    BrandedCommunicationTemplate.entity_id,
+    postgresql_where=BrandedCommunicationTemplate.deleted_at.is_(None),
+)
+Index(
+    "branded_communication_template_key_version_idx",
+    BrandedCommunicationTemplate.entity_id,
+    BrandedCommunicationTemplate.key,
+    BrandedCommunicationTemplate.version,
+    unique=True,
+    postgresql_where=(
+        BrandedCommunicationTemplate.deleted_at.is_(None)
+        & (BrandedCommunicationTemplate.is_active.is_(True))
+    ),
+    sqlite_where=(
+        BrandedCommunicationTemplate.deleted_at.is_(None)
+        & (BrandedCommunicationTemplate.is_active.is_(True))
+    ),
 )
 
 
