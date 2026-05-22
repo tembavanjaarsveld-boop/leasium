@@ -372,11 +372,6 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             >
               <Icon size={16} className="shrink-0" />
               <span className="flex-1 truncate">{item.label}</span>
-              {item.shortcut ? (
-                <kbd className="hidden rounded border border-white/10 px-1 py-0.5 text-[10px] font-medium text-leasium-slate-400 group-hover:text-leasium-slate-300 xl:inline-flex">
-                  {item.shortcut}
-                </kbd>
-              ) : null}
             </Link>
           );
         })}
