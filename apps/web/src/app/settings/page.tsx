@@ -2817,12 +2817,21 @@ function SettingsWorkspace() {
                   >
                     {statusLabel(status.accounting_freshness.status)}
                   </StatusBadge>
-                  {status.accounting_freshness.stale_reconciliation ? (
-                    <StatusBadge tone="warning">
-                      Reconciliation stale after{" "}
-                      {status.accounting_freshness.stale_after_days} days
+                  <span
+                    title="Operator-configurable via XERO_RECONCILIATION_STALE_AFTER_DAYS"
+                  >
+                    <StatusBadge
+                      tone={
+                        status.accounting_freshness.stale_reconciliation
+                          ? "warning"
+                          : "neutral"
+                      }
+                    >
+                      {status.accounting_freshness.stale_reconciliation
+                        ? `Reconciliation stale after ${status.accounting_freshness.stale_after_days} days`
+                        : `Stale window: ${status.accounting_freshness.stale_after_days} days`}
                     </StatusBadge>
-                  ) : null}
+                  </span>
                 </div>
               }
             >
