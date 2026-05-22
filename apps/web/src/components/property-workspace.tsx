@@ -743,11 +743,17 @@ function StoredPropertyImage({
   );
 }
 
-type PropertyOccupancyStatus = "vacant" | "partial" | "leased" | "unknown";
+type PropertyOccupancyStatus =
+  | "vacant"
+  | "partial"
+  | "leased"
+  | "leased_internal"
+  | "unknown";
 
 type PropertyOccupancy = {
   status: PropertyOccupancyStatus;
   leasedUnits: number;
+  internalLeasedUnits: number;
   totalUnits: number;
 };
 
@@ -755,46 +761,112 @@ type PropertyOccupancy = {
 // don't.
 const OCCUPIED_LEASE_STATUSES = new Set(["active", "holding_over"]);
 
+function normaliseName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed || null;
+}
+
+function internalNameSet(property: PropertyRecord): Set<string> {
+  const names: Array<unknown> = [
+    property.owner_legal_name,
+    property.trustee_name,
+    property.trust_name,
+    property.invoice_issuer_name,
+  ];
+  return new Set(
+    names
+      .map(normaliseName)
+      .filter((value): value is string => Boolean(value)),
+  );
+}
+
 function propertyOccupancyFromRentRoll(
-  propertyId: string,
+  property: PropertyRecord,
   rentRollRows: ReadonlyArray<{
     property_id: string;
     tenancy_unit_id: string;
     lease_id: string | null;
     lease_status: string | null;
+    tenant_name: string | null;
   }>,
 ): PropertyOccupancy {
-  const rows = rentRollRows.filter((row) => row.property_id === propertyId);
+  const rows = rentRollRows.filter((row) => row.property_id === property.id);
   if (!rows.length) {
-    return { status: "unknown", leasedUnits: 0, totalUnits: 0 };
+    return {
+      status: "unknown",
+      leasedUnits: 0,
+      internalLeasedUnits: 0,
+      totalUnits: 0,
+    };
   }
-  const unitsByOccupancy = new Map<string, boolean>();
+  const internalNames = internalNameSet(property);
+  type UnitState = { occupied: boolean; internalCount: number };
+  const unitState = new Map<string, UnitState>();
   for (const row of rows) {
     const occupied = Boolean(
       row.lease_id &&
         row.lease_status &&
         OCCUPIED_LEASE_STATUSES.has(row.lease_status),
     );
-    unitsByOccupancy.set(
-      row.tenancy_unit_id,
-      occupied || (unitsByOccupancy.get(row.tenancy_unit_id) ?? false),
+    const tenantName = normaliseName(row.tenant_name);
+    const isInternal = Boolean(
+      occupied && tenantName && internalNames.has(tenantName),
     );
+    const prev = unitState.get(row.tenancy_unit_id) ?? {
+      occupied: false,
+      internalCount: 0,
+    };
+    unitState.set(row.tenancy_unit_id, {
+      occupied: prev.occupied || occupied,
+      internalCount: prev.internalCount + (isInternal ? 1 : 0),
+    });
   }
-  const totalUnits = unitsByOccupancy.size;
-  const leasedUnits = Array.from(unitsByOccupancy.values()).filter(Boolean).length;
+  const totalUnits = unitState.size;
+  const leasedUnits = Array.from(unitState.values()).filter(
+    (state) => state.occupied,
+  ).length;
+  const internalLeasedUnits = Array.from(unitState.values()).filter(
+    (state) => state.occupied && state.internalCount > 0,
+  ).length;
   if (leasedUnits === 0) {
-    return { status: "vacant", leasedUnits, totalUnits };
+    return {
+      status: "vacant",
+      leasedUnits,
+      internalLeasedUnits,
+      totalUnits,
+    };
   }
   if (leasedUnits === totalUnits) {
-    return { status: "leased", leasedUnits, totalUnits };
+    if (internalLeasedUnits === totalUnits) {
+      return {
+        status: "leased_internal",
+        leasedUnits,
+        internalLeasedUnits,
+        totalUnits,
+      };
+    }
+    return {
+      status: "leased",
+      leasedUnits,
+      internalLeasedUnits,
+      totalUnits,
+    };
   }
-  return { status: "partial", leasedUnits, totalUnits };
+  return {
+    status: "partial",
+    leasedUnits,
+    internalLeasedUnits,
+    totalUnits,
+  };
 }
 
 function occupancyBadgeClassName(status: PropertyOccupancyStatus) {
   switch (status) {
     case "leased":
       return "inline-flex items-center rounded-full border border-leasium-success-strong/30 bg-leasium-success-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#027A48]";
+    case "leased_internal":
+      return "inline-flex items-center rounded-full border border-primary/30 bg-leasium-blue-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-leasium-blue-hover";
     case "vacant":
       return "inline-flex items-center rounded-full border border-leasium-danger-strong/30 bg-leasium-danger-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#B42318]";
     case "partial":
@@ -812,9 +884,20 @@ function occupancyBadgeLabel(occupancy: PropertyOccupancy) {
     return `Vacant · ${occupancy.totalUnits} ${occupancy.totalUnits === 1 ? "unit" : "units"}`;
   }
   if (occupancy.status === "partial") {
-    return `Partial · ${occupancy.leasedUnits} / ${occupancy.totalUnits}`;
+    const suffix =
+      occupancy.internalLeasedUnits > 0
+        ? ` · ${occupancy.internalLeasedUnits} internal`
+        : "";
+    return `Partial · ${occupancy.leasedUnits} / ${occupancy.totalUnits}${suffix}`;
   }
-  return `Leased · ${occupancy.leasedUnits} / ${occupancy.totalUnits}`;
+  if (occupancy.status === "leased_internal") {
+    return `Leased internal · ${occupancy.leasedUnits} / ${occupancy.totalUnits}`;
+  }
+  const suffix =
+    occupancy.internalLeasedUnits > 0
+      ? ` · ${occupancy.internalLeasedUnits} internal`
+      : "";
+  return `Leased · ${occupancy.leasedUnits} / ${occupancy.totalUnits}${suffix}`;
 }
 
 function propertySourceCitations(property: PropertyRecord | null | undefined) {
@@ -1516,7 +1599,7 @@ function Workspace() {
     const map = new Map<string, PropertyOccupancy>();
     const properties = propertiesQuery.data ?? [];
     for (const property of properties) {
-      map.set(property.id, propertyOccupancyFromRentRoll(property.id, rows));
+      map.set(property.id, propertyOccupancyFromRentRoll(property, rows));
     }
     return map;
   }, [propertiesQuery.data, rentRollQuery.data]);
@@ -1524,6 +1607,7 @@ function Workspace() {
     const counts: Record<PropertyOccupancyStatus | "all", number> = {
       all: 0,
       leased: 0,
+      leased_internal: 0,
       partial: 0,
       vacant: 0,
       unknown: 0,
@@ -4472,6 +4556,7 @@ function Workspace() {
                     [
                       { key: "all", label: "All" },
                       { key: "leased", label: "Leased" },
+                      { key: "leased_internal", label: "Leased internal" },
                       { key: "partial", label: "Partial" },
                       { key: "vacant", label: "Vacant" },
                       { key: "unknown", label: "No units" },
