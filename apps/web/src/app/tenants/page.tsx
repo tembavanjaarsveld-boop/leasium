@@ -622,12 +622,12 @@ function TenantWorkspace() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            {reminderRunSummary ? (
-              <div className="border-b border-border px-3 py-2 text-sm text-muted-foreground">
-                {reminderRunSummary}
-              </div>
-            ) : null}
+          {reminderRunSummary ? (
+            <div className="border-b border-border px-3 py-2 text-sm text-muted-foreground">
+              {reminderRunSummary}
+            </div>
+          ) : null}
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full border-collapse text-left text-sm">
               <thead className="bg-muted text-xs uppercase text-muted-foreground">
                 <tr>
@@ -781,6 +781,67 @@ function TenantWorkspace() {
                 ) : null}
               </tbody>
             </table>
+          </div>
+          <div className="md:hidden">
+            {tenantsLoading ? (
+              <EmptyState title="Loading tenants." />
+            ) : null}
+            <ul className="divide-y divide-border">
+              {tenantRows.map(({ tenant, onboarding }) => {
+                const needsFix = onboardingNeedsContactFix(
+                  onboarding?.delivery_data,
+                );
+                const onboardingStatusLabel = onboarding
+                  ? onboarding.status.replaceAll("_", " ")
+                  : "not started";
+                const onboardingTone = onboarding
+                  ? statusTone(onboarding.status, onboarding.due_date)
+                  : "warning";
+                return (
+                  <li key={tenant.id}>
+                    <button
+                      type="button"
+                      onClick={() => setDrawerTenantId(tenant.id)}
+                      className="grid w-full gap-1.5 px-3 py-3 text-left transition active:bg-muted/60"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-primary">
+                          {tenantName(tenant)}
+                        </span>
+                        <StatusBadge tone={onboardingTone}>
+                          {onboardingStatusLabel}
+                        </StatusBadge>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {tenant.contact_email ?? tenant.contact_phone ?? "No contact on file"}
+                      </div>
+                      {onboarding?.due_date ? (
+                        <div
+                          className={cn(
+                            "text-xs text-muted-foreground",
+                            dueRank(onboarding.due_date) < 0 &&
+                              "font-medium text-danger",
+                          )}
+                        >
+                          {dueLabel(onboarding.due_date)}
+                        </div>
+                      ) : null}
+                      {needsFix ? (
+                        <div className="text-xs font-medium text-danger">
+                          Contact needs fixing — open to update.
+                        </div>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            {!tenantsLoading && tenantRows.length === 0 ? (
+              <EmptyState
+                title="No tenants match this view"
+                description="Clear the search or switch filters to see the full tenant list."
+              />
+            ) : null}
           </div>
           {onboardingQuery.error || tenantsQuery.error ? (
             <p className="border-t border-border p-3 text-sm text-danger">
