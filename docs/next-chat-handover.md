@@ -8,14 +8,14 @@ Last updated: 2026-05-23
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest pushed commit: `d0823cf Add merged CLAUDE.md (Karpathy baseline + Leasium specifics)`
-- Local tree is clean apart from `docs/nav-pattern-research-2026-05-23.md` (untracked Codex research note on sidebar vs top-bar nav choice — safe to commit or leave; not a behaviour change).
+- Latest pushed commit: `22f0296 Refresh handover doc + add nav-pattern research note`
+- Local tree carries the **tenant portal onboarding v1** slice — uncommitted at takeover time. Backend: new `POST /tenant-onboarding/{id}/send-portal-invite` operator endpoint, new authenticated `POST /tenant-portal/onboarding/submit` endpoint, new `send_tenant_portal_invite` communications helper, new `tenant_portal_invite_template_*` settings, `TenantPortalOnboardingRead` extended with `submitted_data` + `portal_invite_sent_at`, integration tests in `test_tenant_onboarding_api.py` and `test_tenant_portal_api.py`. Frontend: new "Complete your onboarding" panel in the tenant portal dashboard (`tenant-portal-content.tsx`), new "Invite to portal" primary button on the operator tenant page, new `submitTenantPortalOnboarding` / `sendTenantOnboardingPortalInvite` API helpers, retired public `/onboarding/[token]` form replaced with a redirect screen, smoke fixtures + spec updated to cover the new flow. ESLint and `tsc --noEmit` are clean here; Playwright smoke didn't fit the sandbox 45s window — run it on the Mac before treating the slice as fully verified.
 - The 2026-05-22 UX-review backlog is fully landed except Tier 2 (g) dark mode (deliberately deprioritised under the SKJ internal-first-6-months direction). All shipped items are marked `[x]` or `[~]` in `docs/product-roadmap.md` and pending Remba review.
 - Behavioural baseline added at `CLAUDE.md` (repo root): the Forrest Chang / Andrej Karpathy four-principle file (~110k stars) plus Leasium-specific guardrails (provider mutation rule, Remba review, internal-first-6-months, push-to-Vercel review path, Mac/venv tooling notes). Future Claude Code / Codex sessions pick it up automatically.
 - Latest live route sanity after push:
   - `/settings` returns `200` after redirecting signed-out users to `/sign-in?redirect_url=%2Fsettings`
   - `/notifications` returns `200` after redirecting signed-out users to `/sign-in?redirect_url=%2Fnotifications`
-  - `/onboarding/tenant-token-1` returns `200` and remains public
+  - `/onboarding/tenant-token-1` now renders the retired-form redirect screen (still public, still `200`). Tenants land on a "Your onboarding has moved into your Leasium account" card with an "Open the tenant portal" CTA pointing to `/tenant-portal/{token}`.
 - Product source of truth: `docs/product-roadmap.md`
 - UX governance source of truth: `docs/design-governance.md`
 - Brand/frontend source of truth: `docs/leasium-codex-design-source-of-truth.md`
