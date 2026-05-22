@@ -446,7 +446,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             type="button"
             onClick={() => setMobileNavOpen(true)}
             aria-label="Open navigation"
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted lg:hidden"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted lg:hidden"
           >
             <Menu size={15} />
           </button>
@@ -461,7 +461,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               onClick={() => setCommandOpen(true)}
               aria-label="Open search"
               title="Search (Cmd K)"
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
             >
               <Search size={15} />
             </button>
@@ -470,7 +470,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               onClick={() => setCheatsheetOpen(true)}
               aria-label="Show keyboard shortcuts"
               title="Keyboard shortcuts (?)"
-              className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted sm:inline-flex"
+              className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted sm:inline-flex"
             >
               <Keyboard size={15} />
             </button>
@@ -479,7 +479,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               aria-label="Open notifications"
               title="Notifications"
               className={cn(
-                "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted",
+                "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted",
                 pathname.startsWith("/notifications") &&
                   "border-primary/30 bg-leasium-blue-soft text-primary",
               )}
@@ -487,7 +487,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               <Bell size={15} />
             </Link>
             {clerkConfigured ? (
-              <div className="flex h-10 shrink-0 items-center">
+              <div className="flex h-11 shrink-0 items-center">
                 <OperatorUserControl />
               </div>
             ) : null}
