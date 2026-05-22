@@ -31,6 +31,7 @@ import {
   cancelTenantOnboarding,
   createTenant,
   listEntities,
+  listRentRoll,
   listTenantOnboardings,
   listTenants,
   runTenantOnboardingReminders,
@@ -86,6 +87,14 @@ const filters: Array<{ key: FilterKey; label: string }> = [
 function cleanText(value: string) {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function formatAnnualRent(cents: number) {
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
 }
 
 function tenantName(tenant: TenantRecord) {
@@ -204,6 +213,41 @@ function TenantWorkspace() {
     queryFn: () => listTenantOnboardings(selectedEntityId),
     enabled: Boolean(selectedEntityId),
   });
+
+  const rentRollQuery = useQuery({
+    queryKey: ["rent-roll", selectedEntityId],
+    queryFn: () => listRentRoll({ entity_id: selectedEntityId }),
+    enabled: Boolean(selectedEntityId),
+  });
+
+  const tenantLeaseSummaries = useMemo(() => {
+    const map = new Map<
+      string,
+      { activeLeases: number; totalAnnualCents: number }
+    >();
+    const rows = rentRollQuery.data ?? [];
+    const occupied = new Set(["active", "holding_over"]);
+    for (const row of rows) {
+      if (
+        !row.tenant_id ||
+        !row.lease_id ||
+        !row.lease_status ||
+        !occupied.has(row.lease_status)
+      ) {
+        continue;
+      }
+      const prev = map.get(row.tenant_id) ?? {
+        activeLeases: 0,
+        totalAnnualCents: 0,
+      };
+      map.set(row.tenant_id, {
+        activeLeases: prev.activeLeases + 1,
+        totalAnnualCents:
+          prev.totalAnnualCents + (row.annual_rent_cents ?? 0),
+      });
+    }
+    return map;
+  }, [rentRollQuery.data]);
   const entitySelectionLoading =
     entitiesQuery.isLoading ||
     (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
@@ -506,13 +550,24 @@ function TenantWorkspace() {
                     </td>
                   </tr>
                 ) : null}
-                {tenantRows.map(({ tenant, onboarding }) => (
+                {tenantRows.map(({ tenant, onboarding }) => {
+                  const summary = tenantLeaseSummaries.get(tenant.id);
+                  return (
                   <tr key={tenant.id} className="border-t border-border align-top hover:bg-muted/50">
                     <td className="px-3 py-3">
                       <Link href={`/tenants/${tenant.id}`} className="font-medium text-primary hover:underline">
                         {tenantName(tenant)}
                       </Link>
                       <div className="text-xs text-muted-foreground">{tenant.abn ?? "No ABN recorded"}</div>
+                      {summary ? (
+                        <div className="mt-1 inline-flex items-center rounded-full border border-leasium-success-strong/30 bg-leasium-success-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#027A48]">
+                          {summary.activeLeases}{" "}
+                          {summary.activeLeases === 1 ? "active lease" : "active leases"}
+                          {summary.totalAnnualCents > 0
+                            ? ` · ${formatAnnualRent(summary.totalAnnualCents)}/yr`
+                            : ""}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-3">
                       {onboarding ? (
@@ -570,7 +625,8 @@ function TenantWorkspace() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {!tenantsLoading && tenantRows.length === 0 ? (
                   <tr>
                     <td colSpan={5}>
