@@ -47,6 +47,7 @@ import {
 import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
+import { cn } from "@/lib/utils";
 import {
   Button,
   Field,
@@ -1246,6 +1247,7 @@ function Workspace() {
   const [occupancyFilter, setOccupancyFilter] = useState<
     PropertyOccupancyStatus | "all"
   >("all");
+  const [propertyView, setPropertyView] = useState<"table" | "board">("table");
   const [rentRollPropertyId, setRentRollPropertyId] = useState<string>("");
   const [rentRollAsOf, setRentRollAsOf] = useState<string>(() =>
     dateOnly(new Date()),
@@ -1372,6 +1374,10 @@ function Workspace() {
     ) {
       setOccupancyFilter(occupancy);
     }
+    const view = params.get("view");
+    if (view === "board" || view === "table") {
+      setPropertyView(view);
+    }
   }, []);
 
   useEffect(() => {
@@ -1382,8 +1388,13 @@ function Workspace() {
     } else {
       url.searchParams.set("occupancy", occupancyFilter);
     }
+    if (propertyView === "table") {
+      url.searchParams.delete("view");
+    } else {
+      url.searchParams.set("view", propertyView);
+    }
     window.history.replaceState(null, "", url);
-  }, [occupancyFilter]);
+  }, [occupancyFilter, propertyView]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -4474,7 +4485,7 @@ function Workspace() {
                 </section>
               ) : null}
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <SavedViewsMenu
                   surface="properties"
                   currentFilters={{
@@ -4500,6 +4511,37 @@ function Workspace() {
                     setOwnerTagFilter(filters.owner_tag ?? "");
                   }}
                 />
+                <div
+                  role="tablist"
+                  aria-label="Properties view"
+                  className="inline-flex items-center gap-0.5 rounded-full border border-border bg-white p-0.5 text-xs font-medium"
+                >
+                  {(
+                    [
+                      { id: "table", label: "Table" },
+                      { id: "board", label: "Board" },
+                    ] as const
+                  ).map((option) => {
+                    const isActive = propertyView === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => setPropertyView(option.id)}
+                        className={cn(
+                          "rounded-full px-3 py-1 transition",
+                          isActive
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-muted",
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {occupancyCounts.all > 0 ? (
@@ -4541,6 +4583,7 @@ function Workspace() {
                 </div>
               ) : null}
 
+              {propertyView === "table" ? (
               <div className="overflow-x-auto rounded-md border border-border bg-white">
                 <table className="w-full min-w-[640px] border-collapse text-left text-sm">
                   <thead className="bg-muted text-xs uppercase text-muted-foreground">
@@ -4754,6 +4797,15 @@ function Workspace() {
                   </tbody>
                 </table>
               </div>
+              ) : (
+                <PropertyBoardView
+                  properties={displayedProperties}
+                  occupancyByPropertyId={occupancyByPropertyId}
+                  nextExpiryByPropertyId={nextExpiryByPropertyId}
+                  selectedPropertyId={selectedPropertyId}
+                  onSelect={selectProperty}
+                />
+              )}
             </div>
           ) : null}
 
@@ -5909,5 +5961,121 @@ export function PropertyWorkspace() {
     <QueryProvider>
       <Workspace />
     </QueryProvider>
+  );
+}
+
+type PropertyBoardViewProps = {
+  properties: PropertyRecord[];
+  occupancyByPropertyId: Map<string, PropertyOccupancy>;
+  nextExpiryByPropertyId: Map<string, NextLeaseExpiry>;
+  selectedPropertyId: string;
+  onSelect: (propertyId: string) => void;
+};
+
+const BOARD_COLUMNS: {
+  status: PropertyOccupancyStatus | "unknown";
+  label: string;
+  tone: string;
+}[] = [
+  { status: "leased", label: "Leased", tone: "bg-leasium-success-soft" },
+  {
+    status: "leased_internal",
+    label: "Leased internal",
+    tone: "bg-leasium-blue-soft",
+  },
+  { status: "partial", label: "Partial", tone: "bg-leasium-warning-soft" },
+  { status: "vacant", label: "Vacant", tone: "bg-leasium-danger-soft" },
+  { status: "unknown", label: "No units", tone: "bg-muted/40" },
+];
+
+function PropertyBoardView({
+  properties,
+  occupancyByPropertyId,
+  nextExpiryByPropertyId,
+  selectedPropertyId,
+  onSelect,
+}: PropertyBoardViewProps) {
+  const grouped = BOARD_COLUMNS.map((column) => ({
+    ...column,
+    properties: properties.filter((property) => {
+      const occupancy = occupancyByPropertyId.get(property.id);
+      const status = occupancy?.status ?? "unknown";
+      return status === column.status;
+    }),
+  })).filter((column) => column.properties.length > 0);
+
+  if (grouped.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+        No properties match the current filters.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+      {grouped.map((column) => (
+        <section
+          key={column.status}
+          className="grid gap-2 rounded-lg border border-border bg-white p-3"
+        >
+          <header className="flex items-center justify-between gap-2 border-b border-border pb-2">
+            <span
+              className={`inline-flex items-center gap-2 rounded-full px-2.5 py-0.5 text-xs font-semibold ${column.tone}`}
+            >
+              {column.label}
+              <span className="rounded-full bg-black/10 px-1.5 text-[10px] font-bold">
+                {column.properties.length}
+              </span>
+            </span>
+          </header>
+          <div className="grid gap-2">
+            {column.properties.map((property) => {
+              const image = propertyPrimaryImage(property);
+              const expiry = nextExpiryByPropertyId.get(property.id);
+              const isSelected = property.id === selectedPropertyId;
+              return (
+                <button
+                  key={property.id}
+                  type="button"
+                  onClick={() => onSelect(property.id)}
+                  className={`grid gap-1 rounded-md border p-2 text-left transition hover:bg-muted/50 ${
+                    isSelected
+                      ? "border-primary bg-primary/5"
+                      : "border-border bg-white"
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    <StoredPropertyImage
+                      alt={`${property.name} property image`}
+                      className="h-12 w-16 shrink-0 rounded-md border border-border object-cover"
+                      image={image}
+                      placeholderClassName="grid h-12 w-16 shrink-0 place-items-center rounded-md border border-dashed border-border bg-muted/40 text-muted-foreground"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-foreground">
+                        {property.name}
+                      </div>
+                      <div className="truncate text-[11px] text-muted-foreground">
+                        {property.street_address}, {property.suburb}{" "}
+                        {property.state}
+                      </div>
+                    </div>
+                  </div>
+                  {expiry ? (
+                    <div
+                      className={nextExpiryChipClassName(expiry.daysUntil)}
+                      title={`Earliest active lease expires ${expiry.date}.`}
+                    >
+                      {nextExpiryChipLabel(expiry)}
+                    </div>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }

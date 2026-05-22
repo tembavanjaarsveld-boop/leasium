@@ -138,6 +138,30 @@ test("dashboard Ask Leasium panel answers with cited record", async ({
   ).toBeVisible();
 });
 
+test("Properties multi-view toggles between table and board", async ({
+  page,
+}) => {
+  await page.goto("/properties");
+
+  // Table is the default — table headers visible.
+  await expect(
+    page.getByRole("columnheader", { name: "Property" }).first(),
+  ).toBeVisible();
+
+  await page.getByRole("tab", { name: "Board" }).click();
+  // Switching to board hides the table headers; columns rendered by
+  // occupancy bucket appear instead.
+  await expect(
+    page.getByRole("columnheader", { name: "Property" }),
+  ).toBeHidden();
+  await expect(page).toHaveURL(/[?&]view=board/);
+
+  await page.getByRole("tab", { name: "Table" }).click();
+  await expect(
+    page.getByRole("columnheader", { name: "Property" }).first(),
+  ).toBeVisible();
+});
+
 test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
   page,
 }) => {
