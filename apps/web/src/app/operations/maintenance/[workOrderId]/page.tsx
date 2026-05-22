@@ -76,6 +76,19 @@ type ContractorEmailTemplate = {
   body: string;
 };
 
+type ContractorSmsTemplateKey =
+  | "custom"
+  | "attendance_window"
+  | "status_update"
+  | "completion_check"
+  | "billing_documents";
+
+type ContractorSmsTemplate = {
+  key: ContractorSmsTemplateKey;
+  label: string;
+  body: string;
+};
+
 function label(value: string | null | undefined) {
   if (!value) {
     return "-";
@@ -640,6 +653,54 @@ function contractorEmailTemplates(
   ];
 }
 
+function contractorSmsTemplates(
+  workOrder: MaintenanceWorkOrderRecord,
+): ContractorSmsTemplate[] {
+  // SMS messages must stay under 800 chars (backend schema limit). Keep these
+  // tight: one or two sentences plus a short reference line.
+  const ref = `Ref: ${workOrder.title}`;
+  const dueLine = workOrder.due_date
+    ? `Due ${formatDate(workOrder.due_date)}.`
+    : "";
+  return [
+    {
+      key: "attendance_window",
+      label: "Attendance window",
+      body: [
+        "Hi, can you reply with your first available attendance window for this job?",
+        ref,
+        dueLine,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    },
+    {
+      key: "status_update",
+      label: "Status update",
+      body: [
+        "Hi, can you send a quick status update on this job?",
+        ref,
+      ].join(" "),
+    },
+    {
+      key: "completion_check",
+      label: "Completion check",
+      body: [
+        "Hi, has this job been completed? Please confirm and send any completion photos when you can.",
+        ref,
+      ].join(" "),
+    },
+    {
+      key: "billing_documents",
+      label: "Billing documents",
+      body: [
+        "Hi, please send the invoice for this job with the work-order reference and any completion notes.",
+        ref,
+      ].join(" "),
+    },
+  ];
+}
+
 function invoiceBillingHandoff(
   workOrder: MaintenanceWorkOrderRecord,
   draft: InvoiceDraftRecord,
@@ -1131,6 +1192,8 @@ function MaintenanceDetailRoute() {
     useState<ContractorEmailTemplateKey>("custom");
   const [contractorEmailSubject, setContractorEmailSubject] = useState("");
   const [contractorEmailBody, setContractorEmailBody] = useState("");
+  const [contractorSmsTemplate, setContractorSmsTemplate] =
+    useState<ContractorSmsTemplateKey>("custom");
   const [contractorSmsBody, setContractorSmsBody] = useState("");
   const [closeoutNoteDraft, setCloseoutNoteDraft] = useState("");
   const [closeoutPhoto, setCloseoutPhoto] = useState<File | null>(null);
@@ -1345,6 +1408,10 @@ function MaintenanceDetailRoute() {
     () => (workOrder ? contractorEmailTemplates(workOrder) : []),
     [workOrder],
   );
+  const contractorSmsTemplateOptions = useMemo(
+    () => (workOrder ? contractorSmsTemplates(workOrder) : []),
+    [workOrder],
+  );
   const canReopenWorkOrder =
     workOrder !== null && ["completed", "cancelled"].includes(workOrder.status);
 
@@ -1505,6 +1572,7 @@ function MaintenanceDetailRoute() {
       });
     },
     onSuccess: () => {
+      setContractorSmsTemplate("custom");
       setContractorSmsBody("");
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
@@ -1530,6 +1598,22 @@ function MaintenanceDetailRoute() {
     }
     setContractorEmailSubject(template.subject);
     setContractorEmailBody(template.body);
+  };
+
+  const handleContractorSmsTemplateChange = (
+    templateKey: ContractorSmsTemplateKey,
+  ) => {
+    setContractorSmsTemplate(templateKey);
+    if (templateKey === "custom") {
+      return;
+    }
+    const template = contractorSmsTemplateOptions.find(
+      (option) => option.key === templateKey,
+    );
+    if (!template) {
+      return;
+    }
+    setContractorSmsBody(template.body);
   };
 
   const handleContractorEmailSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -2109,6 +2193,23 @@ function MaintenanceDetailRoute() {
                         ))}
                       </div>
                     ) : null}
+                    <Field label="Contractor SMS template">
+                      <Select
+                        value={contractorSmsTemplate}
+                        onChange={(event) =>
+                          handleContractorSmsTemplateChange(
+                            event.target.value as ContractorSmsTemplateKey,
+                          )
+                        }
+                      >
+                        <option value="custom">Custom message</option>
+                        {contractorSmsTemplateOptions.map((template) => (
+                          <option key={template.key} value={template.key}>
+                            {template.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
                     <label className="grid gap-1.5">
                       <span className="font-medium text-foreground">
                         Contractor SMS message
@@ -2116,9 +2217,10 @@ function MaintenanceDetailRoute() {
                       <textarea
                         aria-label="Contractor SMS message"
                         value={contractorSmsBody}
-                        onChange={(event) =>
-                          setContractorSmsBody(event.target.value)
-                        }
+                        onChange={(event) => {
+                          setContractorSmsTemplate("custom");
+                          setContractorSmsBody(event.target.value);
+                        }}
                         rows={3}
                         className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
                         placeholder={contractorSmsDefault}
