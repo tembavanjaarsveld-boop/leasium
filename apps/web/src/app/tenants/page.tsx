@@ -172,6 +172,19 @@ function latestOnboarding(
     .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
 }
 
+const TENANT_FILTER_KEYS: FilterKey[] = [
+  "all",
+  "needs_onboarding",
+  "sent",
+  "submitted",
+  "overdue",
+  "cancelled",
+];
+
+function isTenantFilterKey(value: string | null): value is FilterKey {
+  return Boolean(value && TENANT_FILTER_KEYS.includes(value as FilterKey));
+}
+
 function TenantWorkspace() {
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
@@ -180,6 +193,36 @@ function TenantWorkspace() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<TenantForm>(emptyForm);
   const [reminderRunSummary, setReminderRunSummary] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const initialFilter = params.get("tenant_filter");
+    if (isTenantFilterKey(initialFilter)) {
+      setFilter(initialFilter);
+    }
+    const initialSearch = params.get("q") ?? "";
+    if (initialSearch) {
+      setSearch(initialSearch);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (filter === "all") {
+      url.searchParams.delete("tenant_filter");
+    } else {
+      url.searchParams.set("tenant_filter", filter);
+    }
+    const trimmedSearch = search.trim();
+    if (trimmedSearch) {
+      url.searchParams.set("q", trimmedSearch);
+    } else {
+      url.searchParams.delete("q");
+    }
+    window.history.replaceState(null, "", url);
+  }, [filter, search]);
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],

@@ -1359,7 +1359,29 @@ function Workspace() {
     const params = new URLSearchParams(window.location.search);
     const ownerTag = params.get("owner_tag") ?? "";
     setOwnerTagFilter((current) => (current === ownerTag ? current : ownerTag));
+    const occupancy = params.get("occupancy");
+    if (
+      occupancy === "all" ||
+      occupancy === "leased" ||
+      occupancy === "leased_internal" ||
+      occupancy === "partial" ||
+      occupancy === "vacant" ||
+      occupancy === "unknown"
+    ) {
+      setOccupancyFilter(occupancy);
+    }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (occupancyFilter === "all") {
+      url.searchParams.delete("occupancy");
+    } else {
+      url.searchParams.set("occupancy", occupancyFilter);
+    }
+    window.history.replaceState(null, "", url);
+  }, [occupancyFilter]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

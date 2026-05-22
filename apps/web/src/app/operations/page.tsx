@@ -1344,6 +1344,70 @@ function OperationsWorkspace() {
   const [arrearsStatus, setArrearsStatus] = useState<ArrearsCaseStatus | "all">(
     "all",
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab && tabs.some((entry) => entry.id === tab)) {
+      setActiveTab(tab as OperationsTab);
+    }
+    const assignee = params.get("assignee");
+    if (
+      assignee === "all" ||
+      assignee === "unassigned" ||
+      assignee === "me" ||
+      assignee === "follow_up" ||
+      (typeof assignee === "string" && assignee.startsWith("member:"))
+    ) {
+      setAssigneeFilter(assignee as AssigneeFilter);
+    }
+    const mStatus = params.get("maintenance_status");
+    if (
+      mStatus === "all" ||
+      (mStatus && maintenanceStatuses.includes(mStatus as MaintenanceWorkOrderStatus))
+    ) {
+      setMaintenanceStatus(mStatus as MaintenanceWorkOrderStatus | "all");
+    }
+    const mPriority = params.get("maintenance_priority");
+    if (
+      mPriority === "all" ||
+      (mPriority && maintenancePriorities.includes(mPriority as MaintenancePriority))
+    ) {
+      setMaintenancePriority(mPriority as MaintenancePriority | "all");
+    }
+    const arrears = params.get("arrears_status");
+    if (
+      arrears === "all" ||
+      (arrears && arrearsStatuses.includes(arrears as ArrearsCaseStatus))
+    ) {
+      setArrearsStatus(arrears as ArrearsCaseStatus | "all");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const setOrDelete = (key: string, value: string) => {
+      if (value === "all") {
+        url.searchParams.delete(key);
+      } else {
+        url.searchParams.set(key, value);
+      }
+    };
+    setOrDelete("tab", activeTab === "queue" ? "all" : activeTab);
+    setOrDelete("assignee", assigneeFilter);
+    setOrDelete("maintenance_status", maintenanceStatus);
+    setOrDelete("maintenance_priority", maintenancePriority);
+    setOrDelete("arrears_status", arrearsStatus);
+    window.history.replaceState(null, "", url);
+  }, [
+    activeTab,
+    assigneeFilter,
+    maintenanceStatus,
+    maintenancePriority,
+    arrearsStatus,
+  ]);
   const [maintenanceFormOpen, setMaintenanceFormOpen] = useState(false);
   const [arrearsFormOpen, setArrearsFormOpen] = useState(false);
   const [expandedMaintenanceId, setExpandedMaintenanceId] = useState<
