@@ -1,6 +1,6 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-05-21
+Last updated: 2026-05-23
 
 ## Current State
 
@@ -8,8 +8,10 @@ Last updated: 2026-05-21
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest pushed commit: `39742fa Refresh next chat handover`
-- Current local tree is intentionally dirty with the active Work notification and ownership-tags slice. Do not pull, reset, or rebase until `git status --short` and `git diff --stat` have been inspected.
+- Latest pushed commit: `d0823cf Add merged CLAUDE.md (Karpathy baseline + Leasium specifics)`
+- Local tree is clean apart from `docs/nav-pattern-research-2026-05-23.md` (untracked Codex research note on sidebar vs top-bar nav choice — safe to commit or leave; not a behaviour change).
+- The 2026-05-22 UX-review backlog is fully landed except Tier 2 (g) dark mode (deliberately deprioritised under the SKJ internal-first-6-months direction). All shipped items are marked `[x]` or `[~]` in `docs/product-roadmap.md` and pending Remba review.
+- Behavioural baseline added at `CLAUDE.md` (repo root): the Forrest Chang / Andrej Karpathy four-principle file (~110k stars) plus Leasium-specific guardrails (provider mutation rule, Remba review, internal-first-6-months, push-to-Vercel review path, Mac/venv tooling notes). Future Claude Code / Codex sessions pick it up automatically.
 - Latest live route sanity after push:
   - `/settings` returns `200` after redirecting signed-out users to `/sign-in?redirect_url=%2Fsettings`
   - `/notifications` returns `200` after redirecting signed-out users to `/sign-in?redirect_url=%2Fnotifications`
@@ -17,14 +19,15 @@ Last updated: 2026-05-21
 - Product source of truth: `docs/product-roadmap.md`
 - UX governance source of truth: `docs/design-governance.md`
 - Brand/frontend source of truth: `docs/leasium-codex-design-source-of-truth.md`
-- UX audit (2026-05-22, benchmarked against Linear / Stripe / Notion / Vercel / Re-Leased Credia / AppFolio): `docs/ux-review-2026-05-22.md`. Proposes a tiered roadmap; Tier 1 = sidebar nav, DetailDrawer, dashboard trend deltas + sparklines, URL-persistent filters; Tier 2 = AI Q&A ("Ask Leasium"), activity feed, dark mode, keyboard shortcuts. Highest-leverage single move is AI Q&A.
+- UX audit (2026-05-22): `docs/ux-review-2026-05-22.md` — the tiered roadmap is now fully shipped except dark mode.
+- Nav-pattern research (2026-05-23): `docs/nav-pattern-research-2026-05-23.md` — captures the evidence behind the sidebar choice so Remba sign-off has the same reasoning the original review used.
 - Design-facing changes still require Remba review before being treated as complete.
 
 ## Takeover Priority
 
-1. Preserve the unstaged local work.
-2. Re-run a focused verification pass if more code changes are made.
-3. Commit/push the current slice only after checking the final diff and confirming the Remba-pending notes are accurate.
+1. Read `CLAUDE.md` at the repo root before starting. It encodes the behavioural baseline (state assumptions, simplest possible change, surgical edits, verifiable success criteria) plus the Leasium-specific guardrails.
+2. Run `git status --short` and `git log --oneline -10` to see what has shipped recently and whether the tree is clean.
+3. Pick the next ticket from `docs/product-roadmap.md` "Next Build Order" or the Pre-existing backlog (Operations polish, Xero deepening, Portfolio QA cleanup, Branded templates, Dark mode).
 4. Keep all provider actions review-first: no Xero mutation, SendGrid email, Twilio SMS, tenant email, or payment reconciliation should happen without explicit operator approval.
 
 ## Project Map
@@ -90,32 +93,11 @@ NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/n
 
 ## Active Local Tree
 
-The current unstaged slice is broad but coherent:
+Tree is clean apart from one untracked file:
 
-- Work notification backend:
-  - `apps/api/routers/work_assignment_notifications.py`
-  - `apps/api/schemas/work_assignments.py`
-  - `apps/api/work_assignments.py`
-  - `stewart/integrations/communications.py`
-  - `tests/integration/test_maintenance_arrears_api.py`
-- Operator/security preferences:
-  - `apps/api/routers/security.py`
-  - `apps/api/schemas/security.py`
-  - `tests/integration/test_security_api.py`
-- Notifications and Settings UI:
-  - `apps/web/src/app/notifications/page.tsx`
-  - `apps/web/src/app/settings/page.tsx`
-  - `apps/web/src/lib/api.ts`
-  - `apps/web/tests/smoke/api-mocks.ts`
-  - `apps/web/tests/smoke/app-flows.spec.ts`
-- Ownership tag helper and property workspace reuse:
-  - `apps/web/src/lib/property-ownership.ts`
-  - `apps/web/src/components/property-workspace.tsx`
-- Docs:
-  - `docs/deployment.md`
-  - `docs/design-governance.md`
-  - `docs/next-chat-handover.md`
-  - `docs/product-roadmap.md`
+- `docs/nav-pattern-research-2026-05-23.md` — Codex evidence note explaining why the 240px left sidebar is the right pattern for Leasium today (9 top-level modules + nested structure → sidebar; aimed at giving Remba the same evidence base the original UX review used). Safe to commit; not a behaviour change.
+
+No pending code edits.
 
 ## Workspace Cleanup
 
@@ -130,30 +112,33 @@ The current unstaged slice is broad but coherent:
 
 ## Recently Shipped
 
-- `93996cf Add work notification template preview`
-  - Settings now shows a compact SendGrid preview for each operator's Work assignment notice and digest templates.
-  - Known template keys are translated into plain titles, with version badges, sample subjects, and content summaries.
-  - Documented in `docs/product-roadmap.md` and `docs/design-governance.md`.
-- `71d6f1d Surface work notification provider history`
-  - Notification-center API now exposes compact provider history for Work notices and digest receipts.
-  - `/notifications` shows the latest provider event, status, timestamp, template/version, attempt count, and error detail where present.
-  - Backend and smoke tests cover digest provider history.
-- `08f5dc1 Add work notification recovery cues`
-  - `/notifications` now shows plain-English next-action cues for Work notice and digest receipt rows.
-  - Cues cover retry-from-Work, send/retry digest, wait-for-provider-receipt, preference cleanup, and no-recovery-needed states.
-- Current local slice:
-  - Work notification named template catalog v1 adds `/api/v1/work-assignments/notification-templates`.
-  - Settings now uses named Work notice/digest template selectors with version inputs and managed/custom preview badges.
-  - Existing operator preferences still store key/version only; provider sends remain explicit and review-first.
-  - Work notification direct email recovery v1 adds `/api/v1/work-assignments/notification-center/notices/send-email`.
-  - `/notifications` now shows `Send notice`/`Retry notice` buttons on actionable Work notice rows and keeps queued/sent notices idempotent.
-  - Notification center now includes Email/SMS/In-app channel readiness metadata and a compact readiness strip.
-  - Settings Work notifications now stores operator Assignment SMS enabled and reviewed phone preferences in `app_user.notification_preferences`.
-- Earlier same-thread Work notification stack is already pushed:
-  - `7400d27 Add work notification preferences panel`
-  - `618dfd3 Add notification history filters`
-  - `1a3ea7f Surface notification channel evidence`
-  - `cf229b2 Add work notification template preferences`
+The 2026-05-22 UX-review sweep + supporting work. All commits on `main`.
+
+UX review Tier 1 (foundation, visible-impact):
+- `6302b0a Tier 1 (d): URL-persistent filters across tables` — `?occupancy`, `?owner_tag` on Properties; `?tenant_filter`, `?q` on Tenants; `?tab`, `?assignee`, `?maintenance_status`, `?maintenance_priority`, `?arrears_status` on Operations.
+- `bd08fb3 Tier 1 (c) v1: Dashboard metric trend deltas + sparklines` — `DashboardMetricCard` accepts a `trend` prop; 7-day SVG sparkline + Stripe-style delta badge; wired on the Operations urgent-obligations card.
+- `d032fc9 Tier 1 (b) v1: DetailDrawer + Tenants quick view` — new generic `<DetailDrawer>` at `apps/web/src/components/detail-drawer.tsx`; Tenants table row click opens it.
+- `418d0c7 Tier 1 (a) v1: convert top-bar nav to fixed left sidebar` — 240px navy fixed sidebar, brand at top, icon + label per module, hamburger drawer on <lg. AppHeader toggles `body.app-shell-active` so auth/setup pages stay full-width.
+- `b77a16f Remove G-shortcut chips from sidebar nav items` — followup operator feedback.
+
+UX review Tier 2 (strategic):
+- `c1b2a7c Ask Leasium v1 backend` + `e7b5cce Ask Leasium v2 frontend` — Tier 2 (e) Leasium AI Q&A surface on the Dashboard. `POST /api/v1/ai/ask` with bounded context, strict-JSON citations, 503 when `OPENAI_API_KEY` unset.
+- `1f16485 Tier 2 (f) v1: cross-property activity feed` — Dashboard panel pulling from the append-only `audit_action` table via `GET /api/v1/activity-feed`. Time-bucketed (Today / Yesterday / Earlier / Older), 60-second background refresh.
+- `d90afad Tier 2 (h) v1: keyboard shortcuts + cheatsheet` — Linear-style `G + letter` navigation (D/I/M/P/T/O/B/N/Q/S), `?` cheatsheet modal, `Esc` closes anything.
+
+UX review Tier 3 (bigger bets):
+- `ad51b4a Tier 3 v1: inline-editable Contact cells on Tenants` + `dd70a26 Tier 3 v2 + v3: inline editing on Properties + Operations` — reusable `<InlineEditCell>` (text + select variants); Tenants contact name/email/phone, Properties name/address, Operations status/priority chips. Optimistic React Query with rollback.
+- `f74e5dd Tier 3 v1: saved views on Tenants / Properties / Operations` — localStorage-backed named filter combinations via `<SavedViewsMenu>` chip. Promote to backend table when a second operator comes online.
+- `c63c7a6 Tier 3 v1: multi-view (Table/Board) for Properties` + `83d3c8a Board column alignment + collapsible Property images panel` — Notion-style table/board toggle with `?view=board` persistence; board groups properties by occupancy bucket. Operator-feedback fixes: column alignment + collapsing the always-open images panel to a 40×56 thumbnail with chevron.
+- `c546ed6 Tier 3 v1: AI inbox processor at /inbox` — Re-Leased Credia equivalent. `POST /api/v1/ai/triage` classifies a pasted message (7 kinds) and suggests the next Leasium surface. Read-only; deep-link only, no auto-create in v1.
+- `78f4e5e Tier 3 v1: mobile responsive audit pass` — entity selector drops to a wrap row on phones, dashboard metric grid promoted to `sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6`, Properties table now horizontally scrollable.
+
+Tenant + AI polish:
+- `e3e7a9b Preview as tenant button on tenant detail` — opens the tenant's `portal_url` (already projected on `TenantOnboardingRead`) in a new tab. No new endpoint needed.
+- `7c8d029 Rebrand Ask panel to Leasium AI with distinct styling` — operator feedback: AI surfaces (Dashboard + /inbox) now share a gradient hero treatment (blue-soft → teal-soft, primary border accent, gradient Sparkles badge, Beta pill) so they read as AI at a glance.
+
+Behavioural baseline:
+- `d0823cf Add merged CLAUDE.md (Karpathy baseline + Leasium specifics)` — `CLAUDE.md` at the repo root combines the Forrest Chang / Andrej Karpathy four-principle file with Leasium-specific guardrails (provider mutation rule, Remba review, internal-first-6-months, push-to-Vercel review path, Mac/venv tooling notes).
 
 ## Product State Snapshot
 
@@ -328,13 +313,18 @@ Treat these as pending UX/design sign-off:
 
 ## Recommended Next Tickets
 
-1. Finish the current local slice: inspect the full diff, run targeted backend/frontend checks, confirm docs match behavior, then commit and push.
-2. Continue Work assignment from rendered message previews into digest coverage, provider-console setup checks, and broader cross-channel receipt coverage.
-3. Continue branded communications from registry/preview v1 into editable branded template records, provider receipt setup validation, and tenant-portal outbound communication history.
-4. Continue Operations polish with safer edit affordances, deeper activity/audit presentation, owner/tenant completion-review paths, and clearer row density.
-5. Continue Xero from accounting freshness into configurable stale windows, richer Settings explanations, and Billing Readiness invoice-level freshness cues.
-6. Continue Portfolio QA from guided cleanup v1 into bulk fix review, AI-assisted enrichment candidates, and clearer completion/reporting states.
-7. Expand communication template/version evidence into contractor and tenant-portal outbound histories once editable template records exist.
+The 2026-05-22 UX-review backlog is done except dark mode. Pick from these in roughly leverage order for the SKJ internal-first-6-months window:
+
+1. **Operations polish** — deeper activity/audit presentation on the work-order detail page, safer edit affordances on list rows (right now any wrong inline-edit on status/priority is one click + auto-commit; consider a brief undo toast), owner/tenant-facing completion review paths, clearer row density at small viewports. Daily-driver surface, high leverage.
+2. **Xero deepening** — accounting snapshot guardrails, stale reconciliation indicators on Billing Readiness invoice rows, richer accounting-readiness snapshots. Finance team will live here every month.
+3. **Portfolio QA cleanup** — bulk fix review, AI-assisted enrichment candidates (the helper exists; productise it), clearer completion/reporting state. One-off but high-impact while the SKJ portfolio import is still being shaken out.
+4. **AI inbox v2** — currently classify + deep-link only. v2 promotes the approved classification into an actual draft (maintenance work order, arrears case, smart-intake record) so the operator's next click is reviewing the draft, not re-keying. Highest leverage AI follow-up.
+5. **Tier 2 (g) Dark mode** — dark tokens in the design source of truth, `.dark` class via system preference + an account-menu toggle, contrast audit across the 5 most-used surfaces. Deliberately deferred during the internal-first-6-months window; revisit when external tenants/contractors land.
+6. **Tenant portal UX audit** — predates the sidebar / inline-edit / activity-feed / Leasium AI work. Likely feels visually less polished than the operator side. Worth a Tier-1-style tier-list once more tenants are on it. v2 candidates: tenant-side activity feed scoped to their tenancy, tenant inline edit of their own contact details, tenant maintenance request status visibility.
+7. **Multi-view v2 for Properties** — Map view (Leaflet vs Mapbox decision) + Calendar view (rent reviews + lease expiries — although the upcoming-events panel on the Dashboard already covers most of this).
+8. **Pre-existing backlog** still valid: branded communications editable templates UI + send-time wiring (deprioritised under internal-first-6-months), Smart Intake spreadsheet improvements, evidence/source-trail pattern reuse expansion, Work assignment digest coverage.
+
+The pending migration list in `docs/product-roadmap.md` (the `20260520_*` / `20260521_*` / `20260522_*` set) still needs to be applied on hosted Neon/Render if auto-migrations don't run. Confirm before declaring any new backend slice "deployed".
 
 ## Resume Checklist
 
