@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
   ClipboardCopy,
   Clock3,
   Download,
@@ -1814,6 +1815,98 @@ function TenantDetail() {
                   );
                   const submittedData = item.submitted_data ?? {};
                   const linkExpired = isExpiredDateTime(item.expires_at);
+                  const providerDetail = (
+                    <>
+                      <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                        <div>Last sent {formatDate(item.last_sent_at)}</div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span>Delivery</span>
+                          <StatusBadge
+                            tone={onboardingDeliveryTone(item.delivery_data)}
+                          >
+                            {onboardingDeliveryLabel(item.delivery_data)}
+                          </StatusBadge>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span>Reminders</span>
+                          <StatusBadge
+                            tone={onboardingReminderTone(item.delivery_data)}
+                          >
+                            {onboardingReminderLabel(item.delivery_data)}
+                          </StatusBadge>
+                        </div>
+                        <div>Expires {formatDate(item.expires_at)}</div>
+                        <div>Applied {formatDate(item.applied_at)}</div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {onboardingDeliveryDetail(item.delivery_data)}
+                      </div>
+                      {onboardingReminderSteps(item.delivery_data).length ? (
+                        <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-xs">
+                          <div className="flex items-center gap-2 font-semibold">
+                            <Clock3 size={14} />
+                            Reminder schedule
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            {onboardingReminderSteps(item.delivery_data).map(
+                              (step) => (
+                                <div
+                                  key={step.key ?? step.label}
+                                  className="rounded border border-border bg-white px-3 py-2"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-medium">
+                                      {step.label ?? "Reminder"}
+                                    </span>
+                                    <StatusBadge
+                                      tone={reminderStepTone(step.status)}
+                                    >
+                                      {reminderStepLabel(step.status)}
+                                    </StatusBadge>
+                                  </div>
+                                  <div className="mt-1 text-muted-foreground">
+                                    {step.sent_at
+                                      ? `Sent ${formatDateTime(step.sent_at)}`
+                                      : `If incomplete after ${step.after_days ?? "-"} days`}
+                                  </div>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                          {item.delivery_data.reminders?.paused ? (
+                            <div className="text-muted-foreground">
+                              Reminder paused until contact is fixed.
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {(item.delivery_data.receipts ?? []).length ? (
+                        <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-xs">
+                          <div className="font-semibold">Delivery timeline</div>
+                          {(item.delivery_data.receipts ?? [])
+                            .slice(0, 3)
+                            .map((receipt, index) => (
+                              <div
+                                key={`${String(receipt.channel)}-${String(receipt.received_at)}-${index}`}
+                                className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground"
+                              >
+                                <span className="capitalize">
+                                  {String(receipt.channel ?? "message")}{" "}
+                                  {String(
+                                    receipt.status ?? "updated",
+                                  ).replaceAll("_", " ")}
+                                </span>
+                                <span>
+                                  {formatDateTime(
+                                    String(receipt.received_at ?? ""),
+                                  )}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      ) : null}
+                    </>
+                  );
                   return (
                     <div key={item.id} className="grid gap-3 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1940,94 +2033,19 @@ function TenantDetail() {
                           ) : null}
                         </div>
                       </div>
-                      <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-                        <div>Last sent {formatDate(item.last_sent_at)}</div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span>Delivery</span>
-                          <StatusBadge
-                            tone={onboardingDeliveryTone(item.delivery_data)}
-                          >
-                            {onboardingDeliveryLabel(item.delivery_data)}
-                          </StatusBadge>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span>Reminders</span>
-                          <StatusBadge
-                            tone={onboardingReminderTone(item.delivery_data)}
-                          >
-                            {onboardingReminderLabel(item.delivery_data)}
-                          </StatusBadge>
-                        </div>
-                        <div>Expires {formatDate(item.expires_at)}</div>
-                        <div>Applied {formatDate(item.applied_at)}</div>
+                      <details className="group md:hidden">
+                        <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+                          Provider detail
+                          <ChevronDown
+                            size={12}
+                            className="transition group-open:rotate-180"
+                          />
+                        </summary>
+                        <div className="mt-3 grid gap-3">{providerDetail}</div>
+                      </details>
+                      <div className="hidden gap-3 md:grid">
+                        {providerDetail}
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {onboardingDeliveryDetail(item.delivery_data)}
-                      </div>
-                      {onboardingReminderSteps(item.delivery_data).length ? (
-                        <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-xs">
-                          <div className="flex items-center gap-2 font-semibold">
-                            <Clock3 size={14} />
-                            Reminder schedule
-                          </div>
-                          <div className="grid gap-2 sm:grid-cols-3">
-                            {onboardingReminderSteps(item.delivery_data).map(
-                              (step) => (
-                                <div
-                                  key={step.key ?? step.label}
-                                  className="rounded border border-border bg-white px-3 py-2"
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="font-medium">
-                                      {step.label ?? "Reminder"}
-                                    </span>
-                                    <StatusBadge
-                                      tone={reminderStepTone(step.status)}
-                                    >
-                                      {reminderStepLabel(step.status)}
-                                    </StatusBadge>
-                                  </div>
-                                  <div className="mt-1 text-muted-foreground">
-                                    {step.sent_at
-                                      ? `Sent ${formatDateTime(step.sent_at)}`
-                                      : `If incomplete after ${step.after_days ?? "-"} days`}
-                                  </div>
-                                </div>
-                              ),
-                            )}
-                          </div>
-                          {item.delivery_data.reminders?.paused ? (
-                            <div className="text-muted-foreground">
-                              Reminder paused until contact is fixed.
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {(item.delivery_data.receipts ?? []).length ? (
-                        <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-xs">
-                          <div className="font-semibold">Delivery timeline</div>
-                          {(item.delivery_data.receipts ?? [])
-                            .slice(0, 3)
-                            .map((receipt, index) => (
-                              <div
-                                key={`${String(receipt.channel)}-${String(receipt.received_at)}-${index}`}
-                                className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground"
-                              >
-                                <span className="capitalize">
-                                  {String(receipt.channel ?? "message")}{" "}
-                                  {String(
-                                    receipt.status ?? "updated",
-                                  ).replaceAll("_", " ")}
-                                </span>
-                                <span>
-                                  {formatDateTime(
-                                    String(receipt.received_at ?? ""),
-                                  )}
-                                </span>
-                              </div>
-                            ))}
-                        </div>
-                      ) : null}
                       {item.status === "submitted" ? (
                         <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs">
                           <div className="font-semibold">
