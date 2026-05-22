@@ -17,6 +17,7 @@ Last updated: 2026-05-21
 - Product source of truth: `docs/product-roadmap.md`
 - UX governance source of truth: `docs/design-governance.md`
 - Brand/frontend source of truth: `docs/leasium-codex-design-source-of-truth.md`
+- UX audit (2026-05-22, benchmarked against Linear / Stripe / Notion / Vercel / Re-Leased Credia / AppFolio): `docs/ux-review-2026-05-22.md`. Proposes a tiered roadmap; Tier 1 = sidebar nav, DetailDrawer, dashboard trend deltas + sparklines, URL-persistent filters; Tier 2 = AI Q&A ("Ask Leasium"), activity feed, dark mode, keyboard shortcuts. Highest-leverage single move is AI Q&A.
 - Design-facing changes still require Remba review before being treated as complete.
 
 ## Takeover Priority
