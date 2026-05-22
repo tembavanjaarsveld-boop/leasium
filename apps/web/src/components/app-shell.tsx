@@ -8,6 +8,7 @@ import {
   FileSpreadsheet,
   HelpCircle,
   Home,
+  Inbox as InboxIcon,
   Keyboard,
   Menu,
   Search,
@@ -47,6 +48,12 @@ const navItems: NavItem[] = [
     label: "Smart Intake",
     icon: FileSpreadsheet,
     shortcut: "G I",
+  },
+  {
+    href: "/inbox",
+    label: "AI Inbox",
+    icon: InboxIcon,
+    shortcut: "G M",
   },
   {
     href: "/properties",
@@ -173,6 +180,7 @@ type ShortcutNav = {
 const SHORTCUT_NAV: ShortcutNav[] = [
   { key: "d", href: "/", label: "Dashboard" },
   { key: "i", href: "/intake", label: "Smart Intake" },
+  { key: "m", href: "/inbox", label: "AI Inbox" },
   { key: "p", href: "/properties", label: "Properties" },
   { key: "t", href: "/tenants", label: "Tenants" },
   { key: "o", href: "/operations", label: "Work (Operations)" },

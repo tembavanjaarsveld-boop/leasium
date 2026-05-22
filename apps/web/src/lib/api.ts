@@ -2470,6 +2470,52 @@ export function askLeasium(payload: { entity_id: string; question: string }) {
   });
 }
 
+export type InboxTriageKind =
+  | "maintenance_request"
+  | "payment_or_arrears"
+  | "lease_change"
+  | "tenant_contact"
+  | "vendor_or_contractor"
+  | "general"
+  | "spam_or_noise";
+
+export type InboxTriageTargetKind =
+  | "maintenance_work_order"
+  | "arrears_case"
+  | "tenant"
+  | "lease"
+  | "property"
+  | "smart_intake"
+  | "none";
+
+export type InboxKeyFactRecord = {
+  label: string;
+  value: string;
+};
+
+export type InboxTriageRecord = {
+  kind: InboxTriageKind;
+  confidence: number;
+  summary: string;
+  suggested_action: string;
+  suggested_target_kind: InboxTriageTargetKind;
+  suggested_target_href: string | null;
+  key_facts: InboxKeyFactRecord[];
+  warnings: string[];
+  guardrails: string[];
+  response_id: string | null;
+};
+
+export function triageInboxMessage(payload: {
+  entity_id: string;
+  body: string;
+}) {
+  return request<InboxTriageRecord>("/ai/triage", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export type ActivityActorKind =
   | "operator"
   | "system"

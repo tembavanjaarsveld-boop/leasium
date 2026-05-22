@@ -138,6 +138,26 @@ test("dashboard Ask Leasium panel answers with cited record", async ({
   ).toBeVisible();
 });
 
+test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
+  page,
+}) => {
+  await page.goto("/inbox");
+
+  await expect(
+    page.getByRole("heading", { name: "AI inbox" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Try sample" }).click();
+  await page.getByRole("button", { name: /Classify/ }).click();
+
+  await expect(page.getByText(/Maintenance request/i).first()).toBeVisible();
+  await expect(
+    page.getByText("Tenant reports a slow kitchen tap leak."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Take it from here/ }),
+  ).toBeVisible();
+});
+
 test("tenants saved views capture and re-apply filter combos", async ({
   page,
 }) => {

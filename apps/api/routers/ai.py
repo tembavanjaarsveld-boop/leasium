@@ -21,10 +21,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
-from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
-from apps.api.schemas.ai import AskCitation, AskRead, AskRequest
 from stewart.ai.ask import ASK_GUARDRAILS, AskError, ask_leasium
+from stewart.ai.inbox import (
+    INBOX_KINDS,
+    INBOX_TRIAGE_GUARDRAILS,
+    InboxTriageError,
+    triage_inbox,
+)
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
@@ -40,6 +43,18 @@ from stewart.core.models import (
     UserRole,
 )
 from stewart.core.settings import Settings, get_settings
+
+from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.schemas.ai import (
+    AskCitation,
+    AskRead,
+    AskRequest,
+    InboxKeyFact,
+    InboxKind,
+    InboxTargetKind,
+    InboxTriageRead,
+    InboxTriageRequest,
+)
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -174,8 +189,6 @@ def _build_ask_context(entity_id: UUID, session: Session) -> dict[str, Any]:
             )
         ).all()
     )
-    tenants_by_id = {tenant.id: tenant for tenant in tenants}
-
     leases = list(
         session.scalars(
             select(Lease).where(
@@ -378,6 +391,118 @@ def _citation_href(kind: str, target_id: UUID) -> str | None:
     if kind == "arrears_case":
         return "/operations"
     return None
+
+
+_TARGET_KIND_HREF: dict[str, str] = {
+    "maintenance_work_order": "/operations",
+    "arrears_case": "/operations",
+    "tenant": "/tenants",
+    "lease": "/properties",
+    "property": "/properties",
+    "smart_intake": "/intake",
+    "none": "",
+}
+
+
+@router.post("/triage", response_model=InboxTriageRead)
+def triage(
+    payload: InboxTriageRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> InboxTriageRead:
+    """Classify a pasted inbox message and suggest a next Leasium action."""
+
+    assert_entity_role(user, payload.entity_id, READ_ROLES)
+
+    try:
+        result, response_id = triage_inbox(body=payload.body, settings=settings)
+    except InboxTriageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    raw_kind = result.get("kind")
+    kind: InboxKind = (
+        raw_kind if isinstance(raw_kind, str) and raw_kind in INBOX_KINDS else "general"
+    )
+    raw_confidence = result.get("confidence")
+    try:
+        confidence = float(raw_confidence)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+    summary = result.get("summary")
+    summary_text = summary.strip()[:400] if isinstance(summary, str) else ""
+    action = result.get("suggested_action")
+    action_text = action.strip()[:240] if isinstance(action, str) else ""
+    raw_target = result.get("suggested_target_kind")
+    target_kind: InboxTargetKind = (
+        raw_target  # type: ignore[assignment]
+        if isinstance(raw_target, str) and raw_target in _TARGET_KIND_HREF
+        else "none"
+    )
+    href = _TARGET_KIND_HREF.get(target_kind) or None
+
+    raw_facts = result.get("key_facts")
+    key_facts: list[InboxKeyFact] = []
+    if isinstance(raw_facts, list):
+        for entry in raw_facts:
+            if not isinstance(entry, dict):
+                continue
+            label = entry.get("label")
+            value = entry.get("value")
+            if not isinstance(label, str) or not isinstance(value, str):
+                continue
+            label = label.strip()[:80]
+            value = value.strip()[:140]
+            if not label or not value:
+                continue
+            key_facts.append(InboxKeyFact(label=label, value=value))
+
+    raw_warnings = result.get("warnings")
+    warnings: list[str] = []
+    if isinstance(raw_warnings, list):
+        for warning in raw_warnings:
+            if isinstance(warning, str) and warning.strip():
+                warnings.append(warning.strip()[:240])
+
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=payload.entity_id,
+        action="query",
+        target_table="ai_inbox_triage",
+        target_id=None,
+        tool_name="ai_inbox_triage",
+        tool_input={
+            "body_length": len(payload.body),
+            "kind": kind,
+            "confidence": round(confidence, 2),
+            "target_kind": target_kind,
+            "warning_count": len(warnings),
+        },
+        tool_output_summary=(
+            f"Classified as {kind} (confidence {confidence:.2f})."
+        ),
+        data_classification="internal",
+    )
+    session.commit()
+
+    return InboxTriageRead(
+        kind=kind,
+        confidence=confidence,
+        summary=summary_text or "Unable to summarise this message.",
+        suggested_action=action_text or "Review the message manually.",
+        suggested_target_kind=target_kind,
+        suggested_target_href=href,
+        key_facts=key_facts,
+        warnings=warnings,
+        guardrails=list(INBOX_TRIAGE_GUARDRAILS),
+        response_id=response_id,
+    )
 
 
 __all__ = ["router"]

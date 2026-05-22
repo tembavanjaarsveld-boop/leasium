@@ -2856,6 +2856,27 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "POST" && path === "/ai/triage") {
+      await fulfillJson(route, {
+        kind: "maintenance_request",
+        confidence: 0.88,
+        summary: "Tenant reports a slow kitchen tap leak.",
+        suggested_action: "Open the maintenance queue and triage.",
+        suggested_target_kind: "maintenance_work_order",
+        suggested_target_href: "/operations",
+        key_facts: [
+          { label: "Property", value: "28 Queen Street" },
+          { label: "Severity", value: "Non-urgent" },
+        ],
+        warnings: [],
+        guardrails: [
+          "Inbox triage is read-only. It suggests where to take the message next; it never creates or sends anything on its own.",
+        ],
+        response_id: "resp_triage_smoke",
+      });
+      return;
+    }
+
     if (method === "POST" && path === "/ai/ask") {
       await fulfillJson(route, {
         answer:
