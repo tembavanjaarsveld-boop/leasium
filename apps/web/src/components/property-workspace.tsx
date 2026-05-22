@@ -743,6 +743,80 @@ function StoredPropertyImage({
   );
 }
 
+type PropertyOccupancyStatus = "vacant" | "partial" | "leased" | "unknown";
+
+type PropertyOccupancy = {
+  status: PropertyOccupancyStatus;
+  leasedUnits: number;
+  totalUnits: number;
+};
+
+// Active or holding-over leases count as occupied. Pending/expired/terminated
+// don't.
+const OCCUPIED_LEASE_STATUSES = new Set(["active", "holding_over"]);
+
+function propertyOccupancyFromRentRoll(
+  propertyId: string,
+  rentRollRows: ReadonlyArray<{
+    property_id: string;
+    tenancy_unit_id: string;
+    lease_id: string | null;
+    lease_status: string | null;
+  }>,
+): PropertyOccupancy {
+  const rows = rentRollRows.filter((row) => row.property_id === propertyId);
+  if (!rows.length) {
+    return { status: "unknown", leasedUnits: 0, totalUnits: 0 };
+  }
+  const unitsByOccupancy = new Map<string, boolean>();
+  for (const row of rows) {
+    const occupied = Boolean(
+      row.lease_id &&
+        row.lease_status &&
+        OCCUPIED_LEASE_STATUSES.has(row.lease_status),
+    );
+    unitsByOccupancy.set(
+      row.tenancy_unit_id,
+      occupied || (unitsByOccupancy.get(row.tenancy_unit_id) ?? false),
+    );
+  }
+  const totalUnits = unitsByOccupancy.size;
+  const leasedUnits = Array.from(unitsByOccupancy.values()).filter(Boolean).length;
+  if (leasedUnits === 0) {
+    return { status: "vacant", leasedUnits, totalUnits };
+  }
+  if (leasedUnits === totalUnits) {
+    return { status: "leased", leasedUnits, totalUnits };
+  }
+  return { status: "partial", leasedUnits, totalUnits };
+}
+
+function occupancyBadgeClassName(status: PropertyOccupancyStatus) {
+  switch (status) {
+    case "leased":
+      return "inline-flex items-center rounded-full border border-leasium-success-strong/30 bg-leasium-success-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#027A48]";
+    case "vacant":
+      return "inline-flex items-center rounded-full border border-leasium-danger-strong/30 bg-leasium-danger-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#B42318]";
+    case "partial":
+      return "inline-flex items-center rounded-full border border-leasium-warning-strong/30 bg-leasium-warning-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#B54708]";
+    default:
+      return "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-semibold leading-4 text-muted-foreground";
+  }
+}
+
+function occupancyBadgeLabel(occupancy: PropertyOccupancy) {
+  if (occupancy.status === "unknown") {
+    return "No units";
+  }
+  if (occupancy.status === "vacant") {
+    return `Vacant · ${occupancy.totalUnits} ${occupancy.totalUnits === 1 ? "unit" : "units"}`;
+  }
+  if (occupancy.status === "partial") {
+    return `Partial · ${occupancy.leasedUnits} / ${occupancy.totalUnits}`;
+  }
+  return `Leased · ${occupancy.leasedUnits} / ${occupancy.totalUnits}`;
+}
+
 function propertySourceCitations(property: PropertyRecord | null | undefined) {
   const citations = propertyMetadata(property).source_citations;
   if (!isRecord(citations)) {
@@ -1227,6 +1301,9 @@ function Workspace() {
   const [selectedEntityId, setSelectedEntityId] = useState<string>("");
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const [ownerTagFilter, setOwnerTagFilter] = useState<string>("");
+  const [occupancyFilter, setOccupancyFilter] = useState<
+    PropertyOccupancyStatus | "all"
+  >("all");
   const [rentRollPropertyId, setRentRollPropertyId] = useState<string>("");
   const [rentRollAsOf, setRentRollAsOf] = useState<string>(() =>
     dateOnly(new Date()),
@@ -1434,19 +1511,55 @@ function Workspace() {
     () => ownershipTags.find((tag) => tag.key === ownerTagFilter) ?? null,
     [ownershipTags, ownerTagFilter],
   );
+  const occupancyByPropertyId = useMemo(() => {
+    const rows = rentRollQuery.data ?? [];
+    const map = new Map<string, PropertyOccupancy>();
+    const properties = propertiesQuery.data ?? [];
+    for (const property of properties) {
+      map.set(property.id, propertyOccupancyFromRentRoll(property.id, rows));
+    }
+    return map;
+  }, [propertiesQuery.data, rentRollQuery.data]);
+  const occupancyCounts = useMemo(() => {
+    const counts: Record<PropertyOccupancyStatus | "all", number> = {
+      all: 0,
+      leased: 0,
+      partial: 0,
+      vacant: 0,
+      unknown: 0,
+    };
+    for (const occupancy of occupancyByPropertyId.values()) {
+      counts.all += 1;
+      counts[occupancy.status] += 1;
+    }
+    return counts;
+  }, [occupancyByPropertyId]);
   const displayedProperties = useMemo(() => {
     const properties = propertiesQuery.data ?? [];
-    if (!ownerTagFilter) {
-      return properties;
+    let filtered = properties;
+    if (ownerTagFilter) {
+      filtered = filtered.filter((property) =>
+        propertyMatchesOwnershipTag(
+          property,
+          selectedEntity?.name,
+          ownerTagFilter,
+        ),
+      );
     }
-    return properties.filter((property) =>
-      propertyMatchesOwnershipTag(
-        property,
-        selectedEntity?.name,
-        ownerTagFilter,
-      ),
-    );
-  }, [ownerTagFilter, propertiesQuery.data, selectedEntity?.name]);
+    if (occupancyFilter !== "all") {
+      filtered = filtered.filter(
+        (property) =>
+          occupancyByPropertyId.get(property.id)?.status === occupancyFilter,
+      );
+    }
+    return filtered;
+  }, [
+    occupancyByPropertyId,
+    occupancyFilter,
+    ownerTagFilter,
+    propertiesQuery.data,
+    selectedEntity?.name,
+  ]);
   const entitiesLoading =
     !entitiesQuery.data &&
     (entitiesQuery.isLoading || entitiesQuery.isFetching);
@@ -4353,6 +4466,44 @@ function Workspace() {
                 </section>
               ) : null}
 
+              {occupancyCounts.all > 0 ? (
+                <div className="flex flex-wrap items-center gap-1 text-xs">
+                  {(
+                    [
+                      { key: "all", label: "All" },
+                      { key: "leased", label: "Leased" },
+                      { key: "partial", label: "Partial" },
+                      { key: "vacant", label: "Vacant" },
+                      { key: "unknown", label: "No units" },
+                    ] as const
+                  ).map(({ key, label: optionLabel }) => {
+                    const count = occupancyCounts[key];
+                    if (key !== "all" && count === 0) {
+                      return null;
+                    }
+                    const isActive = occupancyFilter === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setOccupancyFilter(key)}
+                        aria-pressed={isActive}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold transition ${
+                          isActive
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-white text-muted-foreground hover:bg-muted"
+                        }`}
+                      >
+                        <span>{optionLabel}</span>
+                        <span className="rounded-full bg-black/10 px-1.5 text-[10px] font-bold">
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
               <div className="overflow-hidden rounded-md border border-border bg-white">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead className="bg-muted text-xs uppercase text-muted-foreground">
@@ -4386,7 +4537,31 @@ function Workspace() {
                             />
                           </td>
                           <td className="px-3 py-3">
-                            <div className="font-medium">{property.name}</div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium">{property.name}</span>
+                              {(() => {
+                                const occupancy = occupancyByPropertyId.get(
+                                  property.id,
+                                );
+                                if (!occupancy) {
+                                  return null;
+                                }
+                                return (
+                                  <span
+                                    className={occupancyBadgeClassName(
+                                      occupancy.status,
+                                    )}
+                                    title={
+                                      occupancy.status === "unknown"
+                                        ? "No tenancy units recorded for this property yet."
+                                        : `${occupancy.leasedUnits} of ${occupancy.totalUnits} units leased (active or holding over).`
+                                    }
+                                  >
+                                    {occupancyBadgeLabel(occupancy)}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                             <div className="text-muted-foreground">
                               {property.street_address}, {property.suburb}{" "}
                               {property.state}

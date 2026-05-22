@@ -402,6 +402,8 @@ Forty-first 2026-05-22 follow-up: the maintenance work-order page now offers a c
 
 Forty-second 2026-05-22 follow-up: Settings Organisation tab now opens with a new `Integrations` card that lists the configured/not status of SerpAPI, OpenAI, SendGrid, Twilio, and Xero. The card consumes a new `/system/integration-status` endpoint which returns only booleans plus label/purpose/detail copy — no API keys, webhook secrets, or account IDs leak. Remba should review whether the card belongs above the Organisation profile section (current placement) or in a dedicated future "Provider setup" tab once the integration list grows.
 
+Forty-third 2026-05-22 follow-up: the Properties table now shows an occupancy status badge inline beside each property name (Leased / Partial / Vacant / No units), derived from existing rent-roll rows. Active and holding-over leases count as occupied; pending/expired/terminated do not. A pill-row filter above the table lets operators show only properties in a chosen state, with counts per state visible at all times. Remba should review the badge palette (success / warning / danger / neutral) and whether the Internal-vs-external lease distinction should be a separate badge alongside, a colour modifier, or a dedicated filter pill once that data model exists.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface
