@@ -9,7 +9,6 @@ import {
   ClipboardList,
   FileText,
   FileUp,
-  HelpCircle,
   Layers3,
   Link2,
   Loader2,
@@ -980,19 +979,37 @@ function AskLeasiumPanel({
   const disabled = !entityId || isPending;
 
   return (
-    <SectionPanel
-      title="Ask Leasium"
-      description="Ask a plain-English question about your portfolio. Answers cite the records they came from. Read-only — Leasium will never act on a question."
-      icon={<HelpCircle size={17} className="text-primary" />}
-      actions={
-        answer || errorMessage ? (
+    <section className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-leasium-blue-soft/40 via-white to-leasium-teal-soft/25 shadow-leasiumXs">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
+      />
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-leasium-teal text-white shadow-leasiumXs">
+            <Sparkles size={18} />
+          </div>
+          <div className="min-w-0">
+            <h3 className="flex flex-wrap items-center gap-2 text-[15px] font-semibold leading-5">
+              Leasium AI
+              <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0 text-[10px] font-bold uppercase tracking-wide text-primary">
+                Beta
+              </span>
+            </h3>
+            <p className="mt-0.5 max-w-2xl text-xs leading-4 text-muted-foreground">
+              Ask plain-English questions about your portfolio. Answers cite
+              the records they came from. Read-only — Leasium AI will never
+              act on a question.
+            </p>
+          </div>
+        </div>
+        {answer || errorMessage ? (
           <SecondaryButton onClick={handleReset} disabled={isPending}>
             Reset
           </SecondaryButton>
-        ) : null
-      }
-    >
-      <div className="grid gap-4 p-4">
+        ) : null}
+      </div>
+      <div className="grid gap-4 px-4 pb-4">
         <form onSubmit={handleSubmit} className="grid gap-2">
           <Field label="Your question">
             <div className="flex flex-wrap items-stretch gap-2">
@@ -1106,13 +1123,13 @@ function AskLeasiumPanel({
             ) : null}
           </div>
         ) : !isPending && !errorMessage ? (
-          <div className="rounded-md border border-dashed border-border bg-muted/20 p-3 text-xs text-muted-foreground">
-            Answers stay grounded in your portfolio. Leasium quotes the record
-            it pulled the answer from, and won&apos;t take any action.
+          <div className="rounded-md border border-dashed border-primary/20 bg-white/50 p-3 text-xs text-muted-foreground">
+            Answers stay grounded in your portfolio. Leasium AI quotes the
+            record it pulled the answer from, and won&apos;t take any action.
           </div>
         ) : null}
       </div>
-    </SectionPanel>
+    </section>
   );
 }
 

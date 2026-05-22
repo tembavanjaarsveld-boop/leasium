@@ -108,17 +108,17 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   ).toBeVisible();
 });
 
-test("dashboard Ask Leasium panel answers with cited record", async ({
+test("dashboard Leasium AI panel answers with cited record", async ({
   page,
 }) => {
   await page.goto("/");
 
   const askPanel = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Ask Leasium" }),
+    has: page.getByRole("heading", { name: /^Leasium AI/ }),
   });
   await expect(askPanel).toBeVisible();
   await expect(
-    askPanel.getByText("Read-only — Leasium will never act on a question."),
+    askPanel.getByText(/Read-only — Leasium AI will never act on a question/),
   ).toBeVisible();
 
   await askPanel

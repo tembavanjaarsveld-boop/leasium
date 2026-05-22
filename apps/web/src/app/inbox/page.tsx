@@ -17,7 +17,6 @@ import {
   Button,
   EmptyState,
   Field,
-  PageHeader,
   SecondaryButton,
   SectionPanel,
   Select,
@@ -168,10 +167,30 @@ function InboxWorkspace() {
         </Select>
       </AppHeader>
       <div className="mx-auto grid max-w-5xl gap-5 px-5 py-6">
-        <PageHeader
-          title="AI inbox"
-          description="Paste an inbound email, SMS, or message. Leasium classifies it and points you at the right next step. Read-only — Leasium will never act on a message without you."
-        />
+        <section className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-leasium-blue-soft/40 via-white to-leasium-teal-soft/25 px-5 py-4 shadow-leasiumXs">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
+          />
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-leasium-teal text-white shadow-leasiumXs">
+              <Sparkles size={18} />
+            </div>
+            <div className="min-w-0">
+              <h1 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
+                Leasium AI Inbox
+                <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0 text-[10px] font-bold uppercase tracking-wide text-primary">
+                  Beta
+                </span>
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Paste an inbound email, SMS, or message. Leasium AI classifies
+                it and points you at the right next step. Read-only — Leasium
+                AI will never act on a message without you.
+              </p>
+            </div>
+          </div>
+        </section>
 
         <SectionPanel
           title="Classify a message"
