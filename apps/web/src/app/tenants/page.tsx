@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { DetailDrawer } from "@/components/detail-drawer";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -193,6 +194,7 @@ function TenantWorkspace() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<TenantForm>(emptyForm);
   const [reminderRunSummary, setReminderRunSummary] = useState("");
+  const [drawerTenantId, setDrawerTenantId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -596,11 +598,26 @@ function TenantWorkspace() {
                 {tenantRows.map(({ tenant, onboarding }) => {
                   const summary = tenantLeaseSummaries.get(tenant.id);
                   return (
-                  <tr key={tenant.id} className="border-t border-border align-top hover:bg-muted/50">
+                  <tr
+                    key={tenant.id}
+                    className="cursor-pointer border-t border-border align-top transition hover:bg-muted/50"
+                    onClick={(event) => {
+                      const target = event.target as HTMLElement;
+                      if (target.closest("a, button")) return;
+                      setDrawerTenantId(tenant.id);
+                    }}
+                  >
                     <td className="px-3 py-3">
-                      <Link href={`/tenants/${tenant.id}`} className="font-medium text-primary hover:underline">
+                      <button
+                        type="button"
+                        className="text-left font-medium text-primary hover:underline"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setDrawerTenantId(tenant.id);
+                        }}
+                      >
                         {tenantName(tenant)}
-                      </Link>
+                      </button>
                       <div className="text-xs text-muted-foreground">{tenant.abn ?? "No ABN recorded"}</div>
                       {summary ? (
                         <div className="mt-1 inline-flex items-center rounded-full border border-leasium-success-strong/30 bg-leasium-success-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#027A48]">
@@ -690,7 +707,133 @@ function TenantWorkspace() {
           ) : null}
         </SectionPanel>
       </div>
+      <TenantQuickViewDrawer
+        tenantId={drawerTenantId}
+        tenants={tenantsQuery.data ?? []}
+        onboardings={onboardingQuery.data ?? []}
+        leaseSummaries={tenantLeaseSummaries}
+        onClose={() => setDrawerTenantId(null)}
+      />
     </main>
+  );
+}
+
+function TenantQuickViewDrawer({
+  tenantId,
+  tenants,
+  onboardings,
+  leaseSummaries,
+  onClose,
+}: {
+  tenantId: string | null;
+  tenants: TenantRecord[];
+  onboardings: TenantOnboardingRecord[];
+  leaseSummaries: Map<
+    string,
+    { activeLeases: number; totalAnnualCents: number }
+  >;
+  onClose: () => void;
+}) {
+  const tenant = tenantId
+    ? tenants.find((entry) => entry.id === tenantId) ?? null
+    : null;
+  const onboarding = tenantId
+    ? latestOnboarding(tenantId, onboardings)
+    : null;
+  const summary = tenantId ? leaseSummaries.get(tenantId) : undefined;
+  return (
+    <DetailDrawer
+      open={Boolean(tenant)}
+      title={tenant ? tenantName(tenant) : "Tenant"}
+      description={tenant?.abn ?? "No ABN recorded"}
+      onClose={onClose}
+      primaryAction={
+        tenant
+          ? { label: "Open full record", href: `/tenants/${tenant.id}` }
+          : undefined
+      }
+      footerNote="Quick view. Lease editing, documents, and onboarding controls live on the full record."
+    >
+      {tenant ? (
+        <div className="grid gap-4">
+          <section className="grid gap-2">
+            <div className="text-xs font-semibold uppercase text-muted-foreground">
+              Contact
+            </div>
+            <dl className="grid gap-1 text-sm">
+              <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+                <dt className="text-muted-foreground">Name</dt>
+                <dd>{tenant.contact_name ?? "-"}</dd>
+              </div>
+              <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+                <dt className="text-muted-foreground">Email</dt>
+                <dd>{tenant.contact_email ?? "-"}</dd>
+              </div>
+              <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+                <dt className="text-muted-foreground">Phone</dt>
+                <dd>{tenant.contact_phone ?? "-"}</dd>
+              </div>
+              <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+                <dt className="text-muted-foreground">Billing email</dt>
+                <dd>{tenant.billing_email ?? "-"}</dd>
+              </div>
+            </dl>
+          </section>
+          {summary ? (
+            <section className="rounded-md border border-border bg-leasium-success-soft p-3 text-sm">
+              <div className="font-semibold text-[#027A48]">
+                {summary.activeLeases}{" "}
+                {summary.activeLeases === 1
+                  ? "active lease"
+                  : "active leases"}
+                {summary.totalAnnualCents > 0
+                  ? ` · ${formatAnnualRent(summary.totalAnnualCents)}/yr`
+                  : ""}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Open the full record to view lease terms, documents,
+                charges, and payment history.
+              </p>
+            </section>
+          ) : (
+            <section className="rounded-md border border-dashed border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+              No active leases recorded for this tenant yet.
+            </section>
+          )}
+          {onboarding ? (
+            <section className="grid gap-2">
+              <div className="text-xs font-semibold uppercase text-muted-foreground">
+                Latest onboarding
+              </div>
+              <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-white p-3 text-sm">
+                <StatusBadge
+                  tone={statusTone(onboarding.status, onboarding.due_date)}
+                >
+                  {onboarding.status.replaceAll("_", " ")}
+                </StatusBadge>
+                <StatusBadge
+                  tone={onboardingDeliveryTone(onboarding.delivery_data)}
+                >
+                  {onboardingDeliveryLabel(onboarding.delivery_data)}
+                </StatusBadge>
+                <span className="text-xs text-muted-foreground">
+                  Due {onboarding.due_date ?? "-"}
+                </span>
+              </div>
+              {onboardingNeedsContactFix(onboarding.delivery_data) ? (
+                <p className="text-xs text-muted-foreground">
+                  {onboardingDeliveryDetail(onboarding.delivery_data)}
+                </p>
+              ) : null}
+            </section>
+          ) : (
+            <section className="rounded-md border border-dashed border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+              No onboarding link sent yet.
+            </section>
+          )}
+        </div>
+      ) : null}
+    </DetailDrawer>
   );
 }
 
