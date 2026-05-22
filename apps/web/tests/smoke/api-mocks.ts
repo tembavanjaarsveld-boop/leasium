@@ -2743,6 +2743,51 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/system/integration-status") {
+      await fulfillJson(route, {
+        serpapi: {
+          configured: true,
+          label: "SerpAPI Google Images",
+          purpose:
+            "Property image candidate search (Properties > Property images)",
+          detail:
+            "Configured. Provider sends still require explicit reviewed actions.",
+        },
+        openai: {
+          configured: true,
+          label: "OpenAI",
+          purpose:
+            "Public field enrichment (Properties/Tenants > Suggest missing values)",
+          detail:
+            "Configured. Provider sends still require explicit reviewed actions.",
+        },
+        sendgrid: {
+          configured: false,
+          label: "SendGrid",
+          purpose:
+            "Email delivery (invoice, contractor, Work notifications, digests)",
+          detail:
+            "Set SENDGRID_API_KEY and SENDGRID_FROM_EMAIL on the API service to enable provider sends. Without them, provider attempts are recorded as skipped.",
+        },
+        twilio: {
+          configured: false,
+          label: "Twilio Messaging",
+          purpose: "SMS delivery (Work notifications, contractor SMS)",
+          detail:
+            "Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_MESSAGING_SERVICE_SID on the API service to enable SMS sends.",
+        },
+        xero: {
+          configured: true,
+          label: "Xero",
+          purpose:
+            "Accounting sync (contact, chart/tax, invoice posting, payments)",
+          detail:
+            "Configured. Provider sends still require explicit reviewed actions.",
+        },
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/xero/exception-queue") {
       await fulfillJson(route, xeroExceptionQueue());
       return;

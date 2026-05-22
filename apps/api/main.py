@@ -20,6 +20,7 @@ from apps.api.routers import (
     properties,
     register_imports,
     security,
+    system,
     tenancy_units,
     tenant_onboarding,
     tenant_portal,
@@ -72,3 +73,4 @@ app.include_router(register_imports.router, prefix="/api/v1")
 app.include_router(enrichment.router, prefix="/api/v1")
 app.include_router(xero.router, prefix="/api/v1")
 app.include_router(insights.router, prefix="/api/v1")
+app.include_router(system.router, prefix="/api/v1")

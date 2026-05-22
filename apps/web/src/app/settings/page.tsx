@@ -49,6 +49,9 @@ import {
   getSecurityWorkspace,
   getWorkAssignmentNotificationTemplates,
   getXeroExceptionQueue,
+  getIntegrationStatus,
+  type IntegrationStatusRecord,
+  type ProviderStatusRecord,
   getXeroStatus,
   listEntities,
   listProperties,
@@ -804,6 +807,65 @@ function nextRolesForEntity(
   return [...otherRoles, { entity_id: entityId, role }];
 }
 
+function IntegrationsHealthCard({
+  integrations,
+  isLoading,
+}: {
+  integrations: IntegrationStatusRecord | undefined;
+  isLoading: boolean;
+}) {
+  const rows: Array<{ key: keyof IntegrationStatusRecord; data: ProviderStatusRecord }> = integrations
+    ? [
+        { key: "serpapi", data: integrations.serpapi },
+        { key: "openai", data: integrations.openai },
+        { key: "sendgrid", data: integrations.sendgrid },
+        { key: "twilio", data: integrations.twilio },
+        { key: "xero", data: integrations.xero },
+      ]
+    : [];
+  return (
+    <SectionPanel
+      title="Integrations"
+      description="Whether each external provider has credentials set on this API service. No secrets are returned — only configured/not status."
+      icon={<PlugZap size={17} className="text-primary" />}
+    >
+      <div className="grid gap-3 p-4">
+        {isLoading && !integrations ? (
+          <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
+            Loading integration status.
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
+            Integration status is unavailable.
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {rows.map(({ key, data }) => (
+              <div
+                key={key}
+                className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold">{data.label}</span>
+                  <StatusBadge tone={data.configured ? "success" : "warning"}>
+                    {data.configured ? "Configured" : "Not configured"}
+                  </StatusBadge>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {data.purpose}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {data.detail}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </SectionPanel>
+  );
+}
+
 function MetricCard({
   label,
   value,
@@ -955,6 +1017,11 @@ function SettingsWorkspace() {
     queryKey: ["xero-status", selectedEntityId],
     queryFn: () => getXeroStatus(selectedEntityId),
     enabled: Boolean(selectedEntityId),
+  });
+
+  const integrationStatusQuery = useQuery({
+    queryKey: ["integration-status"],
+    queryFn: getIntegrationStatus,
   });
 
   const xeroExceptionQueueQuery = useQuery({
@@ -2447,6 +2514,10 @@ function SettingsWorkspace() {
 
         {activeTab === "organisation" ? (
           <>
+            <IntegrationsHealthCard
+              integrations={integrationStatusQuery.data}
+              isLoading={integrationStatusQuery.isLoading}
+            />
             <SectionPanel
               title="Organisation profile"
               description="The operator account, entities, and integration settings all sit under this organisation."

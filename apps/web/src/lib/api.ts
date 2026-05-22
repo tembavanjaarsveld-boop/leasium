@@ -2421,6 +2421,25 @@ export function getXeroStatus(entityId: string) {
   return request<XeroStatusRecord>(`/xero/status?${params.toString()}`);
 }
 
+export type ProviderStatusRecord = {
+  configured: boolean;
+  label: string;
+  purpose: string;
+  detail: string;
+};
+
+export type IntegrationStatusRecord = {
+  serpapi: ProviderStatusRecord;
+  openai: ProviderStatusRecord;
+  sendgrid: ProviderStatusRecord;
+  twilio: ProviderStatusRecord;
+  xero: ProviderStatusRecord;
+};
+
+export function getIntegrationStatus() {
+  return request<IntegrationStatusRecord>("/system/integration-status");
+}
+
 export function getXeroExceptionQueue(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
   return request<XeroExceptionQueueRecord>(

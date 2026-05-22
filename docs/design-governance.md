@@ -400,6 +400,8 @@ Fortieth 2026-05-22 follow-up: the Xero payment reconciliation stale window is n
 
 Forty-first 2026-05-22 follow-up: the maintenance work-order page now offers a contractor SMS template selector with attendance-window, status-update, completion-check, and billing-documents canned bodies, mirroring the existing contractor email templates. Operator edits reset the selector back to Custom; provider dispatch stays operator-controlled. Remba should review whether the SMS template copy is concise enough (SMS bodies are limited to 800 chars and need to stay direct) and whether the email + SMS template selectors should be visually grouped.
 
+Forty-second 2026-05-22 follow-up: Settings Organisation tab now opens with a new `Integrations` card that lists the configured/not status of SerpAPI, OpenAI, SendGrid, Twilio, and Xero. The card consumes a new `/system/integration-status` endpoint which returns only booleans plus label/purpose/detail copy — no API keys, webhook secrets, or account IDs leak. Remba should review whether the card belongs above the Organisation profile section (current placement) or in a dedicated future "Provider setup" tab once the integration list grows.
+
 The dedicated maintenance work-order route now also surfaces quote/evidence rows from stored quote metadata and gives linked invoice drafts a compact handoff panel with status, payment state, delivery readiness, preview, PDF download, prepare, and approve actions. Remba should check whether invoice controls inside maintenance feel helpful or whether the final approval step should stay visually anchored in Billing Readiness.
 
 ## Property Provenance Surface
