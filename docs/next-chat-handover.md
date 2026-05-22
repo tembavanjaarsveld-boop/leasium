@@ -294,10 +294,34 @@ Behavioural baseline:
   - `20260522_0022_branded_communication_templates`
 - Provider setup still has external-console work:
   - SendGrid templates/event webhook configuration; notification-center readiness shows the bare Work event webhook endpoint only.
+  - **Pending (2026-05-23, Temba waiting on tokens, ETA a couple of days): create the SendGrid template `tenant_portal_invite` v1 used by the new tenant portal onboarding invite slice.** Copy should explain "Your Leasium tenant portal is ready", with brand name placeholder, property + unit label, due date, expiry, and a single primary CTA linking to the onboarding URL. Template key + version are overridable via `TENANT_PORTAL_INVITE_TEMPLATE_KEY` / `TENANT_PORTAL_INVITE_TEMPLATE_VERSION` env vars on the API service if the SendGrid template name doesn't match. Until this template exists, the Invite-to-portal button still fires the send pipe but SendGrid will fall back to a generic delivery and the receipt path will record a soft failure. Backend code, dashboard panel, and operator CTA all ship in commit `5aa5f8e` + `9af7462`.
   - Twilio SMS callback/template setup; notification-center readiness shows the bare Work status callback endpoint only.
   - Twilio maintenance contractor SMS callback setup should also point at `/api/v1/maintenance/work-orders/webhooks/twilio-status`.
   - Xero app/accounting-side settings
 - Public enrichment requires `OPENAI_API_KEY` on the API service. Without it, preview returns a clear 503 and does not mutate records.
+
+### Mac-side verification for the tenant portal onboarding slice (2026-05-23)
+
+```bash
+cd /Users/tembavanjaarsveld/Documents/Stewart
+.venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py tests/integration/test_tenant_portal_api.py -q
+# Expect: all tests pass, including the four new ones —
+#   test_tenant_onboarding_send_portal_invite_records_delivery_and_audits
+#   test_tenant_onboarding_send_portal_invite_rejects_submitted_or_expired
+#   test_tenant_portal_onboarding_submit_writes_submitted_data
+#   test_tenant_portal_onboarding_submit_rejects_non_sent_status
+
+cd apps/web
+NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs \
+  ./node_modules/.bin/playwright test --grep "tenant portal shows scoped self-service"
+# Expect: 1 passing. The spec now also asserts that "Complete your onboarding"
+# renders, Submit-for-review is disabled until acceptance, and after submit
+# the panel collapses to "your property manager will review and confirm".
+```
+
+Live route sanity after Vercel deploys:
+- `/tenant-portal/tenant-token-1` still loads.
+- `/onboarding/tenant-token-1` now returns the retired-form redirect screen ("Your onboarding has moved into your Leasium account") with a button pointing to `/tenant-portal/tenant-token-1`.
 
 ## Remba Review Queue
 
