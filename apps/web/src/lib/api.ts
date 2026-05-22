@@ -2440,6 +2440,36 @@ export function getIntegrationStatus() {
   return request<IntegrationStatusRecord>("/system/integration-status");
 }
 
+export type AskCitationKind =
+  | "property"
+  | "lease"
+  | "tenant"
+  | "obligation"
+  | "maintenance_work_order"
+  | "arrears_case";
+
+export type AskCitationRecord = {
+  kind: AskCitationKind;
+  target_id: string;
+  label: string;
+  href: string | null;
+};
+
+export type AskRecord = {
+  answer: string;
+  citations: AskCitationRecord[];
+  warnings: string[];
+  guardrails: string[];
+  response_id: string | null;
+};
+
+export function askLeasium(payload: { entity_id: string; question: string }) {
+  return request<AskRecord>("/ai/ask", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getXeroExceptionQueue(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
   return request<XeroExceptionQueueRecord>(

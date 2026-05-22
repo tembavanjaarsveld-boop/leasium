@@ -2793,6 +2793,28 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "POST" && path === "/ai/ask") {
+      await fulfillJson(route, {
+        answer:
+          "1 lease expires within the next 90 days: Queen Street Retail Centre on 2026-07-15.",
+        citations: [
+          {
+            kind: "property",
+            target_id: "11111111-1111-1111-1111-111111111111",
+            label: "Queen Street Retail Centre",
+            href: "/properties?property_id=11111111-1111-1111-1111-111111111111",
+          },
+        ],
+        warnings: [],
+        guardrails: [
+          "Read-only: Leasium will not send messages, post invoices, or change records based on this answer.",
+          "Verify amounts and dates against the linked record before acting.",
+        ],
+        response_id: "resp_smoke_ask",
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/xero/oauth/start") {
       xeroTenantId = xeroTenantId ?? "tenant-smoke";
       xeroConnectedAt = xeroConnectedAt ?? "2026-05-19T10:00:00.000Z";

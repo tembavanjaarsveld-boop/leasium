@@ -108,6 +108,36 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   ).toBeVisible();
 });
 
+test("dashboard Ask Leasium panel answers with cited record", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const askPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Ask Leasium" }),
+  });
+  await expect(askPanel).toBeVisible();
+  await expect(
+    askPanel.getByText("Read-only — Leasium will never act on a question."),
+  ).toBeVisible();
+
+  await askPanel
+    .getByRole("button", { name: "Which properties are vacant right now?" })
+    .click();
+
+  await expect(
+    askPanel.getByText(
+      "1 lease expires within the next 90 days: Queen Street Retail Centre on 2026-07-15.",
+    ),
+  ).toBeVisible();
+  await expect(askPanel.getByText("Sources")).toBeVisible();
+  await expect(
+    askPanel.getByRole("link", {
+      name: /Property · Queen Street Retail Centre/,
+    }),
+  ).toBeVisible();
+});
+
 test("portfolio QA guides cleanup fixes and source trails", async ({
   page,
 }) => {
