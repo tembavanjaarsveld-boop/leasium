@@ -46,6 +46,7 @@ import {
 } from "@/components/evidence-drawer";
 import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
+import { SavedViewsMenu } from "@/components/saved-views-menu";
 import {
   Button,
   Field,
@@ -4472,6 +4473,34 @@ function Workspace() {
                   </div>
                 </section>
               ) : null}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <SavedViewsMenu
+                  surface="properties"
+                  currentFilters={{
+                    occupancy:
+                      occupancyFilter === "all" ? null : occupancyFilter,
+                    owner_tag: ownerTagFilter || null,
+                  }}
+                  onApplyView={(filters) => {
+                    const nextOccupancy = filters.occupancy;
+                    if (
+                      nextOccupancy === "leased" ||
+                      nextOccupancy === "leased_internal" ||
+                      nextOccupancy === "partial" ||
+                      nextOccupancy === "vacant" ||
+                      nextOccupancy === "unknown"
+                    ) {
+                      setOccupancyFilter(
+                        nextOccupancy as PropertyOccupancyStatus,
+                      );
+                    } else {
+                      setOccupancyFilter("all");
+                    }
+                    setOwnerTagFilter(filters.owner_tag ?? "");
+                  }}
+                />
+              </div>
 
               {occupancyCounts.all > 0 ? (
                 <div className="flex flex-wrap items-center gap-1 text-xs">

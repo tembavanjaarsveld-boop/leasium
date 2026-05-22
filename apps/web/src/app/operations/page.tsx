@@ -27,6 +27,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/app-shell";
 import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
+import { SavedViewsMenu } from "@/components/saved-views-menu";
 import {
   Button,
   EmptyState,
@@ -2432,6 +2433,80 @@ function OperationsWorkspace() {
                   </button>
                 );
               })}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <SavedViewsMenu
+                surface="operations"
+                currentFilters={{
+                  tab: activeTab === "queue" ? null : activeTab,
+                  assignee: assigneeFilter === "all" ? null : assigneeFilter,
+                  maintenance_status:
+                    maintenanceStatus === "all" ? null : maintenanceStatus,
+                  maintenance_priority:
+                    maintenancePriority === "all" ? null : maintenancePriority,
+                  arrears_status:
+                    arrearsStatus === "all" ? null : arrearsStatus,
+                }}
+                onApplyView={(filters) => {
+                  const nextTab = filters.tab;
+                  if (
+                    nextTab &&
+                    tabs.some((entry) => entry.id === nextTab)
+                  ) {
+                    setActiveTab(nextTab as OperationsTab);
+                  } else {
+                    setActiveTab("queue");
+                  }
+                  const nextAssignee = filters.assignee;
+                  if (
+                    nextAssignee === "unassigned" ||
+                    nextAssignee === "me" ||
+                    nextAssignee === "follow_up" ||
+                    (typeof nextAssignee === "string" &&
+                      nextAssignee.startsWith("member:"))
+                  ) {
+                    setAssigneeFilter(nextAssignee as AssigneeFilter);
+                  } else {
+                    setAssigneeFilter("all");
+                  }
+                  const nextMStatus = filters.maintenance_status;
+                  if (
+                    nextMStatus &&
+                    maintenanceStatuses.includes(
+                      nextMStatus as MaintenanceWorkOrderStatus,
+                    )
+                  ) {
+                    setMaintenanceStatus(
+                      nextMStatus as MaintenanceWorkOrderStatus,
+                    );
+                  } else {
+                    setMaintenanceStatus("all");
+                  }
+                  const nextMPriority = filters.maintenance_priority;
+                  if (
+                    nextMPriority &&
+                    maintenancePriorities.includes(
+                      nextMPriority as MaintenancePriority,
+                    )
+                  ) {
+                    setMaintenancePriority(
+                      nextMPriority as MaintenancePriority,
+                    );
+                  } else {
+                    setMaintenancePriority("all");
+                  }
+                  const nextArrears = filters.arrears_status;
+                  if (
+                    nextArrears &&
+                    arrearsStatuses.includes(nextArrears as ArrearsCaseStatus)
+                  ) {
+                    setArrearsStatus(nextArrears as ArrearsCaseStatus);
+                  } else {
+                    setArrearsStatus("all");
+                  }
+                }}
+              />
             </div>
 
             {activeTab === "queue" ? (

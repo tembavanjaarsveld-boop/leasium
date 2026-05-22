@@ -19,6 +19,7 @@ import { AppHeader } from "@/components/app-shell";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
+import { SavedViewsMenu } from "@/components/saved-views-menu";
 import {
   Button,
   EmptyState,
@@ -590,6 +591,20 @@ function TenantWorkspace() {
               <Search size={15} className="pointer-events-none absolute left-3 top-2.5 text-muted-foreground" />
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search tenants" className="pl-9" />
             </div>
+            <SavedViewsMenu
+              surface="tenants"
+              currentFilters={{
+                tenant_filter: filter === "all" ? null : filter,
+                q: search.trim() || null,
+              }}
+              onApplyView={(filters) => {
+                const nextFilter = filters.tenant_filter;
+                setFilter(
+                  isTenantFilterKey(nextFilter) ? nextFilter : "all",
+                );
+                setSearch(filters.q ?? "");
+              }}
+            />
             <div className="flex flex-wrap gap-1">
               {filters.map((item) => (
                 <button

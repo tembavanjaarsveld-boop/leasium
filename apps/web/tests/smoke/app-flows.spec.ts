@@ -138,6 +138,48 @@ test("dashboard Ask Leasium panel answers with cited record", async ({
   ).toBeVisible();
 });
 
+test("tenants saved views capture and re-apply filter combos", async ({
+  page,
+}) => {
+  await page.goto("/tenants");
+
+  // Pick a non-default filter so the saved view has something to capture.
+  await page.getByRole("button", { name: "Submitted" }).click();
+
+  // Open the saved-views menu, name it, save.
+  await page
+    .getByRole("button", { name: /^(Saved views|Custom view|No saved views)/ })
+    .click();
+  const nameInput = page.getByLabel("Save current view as");
+  await expect(nameInput).toBeEnabled();
+  await nameInput.fill("Submitted only");
+  await page.getByRole("button", { name: /Save/ }).first().click();
+
+  // The chip should now reflect the saved view name.
+  await expect(
+    page
+      .getByRole("button", { name: /^Submitted only/ })
+      .first(),
+  ).toBeVisible();
+
+  // Switch to "All" — the chip should fall back to "Saved views" or
+  // "No saved views" (no longer "Submitted only").
+  await page.getByRole("button", { name: "All", exact: true }).first().click();
+
+  // Reopen the menu and re-apply the saved view; filter pill should
+  // highlight Submitted again.
+  await page
+    .getByRole("button", { name: /^(Saved views|Custom view)/ })
+    .click();
+  await page
+    .getByRole("button", { name: /^Submitted only$/ })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Submitted", exact: true }),
+  ).toBeVisible();
+});
+
 test("tenants table inline-edits contact email", async ({ page }) => {
   await page.goto("/tenants");
 
