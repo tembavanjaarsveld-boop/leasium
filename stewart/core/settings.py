@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-5.4-mini"
     serpapi_api_key: str = ""
+    # Payment reconciliation is considered "stale" after this many days without a
+    # preview or apply. Surfaces in /xero/status and accounting readiness snapshots.
+    xero_reconciliation_stale_after_days: int = 7
     lease_intake_max_bytes: int = 15_000_000
     document_max_bytes: int = 15_000_000
     xero_client_id: str = ""

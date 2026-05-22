@@ -117,7 +117,6 @@ SUGGESTED_CHARGE_MAPPINGS: dict[RentChargeType, tuple[str, str | None]] = {
     RentChargeType.other: ("299", "OUTPUT"),
 }
 OAUTH_STATE_TTL_MINUTES = 15
-XERO_RECONCILIATION_STALE_AFTER_DAYS = 7
 XERO_EXCEPTION_KINDS = (
     "connection",
     "contact",
@@ -312,7 +311,9 @@ def _accounting_freshness(
     approved_unsynced_invoice_count: int,
     xero_linked_open_invoice_count: int,
     generated_at: datetime,
+    settings: Settings,
 ) -> XeroAccountingFreshnessRead:
+    stale_after_days = max(1, int(settings.xero_reconciliation_stale_after_days or 1))
     connection_metadata = (
         dict(provider_connection.connection_metadata or {})
         if provider_connection is not None
@@ -373,7 +374,7 @@ def _accounting_freshness(
     elif (
         xero_linked_open_invoice_count > 0
         and last_payment_at is not None
-        and generated_at - last_payment_at > timedelta(days=XERO_RECONCILIATION_STALE_AFTER_DAYS)
+        and generated_at - last_payment_at > timedelta(days=stale_after_days)
     ):
         freshness_status = "stale"
         stale_reconciliation = True
@@ -409,7 +410,7 @@ def _accounting_freshness(
         source="local_metadata",
         status=freshness_status,
         summary=summary,
-        stale_after_days=XERO_RECONCILIATION_STALE_AFTER_DAYS,
+        stale_after_days=stale_after_days,
         stale_reconciliation=stale_reconciliation,
         readiness_issue_count=readiness_issue_count,
         readiness_blocker_count=readiness_blocker_count,
@@ -3845,6 +3846,7 @@ def xero_status(
         approved_unsynced_invoice_count=approved_unsynced,
         xero_linked_open_invoice_count=xero_linked_open_invoice_count,
         generated_at=generated_at,
+        settings=settings,
     )
     return XeroStatusRead(
         provider=_provider(settings),

@@ -1,5 +1,6 @@
 """Xero readiness API integration tests."""
 
+from datetime import timedelta
 from uuid import UUID
 
 from apps.api.main import app
@@ -8,6 +9,7 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from stewart.core.db import utcnow
 from stewart.core.models import (
     AuditAction,
     BillingDraft,
@@ -613,6 +615,59 @@ def test_xero_status_flags_stale_payment_reconciliation_from_local_metadata(
     )
     assert freshness["approved_unsynced_invoice_count"] == 0
     assert "local Leasium metadata only" in freshness["guardrails"][0]
+    # Default stale window is 7 days. With a recent reconciliation it should
+    # be reflected, and the field is operator-configurable through settings.
+    assert freshness["stale_after_days"] == 7
+
+
+def test_xero_reconciliation_stale_window_is_configurable_via_settings(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """A custom xero_reconciliation_stale_after_days setting flows into status.
+
+    The same metadata that is "stale" with the default 7-day window should not
+    be flagged stale when the operator widens the window to 365 days. The API
+    surfaces the configured value as ``stale_after_days``.
+    """
+    settings = _provider_settings()
+    settings.xero_reconciliation_stale_after_days = 365
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+    _create_approved_invoice_fixture(
+        client,
+        session,
+        entity_id,
+        invoice_number="INV-XERO-FRESH",
+        xero_invoice_id="xero-invoice-fresh",
+    )
+    connection = session.scalar(
+        select(XeroConnection).where(XeroConnection.entity_id == UUID(entity_id))
+    )
+    assert connection is not None
+    # 180 days ago: stale under the 7-day default, fresh under a 365-day window.
+    cutoff = utcnow() - timedelta(days=180)
+    connection.connection_metadata = {
+        **dict(connection.connection_metadata or {}),
+        "last_payment_reconciliation_preview": {
+            "reconciled_at": cutoff.isoformat(),
+            "source": "provider",
+            "mode": "preview_only",
+        },
+    }
+    session.commit()
+
+    response = client.get(f"/api/v1/xero/status?entity_id={entity_id}")
+    assert response.status_code == 200
+    freshness = response.json()["accounting_freshness"]
+    assert freshness["stale_after_days"] == 365
+    # Under the wider window the same reconciliation is no longer stale.
+    assert freshness["stale_reconciliation"] is False
+    assert freshness["status"] in {"ready", "attention"}
 
 
 def test_xero_contact_sync_preview_suggests_matches_without_applying(
