@@ -1,9 +1,14 @@
 "use client";
 
 import { Check, Loader2, Pencil, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
+
+export type InlineEditOption = {
+  value: string;
+  label: string;
+};
 
 type InlineEditCellProps = {
   value: string | null | undefined;
@@ -17,6 +22,12 @@ type InlineEditCellProps = {
    * from the input value (e.g. truncate, prepend a tel: prefix).
    */
   formatDisplay?: (value: string | null | undefined) => string;
+  /**
+   * If provided, the cell renders as a select dropdown instead of a
+   * text input. The empty-string option (if present in `options`) acts
+   * as the "clear to null" choice.
+   */
+  options?: InlineEditOption[];
   /**
    * Called when the operator commits a change. Receive the new value
    * (or null when the cell was cleared) and return a Promise. Reject
@@ -51,13 +62,16 @@ export function InlineEditCell({
   disabled = false,
   className,
   formatDisplay,
+  options,
   onSave,
 }: InlineEditCellProps) {
+  const isSelect = Array.isArray(options) && options.length > 0;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const selectRef = useRef<HTMLSelectElement | null>(null);
 
   // Keep the draft in sync with prop changes while not editing — so an
   // external refresh (React Query cache update) reflects immediately.
@@ -68,13 +82,23 @@ export function InlineEditCell({
   }, [value, editing]);
 
   useEffect(() => {
-    if (editing && inputRef.current) {
+    if (!editing) return;
+    if (isSelect && selectRef.current) {
+      selectRef.current.focus();
+    } else if (inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
     }
-  }, [editing]);
+  }, [editing, isSelect]);
 
-  const display = formatDisplay ? formatDisplay(value) : (value ?? "");
+  const display = useMemo(() => {
+    if (formatDisplay) return formatDisplay(value);
+    if (isSelect && value != null) {
+      const match = options?.find((opt) => opt.value === value);
+      return match?.label ?? value ?? "";
+    }
+    return value ?? "";
+  }, [formatDisplay, value, options, isSelect]);
   const displayText = display || placeholder;
   const isEmpty = !display;
 
@@ -142,33 +166,68 @@ export function InlineEditCell({
   return (
     <div className={cn("grid gap-1", className)}>
       <div className="flex items-center gap-1">
-        <input
-          ref={inputRef}
-          type={type}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              void commit();
-            } else if (event.key === "Escape") {
-              event.preventDefault();
-              cancel();
-            }
-          }}
-          onBlur={() => {
-            // Defer so a click on Save/Cancel buttons registers before
-            // the blur fires and closes the cell.
-            window.setTimeout(() => {
-              if (editing && !pending) {
-                void commit();
+        {isSelect ? (
+          <select
+            ref={selectRef}
+            value={draft}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              // Commit immediately on select change (Enter-to-confirm
+              // is awkward for a dropdown).
+              window.setTimeout(() => void commit(), 0);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                cancel();
               }
-            }, 100);
-          }}
-          disabled={pending}
-          aria-label={ariaLabel}
-          className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus:border-primary"
-        />
+            }}
+            onBlur={() => {
+              window.setTimeout(() => {
+                if (editing && !pending) {
+                  cancel();
+                }
+              }, 100);
+            }}
+            disabled={pending}
+            aria-label={ariaLabel}
+            className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus:border-primary"
+          >
+            {options!.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            ref={inputRef}
+            type={type}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void commit();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                cancel();
+              }
+            }}
+            onBlur={() => {
+              // Defer so a click on Save/Cancel buttons registers before
+              // the blur fires and closes the cell.
+              window.setTimeout(() => {
+                if (editing && !pending) {
+                  void commit();
+                }
+              }, 100);
+            }}
+            disabled={pending}
+            aria-label={ariaLabel}
+            className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus:border-primary"
+          />
+        )}
         {pending ? (
           <Loader2 size={13} className="animate-spin text-primary" />
         ) : (

@@ -44,6 +44,7 @@ import {
   type EvidenceHistoryRow,
   type EvidenceSourceLocation,
 } from "@/components/evidence-drawer";
+import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -1864,6 +1865,37 @@ function Workspace() {
       form.reset(defaultPropertyFormValues);
     },
   });
+
+  // Inline-edit handler for property cells. Optimistic patch of the
+  // /properties query cache so the table reflects the change instantly;
+  // rollback + rethrow on failure so <InlineEditCell> can keep the cell
+  // in edit mode with an inline error.
+  async function savePropertyField(
+    propertyId: string,
+    field: "name" | "street_address" | "owner_legal_name" | "trust_name",
+    next: string | null,
+  ): Promise<void> {
+    const queryKey = ["properties", selectedEntityId];
+    const previous =
+      queryClient.getQueryData<PropertyRecord[]>(queryKey) ?? null;
+    if (previous) {
+      queryClient.setQueryData<PropertyRecord[]>(
+        queryKey,
+        previous.map((row) =>
+          row.id === propertyId ? { ...row, [field]: next } : row,
+        ),
+      );
+    }
+    try {
+      await updateProperty(propertyId, { [field]: next });
+      queryClient.invalidateQueries({ queryKey });
+    } catch (err) {
+      if (previous) {
+        queryClient.setQueryData(queryKey, previous);
+      }
+      throw err;
+    }
+  }
 
   const previewPropertyEnrichmentMutation = useMutation({
     mutationFn: () => {
@@ -4512,9 +4544,29 @@ function Workspace() {
                               placeholderClassName="grid h-14 w-24 place-items-center rounded-md border border-dashed border-border bg-muted/40 text-muted-foreground"
                             />
                           </td>
-                          <td className="px-3 py-3">
+                          <td
+                            className="px-3 py-3"
+                            onClick={(event) => {
+                              // Allow inline-edit clicks inside the cell
+                              // without triggering row selection.
+                              const target = event.target as HTMLElement;
+                              if (target.closest("[data-inline-edit]")) {
+                                event.stopPropagation();
+                              }
+                            }}
+                          >
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium">{property.name}</span>
+                              <span data-inline-edit>
+                                <InlineEditCell
+                                  value={property.name}
+                                  ariaLabel={`Property name for ${property.name}`}
+                                  placeholder="Add property name"
+                                  className="font-medium"
+                                  onSave={(next) =>
+                                    savePropertyField(property.id, "name", next)
+                                  }
+                                />
+                              </span>
                               {(() => {
                                 const occupancy = occupancyByPropertyId.get(
                                   property.id,
@@ -4556,9 +4608,27 @@ function Workspace() {
                                 );
                               })()}
                             </div>
-                            <div className="text-muted-foreground">
-                              {property.street_address}, {property.suburb}{" "}
-                              {property.state}
+                            <div
+                              data-inline-edit
+                              className="text-muted-foreground"
+                            >
+                              <InlineEditCell
+                                value={property.street_address}
+                                ariaLabel={`Street address for ${property.name}`}
+                                placeholder="Add street address"
+                                formatDisplay={(value) =>
+                                  value
+                                    ? `${value}, ${property.suburb} ${property.state}`
+                                    : ""
+                                }
+                                onSave={(next) =>
+                                  savePropertyField(
+                                    property.id,
+                                    "street_address",
+                                    next,
+                                  )
+                                }
+                              />
                             </div>
                             <div className="mt-2 flex flex-wrap gap-1">
                               {propertyOwnershipBadges(

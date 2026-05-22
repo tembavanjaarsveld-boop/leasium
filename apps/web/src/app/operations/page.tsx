@@ -25,6 +25,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -1583,6 +1584,58 @@ function OperationsWorkspace() {
     onSuccess: invalidateOperations,
   });
 
+  // Inline-edit handler for the work-order status / priority cells.
+  // Patches the React Query maintenance cache optimistically so the
+  // row reflects the new state immediately; rolls back + rethrows on
+  // failure so InlineEditCell surfaces the error inline.
+  async function saveWorkOrderField(
+    workOrderId: string,
+    field: "status" | "priority",
+    next: string | null,
+  ): Promise<void> {
+    if (next == null) return;
+    const queryKey = ["operations-maintenance", selectedEntityId];
+    const previous =
+      queryClient.getQueryData<MaintenanceWorkOrderRecord[]>(queryKey) ?? null;
+    if (previous) {
+      queryClient.setQueryData<MaintenanceWorkOrderRecord[]>(
+        queryKey,
+        previous.map((row) =>
+          row.id === workOrderId ? { ...row, [field]: next } : row,
+        ),
+      );
+    }
+    try {
+      await updateMaintenanceWorkOrder(workOrderId, {
+        [field]: next,
+      } as Parameters<typeof updateMaintenanceWorkOrder>[1]);
+      invalidateOperations();
+    } catch (err) {
+      if (previous) {
+        queryClient.setQueryData(queryKey, previous);
+      }
+      throw err;
+    }
+  }
+
+  const MAINTENANCE_STATUS_OPTIONS = [
+    { value: "requested", label: "Requested" },
+    { value: "triaged", label: "Triaged" },
+    { value: "assigned", label: "Assigned" },
+    { value: "awaiting_approval", label: "Awaiting approval" },
+    { value: "approved", label: "Approved" },
+    { value: "in_progress", label: "In progress" },
+    { value: "completed", label: "Completed" },
+    { value: "cancelled", label: "Cancelled" },
+  ];
+
+  const MAINTENANCE_PRIORITY_OPTIONS = [
+    { value: "low", label: "Low" },
+    { value: "normal", label: "Normal" },
+    { value: "high", label: "High" },
+    { value: "urgent", label: "Urgent" },
+  ];
+
   const sendMaintenanceAssignmentNotificationMutation = useMutation({
     mutationFn: (workOrder: MaintenanceWorkOrderRecord) =>
       sendMaintenanceWorkOrderAssignmentNotification(workOrder.id),
@@ -3019,20 +3072,42 @@ function OperationsWorkspace() {
                             >
                               {workOrder.title}
                             </Link>
-                            <StatusBadge tone={maintenanceTone(workOrder)}>
-                              {label(workOrder.status)}
-                            </StatusBadge>
-                            <StatusBadge
-                              tone={
-                                workOrder.priority === "urgent"
-                                  ? "danger"
-                                  : workOrder.priority === "high"
-                                    ? "warning"
-                                    : "neutral"
-                              }
-                            >
-                              {label(workOrder.priority)}
-                            </StatusBadge>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5">
+                              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                                Status
+                              </span>
+                              <InlineEditCell
+                                value={workOrder.status}
+                                ariaLabel={`Status for ${workOrder.title}`}
+                                placeholder="Set status"
+                                options={MAINTENANCE_STATUS_OPTIONS}
+                                onSave={(next) =>
+                                  saveWorkOrderField(
+                                    workOrder.id,
+                                    "status",
+                                    next,
+                                  )
+                                }
+                              />
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5">
+                              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                                Priority
+                              </span>
+                              <InlineEditCell
+                                value={workOrder.priority}
+                                ariaLabel={`Priority for ${workOrder.title}`}
+                                placeholder="Set priority"
+                                options={MAINTENANCE_PRIORITY_OPTIONS}
+                                onSave={(next) =>
+                                  saveWorkOrderField(
+                                    workOrder.id,
+                                    "priority",
+                                    next,
+                                  )
+                                }
+                              />
+                            </span>
                             {workOrder.approval_status === "pending" ? (
                               <StatusBadge tone="warning">
                                 Approval pending
