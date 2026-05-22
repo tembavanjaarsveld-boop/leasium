@@ -178,13 +178,41 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Next Build Order
 
-- [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, `20260521_0020_register_import_plans`, and `20260521_0021_operator_notification_preferences` migrations in hosted Neon/Render if auto-migrations do not run.
+The 2026-05-22 UX review (`docs/ux-review-2026-05-22.md`) reframes the
+short-term backlog into three tiers benchmarked against Linear, Stripe,
+Notion, Vercel, Re-Leased Credia, and AppFolio. **Tier 1 is active**;
+Tier 2 follows after the highest-leverage Tier 1 items land.
+
+### Tier 1 — UX review (active, next 2-3 weeks)
+
+- [ ] Tier 1 (d): URL-persistent filters across the Properties, Tenants, and Operations tables so operators can bookmark/share filtered views (`?occupancy=vacant&owner_tag=...`).
+- [ ] Tier 1 (c): Dashboard metric trend deltas + sparklines on `DashboardMetricCard` (Stripe-style "↑ 12% vs last week" + 7-day mini chart) so the dashboard reads as exceptions, not just counts.
+- [ ] Tier 1 (b): Generic `<DetailDrawer>` component, then migrate Properties and Tenants row-click off full-page navigation onto the drawer (keep `/properties/[id]` / `/tenants/[id]` as deep-link routes).
+- [ ] Tier 1 (a): Convert the wrapping top-bar nav into a 240-280px left sidebar matching the design source-of-truth's command-centre layout. Frees the top bar for workspace switcher, environment chip, Cmd+K, account menu, future "Ask" widget.
+
+### Tier 2 — strategic next bets (next 1-2 months)
+
+- [ ] Tier 2 (e) **highest-leverage single move**: "Ask Leasium" AI Q&A surface. Backend retrieval over the operator's entity (leases, obligations, maintenance, invoices) + LLM call with strict citation. Read-only in v1, no provider mutations. Directly answers the brand promise and closes the biggest gap vs. Re-Leased Credia Advise.
+- [ ] Tier 2 (f): Cross-property activity feed on the dashboard (Vercel-style "what changed since you looked").
+- [ ] Tier 2 (g): Dark mode v1 — add dark tokens to the design source of truth, apply `.dark` class via system preference + an account-menu toggle, audit the 5 most-used surfaces for contrast.
+- [ ] Tier 2 (h): Keyboard shortcuts beyond Cmd+K (Linear-style `G D` / `G P` / `G T` / `C` / `?` cheatsheet).
+
+### Tier 3 — bigger bets, post internal-period
+
+- [ ] Inline-editable tables on Properties, Tenants, Operations.
+- [ ] Saved views per operator (named filter combinations).
+- [ ] Notion-style multi-view (table / board / calendar) for Properties.
+- [ ] AI inbox processor (Re-Leased Credia Action equivalent — operator approval still required).
+- [ ] Mobile-first responsive audit pass.
+
+### Pre-existing backlog (still valid, lower priority)
+
+- [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, `20260521_0020_register_import_plans`, `20260521_0021_operator_notification_preferences`, and `20260522_0022_branded_communication_templates` migrations in hosted Neon/Render if auto-migrations do not run.
 - [ ] Remba review the new Smart Intake spreadsheet import panel, simplified navigation/command center, Portfolio QA command-search placement, reusable evidence/source-trail pattern across Properties/Smart Intake/Tenants, tenant portal, tenant fresh-link recovery, invoice email action, Work assignment controls/workload/reminder/action/provider notice cues, and Operations workspace before treating them as UX complete.
-- [ ] Continue Work assignment from rendered message previews into digest/contractor SMS coverage, provider-console setup checks, and deeper cross-communication template management.
 - [ ] Continue Operations polish with deeper activity/audit presentation, safer edit affordances on list rows, and owner/tenant-facing completion review paths.
 - [ ] Continue Xero from guided sync exceptions into accounting snapshot guardrails, stale reconciliation indicators, and richer accounting-readiness snapshots.
 - [ ] Continue Portfolio QA from guided cleanup v1 into bulk fix review, AI-assisted enrichment candidates, and clearer completion/reporting states.
-- [ ] Continue branded communications from registry/preview v1 into editable branded template records, provider receipt setup validation, and tenant-portal outbound communication history.
+- [ ] Branded communications editable templates UI + send-time wiring (deprioritised while SKJ uses Leasium internally per `leasium-internal-first-6-months`).
 
 ## Smart Intake North Star
 
