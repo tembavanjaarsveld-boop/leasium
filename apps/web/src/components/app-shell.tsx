@@ -1,7 +1,24 @@
 "use client";
 
 import { UserButton, useUser } from "@clerk/nextjs";
-import { Bell, Command, Keyboard, Search, X } from "lucide-react";
+import {
+  Bell,
+  Building2,
+  Command,
+  FileSpreadsheet,
+  HelpCircle,
+  Home,
+  Keyboard,
+  Menu,
+  Search,
+  Settings as SettingsIcon,
+  Sparkles,
+  Users,
+  Wallet,
+  Wrench,
+  X,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +30,8 @@ type NavItem = {
   href: string;
   label: string;
   matchPaths?: string[];
+  icon: LucideIcon;
+  shortcut?: string;
 };
 
 type CommandAction = {
@@ -22,17 +41,53 @@ type CommandAction = {
 };
 
 const navItems: NavItem[] = [
-  { href: "/", label: "Dashboard" },
-  { href: "/intake", label: "Smart Intake" },
+  { href: "/", label: "Dashboard", icon: Home, shortcut: "G D" },
+  {
+    href: "/intake",
+    label: "Smart Intake",
+    icon: FileSpreadsheet,
+    shortcut: "G I",
+  },
   {
     href: "/properties",
-    label: "Portfolio",
-    matchPaths: ["/properties", "/tenants", "/portfolio-qa"],
+    label: "Properties",
+    matchPaths: ["/properties"],
+    icon: Building2,
+    shortcut: "G P",
   },
-  { href: "/operations", label: "Work" },
-  { href: "/billing-readiness", label: "Billing" },
-  { href: "/insights", label: "Insights" },
-  { href: "/settings", label: "Settings" },
+  {
+    href: "/tenants",
+    label: "Tenants",
+    matchPaths: ["/tenants"],
+    icon: Users,
+    shortcut: "G T",
+  },
+  {
+    href: "/operations",
+    label: "Work",
+    matchPaths: ["/operations"],
+    icon: Wrench,
+    shortcut: "G O",
+  },
+  {
+    href: "/billing-readiness",
+    label: "Billing",
+    icon: Wallet,
+    shortcut: "G B",
+  },
+  { href: "/insights", label: "Insights", icon: Sparkles },
+  {
+    href: "/portfolio-qa",
+    label: "Portfolio QA",
+    icon: HelpCircle,
+    shortcut: "G Q",
+  },
+  {
+    href: "/settings",
+    label: "Settings",
+    icon: SettingsIcon,
+    shortcut: "G S",
+  },
 ];
 
 const frequentActions: CommandAction[] = [
@@ -168,6 +223,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const [commandOpen, setCommandOpen] = useState(false);
   const [cheatsheetOpen, setCheatsheetOpen] = useState(false);
   const [shortcutPending, setShortcutPending] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [query, setQuery] = useState("");
   const shortcutTimeoutRef = useRef<number | null>(null);
   const filteredActions = useMemo(() => {
@@ -184,6 +240,15 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       )
       .slice(0, 8);
   }, [query]);
+
+  // Toggle a body class so globals.css can apply the sidebar gutter
+  // only when AppHeader is on the page (auth/setup pages skip it).
+  useEffect(() => {
+    document.body.classList.add("app-shell-active");
+    return () => {
+      document.body.classList.remove("app-shell-active");
+    };
+  }, []);
 
   useEffect(() => {
     function clearShortcutWindow() {
@@ -261,87 +326,166 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
     };
   }, [router, shortcutPending]);
 
-  return (
-    <header className="border-b border-border bg-white/95 backdrop-blur">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-3 px-5 py-3 md:grid-cols-[minmax(280px,1fr)_minmax(220px,auto)] min-[1600px]:max-w-none min-[1600px]:grid-cols-[minmax(270px,max-content)_minmax(0,1fr)_auto]">
-        <div className="min-w-0 justify-self-start min-[1600px]:min-w-[270px]">
-          <Link href="/" className="flex min-w-0 items-center gap-3">
-            <LeasiumMark className="h-11 w-11" />
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold leading-5 tracking-normal">
-                Leasium
-              </h1>
-              <p className="truncate whitespace-nowrap text-sm leading-5 text-muted-foreground">
-                Lease operations, automated
-              </p>
-            </div>
-          </Link>
+  function isNavActive(item: NavItem): boolean {
+    if (item.href === "/") {
+      return pathname === "/";
+    }
+    return (item.matchPaths ?? [item.href]).some((path) =>
+      pathname.startsWith(path),
+    );
+  }
+
+  const sidebarContent = (
+    <>
+      <Link
+        href="/"
+        onClick={() => setMobileNavOpen(false)}
+        className="flex min-w-0 items-center gap-3 px-4 py-5"
+      >
+        <LeasiumMark className="h-10 w-10" />
+        <div className="min-w-0">
+          <h1 className="truncate text-base font-semibold leading-5 tracking-normal text-white">
+            Leasium
+          </h1>
+          <p className="truncate whitespace-nowrap text-xs leading-4 text-leasium-slate-300">
+            Lease operations
+          </p>
         </div>
-        <nav
-          aria-label="Primary"
-          className="order-3 flex max-w-full min-w-0 flex-wrap items-center gap-1 rounded-2xl border border-border bg-white p-1 shadow-leasiumXs md:col-span-2 min-[1600px]:order-none min-[1600px]:col-span-1"
+      </Link>
+      <nav
+        aria-label="Primary"
+        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2"
+      >
+        {navItems.map((item) => {
+          const active = isNavActive(item);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => setMobileNavOpen(false)}
+              className={cn(
+                "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-leasium-slate-300 transition hover:bg-white/5 hover:text-white",
+                active &&
+                  "border-l-2 border-primary bg-leasium-blue-soft/10 pl-[10px] text-white",
+              )}
+            >
+              <Icon size={16} className="shrink-0" />
+              <span className="flex-1 truncate">{item.label}</span>
+              {item.shortcut ? (
+                <kbd className="hidden rounded border border-white/10 px-1 py-0.5 text-[10px] font-medium text-leasium-slate-400 group-hover:text-leasium-slate-300 xl:inline-flex">
+                  {item.shortcut}
+                </kbd>
+              ) : null}
+            </Link>
+          );
+        })}
+      </nav>
+      <div className="border-t border-white/5 px-3 py-3 text-xs text-leasium-slate-400">
+        <button
+          type="button"
+          onClick={() => {
+            setCheatsheetOpen(true);
+            setMobileNavOpen(false);
+          }}
+          className="flex w-full items-center justify-between rounded-md px-2 py-1.5 transition hover:bg-white/5 hover:text-white"
         >
-          {navItems.map((item) => {
-            const active =
-              item.href === "/"
-                ? pathname === "/"
-                : (item.matchPaths ?? [item.href]).some((path) =>
-                    pathname.startsWith(path),
-                  );
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "inline-flex min-h-9 shrink-0 items-center justify-center rounded-xl px-2.5 text-[13px] font-semibold text-muted-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
-                  active &&
-                    "bg-primary text-primary-foreground shadow-leasiumXs hover:bg-primary hover:text-primary-foreground",
-                )}
+          <span>Keyboard shortcuts</span>
+          <kbd className="rounded border border-white/10 px-1 py-0.5 text-[10px] font-medium">
+            ?
+          </kbd>
+        </button>
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop sidebar — fixed on lg+. Layout.tsx applies lg:pl-60
+          to the body so page content sits to the right of this. */}
+      <aside
+        aria-label="Primary navigation"
+        className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:w-60 lg:flex-col lg:bg-leasium-navy-900 lg:text-white lg:shadow-leasiumSm"
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile drawer */}
+      {mobileNavOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-leasium-navy-900/60"
+            onClick={() => setMobileNavOpen(false)}
+            aria-hidden
+          />
+          <aside
+            aria-label="Primary navigation"
+            className="absolute inset-y-0 left-0 flex w-60 flex-col bg-leasium-navy-900 text-white shadow-leasiumLg"
+          >
+            <div className="flex items-center justify-end px-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(false)}
+                className="grid h-9 w-9 place-items-center rounded-lg text-leasium-slate-300 transition hover:bg-white/5 hover:text-white"
+                aria-label="Close navigation"
               >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="flex w-full min-w-0 items-center justify-start gap-2 md:justify-end md:justify-self-end">
-          <button
-            type="button"
-            onClick={() => setCommandOpen(true)}
-            aria-label="Open search"
-            title="Search (Cmd K)"
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
-          >
-            <Search size={15} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setCheatsheetOpen(true)}
-            aria-label="Show keyboard shortcuts"
-            title="Keyboard shortcuts (?)"
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
-          >
-            <Keyboard size={15} />
-          </button>
-          <Link
-            href="/notifications"
-            aria-label="Open notifications"
-            title="Notifications"
-            className={cn(
-              "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted",
-              pathname.startsWith("/notifications") &&
-                "border-primary/30 bg-leasium-blue-soft text-primary",
-            )}
-          >
-            <Bell size={15} />
-          </Link>
-          {children ? (
-            <div className="min-w-40 flex-1 sm:max-w-xs">{children}</div>
-          ) : null}
-          {clerkConfigured ? (
-            <div className="flex h-11 shrink-0 items-center">
-              <OperatorUserControl />
+                <X size={16} />
+              </button>
             </div>
-          ) : null}
+            {sidebarContent}
+          </aside>
+        </div>
+      ) : null}
+
+      <header className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-2 min-[1600px]:max-w-none">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            aria-label="Open navigation"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted lg:hidden"
+          >
+            <Menu size={15} />
+          </button>
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setCommandOpen(true)}
+              aria-label="Open search"
+              title="Search (Cmd K)"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+            >
+              <Search size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setCheatsheetOpen(true)}
+              aria-label="Show keyboard shortcuts"
+              title="Keyboard shortcuts (?)"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+            >
+              <Keyboard size={15} />
+            </button>
+            <Link
+              href="/notifications"
+              aria-label="Open notifications"
+              title="Notifications"
+              className={cn(
+                "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted",
+                pathname.startsWith("/notifications") &&
+                  "border-primary/30 bg-leasium-blue-soft text-primary",
+              )}
+            >
+              <Bell size={15} />
+            </Link>
+            {children ? (
+              <div className="min-w-40 flex-1 sm:max-w-xs">{children}</div>
+            ) : null}
+            {clerkConfigured ? (
+              <div className="flex h-10 shrink-0 items-center">
+                <OperatorUserControl />
+              </div>
+            ) : null}
         </div>
       </div>
       {shortcutPending ? (
@@ -462,5 +606,6 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         </div>
       ) : null}
     </header>
+    </>
   );
 }

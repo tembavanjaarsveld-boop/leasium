@@ -84,3 +84,14 @@ textarea {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Operator dashboard pages render <AppHeader> which renders the
+   fixed left sidebar (240px) on lg+. AppHeader toggles this class
+   on <body> while mounted so page content sits beside the sidebar
+   rather than under it. Auth/setup/tenant-portal pages do not
+   render AppHeader and stay full-width. */
+@media (min-width: 1024px) {
+  body.app-shell-active {
+    padding-left: 240px;
+  }
+}
