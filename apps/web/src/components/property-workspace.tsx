@@ -4753,11 +4753,31 @@ function Workspace() {
             <section className="mt-4 overflow-hidden rounded-md border border-border bg-white">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <ReceiptText size={17} className="text-primary" />
                     <h2 className="text-base font-semibold">
                       Ownership & billing identity
                     </h2>
+                    {(() => {
+                      const occupancy = occupancyByPropertyId.get(
+                        selectedProperty.id,
+                      );
+                      if (!occupancy) {
+                        return null;
+                      }
+                      return (
+                        <span
+                          className={occupancyBadgeClassName(occupancy.status)}
+                          title={
+                            occupancy.status === "unknown"
+                              ? "No tenancy units recorded for this property yet."
+                              : `${occupancy.leasedUnits} of ${occupancy.totalUnits} units leased (active or holding over).`
+                          }
+                        >
+                          {occupancyBadgeLabel(occupancy)}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {billingIdentitySummary(
