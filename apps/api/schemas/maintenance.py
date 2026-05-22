@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, computed_field
 from stewart.core.models import (
     MaintenanceApprovalStatus,
     MaintenancePriority,
@@ -12,8 +12,192 @@ from stewart.core.models import (
 )
 
 from apps.api.schemas.common import ApiModel
+from apps.api.schemas.work_assignments import (
+    WorkAssignmentNoticeChannelReceiptRead,
+    WorkAssignmentProviderHistoryRead,
+    WorkAssignmentRenderedMessagePreviewRead,
+)
 
 MaintenanceCommentVisibility = Literal["internal", "contractor", "tenant"]
+
+
+_DELIVERED_EMAIL_STATUSES = {"queued", "sent", "delivered", "opened"}
+_DELIVERED_SMS_STATUSES = {"queued", "sent", "delivered"}
+
+
+def _text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    return 0
+
+
+def _record(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _provider_history_from_metadata(
+    raw_history: Any,
+) -> list[WorkAssignmentProviderHistoryRead]:
+    if not isinstance(raw_history, list):
+        return []
+    records: list[WorkAssignmentProviderHistoryRead] = []
+    for entry in raw_history:
+        if not isinstance(entry, dict):
+            continue
+        records.append(
+            WorkAssignmentProviderHistoryRead(
+                event=_text(entry.get("event")),
+                channel=_text(entry.get("channel")),
+                status=_text(entry.get("status")),
+                raw_event=_text(entry.get("raw_event")),
+                provider=_text(entry.get("provider")),
+                attempted_at=_text(entry.get("attempted_at") or entry.get("at")),
+                received_at=_text(entry.get("received_at")),
+                recipient_email=_text(entry.get("recipient_email")),
+                recipient_phone=_text(entry.get("recipient_phone")),
+                provider_message_id=_text(entry.get("provider_message_id")),
+                error=_text(entry.get("error")),
+                template_key=_text(entry.get("template_key")),
+                template_version=_text(entry.get("template_version")),
+                delivery_trigger=_text(entry.get("delivery_trigger")),
+                recovery_of_generated_at=_text(entry.get("recovery_of_generated_at")),
+                delivery_attempt_count=_int(entry.get("retry_count"))
+                or _int(entry.get("delivery_attempt_count")),
+            )
+        )
+    return records
+
+
+def _contractor_channel_receipt(
+    *,
+    channel: Literal["email", "sms"],
+    label: str,
+    delivery_dict: dict[str, Any],
+    contractor_recipient: str | None,
+    delivered_statuses: set[str],
+) -> WorkAssignmentNoticeChannelReceiptRead | None:
+    send = _record(delivery_dict.get("send"))
+    receipts = delivery_dict.get("receipts")
+    latest_receipt = (
+        _record(receipts[0]) if isinstance(receipts, list) and receipts else {}
+    )
+
+    status_value = _text(latest_receipt.get("status")) or _text(send.get("status"))
+    provider = _text(send.get("provider")) or _text(latest_receipt.get("provider"))
+    if status_value is None and provider is None and not send:
+        return None
+
+    recipient_email = (
+        _text(send.get("recipient_email")) if channel == "email" else None
+    )
+    recipient_phone = (
+        _text(send.get("recipient_phone")) if channel == "sms" else None
+    )
+    if channel == "email" and not recipient_email:
+        recipient_email = contractor_recipient if "@" in (contractor_recipient or "") else None
+    if channel == "sms" and not recipient_phone:
+        recipient_phone = contractor_recipient if (contractor_recipient or "").strip().startswith("+") else None
+
+    detail = _text(latest_receipt.get("error")) or _text(send.get("error"))
+    provider_message_id = (
+        _text(latest_receipt.get("provider_message_id"))
+        or _text(send.get("provider_message_id"))
+    )
+    template_key = _text(send.get("template_key")) or _text(
+        latest_receipt.get("template_key")
+    )
+    template_version = _text(send.get("template_version")) or _text(
+        latest_receipt.get("template_version")
+    )
+    attempt_count = _int(send.get("retry_count"))
+    delivered = status_value in delivered_statuses
+
+    body = _text(send.get("body"))
+    subject = _text(send.get("subject"))
+    rendered_preview: WorkAssignmentRenderedMessagePreviewRead | None = None
+    if body and provider:
+        rendered_preview = WorkAssignmentRenderedMessagePreviewRead(
+            channel=channel,
+            provider=provider,
+            recipient_email=recipient_email,
+            recipient_phone=recipient_phone,
+            subject=subject if channel == "email" else None,
+            body_text=body,
+            template_key=template_key,
+            template_version=template_version,
+            action_label=None,
+            action_url=None,
+        )
+
+    return WorkAssignmentNoticeChannelReceiptRead(
+        channel=channel,
+        label=label,
+        provider=provider,
+        status=status_value,
+        detail=detail,
+        recipient_email=recipient_email,
+        recipient_phone=recipient_phone,
+        provider_message_id=provider_message_id,
+        template_key=template_key,
+        template_version=template_version,
+        attempted_at=_text(send.get("attempted_at")),
+        sent_at=_text(send.get("sent_at")),
+        receipt_at=_text(latest_receipt.get("received_at")),
+        last_event=_text(latest_receipt.get("status"))
+        or _text(send.get("status")),
+        delivery_trigger=None,
+        delivery_attempt_count=attempt_count,
+        message_sent=delivered,
+        action_available=False,
+        provider_history=_provider_history_from_metadata(
+            delivery_dict.get("history")
+        ),
+        rendered_message_preview=rendered_preview,
+    )
+
+
+def _maintenance_channel_receipts_from_metadata(
+    metadata: dict[str, Any] | None,
+    *,
+    contractor_email: str | None,
+    contractor_phone: str | None,
+) -> list[WorkAssignmentNoticeChannelReceiptRead]:
+    """Project a normalized contractor email + SMS channel_receipts list.
+
+    Reads the same ``contractor_delivery`` shape the maintenance router
+    persists when sending contractor messages. Returns an empty list when no
+    contractor delivery has been recorded for the work order yet.
+    """
+    contractor_delivery = _record(_record(metadata).get("contractor_delivery"))
+    receipts: list[WorkAssignmentNoticeChannelReceiptRead] = []
+    email_receipt = _contractor_channel_receipt(
+        channel="email",
+        label="Contractor email",
+        delivery_dict=_record(contractor_delivery.get("email")),
+        contractor_recipient=contractor_email,
+        delivered_statuses=_DELIVERED_EMAIL_STATUSES,
+    )
+    if email_receipt is not None:
+        receipts.append(email_receipt)
+    sms_receipt = _contractor_channel_receipt(
+        channel="sms",
+        label="Contractor SMS",
+        delivery_dict=_record(contractor_delivery.get("sms")),
+        contractor_recipient=contractor_phone,
+        delivered_statuses=_DELIVERED_SMS_STATUSES,
+    )
+    if sms_receipt is not None:
+        receipts.append(sms_receipt)
+    return receipts
 
 
 class MaintenanceWorkOrderCreate(BaseModel):
@@ -141,3 +325,12 @@ class MaintenanceWorkOrderRead(ApiModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def channel_receipts(self) -> list[WorkAssignmentNoticeChannelReceiptRead]:
+        return _maintenance_channel_receipts_from_metadata(
+            self.metadata,
+            contractor_email=self.contractor_email,
+            contractor_phone=self.contractor_phone,
+        )

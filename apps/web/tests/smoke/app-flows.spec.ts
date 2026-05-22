@@ -419,6 +419,16 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("shopfront-ac-photo.jpg")).toBeVisible();
   await expect(page.getByText("Edit work-order details")).toBeVisible();
+  // Channel evidence disclosure renders the normalized contractor channel
+  // receipt (this work order's mock email_delivery is in a failed state).
+  await page.getByText("Channel evidence").click();
+  await expect(page.getByText("Contractor email").first()).toBeVisible();
+  await expect(
+    page.getByText("To service@coolair.example").first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Template maintenance_contractor_update v1").first(),
+  ).toBeVisible();
   await page
     .getByRole("textbox", { name: "Operational note" })
     .fill(

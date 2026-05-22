@@ -1015,6 +1015,7 @@ export type MaintenanceWorkOrderRecord = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  channel_receipts: WorkAssignmentNoticeChannelReceiptRecord[];
 };
 
 export type MaintenanceWorkOrderPayload = {

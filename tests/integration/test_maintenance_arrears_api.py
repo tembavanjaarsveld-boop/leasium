@@ -565,6 +565,42 @@ def test_maintenance_work_order_sends_contractor_sms_and_records_receipt(
         "contractor_sms_receipt"
     )
 
+    # MaintenanceWorkOrderRead exposes a normalised channel_receipts projection
+    # over the contractor_delivery metadata so the work-order detail UI can
+    # render the same per-channel evidence pattern that Work notices use.
+    work_order_response = client.get(
+        f"/api/v1/maintenance/work-orders/{work_order_id}",
+    )
+    assert work_order_response.status_code == 200
+    work_order_body = work_order_response.json()
+    channel_receipts = work_order_body["channel_receipts"]
+    by_channel = {receipt["channel"]: receipt for receipt in channel_receipts}
+    assert set(by_channel.keys()) == {"email", "sms"}
+
+    email_receipt = by_channel["email"]
+    assert email_receipt["label"] == "Contractor email"
+    assert email_receipt["provider"] == "sendgrid"
+    assert email_receipt["recipient_email"] == "dispatch@rapidlocks.example"
+    assert email_receipt["template_key"] == "maintenance_contractor_update"
+    assert email_receipt["template_version"] == "v1"
+    assert email_receipt["delivery_attempt_count"] >= 1
+    assert email_receipt["message_sent"] is True
+    assert email_receipt["action_available"] is False
+    assert any(
+        entry.get("event") in {"provider_delivery_attempted", "contractor_email_attempted"}
+        for entry in email_receipt["provider_history"]
+    )
+
+    sms_receipt = by_channel["sms"]
+    assert sms_receipt["label"] == "Contractor SMS"
+    assert sms_receipt["provider"] == "twilio"
+    assert sms_receipt["recipient_phone"] == "+61400111222"
+    assert sms_receipt["template_key"] == "maintenance_contractor_sms"
+    assert sms_receipt["template_version"] == "v1"
+    assert sms_receipt["delivery_attempt_count"] >= 1
+    assert sms_receipt["message_sent"] is True
+    assert sms_receipt["action_available"] is False
+
 
 def test_maintenance_work_order_sends_assignment_notification_and_records_provider_attempt(
     client: TestClient,

@@ -58,6 +58,7 @@ import {
   updateMaintenanceWorkOrder,
   updateInvoiceDraft,
   uploadDocument,
+  type WorkAssignmentNoticeChannelReceiptRecord,
 } from "@/lib/api";
 
 type Tone = "neutral" | "success" | "warning" | "danger" | "primary";
@@ -2148,6 +2149,11 @@ function MaintenanceDetailRoute() {
                       </p>
                     ) : null}
                   </form>
+                  {workOrder.channel_receipts.length ? (
+                    <ContractorChannelEvidence
+                      receipts={workOrder.channel_receipts}
+                    />
+                  ) : null}
                 </div>
               </SectionPanel>
 
@@ -3032,6 +3038,84 @@ function MaintenanceDetailRoute() {
         ) : null}
       </div>
     </main>
+  );
+}
+
+function ContractorChannelEvidence({
+  receipts,
+}: {
+  receipts: WorkAssignmentNoticeChannelReceiptRecord[];
+}) {
+  if (!receipts.length) {
+    return null;
+  }
+  return (
+    <details className="mt-1 rounded-md border border-border bg-white">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-leasium-blue-hover">
+        Channel evidence
+      </summary>
+      <div className="grid gap-2 border-t border-border px-3 py-3">
+        {receipts.map((receipt) => (
+          <div
+            key={receipt.channel}
+            className="grid gap-1 rounded-md bg-muted/40 px-3 py-2 text-xs"
+          >
+            <div className="flex flex-wrap items-center gap-2 text-foreground">
+              <StatusBadge
+                tone={receipt.message_sent ? "success" : "warning"}
+              >
+                {receipt.label}
+              </StatusBadge>
+              {receipt.provider ? (
+                <span className="font-medium">{label(receipt.provider)}</span>
+              ) : null}
+              {receipt.status ? <span>{label(receipt.status)}</span> : null}
+            </div>
+            <div className="grid gap-0.5 text-muted-foreground">
+              {receipt.recipient_email ? (
+                <span>To {receipt.recipient_email}</span>
+              ) : null}
+              {receipt.recipient_phone ? (
+                <span>To {receipt.recipient_phone}</span>
+              ) : null}
+              {receipt.template_key ? (
+                <span>
+                  Template {receipt.template_key} {receipt.template_version ?? ""}
+                </span>
+              ) : null}
+              {receipt.delivery_attempt_count ? (
+                <span>Attempt {receipt.delivery_attempt_count}</span>
+              ) : null}
+              {receipt.sent_at ? (
+                <span>Sent {formatDateTime(receipt.sent_at)}</span>
+              ) : null}
+              {receipt.receipt_at ? (
+                <span>Receipt {formatDateTime(receipt.receipt_at)}</span>
+              ) : null}
+              {receipt.provider_message_id ? (
+                <span>ID {receipt.provider_message_id}</span>
+              ) : null}
+              {receipt.detail ? <span>{receipt.detail}</span> : null}
+            </div>
+            {receipt.rendered_message_preview?.body_text ? (
+              <details className="mt-1">
+                <summary className="cursor-pointer text-primary hover:text-leasium-blue-hover">
+                  Message preview
+                </summary>
+                <div className="mt-1 whitespace-pre-line rounded-md border border-border bg-white p-2 text-foreground">
+                  {receipt.rendered_message_preview.subject ? (
+                    <div className="mb-1 font-semibold">
+                      {receipt.rendered_message_preview.subject}
+                    </div>
+                  ) : null}
+                  {receipt.rendered_message_preview.body_text}
+                </div>
+              </details>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
