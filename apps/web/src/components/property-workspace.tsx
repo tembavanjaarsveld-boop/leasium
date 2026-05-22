@@ -8,6 +8,8 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   Copy,
   ExternalLink,
@@ -1282,6 +1284,7 @@ function Workspace() {
   const [propertyImageWarnings, setPropertyImageWarnings] = useState<string[]>(
     [],
   );
+  const [imagesPanelOpen, setImagesPanelOpen] = useState(false);
   const [applyingPropertyImageUrl, setApplyingPropertyImageUrl] =
     useState<string>("");
   const [
@@ -4315,17 +4318,48 @@ function Workspace() {
               {selectedProperty ? (
                 <section className="overflow-hidden rounded-md border border-border bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <ImageIcon size={17} className="text-primary" />
+                    <button
+                      type="button"
+                      onClick={() => setImagesPanelOpen((open) => !open)}
+                      aria-expanded={imagesPanelOpen}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <div className="grid h-10 w-14 shrink-0 place-items-center overflow-hidden rounded-md border border-border bg-muted/40">
+                        <StoredPropertyImage
+                          alt={`${selectedProperty.name} primary image`}
+                          className="h-full w-full object-cover"
+                          image={selectedPropertyImage}
+                          placeholderClassName="grid h-full w-full place-items-center text-muted-foreground"
+                          iconSize={14}
+                        />
+                      </div>
                       <div className="min-w-0">
-                        <h3 className="text-sm font-semibold">
+                        <h3 className="flex items-center gap-1 text-sm font-semibold">
+                          <ImageIcon size={14} className="text-primary" />
                           Property images
+                          {imagesPanelOpen ? (
+                            <ChevronUp
+                              size={14}
+                              className="text-muted-foreground"
+                            />
+                          ) : (
+                            <ChevronDown
+                              size={14}
+                              className="text-muted-foreground"
+                            />
+                          )}
                         </h3>
                         <p className="truncate text-xs text-muted-foreground">
-                          {selectedProperty.name}
+                          {selectedPropertyImage
+                            ? `Reviewed image saved${
+                                propertyImageCandidates.length
+                                  ? ` · ${propertyImageCandidates.length} candidate${propertyImageCandidates.length === 1 ? "" : "s"} waiting`
+                                  : ""
+                              }`
+                            : "No reviewed image saved yet."}
                         </p>
                       </div>
-                    </div>
+                    </button>
                     <SecondaryButton
                       type="button"
                       className="h-9"
@@ -4333,7 +4367,10 @@ function Workspace() {
                         !selectedPropertyId ||
                         previewPropertyImagesMutation.isPending
                       }
-                      onClick={() => previewPropertyImagesMutation.mutate()}
+                      onClick={() => {
+                        setImagesPanelOpen(true);
+                        previewPropertyImagesMutation.mutate();
+                      }}
                     >
                       {previewPropertyImagesMutation.isPending ? (
                         <Loader2 size={14} className="animate-spin" />
@@ -4343,6 +4380,7 @@ function Workspace() {
                       Find property images
                     </SecondaryButton>
                   </div>
+                  {imagesPanelOpen ? (
                   <div className="grid gap-4 p-4 lg:grid-cols-[220px_minmax(0,1fr)]">
                     <div className="min-w-0">
                       <div className="aspect-video overflow-hidden rounded-md border border-border bg-muted/40">
@@ -4482,6 +4520,7 @@ function Workspace() {
                       ) : null}
                     </div>
                   </div>
+                  ) : null}
                 </section>
               ) : null}
 
@@ -6013,11 +6052,11 @@ function PropertyBoardView({
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+    <div className="grid items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3">
       {grouped.map((column) => (
         <section
           key={column.status}
-          className="grid gap-2 rounded-lg border border-border bg-white p-3"
+          className="flex flex-col gap-2 self-start rounded-lg border border-border bg-white p-3"
         >
           <header className="flex items-center justify-between gap-2 border-b border-border pb-2">
             <span
