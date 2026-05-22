@@ -833,6 +833,24 @@ export type TenantPortalOnboardingRecord = {
   submitted_at: string | null;
   last_sent_at: string | null;
   document_count: number;
+  submitted_data: Record<string, unknown> | null;
+  portal_invite_sent_at: string | null;
+};
+
+export type TenantPortalOnboardingSubmitPayload = {
+  legal_name: string;
+  trading_name?: string | null;
+  abn?: string | null;
+  contact_name: string;
+  contact_email: string;
+  contact_phone?: string | null;
+  billing_email?: string | null;
+  insurance_confirmed?: boolean;
+  insurance_expiry_date?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  notes?: string | null;
+  accepted: boolean;
 };
 
 export type TenantPortalDocumentRecord = {
@@ -2956,6 +2974,15 @@ export function resendTenantOnboarding(onboardingId: string) {
   );
 }
 
+export function sendTenantOnboardingPortalInvite(onboardingId: string) {
+  return request<TenantOnboardingRecord>(
+    `/tenant-onboarding/${onboardingId}/send-portal-invite`,
+    {
+      method: "POST",
+    },
+  );
+}
+
 export function refreshTenantOnboardingLink(
   onboardingId: string,
   payload: { reason?: string | null; expires_in_days?: number } = {},
@@ -3602,6 +3629,35 @@ export function createTenantPortalAccountMaintenanceRequest(
     "/tenant-portal/maintenance-requests",
     init,
   );
+}
+
+export function submitTenantPortalOnboarding(
+  payload: TenantPortalOnboardingSubmitPayload,
+  options: { token?: string | null; authToken?: string | null } = {},
+) {
+  const init: RequestInit = {
+    method: "POST",
+    body: JSON.stringify(payload),
+  };
+  if (options.authToken) {
+    return publicRequest<TenantPortalRecord>(
+      "/tenant-portal/onboarding/submit",
+      {
+        ...init,
+        headers: tenantPortalBearerHeaders(options.authToken),
+      },
+    );
+  }
+  if (options.token) {
+    return publicRequest<TenantPortalRecord>(
+      "/tenant-portal/onboarding/submit",
+      {
+        ...init,
+        headers: tenantPortalHeaders(options.token),
+      },
+    );
+  }
+  return request<TenantPortalRecord>("/tenant-portal/onboarding/submit", init);
 }
 
 export function uploadTenantPortalDocument(payload: {

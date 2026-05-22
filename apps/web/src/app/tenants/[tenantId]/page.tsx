@@ -15,6 +15,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Send,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -67,6 +68,7 @@ import {
   refreshTenantOnboardingLink,
   resendTenantOnboarding,
   reviewTenantOnboarding,
+  sendTenantOnboardingPortalInvite,
   restoreTenantPortalAccount,
   revokeTenantPortalAccount,
   TenantPortalAccountRecord,
@@ -1048,6 +1050,15 @@ function TenantDetail() {
     },
   });
 
+  const sendPortalInviteMutation = useMutation({
+    mutationFn: sendTenantOnboardingPortalInvite,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
+    },
+  });
+
   const freshLinkMutation = useMutation({
     mutationFn: ({
       onboardingId,
@@ -1829,6 +1840,18 @@ function TenantDetail() {
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {item.status === "sent" && !linkExpired ? (
+                            <Button
+                              type="button"
+                              onClick={() =>
+                                sendPortalInviteMutation.mutate(item.id)
+                              }
+                              disabled={sendPortalInviteMutation.isPending}
+                            >
+                              <Send size={16} />
+                              Invite to portal
+                            </Button>
+                          ) : null}
+                          {item.status === "sent" && !linkExpired ? (
                             <SecondaryButton
                               type="button"
                               onClick={() =>
@@ -1838,7 +1861,7 @@ function TenantDetail() {
                               }
                             >
                               <ClipboardCopy size={15} />
-                              Copy link
+                              Copy onboarding link
                             </SecondaryButton>
                           ) : null}
                           {item.status === "sent" && linkExpired ? (

@@ -48,11 +48,13 @@ import {
   getTenantPortalAccountSession,
   getTenantPortalAccountStatus,
   MaintenancePriority,
+  submitTenantPortalOnboarding,
   tenantPortalDocumentDownloadUrl,
   TenantPortalDocumentRecord,
   TenantPortalMaintenanceRequestPayload,
   TenantPortalNotificationPreferencesRecord,
   TenantPortalNotificationPreferencesPayload,
+  TenantPortalOnboardingSubmitPayload,
   TenantPortalRecord,
   updateTenantPortalAccountNotificationPreferences,
   updateTenantPortalNotificationPreferences,
@@ -709,6 +711,307 @@ function TenantAccountPanel({
   );
 }
 
+function readSubmittedString(
+  data: Record<string, unknown> | null | undefined,
+  key: string,
+): string {
+  if (!data) {
+    return "";
+  }
+  const value = data[key];
+  return typeof value === "string" ? value : "";
+}
+
+function readSubmittedBool(
+  data: Record<string, unknown> | null | undefined,
+  key: string,
+): boolean {
+  if (!data) {
+    return false;
+  }
+  return data[key] === true;
+}
+
+function OnboardingPanel({
+  portal,
+  token,
+  accountAuthToken,
+  onSaved,
+}: {
+  portal: TenantPortalRecord;
+  token: string | null;
+  accountAuthToken: string | null;
+  onSaved: () => void;
+}) {
+  const editable = portal.onboarding.status === "sent";
+  const prior = portal.onboarding.submitted_data;
+  const [form, setForm] = useState<TenantPortalOnboardingSubmitPayload>(() => ({
+    legal_name:
+      readSubmittedString(prior, "legal_name") || portal.tenant.legal_name,
+    trading_name:
+      readSubmittedString(prior, "trading_name") ||
+      portal.tenant.trading_name ||
+      "",
+    abn: readSubmittedString(prior, "abn"),
+    contact_name:
+      readSubmittedString(prior, "contact_name") ||
+      portal.tenant.contact_name ||
+      "",
+    contact_email:
+      readSubmittedString(prior, "contact_email") ||
+      portal.tenant.contact_email ||
+      "",
+    contact_phone:
+      readSubmittedString(prior, "contact_phone") ||
+      portal.tenant.contact_phone ||
+      "",
+    billing_email:
+      readSubmittedString(prior, "billing_email") ||
+      portal.tenant.billing_email ||
+      "",
+    insurance_confirmed: readSubmittedBool(prior, "insurance_confirmed"),
+    insurance_expiry_date:
+      readSubmittedString(prior, "insurance_expiry_date") || null,
+    emergency_contact_name: readSubmittedString(prior, "emergency_contact_name"),
+    emergency_contact_phone: readSubmittedString(
+      prior,
+      "emergency_contact_phone",
+    ),
+    notes: readSubmittedString(prior, "notes"),
+    accepted: false,
+  }));
+
+  const submitMutation = useMutation({
+    mutationFn: () =>
+      submitTenantPortalOnboarding(form, {
+        token,
+        authToken: accountAuthToken,
+      }),
+    onSuccess: () => {
+      onSaved();
+    },
+  });
+
+  function setField<K extends keyof TenantPortalOnboardingSubmitPayload>(
+    key: K,
+    value: TenantPortalOnboardingSubmitPayload[K],
+  ) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  if (!editable) {
+    const statusTone =
+      portal.onboarding.status === "applied"
+        ? "success"
+        : portal.onboarding.status === "submitted" ||
+            portal.onboarding.status === "reviewed"
+          ? "primary"
+          : "neutral";
+    const statusDetail =
+      portal.onboarding.status === "submitted"
+        ? `Submitted ${formatDateTime(portal.onboarding.submitted_at)}. Your property manager will review and confirm shortly.`
+        : portal.onboarding.status === "reviewed"
+          ? "Reviewed by your property manager. They will apply the updates to your record."
+          : portal.onboarding.status === "applied"
+            ? "Applied. Your contact details are now confirmed in Leasium."
+            : `Onboarding is ${label(portal.onboarding.status)}.`;
+    return (
+      <Panel
+        title="Onboarding"
+        icon={<UserRound size={18} />}
+        actions={
+          <StatusBadge tone={statusTone}>
+            {label(portal.onboarding.status)}
+          </StatusBadge>
+        }
+      >
+        <div className="grid gap-2 p-4 text-sm">
+          <p className="text-muted-foreground">{statusDetail}</p>
+          {prior?.legal_name ? (
+            <div className="grid gap-1 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+              <div>
+                <span className="font-medium text-foreground">Legal name</span>{" "}
+                {String(prior.legal_name)}
+              </div>
+              {prior.contact_email ? (
+                <div>
+                  <span className="font-medium text-foreground">Email</span>{" "}
+                  {String(prior.contact_email)}
+                </div>
+              ) : null}
+              {prior.contact_phone ? (
+                <div>
+                  <span className="font-medium text-foreground">Phone</span>{" "}
+                  {String(prior.contact_phone)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </Panel>
+    );
+  }
+
+  const submitError = submitMutation.error as Error | null;
+
+  return (
+    <Panel
+      title="Complete your onboarding"
+      icon={<UserRound size={18} />}
+      actions={<StatusBadge tone="primary">Awaiting submission</StatusBadge>}
+    >
+      <form
+        className="grid gap-4 p-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submitMutation.mutate();
+        }}
+      >
+        <p className="text-sm text-muted-foreground">
+          Confirm the details below. Your property manager will review your
+          submission before any changes apply to your tenant record.
+        </p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Legal name">
+            <Input
+              required
+              value={form.legal_name}
+              onChange={(event) =>
+                setField("legal_name", event.target.value)
+              }
+            />
+          </Field>
+          <Field label="Trading name (optional)">
+            <Input
+              value={form.trading_name ?? ""}
+              onChange={(event) =>
+                setField("trading_name", event.target.value)
+              }
+            />
+          </Field>
+          <Field label="ABN (optional)">
+            <Input
+              value={form.abn ?? ""}
+              onChange={(event) => setField("abn", event.target.value)}
+            />
+          </Field>
+          <Field label="Contact name">
+            <Input
+              required
+              value={form.contact_name}
+              onChange={(event) =>
+                setField("contact_name", event.target.value)
+              }
+            />
+          </Field>
+          <Field label="Contact email">
+            <Input
+              required
+              type="email"
+              value={form.contact_email}
+              onChange={(event) =>
+                setField("contact_email", event.target.value)
+              }
+            />
+          </Field>
+          <Field label="Contact phone">
+            <Input
+              value={form.contact_phone ?? ""}
+              onChange={(event) =>
+                setField("contact_phone", event.target.value)
+              }
+            />
+          </Field>
+          <Field label="Billing email (optional)">
+            <Input
+              value={form.billing_email ?? ""}
+              onChange={(event) =>
+                setField("billing_email", event.target.value)
+              }
+            />
+          </Field>
+          <Field label="Insurance expiry (optional)">
+            <Input
+              type="date"
+              value={form.insurance_expiry_date ?? ""}
+              onChange={(event) =>
+                setField(
+                  "insurance_expiry_date",
+                  event.target.value || null,
+                )
+              }
+            />
+          </Field>
+          <Field label="Emergency contact name (optional)">
+            <Input
+              value={form.emergency_contact_name ?? ""}
+              onChange={(event) =>
+                setField("emergency_contact_name", event.target.value)
+              }
+            />
+          </Field>
+          <Field label="Emergency contact phone (optional)">
+            <Input
+              value={form.emergency_contact_phone ?? ""}
+              onChange={(event) =>
+                setField("emergency_contact_phone", event.target.value)
+              }
+            />
+          </Field>
+        </div>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={Boolean(form.insurance_confirmed)}
+            onChange={(event) =>
+              setField("insurance_confirmed", event.target.checked)
+            }
+          />
+          <span>
+            I confirm a current insurance policy is in place for this tenancy.
+          </span>
+        </label>
+        <Field label="Notes for your property manager (optional)">
+          <textarea
+            className="min-h-24 w-full resize-y rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+            value={form.notes ?? ""}
+            onChange={(event) => setField("notes", event.target.value)}
+          />
+        </Field>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={form.accepted}
+            onChange={(event) => setField("accepted", event.target.checked)}
+          />
+          <span>
+            I confirm the information above is correct to the best of my
+            knowledge. My property manager will review before any changes apply.
+          </span>
+        </label>
+        {submitError ? (
+          <p className="text-sm text-danger">{submitError.message}</p>
+        ) : null}
+        <div className="flex items-center justify-end">
+          <Button
+            type="submit"
+            disabled={submitMutation.isPending || !form.accepted}
+          >
+            {submitMutation.isPending ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Send size={16} />
+            )}
+            Submit for review
+          </Button>
+        </div>
+      </form>
+    </Panel>
+  );
+}
+
 function TenantPortalContent({ token }: { token: string | null }) {
   const portalQuery = useQuery({
     queryKey: ["tenant-portal", token],
@@ -1038,6 +1341,14 @@ function TenantPortalContent({ token }: { token: string | null }) {
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="grid gap-5">
+            <OnboardingPanel
+              portal={portal}
+              token={token}
+              accountAuthToken={accountAuthToken}
+              onSaved={() => {
+                refreshPortal();
+              }}
+            />
             <Panel
               title="Payments"
               icon={<ReceiptText size={18} />}

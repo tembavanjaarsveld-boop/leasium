@@ -1125,6 +1125,8 @@ const tenantPortalSession = (
     submitted_at: null,
     last_sent_at: "2026-05-18T09:30:00.000Z",
     document_count: 1,
+    submitted_data: null,
+    portal_invite_sent_at: null,
   },
   compliance: {
     uploads_enabled: true,
@@ -1667,6 +1669,7 @@ export async function mockLeasiumApi(
   let xeroPaymentApplied = false;
   let localInvoiceDrafts = jsonClone(invoiceDrafts);
   let tenantAccountLinked = options.tenantAccountLinked ?? false;
+  let tenantPortalOnboardingSubmitted = false;
   let notificationCenterReadAt: string | null = null;
   let digestReceiptSent = false;
   let assignmentNoticeRetried = false;
@@ -3764,8 +3767,84 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (
+      method === "POST" &&
+      path === "/tenant-onboarding/onboarding-1/send-portal-invite"
+    ) {
+      const sentAt = "2026-05-21T00:15:00.000Z";
+      tenantOnboardings = tenantOnboardings.map((onboarding) =>
+        onboarding.id === "onboarding-1"
+          ? {
+              ...onboarding,
+              delivery_data: {
+                ...onboarding.delivery_data,
+                portal_invite: {
+                  sent_at: sentAt,
+                  sent_by_user_id: "user-temba",
+                  template_key: "tenant_portal_invite",
+                  template_version: "v1",
+                  receipts: [
+                    {
+                      channel: "email",
+                      status: "queued",
+                      provider: "sendgrid",
+                      recipient: "mi***@example.com",
+                      provider_message_id: "portal-invite-msg-1",
+                      error: null,
+                      metadata: { template_key: "tenant_portal_invite" },
+                    },
+                  ],
+                },
+              },
+              updated_at: sentAt,
+            }
+          : onboarding,
+      );
+      await fulfillJson(route, tenantOnboardings[0]);
+      return;
+    }
+
+    if (method === "POST" && path === "/tenant-portal/onboarding/submit") {
+      tenantPortalOnboardingSubmitted = true;
+      const submittedAt = "2026-05-21T01:00:00.000Z";
+      const baseSession = tenantPortalSession();
+      await fulfillJson(route, {
+        ...baseSession,
+        onboarding: {
+          ...baseSession.onboarding,
+          status: "submitted",
+          submitted_at: submittedAt,
+          submitted_data: {
+            legal_name: "Bright Cafe Pty Ltd",
+            contact_name: "Mia Hart",
+            contact_email: "mia@example.com",
+            accepted: true,
+          },
+        },
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/tenant-portal/session") {
-      await fulfillJson(route, tenantPortalSession());
+      const baseSession = tenantPortalSession();
+      if (tenantPortalOnboardingSubmitted) {
+        await fulfillJson(route, {
+          ...baseSession,
+          onboarding: {
+            ...baseSession.onboarding,
+            status: "submitted",
+            submitted_at: "2026-05-21T01:00:00.000Z",
+            submitted_data: {
+              legal_name: "Bright Cafe Pty Ltd",
+              contact_name: "Mia Hart",
+              contact_email: "mia@example.com",
+              accepted: true,
+            },
+          },
+        });
+        return;
+      }
+      await fulfillJson(route, baseSession);
       return;
     }
 

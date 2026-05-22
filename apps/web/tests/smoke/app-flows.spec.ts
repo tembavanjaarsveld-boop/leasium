@@ -1072,6 +1072,24 @@ test("tenant portal shows scoped self-service data", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Notification Preferences" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Complete your onboarding" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Submit for review" }),
+  ).toBeDisabled();
+  await page
+    .getByLabel(
+      "I confirm the information above is correct to the best of my knowledge. My property manager will review before any changes apply.",
+    )
+    .check();
+  await page.getByRole("button", { name: "Submit for review" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Onboarding" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/property manager will review and confirm/i),
+  ).toBeVisible();
   await page.getByLabel("SMS updates").uncheck();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(
