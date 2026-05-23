@@ -1148,7 +1148,7 @@ function intakeChip(intake: DocumentIntakeRecord) {
     case "reading":
       return "Reading";
     default:
-      return "Processing";
+      return "Processing…";
   }
 }
 
@@ -2532,7 +2532,7 @@ function OperationsWorkspace() {
                     >
                       <Send size={15} />
                       {sendReadyAssignmentNotificationsMutation.isPending
-                        ? "Sending"
+                        ? "Sending…"
                         : "Send ready notices"}
                       <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground">
                         {readyNotificationItems.length}
@@ -3033,7 +3033,7 @@ function OperationsWorkspace() {
                             }))
                           }
                           rows={2}
-                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         />
                       </label>
                       <label className="grid gap-1.5 text-sm md:col-span-2">
@@ -3049,7 +3049,7 @@ function OperationsWorkspace() {
                             }))
                           }
                           rows={3}
-                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         />
                       </label>
                       <label className="grid gap-1.5 text-sm md:col-span-2">
@@ -3065,7 +3065,7 @@ function OperationsWorkspace() {
                             }))
                           }
                           rows={2}
-                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         />
                       </label>
                       <div className="flex flex-wrap gap-2 md:col-span-2">
@@ -3289,6 +3289,7 @@ function OperationsWorkspace() {
                     ))}
                     {!operationsLoading && filteredMaintenance.length === 0 ? (
                       <EmptyState
+                        icon={<Wrench size={18} />}
                         title="No maintenance work orders"
                         description="Repairs, contractor jobs, approvals, and maintenance invoices will appear here."
                         action={
@@ -3464,7 +3465,7 @@ function OperationsWorkspace() {
                             }))
                           }
                           rows={3}
-                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         />
                       </label>
                       <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-3">
@@ -3637,6 +3638,7 @@ function OperationsWorkspace() {
                     ))}
                     {!operationsLoading && filteredArrears.length === 0 ? (
                       <EmptyState
+                        icon={<CheckCircle2 size={18} />}
                         title="No arrears cases"
                         description="Open balances, disputes, reminder schedules, and escalation work will appear here."
                         action={

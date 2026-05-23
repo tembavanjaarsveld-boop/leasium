@@ -330,6 +330,7 @@ function LeaseEventsSnapshot({ snapshot }: { snapshot: InsightsSnapshotPublicRec
         ))}
         {!leaseEvents.next_events.length ? (
           <EmptyState
+            icon={<Clock3 size={18} />}
             title="No upcoming lease events"
             description="No review, expiry, obligation, or onboarding events were captured in this snapshot."
           />
@@ -395,6 +396,7 @@ function PublicSnapshotContent() {
         {snapshotQuery.error ? (
           <SectionPanel>
             <EmptyState
+              icon={<AlertTriangle size={18} />}
               title="Snapshot unavailable"
               description="This link may have expired, been revoked, or never existed."
             />

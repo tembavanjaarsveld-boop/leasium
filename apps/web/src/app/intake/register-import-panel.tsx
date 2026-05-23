@@ -440,7 +440,7 @@ export function RegisterImportPanel({
                   );
                 })}
                 {!dryRun.action_items.length ? (
-                  <EmptyState title="No register actions found." />
+                  <EmptyState icon={<CheckCircle2 size={18} />} title="No register actions found." />
                 ) : null}
               </div>
             </div>
@@ -451,6 +451,7 @@ export function RegisterImportPanel({
           </>
         ) : (
           <EmptyState
+            icon={<FileSpreadsheet size={18} />}
             title="No workbook review yet."
             description="Choose an .xlsx file to stage property, tenancy, lease, rent, and obligation actions."
           />

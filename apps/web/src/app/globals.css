@@ -71,6 +71,12 @@ body {
   min-height: 100%;
   background: var(--leasium-bg);
   color: var(--leasium-navy-800);
+  /* Per Hallmark slop-test gate 62 + layout-and-space §Page-edge clipping:
+     clip (not hidden) prevents horizontal scroll bleed at narrow
+     viewports without creating a scroll context, so position: sticky
+     descendants keep working. Catches the rare case of a clipped-edge
+     decorative element pushing past the viewport at 320-414px widths. */
+  overflow-x: clip;
 }
 
 body {

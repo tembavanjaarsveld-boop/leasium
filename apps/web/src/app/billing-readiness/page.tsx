@@ -5,9 +5,11 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Ban,
+  Building2,
   CheckCircle2,
   Eye,
   FileCheck2,
+  FileText,
   FileWarning,
   Loader2,
   Mail,
@@ -1041,7 +1043,7 @@ function BillingReadinessWorkspace() {
                 ) : (
                   <RefreshCw size={15} />
                 )}
-                {billingReadinessRefreshing ? "Refreshing" : "Refresh"}
+                {billingReadinessRefreshing ? "Refreshing…" : "Refresh"}
               </SecondaryButton>
             </>
           }
@@ -1202,7 +1204,7 @@ function BillingReadinessWorkspace() {
               <StatusBadge
                 tone={billingReadinessRefreshing ? "primary" : "neutral"}
               >
-                {billingReadinessRefreshing ? "Refreshing" : "Loading"}
+                {billingReadinessRefreshing ? "Refreshing…" : "Loading…"}
               </StatusBadge>
             }
             className="border-primary/20 bg-primary/5"
@@ -1227,6 +1229,7 @@ function BillingReadinessWorkspace() {
         {!selectedEntityId && !billingReadinessLoading ? (
           <SectionPanel>
             <EmptyState
+              icon={<Building2 size={18} />}
               title="No entity selected"
               description="Choose an entity from the header to load billing readiness checks. Leasium will show invoice, Xero, and GST blockers here."
             />
@@ -1312,7 +1315,7 @@ function BillingReadinessWorkspace() {
                     }
                   >
                     {billingDraftsLoading
-                      ? "Loading"
+                      ? "Loading…"
                       : `${billingDrafts.length} draft${billingDrafts.length === 1 ? "" : "s"}`}
                   </StatusBadge>
                 }
@@ -1484,6 +1487,7 @@ function BillingReadinessWorkspace() {
                         <tr>
                           <td className="px-3 py-10" colSpan={6}>
                             <EmptyState
+                              icon={<FileText size={18} />}
                               title="No billing drafts"
                               description="Reviewed invoice or admin documents will appear here as source-linked billing drafts before any invoice posting or Xero sync exists."
                             />
@@ -1522,7 +1526,7 @@ function BillingReadinessWorkspace() {
                     }
                   >
                     {invoiceDraftsLoading
-                      ? "Loading"
+                      ? "Loading…"
                       : `${invoiceDrafts.length} invoice draft${invoiceDrafts.length === 1 ? "" : "s"}`}
                   </StatusBadge>
                 }
@@ -1850,6 +1854,7 @@ function BillingReadinessWorkspace() {
                         <tr>
                           <td className="px-3 py-10" colSpan={7}>
                             <EmptyState
+                              icon={<ReceiptText size={18} />}
                               title="No invoice drafts"
                               description="Approve a billing draft, then create an internal invoice draft from it. Delivery and Xero remain separate approval steps."
                             />
@@ -1888,7 +1893,7 @@ function BillingReadinessWorkspace() {
                     }
                   >
                     {invoiceDraftsLoading
-                      ? "Loading"
+                      ? "Loading…"
                       : `${filteredApprovedInvoiceDrafts.length}/${approvedInvoiceDrafts.length} shown`}
                   </StatusBadge>
                 }
@@ -2438,6 +2443,7 @@ function BillingReadinessWorkspace() {
                         <tr>
                           <td className="px-3 py-10" colSpan={5}>
                             <EmptyState
+                              icon={<FileCheck2 size={18} />}
                               title="No approved invoices"
                               description="Approve an internal invoice draft first. Email sending and payment recording stay explicit, and Xero sync needs its own approval."
                             />
@@ -2450,6 +2456,7 @@ function BillingReadinessWorkspace() {
                         <tr>
                           <td className="px-3 py-10" colSpan={5}>
                             <EmptyState
+                              icon={<Eye size={18} />}
                               title="No invoices match this filter"
                               description="Try another delivery filter to review approved invoice delivery, provider history, and payment status."
                             />
@@ -2554,6 +2561,7 @@ function BillingReadinessWorkspace() {
                         <tr>
                           <td className="px-3 py-10" colSpan={5}>
                             <EmptyState
+                              icon={<FileText size={18} />}
                               title="No rent roll rows"
                               description="Create leases and charge rules for this entity, then return here to check billing readiness."
                             />
@@ -2585,6 +2593,7 @@ function BillingReadinessWorkspace() {
               >
                 {rentRollLoading ? (
                   <EmptyState
+                    icon={<Loader2 size={18} className="animate-spin" />}
                     title="Loading action queue"
                     description="Checking rent roll rows and readiness blockers for this entity."
                   />
@@ -2649,6 +2658,7 @@ function BillingReadinessWorkspace() {
                   </div>
                 ) : (
                   <EmptyState
+                    icon={<CheckCircle2 size={18} />}
                     title="No billing blockers"
                     description={
                       rentRows.length

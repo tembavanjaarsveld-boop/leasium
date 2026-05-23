@@ -375,6 +375,7 @@ function InboxWorkspace() {
             {!body ? (
               <div className="border-t border-border p-4">
                 <EmptyState
+                  icon={<Mail size={18} />}
                   title="Nothing pasted yet."
                   description="Paste a message above, or click Try sample for a real-looking maintenance request."
                 />

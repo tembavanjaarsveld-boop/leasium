@@ -649,7 +649,7 @@ function InsightsWorkspace() {
                 ) : (
                   <RefreshCw size={15} />
                 )}
-                {isOverviewFetching ? "Refreshing" : "Refresh"}
+                {isOverviewFetching ? "Refreshing…" : "Refresh"}
               </SecondaryButton>
             </div>
           }

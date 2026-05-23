@@ -43,7 +43,7 @@ export function Input({
   return (
     <input
       className={cn(
-        "min-h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15",
+        "min-h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15",
         className,
       )}
       {...props}
@@ -58,7 +58,7 @@ export function Select({
   return (
     <select
       className={cn(
-        "min-h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15",
+        "min-h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15",
         className,
       )}
       {...props}
@@ -439,7 +439,7 @@ export function SkeletonRows({
     <div
       className={cn("divide-y divide-border", className)}
       aria-busy="true"
-      aria-label="Loading"
+      aria-label="Loading…"
     >
       {Array.from({ length: rows }).map((_, index) => (
         <SkeletonRow key={index} />

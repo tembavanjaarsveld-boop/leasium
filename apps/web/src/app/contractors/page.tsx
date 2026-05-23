@@ -167,6 +167,7 @@ function ContractorsContent() {
         (contractorsQuery.data ?? []).length === 0 &&
         !contractorsQuery.error ? (
           <EmptyState
+            icon={<Wrench size={18} />}
             title="No contractors yet."
             description="Add your trusted electrical, plumbing, hvac, and other trade contacts so they're one click away when a work order needs dispatch."
           />
@@ -324,7 +325,7 @@ function AddContractorForm({
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               placeholder="After-hours emergency contact, prefers WhatsApp, etc."
-              className="min-h-20 w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+              className="min-h-20 w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
             />
           </Field>
         </div>

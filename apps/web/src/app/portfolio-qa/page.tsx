@@ -1383,7 +1383,7 @@ function PortfolioQaWorkspace() {
                 ))}
               </div>
             ) : (
-              <EmptyState title="No QA issues found" description="The imported register is clean for the current checks." />
+              <EmptyState icon={<CheckCircle2 size={18} />} title="No QA issues found" description="The imported register is clean for the current checks." />
             )}
           </SectionPanel>
           <SectionPanel
@@ -1497,7 +1497,7 @@ function PortfolioQaWorkspace() {
                 })}
               </div>
             ) : (
-              <EmptyState title="Owner billing data is complete" description="No property owner or billing identity blockers are visible for this entity." />
+              <EmptyState icon={<CheckCircle2 size={18} />} title="Owner billing data is complete" description="No property owner or billing identity blockers are visible for this entity." />
             )}
           </SectionPanel>
           </>
@@ -1592,7 +1592,7 @@ function PortfolioQaWorkspace() {
                 })}
               </div>
             ) : (
-              <EmptyState title="Tenant contact data is complete" description="Every tenant has the current cleanup fields filled." />
+              <EmptyState icon={<CheckCircle2 size={18} />} title="Tenant contact data is complete" description="Every tenant has the current cleanup fields filled." />
             )}
           </SectionPanel>
         ) : null}
@@ -1670,7 +1670,7 @@ function PortfolioQaWorkspace() {
                 </div>
               </div>
             ) : (
-              <EmptyState title="No source trails yet" description="Imported rows and document reviews will appear here as metadata is stored." />
+              <EmptyState icon={<History size={18} />} title="No source trails yet" description="Imported rows and document reviews will appear here as metadata is stored." />
             )}
           </SectionPanel>
         ) : null}
@@ -1841,7 +1841,7 @@ function PortfolioQaWorkspace() {
                 ))}
               </div>
             ) : (
-              <EmptyState title="No billing drafts yet" description="Create internal drafts from imported charge rules when you are ready to review billing." />
+              <EmptyState icon={<FileText size={18} />} title="No billing drafts yet" description="Create internal drafts from imported charge rules when you are ready to review billing." />
             )}
           </SectionPanel>
         ) : null}

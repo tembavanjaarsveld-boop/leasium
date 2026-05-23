@@ -76,7 +76,7 @@ export default function AccessPage() {
             <input
               autoComplete="current-password"
               autoFocus
-              className="min-h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+              className="min-h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
               onChange={(event) => setPassword(event.target.value)}
               type="password"
               value={password}

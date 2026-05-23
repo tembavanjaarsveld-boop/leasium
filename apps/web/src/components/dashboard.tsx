@@ -2969,7 +2969,7 @@ export function Dashboard({
             count={obligationsLoading ? "..." : urgentObligations.length}
             chip={
               obligationsLoading
-                ? "Loading"
+                ? "Loading…"
                 : urgentObligations.length
                   ? "Act now"
                   : "Clear"
@@ -2997,7 +2997,7 @@ export function Dashboard({
             count={rentRollLoading ? "..." : billingIssues.length}
             chip={
               rentRollLoading
-                ? "Loading"
+                ? "Loading…"
                 : billingIssues.length
                   ? "Blocked"
                   : "Ready"
@@ -3024,7 +3024,7 @@ export function Dashboard({
             count={documentIntakesLoading ? "..." : needsReviewCount}
             chip={
               documentIntakesLoading
-                ? "Loading"
+                ? "Loading…"
                 : needsReviewCount
                   ? "Review"
                   : "Empty"
@@ -3051,7 +3051,7 @@ export function Dashboard({
             count={documentIntakesLoading ? "..." : failedIntakeCount}
             chip={
               documentIntakesLoading
-                ? "Loading"
+                ? "Loading…"
                 : failedIntakeCount
                   ? "Fix"
                   : "Clear"
@@ -3185,7 +3185,7 @@ export function Dashboard({
                       tone={needsReviewCount ? "primary" : "neutral"}
                     >
                       {documentIntakesLoading
-                        ? "Loading"
+                        ? "Loading…"
                         : `${needsReviewCount} waiting`}
                     </StatusBadge>
                   </div>
@@ -3292,6 +3292,7 @@ export function Dashboard({
                       <SkeletonRows rows={3} />
                     ) : reviewIntakes.length === 0 ? (
                       <EmptyState
+                        icon={<CheckCircle2 size={18} />}
                         title="No documents waiting for review."
                         description="Drop in a lease, acquisition contract, invoice, guarantee, insurance certificate, or tenant document to start your first review."
                       />
@@ -3443,6 +3444,7 @@ export function Dashboard({
                 icon={<Sparkles size={17} className="text-primary" />}
               >
                 <EmptyState
+                  icon={<FileText size={18} />}
                   title="No document selected."
                   description="Drop a lease, acquisition contract, invoice, guarantee, certificate, or tenant document to start."
                 />

@@ -195,6 +195,7 @@ function StatementsContent() {
 
         {!statementsQuery.isLoading && owners.length === 0 && !statementsQuery.error ? (
           <EmptyState
+            icon={<Wallet size={18} />}
             title="No invoiced amounts for this month."
             description="Statements roll up approved invoices whose issue date falls in the selected month. Once invoices are approved through Billing Readiness, owners will appear here."
           />

@@ -2731,7 +2731,7 @@ function Workspace() {
                   <RefreshCw size={16} />
                 )}
                 {propertiesQuery.isFetching && !propertiesLoading
-                  ? "Refreshing"
+                  ? "Refreshing…"
                   : "Refresh"}
               </SecondaryButton>
               <Button
@@ -2794,7 +2794,7 @@ function Workspace() {
                 <StatusBadge
                   tone={propertyWorkspaceRefreshing ? "primary" : "neutral"}
                 >
-                  {propertyWorkspaceRefreshing ? "Refreshing" : "Loading"}
+                  {propertyWorkspaceRefreshing ? "Refreshing…" : "Loading…"}
                 </StatusBadge>
               }
               className="mb-4 border-primary/20 bg-primary/5"

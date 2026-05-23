@@ -2020,6 +2020,7 @@ function SettingsWorkspace() {
                       <tr>
                         <td className="px-3 py-10" colSpan={5}>
                           <EmptyState
+                            icon={<UsersRound size={18} />}
                             title="No operators yet"
                             description="Owner and admin users will appear here once the security workspace loads."
                           />
@@ -2047,7 +2048,7 @@ function SettingsWorkspace() {
                     {workDigestEnabledCount} digest on
                   </StatusBadge>
                   <StatusBadge tone="neutral">
-                    {workNotificationTemplateCount || "Loading"} templates
+                    {workNotificationTemplateCount || "Loading…"} templates
                   </StatusBadge>
                 </div>
               }
@@ -2503,6 +2504,7 @@ function SettingsWorkspace() {
                 {!securityQuery.isLoading &&
                 selectedEntityRoleMembers.length === 0 ? (
                   <EmptyState
+                    icon={<UsersRound size={18} />}
                     title="No operators yet"
                     description="Invite an operator before setting Work notification preferences."
                   />
@@ -2536,7 +2538,7 @@ function SettingsWorkspace() {
                     Name
                   </div>
                   <div className="mt-1 font-semibold">
-                    {securityQuery.data?.organisation.name ?? "Loading"}
+                    {securityQuery.data?.organisation.name ?? "Loading…"}
                   </div>
                 </div>
                 <div className="rounded-md border border-border bg-muted/25 p-3">
@@ -2544,7 +2546,7 @@ function SettingsWorkspace() {
                     Timezone
                   </div>
                   <div className="mt-1 font-semibold">
-                    {securityQuery.data?.organisation.timezone ?? "Loading"}
+                    {securityQuery.data?.organisation.timezone ?? "Loading…"}
                   </div>
                 </div>
                 <div className="rounded-md border border-border bg-muted/25 p-3">
@@ -2749,12 +2751,14 @@ function SettingsWorkspace() {
                 selectedEntityId &&
                 !ownershipTags.length ? (
                   <EmptyState
+                    icon={<Tags size={18} />}
                     title="No ownership tags yet"
                     description="Import or edit property ownership and billing identity data to build this directory."
                   />
                 ) : null}
                 {!selectedEntityId ? (
                   <EmptyState
+                    icon={<Building2 size={18} />}
                     title="No entity selected"
                     description="Choose an entity from the header to list property owner tags."
                   />
@@ -2804,6 +2808,7 @@ function SettingsWorkspace() {
                 })}
                 {!entitiesQuery.isLoading && !entitiesQuery.data?.length ? (
                   <EmptyState
+                    icon={<Building2 size={18} />}
                     title="No entities available"
                     description="Create an entity before inviting operators into scoped roles."
                   />
@@ -2816,6 +2821,7 @@ function SettingsWorkspace() {
         {activeTab === "xero" && !selectedEntityId ? (
           <SectionPanel>
             <EmptyState
+              icon={<Building2 size={18} />}
               title="No entity selected"
               description="Choose an entity from the header to load Xero status, mappings, invoice sync readiness, and payment reconciliation."
             />
@@ -3157,6 +3163,7 @@ function SettingsWorkspace() {
                     })}
                     {!exceptionItems.length ? (
                       <EmptyState
+                        icon={<CheckCircle2 size={18} />}
                         title="No Xero sync exceptions"
                         description="Approved drafts, provider receipts, and reconciliation state are clear for this entity."
                       />
@@ -3585,6 +3592,7 @@ function SettingsWorkspace() {
                     })}
                     {xeroContactPreview.suggested_matches.length === 0 ? (
                       <EmptyState
+                        icon={<SearchCheck size={18} />}
                         title="No confident contact matches"
                         description="The provider pull completed, but no tenant or property contacts matched by email or name."
                       />
@@ -3741,6 +3749,7 @@ function SettingsWorkspace() {
                         <tr>
                           <td className="px-3 py-10" colSpan={6}>
                             <EmptyState
+                              icon={<CheckCircle2 size={18} />}
                               title="No charge rules checked"
                               description="The provider validation completed, but no charge rules were available for chart and tax validation."
                             />
@@ -4007,6 +4016,7 @@ function SettingsWorkspace() {
                     })}
                     {xeroInvoicePostingPreview.results.length === 0 ? (
                       <EmptyState
+                        icon={<CheckCircle2 size={18} />}
                         title="No invoice drafts checked"
                         description="The posting preview completed, but there were no approved unsynced drafts to inspect."
                       />
@@ -4379,6 +4389,7 @@ function SettingsWorkspace() {
                     )}
                     {displayedPaymentReconciliation.results.length === 0 ? (
                       <EmptyState
+                        icon={<CheckCircle2 size={18} />}
                         title="No provider payment changes"
                         description="The provider pull completed, but no invoice payment status changes were ready to review."
                       />
@@ -4490,6 +4501,7 @@ function SettingsWorkspace() {
                         <tr>
                           <td className="px-3 py-10" colSpan={5}>
                             <EmptyState
+                              icon={<CheckCircle2 size={18} />}
                               title="Chart and tax mappings look ready"
                               description="Charge-rule account codes and taxable tax types are present for this entity."
                             />

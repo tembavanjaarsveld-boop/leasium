@@ -917,7 +917,7 @@ function NoticeRow({
               onClick={() => onSend(notice)}
             >
               <Send size={14} />
-              {isSending ? "Sending" : noticeRecoveryLabel(notice)}
+              {isSending ? "Sending…" : noticeRecoveryLabel(notice)}
             </SecondaryButton>
           ) : null}
           {canSendSmsNotice(notice) ? (
@@ -929,7 +929,7 @@ function NoticeRow({
             >
               <MessageSquare size={14} />
               {isSendingSms
-                ? "Sending"
+                ? "Sending…"
                 : smsNoticeRecoveryLabel(notice)}
             </SecondaryButton>
           ) : null}
@@ -1458,7 +1458,7 @@ function NotificationsWorkspace() {
                       >
                         <Send size={14} />
                         {retryDigestMutation.isPending
-                          ? "Sending"
+                          ? "Sending…"
                           : digestRecoveryLabel(receipt)}
                       </SecondaryButton>
                     </div>

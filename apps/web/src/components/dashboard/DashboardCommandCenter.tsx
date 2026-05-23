@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardList, Link2 } from "lucide-react";
+import { CheckCircle2, ClipboardList, Link2, Loader2 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -114,9 +114,9 @@ export function DashboardCommandCenter({
           }
         >
           {loading
-            ? "Loading"
+            ? "Loading…"
             : refreshing
-              ? "Refreshing"
+              ? "Refreshing…"
               : totalCount
                 ? "Act today"
                 : "Clear"}
@@ -128,6 +128,7 @@ export function DashboardCommandCenter({
         <div className="divide-y divide-border lg:border-r lg:border-border">
           {loading && shownItems.length === 0 ? (
             <EmptyState
+              icon={<Loader2 size={18} className="animate-spin" />}
               title="Loading today's command center."
               description="Checking Smart Intake, billing readiness, onboarding, and key dates."
             />
@@ -175,6 +176,7 @@ export function DashboardCommandCenter({
             ))
           ) : (
             <EmptyState
+              icon={<CheckCircle2 size={18} />}
               title="No operator actions need attention."
               description="Smart Intake, billing readiness, onboarding, and urgent dates are clear for now."
             />

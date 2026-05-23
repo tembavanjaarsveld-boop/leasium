@@ -542,7 +542,7 @@ function SpreadsheetImportWorkspace() {
                     </div>
                   ))}
                   {!plan.findings.length ? (
-                    <EmptyState title="No findings" description="The workbook is ready to apply." />
+                    <EmptyState icon={<CheckCircle2 size={18} />} title="No findings" description="The workbook is ready to apply." />
                   ) : null}
                 </div>
               </SectionPanel>

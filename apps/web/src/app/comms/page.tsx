@@ -194,6 +194,7 @@ function CommsContent() {
 
         {!queueQuery.isLoading && candidates.length === 0 && !queueQuery.error ? (
           <EmptyState
+            icon={<CheckCircle2 size={18} />}
             title="Inbox zero. No drafts to review."
             description="As arrears age, insurance certificates approach expiry, or leases approach renewal, drafts will appear here for one-click approval."
           />
@@ -367,7 +368,7 @@ function CandidateCard({
           <textarea
             value={body}
             onChange={(event) => setBody(event.target.value)}
-            className="min-h-[180px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+            className="min-h-[180px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
           />
         </Field>
 

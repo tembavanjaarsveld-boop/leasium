@@ -2,7 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowLeft,
+  CalendarClock,
   Check,
   ChevronDown,
   ClipboardCopy,
@@ -11,6 +13,7 @@ import {
   Edit3,
   ExternalLink,
   FileText,
+  KeyRound,
   Link2,
   Loader2,
   Plus,
@@ -1221,6 +1224,7 @@ function TenantDetail() {
         <div className="mx-auto max-w-7xl px-5 py-5">
           <SectionPanel>
             <EmptyState
+              icon={<AlertTriangle size={18} />}
               title="Tenant not found"
               action={
                 <Link href="/tenants">
@@ -1506,6 +1510,7 @@ function TenantDetail() {
                 {!portalAccountsQuery.isLoading &&
                 portalAccounts.length === 0 ? (
                   <EmptyState
+                    icon={<KeyRound size={18} />}
                     title="No tenant login linked"
                     description="The tenant can connect a login from an active onboarding or portal link."
                     action={
@@ -1776,6 +1781,7 @@ function TenantDetail() {
                 {!documentsQuery.isLoading &&
                 (documentsQuery.data ?? []).length === 0 ? (
                   <EmptyState
+                    icon={<FileText size={18} />}
                     title="No tenant documents yet"
                     description="Upload leases, insurance certificates, guarantees, onboarding files, or tenant correspondence. Nothing updates the tenant profile until reviewed."
                     action={
@@ -2174,6 +2180,7 @@ function TenantDetail() {
                 })}
                 {tenantOnboardings.length === 0 ? (
                   <EmptyState
+                    icon={<Send size={18} />}
                     title="No onboarding has been sent"
                     description="Start from a linked lease below when tenant setup details are needed."
                   />
@@ -2290,6 +2297,7 @@ function TenantDetail() {
                 })}
                 {!leasesQuery.isLoading && linkedLeases.length === 0 ? (
                   <EmptyState
+                    icon={<CalendarClock size={18} />}
                     title="No leases linked yet"
                     description="Lease intake or the property workspace will attach leases to this tenant."
                   />

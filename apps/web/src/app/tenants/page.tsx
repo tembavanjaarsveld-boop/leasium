@@ -889,6 +889,7 @@ function TenantWorkspace() {
                   <tr>
                     <td colSpan={5}>
                       <EmptyState
+                        icon={<UserRound size={18} />}
                         title="No tenants match this view"
                         description="Clear the search or switch filters to see the full tenant list."
                       />
@@ -952,6 +953,7 @@ function TenantWorkspace() {
             </ul>
             {!tenantsLoading && tenantRows.length === 0 ? (
               <EmptyState
+                icon={<UserRound size={18} />}
                 title="No tenants match this view"
                 description="Clear the search or switch filters to see the full tenant list."
               />
