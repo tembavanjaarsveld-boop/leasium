@@ -182,6 +182,35 @@ test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
   ).toBeVisible();
 });
 
+test("AI inbox promotes a classified message into a maintenance draft", async ({
+  page,
+}) => {
+  await page.goto("/inbox");
+
+  await page.getByRole("button", { name: "Try sample" }).click();
+  await page.getByRole("button", { name: /Classify/ }).click();
+
+  const promotePanel = page.getByTestId("promote-panel");
+  await expect(promotePanel).toBeVisible();
+  await expect(
+    promotePanel.getByText(/Create maintenance work order/i),
+  ).toBeVisible();
+
+  // The AI-suggested property + tenant should be pre-filled in the
+  // dropdowns from the triage response.
+  await expect(promotePanel.getByLabel("Promote property")).toHaveValue(
+    "11111111-1111-1111-1111-111111111111",
+  );
+  await expect(promotePanel.getByLabel("Promote tenant")).toHaveValue(
+    "22222222-2222-2222-2222-222222222222",
+  );
+
+  await promotePanel.getByRole("button", { name: /Promote to draft/ }).click();
+  await expect(page).toHaveURL(
+    /\/operations\/maintenance\/99999999-9999-9999-9999-999999999999/,
+  );
+});
+
 test("tenants saved views capture and re-apply filter combos", async ({
   page,
 }) => {

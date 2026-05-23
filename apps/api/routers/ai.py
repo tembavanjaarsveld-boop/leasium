@@ -32,12 +32,17 @@ from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
     ArrearsCase,
+    ArrearsCaseStatus,
+    DocumentCategory,
+    DocumentIntake,
+    DocumentIntakeStatus,
     Lease,
     LeaseStatus,
     MaintenanceWorkOrder,
     MaintenanceWorkOrderStatus,
     Obligation,
     Property,
+    StoredDocument,
     TenancyUnit,
     Tenant,
     UserRole,
@@ -51,7 +56,10 @@ from apps.api.schemas.ai import (
     AskRequest,
     InboxKeyFact,
     InboxKind,
+    InboxPromoteRead,
+    InboxPromoteRequest,
     InboxTargetKind,
+    InboxTriageMatch,
     InboxTriageRead,
     InboxTriageRequest,
 )
@@ -85,7 +93,7 @@ def ask(
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AskRead:
-    assert_entity_role(user, payload.entity_id, READ_ROLES)
+    assert_entity_role(session, user, payload.entity_id, READ_ROLES)
     context = _build_ask_context(payload.entity_id, session)
 
     try:
@@ -413,10 +421,16 @@ def triage(
 ) -> InboxTriageRead:
     """Classify a pasted inbox message and suggest a next Leasium action."""
 
-    assert_entity_role(user, payload.entity_id, READ_ROLES)
+    assert_entity_role(session, user, payload.entity_id, READ_ROLES)
+
+    entity_index, index_lookup = _build_triage_entity_index(payload.entity_id, session)
 
     try:
-        result, response_id = triage_inbox(body=payload.body, settings=settings)
+        result, response_id = triage_inbox(
+            body=payload.body,
+            settings=settings,
+            entity_index=entity_index,
+        )
     except InboxTriageError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -444,6 +458,19 @@ def triage(
         else "none"
     )
     href = _TARGET_KIND_HREF.get(target_kind) or None
+
+    suggested_property = _validate_index_match(
+        result.get("suggested_property_id"),
+        index_lookup.get("properties", {}),
+    )
+    suggested_tenant = _validate_index_match(
+        result.get("suggested_tenant_id"),
+        index_lookup.get("tenants", {}),
+    )
+    suggested_lease = _validate_index_match(
+        result.get("suggested_lease_id"),
+        index_lookup.get("leases", {}),
+    )
 
     raw_facts = result.get("key_facts")
     key_facts: list[InboxKeyFact] = []
@@ -483,6 +510,9 @@ def triage(
             "confidence": round(confidence, 2),
             "target_kind": target_kind,
             "warning_count": len(warnings),
+            "matched_property": suggested_property is not None,
+            "matched_tenant": suggested_tenant is not None,
+            "matched_lease": suggested_lease is not None,
         },
         tool_output_summary=(
             f"Classified as {kind} (confidence {confidence:.2f})."
@@ -498,10 +528,393 @@ def triage(
         suggested_action=action_text or "Review the message manually.",
         suggested_target_kind=target_kind,
         suggested_target_href=href,
+        suggested_property=suggested_property,
+        suggested_tenant=suggested_tenant,
+        suggested_lease=suggested_lease,
         key_facts=key_facts,
         warnings=warnings,
         guardrails=list(INBOX_TRIAGE_GUARDRAILS),
         response_id=response_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Triage promote — v2 of the AI inbox processor.
+#
+# v1 stopped at "classify + deep-link". v2 takes the reviewed classification
+# and the operator-confirmed match and creates the right Leasium draft. No
+# provider mutation: the draft sits in its initial review state until the
+# operator approves the next step from inside the target surface.
+# ---------------------------------------------------------------------------
+
+
+def _build_triage_entity_index(
+    entity_id: UUID,
+    session: Session,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, str]]]:
+    """Build a compact entity index for the AI to match the message against.
+
+    Returns a (prompt_index, lookup) pair. `prompt_index` is the JSON
+    structure sent to OpenAI; `lookup` is the server-side validator that
+    confirms any returned UUID was actually in the index (prevents the
+    model from inventing record ids).
+    """
+    properties = list(
+        session.scalars(
+            select(Property).where(
+                Property.entity_id == entity_id,
+                Property.deleted_at.is_(None),
+            )
+        ).all()
+    )
+    properties_by_id = {prop.id: prop for prop in properties}
+
+    units = list(
+        session.scalars(
+            select(TenancyUnit).where(
+                TenancyUnit.property_id.in_(properties_by_id.keys()),
+                TenancyUnit.deleted_at.is_(None),
+            )
+        ).all()
+    ) if properties_by_id else []
+    units_by_id = {unit.id: unit for unit in units}
+
+    tenants = list(
+        session.scalars(
+            select(Tenant).where(
+                Tenant.entity_id == entity_id,
+                Tenant.deleted_at.is_(None),
+            )
+        ).all()
+    )
+
+    leases = list(
+        session.scalars(
+            select(Lease).where(
+                Lease.tenancy_unit_id.in_(units_by_id.keys()),
+                Lease.deleted_at.is_(None),
+                Lease.status.in_(ACTIVE_LEASE_STATUSES),
+            )
+        ).all()
+    ) if units_by_id else []
+
+    prompt_index = {
+        "properties": [
+            {
+                "id": str(prop.id),
+                "name": prop.name,
+                "address": ", ".join(
+                    part
+                    for part in [prop.street_address, prop.suburb, prop.state]
+                    if part
+                ),
+            }
+            for prop in properties[:120]
+        ],
+        "tenants": [
+            {
+                "id": str(tenant.id),
+                "name": tenant.trading_name or tenant.legal_name,
+            }
+            for tenant in tenants[:120]
+        ],
+        "leases": [
+            {
+                "id": str(lease.id),
+                "tenant_id": str(lease.tenant_id),
+                "property_id": (
+                    str(units_by_id[lease.tenancy_unit_id].property_id)
+                    if lease.tenancy_unit_id in units_by_id
+                    else None
+                ),
+            }
+            for lease in leases[:200]
+        ],
+    }
+
+    def _property_label(prop: Property) -> str:
+        if prop.street_address:
+            return f"{prop.name} — {prop.street_address}".strip(" —")
+        return prop.name
+
+    lookup: dict[str, dict[str, str]] = {
+        "properties": {
+            str(prop.id): _property_label(prop) for prop in properties
+        },
+        "tenants": {
+            str(tenant.id): tenant.trading_name or tenant.legal_name
+            for tenant in tenants
+        },
+        "leases": {
+            str(lease.id): (
+                f"Lease {str(lease.id)[:8]} ({lease.status.value})"
+            )
+            for lease in leases
+        },
+    }
+    return prompt_index, lookup
+
+
+def _validate_index_match(
+    raw: Any,
+    label_lookup: dict[str, str],
+) -> InboxTriageMatch | None:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    candidate = raw.strip()
+    label = label_lookup.get(candidate)
+    if label is None:
+        return None
+    try:
+        target_id = UUID(candidate)
+    except ValueError:
+        return None
+    return InboxTriageMatch(id=target_id, label=label)
+
+
+PROMOTE_WRITE_ROLES = {
+    UserRole.owner,
+    UserRole.admin,
+    UserRole.ops,
+}
+
+
+def _property_in_entity(
+    property_id: UUID,
+    entity_id: UUID,
+    session: Session,
+) -> Property:
+    prop = session.scalar(
+        select(Property).where(
+            Property.id == property_id,
+            Property.entity_id == entity_id,
+            Property.deleted_at.is_(None),
+        )
+    )
+    if prop is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Property not found in this entity.",
+        )
+    return prop
+
+
+def _tenant_in_entity(
+    tenant_id: UUID,
+    entity_id: UUID,
+    session: Session,
+) -> Tenant:
+    tenant = session.scalar(
+        select(Tenant).where(
+            Tenant.id == tenant_id,
+            Tenant.entity_id == entity_id,
+            Tenant.deleted_at.is_(None),
+        )
+    )
+    if tenant is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant not found in this entity.",
+        )
+    return tenant
+
+
+def _lease_in_entity(
+    lease_id: UUID,
+    entity_id: UUID,
+    session: Session,
+) -> Lease:
+    lease = session.scalar(
+        select(Lease)
+        .join(TenancyUnit, TenancyUnit.id == Lease.tenancy_unit_id)
+        .join(Property, Property.id == TenancyUnit.property_id)
+        .where(
+            Lease.id == lease_id,
+            Property.entity_id == entity_id,
+            Lease.deleted_at.is_(None),
+        )
+    )
+    if lease is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lease not found in this entity.",
+        )
+    return lease
+
+
+def _truncate_title(text: str, *, limit: int = 120) -> str:
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+@router.post("/triage/promote", response_model=InboxPromoteRead)
+def promote_triage(
+    payload: InboxPromoteRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> InboxPromoteRead:
+    """Promote a reviewed AI classification into a Leasium draft.
+
+    No provider mutation. The draft sits in its initial review state — the
+    operator still has to approve the next step (contractor dispatch,
+    tenant reminder, intake apply) from inside the target surface.
+    """
+
+    assert_entity_role(session, user, payload.entity_id, PROMOTE_WRITE_ROLES)
+
+    # Validate scope eagerly so the response is a clean 404 instead of an
+    # IntegrityError at flush time.
+    if payload.property_id is not None:
+        _property_in_entity(payload.property_id, payload.entity_id, session)
+    if payload.tenant_id is not None:
+        _tenant_in_entity(payload.tenant_id, payload.entity_id, session)
+    if payload.lease_id is not None:
+        _lease_in_entity(payload.lease_id, payload.entity_id, session)
+
+    summary = payload.summary.strip()
+    title = _truncate_title(summary)
+
+    promote_metadata = {
+        "ai_inbox": {
+            "kind": payload.kind,
+            "summary": summary,
+            "promoted_at": utcnow().isoformat(),
+            "promoted_by_user_id": str(user.id),
+        }
+    }
+
+    if payload.kind == "maintenance_request":
+        work_order = MaintenanceWorkOrder(
+            entity_id=payload.entity_id,
+            property_id=payload.property_id,
+            tenant_id=payload.tenant_id,
+            lease_id=payload.lease_id,
+            title=title or "Maintenance request from inbox",
+            description=payload.body.strip(),
+            status=MaintenanceWorkOrderStatus.requested,
+            source_reference="ai_inbox_promote",
+            work_order_metadata=promote_metadata,
+        )
+        session.add(work_order)
+        session.flush()
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=payload.entity_id,
+            action="create",
+            target_table="maintenance_work_order",
+            target_id=work_order.id,
+            tool_name="ai_inbox_promote",
+            tool_input={"kind": payload.kind, "summary_length": len(summary)},
+            tool_output_summary="Promoted inbox message to maintenance work order.",
+            data_classification="internal",
+        )
+        session.commit()
+        return InboxPromoteRead(
+            target_kind="maintenance_work_order",
+            target_id=work_order.id,
+            target_href=f"/operations/maintenance/{work_order.id}",
+            target_label=work_order.title,
+        )
+
+    if payload.kind == "payment_or_arrears":
+        if payload.tenant_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Promoting an arrears case requires a matched tenant.",
+            )
+        case = ArrearsCase(
+            entity_id=payload.entity_id,
+            property_id=payload.property_id,
+            tenant_id=payload.tenant_id,
+            lease_id=payload.lease_id,
+            status=ArrearsCaseStatus.active,
+            source_reference="ai_inbox_promote",
+            notes=summary,
+            arrears_metadata=promote_metadata,
+        )
+        session.add(case)
+        session.flush()
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=payload.entity_id,
+            action="create",
+            target_table="arrears_case",
+            target_id=case.id,
+            tool_name="ai_inbox_promote",
+            tool_input={"kind": payload.kind, "summary_length": len(summary)},
+            tool_output_summary="Promoted inbox message to arrears case.",
+            data_classification="internal",
+        )
+        session.commit()
+        return InboxPromoteRead(
+            target_kind="arrears_case",
+            target_id=case.id,
+            target_href=f"/operations?tab=arrears&case_id={case.id}",
+            target_label=title or "Arrears case from inbox",
+        )
+
+    if payload.kind == "lease_change":
+        # DocumentIntake needs a backing StoredDocument; synthesise a
+        # text/plain document from the pasted message so the existing
+        # intake review flow can pick it up.
+        body_bytes = payload.body.strip().encode("utf-8")
+        document = StoredDocument(
+            entity_id=payload.entity_id,
+            property_id=payload.property_id,
+            tenant_id=payload.tenant_id,
+            lease_id=payload.lease_id,
+            filename="inbox-lease-change.txt",
+            content_type="text/plain",
+            byte_size=len(body_bytes),
+            file_data=body_bytes,
+            category=DocumentCategory.lease,
+            notes="Created from AI inbox triage promote.",
+            document_metadata={"source": "ai_inbox_promote", "summary": summary},
+        )
+        session.add(document)
+        session.flush()
+        intake = DocumentIntake(
+            entity_id=payload.entity_id,
+            document_id=document.id,
+            status=DocumentIntakeStatus.uploaded,
+            document_type="lease_change",
+            summary=summary,
+            extracted_data={},
+            review_data={"source": "ai_inbox_promote"},
+        )
+        session.add(intake)
+        session.flush()
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=payload.entity_id,
+            action="create",
+            target_table="document_intake",
+            target_id=intake.id,
+            tool_name="ai_inbox_promote",
+            tool_input={"kind": payload.kind, "summary_length": len(summary)},
+            tool_output_summary="Promoted inbox message to Smart Intake draft.",
+            data_classification="internal",
+        )
+        session.commit()
+        return InboxPromoteRead(
+            target_kind="document_intake",
+            target_id=intake.id,
+            target_href=f"/intake?intake_id={intake.id}",
+            target_label=title or "Lease change from inbox",
+        )
+
+    # Pydantic enforces InboxPromoteKind, so this is unreachable in practice.
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=f"Cannot promote inbox kind {payload.kind!r}.",
     )
 
 

@@ -67,6 +67,13 @@ class InboxKeyFact(BaseModel):
     value: str
 
 
+class InboxTriageMatch(BaseModel):
+    """An entity-scoped record the AI matched the message to."""
+
+    id: UUID
+    label: str
+
+
 class InboxTriageRead(BaseModel):
     kind: InboxKind
     confidence: float
@@ -74,7 +81,47 @@ class InboxTriageRead(BaseModel):
     suggested_action: str
     suggested_target_kind: InboxTargetKind
     suggested_target_href: str | None = None
+    suggested_property: InboxTriageMatch | None = None
+    suggested_tenant: InboxTriageMatch | None = None
+    suggested_lease: InboxTriageMatch | None = None
     key_facts: list[InboxKeyFact] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     guardrails: list[str] = Field(default_factory=list)
     response_id: str | None = None
+
+
+# Promote — v2 of the inbox processor. The operator reviews the AI
+# classification, confirms or overrides the matched property/tenant/lease,
+# and clicks Promote. The backend creates a draft in the appropriate
+# Leasium surface (no provider mutation; the draft sits in its initial
+# review state until the operator approves the next step from inside that
+# surface).
+InboxPromoteKind = Literal[
+    "maintenance_request",
+    "payment_or_arrears",
+    "lease_change",
+]
+
+
+InboxPromoteTargetKind = Literal[
+    "maintenance_work_order",
+    "arrears_case",
+    "document_intake",
+]
+
+
+class InboxPromoteRequest(BaseModel):
+    entity_id: UUID
+    kind: InboxPromoteKind
+    summary: str = Field(min_length=1, max_length=400)
+    body: str = Field(min_length=10, max_length=8000)
+    property_id: UUID | None = None
+    tenant_id: UUID | None = None
+    lease_id: UUID | None = None
+
+
+class InboxPromoteRead(BaseModel):
+    target_kind: InboxPromoteTargetKind
+    target_id: UUID
+    target_href: str
+    target_label: str

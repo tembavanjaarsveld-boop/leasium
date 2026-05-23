@@ -2867,6 +2867,15 @@ export async function mockLeasiumApi(
         suggested_action: "Open the maintenance queue and triage.",
         suggested_target_kind: "maintenance_work_order",
         suggested_target_href: "/operations",
+        suggested_property: {
+          id: "11111111-1111-1111-1111-111111111111",
+          label: "Queen Street Retail Centre — 28 Queen Street",
+        },
+        suggested_tenant: {
+          id: "22222222-2222-2222-2222-222222222222",
+          label: "Acme Bakery",
+        },
+        suggested_lease: null,
         key_facts: [
           { label: "Property", value: "28 Queen Street" },
           { label: "Severity", value: "Non-urgent" },
@@ -2876,6 +2885,17 @@ export async function mockLeasiumApi(
           "Inbox triage is read-only. It suggests where to take the message next; it never creates or sends anything on its own.",
         ],
         response_id: "resp_triage_smoke",
+      });
+      return;
+    }
+
+    if (method === "POST" && path === "/ai/triage/promote") {
+      await fulfillJson(route, {
+        target_kind: "maintenance_work_order",
+        target_id: "99999999-9999-9999-9999-999999999999",
+        target_href:
+          "/operations/maintenance/99999999-9999-9999-9999-999999999999",
+        target_label: "Tenant reports a slow kitchen tap leak.",
       });
       return;
     }

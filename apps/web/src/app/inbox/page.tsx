@@ -9,7 +9,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
@@ -23,9 +24,14 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  type InboxPromoteKind,
   type InboxTriageKind,
   type InboxTriageRecord,
   listEntities,
+  listLeasesByTenant,
+  listProperties,
+  listTenants,
+  promoteInboxMessage,
   triageInboxMessage,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -43,6 +49,20 @@ const KIND_LABEL: Record<InboxTriageKind, string> = {
   general: "General enquiry",
   spam_or_noise: "Spam or noise",
 };
+
+const PROMOTE_KIND_LABEL: Record<InboxPromoteKind, string> = {
+  maintenance_request: "Create maintenance work order",
+  payment_or_arrears: "Open arrears case",
+  lease_change: "Send to Smart Intake review",
+};
+
+function isPromotable(kind: InboxTriageKind): kind is InboxPromoteKind {
+  return (
+    kind === "maintenance_request" ||
+    kind === "payment_or_arrears" ||
+    kind === "lease_change"
+  );
+}
 
 const KIND_TONE: Record<InboxTriageKind, StatusTone> = {
   maintenance_request: "warning",
@@ -83,14 +103,40 @@ function confidenceTone(confidence: number): StatusTone {
 }
 
 function InboxWorkspace() {
+  const router = useRouter();
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [body, setBody] = useState("");
   const [result, setResult] = useState<InboxTriageRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [promotePropertyId, setPromotePropertyId] = useState("");
+  const [promoteTenantId, setPromoteTenantId] = useState("");
+  const [promoteLeaseId, setPromoteLeaseId] = useState("");
+  const [promoteError, setPromoteError] = useState<string | null>(null);
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
     queryFn: listEntities,
+  });
+
+  const propertiesQuery = useQuery({
+    queryKey: ["inbox-promote-properties", selectedEntityId],
+    queryFn: () => listProperties(selectedEntityId),
+    enabled: Boolean(selectedEntityId) && Boolean(result),
+  });
+
+  const tenantsQuery = useQuery({
+    queryKey: ["inbox-promote-tenants", selectedEntityId],
+    queryFn: () => listTenants(selectedEntityId),
+    enabled: Boolean(selectedEntityId) && Boolean(result),
+  });
+
+  const leasesQuery = useQuery({
+    queryKey: ["inbox-promote-leases", promoteTenantId],
+    queryFn: () => listLeasesByTenant(promoteTenantId),
+    enabled:
+      Boolean(promoteTenantId) &&
+      Boolean(result) &&
+      result?.kind === "lease_change",
   });
 
   useEffect(() => {
@@ -119,14 +165,27 @@ function InboxWorkspace() {
       triageInboxMessage(payload),
     onMutate: () => {
       setError(null);
+      setPromoteError(null);
     },
     onSuccess: (data) => {
       setResult(data);
+      setPromotePropertyId(data.suggested_property?.id ?? "");
+      setPromoteTenantId(data.suggested_tenant?.id ?? "");
+      setPromoteLeaseId(data.suggested_lease?.id ?? "");
     },
     onError: (err) => {
       setError(friendlyError(err));
       setResult(null);
     },
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: promoteInboxMessage,
+    onMutate: () => setPromoteError(null),
+    onSuccess: (data) => {
+      router.push(data.target_href);
+    },
+    onError: (err) => setPromoteError(friendlyError(err)),
   });
 
   function handleSubmit(event: React.FormEvent) {
@@ -140,13 +199,45 @@ function InboxWorkspace() {
     setBody("");
     setResult(null);
     setError(null);
+    setPromoteError(null);
+    setPromotePropertyId("");
+    setPromoteTenantId("");
+    setPromoteLeaseId("");
   }
 
   function handleSample() {
     setBody(SAMPLE_BODY);
     setResult(null);
     setError(null);
+    setPromoteError(null);
   }
+
+  function handlePromote() {
+    if (!result || !selectedEntityId) return;
+    if (!isPromotable(result.kind)) return;
+    promoteMutation.mutate({
+      entity_id: selectedEntityId,
+      kind: result.kind,
+      summary: result.summary,
+      body: body.trim(),
+      property_id: promotePropertyId || null,
+      tenant_id: promoteTenantId || null,
+      lease_id: promoteLeaseId || null,
+    });
+  }
+
+  const showPromote = result !== null && isPromotable(result.kind);
+  const promoteRequiresTenant = result?.kind === "payment_or_arrears";
+  const promoteShowsLeasePicker = result?.kind === "lease_change";
+  const promoteDisabled =
+    !showPromote ||
+    promoteMutation.isPending ||
+    (promoteRequiresTenant && !promoteTenantId);
+
+  const promoteKindLabel = useMemo(() => {
+    if (!result || !isPromotable(result.kind)) return null;
+    return PROMOTE_KIND_LABEL[result.kind];
+  }, [result]);
 
   const submitDisabled =
     !selectedEntityId || !body.trim() || triageMutation.isPending;
@@ -286,6 +377,146 @@ function InboxWorkspace() {
                   </p>
                 )}
               </div>
+
+              {showPromote ? (
+                <div
+                  className="grid gap-3 rounded-md border border-primary/30 bg-primary-soft/30 p-3"
+                  data-testid="promote-panel"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-primary">
+                        Promote to a Leasium draft
+                      </div>
+                      <p className="text-sm text-foreground">
+                        {promoteKindLabel}. Leasium creates the draft;
+                        nothing is sent until you approve from inside the
+                        target surface.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Property">
+                      <Select
+                        aria-label="Promote property"
+                        value={promotePropertyId}
+                        onChange={(event) =>
+                          setPromotePropertyId(event.target.value)
+                        }
+                      >
+                        <option value="">No property attached</option>
+                        {(propertiesQuery.data ?? []).map((property) => (
+                          <option key={property.id} value={property.id}>
+                            {property.name}
+                            {property.street_address
+                              ? ` — ${property.street_address}`
+                              : ""}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field
+                      label={
+                        promoteRequiresTenant
+                          ? "Tenant (required)"
+                          : "Tenant"
+                      }
+                    >
+                      <Select
+                        aria-label="Promote tenant"
+                        value={promoteTenantId}
+                        onChange={(event) => {
+                          setPromoteTenantId(event.target.value);
+                          setPromoteLeaseId("");
+                        }}
+                      >
+                        <option value="">
+                          {promoteRequiresTenant
+                            ? "Pick a tenant"
+                            : "No tenant attached"}
+                        </option>
+                        {(tenantsQuery.data ?? []).map((tenant) => (
+                          <option key={tenant.id} value={tenant.id}>
+                            {tenant.trading_name || tenant.legal_name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    {promoteShowsLeasePicker ? (
+                      <Field label="Lease">
+                        <Select
+                          aria-label="Promote lease"
+                          value={promoteLeaseId}
+                          onChange={(event) =>
+                            setPromoteLeaseId(event.target.value)
+                          }
+                          disabled={!promoteTenantId}
+                        >
+                          <option value="">No lease attached</option>
+                          {(leasesQuery.data ?? []).map((lease) => (
+                            <option key={lease.id} value={lease.id}>
+                              {lease.status} —{" "}
+                              {lease.commencement_date ?? "no start"}
+                              {lease.expiry_date
+                                ? ` → ${lease.expiry_date}`
+                                : ""}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    ) : null}
+                  </div>
+
+                  {(result.suggested_property ||
+                    result.suggested_tenant ||
+                    result.suggested_lease) ? (
+                    <div className="text-xs text-muted-foreground">
+                      AI suggested
+                      {result.suggested_property
+                        ? ` property “${result.suggested_property.label}”`
+                        : ""}
+                      {result.suggested_tenant
+                        ? `${result.suggested_property ? "," : ""} tenant “${result.suggested_tenant.label}”`
+                        : ""}
+                      {result.suggested_lease
+                        ? `${
+                            result.suggested_property ||
+                            result.suggested_tenant
+                              ? ","
+                              : ""
+                          } lease “${result.suggested_lease.label}”`
+                        : ""}
+                      . Override above if needed.
+                    </div>
+                  ) : null}
+
+                  {promoteError ? (
+                    <div className="rounded-md border border-danger/30 bg-danger/5 p-2 text-xs text-danger">
+                      {promoteError}
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center justify-end">
+                    <Button
+                      type="button"
+                      onClick={handlePromote}
+                      disabled={promoteDisabled}
+                    >
+                      {promoteMutation.isPending ? (
+                        <span className="inline-flex items-center gap-2">
+                          <Loader2 size={14} className="animate-spin" />{" "}
+                          Promoting…
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1">
+                          <ArrowRight size={14} /> Promote to draft
+                        </span>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
 
               {result.key_facts.length ? (
                 <div className="grid gap-2">

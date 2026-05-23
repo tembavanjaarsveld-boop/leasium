@@ -2511,6 +2511,11 @@ export type InboxKeyFactRecord = {
   value: string;
 };
 
+export type InboxTriageMatch = {
+  id: string;
+  label: string;
+};
+
 export type InboxTriageRecord = {
   kind: InboxTriageKind;
   confidence: number;
@@ -2518,6 +2523,9 @@ export type InboxTriageRecord = {
   suggested_action: string;
   suggested_target_kind: InboxTriageTargetKind;
   suggested_target_href: string | null;
+  suggested_property: InboxTriageMatch | null;
+  suggested_tenant: InboxTriageMatch | null;
+  suggested_lease: InboxTriageMatch | null;
   key_facts: InboxKeyFactRecord[];
   warnings: string[];
   guardrails: string[];
@@ -2529,6 +2537,38 @@ export function triageInboxMessage(payload: {
   body: string;
 }) {
   return request<InboxTriageRecord>("/ai/triage", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type InboxPromoteKind =
+  | "maintenance_request"
+  | "payment_or_arrears"
+  | "lease_change";
+
+export type InboxPromoteTargetKind =
+  | "maintenance_work_order"
+  | "arrears_case"
+  | "document_intake";
+
+export type InboxPromoteRecord = {
+  target_kind: InboxPromoteTargetKind;
+  target_id: string;
+  target_href: string;
+  target_label: string;
+};
+
+export function promoteInboxMessage(payload: {
+  entity_id: string;
+  kind: InboxPromoteKind;
+  summary: string;
+  body: string;
+  property_id?: string | null;
+  tenant_id?: string | null;
+  lease_id?: string | null;
+}) {
+  return request<InboxPromoteRecord>("/ai/triage/promote", {
     method: "POST",
     body: JSON.stringify(payload),
   });

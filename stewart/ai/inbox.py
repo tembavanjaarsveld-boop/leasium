@@ -62,6 +62,9 @@ INBOX_SCHEMA: dict[str, Any] = {
         "summary",
         "suggested_action",
         "suggested_target_kind",
+        "suggested_property_id",
+        "suggested_tenant_id",
+        "suggested_lease_id",
         "key_facts",
         "warnings",
     ],
@@ -82,6 +85,13 @@ INBOX_SCHEMA: dict[str, Any] = {
                 "none",
             ],
         },
+        # Optional record-id matches. The model must return JSON `null` when
+        # it can't confidently match the message to one of the records in
+        # the supplied entity_index; the router validates any non-null id
+        # against the index and silently drops invented ids.
+        "suggested_property_id": {"type": ["string", "null"]},
+        "suggested_tenant_id": {"type": ["string", "null"]},
+        "suggested_lease_id": {"type": ["string", "null"]},
         "key_facts": {
             "type": "array",
             "maxItems": 6,
@@ -108,8 +118,15 @@ def triage_inbox(
     *,
     body: str,
     settings: Settings,
+    entity_index: dict[str, list[dict[str, Any]]] | None = None,
 ) -> tuple[dict[str, Any], str | None]:
-    """Send the message body to OpenAI and parse the structured response."""
+    """Send the message body to OpenAI and parse the structured response.
+
+    `entity_index` is an optional compact lookup the model can use to match
+    the message to an existing record. The router builds this from the
+    operator's entity (properties, tenants, active leases) and validates
+    any returned id against the same index before exposing it.
+    """
 
     if not settings.openai_api_key:
         raise InboxTriageError(
@@ -146,7 +163,17 @@ def triage_inbox(
         " urgency, legal threat, or a sentence you cannot interpret."
         "\n8. Australian context: dates dd/mm/yyyy in prose, AUD"
         " currency, AU state abbreviations."
+        "\n9. If `entity_index` is provided, attempt to match the message"
+        " to one of the listed records. Set `suggested_property_id`,"
+        " `suggested_tenant_id`, and `suggested_lease_id` to the matching"
+        " UUID from the index (copy the id verbatim — never invent one)."
+        " If you cannot match with confidence, set the field to null. Do"
+        " not guess; an unmatched message is better than a wrong match."
     )
+
+    message_payload: dict[str, Any] = {"message_body": body}
+    if entity_index:
+        message_payload["entity_index"] = entity_index
 
     payload: dict[str, Any] = {
         "model": settings.openai_model,
@@ -158,7 +185,7 @@ def triage_inbox(
                     {
                         "type": "input_text",
                         "text": json.dumps(
-                            {"message_body": body},
+                            message_payload,
                             default=str,
                             sort_keys=True,
                         ),
