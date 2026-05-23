@@ -1507,14 +1507,21 @@ def _attribute_inbound_tenant_by_phone(
 ) -> Tenant | None:
     """Best-effort tenant attribution from an inbound SMS From phone number.
 
-    Twilio sends From numbers in E.164 format (e.g. ``+61400111222``). Tenant
-    contact_phone values can be stored in many formats — we normalise to
-    digits-only for comparison so ``+61 400 111 222`` matches ``+61400111222``
-    and ``0400111222``.
+    Twilio sends From numbers in E.164 (e.g. ``+61400111222``). Tenant
+    contact_phone values can be stored in many formats. For AU mobiles the
+    domestic format ``0400 111 222`` shares only the last 9 digits with the
+    E.164 ``+61400111222`` (the leading ``0`` is the trunk prefix that gets
+    swapped for the country code). To make all three formats match the same
+    tenant — ``+61400111222``, ``0400111222``, ``+61 400 111 222`` — we
+    compare on the last 9 digits.
     """
 
-    cleaned = "".join(ch for ch in (from_phone or "") if ch.isdigit())
-    if not cleaned:
+    def last_n(value: str) -> str:
+        digits = "".join(ch for ch in value if ch.isdigit())
+        return digits[-9:] if len(digits) >= 9 else digits
+
+    needle = last_n(from_phone or "")
+    if not needle or len(needle) < 9:
         return None
     tenants = list(
         session.scalars(
@@ -1526,15 +1533,8 @@ def _attribute_inbound_tenant_by_phone(
         ).all()
     )
     for tenant in tenants:
-        candidate = "".join(ch for ch in (tenant.contact_phone or "") if ch.isdigit())
-        if not candidate:
-            continue
-        # Compare from the right so a stored ``0400111222`` matches an
-        # E.164 ``+61400111222`` (the trailing digits are the same once the
-        # country prefix is stripped). 9-digit minimum to avoid false-positives.
-        if len(candidate) >= 9 and (
-            cleaned.endswith(candidate) or candidate.endswith(cleaned)
-        ):
+        candidate = last_n(tenant.contact_phone or "")
+        if candidate and candidate == needle:
             return tenant
     return None
 
