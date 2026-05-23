@@ -275,7 +275,7 @@ function InboxWorkspace() {
                 {result.suggested_target_href ? (
                   <Link
                     href={result.suggested_target_href}
-                    className="inline-flex w-fit items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
+                    className="inline-flex min-h-11 w-fit items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-semibold text-primary transition hover:bg-primary/10"
                   >
                     Take it from here <ArrowRight size={12} />
                   </Link>
