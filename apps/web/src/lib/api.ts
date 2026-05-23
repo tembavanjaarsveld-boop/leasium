@@ -4278,6 +4278,79 @@ export function getOwnerStatements(entityId: string, month?: string) {
   );
 }
 
+// ---- Contractor directory -------------------------------------------------
+
+export const CONTRACTOR_CATEGORIES = [
+  "electrical",
+  "plumbing",
+  "hvac",
+  "locks",
+  "structural",
+  "appliance",
+  "cleaning",
+  "pest",
+  "urgent",
+  "other",
+] as const;
+export type ContractorCategory = (typeof CONTRACTOR_CATEGORIES)[number];
+
+export type ContractorRecord = {
+  id: string;
+  entity_id: string;
+  name: string;
+  company_name: string | null;
+  categories: string[];
+  email: string | null;
+  phone: string | null;
+  service_radius_km: number | null;
+  priority: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContractorCreatePayload = {
+  entity_id: string;
+  name: string;
+  company_name?: string | null;
+  categories?: string[];
+  email?: string | null;
+  phone?: string | null;
+  service_radius_km?: number | null;
+  priority?: number;
+  notes?: string | null;
+};
+
+export type ContractorUpdatePayload = Partial<
+  Omit<ContractorCreatePayload, "entity_id">
+>;
+
+export function listContractors(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<ContractorRecord[]>(`/contractors?${params.toString()}`);
+}
+
+export function createContractor(payload: ContractorCreatePayload) {
+  return request<ContractorRecord>("/contractors", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateContractor(
+  contractorId: string,
+  payload: ContractorUpdatePayload,
+) {
+  return request<ContractorRecord>(`/contractors/${contractorId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteContractor(contractorId: string) {
+  return request<void>(`/contractors/${contractorId}`, { method: "DELETE" });
+}
+
 export function dispatchCommsDraft(payload: CommsDispatchPayload) {
   return request<CommsDispatchRecord>("/comms/dispatch", {
     method: "POST",

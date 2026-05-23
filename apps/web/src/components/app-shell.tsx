@@ -7,6 +7,7 @@ import {
   Building2,
   Command,
   FileSpreadsheet,
+  HardHat,
   HelpCircle,
   Home,
   Inbox as InboxIcon,
@@ -111,6 +112,12 @@ const navItems: NavItem[] = [
     matchPaths: ["/operations"],
     icon: Wrench,
     shortcut: "G O",
+  },
+  {
+    href: "/contractors",
+    label: "Contractors",
+    icon: HardHat,
+    shortcut: "G R",
   },
   {
     href: "/comms",
@@ -232,6 +239,7 @@ const SHORTCUT_NAV: ShortcutNav[] = [
   { key: "p", href: "/properties", label: "Properties" },
   { key: "t", href: "/tenants", label: "Tenants" },
   { key: "o", href: "/operations", label: "Work (Operations)" },
+  { key: "r", href: "/contractors", label: "Contractors" },
   { key: "c", href: "/comms", label: "Comms queue" },
   { key: "f", href: "/statements", label: "Owner statements" },
   { key: "b", href: "/billing-readiness", label: "Billing Readiness" },

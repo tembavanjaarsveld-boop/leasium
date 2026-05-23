@@ -294,6 +294,8 @@ Behavioural baseline:
   - `20260521_0020_register_import_plans`
   - `20260521_0021_operator_notification_preferences`
   - `20260522_0022_branded_communication_templates`
+  - `20260523_0023_inbound_messages`
+  - `20260523_0024_contractors`
 - Provider setup still has external-console work:
   - SendGrid templates/event webhook configuration; notification-center readiness shows the bare Work event webhook endpoint only.
   - **Pending (2026-05-23, Temba waiting on DocuSign developer account): wire DocuSign credentials so `stewart.integrations.docusign.send_lease_for_signature` graduates from scaffold to real envelope-create.** Settings expect `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID`, `DOCUSIGN_RSA_PRIVATE_KEY`. The scaffold soft-fails with a clear `not_configured` error today, so any caller that tries to send a lease for signature returns a stub receipt without an envelope id. Next slice replaces the stub with the real JWT-grant + envelope-create + Connect-webhook plumbing once credentials are in hand. Setup steps documented in `docs/deployment.md`.

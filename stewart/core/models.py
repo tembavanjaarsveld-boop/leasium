@@ -1113,6 +1113,57 @@ Index(
 )
 
 
+class Contractor(Base):
+    """Per-entity directory of maintenance contractors.
+
+    Categories are stored as a JSONB list of strings (e.g. ``["electrical",
+    "plumbing"]``) so the v2 maintenance-categorisation classifier can match
+    a work-order category against any contractor whose categories overlap.
+    No join-table needed at this scale; if filtering by category becomes
+    slow we can promote to a normalised structure later.
+
+    Priority tiers: 1 = preferred, 2 = normal, 3 = backup. The future
+    contractor-suggest logic prefers lower priority numbers when multiple
+    contractors match the same category.
+    """
+
+    __tablename__ = "contractor"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    company_name: Mapped[str | None] = mapped_column(Text)
+    categories: Mapped[list[str]] = mapped_column(
+        JsonbCompat, nullable=False, default=list
+    )
+    email: Mapped[str | None] = mapped_column(Text)
+    phone: Mapped[str | None] = mapped_column(Text)
+    service_radius_km: Mapped[int | None] = mapped_column(Integer)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    notes: Mapped[str | None] = mapped_column(Text)
+    contractor_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship()
+
+
+Index(
+    "contractor_entity_idx",
+    Contractor.entity_id,
+    postgresql_where=Contractor.deleted_at.is_(None),
+)
+
+
 class StoredDocument(Base):
     __tablename__ = "stored_document"
 

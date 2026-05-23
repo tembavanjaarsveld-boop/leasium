@@ -11,6 +11,7 @@ from apps.api.routers import (
     branded_templates,
     charge_rules,
     comms,
+    contractors,
     document_intakes,
     documents,
     enrichment,
@@ -83,4 +84,5 @@ app.include_router(branded_templates.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(activity_feed.router, prefix="/api/v1")
 app.include_router(comms.router, prefix="/api/v1")
+app.include_router(contractors.router, prefix="/api/v1")
 app.include_router(owners.router, prefix="/api/v1")
