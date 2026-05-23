@@ -902,9 +902,11 @@ test("tenant workspace supports search and the add tenant form", async ({
   ).toBeVisible();
   await expect(page.getByRole("link", { name: /Bright Cafe/ })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Add tenant" }).click();
-  await expect(page.getByLabel("Legal name")).toBeVisible();
+  await page.getByRole("button", { name: "Send invite" }).first().click();
+  await expect(page.getByLabel("Tenant name")).toBeVisible();
   await expect(page.getByLabel("Contact email")).toBeVisible();
+  await expect(page.getByLabel("Property")).toBeVisible();
+  await expect(page.getByLabel("Unit")).toBeVisible();
 });
 
 test("property workspace shows the evidence source trail", async ({ page }) => {

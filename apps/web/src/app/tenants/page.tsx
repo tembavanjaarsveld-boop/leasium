@@ -2,13 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Check,
   ClipboardCopy,
   Clock3,
   MailCheck,
-  Plus,
   RefreshCw,
   Search,
+  Send,
   UserRound,
   X,
 } from "lucide-react";
@@ -32,14 +31,18 @@ import {
 } from "@/components/ui";
 import {
   cancelTenantOnboarding,
+  createLease,
   createTenant,
+  createTenantOnboarding,
   listEntities,
+  listProperties,
   listRentRoll,
+  listTenancyUnits,
   listTenantOnboardings,
   listTenants,
   runTenantOnboardingReminders,
+  sendTenantOnboardingPortalInvite,
   TenantOnboardingRecord,
-  TenantPayload,
   TenantRecord,
   updateTenant,
 } from "@/lib/api";
@@ -57,26 +60,22 @@ const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 type FilterKey = "all" | "needs_onboarding" | "sent" | "submitted" | "overdue" | "cancelled";
 
-type TenantForm = {
+type InviteForm = {
+  property_id: string;
+  tenancy_unit_id: string;
   legal_name: string;
-  trading_name: string;
-  abn: string;
   contact_name: string;
   contact_email: string;
-  contact_phone: string;
-  billing_email: string;
-  notes: string;
+  due_date: string;
 };
 
-const emptyForm: TenantForm = {
+const emptyForm: InviteForm = {
+  property_id: "",
+  tenancy_unit_id: "",
   legal_name: "",
-  trading_name: "",
-  abn: "",
   contact_name: "",
   contact_email: "",
-  contact_phone: "",
-  billing_email: "",
-  notes: "",
+  due_date: "",
 };
 
 const filters: Array<{ key: FilterKey; label: string }> = [
@@ -195,7 +194,7 @@ function TenantWorkspace() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState<TenantForm>(emptyForm);
+  const [form, setForm] = useState<InviteForm>(emptyForm);
   const [reminderRunSummary, setReminderRunSummary] = useState("");
   const [drawerTenantId, setDrawerTenantId] = useState<string | null>(null);
 
@@ -266,6 +265,21 @@ function TenantWorkspace() {
     queryKey: ["rent-roll", selectedEntityId],
     queryFn: () => listRentRoll({ entity_id: selectedEntityId }),
     enabled: Boolean(selectedEntityId),
+  });
+
+  // Properties + units feed the Send-invite form. Properties are loaded
+  // once per entity; units are loaded per selected property so the unit
+  // dropdown only shows units that belong to the chosen property.
+  const propertiesQuery = useQuery({
+    queryKey: ["properties", selectedEntityId],
+    queryFn: () => listProperties(selectedEntityId),
+    enabled: Boolean(selectedEntityId),
+  });
+
+  const unitsQuery = useQuery({
+    queryKey: ["tenancy-units", form.property_id],
+    queryFn: () => listTenancyUnits(form.property_id),
+    enabled: Boolean(form.property_id),
   });
 
   const tenantLeaseSummaries = useMemo(() => {
@@ -358,26 +372,54 @@ function TenantWorkspace() {
     };
   }, [onboardingQuery.data, tenantsQuery.data]);
 
-  const createMutation = useMutation({
-    mutationFn: (values: TenantForm) => {
-      const payload: TenantPayload = {
+  // Send-invite is the new primary path: the operator enters minimum
+  // info (where + who + email), and the chain (tenant -> lease ->
+  // onboarding -> portal invite) is created in one click. The tenant
+  // then fills the rest of their record themselves via the portal,
+  // gated by Clerk sign-up so submitted data is bound to an
+  // authenticated identity rather than just an email-borne token.
+  const sendInviteMutation = useMutation({
+    mutationFn: async (values: InviteForm) => {
+      const tenant = await createTenant({
         entity_id: selectedEntityId,
         legal_name: values.legal_name.trim(),
-        trading_name: cleanText(values.trading_name),
-        abn: cleanText(values.abn),
+        trading_name: null,
+        abn: null,
         contact_name: cleanText(values.contact_name),
         contact_email: cleanText(values.contact_email),
-        contact_phone: cleanText(values.contact_phone),
-        billing_email: cleanText(values.billing_email),
-        notes: cleanText(values.notes),
-      };
-      return createTenant(payload);
+        contact_phone: null,
+        billing_email: null,
+        notes: null,
+      });
+      const lease = await createLease({
+        tenancy_unit_id: values.tenancy_unit_id,
+        tenant_id: tenant.id,
+        status: "pending",
+        commencement_date: null,
+        expiry_date: null,
+        annual_rent_cents: null,
+        rent_frequency: "annual",
+        outgoings_recoverable: true,
+        next_review_date: null,
+        option_summary: null,
+        security_summary: null,
+        notes: null,
+      });
+      const onboarding = await createTenantOnboarding({
+        lease_id: lease.id,
+        due_date: values.due_date || null,
+      });
+      const sent = await sendTenantOnboardingPortalInvite(onboarding.id);
+      return { tenant, lease, onboarding: sent };
     },
-    onSuccess: (tenant) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenants", selectedEntityId] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", selectedEntityId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
       setShowCreate(false);
       setForm(emptyForm);
-      window.location.href = `/tenants/${tenant.id}`;
     },
   });
 
@@ -434,16 +476,27 @@ function TenantWorkspace() {
     }
   }
 
-  function updateField(field: keyof TenantForm, value: string) {
-    setForm((current) => ({ ...current, [field]: value }));
+  function updateField(field: keyof InviteForm, value: string) {
+    setForm((current) =>
+      field === "property_id"
+        ? { ...current, property_id: value, tenancy_unit_id: "" }
+        : { ...current, [field]: value },
+    );
   }
+
+  const canSubmitInvite =
+    Boolean(selectedEntityId) &&
+    Boolean(form.property_id) &&
+    Boolean(form.tenancy_unit_id) &&
+    Boolean(form.legal_name.trim()) &&
+    Boolean(form.contact_email.trim());
 
   function submitForm(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedEntityId || !form.legal_name.trim()) {
+    if (!canSubmitInvite) {
       return;
     }
-    createMutation.mutate(form);
+    sendInviteMutation.mutate(form);
   }
 
   return (
@@ -492,8 +545,8 @@ function TenantWorkspace() {
               Run reminders
             </SecondaryButton>
             <Button type="button" onClick={() => setShowCreate(true)}>
-              <Plus size={16} />
-              Add tenant
+              <Send size={16} />
+              Send invite
             </Button>
           </div>
         </section>
@@ -527,8 +580,8 @@ function TenantWorkspace() {
 
         {showCreate ? (
           <SectionPanel
-            title="Add tenant"
-            description="Create the tenant record here, then finish leases and onboarding from the profile."
+            title="Send invite"
+            description="Tell us where the tenant is going and where to email them. We'll create the records and send the portal invite — the tenant fills in the rest themselves."
             actions={
               <SecondaryButton
                 type="button"
@@ -537,44 +590,105 @@ function TenantWorkspace() {
                   setForm(emptyForm);
                 }}
                 className="h-8 w-8 px-0"
-                aria-label="Close add tenant"
+                aria-label="Close send invite"
               >
                 <X size={15} />
               </SecondaryButton>
             }
           >
             <form className="grid gap-3 p-4 md:grid-cols-2" onSubmit={submitForm}>
-              <Field label="Legal name">
-                <Input value={form.legal_name} onChange={(event) => updateField("legal_name", event.target.value)} />
+              <Field label="Property">
+                <Select
+                  value={form.property_id}
+                  onChange={(event) =>
+                    updateField("property_id", event.target.value)
+                  }
+                  disabled={
+                    propertiesQuery.isLoading || !selectedEntityId
+                  }
+                >
+                  <option value="">Select a property</option>
+                  {(propertiesQuery.data ?? []).map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name}
+                    </option>
+                  ))}
+                </Select>
               </Field>
-              <Field label="Trading as">
-                <Input value={form.trading_name} onChange={(event) => updateField("trading_name", event.target.value)} />
+              <Field label="Unit">
+                <Select
+                  value={form.tenancy_unit_id}
+                  onChange={(event) =>
+                    updateField("tenancy_unit_id", event.target.value)
+                  }
+                  disabled={!form.property_id || unitsQuery.isLoading}
+                >
+                  <option value="">
+                    {form.property_id
+                      ? "Select a unit"
+                      : "Choose a property first"}
+                  </option>
+                  {(unitsQuery.data ?? []).map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.unit_label}
+                    </option>
+                  ))}
+                </Select>
               </Field>
-              <Field label="ABN">
-                <Input value={form.abn} onChange={(event) => updateField("abn", event.target.value)} />
-              </Field>
-              <Field label="Contact">
-                <Input value={form.contact_name} onChange={(event) => updateField("contact_name", event.target.value)} />
+              <Field label="Tenant name">
+                <Input
+                  value={form.legal_name}
+                  onChange={(event) =>
+                    updateField("legal_name", event.target.value)
+                  }
+                  placeholder="Business or personal name"
+                />
               </Field>
               <Field label="Contact email">
-                <Input type="email" value={form.contact_email} onChange={(event) => updateField("contact_email", event.target.value)} />
+                <Input
+                  type="email"
+                  value={form.contact_email}
+                  onChange={(event) =>
+                    updateField("contact_email", event.target.value)
+                  }
+                  placeholder="Where the invite is sent"
+                />
               </Field>
-              <Field label="Billing email">
-                <Input type="email" value={form.billing_email} onChange={(event) => updateField("billing_email", event.target.value)} />
+              <Field label="Contact name (optional)">
+                <Input
+                  value={form.contact_name}
+                  onChange={(event) =>
+                    updateField("contact_name", event.target.value)
+                  }
+                  placeholder="Used to personalise the email"
+                />
               </Field>
-              <Field label="Phone">
-                <Input value={form.contact_phone} onChange={(event) => updateField("contact_phone", event.target.value)} />
-              </Field>
-              <Field label="Notes">
-                <Input value={form.notes} onChange={(event) => updateField("notes", event.target.value)} />
+              <Field label="Onboarding due (optional)">
+                <Input
+                  type="date"
+                  value={form.due_date}
+                  onChange={(event) =>
+                    updateField("due_date", event.target.value)
+                  }
+                />
               </Field>
               <div className="md:col-span-2">
-                <Button type="submit" disabled={!form.legal_name.trim() || createMutation.isPending}>
-                  <Check size={16} />
-                  Create tenant
+                <Button
+                  type="submit"
+                  disabled={!canSubmitInvite || sendInviteMutation.isPending}
+                >
+                  <Send size={16} />
+                  {sendInviteMutation.isPending ? "Sending…" : "Send invite"}
                 </Button>
-                {createMutation.error ? (
-                  <p className="mt-2 text-sm text-danger">{friendlyError(createMutation.error)}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Clicking sends a portal-claim email to the tenant. They sign
+                  in with Clerk and complete the rest of their onboarding from
+                  the portal — you review and apply when they submit.
+                </p>
+                {sendInviteMutation.error ? (
+                  <p className="mt-2 text-sm text-danger">
+                    {friendlyError(sendInviteMutation.error)}
+                  </p>
                 ) : null}
               </div>
             </form>
