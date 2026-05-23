@@ -27,6 +27,7 @@ import {
   EmptyState,
   Field,
   Input,
+  PageHeader,
   SecondaryButton,
   SectionPanel,
   Select,
@@ -124,23 +125,19 @@ function ContractorsContent() {
       </AppHeader>
 
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">Contractor directory</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Trusted contractors organised by category and priority. AI
-              maintenance categorisation will suggest a contractor from
-              this directory once it ships.
-            </p>
-          </div>
-          <Button
-            type="button"
-            onClick={() => setShowCreate((prev) => !prev)}
-          >
-            <Plus size={16} />
-            {showCreate ? "Close form" : "Add contractor"}
-          </Button>
-        </header>
+        <PageHeader
+          title="Contractor directory"
+          description="Trusted contractors organised by category and priority. AI maintenance categorisation will suggest a contractor from this directory once it ships."
+          actions={
+            <Button
+              type="button"
+              onClick={() => setShowCreate((prev) => !prev)}
+            >
+              <Plus size={16} />
+              {showCreate ? "Close form" : "Add contractor"}
+            </Button>
+          }
+        />
 
         {showCreate ? (
           <AddContractorForm

@@ -721,13 +721,48 @@ speed reads as "loading" rather than "broken", and whether mobile
 contractors/comms/statements loading needs a different (shorter) row
 count.
 
+### Container hierarchy — Surface archetype + typography drift fixes
+
+Status: pending Remba review. `apps/web/src/components/ui.tsx` now
+exports a `<Surface>` component as a sibling to `<SectionPanel>`.
+Surface has no card chrome (no border, radius, or shadow) — just a
+heading, optional description, optional actions, and a divider rule.
+Use for the main workspace body (tables, lists, dense data on a
+continuous canvas) where SectionPanel's card chrome was producing
+the "stack of look-alike white cards" pattern flagged in §4 of the
+external review.
+
+Adoption note: `<Surface>` was added but not retrofitted into the
+existing workspace pages. The four monolithic page files
+(`property-workspace.tsx`, `settings/page.tsx`,
+`operations/page.tsx`, `billing-readiness/page.tsx`) are in the
+page-file split queue, and Surface adoption is best done during
+those extractions, not as a separate pass that touches enormous
+files. New workspace surfaces should default to `<Surface>` for
+body content from now on.
+
+Same-commit typography drift cleanup: three small pages
+(`/contractors`, `/comms`, `/statements`) were carrying raw
+`<h1 className="text-2xl font-semibold">` page titles (the 20px-era
+pattern, 4px below the 30px PageTitle the typography ladder fix
+established). Replaced with `<PageHeader>` so they render at the
+canonical 30px h1 with the description and actions slot used
+correctly.
+
+Remba should review the Surface component's exact treatment
+(divider rule weight, header pt-4 spacing, header-less variant);
+whether the typography upgrade on the three list pages reads as
+calmer or marketing-heavy at 30px on small pages; and whether
+Surface should ever auto-collapse its divider when it's the only
+section on a page.
+
 ### Deferred from the external review
 
 Not addressed yet, queued for follow-up:
 
 - Page-file size policy — extract `dashboard.tsx`, `property-workspace.tsx`,
   `settings/page.tsx`, `operations/page.tsx` into composed sections at
-  ~400 lines each.
+  ~400 lines each. Surface adoption rides with that work.
 - Container hierarchy — introduce a workspace `<Surface>` distinct from
   the aside `<SectionPanel>` so dense table pages stop reading as a stack
   of look-alike white cards.

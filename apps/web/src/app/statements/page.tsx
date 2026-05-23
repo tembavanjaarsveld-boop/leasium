@@ -20,6 +20,7 @@ import {
   EmptyState,
   Field,
   Input,
+  PageHeader,
   SectionPanel,
   Select,
   SkeletonRows,
@@ -132,14 +133,10 @@ function StatementsContent() {
       </AppHeader>
 
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
-        <header className="grid gap-2">
-          <h1 className="text-2xl font-semibold">Owner statements</h1>
-          <p className="text-sm text-muted-foreground">
-            Per-owner monthly roll-up of invoiced, paid, and outstanding
-            totals across the portfolio. Read-only — PDF export and email
-            dispatch land in follow-up slices.
-          </p>
-        </header>
+        <PageHeader
+          title="Owner statements"
+          description="Per-owner monthly roll-up of invoiced, paid, and outstanding totals across the portfolio. Read-only — PDF export and email dispatch land in follow-up slices."
+        />
 
         <section className="grid gap-3 sm:grid-cols-2">
           <Field label="Month">

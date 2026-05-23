@@ -36,6 +36,7 @@ import {
   EmptyState,
   Field,
   Input,
+  PageHeader,
   SecondaryButton,
   Select,
   SectionPanel,
@@ -164,15 +165,11 @@ function CommsContent() {
           ))}
         </Select>
       </AppHeader>
-      <div className="mx-auto max-w-5xl px-5 pt-6">
-        <h1 className="text-2xl font-semibold">Comms queue</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Drafts the platform has staged for your review. Approve to send the
-          email; dismiss to defer the candidate by seven days.
-        </p>
-      </div>
-
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
+        <PageHeader
+          title="Comms queue"
+          description="Drafts the platform has staged for your review. Approve to send the email; dismiss to defer the candidate by seven days."
+        />
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric label="Total drafts" value={candidates.length} />
           <Metric label="Urgent" value={urgentCount} tone="danger" />

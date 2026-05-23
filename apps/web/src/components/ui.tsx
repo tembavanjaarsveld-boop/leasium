@@ -158,6 +158,15 @@ export function PageHeader({
   );
 }
 
+// SectionPanel — the "aside" container archetype. White card with
+// border, radius, and shadow. Use for content that supports the main
+// workspace task: Ask Leasium, Recent activity, evidence/source-trail
+// disclosures, preview/receipt panels.
+//
+// For the main workspace body (tables, lists, dense data on a
+// continuous canvas), use `<Surface>` below. Wrapping every section
+// in `<SectionPanel>` produces the "stack of look-alike white cards"
+// pattern flagged in the 2026-05-23 external review §4.
 export function SectionPanel({
   title,
   description,
@@ -197,6 +206,57 @@ export function SectionPanel({
         </div>
       ) : null}
       {children}
+    </section>
+  );
+}
+
+// Surface — the "workspace body" container archetype. No card chrome
+// (no border, no radius, no shadow). Just a heading, optional
+// description, optional actions on the right, and a divider rule
+// under the header. Children render directly on the page background.
+//
+// Use for: tables, lists, dense data, anything that's the main subject
+// of the page rather than an aside that supports it. Multiple Surfaces
+// stacked make the page feel like one continuous canvas with headings
+// — the pattern the SoT §8 calls for. Pending Remba review (2026-05-23
+// container hierarchy fix per external review §4).
+export function Surface({
+  title,
+  description,
+  icon,
+  actions,
+  className,
+  children,
+}: HTMLAttributes<HTMLElement> & {
+  title?: string;
+  description?: string;
+  icon?: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
+  const hasHeader = Boolean(title || description || icon || actions);
+  return (
+    <section className={className}>
+      {hasHeader ? (
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+          <div className="min-w-0">
+            {title ? (
+              <div className="flex items-center gap-2">
+                {icon}
+                <SectionTitle>{title}</SectionTitle>
+              </div>
+            ) : null}
+            {description ? (
+              <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">
+                {description}
+              </p>
+            ) : null}
+          </div>
+          {actions ? (
+            <div className="flex flex-wrap items-center gap-2">{actions}</div>
+          ) : null}
+        </header>
+      ) : null}
+      <div className={hasHeader ? "pt-4" : ""}>{children}</div>
     </section>
   );
 }

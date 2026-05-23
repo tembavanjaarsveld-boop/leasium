@@ -798,16 +798,37 @@ walked away.
 
 ### 10.5.4 Container hierarchy
 
-- `<SectionPanel>` is for **aside content**: Ask Leasium, Recent activity,
-  evidence/source-trail disclosures, preview/receipt panels, anything
-  that supports the main workspace task.
-- The **main workspace body** (tables, lists, dense data) renders on the
-  page background with `<SectionTitle>` headings and divider rules, no
-  card chrome. Today this archetype is implicit (Properties /
-  Operations / Billing-readiness use `<SectionPanel>` everywhere); a
-  reusable `<Surface>` component is queued in the design review.
+Two container archetypes in `apps/web/src/components/ui.tsx`:
+
+- **`<SectionPanel>`** — white card with border, radius, and shadow.
+  Use for **aside content**: Ask Leasium, Recent activity, evidence/
+  source-trail disclosures, preview/receipt panels, anything that
+  supports the main workspace task. Card chrome signals "this is one
+  unit of supporting content distinct from the page."
+
+- **`<Surface>`** — no card chrome. Heading + optional description +
+  optional actions, divider rule, children render directly on the
+  page background. Use for the **main workspace body**: tables, lists,
+  dense data, anything that's the main subject of the page. Multiple
+  Surfaces stacked make the page feel like one continuous canvas
+  with headings.
+
+- A list of cards (one card per item, e.g. owner statements, contractor
+  directory rows) is a different pattern again — each item is a small
+  SectionPanel, but the *list of them* is not wrapped in an outer
+  container. Wrapping per-item-card lists in a `<Surface title="Owners">`
+  is fine when the page has multiple such lists side by side; redundant
+  when the list is the whole page body.
+
 - Don't wrap a table in a SectionPanel just because the import is
-  already there. Reach for the right container.
+  already there. Reach for the right container. The visual question to
+  ask: "Is this content an *aside* to the page's main task, or *is*
+  the page's main task?"
+
+Adoption note: `<Surface>` is the new addition (2026-05-23). Existing
+workspace pages largely use `<SectionPanel>` everywhere; retrofitting
+those is queued behind the page-file split. New surfaces should default
+to `<Surface>` for body content from now on.
 
 ### 10.5.5 Status chip vocabulary
 
