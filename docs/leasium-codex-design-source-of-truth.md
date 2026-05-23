@@ -817,6 +817,28 @@ walked away.
 - `StatusBadge` in `apps/web/src/components/ui.tsx` is the only chip
   primitive; per-domain chips (status, priority, etc.) compose its
   `tone` prop.
+- Chip text colors use named tokens (`leasium-success-strong`,
+  `leasium-warning-strong`, `leasium-danger-strong`). Don't reach for
+  hex literals like `text-[#027A48]` — those bypass the design system
+  and resist future palette changes.
+
+### 10.5.5a Loading-state pattern
+
+- The canonical loader for list/table surfaces is `SkeletonRows` in
+  `apps/web/src/components/ui.tsx`. Pulse-animated rows mimicking the
+  eventual content shape, separated by `divide-y` like real rows.
+- Do not use `<EmptyState title="Loading X." />` as a loader. Empty
+  states describe absence; skeletons describe wait. The "thin centered
+  Loading text in an otherwise empty card" pattern was flagged in the
+  2026-05-20 governance note and 2026-05-23 review §1.5.
+- Do not use bare `"..."` strings as inline loaders for counts. Show
+  the last-known value with a small "Refreshing" badge if revalidating,
+  or a skeleton bar at the same size if there's no prior value.
+- Acceptable existing pattern for structured page-level loaders is the
+  loading-`<SectionPanel>` with `<Loader2>` spinner + placeholder grid
+  (e.g. dashboard's "Loading live portfolio" panel). That stays.
+- `SkeletonRows` accepts `rows` prop — match it to the realistic row
+  count for that surface (3 for short lists, 5 for tables).
 
 ### 10.5.6 Dashboard structure
 

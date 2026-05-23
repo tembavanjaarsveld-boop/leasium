@@ -45,6 +45,7 @@ import {
   SecondaryButton,
   SectionPanel,
   Select,
+  SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
 import {
@@ -1206,7 +1207,7 @@ function TenantDetail() {
         <AppHeader />
         <div className="mx-auto max-w-7xl px-5 py-5">
           <SectionPanel>
-            <EmptyState title="Loading tenant" />
+            <SkeletonRows rows={5} />
           </SectionPanel>
         </div>
       </main>

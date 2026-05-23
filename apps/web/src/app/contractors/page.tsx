@@ -30,6 +30,7 @@ import {
   SecondaryButton,
   SectionPanel,
   Select,
+  SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
 import {
@@ -154,7 +155,9 @@ function ContractorsContent() {
         ) : null}
 
         {contractorsQuery.isLoading ? (
-          <EmptyState title="Loading contractors." />
+          <SectionPanel>
+            <SkeletonRows rows={4} />
+          </SectionPanel>
         ) : null}
 
         {contractorsQuery.error ? (

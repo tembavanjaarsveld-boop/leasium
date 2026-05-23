@@ -684,6 +684,43 @@ distinct enough; and whether any previously-dead chip borders look
 wrong now that they render (worst case: walk them back to no border
 in StatusBadge or the per-page chip primitives).
 
+### Loading-state polish — SkeletonRows primitive + adoption
+
+Status: pending Remba review. `apps/web/src/components/ui.tsx` now
+exports `SkeletonLine` + `SkeletonRows` primitives. Pulse-animated
+rows mimicking the eventual list/table content, separated by
+`divide-y` like real rows, with `aria-busy="true"` and `aria-label="Loading"`
+for screen readers.
+
+Replaced the most-visible `<EmptyState title="Loading X." />` loaders
+with `<SkeletonRows>` in:
+
+- Dashboard (4 spots: Smart Intake review queue, Needs attention,
+  Upcoming events, Billing readiness)
+- `/contractors`, `/comms`, `/statements` (one each — wrapped in
+  `<SectionPanel>` since they were originally rendered as a
+  full-width centered empty card)
+- `/tenants` (table-cell fallback row + mobile card list)
+- `/tenants/[tenantId]` (full-page loading state)
+
+Did NOT touch: the structured `<SectionPanel title="Loading X">`
++ `<Loader2>` patterns on Dashboard, Properties, Operations,
+Insights, Billing Readiness — those are already informative
+section-level loaders, not the thin-text-in-empty-card pattern that
+was flagged. They stay as-is.
+
+Did NOT touch: the four monolithic page files
+(`property-workspace.tsx`, `settings/page.tsx`,
+`operations/page.tsx`, `billing-readiness/page.tsx`) for non-trivial
+loading-state replacements — those are still in the file-split queue
+and changes there should go in once the extraction starts.
+
+Remba should review whether the 3- or 5-row skeleton matches the
+real content density on each surface, whether the pulse animation
+speed reads as "loading" rather than "broken", and whether mobile
+contractors/comms/statements loading needs a different (shorter) row
+count.
+
 ### Deferred from the external review
 
 Not addressed yet, queued for follow-up:

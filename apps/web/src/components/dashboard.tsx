@@ -38,6 +38,7 @@ import {
   SecondaryButton,
   SectionPanel,
   Select,
+  SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
 import {
@@ -4053,7 +4054,7 @@ export function Dashboard({
                       );
                     })}
                     {documentIntakesLoading ? (
-                      <EmptyState title="Loading document reviews." />
+                      <SkeletonRows rows={3} />
                     ) : reviewIntakes.length === 0 ? (
                       <EmptyState
                         title="No documents waiting for review."
@@ -4219,10 +4220,7 @@ export function Dashboard({
               >
                 <div className="divide-y divide-border">
                   {obligationsLoading ? (
-                    <EmptyState
-                      title="Loading attention items."
-                      description="Checking key dates, obligations, and review tasks for this entity."
-                    />
+                    <SkeletonRows rows={4} />
                   ) : (
                     urgentObligations.slice(0, 6).map((item) => (
                       <Link
@@ -4278,7 +4276,7 @@ export function Dashboard({
                       </Link>
                     ))}
                     {obligationsLoading ? (
-                      <EmptyState title="Loading upcoming events." />
+                      <SkeletonRows rows={3} />
                     ) : upcomingEvents.length === 0 ? (
                       <EmptyState title="No upcoming events for this entity." />
                     ) : null}
@@ -4318,7 +4316,7 @@ export function Dashboard({
                         </Link>
                       ))}
                     {rentRollLoading ? (
-                      <EmptyState title="Loading billing readiness." />
+                      <SkeletonRows rows={3} />
                     ) : billingIssues.length === 0 ? (
                       <EmptyState title="No billing readiness blockers." />
                     ) : null}

@@ -250,3 +250,55 @@ export function EmptyState({
     </div>
   );
 }
+
+// Single placeholder line — used inside larger skeleton compositions.
+// Default height matches text-sm body copy. Width is controlled by the
+// caller via className so each skeleton row can look like the row it's
+// standing in for.
+export function SkeletonLine({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn("h-4 animate-pulse rounded-md bg-muted", className)}
+      aria-hidden="true"
+    />
+  );
+}
+
+// Skeleton row for list/table loading. Mimics a typical "title + meta"
+// row shape: a wider title line above a narrower secondary line.
+// Wrap inside a `<div className="divide-y divide-border">` parent so
+// rows separate the same way real rows will once data lands.
+function SkeletonRow() {
+  return (
+    <div className="grid gap-2 px-3 py-3">
+      <SkeletonLine className="w-2/3" />
+      <SkeletonLine className="h-3 w-1/3" />
+    </div>
+  );
+}
+
+// Canonical loading state for list/table surfaces. Replaces the
+// "EmptyState title='Loading X.'" pattern which rendered as thin
+// centered text in otherwise-empty cards (flagged in the 2026-05-20
+// governance note and 2026-05-23 external review §1.5). Pulses 3 rows
+// by default; pass `rows` to match the eventual row count more
+// closely on dense surfaces.
+export function SkeletonRows({
+  rows = 3,
+  className,
+}: {
+  rows?: number;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn("divide-y divide-border", className)}
+      aria-busy="true"
+      aria-label="Loading"
+    >
+      {Array.from({ length: rows }).map((_, index) => (
+        <SkeletonRow key={index} />
+      ))}
+    </div>
+  );
+}

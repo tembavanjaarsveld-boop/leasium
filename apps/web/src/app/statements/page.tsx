@@ -22,6 +22,7 @@ import {
   Input,
   SectionPanel,
   Select,
+  SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
 import {
@@ -184,7 +185,9 @@ function StatementsContent() {
         </section>
 
         {statementsQuery.isLoading ? (
-          <EmptyState title="Loading statements." />
+          <SectionPanel>
+            <SkeletonRows rows={3} />
+          </SectionPanel>
         ) : null}
 
         {statementsQuery.error ? (

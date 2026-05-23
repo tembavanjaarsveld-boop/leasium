@@ -39,6 +39,7 @@ import {
   SecondaryButton,
   Select,
   SectionPanel,
+  SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
 import {
@@ -183,7 +184,9 @@ function CommsContent() {
         </section>
 
         {queueQuery.isLoading ? (
-          <EmptyState title="Loading queue." />
+          <SectionPanel>
+            <SkeletonRows rows={4} />
+          </SectionPanel>
         ) : null}
 
         {queueQuery.error ? (

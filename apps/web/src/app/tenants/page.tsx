@@ -27,6 +27,7 @@ import {
   SecondaryButton,
   SectionPanel,
   Select,
+  SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
 import {
@@ -755,8 +756,8 @@ function TenantWorkspace() {
               <tbody>
                 {tenantsLoading ? (
                   <tr>
-                    <td colSpan={5}>
-                      <EmptyState title="Loading tenants." />
+                    <td colSpan={5} className="p-0">
+                      <SkeletonRows rows={4} />
                     </td>
                   </tr>
                 ) : null}
@@ -897,9 +898,7 @@ function TenantWorkspace() {
             </table>
           </div>
           <div className="md:hidden">
-            {tenantsLoading ? (
-              <EmptyState title="Loading tenants." />
-            ) : null}
+            {tenantsLoading ? <SkeletonRows rows={4} /> : null}
             <ul className="divide-y divide-border">
               {tenantRows.map(({ tenant, onboarding }) => {
                 const needsFix = onboardingNeedsContactFix(
