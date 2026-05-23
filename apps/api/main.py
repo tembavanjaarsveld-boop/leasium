@@ -21,6 +21,7 @@ from apps.api.routers import (
     maintenance,
     obligations,
     organisations,
+    owners,
     properties,
     register_imports,
     security,
@@ -82,3 +83,4 @@ app.include_router(branded_templates.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(activity_feed.router, prefix="/api/v1")
 app.include_router(comms.router, prefix="/api/v1")
+app.include_router(owners.router, prefix="/api/v1")
