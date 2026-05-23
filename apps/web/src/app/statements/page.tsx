@@ -281,7 +281,7 @@ function OwnerCard({ owner }: { owner: OwnerStatementRecord }) {
         </div>
 
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full border-collapse text-left text-sm">
+          <table className="w-full border-collapse text-left text-sm tabular-nums">
             <thead className="bg-muted text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-semibold">Property</th>

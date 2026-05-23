@@ -3141,7 +3141,7 @@ function MaintenanceDetailRoute() {
                         {entry.meta.map((item) => (
                           <span
                             key={item}
-                            className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground"
+                            className="rounded-full bg-muted px-2 py-0.5 text-leasium-micro font-semibold text-muted-foreground"
                           >
                             {item}
                           </span>

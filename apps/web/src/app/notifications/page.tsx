@@ -537,7 +537,7 @@ function FilterButton({
       onClick={onClick}
     >
       <span>{children}</span>
-      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
+      <span className="rounded-full bg-muted px-1.5 py-0.5 text-leasium-micro leading-none text-muted-foreground">
         {count}
       </span>
     </button>
@@ -698,7 +698,7 @@ function ProviderSetupChecks({
               {check.detail}
             </div>
             {check.value ? (
-              <div className="mt-2 break-all rounded-md bg-muted/45 px-2 py-1 font-mono text-[11px] leading-4 text-muted-foreground">
+              <div className="mt-2 break-all rounded-md bg-muted/45 px-2 py-1 font-mono text-leasium-micro leading-4 text-muted-foreground">
                 {check.value}
               </div>
             ) : null}

@@ -195,7 +195,7 @@ export function SavedViewsMenu({
                                 setRenamingId(view.id);
                                 setRenameDraft(view.name);
                               }}
-                              className="rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                              className="rounded-md px-1.5 py-1 text-leasium-micro text-muted-foreground transition hover:bg-muted hover:text-foreground"
                               aria-label={`Rename ${view.name}`}
                             >
                               Rename
@@ -221,7 +221,7 @@ export function SavedViewsMenu({
             onSubmit={handleSave}
             className="grid gap-1.5 border-t border-border bg-muted/30 px-3 py-2"
           >
-            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="text-leasium-micro font-medium uppercase tracking-wide text-muted-foreground">
               Save current view
             </div>
             <div className="flex items-center gap-1.5">
@@ -244,7 +244,7 @@ export function SavedViewsMenu({
               </button>
             </div>
             {!hasActiveFilters ? (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-leasium-micro text-muted-foreground">
                 Pick at least one filter before saving.
               </p>
             ) : null}

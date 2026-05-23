@@ -23,6 +23,15 @@ const config: Config = {
             500: "#475467",
             400: "#667085",
             300: "#98A2B3",
+            // 200/150/100/50 mirror docs/leasium-codex-design-source-of-truth.md §3.
+            // Previously only exposed at the un-prefixed root aliases
+            // (background, border, muted) which forced consumers to mix
+            // naming layers. Codex SoT is the source of truth — these
+            // make the full slate ramp directly addressable.
+            200: "#D0D5DD",
+            150: "#E4E7EC",
+            100: "#F2F4F7",
+            50: "#F6F8FB",
           },
           bg: "#F6F8FB",
           surface: "#FFFFFF",
@@ -84,6 +93,28 @@ const config: Config = {
           "0 1px 3px rgba(16, 24, 40, 0.10), 0 1px 2px rgba(16, 24, 40, 0.06)",
         leasiumMd: "0 8px 24px rgba(16, 24, 40, 0.08)",
         leasiumLg: "0 20px 48px rgba(16, 24, 40, 0.12)",
+      },
+      // borderRadius mirrors docs/leasium-codex-design-source-of-truth.md §5.
+      // Codex defines XS through 2XL; previously none were wired into
+      // Tailwind, so `rounded-leasiumMd` etc. silently fell through to
+      // Tailwind defaults that only happened to align. Now token-named.
+      borderRadius: {
+        leasiumXs: "6px",
+        leasiumSm: "8px",
+        leasiumMd: "12px",
+        leasiumLg: "16px",
+        leasiumXl: "20px",
+        leasium2xl: "24px",
+      },
+      // fontSize.leasium-micro per Codex SoT §4. 11px / 14px line-height /
+      // 600 weight / 0.01em tracking. Reserved for chip text, kbd hints,
+      // status pills, and table-row metadata — never primary content.
+      // Replaces ~35 ad-hoc `text-[11px]` and `text-[10px]` usages.
+      fontSize: {
+        "leasium-micro": [
+          "11px",
+          { lineHeight: "14px", fontWeight: "600", letterSpacing: "0.01em" },
+        ],
       },
       transitionTimingFunction: {
         leasium: "cubic-bezier(0.16, 1, 0.3, 1)",

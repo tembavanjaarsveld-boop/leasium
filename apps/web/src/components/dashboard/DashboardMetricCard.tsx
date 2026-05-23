@@ -31,6 +31,22 @@ export type DashboardMetricTrend = {
   label?: string;
 };
 
+/**
+ * SVG `stroke` props can't take Tailwind classes, so sparkline colours
+ * are pinned to the Codex SoT hex values. Keep these in sync with
+ * §3 (Brand palette / Neutral palette / Semantic colours) and
+ * tailwind.config.ts. If you find yourself duplicating this map in
+ * another SVG-based chart, lift it into a shared module.
+ */
+const SPARKLINE_STROKE = {
+  // Codex slate.300 — neutral / no-change.
+  neutral: "#98A2B3",
+  // Codex success.
+  positive: "#12B76A",
+  // Codex danger.
+  negative: "#F04438",
+} as const;
+
 function MetricSparkline({
   series,
   direction = "higher-better",
@@ -56,10 +72,10 @@ function MetricSparkline({
   });
   const stroke =
     delta === 0
-      ? "#98A2B3"
+      ? SPARKLINE_STROKE.neutral
       : (direction === "higher-better" ? delta > 0 : delta < 0)
-        ? "#12B76A"
-        : "#F04438";
+        ? SPARKLINE_STROKE.positive
+        : SPARKLINE_STROKE.negative;
   return (
     <svg
       width={width}
@@ -91,7 +107,7 @@ function MetricDeltaBadge({
 }) {
   if (delta === 0) {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+      <span className="inline-flex items-center gap-1 text-leasium-micro font-semibold text-muted-foreground">
         <span>·</span>
         <span>{label ?? "No change"}</span>
       </span>
@@ -101,7 +117,7 @@ function MetricDeltaBadge({
     direction === "higher-better" ? delta > 0 : delta < 0;
   return (
     <span
-      className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${
+      className={`inline-flex items-center gap-0.5 text-leasium-micro font-semibold ${
         isPositive ? "text-leasium-success-strong" : "text-leasium-danger-strong"
       }`}
     >

@@ -743,7 +743,7 @@ function TenantWorkspace() {
             </div>
           ) : null}
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full border-collapse text-left text-sm">
+            <table className="w-full border-collapse text-left text-sm tabular-nums">
               <thead className="bg-muted text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-semibold">Tenant</th>
@@ -786,7 +786,7 @@ function TenantWorkspace() {
                       </button>
                       <div className="text-xs text-muted-foreground">{tenant.abn ?? "No ABN recorded"}</div>
                       {summary ? (
-                        <div className="mt-1 inline-flex items-center rounded-full border border-leasium-success-strong/30 bg-leasium-success-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-leasium-success-strong">
+                        <div className="mt-1 inline-flex items-center rounded-full border border-leasium-success-strong/30 bg-leasium-success-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-leasium-success-strong">
                           {summary.activeLeases}{" "}
                           {summary.activeLeases === 1 ? "active lease" : "active leases"}
                           {summary.totalAnnualCents > 0

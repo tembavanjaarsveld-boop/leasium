@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-05-21
+Last updated: 2026-05-23
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -991,3 +991,59 @@ Not addressed yet, queued for follow-up:
 - Active-nav surface tone in sidebar — replace the
   `bg-leasium-blue-soft/10` tint (effectively invisible on navy-900) with
   a real surface tone.
+
+### Token consistency pass v1 (2026-05-23) — Remba pending
+
+Slice landed against the Visual polish + brand gap surfaced by the
+competitive rating against Re-Leased / PropertyMe / PropertyTree. Driven
+by Ticket 1 of the polish-skill plan (`docs/external-skills/hallmark/`
+and `docs/external-skills/anthropic-frontend-design/` informed the
+rubric; Codex SoT remains the source of truth). All five items below
+are visible and so Remba-pending per §2.2 of CLAUDE.md.
+
+- [~] Added `Micro: 11px / 14px / 600 / 0.01em` step to Codex SoT §4
+  Typography. New Tailwind utility `text-leasium-micro`. Migrated all 35
+  ad-hoc `text-[11px]` and `text-[10px]` usages (13 files: app-shell,
+  property-workspace, dashboard, dashboard/*, saved-views-menu,
+  property-occupancy, plus 6 page files). The 6 `text-[10px]` callers
+  bumped up 1px to align on the new token — Remba should confirm the
+  bump in chip/kbd contexts looks right.
+- [~] Mirrored full Codex slate ramp (200 / 150 / 100 / 50) into
+  `tailwind.config.ts`. Previously truncated at slate-300.
+- [~] Added Codex `borderRadius` extension to `tailwind.config.ts`
+  (`leasiumXs` through `leasium2xl`). Previously missing entirely;
+  `rounded-leasium*` consumers silently fell through to Tailwind defaults.
+- [~] Added missing CSS vars in `globals.css`:
+  `--leasium-radius-xs/-xl/-2xl` and `--leasium-shadow-md/-lg`. Now
+  available for non-Tailwind contexts (inline styles, SVG, third-party
+  embeds).
+- [~] Added `tabular-nums` at the `<table>` className level across 13
+  table elements in 6 files (billing-readiness, tenants,
+  intake/spreadsheet, settings, property-workspace, statements). Numbers
+  now align in arrears, rent roll, statements, and intake review.
+- [~] Extracted hardcoded sparkline colours in
+  `DashboardMetricCard.tsx` into a `SPARKLINE_STROKE` const referencing
+  Codex tokens. SVG stroke props can't take Tailwind classes, so the
+  const stays in the file with a pointer to lift it to a shared module
+  if other charts need it.
+
+Verified: ESLint + tsc both pass clean on all 18 touched files.
+Playwright smoke not run in this session — Temba to run on the Mac.
+
+### Deferred from the token consistency pass — pending decision
+
+- Ownership tag palette (12 chip colour combos in
+  `lib/property-ownership.ts`) still uses non-Codex hex literals. Needs
+  an explicit "Owner tag palette" section added to Codex SoT §3 before
+  migration. Remba decision: pick 8–12 distinguishable owner-tag colours
+  from a Codex-aligned palette, or accept the current ad-hoc set as the
+  spec.
+- `text-[15px]` (7 callers in dashboard / AskLeasiumPanel /
+  CommandCenter) is between Codex Body Small (14) and Body (16). Remba
+  decision: which step to migrate to per surface. Defer until those
+  panels are next being touched.
+- Token alias drift — `tailwind.config.ts` exposes both `leasium-*`
+  tokens and shadcn-ish short aliases (`primary`, `accent`, `foreground`,
+  `muted`, etc.); components use a mix. Remba decision: standardize on
+  one naming layer (recommend short aliases as the public API and
+  `leasium-*` for hover/pressed variants).

@@ -4053,7 +4053,7 @@ function Workspace() {
 
               <div className="grid lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="min-w-0 overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-sm">
+                  <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="px-3 py-2 font-semibold">Tenancy</th>
@@ -4294,7 +4294,7 @@ function Workspace() {
                       Ownership tag
                     </span>
                     <span
-                      className={`inline-flex max-w-[18rem] items-center truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 ${ownershipChipClassName(activeOwnerTag?.palette ?? "slate")}`}
+                      className={`inline-flex max-w-[18rem] items-center truncate rounded-full border px-2 py-0.5 text-leasium-micro font-semibold leading-4 ${ownershipChipClassName(activeOwnerTag?.palette ?? "slate")}`}
                       title={activeOwnerTag?.label ?? ownerTagFilter}
                     >
                       {activeOwnerTag?.label ?? ownerTagFilter}
@@ -4613,7 +4613,7 @@ function Workspace() {
                         }`}
                       >
                         <span>{optionLabel}</span>
-                        <span className="rounded-full bg-black/10 px-1.5 text-[10px] font-bold">
+                        <span className="rounded-full bg-black/10 px-1.5 text-leasium-micro font-bold">
                           {count}
                         </span>
                       </button>
@@ -4624,7 +4624,7 @@ function Workspace() {
 
               {propertyView === "table" ? (
               <div className="overflow-x-auto rounded-md border border-border bg-white">
-                <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+                <table className="w-full min-w-[640px] border-collapse text-left text-sm tabular-nums">
                   <thead className="bg-muted text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="w-28 px-3 py-2 font-semibold">Image</th>
@@ -4749,7 +4749,7 @@ function Workspace() {
                               )
                                 .slice(0, 3)
                                 .map((badge) => {
-                                  const chipClassName = `inline-flex max-w-[14rem] items-center truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 ${ownershipChipClassName(badge.palette)}`;
+                                  const chipClassName = `inline-flex max-w-[14rem] items-center truncate rounded-full border px-2 py-0.5 text-leasium-micro font-semibold leading-4 ${ownershipChipClassName(badge.palette)}`;
                                   if (!badge.tagKey) {
                                     return (
                                       <span
@@ -5132,7 +5132,7 @@ function Workspace() {
               {selectedProperty ? (
                 <div>
                   <div className="min-w-0 overflow-x-auto">
-                    <table className="w-full border-collapse text-left text-sm">
+                    <table className="w-full border-collapse text-left text-sm tabular-nums">
                       <thead className="bg-muted text-xs uppercase text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-semibold">Unit</th>
@@ -6063,7 +6063,7 @@ function PropertyBoardView({
               className={`inline-flex items-center gap-2 rounded-full px-2.5 py-0.5 text-xs font-semibold ${column.tone}`}
             >
               {column.label}
-              <span className="rounded-full bg-black/10 px-1.5 text-[10px] font-bold">
+              <span className="rounded-full bg-black/10 px-1.5 text-leasium-micro font-bold">
                 {column.properties.length}
               </span>
             </span>
@@ -6095,7 +6095,7 @@ function PropertyBoardView({
                       <div className="truncate text-sm font-semibold text-foreground">
                         {property.name}
                       </div>
-                      <div className="truncate text-[11px] text-muted-foreground">
+                      <div className="truncate text-leasium-micro text-muted-foreground">
                         {property.street_address}, {property.suburb}{" "}
                         {property.state}
                       </div>

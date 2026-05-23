@@ -1832,7 +1832,7 @@ function SettingsWorkspace() {
               icon={<UsersRound size={17} className="text-primary" />}
             >
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
+                <table className="w-full border-collapse text-left text-sm tabular-nums">
                   <thead className="bg-muted text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2 font-semibold">Operator</th>
@@ -2644,7 +2644,7 @@ function SettingsWorkspace() {
                           {template.receiptDetail}
                         </div>
                         {template.receiptEndpoint ? (
-                          <code className="mt-2 block break-all rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+                          <code className="mt-2 block break-all rounded bg-muted px-2 py-1 text-leasium-micro text-muted-foreground">
                             {template.receiptEndpoint}
                           </code>
                         ) : null}
@@ -2698,7 +2698,7 @@ function SettingsWorkspace() {
                           {tag.sources.map((source) => (
                             <span
                               key={`${tag.key}-${source}`}
-                              className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                              className="rounded-md bg-muted px-2 py-0.5 text-leasium-micro font-medium text-muted-foreground"
                             >
                               {source}
                             </span>
@@ -3667,7 +3667,7 @@ function SettingsWorkspace() {
                   </ul>
                 </div>
                 <div className="overflow-x-auto border-t border-border">
-                  <table className="w-full border-collapse text-left text-sm">
+                  <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="px-3 py-2 font-semibold">Status</th>
@@ -4349,7 +4349,7 @@ function SettingsWorkspace() {
                                   .map((flag) => (
                                     <span
                                       key={flag}
-                                      className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground"
+                                      className="rounded-full bg-muted px-2 py-0.5 text-leasium-micro font-semibold text-muted-foreground"
                                     >
                                       {flag.replaceAll("_", " ")}
                                     </span>
@@ -4403,7 +4403,7 @@ function SettingsWorkspace() {
                 }
               >
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-sm">
+                  <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="px-3 py-2 font-semibold">Issue</th>

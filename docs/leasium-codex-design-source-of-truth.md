@@ -246,6 +246,9 @@ Body Small:
 
 Caption:
 12px / 16px / 500 / 0.01em
+
+Micro:
+11px / 14px / 600 / 0.01em
 ```
 
 ### Typography rules
@@ -255,6 +258,8 @@ Caption:
 - Keep dashboard text calm and compact.
 - Avoid all-caps except tiny labels or table headers.
 - Tables and forms must prioritize readability over visual drama.
+- Micro is reserved for chip text, kbd hints, status pills, and table-row metadata. Never use it for primary content.
+- Tabular columns must use `font-variant-numeric: tabular-nums` so digits align — apply via the `tabular-nums` Tailwind utility on numeric `<td>` cells.
 
 ---
 
@@ -457,6 +462,10 @@ export const leasiumTheme = {
     leasiumLg: "16px",
     leasiumXl: "20px",
     leasium2xl: "24px",
+  },
+
+  fontSize: {
+    "leasium-micro": ["11px", { lineHeight: "14px", fontWeight: "600", letterSpacing: "0.01em" }],
   },
 
   boxShadow: {

@@ -3148,7 +3148,7 @@ function OperationsWorkspace() {
                               {workOrder.title}
                             </Link>
                             <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5">
-                              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                              <span className="text-leasium-micro uppercase tracking-wide text-muted-foreground">
                                 Status
                               </span>
                               <InlineEditCell
@@ -3166,7 +3166,7 @@ function OperationsWorkspace() {
                               />
                             </span>
                             <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5">
-                              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                              <span className="text-leasium-micro uppercase tracking-wide text-muted-foreground">
                                 Priority
                               </span>
                               <InlineEditCell
@@ -4494,7 +4494,7 @@ function MaintenanceDetailPanel({
                   {entry.meta.map((item) => (
                     <span
                       key={item}
-                      className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground"
+                      className="rounded-full bg-muted px-2 py-0.5 text-leasium-micro font-semibold text-muted-foreground"
                     >
                       {item}
                     </span>

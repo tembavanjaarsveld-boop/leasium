@@ -179,7 +179,7 @@ function InboxWorkspace() {
             <div className="min-w-0">
               <h1 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
                 Leasium AI Inbox
-                <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0 text-[10px] font-bold uppercase tracking-wide text-primary">
+                <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0 text-leasium-micro font-bold uppercase tracking-wide text-primary">
                   Beta
                 </span>
               </h1>

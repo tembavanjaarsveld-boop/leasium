@@ -1318,7 +1318,7 @@ function BillingReadinessWorkspace() {
                 }
               >
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-sm">
+                  <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="px-3 py-2 font-semibold">Draft</th>
@@ -1528,7 +1528,7 @@ function BillingReadinessWorkspace() {
                 }
               >
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-sm">
+                  <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="px-3 py-2 font-semibold">
@@ -1925,7 +1925,7 @@ function BillingReadinessWorkspace() {
                   </div>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-sm">
+                  <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="px-3 py-2 font-semibold">Invoice</th>
@@ -2480,7 +2480,7 @@ function BillingReadinessWorkspace() {
                 className="order-2"
               >
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-sm">
+                  <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="px-3 py-2 font-semibold">Tenancy</th>
