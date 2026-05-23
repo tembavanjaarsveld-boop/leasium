@@ -410,9 +410,17 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               href={item.href}
               onClick={() => setMobileNavOpen(false)}
               className={cn(
-                "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-leasium-slate-300 transition hover:bg-white/5 hover:text-white",
+                // Hover state uses a subtle white tint so the row reads
+                // as "row under cursor" against the navy-900 sidebar.
+                "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-leasium-slate-300 transition hover:bg-white/[0.06] hover:text-white",
+                // Active state — was bg-leasium-blue-soft/10 (EAF0FF at
+                // 10% opacity, effectively invisible on navy-900). Now
+                // bg-white/[0.12] gives a real surface tone so operators
+                // can see which item is current without relying purely
+                // on the 2px left rail. Pending Remba review
+                // (2026-05-23 external review §2.1).
                 active &&
-                  "border-l-2 border-primary bg-leasium-blue-soft/10 pl-[10px] text-white",
+                  "border-l-2 border-primary bg-white/[0.12] pl-[10px] text-white",
               )}
             >
               <Icon size={16} className="shrink-0" />

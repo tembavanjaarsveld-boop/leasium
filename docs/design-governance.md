@@ -648,6 +648,42 @@ fallback ("If your invitation link has expired, your property manager
 can send a fresh one") needs an explicit "request fresh link" path
 later.
 
+### Active-nav surface tone + chip token cleanup
+
+Status: pending Remba review. Two small wins bundled:
+
+1. Sidebar active-nav state in `apps/web/src/components/app-shell.tsx`
+   was `bg-leasium-blue-soft/10` (`#EAF0FF` at 10% opacity) on a
+   navy-900 sidebar — perceptually invisible. Replaced with
+   `bg-white/[0.12]` so the row reads as a real surface tone, not just
+   the 2px left rail. Hover also bumped from `hover:bg-white/5` to
+   `hover:bg-white/[0.06]` so cursor-on-row is detectable. Active rail
+   and text color unchanged.
+
+2. Status chip text colors were hardcoded hex literals (`text-[#027A48]`,
+   `text-[#B54708]`, `text-[#B42318]`) in 12 files (40 occurrences) —
+   `apps/web/tailwind.config.ts` now defines named tokens
+   `leasium-success-strong`, `leasium-warning-strong`, and
+   `leasium-danger-strong` matching those values, and the literals have
+   been bulk-replaced with `text-leasium-success-strong` /
+   `-warning-strong` / `-danger-strong` across the codebase. **Side
+   effect:** several files already referenced
+   `border-leasium-success-strong/30` / `-warning-strong/30` /
+   `-danger-strong/30` expecting the tokens to exist; those borders
+   were silently dead before this commit and will start rendering now
+   that the tokens resolve. The drift is in the original author's
+   favour — visible borders are what they wrote.
+
+The primary chip text (`text-leasium-blue-hover` reused for both link
+hover and chip text) was deferred — that's a smaller separate concern
+worth its own naming pass once we know whether they should diverge.
+
+Remba should review whether the new active-nav tone reads as
+"selected" without being too prominent; whether hover/active feel
+distinct enough; and whether any previously-dead chip borders look
+wrong now that they render (worst case: walk them back to no border
+in StatusBadge or the per-page chip primitives).
+
 ### Deferred from the external review
 
 Not addressed yet, queued for follow-up:

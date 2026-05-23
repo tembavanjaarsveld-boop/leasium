@@ -785,7 +785,7 @@ function TenantWorkspace() {
                       </button>
                       <div className="text-xs text-muted-foreground">{tenant.abn ?? "No ABN recorded"}</div>
                       {summary ? (
-                        <div className="mt-1 inline-flex items-center rounded-full border border-leasium-success-strong/30 bg-leasium-success-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#027A48]">
+                        <div className="mt-1 inline-flex items-center rounded-full border border-leasium-success-strong/30 bg-leasium-success-soft px-2 py-0.5 text-[11px] font-semibold leading-4 text-leasium-success-strong">
                           {summary.activeLeases}{" "}
                           {summary.activeLeases === 1 ? "active lease" : "active leases"}
                           {summary.totalAnnualCents > 0
@@ -1038,7 +1038,7 @@ function TenantQuickViewDrawer({
           </section>
           {summary ? (
             <section className="rounded-md border border-border bg-leasium-success-soft p-3 text-sm">
-              <div className="font-semibold text-[#027A48]">
+              <div className="font-semibold text-leasium-success-strong">
                 {summary.activeLeases}{" "}
                 {summary.activeLeases === 1
                   ? "active lease"

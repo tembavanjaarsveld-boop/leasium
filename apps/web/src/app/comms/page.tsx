@@ -333,7 +333,7 @@ function CandidateCard({
     >
       <div className="grid gap-3 p-4">
         {dispatchedStatus ? (
-          <div className="flex items-center gap-2 rounded-md border border-leasium-success-strong/30 bg-leasium-success-soft px-3 py-2 text-sm text-[#027A48]">
+          <div className="flex items-center gap-2 rounded-md border border-leasium-success-strong/30 bg-leasium-success-soft px-3 py-2 text-sm text-leasium-success-strong">
             <CheckCircle2 size={16} />
             Sent — status <strong>{dispatchedStatus}</strong>.
             {dispatchedStatus === "skipped" ? (

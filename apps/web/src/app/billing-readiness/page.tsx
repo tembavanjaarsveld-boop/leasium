@@ -643,9 +643,9 @@ function KpiCard({
 }) {
   const toneClass = {
     neutral: "bg-muted text-leasium-slate-500",
-    success: "bg-leasium-success-soft text-[#027A48]",
-    warning: "bg-leasium-warning-soft text-[#B54708]",
-    danger: "bg-leasium-danger-soft text-[#B42318]",
+    success: "bg-leasium-success-soft text-leasium-success-strong",
+    warning: "bg-leasium-warning-soft text-leasium-warning-strong",
+    danger: "bg-leasium-danger-soft text-leasium-danger-strong",
     primary: "bg-leasium-blue-soft text-leasium-blue-hover",
   }[tone];
 
@@ -2532,7 +2532,7 @@ function BillingReadinessWorkspace() {
                                   {blockers.slice(0, 2).map((blocker) => (
                                     <span
                                       key={blocker.id}
-                                      className="rounded bg-leasium-warning-soft px-1.5 py-0.5 text-xs text-[#B54708]"
+                                      className="rounded bg-leasium-warning-soft px-1.5 py-0.5 text-xs text-leasium-warning-strong"
                                     >
                                       {blockerTitle(blocker)}
                                     </span>
@@ -2580,7 +2580,7 @@ function BillingReadinessWorkspace() {
               <SectionPanel
                 title="Billing action queue"
                 description="Prioritised work with the right record to open next."
-                icon={<AlertTriangle size={17} className="text-[#B54708]" />}
+                icon={<AlertTriangle size={17} className="text-leasium-warning-strong" />}
                 className="order-1"
               >
                 {rentRollLoading ? (

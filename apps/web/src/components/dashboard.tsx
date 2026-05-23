@@ -681,7 +681,7 @@ function MetricDeltaBadge({
   return (
     <span
       className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${
-        isPositive ? "text-[#027A48]" : "text-[#B42318]"
+        isPositive ? "text-leasium-success-strong" : "text-leasium-danger-strong"
       }`}
     >
       <span aria-hidden="true">{delta > 0 ? "↑" : "↓"}</span>
@@ -2218,7 +2218,7 @@ function DocumentIntakeApplyOutcomeCard({
     >
       <div className="grid gap-4 p-4">
         <div className="grid gap-3 rounded-2xl border border-leasium-success/20 bg-leasium-success-soft p-3 text-sm">
-          <div className="font-semibold text-[#027A48]">
+          <div className="font-semibold text-leasium-success-strong">
             {outcome.workflowType === "lease"
               ? `Created lease register records and ${outcome.obligationCount} ${
                   outcome.obligationCount === 1 ? "task" : "tasks"
@@ -2305,7 +2305,7 @@ function DocumentIntakeApplyOutcomeCard({
             <div className="grid gap-3 border-t border-leasium-success/20 pt-3">
               {shownLeaseIds.length > 0 ? (
                 <div>
-                  <div className="text-xs font-semibold uppercase text-[#027A48]">
+                  <div className="text-xs font-semibold uppercase text-leasium-success-strong">
                     Created pending leases
                   </div>
                   <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -2322,7 +2322,7 @@ function DocumentIntakeApplyOutcomeCard({
               ) : null}
               {shownChargeSummaries.length > 0 ? (
                 <div>
-                  <div className="text-xs font-semibold uppercase text-[#027A48]">
+                  <div className="text-xs font-semibold uppercase text-leasium-success-strong">
                     Draft charges prepared
                   </div>
                   <div className="mt-2 grid gap-2">
@@ -2341,7 +2341,7 @@ function DocumentIntakeApplyOutcomeCard({
                 </div>
               ) : shownChargeIds.length > 0 ? (
                 <div>
-                  <div className="text-xs font-semibold uppercase text-[#027A48]">
+                  <div className="text-xs font-semibold uppercase text-leasium-success-strong">
                     Draft charge rules
                   </div>
                   <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -2358,7 +2358,7 @@ function DocumentIntakeApplyOutcomeCard({
               ) : null}
               {skippedScheduleRows.length > 0 ? (
                 <div>
-                  <div className="text-xs font-semibold uppercase text-[#027A48]">
+                  <div className="text-xs font-semibold uppercase text-leasium-success-strong">
                     Schedule rows needing review
                   </div>
                   <div className="mt-2 grid gap-2">

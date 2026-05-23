@@ -263,7 +263,7 @@ export function RegisterImportPanel({
         </div>
 
         {!entityId ? (
-          <div className="rounded-md border border-warning/25 bg-leasium-warning-soft px-3 py-2 text-sm text-[#B54708]">
+          <div className="rounded-md border border-warning/25 bg-leasium-warning-soft px-3 py-2 text-sm text-leasium-warning-strong">
             Select an entity before importing a workbook.
           </div>
         ) : null}
@@ -312,7 +312,7 @@ export function RegisterImportPanel({
             </div>
 
             {applyResult ? (
-              <div className="rounded-md border border-success/25 bg-leasium-success-soft px-3 py-2 text-sm text-[#027A48]">
+              <div className="rounded-md border border-success/25 bg-leasium-success-soft px-3 py-2 text-sm text-leasium-success-strong">
                 <div className="flex items-center gap-2 font-semibold">
                   <CheckCircle2 size={15} />
                   Applied {formatNumber(applyResult.applied)} action
@@ -335,7 +335,7 @@ export function RegisterImportPanel({
                   >
                     <AlertTriangle
                       size={15}
-                      className="mt-0.5 text-[#B54708]"
+                      className="mt-0.5 text-leasium-warning-strong"
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -427,7 +427,7 @@ export function RegisterImportPanel({
                             Blocked
                           </span>
                         ) : selectedActionSet.has(item.id) ? (
-                          <span className="mt-1 block normal-case text-[#027A48]">
+                          <span className="mt-1 block normal-case text-leasium-success-strong">
                             Approved
                           </span>
                         ) : (

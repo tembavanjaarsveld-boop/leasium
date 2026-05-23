@@ -30,10 +30,18 @@ const config: Config = {
           "border-strong": "#D0D5DD",
           success: "#12B76A",
           "success-soft": "#ECFDF3",
+          // success-strong: WCAG AA text color for success chips on
+          // success-soft backgrounds. Named so chip primitives can stop
+          // using `text-[#027A48]` hex literals. Several places already
+          // reference `border-leasium-success-strong/30` expecting this
+          // token to exist — those borders start rendering once it does.
+          "success-strong": "#027A48",
           warning: "#F79009",
           "warning-soft": "#FFFAEB",
+          "warning-strong": "#B54708",
           danger: "#F04438",
           "danger-soft": "#FEF3F2",
+          "danger-strong": "#B42318",
           info: "#2E90FA",
           "info-soft": "#EFF8FF",
         },

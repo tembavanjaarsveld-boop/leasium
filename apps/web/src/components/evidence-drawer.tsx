@@ -73,9 +73,9 @@ export type EvidenceDrawerProps = EvidenceSourceTrailProps & {
 
 const toneClasses: Record<EvidenceTone, string> = {
   neutral: "bg-muted text-leasium-slate-500",
-  success: "bg-leasium-success-soft text-[#027A48]",
-  warning: "bg-leasium-warning-soft text-[#B54708]",
-  danger: "bg-leasium-danger-soft text-[#B42318]",
+  success: "bg-leasium-success-soft text-leasium-success-strong",
+  warning: "bg-leasium-warning-soft text-leasium-warning-strong",
+  danger: "bg-leasium-danger-soft text-leasium-danger-strong",
   primary: "bg-leasium-blue-soft text-leasium-blue-hover",
 };
 
