@@ -82,6 +82,17 @@ class _CommsEmailResult:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class _CommsSmsResult:
+    """Outcome of a Twilio Messaging send for an operator-approved comms draft."""
+
+    status: str
+    provider: str
+    recipient: str | None
+    provider_message_id: str | None = None
+    error: str | None = None
+
+
 def _send_comms_email(
     *,
     recipient_email: str | None,
@@ -165,6 +176,100 @@ def _send_comms_email(
         return _CommsEmailResult(
             status="failed",
             provider="sendgrid",
+            recipient=cleaned,
+            error=str(exc),
+        )
+
+
+def _send_comms_sms(
+    *,
+    recipient_phone: str | None,
+    body: str,
+    entity_id: UUID,
+    candidate_id: str,
+    kind: str,
+    settings: Settings,
+) -> _CommsSmsResult:
+    """Send an operator-drafted comms SMS through Twilio Messaging.
+
+    Mirrors ``_send_comms_email`` shape. Soft-fails (returns ``skipped``)
+    when Twilio is not configured or when the recipient phone isn't in
+    E.164 format (Twilio rejects everything else). Real errors return
+    ``failed`` so the operator surface can show a receipt either way.
+    """
+
+    cleaned = (recipient_phone or "").strip() or None
+    if cleaned is None:
+        return _CommsSmsResult(
+            status="skipped",
+            provider="twilio",
+            recipient=None,
+            error="No SMS recipient.",
+        )
+    if not cleaned.startswith("+"):
+        return _CommsSmsResult(
+            status="skipped",
+            provider="twilio",
+            recipient=cleaned,
+            error="SMS recipient must be in E.164 format (start with +).",
+        )
+    if (
+        not settings.twilio_account_sid
+        or not settings.twilio_auth_token
+        or not (
+            settings.twilio_messaging_service_sid or settings.twilio_from_phone
+        )
+    ):
+        return _CommsSmsResult(
+            status="skipped",
+            provider="twilio",
+            recipient=cleaned,
+            error="Twilio Messaging is not configured.",
+        )
+
+    data: dict[str, str] = {"To": cleaned, "Body": body}
+    if settings.twilio_messaging_service_sid:
+        data["MessagingServiceSid"] = settings.twilio_messaging_service_sid
+    else:
+        data["From"] = settings.twilio_from_phone
+    # Custom args travel via Twilio's `Tags` (no per-message audit-args
+    # equivalent to SendGrid custom_args). We embed candidate_id + kind in
+    # the audit log instead so the trail is still complete.
+
+    url = (
+        f"{settings.twilio_api_base_url.rstrip('/')}/2010-04-01/Accounts/"
+        f"{settings.twilio_account_sid}/Messages.json"
+    )
+    try:
+        with httpx.Client(
+            timeout=settings.communications_timeout_seconds
+        ) as client:
+            response = client.post(
+                url,
+                data=data,
+                auth=(
+                    settings.twilio_account_sid,
+                    settings.twilio_auth_token,
+                ),
+            )
+        if 200 <= response.status_code < 300:
+            payload = response.json()
+            return _CommsSmsResult(
+                status="queued",
+                provider="twilio",
+                recipient=cleaned,
+                provider_message_id=str(payload.get("sid") or "") or None,
+            )
+        return _CommsSmsResult(
+            status="failed",
+            provider="twilio",
+            recipient=cleaned,
+            error=f"Twilio returned {response.status_code}.",
+        )
+    except httpx.HTTPError as exc:
+        return _CommsSmsResult(
+            status="failed",
+            provider="twilio",
             recipient=cleaned,
             error=str(exc),
         )
@@ -1125,18 +1230,55 @@ def dispatch_comms_draft(
 
     settings = get_settings()
     candidate_id = f"{payload.kind}:{payload.target_kind}:{payload.target_id}"
-    recipient_email = payload.recipient_email
-    result = _send_comms_email(
-        recipient_email=recipient_email,
-        subject=payload.subject,
-        body=payload.body,
-        entity_id=entity_id,
-        candidate_id=candidate_id,
-        kind=payload.kind,
-        settings=settings,
-    )
 
-    if result.status not in {"failed", "skipped"}:
+    # Channel branches by candidate kind. inbound_sms replies route through
+    # Twilio Messaging; everything else (arrears reminders, insurance
+    # expiries, lease renewals, inbound_email replies, compliance reminders)
+    # routes through SendGrid. The operator's Approve click is the explicit
+    # provider-mutation approval on either path.
+    channel: str
+    result_status: str
+    result_provider: str
+    result_recipient: str | None
+    result_provider_message_id: str | None
+    result_error: str | None
+    if payload.kind == "inbound_sms":
+        channel = "sms"
+        sms_result = _send_comms_sms(
+            recipient_phone=payload.recipient_phone,
+            body=payload.body,
+            entity_id=entity_id,
+            candidate_id=candidate_id,
+            kind=payload.kind,
+            settings=settings,
+        )
+        result_status = sms_result.status
+        result_provider = sms_result.provider
+        result_recipient = sms_result.recipient
+        result_provider_message_id = sms_result.provider_message_id
+        result_error = sms_result.error
+        tool_name = f"twilio.{sms_result.provider}"
+        summary = f"comms draft sms {sms_result.status}"
+    else:
+        channel = "email"
+        email_result = _send_comms_email(
+            recipient_email=payload.recipient_email,
+            subject=payload.subject,
+            body=payload.body,
+            entity_id=entity_id,
+            candidate_id=candidate_id,
+            kind=payload.kind,
+            settings=settings,
+        )
+        result_status = email_result.status
+        result_provider = email_result.provider
+        result_recipient = email_result.recipient
+        result_provider_message_id = email_result.provider_message_id
+        result_error = email_result.error
+        tool_name = f"sendgrid.{email_result.provider}"
+        summary = f"comms draft email {email_result.status}"
+
+    if result_status not in {"failed", "skipped"}:
         _update_source_after_dispatch(source, payload.kind)
 
     audit_log(
@@ -1147,19 +1289,20 @@ def dispatch_comms_draft(
         action="dispatch",
         target_table=payload.target_kind,
         target_id=payload.target_id,
-        tool_name=f"sendgrid.{result.provider}",
+        tool_name=tool_name,
         tool_input={
             "candidate_id": candidate_id,
             "kind": payload.kind,
-            "recipient": result.recipient,
+            "channel": channel,
+            "recipient": result_recipient,
         },
-        tool_output_summary=f"comms draft email {result.status}",
+        tool_output_summary=summary,
         outcome=(
             AuditOutcome.error
-            if result.status == "failed"
+            if result_status == "failed"
             else AuditOutcome.success
         ),
-        error_message=result.error if result.status == "failed" else None,
+        error_message=result_error if result_status == "failed" else None,
         data_classification="confidential",
     )
 
@@ -1170,12 +1313,12 @@ def dispatch_comms_draft(
         kind=payload.kind,
         target_kind=payload.target_kind,
         target_id=payload.target_id,
-        channel="email",
-        status=result.status,
-        provider=result.provider,
-        recipient=result.recipient,
-        provider_message_id=result.provider_message_id,
-        error=result.error,
+        channel=channel,
+        status=result_status,
+        provider=result_provider,
+        recipient=result_recipient,
+        provider_message_id=result_provider_message_id,
+        error=result_error,
         sent_at=utcnow(),
     )
 

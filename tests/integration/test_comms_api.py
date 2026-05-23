@@ -375,6 +375,95 @@ def test_comms_dispatch_arrears_records_audit_and_bumps_reminder_stage(
     assert case.next_reminder_on is not None
 
 
+def test_comms_dispatch_inbound_sms_routes_through_twilio(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """SMS dispatch fires the Twilio path, not the SendGrid path."""
+
+    entity = _entity(session)
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="SMS Reply Tenant",
+        contact_phone="+61400111222",
+    )
+    session.add(tenant)
+    session.flush()
+    inbound = InboundMessage(
+        entity_id=entity.id,
+        channel="sms",
+        provider="twilio",
+        from_address="+61400111222",
+        body_text="Smoke alarm beeping again.",
+        attributed_tenant_id=tenant.id,
+        raw_payload={},
+        inbound_metadata={},
+    )
+    session.add(inbound)
+    session.commit()
+
+    from apps.api.routers import comms as comms_router
+
+    sms_calls: list[dict[str, str]] = []
+    email_calls: list[dict[str, str]] = []
+
+    def fake_send_sms(*, recipient_phone, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        sms_calls.append(
+            {
+                "recipient_phone": recipient_phone,
+                "body": body,
+                "kind": kind,
+            }
+        )
+        return comms_router._CommsSmsResult(
+            status="queued",
+            provider="twilio",
+            recipient=recipient_phone,
+            provider_message_id="SM-test-reply-1",
+        )
+
+    def fake_send_email(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        email_calls.append({"recipient_email": recipient_email})
+        return comms_router._CommsEmailResult(
+            status="queued",
+            provider="sendgrid",
+            recipient=recipient_email,
+        )
+
+    monkeypatch.setattr(comms_router, "_send_comms_sms", fake_send_sms)
+    monkeypatch.setattr(comms_router, "_send_comms_email", fake_send_email)
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": "inbound_sms",
+            "target_kind": "inbound_message",
+            "target_id": str(inbound.id),
+            "subject": "SMS reply",
+            "body": "Hi Alex, we'll have someone out today.",
+            "recipient_phone": "+61400111222",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["channel"] == "sms"
+    assert body["status"] == "queued"
+    assert body["provider"] == "twilio"
+    assert body["recipient"] == "+61400111222"
+    assert body["provider_message_id"] == "SM-test-reply-1"
+    # Twilio called once, SendGrid never.
+    assert len(sms_calls) == 1
+    assert sms_calls[0]["body"] == "Hi Alex, we'll have someone out today."
+    assert len(email_calls) == 0
+
+    # Inbound message marked processed so the candidate clears from the queue.
+    refreshed = session.get(InboundMessage, inbound.id)
+    assert refreshed is not None
+    assert refreshed.processed_at is not None
+
+
 def test_comms_dismiss_arrears_pauses_reminder(
     client: TestClient,
     session: Session,
