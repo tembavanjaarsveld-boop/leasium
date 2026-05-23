@@ -34,6 +34,7 @@ import {
 import {
   cancelTenantOnboarding,
   createLease,
+  createTenancyUnit,
   createTenant,
   createTenantOnboarding,
   listEntities,
@@ -284,6 +285,22 @@ function TenantWorkspace() {
     enabled: Boolean(form.property_id),
   });
 
+  // 0 units → hide picker, auto-create "Main premises" at submit time.
+  // 1 unit → auto-select + show as a chip (still a real id, no auto-create).
+  // 2+ units → keep dropdown required.
+  const unitsForProperty = unitsQuery.data ?? [];
+  const unitPickerMode: "auto-create" | "auto-select" | "pick" = !form.property_id
+    ? "pick"
+    : unitsQuery.isLoading
+      ? "pick"
+      : unitsForProperty.length === 0
+        ? "auto-create"
+        : unitsForProperty.length === 1
+          ? "auto-select"
+          : "pick";
+  const autoSelectedUnit =
+    unitPickerMode === "auto-select" ? unitsForProperty[0] : null;
+
   const tenantLeaseSummaries = useMemo(() => {
     const map = new Map<
       string,
@@ -382,6 +399,22 @@ function TenantWorkspace() {
   // authenticated identity rather than just an email-borne token.
   const sendInviteMutation = useMutation({
     mutationFn: async (values: InviteForm) => {
+      // Resolve the unit id based on the picker mode:
+      //   - auto-create → make a "Main premises" unit now
+      //   - auto-select → use the single existing unit
+      //   - pick → the operator already filled tenancy_unit_id
+      let resolvedUnitId = values.tenancy_unit_id;
+      if (unitPickerMode === "auto-create") {
+        const created = await createTenancyUnit({
+          property_id: values.property_id,
+          unit_label: "Main premises",
+          sqm: null,
+          parking_spaces: null,
+        });
+        resolvedUnitId = created.id;
+      } else if (unitPickerMode === "auto-select" && autoSelectedUnit) {
+        resolvedUnitId = autoSelectedUnit.id;
+      }
       const tenant = await createTenant({
         entity_id: selectedEntityId,
         legal_name: values.legal_name.trim(),
@@ -394,7 +427,7 @@ function TenantWorkspace() {
         notes: null,
       });
       const lease = await createLease({
-        tenancy_unit_id: values.tenancy_unit_id,
+        tenancy_unit_id: resolvedUnitId,
         tenant_id: tenant.id,
         status: "pending",
         commencement_date: null,
@@ -486,10 +519,18 @@ function TenantWorkspace() {
     );
   }
 
+  // Unit is satisfied if the operator picked one OR there's a single
+  // unit we'll auto-select OR there are zero units we'll auto-create.
+  // Loading state is the only mode where we wait.
+  const unitReady =
+    unitPickerMode === "auto-create" ||
+    unitPickerMode === "auto-select" ||
+    Boolean(form.tenancy_unit_id);
   const canSubmitInvite =
     Boolean(selectedEntityId) &&
     Boolean(form.property_id) &&
-    Boolean(form.tenancy_unit_id) &&
+    !unitsQuery.isLoading &&
+    unitReady &&
     Boolean(form.legal_name.trim()) &&
     Boolean(form.contact_email.trim());
 
@@ -618,24 +659,45 @@ function TenantWorkspace() {
                 </Select>
               </Field>
               <Field label="Unit">
-                <Select
-                  value={form.tenancy_unit_id}
-                  onChange={(event) =>
-                    updateField("tenancy_unit_id", event.target.value)
-                  }
-                  disabled={!form.property_id || unitsQuery.isLoading}
-                >
-                  <option value="">
-                    {form.property_id
-                      ? "Select a unit"
-                      : "Choose a property first"}
-                  </option>
-                  {(unitsQuery.data ?? []).map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.unit_label}
+                {unitPickerMode === "auto-create" && form.property_id ? (
+                  <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                    <span className="rounded-full bg-primary-soft px-2 py-0.5 text-leasium-micro font-semibold uppercase tracking-wide text-primary">
+                      Auto
+                    </span>
+                    <span>
+                      No sub-units on this property — we&apos;ll create
+                      &ldquo;Main premises&rdquo; on send.
+                    </span>
+                  </div>
+                ) : unitPickerMode === "auto-select" && autoSelectedUnit ? (
+                  <div className="flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm">
+                    <span className="rounded-full bg-primary-soft px-2 py-0.5 text-leasium-micro font-semibold uppercase tracking-wide text-primary">
+                      Auto
+                    </span>
+                    <span className="text-foreground">
+                      {autoSelectedUnit.unit_label}
+                    </span>
+                  </div>
+                ) : (
+                  <Select
+                    value={form.tenancy_unit_id}
+                    onChange={(event) =>
+                      updateField("tenancy_unit_id", event.target.value)
+                    }
+                    disabled={!form.property_id || unitsQuery.isLoading}
+                  >
+                    <option value="">
+                      {form.property_id
+                        ? "Select a unit"
+                        : "Choose a property first"}
                     </option>
-                  ))}
-                </Select>
+                    {unitsForProperty.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.unit_label}
+                      </option>
+                    ))}
+                  </Select>
+                )}
               </Field>
               <Field label="Tenant name">
                 <Input

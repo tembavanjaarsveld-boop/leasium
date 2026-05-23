@@ -93,6 +93,7 @@ class PropertyType(enum.StrEnum):
     vacant_land = "vacant_land"
     childcare = "childcare"
     hospitality = "hospitality"
+    residential = "residential"
     other = "other"
 
 

@@ -158,6 +158,7 @@ const propertySchema = z.object({
     "vacant_land",
     "childcare",
     "hospitality",
+    "residential",
     "other",
   ]),
   building_sqm: optionalNumber,
@@ -355,6 +356,7 @@ const propertyTypes: { value: PropertyType; label: string }[] = [
   { value: "vacant_land", label: "Vacant land" },
   { value: "childcare", label: "Childcare" },
   { value: "hospitality", label: "Hospitality" },
+  { value: "residential", label: "Residential" },
   { value: "other", label: "Other" },
 ];
 

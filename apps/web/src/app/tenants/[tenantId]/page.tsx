@@ -898,6 +898,14 @@ function TenantDetail() {
   const tenant = tenantQuery.data;
   const tenantDetail = tenantDetailQuery.data;
   const tenantLeaseContexts = tenantDetail?.leases ?? [];
+  // A tenant is "residential" if any of their leases is on a residential
+  // property. Residential leases don't carry ABN or trading-name in the
+  // way commercial business tenants do — we hide those fields on the
+  // edit form to keep it focused. Defaults to false until the detail
+  // query resolves, so the commercial-style form renders by default.
+  const tenantIsResidential = tenantLeaseContexts.some(
+    (context) => context.property_type === "residential",
+  );
 
   const documentsQuery = useQuery({
     queryKey: ["tenant-documents", tenant?.entity_id, tenantId],
@@ -1344,20 +1352,24 @@ function TenantDetail() {
                   }
                 />
               </Field>
-              <Field label="Trading as">
-                <Input
-                  value={form.trading_name}
-                  onChange={(event) =>
-                    updateField("trading_name", event.target.value)
-                  }
-                />
-              </Field>
-              <Field label="ABN">
-                <Input
-                  value={form.abn}
-                  onChange={(event) => updateField("abn", event.target.value)}
-                />
-              </Field>
+              {tenantIsResidential ? null : (
+                <>
+                  <Field label="Trading as">
+                    <Input
+                      value={form.trading_name}
+                      onChange={(event) =>
+                        updateField("trading_name", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label="ABN">
+                    <Input
+                      value={form.abn}
+                      onChange={(event) => updateField("abn", event.target.value)}
+                    />
+                  </Field>
+                </>
+              )}
               <Field label="Contact">
                 <Input
                   value={form.contact_name}
@@ -1424,14 +1436,18 @@ function TenantDetail() {
                   <dt className="text-xs text-muted-foreground">Legal name</dt>
                   <dd className="font-medium">{tenant.legal_name}</dd>
                 </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Trading as</dt>
-                  <dd>{tenant.trading_name ?? "-"}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">ABN</dt>
-                  <dd>{tenant.abn ?? "-"}</dd>
-                </div>
+                {tenantIsResidential ? null : (
+                  <>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Trading as</dt>
+                      <dd>{tenant.trading_name ?? "-"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">ABN</dt>
+                      <dd>{tenant.abn ?? "-"}</dd>
+                    </div>
+                  </>
+                )}
                 <div>
                   <dt className="text-xs text-muted-foreground">
                     Primary contact

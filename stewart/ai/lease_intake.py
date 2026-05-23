@@ -68,6 +68,7 @@ LEASE_EXTRACTION_SCHEMA: dict[str, Any] = {
                         "vacant_land",
                         "childcare",
                         "hospitality",
+                        "residential",
                         "other",
                         None,
                     ],

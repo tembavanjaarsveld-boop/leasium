@@ -246,6 +246,7 @@ class TenantLeaseContextRead(BaseModel):
     property_id: UUID
     property_name: str
     property_address: str | None
+    property_type: PropertyType
     tenancy_unit_id: UUID
     unit_label: str
     commencement_date: date | None

@@ -479,6 +479,7 @@ export type PropertyType =
   | "vacant_land"
   | "childcare"
   | "hospitality"
+  | "residential"
   | "other";
 
 export type PropertyRecord = {
@@ -565,6 +566,7 @@ export type TenantLeaseContextRecord = {
   property_id: string;
   property_name: string;
   property_address: string | null;
+  property_type: PropertyType;
   tenancy_unit_id: string;
   unit_label: string;
   commencement_date: string | null;

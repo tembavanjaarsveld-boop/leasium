@@ -526,6 +526,7 @@ def _tenant_lease_contexts(session: Session, tenant: Tenant) -> list[TenantLease
                 property_id=prop.id,
                 property_name=prop.name,
                 property_address=_property_address(prop),
+                property_type=prop.property_type,
                 tenancy_unit_id=unit.id,
                 unit_label=unit.unit_label,
                 commencement_date=lease.commencement_date,
