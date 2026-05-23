@@ -12,6 +12,7 @@ import {
   Keyboard,
   Menu,
   Search,
+  Send,
   Settings as SettingsIcon,
   Sparkles,
   Users,
@@ -75,6 +76,12 @@ const navItems: NavItem[] = [
     matchPaths: ["/operations"],
     icon: Wrench,
     shortcut: "G O",
+  },
+  {
+    href: "/comms",
+    label: "Comms",
+    icon: Send,
+    shortcut: "G C",
   },
   {
     href: "/billing-readiness",
@@ -184,6 +191,7 @@ const SHORTCUT_NAV: ShortcutNav[] = [
   { key: "p", href: "/properties", label: "Properties" },
   { key: "t", href: "/tenants", label: "Tenants" },
   { key: "o", href: "/operations", label: "Work (Operations)" },
+  { key: "c", href: "/comms", label: "Comms queue" },
   { key: "b", href: "/billing-readiness", label: "Billing Readiness" },
   { key: "n", href: "/notifications", label: "Notifications" },
   { key: "q", href: "/portfolio-qa", label: "Portfolio QA" },

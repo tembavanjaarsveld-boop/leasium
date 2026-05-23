@@ -4126,3 +4126,103 @@ export function applyPropertyImage(payload: {
     },
   );
 }
+
+// ---- Comms queue (scheduled comms loop) -----------------------------------
+//
+// Foundation for "minimise humans" — the comms queue surfaces draft
+// communications (arrears reminders, insurance expiry reminders, lease
+// renewal discussions) the operator reviews and approves. Approval fires
+// the existing SendGrid pipe through /comms/dispatch under the explicit
+// provider-mutation guardrail.
+
+export type CommsKind =
+  | "arrears_reminder"
+  | "insurance_expiry"
+  | "lease_renewal";
+export type CommsSeverity = "info" | "warning" | "danger";
+
+export type CommsCandidateRecord = {
+  id: string;
+  kind: CommsKind;
+  target_kind: string;
+  target_id: string;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  property_name: string | null;
+  unit_label: string | null;
+  recipient_email: string | null;
+  recipient_phone: string | null;
+  subject: string;
+  body: string;
+  severity: CommsSeverity;
+  due_at: string | null;
+  detail: string | null;
+  generated_at: string;
+};
+
+export type CommsQueueRecord = {
+  entity_id: string;
+  candidates: CommsCandidateRecord[];
+  generated_at: string;
+};
+
+export type CommsDispatchPayload = {
+  kind: CommsKind;
+  target_kind: string;
+  target_id: string;
+  subject: string;
+  body: string;
+  recipient_email?: string | null;
+  recipient_phone?: string | null;
+};
+
+export type CommsDispatchRecord = {
+  candidate_id: string;
+  kind: CommsKind;
+  target_kind: string;
+  target_id: string;
+  channel: string;
+  status: string;
+  provider: string | null;
+  recipient: string | null;
+  provider_message_id: string | null;
+  error: string | null;
+  sent_at: string;
+};
+
+export type CommsDismissPayload = {
+  kind: CommsKind;
+  target_kind: string;
+  target_id: string;
+  until?: string | null;
+  reason?: string | null;
+};
+
+export type CommsDismissRecord = {
+  candidate_id: string;
+  kind: CommsKind;
+  target_kind: string;
+  target_id: string;
+  deferred_until: string;
+  reason: string | null;
+  dismissed_at: string;
+};
+
+export function getCommsQueue(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<CommsQueueRecord>(`/comms/queue?${params.toString()}`);
+}
+
+export function dispatchCommsDraft(payload: CommsDispatchPayload) {
+  return request<CommsDispatchRecord>("/comms/dispatch", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function dismissCommsCandidate(payload: CommsDismissPayload) {
+  return request<CommsDismissRecord>("/comms/dismiss", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
