@@ -794,6 +794,34 @@ icon-only width, and whether the mobile drawer's labels-always-show
 behaviour holds up when the drawer is wide enough to span much of
 a 480-700px viewport.
 
+### Page-file split — dashboard.tsx phase 3
+
+Status: pending Remba review. Third extraction slice.
+`DashboardCommandCenter` (the first-viewport ranked-actions panel on
+the dashboard) plus its `CommandCenterItem` and
+`CommandCenterCounts` types moved to
+`src/components/dashboard/DashboardCommandCenter.tsx` (214 lines).
+Parent imports both types + the component.
+
+`commandCenterSort` stays in dashboard.tsx because it leans on the
+parent-local `dueRank` date helper. Promoting `dueRank` / `dateOnly`
+/ `dueLabel` / `formatDate` / `formatMoney` / `intakeStatusTone` /
+`obligationTone` to `src/lib/` is queued as a separate slice — those
+are general-purpose helpers and several other operator pages
+duplicate them.
+
+Net: dashboard.tsx 3,751 → 3,577 lines (−174). Cumulative across
+phases 1+2+3: 4,463 → 3,577 lines (−886, 20% reduction).
+
+Phase 4+ queue:
+- `DocumentIntakeApplyOutcomeCard` (248 lines, fairly self-contained
+  reviewed-apply outcome card)
+- `DocumentIntakeReviewPanel` (646 lines, biggest single piece —
+  takes many props from parent state; will require careful prop
+  threading)
+- General-purpose date/money/tone helpers → `src/lib/` and migrate
+  the duplicated copies across operator pages.
+
 ### Page-file split — dashboard.tsx phase 2
 
 Status: pending Remba review. Second extraction slice. Two more
