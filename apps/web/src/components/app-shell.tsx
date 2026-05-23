@@ -496,13 +496,13 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       {mobileNavOpen ? (
         <div className="fixed inset-0 z-50 md:hidden">
           <div
-            className="absolute inset-0 bg-leasium-navy-900/60"
+            className="absolute inset-0 bg-leasium-navy-900/60 animate-leasium-backdrop-in"
             onClick={() => setMobileNavOpen(false)}
             aria-hidden
           />
           <aside
             aria-label="Primary navigation"
-            className="absolute inset-y-0 left-0 flex w-60 flex-col bg-leasium-navy-900 text-white shadow-leasiumLg"
+            className="absolute inset-y-0 left-0 flex w-60 flex-col bg-leasium-navy-900 text-white shadow-leasiumLg animate-leasium-drawer-in-left"
           >
             <div className="flex items-center justify-end px-2 pt-2">
               <button

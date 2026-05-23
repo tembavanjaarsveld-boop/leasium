@@ -53,6 +53,49 @@ const config: Config = {
           "danger-strong": "#B42318",
           info: "#2E90FA",
           "info-soft": "#EFF8FF",
+          // Owner tag palette per Codex SoT §3. Used only by
+          // lib/property-ownership.ts to colour owner/billing identity
+          // chips. Each palette has matching border/bg/text colours
+          // pre-balanced for WCAG AA at chip text sizes. Do not reuse
+          // for status pills.
+          ownertag: {
+            "current-border": "#BFDBFE",
+            "current-bg": "#EFF6FF",
+            "current-text": "#1D4ED8",
+            "sky-border": "#BAE6FD",
+            "sky-bg": "#F0F9FF",
+            "sky-text": "#0369A1",
+            "teal-border": "#99F6E4",
+            "teal-bg": "#F0FDFA",
+            "teal-text": "#0F766E",
+            "cyan-border": "#A5F3FC",
+            "cyan-bg": "#ECFEFF",
+            "cyan-text": "#0E7490",
+            "lavender-border": "#DDD6FE",
+            "lavender-bg": "#F5F3FF",
+            "lavender-text": "#5B21B6",
+            "indigo-border": "#C7D2FE",
+            "indigo-bg": "#EEF2FF",
+            "indigo-text": "#3730A3",
+            "green-border": "#BBF7D0",
+            "green-bg": "#F0FDF4",
+            "green-text": "#15803D",
+            "lime-border": "#D9F99D",
+            "lime-bg": "#F7FEE7",
+            "lime-text": "#4D7C0F",
+            "amber-border": "#FDE68A",
+            "amber-bg": "#FFFBEB",
+            "amber-text": "#B45309",
+            "rose-border": "#FECDD3",
+            "rose-bg": "#FFF1F2",
+            "rose-text": "#BE123C",
+            "pink-border": "#FBCFE8",
+            "pink-bg": "#FDF2F8",
+            "pink-text": "#BE185D",
+            "peach-border": "#FED7AA",
+            "peach-bg": "#FFF7ED",
+            "peach-text": "#C2410C",
+          },
         },
         border: "#E4E7EC",
         "border-strong": "#D0D5DD",
@@ -110,7 +153,21 @@ const config: Config = {
       // 600 weight / 0.01em tracking. Reserved for chip text, kbd hints,
       // status pills, and table-row metadata — never primary content.
       // Replaces ~35 ad-hoc `text-[11px]` and `text-[10px]` usages.
+      // Custom fontSize steps per Codex SoT §4. Both ratify sizes already
+      // in use somewhere in the app, lifted from ad-hoc text-[Npx] callers
+      // into named tokens.
+      //
+      // leasium-body-compact (15px / 20px / 500) - dashboard list-row
+      //   hierarchy (command center rows, Ask Leasium titles). The
+      //   "quieter than Body" middle step. Replaces ~7 text-[15px] uses.
+      // leasium-micro (11px / 14px / 600 / 0.01em) - chip text, kbd hints,
+      //   status pills, table-row metadata. Replaced ~35 text-[11px] and
+      //   text-[10px] uses.
       fontSize: {
+        "leasium-body-compact": [
+          "15px",
+          { lineHeight: "20px", fontWeight: "500" },
+        ],
         "leasium-micro": [
           "11px",
           { lineHeight: "14px", fontWeight: "600", letterSpacing: "0.01em" },

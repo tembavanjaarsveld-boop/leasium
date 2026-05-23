@@ -186,6 +186,38 @@ Info:                #2E90FA
 Info Soft:           #EFF8FF
 ```
 
+### Owner tag palette
+
+Owner/billing identity chips need more distinguishable hues than the
+four semantic colours allow. The palette below is a soft pastel ramp
+where each entry has a paired border, background, and text colour
+pre-balanced for WCAG AA contrast at chip-text sizes. Assign by
+deterministic hash of the owner label so a given owner shows the same
+tag across surfaces. Slate is reserved for the "current entity / no
+distinct owner" baseline.
+
+```txt
+                     Border    Background  Text
+Current (blue):      #BFDBFE   #EFF6FF     #1D4ED8
+Sky:                 #BAE6FD   #F0F9FF     #0369A1
+Teal:                #99F6E4   #F0FDFA     #0F766E
+Cyan:                #A5F3FC   #ECFEFF     #0E7490
+Lavender:            #DDD6FE   #F5F3FF     #5B21B6
+Indigo:              #C7D2FE   #EEF2FF     #3730A3
+Green:               #BBF7D0   #F0FDF4     #15803D
+Lime:                #D9F99D   #F7FEE7     #4D7C0F
+Amber:               #FDE68A   #FFFBEB     #B45309
+Rose:                #FECDD3   #FFF1F2     #BE123C
+Pink:                #FBCFE8   #FDF2F8     #BE185D
+Peach:               #FED7AA   #FFF7ED     #C2410C
+Slate (baseline):    slate-200 slate-100   slate-600
+```
+
+Use these only for owner / billing identity chips on property and
+settings surfaces. Do not reuse this palette for status pills or
+semantic states — those must come from §3 Semantic colours so that
+status meaning stays orthogonal to owner identity.
+
 ### App colour usage
 
 ```txt
@@ -241,6 +273,9 @@ Body Large:
 Body:
 16px / 24px / 400
 
+Body Compact:
+15px / 20px / 500
+
 Body Small:
 14px / 20px / 400
 
@@ -258,6 +293,7 @@ Micro:
 - Keep dashboard text calm and compact.
 - Avoid all-caps except tiny labels or table headers.
 - Tables and forms must prioritize readability over visual drama.
+- Body Compact (15px / 20px / 500) is the dashboard list-row hierarchy: command-center rows, Ask Leasium panel titles, and similar quieter-than-Body but heavier-than-Body-Small contexts. Use when 16px feels chunky and 14px feels weak.
 - Micro is reserved for chip text, kbd hints, status pills, and table-row metadata. Never use it for primary content.
 - Tabular columns must use `font-variant-numeric: tabular-nums` so digits align — apply via the `tabular-nums` Tailwind utility on numeric `<td>` cells.
 
@@ -489,6 +525,7 @@ export const leasiumTheme = {
   },
 
   fontSize: {
+    "leasium-body-compact": ["15px", { lineHeight: "20px", fontWeight: "500" }],
     "leasium-micro": ["11px", { lineHeight: "14px", fontWeight: "600", letterSpacing: "0.01em" }],
   },
 

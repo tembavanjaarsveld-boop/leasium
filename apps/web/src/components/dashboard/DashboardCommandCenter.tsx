@@ -147,7 +147,7 @@ export function DashboardCommandCenter({
                   </span>
                 </div>
                 <div className="min-w-0">
-                  <div className="line-clamp-2 text-[15px] font-medium leading-5 text-foreground">
+                  <div className="line-clamp-2 text-leasium-body-compact font-medium leading-5 text-foreground">
                     {item.title}
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-4 text-muted-foreground">

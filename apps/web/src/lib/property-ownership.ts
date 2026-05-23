@@ -244,19 +244,28 @@ function ownerPaletteForLabel(
 }
 
 export function ownershipChipClassName(palette: OwnershipChipPalette) {
+  // Tokens come from tailwind.config.ts colors.leasium.ownertag.* which
+  // mirror Codex SoT §3 Owner tag palette. Colour values are unchanged
+  // from the previous inline hex literals; only the addressing changed.
   const palettes: Record<OwnershipChipPalette, string> = {
-    current: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    sky: "border-[#BAE6FD] bg-[#F0F9FF] text-[#0369A1]",
-    teal: "border-[#99F6E4] bg-[#F0FDFA] text-[#0F766E]",
-    cyan: "border-[#A5F3FC] bg-[#ECFEFF] text-[#0E7490]",
-    lavender: "border-[#DDD6FE] bg-[#F5F3FF] text-[#5B21B6]",
-    indigo: "border-[#C7D2FE] bg-[#EEF2FF] text-[#3730A3]",
-    green: "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]",
-    lime: "border-[#D9F99D] bg-[#F7FEE7] text-[#4D7C0F]",
-    amber: "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    rose: "border-[#FECDD3] bg-[#FFF1F2] text-[#BE123C]",
-    pink: "border-[#FBCFE8] bg-[#FDF2F8] text-[#BE185D]",
-    peach: "border-[#FED7AA] bg-[#FFF7ED] text-[#C2410C]",
+    current:
+      "border-leasium-ownertag-current-border bg-leasium-ownertag-current-bg text-leasium-ownertag-current-text",
+    sky: "border-leasium-ownertag-sky-border bg-leasium-ownertag-sky-bg text-leasium-ownertag-sky-text",
+    teal: "border-leasium-ownertag-teal-border bg-leasium-ownertag-teal-bg text-leasium-ownertag-teal-text",
+    cyan: "border-leasium-ownertag-cyan-border bg-leasium-ownertag-cyan-bg text-leasium-ownertag-cyan-text",
+    lavender:
+      "border-leasium-ownertag-lavender-border bg-leasium-ownertag-lavender-bg text-leasium-ownertag-lavender-text",
+    indigo:
+      "border-leasium-ownertag-indigo-border bg-leasium-ownertag-indigo-bg text-leasium-ownertag-indigo-text",
+    green:
+      "border-leasium-ownertag-green-border bg-leasium-ownertag-green-bg text-leasium-ownertag-green-text",
+    lime: "border-leasium-ownertag-lime-border bg-leasium-ownertag-lime-bg text-leasium-ownertag-lime-text",
+    amber:
+      "border-leasium-ownertag-amber-border bg-leasium-ownertag-amber-bg text-leasium-ownertag-amber-text",
+    rose: "border-leasium-ownertag-rose-border bg-leasium-ownertag-rose-bg text-leasium-ownertag-rose-text",
+    pink: "border-leasium-ownertag-pink-border bg-leasium-ownertag-pink-bg text-leasium-ownertag-pink-text",
+    peach:
+      "border-leasium-ownertag-peach-border bg-leasium-ownertag-peach-bg text-leasium-ownertag-peach-text",
     slate: "border-slate-200 bg-slate-100 text-slate-600",
   };
   return palettes[palette];

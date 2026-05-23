@@ -2732,7 +2732,7 @@ function OperationsWorkspace() {
                     >
                       <Link href={item.href} className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[15px] font-medium leading-5 text-foreground">
+                          <span className="text-leasium-body-compact font-medium leading-5 text-foreground">
                             {item.title}
                           </span>
                           <StatusBadge tone={item.tone}>

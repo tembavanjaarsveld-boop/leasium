@@ -3132,7 +3132,7 @@ export function Dashboard({
                     ) : (
                       <FileUp size={24} className="text-primary" />
                     )}
-                    <span className="text-[15px] font-semibold leading-5">
+                    <span className="text-leasium-body-compact font-semibold leading-5">
                       {documentIntakeMutation.isPending
                         ? "Uploading document..."
                         : "Drop a document here"}
@@ -3462,7 +3462,7 @@ export function Dashboard({
                         className="grid gap-2 px-4 py-3.5 transition hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start"
                       >
                         <div className="min-w-0">
-                          <div className="line-clamp-2 text-[15px] font-medium leading-5 text-foreground">
+                          <div className="line-clamp-2 text-leasium-body-compact font-medium leading-5 text-foreground">
                             {item.title}
                           </div>
                           <div className="mt-1 text-xs capitalize leading-4 text-muted-foreground">
@@ -3496,7 +3496,7 @@ export function Dashboard({
                         className="block px-4 py-3.5 text-sm transition hover:bg-muted/50"
                       >
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                          <span className="line-clamp-2 text-[15px] font-medium leading-5 text-foreground">
+                          <span className="line-clamp-2 text-leasium-body-compact font-medium leading-5 text-foreground">
                             {event.title}
                           </span>
                           <StatusBadge tone={event.tone}>
@@ -3531,7 +3531,7 @@ export function Dashboard({
                         >
                           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                             <div className="min-w-0">
-                              <div className="truncate text-[15px] font-semibold leading-5 text-foreground">
+                              <div className="truncate text-leasium-body-compact font-semibold leading-5 text-foreground">
                                 {row.unit_label}
                               </div>
                               <div className="mt-0.5 truncate text-xs leading-4 text-muted-foreground">
