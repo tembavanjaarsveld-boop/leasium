@@ -28,6 +28,7 @@ from stewart.ai.inbox import (
     InboxTriageError,
     triage_inbox,
 )
+from stewart.ai.lease_change import LeaseChangeError, extract_lease_change
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
@@ -742,6 +743,42 @@ def _lease_in_entity(
     return lease
 
 
+def _lease_snapshot(
+    lease_id: UUID | None,
+    session: Session,
+) -> dict[str, Any] | None:
+    """Compact snapshot of a lease for the lease-change extractor prompt.
+
+    Sent to OpenAI so the model can phrase the proposed change as a delta
+    from what's already on file rather than reproducing absolute figures.
+    """
+    if lease_id is None:
+        return None
+    lease = session.scalar(
+        select(Lease).where(Lease.id == lease_id, Lease.deleted_at.is_(None))
+    )
+    if lease is None:
+        return None
+    return {
+        "id": str(lease.id),
+        "status": lease.status.value,
+        "commencement_date": (
+            lease.commencement_date.isoformat()
+            if lease.commencement_date
+            else None
+        ),
+        "expiry_date": (
+            lease.expiry_date.isoformat() if lease.expiry_date else None
+        ),
+        "annual_rent_cents": lease.annual_rent_cents,
+        "next_review_date": (
+            lease.next_review_date.isoformat()
+            if lease.next_review_date
+            else None
+        ),
+    }
+
+
 def _truncate_title(text: str, *, limit: int = 120) -> str:
     text = text.strip()
     if len(text) <= limit:
@@ -754,6 +791,7 @@ def promote_triage(
     payload: InboxPromoteRequest,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> InboxPromoteRead:
     """Promote a reviewed AI classification into a Leasium draft.
 
@@ -879,14 +917,61 @@ def promote_triage(
         )
         session.add(document)
         session.flush()
+
+        # v2.1: try to pre-extract the proposed change so the intake lands
+        # ready_for_review instead of empty. Soft-fail when the API key is
+        # unset or the extractor errors — the intake still gets created in
+        # uploaded status with the warning so the operator can fill in the
+        # fields manually inside Smart Intake.
+        extracted_data: dict[str, Any] = {}
+        review_data: dict[str, Any] = {"source": "ai_inbox_promote"}
+        intake_status = DocumentIntakeStatus.uploaded
+        intake_summary = summary
+        intake_confidence: float | None = None
+        openai_response_id: str | None = None
+        extraction_outcome = "skipped"
+
+        lease_snapshot = _lease_snapshot(payload.lease_id, session)
+        try:
+            extracted, response_id = extract_lease_change(
+                body=payload.body,
+                settings=settings,
+                lease_snapshot=lease_snapshot,
+            )
+        except LeaseChangeError as exc:
+            review_data["extraction_error"] = str(exc)
+            extraction_outcome = "soft_failed"
+        else:
+            extracted_data = {
+                "document_type": "lease_change",
+                **{k: v for k, v in extracted.items() if k != "summary"},
+            }
+            model_summary = extracted.get("summary")
+            if isinstance(model_summary, str) and model_summary.strip():
+                intake_summary = model_summary.strip()[:400]
+            raw_conf = extracted.get("confidence")
+            try:
+                intake_confidence = float(raw_conf) if raw_conf is not None else None
+            except (TypeError, ValueError):
+                intake_confidence = None
+            openai_response_id = response_id
+            intake_status = (
+                DocumentIntakeStatus.needs_attention
+                if intake_confidence is not None and intake_confidence < 0.5
+                else DocumentIntakeStatus.ready_for_review
+            )
+            extraction_outcome = "extracted"
+
         intake = DocumentIntake(
             entity_id=payload.entity_id,
             document_id=document.id,
-            status=DocumentIntakeStatus.uploaded,
+            status=intake_status,
             document_type="lease_change",
-            summary=summary,
-            extracted_data={},
-            review_data={"source": "ai_inbox_promote"},
+            summary=intake_summary,
+            confidence=intake_confidence,
+            extracted_data=extracted_data,
+            review_data=review_data,
+            openai_response_id=openai_response_id,
         )
         session.add(intake)
         session.flush()
@@ -899,8 +984,15 @@ def promote_triage(
             target_table="document_intake",
             target_id=intake.id,
             tool_name="ai_inbox_promote",
-            tool_input={"kind": payload.kind, "summary_length": len(summary)},
-            tool_output_summary="Promoted inbox message to Smart Intake draft.",
+            tool_input={
+                "kind": payload.kind,
+                "summary_length": len(summary),
+                "extraction": extraction_outcome,
+            },
+            tool_output_summary=(
+                "Promoted inbox message to Smart Intake draft"
+                f" ({extraction_outcome})."
+            ),
             data_classification="internal",
         )
         session.commit()

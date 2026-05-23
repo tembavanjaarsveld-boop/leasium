@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.ai.inbox import InboxTriageError
+from stewart.ai.lease_change import LeaseChangeError
 from stewart.core.models import (
     ArrearsCase,
     AuditAction,
@@ -357,9 +358,12 @@ def test_promote_arrears_requires_matched_tenant(
     assert case.source_reference == "ai_inbox_promote"
 
 
-def test_promote_lease_change_creates_intake_with_text_document(
+def test_promote_lease_change_soft_fails_without_openai_key(
     client: TestClient, session: Session
 ) -> None:
+    """When OPENAI_API_KEY is unset the extractor raises; promote falls
+    back to v2.0 behaviour (uploaded status, empty extracted_data) with
+    a warning recorded in review_data — no 5xx."""
     context = _lease_context(client, session)
 
     response = client.post(
@@ -388,10 +392,203 @@ def test_promote_lease_change_creates_intake_with_text_document(
     assert intake is not None
     assert intake.status.value == "uploaded"
     assert intake.document_type == "lease_change"
+    assert intake.extracted_data == {}
+    assert "extraction_error" in intake.review_data
     # The backing StoredDocument carries the message body.
     assert intake.document is not None
     assert intake.document.filename == "inbox-lease-change.txt"
     assert b"extending our lease" in intake.document.file_data
+
+
+def test_promote_lease_change_pre_extracts_fields_when_available(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    """When the extractor returns structured data the intake lands
+    ready_for_review with extracted_data populated and the lease snapshot
+    is passed through to the extractor."""
+    context = _lease_context(client, session)
+
+    captured: dict[str, Any] = {}
+
+    def fake_extract(
+        *,
+        body: str,
+        settings: Any,
+        lease_snapshot: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
+        captured["lease_snapshot"] = lease_snapshot
+        return (
+            {
+                "summary": "Tenant requests a 12-month extension at current rent.",
+                "confidence": 0.82,
+                "parties": [
+                    {
+                        "name": "Acme Bakery",
+                        "role": "tenant",
+                        "contact": "billing@acmebakery.example",
+                    }
+                ],
+                "properties": [
+                    {
+                        "name": "Queen Street Centre",
+                        "address": "28 Queen Street, Brisbane",
+                        "unit_label": "Unit 3",
+                    }
+                ],
+                "key_dates": [
+                    {
+                        "label": "Proposed new expiry",
+                        "date": "2029-12-31",
+                        "source_hint": "Twelve-month extension from current expiry.",
+                    }
+                ],
+                "money_amounts": [
+                    {
+                        "label": "Proposed rent",
+                        "amount": 72000.0,
+                        "currency": "AUD",
+                        "frequency": "annual",
+                    }
+                ],
+                "proposed_actions": [
+                    {
+                        "title": "Extend lease by 12 months",
+                        "detail": "Same annual rent; new expiry 2029-12-31.",
+                    }
+                ],
+                "warnings": [],
+            },
+            "resp_lease_change_001",
+        )
+
+    monkeypatch.setattr(ai_router, "extract_lease_change", fake_extract)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "lease_change",
+            "summary": "Tenant wants to extend the current lease by 12 months.",
+            "body": (
+                "Hi team, would you be open to extending our lease at Unit 3"
+                " by another 12 months at the existing rent? Happy to discuss."
+            ),
+            "property_id": context["property_id"],
+            "tenant_id": context["tenant_id"],
+            "lease_id": context["lease_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.id == UUID(body["target_id"]))
+    )
+    assert intake is not None
+    assert intake.status.value == "ready_for_review"
+    assert intake.confidence == 0.82
+    assert intake.openai_response_id == "resp_lease_change_001"
+    # extracted_data follows the existing DocumentIntakeExtraction shape so
+    # the Smart Intake review UI renders it without changes.
+    assert intake.extracted_data["document_type"] == "lease_change"
+    assert intake.extracted_data["parties"][0]["name"] == "Acme Bakery"
+    assert intake.extracted_data["money_amounts"][0]["amount"] == 72000.0
+    assert intake.extracted_data["proposed_actions"][0]["title"].startswith(
+        "Extend"
+    )
+    # Lease snapshot was passed through so the model could phrase the
+    # proposal as a delta from on-file values.
+    assert captured["lease_snapshot"] is not None
+    assert captured["lease_snapshot"]["id"] == context["lease_id"]
+    assert captured["lease_snapshot"]["annual_rent_cents"] == 7200000
+
+
+def test_promote_lease_change_low_confidence_lands_needs_attention(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    context = _lease_context(client, session)
+
+    def fake_extract(
+        *,
+        body: str,
+        settings: Any,
+        lease_snapshot: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
+        return (
+            {
+                "summary": "Ambiguous lease change request.",
+                "confidence": 0.3,
+                "parties": [],
+                "properties": [],
+                "key_dates": [],
+                "money_amounts": [],
+                "proposed_actions": [],
+                "warnings": ["Message is too vague to extract a clear proposal."],
+            },
+            None,
+        )
+
+    monkeypatch.setattr(ai_router, "extract_lease_change", fake_extract)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "lease_change",
+            "summary": "Tenant mentions the lease but not specifics.",
+            "body": "Hi, just wanted to ask about the lease at some point soon.",
+            "property_id": context["property_id"],
+            "tenant_id": context["tenant_id"],
+            "lease_id": context["lease_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.id == UUID(body["target_id"]))
+    )
+    assert intake is not None
+    assert intake.status.value == "needs_attention"
+    assert intake.confidence == 0.3
+
+
+def test_promote_lease_change_soft_fails_when_extractor_raises(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    """An extractor exception falls back to v2.0 behaviour like the
+    no-API-key case — no 5xx; the intake still gets created."""
+    context = _lease_context(client, session)
+
+    def fake_extract(
+        *,
+        body: str,
+        settings: Any,
+        lease_snapshot: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
+        raise LeaseChangeError("OpenAI lease-change request failed.")
+
+    monkeypatch.setattr(ai_router, "extract_lease_change", fake_extract)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "lease_change",
+            "summary": "Tenant wants a 12-month extension.",
+            "body": "Hi team, can we extend our lease at Unit 3 by twelve months?",
+            "property_id": context["property_id"],
+            "tenant_id": context["tenant_id"],
+            "lease_id": context["lease_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.id == UUID(body["target_id"]))
+    )
+    assert intake is not None
+    assert intake.status.value == "uploaded"
+    assert intake.extracted_data == {}
+    assert "extraction_error" in intake.review_data
 
 
 def test_promote_rejects_property_from_other_entity(
