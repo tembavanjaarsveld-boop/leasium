@@ -359,15 +359,32 @@ export function EmptyState({
   title,
   description,
   action,
+  icon,
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  /**
+   * Optional icon (typically a lucide-react icon at size 18-20).
+   * Rendered as a 36×36 rounded-leasiumLg square with primary-soft fill
+   * and primary text colour above the title — a small visual anchor
+   * that turns the empty state from a centred text block into something
+   * that reads as a deliberate piece of layout. Opt-in: callers without
+   * an icon get the previous text-only layout unchanged.
+   */
+  icon?: React.ReactNode;
 }) {
   return (
     <div className="grid place-items-center px-4 py-8 text-center">
-      <div>
-        <div className="text-sm font-semibold">{title}</div>
+      <div className="max-w-md">
+        {icon ? (
+          <div className="mx-auto mb-3 grid h-9 w-9 place-items-center rounded-leasiumLg bg-primary-soft text-primary">
+            {icon}
+          </div>
+        ) : null}
+        <div className="text-leasium-body-compact font-semibold text-foreground">
+          {title}
+        </div>
         {description ? (
           <div className="mt-1 text-sm text-muted-foreground">
             {description}

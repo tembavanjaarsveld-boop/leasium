@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Ban,
+  Building2,
   CheckCircle2,
   ClipboardList,
   Clock3,
@@ -2359,6 +2360,7 @@ function OperationsWorkspace() {
         {!selectedEntityId && !operationsLoading ? (
           <SectionPanel>
             <EmptyState
+              icon={<Building2 size={18} />}
               title="No entity selected"
               description="Choose an entity from the header to load the operations workspace."
             />

@@ -730,6 +730,41 @@ Use modals only for:
 
 For complex work, use full page or right-side panel.
 
+### Empty states
+
+Use `EmptyState` from `apps/web/src/components/ui.tsx` for every empty
+section. Required props: `title`. Optional: `description`, `action`,
+`icon`.
+
+The `icon` prop is opt-in but recommended for any empty state above
+the fold. Pass a lucide-react icon at `size={18}`. The component
+renders it as a 36×36 `rounded-leasiumLg` chip with `bg-primary-soft`
+and `text-primary`, centred above the title — a single small visual
+anchor that turns a centred text block into a piece of layout.
+
+Icon choices follow semantic mapping:
+
+| Empty state semantics | Icon |
+| --- | --- |
+| Positive empty (nothing wrong) — "No urgent dates", "No blockers", "No exceptions" | `CheckCircle2` |
+| Time / upcoming — "No upcoming events", "No lease events" | `Clock3` |
+| Activity feed empty | `Activity` |
+| Entity / selection prompt | `Building2` |
+| Insights / metrics | `Gauge` |
+| Notifications / messages | `Bell` or `MailCheck` |
+| Error state | `AlertTriangle` |
+
+Title uses `text-leasium-body-compact` (15px / 20px / 500); description
+uses `text-sm text-muted-foreground`. Container is `max-w-md` so
+descriptions don't span too wide.
+
+Anti-patterns:
+- Generic illustrations or stock graphics. The Codex Corner Signal
+  motif is the brand logo and stays as the logo only.
+- Decorative emoji or "AI sparkle" icons.
+- Purple gradients, animated icons, or any motion in an empty state.
+- More than one icon per empty state.
+
 ---
 
 ## 9. Status chips

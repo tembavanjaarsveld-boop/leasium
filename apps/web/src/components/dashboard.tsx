@@ -5,7 +5,9 @@ import {
   AlertTriangle,
   CalendarClock,
   Check,
+  CheckCircle2,
   ClipboardList,
+  Clock3,
   FileText,
   FileUp,
   Layers3,
@@ -3476,7 +3478,10 @@ export function Dashboard({
                     ))
                   )}
                   {!obligationsLoading && urgentObligations.length === 0 ? (
-                    <EmptyState title="No urgent dates right now." />
+                    <EmptyState
+                      icon={<CheckCircle2 size={18} />}
+                      title="No urgent dates right now."
+                    />
                   ) : null}
                 </div>
               </SectionPanel>
@@ -3511,7 +3516,10 @@ export function Dashboard({
                     {obligationsLoading ? (
                       <SkeletonRows rows={3} />
                     ) : upcomingEvents.length === 0 ? (
-                      <EmptyState title="No upcoming events for this entity." />
+                      <EmptyState
+                        icon={<Clock3 size={18} />}
+                        title="No upcoming events for this entity."
+                      />
                     ) : null}
                   </div>
                 </SectionPanel>
@@ -3551,7 +3559,10 @@ export function Dashboard({
                     {rentRollLoading ? (
                       <SkeletonRows rows={3} />
                     ) : billingIssues.length === 0 ? (
-                      <EmptyState title="No billing readiness blockers." />
+                      <EmptyState
+                        icon={<CheckCircle2 size={18} />}
+                        title="No billing readiness blockers."
+                      />
                     ) : null}
                   </div>
                 </SectionPanel>

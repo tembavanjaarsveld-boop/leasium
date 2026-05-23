@@ -664,6 +664,7 @@ function InsightsWorkspace() {
         {overviewError && activeEntityId && !overview ? (
           <SectionPanel>
             <EmptyState
+              icon={<AlertTriangle size={18} />}
               title="Insights could not load"
               description={friendlyError(overviewError)}
               action={
@@ -682,6 +683,7 @@ function InsightsWorkspace() {
         {!activeEntityId ? (
           <SectionPanel>
             <EmptyState
+              icon={<Building2 size={18} />}
               title="Select an entity"
               description="Insights will load once an entity is selected."
             />
@@ -722,6 +724,7 @@ function InsightsWorkspace() {
         {showOverviewEmpty ? (
           <SectionPanel>
             <EmptyState
+              icon={<Gauge size={18} />}
               title="No insights available"
               description="There is no overview data for this entity yet."
             />
@@ -832,6 +835,7 @@ function InsightsWorkspace() {
                   ))}
                   {overview.live_exceptions.length === 0 ? (
                     <EmptyState
+                      icon={<CheckCircle2 size={18} />}
                       title="No active exceptions"
                       description="Documents, overdue dates, onboarding follow-ups, and billing blockers will appear here."
                     />
@@ -948,6 +952,7 @@ function InsightsWorkspace() {
                   ))}
                   {(leaseEventSnapshot?.next_events.length ?? 0) === 0 ? (
                     <EmptyState
+                      icon={<Clock3 size={18} />}
                       title="No upcoming lease events"
                       description="Rent reviews, expiries, obligations, and onboarding follow-ups will appear here."
                     />
@@ -973,6 +978,7 @@ function InsightsWorkspace() {
                   ))}
                   {overview.automation_activity.length === 0 ? (
                     <EmptyState
+                      icon={<Activity size={18} />}
                       title="No recent activity"
                       description="Review and apply events will appear once work starts on this entity."
                     />

@@ -1332,6 +1332,7 @@ function NotificationsWorkspace() {
             center &&
             filteredNotices.length === 0 ? (
               <EmptyState
+                icon={<Bell size={18} />}
                 title="No matching work notices"
                 description="Change the notice filter to review another receipt state."
               />
@@ -1469,6 +1470,7 @@ function NotificationsWorkspace() {
             center &&
             filteredDigestReceipts.length === 0 ? (
               <EmptyState
+                icon={<MailCheck size={18} />}
                 title="No matching digest receipts"
                 description="Change the digest filter to review another delivery state."
               />
