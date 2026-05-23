@@ -12,8 +12,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
+from stewart.ai.maintenance import (
+    MAINTENANCE_CATEGORIES,
+    MaintenanceCategoriseError,
+    categorise_maintenance,
+)
 from stewart.core.models import (
     AppUser,
+    AuditOutcome,
+    Contractor,
     InvoiceDraft,
     Lease,
     MaintenancePriority,
@@ -1302,6 +1309,142 @@ def get_work_order(
     session: Annotated[Session, Depends(get_session)],
 ) -> MaintenanceWorkOrder:
     return _work_order_for_user(work_order_id, user, session, READ_ROLES)
+
+
+def _suggest_contractor(
+    entity_id: UUID, category: str, session: Session
+) -> Contractor | None:
+    """Pick the best contractor for a maintenance category.
+
+    Strategy: match contractors whose `categories` list contains the AI's
+    chosen category, sort by `priority` asc (1 = preferred first) then by
+    name. JSON containment doesn't filter neatly across SQLite + Postgres,
+    so we fetch all entity contractors and filter in Python. At SKJ scale
+    (tens of contractors per portfolio) this is fine; if it ever gets slow,
+    promote `categories` to a normalised join table.
+    """
+
+    rows = list(
+        session.scalars(
+            select(Contractor)
+            .where(
+                Contractor.entity_id == entity_id,
+                Contractor.deleted_at.is_(None),
+            )
+            .order_by(Contractor.priority.asc(), Contractor.name.asc())
+        ).all()
+    )
+    for row in rows:
+        if category in (row.categories or []):
+            return row
+    # Fallback: any contractor with `urgent` in their categories list if the
+    # AI flagged urgency but the specific trade has no match.
+    return None
+
+
+@router.post(
+    "/{work_order_id}/classify",
+    response_model=MaintenanceWorkOrderRead,
+)
+def classify_work_order(
+    work_order_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> MaintenanceWorkOrder:
+    """Run the AI maintenance categoriser against a work order.
+
+    Stamps ``work_order_metadata.ai_classification`` with the model's
+    category + confidence + summary + is_urgent + the suggested contractor
+    id (matched from the directory by category overlap). The operator
+    surface renders this inline on the work-order detail and the operator
+    Approves / Overrides before dispatch — the classifier never directly
+    dispatches anything. Soft-fails with 503 when ``OPENAI_API_KEY`` is
+    unset so the operator surface can show a clear "AI not configured"
+    receipt rather than a 500.
+    """
+
+    work_order = _work_order_for_user(work_order_id, user, session, WRITE_ROLES)
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI classification is not configured (OPENAI_API_KEY missing).",
+        )
+    try:
+        result, response_id = categorise_maintenance(
+            title=work_order.title,
+            description=work_order.description,
+            settings=settings,
+        )
+    except MaintenanceCategoriseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    category = result.get("category")
+    raw_confidence = result.get("confidence")
+    try:
+        confidence = float(raw_confidence)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+    summary_raw = result.get("summary")
+    summary = summary_raw.strip()[:400] if isinstance(summary_raw, str) else ""
+    is_urgent = bool(result.get("is_urgent"))
+    warnings_raw = result.get("warnings")
+    warnings = (
+        [w for w in warnings_raw if isinstance(w, str)][:6]
+        if isinstance(warnings_raw, list)
+        else []
+    )
+
+    suggested = (
+        _suggest_contractor(work_order.entity_id, category, session)
+        if isinstance(category, str) and category in MAINTENANCE_CATEGORIES
+        else None
+    )
+
+    classification = {
+        "category": category,
+        "confidence": confidence,
+        "summary": summary,
+        "is_urgent": is_urgent,
+        "warnings": warnings,
+        "suggested_contractor_id": str(suggested.id) if suggested is not None else None,
+        "suggested_contractor_name": suggested.name if suggested is not None else None,
+        "classified_at": utcnow().isoformat(),
+        "model_response_id": response_id,
+    }
+    work_order.work_order_metadata = {
+        **(work_order.work_order_metadata or {}),
+        "ai_classification": classification,
+    }
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=work_order.entity_id,
+        action="classify",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="openai.maintenance_categorise",
+        tool_input={
+            "title_length": len(work_order.title or ""),
+            "description_length": len(work_order.description or ""),
+        },
+        tool_output_summary=(
+            f"category={category}; "
+            f"confidence={int(round(confidence * 100))}%; "
+            f"is_urgent={is_urgent}; "
+            f"suggested_contractor_id={classification['suggested_contractor_id']}"
+        ),
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(work_order)
+    return work_order
 
 
 @router.patch("/{work_order_id}", response_model=MaintenanceWorkOrderRead)

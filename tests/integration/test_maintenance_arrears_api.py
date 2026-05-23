@@ -1741,3 +1741,196 @@ def test_arrears_case_tracks_aged_balances_reminders_and_escalation(
         select(AuditAction).where(AuditAction.target_table == "arrears_case")
     ).all()
     assert [row.action for row in audit_rows] == ["create", "update", "delete"]
+
+
+def test_maintenance_work_order_ai_classify_stamps_metadata_and_suggests_contractor(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """The classify endpoint stamps ai_classification on the work order and
+    matches a contractor whose categories overlap with the AI category."""
+
+    context = _lease_context(client, session)
+    entity_id = context["entity_id"]
+
+    # Seed two contractors — one electrical (preferred), one plumbing.
+    elec = client.post(
+        "/api/v1/contractors",
+        json={
+            "entity_id": entity_id,
+            "name": "Bright Sparks Electrical",
+            "categories": ["electrical", "urgent"],
+            "priority": 1,
+        },
+    )
+    assert elec.status_code == 201
+    plumb = client.post(
+        "/api/v1/contractors",
+        json={
+            "entity_id": entity_id,
+            "name": "Pipe Pros Plumbing",
+            "categories": ["plumbing"],
+            "priority": 2,
+        },
+    )
+    assert plumb.status_code == 201
+
+    # Create the work order.
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": entity_id,
+            "property_id": context["property_id"],
+            "tenancy_unit_id": context["tenancy_unit_id"],
+            "lease_id": context["lease_id"],
+            "tenant_id": context["tenant_id"],
+            "title": "Hot water tap leaking under sink",
+            "description": "Kitchen tap dripping continuously, water pooling in cabinet base.",
+            "priority": "normal",
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+
+    # Stub the AI module + settings.
+    from apps.api.routers import maintenance as maintenance_router
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(
+        maintenance_router,
+        "categorise_maintenance",
+        lambda *, title, description, settings: (
+            {
+                "category": "plumbing",
+                "confidence": 0.91,
+                "summary": "Leaking kitchen tap; plumber attendance needed.",
+                "is_urgent": False,
+                "warnings": [],
+            },
+            "resp-plumb-1",
+        ),
+    )
+    monkeypatch.setattr(
+        maintenance_router,
+        "get_settings",
+        lambda: Settings(openai_api_key="sk-test"),
+    )
+
+    classify_response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/classify",
+    )
+    assert classify_response.status_code == 200
+    body = classify_response.json()
+    classification = body["metadata"]["ai_classification"]
+    assert classification["category"] == "plumbing"
+    assert classification["confidence"] == 0.91
+    assert classification["is_urgent"] is False
+    assert classification["suggested_contractor_id"] == plumb.json()["id"]
+    assert classification["suggested_contractor_name"] == "Pipe Pros Plumbing"
+    # Electrical contractor is NOT suggested even though it has lower priority.
+    assert classification["suggested_contractor_id"] != elec.json()["id"]
+
+
+def test_maintenance_work_order_classify_returns_503_when_openai_unset(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Without OPENAI_API_KEY, classify soft-fails with 503."""
+
+    context = _lease_context(client, session)
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "property_id": context["property_id"],
+            "tenancy_unit_id": context["tenancy_unit_id"],
+            "lease_id": context["lease_id"],
+            "tenant_id": context["tenant_id"],
+            "title": "Test",
+            "description": "Test",
+            "priority": "normal",
+        },
+    )
+    work_order_id = create_response.json()["id"]
+
+    from apps.api.routers import maintenance as maintenance_router
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(
+        maintenance_router,
+        "get_settings",
+        lambda: Settings(openai_api_key=""),
+    )
+
+    response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/classify",
+    )
+    assert response.status_code == 503
+
+
+def test_maintenance_classify_no_matching_contractor_returns_null_suggestion(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """When no contractor matches the AI category, suggested_contractor_id is None."""
+
+    context = _lease_context(client, session)
+    # Seed a contractor with a non-matching category.
+    client.post(
+        "/api/v1/contractors",
+        json={
+            "entity_id": context["entity_id"],
+            "name": "Locks Only Co",
+            "categories": ["locks"],
+            "priority": 1,
+        },
+    )
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "property_id": context["property_id"],
+            "tenancy_unit_id": context["tenancy_unit_id"],
+            "lease_id": context["lease_id"],
+            "tenant_id": context["tenant_id"],
+            "title": "Aircon fault",
+            "description": "Air conditioning unit not cooling.",
+            "priority": "normal",
+        },
+    )
+    work_order_id = create_response.json()["id"]
+
+    from apps.api.routers import maintenance as maintenance_router
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(
+        maintenance_router,
+        "categorise_maintenance",
+        lambda *, title, description, settings: (
+            {
+                "category": "hvac",
+                "confidence": 0.72,
+                "summary": "AC not cooling; HVAC service needed.",
+                "is_urgent": False,
+                "warnings": [],
+            },
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        maintenance_router,
+        "get_settings",
+        lambda: Settings(openai_api_key="sk-test"),
+    )
+
+    response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/classify",
+    )
+    assert response.status_code == 200
+    classification = response.json()["metadata"]["ai_classification"]
+    assert classification["category"] == "hvac"
+    assert classification["suggested_contractor_id"] is None
+    assert classification["suggested_contractor_name"] is None
