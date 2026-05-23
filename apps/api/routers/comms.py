@@ -643,6 +643,205 @@ def _insurance_candidates(
     return candidates
 
 
+def _format_amount_int(cents: int, currency: str = "AUD") -> str:
+    """Render a cents integer as ``$N,NNN AUD`` (no decimal noise for round
+    annual rents). Falls back to ``$N,NNN.NN`` when there's a fractional
+    part, since not every lease will be at clean dollar amounts.
+    """
+
+    if cents % 100 == 0:
+        return f"${cents // 100:,} {currency}"
+    whole = cents // 100
+    frac = cents % 100
+    return f"${whole:,}.{frac:02d} {currency}"
+
+
+def _rent_review_calculation(
+    current_cents: int | None, review_config: dict[str, object] | None
+) -> tuple[int | None, str | None]:
+    """Compute the new rent + a plain-English formula description.
+
+    Returns (new_rent_cents, formula_label). When the config is missing or
+    unsupported, returns (None, None) so the operator surface can show "set
+    increase rule" without a calculated number.
+    """
+
+    if current_cents is None or not isinstance(review_config, dict):
+        return None, None
+    kind = review_config.get("kind")
+    if kind == "fixed_pct":
+        raw_pct = review_config.get("increase_pct")
+        try:
+            pct = float(raw_pct)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None, None
+        if pct <= 0:
+            return None, None
+        # Apply optional cap.
+        cap_raw = review_config.get("cap_pct")
+        try:
+            cap = float(cap_raw) if cap_raw is not None else None
+        except (TypeError, ValueError):
+            cap = None
+        applied_pct = min(pct, cap) if cap is not None else pct
+        new_cents = int(round(current_cents * (1 + applied_pct / 100)))
+        # Round to nearest dollar to keep notices clean.
+        new_cents = (new_cents // 100) * 100
+        label = f"+{applied_pct:g}% fixed increase"
+        if cap is not None and pct > cap:
+            label += f" (capped from {pct:g}%)"
+        return new_cents, label
+    # Future: kind == "cpi" needs an external rate feed; kind == "market"
+    # needs comps data. Both return None until the data source is wired.
+    return None, None
+
+
+def _rent_review_candidates(
+    entity_id: UUID, session: Session
+) -> list[CommsCandidate]:
+    """Surface leases due for rent review within 60 days.
+
+    The increase formula lives on ``lease.lease_metadata['rent_review']`` —
+    audit done 2026-05-23, no schema change needed. v1 supports the
+    ``fixed_pct`` kind only (with optional ``cap_pct``); CPI and market kinds
+    return no calculated rent so the operator can see the lease in the queue
+    and either set a formula or compute the new rent manually before
+    dispatch.
+
+    Severity:
+      - danger:  next_review_date is overdue
+      - warning: next_review_date within 30 days
+      - info:    next_review_date within 60 days
+    """
+
+    today = date.today()
+    cutoff = today + timedelta(days=60)
+    candidates: list[CommsCandidate] = []
+    now = utcnow()
+
+    leases = list(
+        session.scalars(
+            select(Lease).where(
+                Lease.deleted_at.is_(None),
+                Lease.status == LeaseStatus.active,
+                Lease.next_review_date.is_not(None),
+                Lease.next_review_date <= cutoff,
+            )
+        ).all()
+    )
+    for lease in leases:
+        if lease.next_review_date is None:
+            continue
+        unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+        if unit is None or unit.deleted_at is not None:
+            continue
+        prop = session.get(Property, unit.property_id)
+        if prop is None or prop.deleted_at is not None or prop.entity_id != entity_id:
+            continue
+        tenant = session.get(Tenant, lease.tenant_id)
+        if tenant is None or tenant.deleted_at is not None:
+            continue
+
+        review_metadata = (lease.lease_metadata or {}).get("rent_review")
+        if not isinstance(review_metadata, dict):
+            review_metadata = None
+        new_rent_cents, formula_label = _rent_review_calculation(
+            lease.annual_rent_cents, review_metadata
+        )
+
+        days_until = (lease.next_review_date - today).days
+        if days_until < 0:
+            severity = "danger"
+            subject_prefix = "Rent review overdue"
+        elif days_until <= 30:
+            severity = "warning"
+            subject_prefix = "Rent review due soon"
+        else:
+            severity = "info"
+            subject_prefix = "Upcoming rent review"
+
+        tenant_name = _tenant_display_name(tenant)
+        location_parts = [part for part in (prop.name, unit.unit_label) if part]
+        location = " ".join(location_parts) if location_parts else "your tenancy"
+        greeting = (
+            f"Hi {tenant.contact_name},"
+            if tenant.contact_name
+            else f"Hi {tenant_name},"
+        )
+
+        review_date_text = lease.next_review_date.strftime("%d %b %Y")
+        current_rent_text = (
+            _format_amount_int(lease.annual_rent_cents, "AUD")
+            if lease.annual_rent_cents is not None
+            else "(current rent not on file)"
+        )
+
+        if new_rent_cents is not None:
+            new_rent_text = _format_amount_int(new_rent_cents, "AUD")
+            body = (
+                f"{greeting}\n\n"
+                f"Your lease at {location} is scheduled for a rent review on "
+                f"{review_date_text}.\n\n"
+                f"Current annual rent: {current_rent_text}\n"
+                f"Proposed new annual rent: {new_rent_text} ({formula_label})\n\n"
+                "Please reply to confirm the adjustment or get in touch if "
+                "you'd like to discuss before we issue the formal notice.\n\n"
+                "Thanks,\nThe property team"
+            )
+            detail_parts = [
+                f"current {current_rent_text}",
+                f"new {new_rent_text}",
+                formula_label or "no formula",
+                f"review {review_date_text}",
+            ]
+        else:
+            body = (
+                f"{greeting}\n\n"
+                f"Your lease at {location} is scheduled for a rent review on "
+                f"{review_date_text}.\n\n"
+                f"Current annual rent: {current_rent_text}.\n\n"
+                "We'll be in touch shortly with the proposed adjustment. If "
+                "you'd like to discuss in advance, please reply to this email.\n\n"
+                "Thanks,\nThe property team"
+            )
+            detail_parts = [
+                f"current {current_rent_text}",
+                "needs increase rule",
+                f"review {review_date_text}",
+            ]
+        if days_until < 0:
+            detail_parts.append(f"overdue {abs(days_until)} days")
+        else:
+            detail_parts.append(f"in {days_until} days")
+        detail = ", ".join(detail_parts)
+
+        subject = (
+            f"{subject_prefix} ({prop.name})" if prop.name else subject_prefix
+        )
+
+        candidates.append(
+            CommsCandidate(
+                id=f"rent_review:lease:{lease.id}",
+                kind="rent_review",
+                target_kind="lease",
+                target_id=lease.id,
+                tenant_id=tenant.id,
+                tenant_name=tenant_name,
+                property_name=prop.name,
+                unit_label=unit.unit_label,
+                recipient_email=tenant.contact_email or tenant.billing_email,
+                recipient_phone=tenant.contact_phone,
+                subject=subject,
+                body=body,
+                severity=severity,  # type: ignore[arg-type]
+                due_at=lease.next_review_date,
+                detail=detail,
+                generated_at=now,
+            )
+        )
+    return candidates
+
+
 def _lease_renewal_candidates(
     entity_id: UUID, session: Session
 ) -> list[CommsCandidate]:
@@ -1029,6 +1228,7 @@ def get_comms_queue(
         + _compliance_candidates(entity_id, session)
         + _insurance_candidates(entity_id, session)
         + _lease_renewal_candidates(entity_id, session)
+        + _rent_review_candidates(entity_id, session)
     )
     return CommsQueueRead(
         entity_id=entity_id,
@@ -1058,6 +1258,7 @@ def get_comms_queue_counts(
         + _compliance_candidates(entity_id, session)
         + _insurance_candidates(entity_id, session)
         + _lease_renewal_candidates(entity_id, session)
+        + _rent_review_candidates(entity_id, session)
     )
     by_kind: dict[str, int] = {
         "arrears_reminder": 0,
@@ -1066,6 +1267,7 @@ def get_comms_queue_counts(
         "inbound_email": 0,
         "inbound_sms": 0,
         "compliance_obligation": 0,
+        "rent_review": 0,
     }
     urgent = 0
     for candidate in candidates:
@@ -1129,7 +1331,10 @@ def _resolve_dispatch_entity_id(
                 detail="Tenant not found.",
             )
         return tenant.entity_id, tenant
-    if payload.kind == "lease_renewal" and payload.target_kind == "lease":
+    if (
+        payload.kind in ("lease_renewal", "rent_review")
+        and payload.target_kind == "lease"
+    ):
         lease = session.get(Lease, payload.target_id)
         if lease is None or lease.deleted_at is not None:
             raise HTTPException(
@@ -1366,7 +1571,10 @@ def _resolve_dismiss_entity_id(
                 detail="Tenant not found.",
             )
         return tenant.entity_id, tenant
-    if payload.kind == "lease_renewal" and payload.target_kind == "lease":
+    if (
+        payload.kind in ("lease_renewal", "rent_review")
+        and payload.target_kind == "lease"
+    ):
         lease = session.get(Lease, payload.target_id)
         if lease is None or lease.deleted_at is not None:
             raise HTTPException(

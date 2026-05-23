@@ -4141,7 +4141,8 @@ export type CommsKind =
   | "lease_renewal"
   | "inbound_email"
   | "inbound_sms"
-  | "compliance_obligation";
+  | "compliance_obligation"
+  | "rent_review";
 export type CommsSeverity = "info" | "warning" | "danger";
 
 export type CommsCandidateRecord = {

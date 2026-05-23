@@ -375,6 +375,168 @@ def test_comms_dispatch_arrears_records_audit_and_bumps_reminder_stage(
     assert case.next_reminder_on is not None
 
 
+def test_comms_queue_returns_rent_review_with_fixed_pct_formula(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """A lease with next_review_date in 45 days and a fixed_pct formula
+    surfaces as a rent_review candidate with the new rent calculated."""
+
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Review Tower",
+        street_address="50 Review Street",
+        suburb="Brisbane City",
+        state="QLD",
+        postcode="4000",
+        property_type=PropertyType.commercial_office,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Level 3")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Review Tenant Pty Ltd",
+        contact_name="Pat Review",
+        contact_email="pat@review.example",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+        commencement_date=date.today() - timedelta(days=365),
+        expiry_date=date.today() + timedelta(days=730),
+        annual_rent_cents=120_000_00,  # $120,000
+        next_review_date=date.today() + timedelta(days=45),
+        lease_metadata={
+            "rent_review": {
+                "kind": "fixed_pct",
+                "increase_pct": 3.0,
+            }
+        },
+    )
+    session.add(lease)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert response.status_code == 200
+    rent_reviews = [
+        c for c in response.json()["candidates"] if c["kind"] == "rent_review"
+    ]
+    assert len(rent_reviews) == 1
+    candidate = rent_reviews[0]
+    assert candidate["target_kind"] == "lease"
+    assert candidate["target_id"] == str(lease.id)
+    assert candidate["property_name"] == "Review Tower"
+    assert candidate["unit_label"] == "Level 3"
+    # 45 days out → info severity (≤30 is warning, ≤0 is danger).
+    assert candidate["severity"] == "info"
+    assert "Review Tower" in candidate["subject"]
+    # Body should reference current rent ($120,000) and new rent
+    # ($120,000 * 1.03 = $123,600).
+    assert "$120,000 AUD" in candidate["body"]
+    assert "$123,600 AUD" in candidate["body"]
+    assert "3% fixed increase" in candidate["body"]
+
+
+def test_comms_queue_rent_review_without_formula_surfaces_with_needs_rule(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """A lease due for review without a formula on lease_metadata still
+    surfaces but without a calculated new rent."""
+
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="No-Formula House",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Shop 9")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="No Formula Tenant Pty Ltd",
+        contact_email="t@noformula.example",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+        annual_rent_cents=84_000_00,
+        next_review_date=date.today() + timedelta(days=20),
+        # No rent_review metadata.
+    )
+    session.add(lease)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    rent_reviews = [
+        c for c in response.json()["candidates"] if c["kind"] == "rent_review"
+    ]
+    assert len(rent_reviews) == 1
+    candidate = rent_reviews[0]
+    # 20 days out → warning severity.
+    assert candidate["severity"] == "warning"
+    # Body does NOT contain a "proposed new rent" line — operator sets the
+    # formula before dispatch.
+    assert "Proposed new annual rent" not in candidate["body"]
+    assert "needs increase rule" in (candidate["detail"] or "")
+
+
+def test_comms_queue_rent_review_skips_far_future_review(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Reviews more than 60 days out don't appear in the queue yet."""
+
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Far Future",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="A1")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Far Future Tenant Pty Ltd",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+        annual_rent_cents=60_000_00,
+        next_review_date=date.today() + timedelta(days=200),
+    )
+    session.add(lease)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    rent_reviews = [
+        c for c in response.json()["candidates"] if c["kind"] == "rent_review"
+    ]
+    assert rent_reviews == []
+
+
 def test_comms_dispatch_inbound_sms_routes_through_twilio(
     client: TestClient,
     session: Session,

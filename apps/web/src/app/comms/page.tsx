@@ -63,6 +63,7 @@ const KIND_LABEL: Record<CommsKind, string> = {
   inbound_email: "Inbound email",
   inbound_sms: "Inbound SMS",
   compliance_obligation: "Compliance reminder",
+  rent_review: "Rent review",
 };
 
 const SEVERITY_TONE: Record<CommsSeverity, StatusTone> = {
@@ -132,6 +133,7 @@ function CommsContent() {
       inbound_email: 0,
       inbound_sms: 0,
       compliance_obligation: 0,
+      rent_review: 0,
     };
     for (const candidate of candidates) {
       tally[candidate.kind]++;

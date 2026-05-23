@@ -24,6 +24,7 @@ CommsKind = Literal[
     "inbound_email",
     "inbound_sms",
     "compliance_obligation",
+    "rent_review",
 ]
 CommsSeverity = Literal["info", "warning", "danger"]
 
