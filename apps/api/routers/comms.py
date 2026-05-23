@@ -792,12 +792,13 @@ def _compliance_candidates(
 def _inbound_email_candidates(
     entity_id: UUID, session: Session
 ) -> list[CommsCandidate]:
-    """Surface unprocessed inbound emails as queue candidates.
+    """Surface unprocessed inbound emails + SMS as queue candidates.
 
-    Each pending inbound message becomes an `inbound_email` candidate. The
-    draft subject is "Re: <original>"; the draft body opens with a short
-    placeholder for the operator to fill in. Attribution is best-effort and
-    can be empty if the from-address didn't match any tenant.
+    Each pending `inbound_message` row becomes a queue candidate. The kind
+    is `inbound_email` or `inbound_sms` based on the row's channel. Email
+    drafts use "Re: <original>" subjects + a multi-paragraph body; SMS
+    drafts use a concise plain-text body since SMS lacks subjects and is
+    length-constrained. Attribution is best-effort.
     """
 
     candidates: list[CommsCandidate] = []
@@ -821,24 +822,44 @@ def _inbound_email_candidates(
             if tenant is not None and tenant.deleted_at is not None:
                 tenant = None
         tenant_name = _tenant_display_name(tenant) if tenant is not None else None
-        recipient_email = message.from_address
-        subject = (
-            f"Re: {message.subject}"
-            if message.subject
-            else "Re: your message"
+        contact_name = (
+            tenant.contact_name if tenant and tenant.contact_name else "there"
         )
         snippet = (message.body_text or "")[:240]
         if snippet and len(message.body_text or "") > 240:
             snippet += "…"
-        body = (
-            f"Hi {tenant.contact_name if tenant and tenant.contact_name else 'there'},\n\n"
-            "Thanks for your message — we've received it and will follow up "
-            "shortly. Please let us know if anything in this thread has "
-            "changed in the meantime.\n\n"
-            f"Original message:\n{snippet or '(no body)'}\n\n"
-            "Thanks,\nThe property team"
-        )
-        detail_parts: list[str] = [f"from {message.from_address or 'unknown'}"]
+
+        is_sms = message.channel == "sms"
+        kind: str = "inbound_sms" if is_sms else "inbound_email"
+        target_kind = "inbound_message"
+        if is_sms:
+            # SMS reply: short, no subject, no quoted original.
+            subject = "SMS reply"
+            body = (
+                f"Hi {contact_name}, thanks for your message — we've got it "
+                "and will follow up shortly. Reply with any updates."
+            )
+            recipient_email: str | None = None
+            recipient_phone: str | None = message.from_address
+            detail_parts: list[str] = [f"SMS from {message.from_address or 'unknown'}"]
+        else:
+            subject = (
+                f"Re: {message.subject}"
+                if message.subject
+                else "Re: your message"
+            )
+            body = (
+                f"Hi {contact_name},\n\n"
+                "Thanks for your message — we've received it and will follow "
+                "up shortly. Please let us know if anything in this thread "
+                "has changed in the meantime.\n\n"
+                f"Original message:\n{snippet or '(no body)'}\n\n"
+                "Thanks,\nThe property team"
+            )
+            recipient_email = message.from_address
+            recipient_phone = None
+            detail_parts = [f"from {message.from_address or 'unknown'}"]
+
         if tenant is None:
             detail_parts.append("tenant not attributed")
         if message.classification_kind:
@@ -861,16 +882,16 @@ def _inbound_email_candidates(
 
         candidates.append(
             CommsCandidate(
-                id=f"inbound_email:inbound_message:{message.id}",
-                kind="inbound_email",
-                target_kind="inbound_message",
+                id=f"{kind}:{target_kind}:{message.id}",
+                kind=kind,  # type: ignore[arg-type]
+                target_kind=target_kind,
                 target_id=message.id,
                 tenant_id=tenant.id if tenant is not None else None,
                 tenant_name=tenant_name,
                 property_name=None,
                 unit_label=None,
                 recipient_email=recipient_email,
-                recipient_phone=None,
+                recipient_phone=recipient_phone,
                 subject=subject,
                 body=body,
                 severity=severity,  # type: ignore[arg-type]
@@ -938,6 +959,7 @@ def get_comms_queue_counts(
         "insurance_expiry": 0,
         "lease_renewal": 0,
         "inbound_email": 0,
+        "inbound_sms": 0,
         "compliance_obligation": 0,
     }
     urgent = 0
@@ -964,7 +986,10 @@ def _resolve_dispatch_entity_id(
     cannot resolve, before checking entity-level access.
     """
 
-    if payload.kind == "inbound_email" and payload.target_kind == "inbound_message":
+    if (
+        payload.kind in ("inbound_email", "inbound_sms")
+        and payload.target_kind == "inbound_message"
+    ):
         message = session.get(InboundMessage, payload.target_id)
         if message is None or message.deleted_at is not None:
             raise HTTPException(
@@ -1160,7 +1185,10 @@ def _resolve_dismiss_entity_id(
 ) -> tuple[UUID, ArrearsCase | Tenant | Lease | InboundMessage | Obligation]:
     """Same resolution as dispatch, but for the dismiss verb."""
 
-    if payload.kind == "inbound_email" and payload.target_kind == "inbound_message":
+    if (
+        payload.kind in ("inbound_email", "inbound_sms")
+        and payload.target_kind == "inbound_message"
+    ):
         message = session.get(InboundMessage, payload.target_id)
         if message is None or message.deleted_at is not None:
             raise HTTPException(
@@ -1472,3 +1500,164 @@ async def receive_sendgrid_inbound(
         "id": str(message.id),
         "attributed_tenant_id": str(tenant.id) if tenant is not None else None,
     }
+
+
+def _attribute_inbound_tenant_by_phone(
+    entity_id: UUID, from_phone: str | None, session: Session
+) -> Tenant | None:
+    """Best-effort tenant attribution from an inbound SMS From phone number.
+
+    Twilio sends From numbers in E.164 format (e.g. ``+61400111222``). Tenant
+    contact_phone values can be stored in many formats — we normalise to
+    digits-only for comparison so ``+61 400 111 222`` matches ``+61400111222``
+    and ``0400111222``.
+    """
+
+    cleaned = "".join(ch for ch in (from_phone or "") if ch.isdigit())
+    if not cleaned:
+        return None
+    tenants = list(
+        session.scalars(
+            select(Tenant).where(
+                Tenant.entity_id == entity_id,
+                Tenant.deleted_at.is_(None),
+                Tenant.contact_phone.is_not(None),
+            )
+        ).all()
+    )
+    for tenant in tenants:
+        candidate = "".join(ch for ch in (tenant.contact_phone or "") if ch.isdigit())
+        if not candidate:
+            continue
+        # Compare from the right so a stored ``0400111222`` matches an
+        # E.164 ``+61400111222`` (the trailing digits are the same once the
+        # country prefix is stripped). 9-digit minimum to avoid false-positives.
+        if len(candidate) >= 9 and (
+            cleaned.endswith(candidate) or candidate.endswith(cleaned)
+        ):
+            return tenant
+    return None
+
+
+@router.post(
+    "/webhooks/twilio-inbound",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def receive_twilio_inbound(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    entity_id: UUID,
+    from_phone: Annotated[str | None, Form(alias="From")] = None,
+    to_phone: Annotated[str | None, Form(alias="To")] = None,
+    body: Annotated[str | None, Form(alias="Body")] = None,
+    message_sid: Annotated[str | None, Form(alias="MessageSid")] = None,
+    from_country: Annotated[str | None, Form(alias="FromCountry")] = None,
+) -> dict[str, object]:
+    """Receive an inbound SMS from Twilio.
+
+    Twilio POSTs ``application/x-www-form-urlencoded`` with PascalCase keys
+    (``From``, ``To``, ``Body``, ``MessageSid``, etc). We persist the
+    structured fields on the ``inbound_message`` table with ``channel="sms"``
+    and ``provider="twilio"``, attempt tenant attribution by digits-only
+    phone-number suffix match, then run the existing /ai/triage classifier
+    when ``OPENAI_API_KEY`` is set.
+
+    Same auth posture as the SendGrid webhook — provider-only, verifies the
+    entity exists. A future hardening pass verifies the Twilio X-Twilio-
+    Signature header against ``twilio_auth_token``.
+    """
+
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entity not found.",
+        )
+
+    cleaned_from = (from_phone or "").strip()
+    cleaned_to = (to_phone or "").strip()
+    cleaned_body = (body or "").strip() or None
+
+    tenant = _attribute_inbound_tenant_by_phone(entity_id, cleaned_from, session)
+
+    try:
+        form = await request.form()
+        raw_payload: dict[str, Any] = {
+            key: str(value)[:2000] for key, value in form.items()
+        }
+    except Exception:  # pragma: no cover - defensive
+        raw_payload = {}
+
+    message = InboundMessage(
+        entity_id=entity_id,
+        channel="sms",
+        provider="twilio",
+        from_address=cleaned_from or None,
+        to_address=cleaned_to or None,
+        subject=None,
+        body_text=cleaned_body,
+        body_html=None,
+        attributed_tenant_id=tenant.id if tenant is not None else None,
+        raw_payload=raw_payload,
+        inbound_metadata={
+            "received_via": "twilio_messaging_webhook",
+            "from_country": from_country or None,
+            "message_sid": message_sid or None,
+        },
+    )
+    session.add(message)
+    session.flush()
+
+    # Best-effort AI classification — same shape as the SendGrid webhook.
+    # SMS bodies are short by nature; the classifier handles them the same
+    # way it handles pasted email snippets.
+    settings = get_settings()
+    if cleaned_body and settings.openai_api_key:
+        try:
+            result, _ = triage_inbox(body=cleaned_body, settings=settings)
+        except InboxTriageError:
+            result = None
+        if result is not None:
+            raw_kind = result.get("kind")
+            if isinstance(raw_kind, str) and raw_kind in INBOX_KINDS:
+                message.classification_kind = raw_kind
+            raw_conf = result.get("confidence")
+            try:
+                confidence = float(raw_conf)  # type: ignore[arg-type]
+                message.classification_confidence = max(0.0, min(1.0, confidence))
+            except (TypeError, ValueError):
+                pass
+            raw_summary = result.get("summary")
+            if isinstance(raw_summary, str):
+                message.classification_summary = raw_summary.strip()[:400] or None
+            raw_target = result.get("suggested_target_kind")
+            if isinstance(raw_target, str):
+                message.classification_target_kind = raw_target[:60]
+
+    audit_log(
+        session,
+        actor="twilio.messaging_webhook",
+        entity_id=entity_id,
+        action="receive",
+        target_table="inbound_message",
+        target_id=message.id,
+        tool_name="twilio.messaging_webhook",
+        tool_input={
+            "from_country": from_country,
+            "attributed_tenant_id": str(tenant.id) if tenant is not None else None,
+            "classification_kind": message.classification_kind,
+        },
+        tool_output_summary=(
+            f"inbound sms received and classified as {message.classification_kind}"
+            if message.classification_kind
+            else "inbound sms received"
+        ),
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    session.commit()
+    return {
+        "id": str(message.id),
+        "attributed_tenant_id": str(tenant.id) if tenant is not None else None,
+    }
+

@@ -4140,6 +4140,7 @@ export type CommsKind =
   | "insurance_expiry"
   | "lease_renewal"
   | "inbound_email"
+  | "inbound_sms"
   | "compliance_obligation";
 export type CommsSeverity = "info" | "warning" | "danger";
 

@@ -685,6 +685,64 @@ def test_inbound_webhook_classifies_with_ai_triage(
     assert "84%" in (inbound[0]["detail"] or "")
 
 
+def test_twilio_inbound_webhook_persists_and_attributes_by_phone(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Twilio inbound SMS lands as inbound_message and attributes by phone."""
+
+    entity = _entity(session)
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="SMS Tenant Pty Ltd",
+        contact_name="Alex SMS",
+        contact_phone="0400 111 222",
+    )
+    session.add(tenant)
+    session.commit()
+
+    response = client.post(
+        "/api/v1/comms/webhooks/twilio-inbound",
+        params={"entity_id": str(entity.id)},
+        data={
+            "From": "+61400111222",
+            "To": "+61491570006",
+            "Body": "Hi, the smoke alarm is beeping again — third time this week.",
+            "MessageSid": "SM-test-1",
+            "FromCountry": "AU",
+        },
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["attributed_tenant_id"] == str(tenant.id)
+
+    row = session.get(InboundMessage, UUID(body["id"]))
+    assert row is not None
+    assert row.channel == "sms"
+    assert row.provider == "twilio"
+    assert row.from_address == "+61400111222"
+    assert row.body_text == "Hi, the smoke alarm is beeping again — third time this week."
+    assert row.attributed_tenant_id == tenant.id
+    assert row.inbound_metadata["from_country"] == "AU"
+    assert row.inbound_metadata["message_sid"] == "SM-test-1"
+
+    # Queue surfaces it as inbound_sms (not inbound_email).
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    sms_candidates = [
+        c for c in queue.json()["candidates"] if c["kind"] == "inbound_sms"
+    ]
+    assert len(sms_candidates) == 1
+    candidate = sms_candidates[0]
+    assert candidate["recipient_phone"] == "+61400111222"
+    assert candidate["recipient_email"] is None
+    assert candidate["subject"] == "SMS reply"
+    assert candidate["body"].startswith("Hi Alex SMS,")
+
+
 def test_inbound_webhook_without_matching_tenant(
     client: TestClient,
     session: Session,

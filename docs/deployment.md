@@ -91,6 +91,21 @@ DocuSign developer account is provisioned, set on the API service:
 
 Until all four required values are set, `stewart.integrations.docusign.send_lease_for_signature` returns `status="skipped"` with a clear `not_configured` error and never calls DocuSign. The shape of the dataclasses (`LeaseSignatureRequest`, `LeaseSignatureResult`) matches the SendGrid `DeliveryResult` pattern so the operator-facing receipt surface can render the same way once the real envelope-create + Connect-webhook plumbing lands in the next slice.
 
+**Inbound SMS parsing (Twilio Messaging webhook).** Leasium accepts inbound
+SMS through `POST /api/v1/comms/webhooks/twilio-inbound?entity_id=<uuid>`.
+To wire this up: (1) purchase a Twilio phone number for each entity (one
+number per portfolio so the `entity_id` query param can be hard-coded into
+the webhook URL); (2) on the Twilio console, set the number's *Messaging
+Configuration → A message comes in* webhook to
+`https://<API_HOST>/api/v1/comms/webhooks/twilio-inbound?entity_id=<UUID>`
+with HTTP POST; (3) the existing `TWILIO_AUTH_TOKEN` env var is already
+configured for outbound SMS — a future hardening pass uses it to verify the
+`X-Twilio-Signature` header. v1 is provider-only auth; the webhook verifies
+the entity exists before persisting. Inbound SMS lands in the same
+`inbound_message` table with `channel="sms"`, attributed by digits-only
+phone-number suffix match against `tenant.contact_phone`, and surfaces in
+the operator comms queue as `inbound_sms` candidates.
+
 **Inbound email parsing (SendGrid Inbound Parse).** Leasium accepts inbound
 emails through `POST /api/v1/comms/webhooks/sendgrid-inbound?entity_id=<uuid>`.
 To wire this up: (1) add an MX record on a subdomain you control

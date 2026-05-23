@@ -61,6 +61,7 @@ const KIND_LABEL: Record<CommsKind, string> = {
   insurance_expiry: "Insurance expiry",
   lease_renewal: "Lease renewal",
   inbound_email: "Inbound email",
+  inbound_sms: "Inbound SMS",
   compliance_obligation: "Compliance reminder",
 };
 
@@ -129,6 +130,7 @@ function CommsContent() {
       insurance_expiry: 0,
       lease_renewal: 0,
       inbound_email: 0,
+      inbound_sms: 0,
       compliance_obligation: 0,
     };
     for (const candidate of candidates) {

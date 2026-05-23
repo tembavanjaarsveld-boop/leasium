@@ -22,6 +22,7 @@ CommsKind = Literal[
     "insurance_expiry",
     "lease_renewal",
     "inbound_email",
+    "inbound_sms",
     "compliance_obligation",
 ]
 CommsSeverity = Literal["info", "warning", "danger"]
