@@ -537,3 +537,102 @@ Applied UX guardrails:
 - Block lease apply until property/unit/tenant can be linked or created, and start, expiry, and rent are confirmed.
 - Treat low confidence, missing option/security detail, and no extracted obligations as warnings rather than blockers.
 - After lease apply, offer both property workspace and task follow-up actions.
+
+## External Design Review 2026-05-23
+
+Status: pending Remba review. An external structural design pass produced
+`docs/external-design-review-2026-05-23.md` covering navigation drift, typographic
+hierarchy collapse, monolithic page files, dashboard density, public onboarding
+first-impression, container hierarchy, mobile/tablet IA, and accessibility
+heading levels. The review was code + design-doc only; a live-pixel pass on
+Vercel should follow before the larger items ship.
+
+### Nav trim — 13 → 8 primary items
+
+Status: pending Remba review. The sidebar `navItems` in
+`apps/web/src/components/app-shell.tsx` has been trimmed to Dashboard,
+Smart Intake, Properties, Tenants, Work, Billing, Insights, and Settings.
+Removed from the sidebar but reachable from the Cmd-K command palette and
+the keyboard G-shortcuts: AI Inbox, Contractors, Comms, Statements, and
+Portfolio QA. The G-letter shortcuts for removed items still work so
+operators keep their muscle memory while the IA settles. The
+Properties + Tenants → Portfolio consolidation (toward the 7-item target
+in the 2026-05-21 nav simplification note) is deferred until a Portfolio
+landing exists to host both. Remba should review whether the 8-item nav
+reads as calmer on laptop sidebars, whether the Cmd-K palette is
+discoverable enough as the new home for removed items, and whether the
+keyboard cheatsheet should distinguish nav items from palette-only
+destinations.
+
+### Typography hierarchy — restore page/section ladder
+
+Status: pending Remba review. `apps/web/src/components/ui.tsx` now exports
+`PageTitle` (`<h1>`, 30/36/600, tracking-tight) and `SectionTitle` (`<h2>`,
+18/28/600, tracking-tight) and uses them inside `PageHeader` and
+`SectionPanel` respectively. Previous values were `text-xl` (20px) at h2
+for page titles and `text-[15px]` at h3 for section titles, a 38–44% gap
+versus the SoT scale and a flat document outline. Headings are also now
+correctly nested (h1 → h2 inside a workspace page) instead of starting
+at h2. Remba should review whether 30px page titles read as appropriately
+operator-mode rather than marketing-heavy on dense pages like
+`/properties`, `/operations`, `/billing-readiness`, whether 18px section
+titles bump the panel rhythm enough without dominating, and whether
+sub-section text inside panel bodies needs a third reusable heading
+(`RowTitle`/`SubsectionTitle` at 15px) for full coverage.
+
+### Dashboard reshape — metric grid 6 → 4, Smart Intake hoisted
+
+Status: pending Remba review. The Dashboard metric grid in
+`apps/web/src/components/dashboard.tsx` has been trimmed from six
+cards (`xl:grid-cols-6`) to four operational cards (`lg:grid-cols-4`):
+Operations / Billing blockers / Needs review / Blocked docs. The
+Properties and Tenants cards were removed because they were
+navigational counts rather than "act now" metrics, and the sidebar
+already links to both surfaces. Operator awareness of property/tenant
+totals now lives in the sidebar nav and in the underlying workspaces;
+if this regresses awareness in practice, we can add a quieter
+secondary strip below the operational metrics. Orphaned helpers
+(`propertiesLoading`, `tenantsLoading`, `displayPropertiesCount`,
+`displayTenantsCount`, `portfolioOccupancy`, `propertiesOccupancySummary`)
+and the now-unused `portfolioOccupancyTotals` / `propertyOccupancyFromRentRoll`
+imports were cleaned up.
+
+The two-column Smart Intake + Needs attention section was hoisted
+from below Activity feed (position 8) to right after the Daily command
+center (position 2). The new dashboard order is: Command center →
+Smart Intake + Needs attention → Metric grid → Upcoming lease events
+→ Ask Leasium → Activity feed. The drop zone is now in the first
+viewport at common laptop sizes, which is what the SoT hero-workflow
+language asked for. The same two-column section is reused in intake
+mode, so `/intake` benefits from the same lift.
+
+Remba should review whether the four operational metrics feel like
+the right "what needs me right now?" set; whether removing Properties
+and Tenants from the metric strip is a regression in portfolio
+awareness; whether the two-column Smart Intake block at position 2
+makes the dashboard feel more active or more cluttered; and whether
+the metric strip should sit above or below the two-column block in
+a future iteration once Remba has eyes on Vercel.
+
+### Deferred from the external review
+
+Not addressed yet, queued for follow-up:
+
+- Page-file size policy — extract `dashboard.tsx`, `property-workspace.tsx`,
+  `settings/page.tsx`, `operations/page.tsx` into composed sections at
+  ~400 lines each.
+- Public onboarding first-impression — restore property/agency context
+  on `/onboarding/[token]` instead of redirecting straight to the portal.
+- Container hierarchy — introduce a workspace `<Surface>` distinct from
+  the aside `<SectionPanel>` so dense table pages stop reading as a stack
+  of look-alike white cards.
+- Mobile/tablet IA — collapse sidebar at `md` instead of disappearing at
+  `lg`; consider a bottom-nav for the top 5 destinations on sub-`md`.
+- Loading-state polish — replace remaining `... Loading` text-string
+  loaders with section-level skeletons.
+- Chip-color token cleanup — replace hex literals in `StatusBadge` with
+  named `leasium-success-strong` / `leasium-warning-strong` /
+  `leasium-danger-strong` tokens.
+- Active-nav surface tone in sidebar — replace the
+  `bg-leasium-blue-soft/10` tint (effectively invisible on navy-900) with
+  a real surface tone.
