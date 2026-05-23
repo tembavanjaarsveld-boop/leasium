@@ -794,6 +794,40 @@ icon-only width, and whether the mobile drawer's labels-always-show
 behaviour holds up when the drawer is wide enough to span much of
 a 480-700px viewport.
 
+### Page-file split — dashboard.tsx phase 2
+
+Status: pending Remba review. Second extraction slice. Two more
+panel families pulled out of `dashboard.tsx`:
+
+- `DashboardMetricCard` + its `DashboardMetricTrend` type + the
+  `MetricSparkline` and `MetricDeltaBadge` sub-helpers +
+  `computeOpenObligationTrend` (the 7-day roll-up the parent uses
+  to pass a trend prop into the Operations card) →
+  `src/components/dashboard/DashboardMetricCard.tsx` (217 lines).
+- `UpcomingLeaseEventsPanel` + its `leaseEventKindLabel` and
+  `leaseEventKindTone` helpers →
+  `src/components/dashboard/UpcomingLeaseEventsPanel.tsx` (138
+  lines).
+
+Parent imports both via the now-established
+`src/components/dashboard/` directory. Behaviour unchanged.
+Orphaned `LeaseEventRecord` type import from `@/lib/api` cleaned up.
+`InsightsOverviewRecord` import retained — still used by the parent's
+useQuery generic.
+
+Net: dashboard.tsx 4,048 → 3,751 lines (−297). Cumulative across
+phases 1+2: 4,463 → 3,751 (−712, 16% reduction).
+
+Phase 3+ queue (in order of bounded-ness):
+- `DashboardCommandCenter` (159 lines + CommandCenterItem /
+  CommandCenterCounts types + commandCenterSort helper)
+- `DocumentIntakeApplyOutcomeCard` (248 lines, fairly self-contained)
+- `DocumentIntakeReviewPanel` (646 lines, biggest single piece, has
+  many props from parent state)
+- Remaining helpers (intakeStatusTone, obligationTone, dueRank,
+  formatDate, formatMoney, etc.) — these are general enough to live
+  in `src/lib/` rather than dashboard sub-components.
+
 ### Page-file split — dashboard.tsx phase 1
 
 Status: pending Remba review. First slice of the page-file extraction
