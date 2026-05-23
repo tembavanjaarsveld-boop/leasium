@@ -741,6 +741,156 @@ Drop in a lease, guarantee, insurance certificate, invoice, or tenant document t
 
 ---
 
+## 10.5 Operational guardrails (drift prevention)
+
+These are not aesthetic principles; they are operational rules that exist
+because the implementation has drifted from the spec at least once in the
+past. New code MUST follow them. Old code that violates them is evidence
+of drift and should be flagged in `docs/design-governance.md` as a follow-up.
+
+If a change needs to violate a guardrail, document the deliberate exception
+in the same governance entry. Silent drift is what produced the
+`docs/external-design-review-2026-05-23.md` findings — none of this is new
+direction, all of it was already in the source of truth, the code just
+walked away.
+
+### 10.5.1 Primary navigation cap
+
+- **Hard ceiling: 7 items in the sidebar at any time.** Current shipped
+  state is 8 (Dashboard, Smart Intake, Properties, Tenants, Work, Billing,
+  Insights, Settings) pending a Properties+Tenants → Portfolio
+  consolidation that gets us to 7.
+- Anything beyond the ceiling lives in the Cmd-K command palette
+  (`commandActions` in `apps/web/src/components/app-shell.tsx`).
+- Keyboard `G`-shortcuts (`SHORTCUT_NAV`) MAY exceed the sidebar list —
+  muscle memory should be preserved for palette-only destinations.
+- New top-level routes do NOT auto-promote to the sidebar; they default
+  to palette-only and earn a sidebar slot only when an operator uses
+  them daily.
+
+### 10.5.2 Typography ladder enforcement
+
+- **Always use the `PageTitle` and `SectionTitle` components** from
+  `apps/web/src/components/ui.tsx`. Never inline
+  `<h1 className="text-3xl">` or `<h2 className="text-[15px]">` on a
+  workspace page.
+- `PageTitle` is `<h1>`, 30/36, tracking-tight. There is exactly one
+  PageTitle per route.
+- `SectionTitle` is `<h2>`, 18/28, tracking-tight. Every `SectionPanel`
+  title uses it. Standalone section headings outside SectionPanel use it.
+- Body text uses `text-sm` (14/20) for dense tables and `text-base`
+  (16/24) for prose. Don't use `text-xs` (12) for anything other than
+  caption-level labels.
+
+### 10.5.3 Page-file size policy
+
+- **Cap each page/component file at ~400 lines.** When a file grows past
+  ~250 lines, plan extraction into a co-located subdirectory of named
+  section components (e.g. `src/app/<route>/_components/` or
+  `src/components/<surface>/`).
+- The shape of a file dictates the shape of its UI. Monolithic files
+  encourage monolithic UI — every section gets wrapped in the same
+  `<SectionPanel>` because importing a second container archetype is
+  inconvenient.
+- Existing offenders (`dashboard.tsx`, `property-workspace.tsx`,
+  `settings/page.tsx`, `operations/page.tsx`) are grandfathered until
+  the page-file split slice ships, but no new code should add to them.
+
+### 10.5.4 Container hierarchy
+
+- `<SectionPanel>` is for **aside content**: Ask Leasium, Recent activity,
+  evidence/source-trail disclosures, preview/receipt panels, anything
+  that supports the main workspace task.
+- The **main workspace body** (tables, lists, dense data) renders on the
+  page background with `<SectionTitle>` headings and divider rules, no
+  card chrome. Today this archetype is implicit (Properties /
+  Operations / Billing-readiness use `<SectionPanel>` everywhere); a
+  reusable `<Surface>` component is queued in the design review.
+- Don't wrap a table in a SectionPanel just because the import is
+  already there. Reach for the right container.
+
+### 10.5.5 Status chip vocabulary
+
+- Use only the named chips in §9. Don't invent ad-hoc tone-and-text
+  combinations in components.
+- New status concepts go through Remba before they enter the codebase.
+- `StatusBadge` in `apps/web/src/components/ui.tsx` is the only chip
+  primitive; per-domain chips (status, priority, etc.) compose its
+  `tone` prop.
+
+### 10.5.6 Dashboard structure
+
+- Order is fixed: **Command center → Smart Intake → Operational metrics
+  → Context (lease events / Ask Leasium / Activity feed)**.
+- The metric strip carries operational counts only (Operations, Billing
+  blockers, Needs review, Blocked docs). Cap at 4. Navigational counts
+  (Properties, Tenants) belong in the sidebar, not the metric strip.
+- The Smart Intake drop zone MUST sit in the first viewport at common
+  laptop sizes (1440px). It is the product wedge.
+
+### 10.5.7 Provider mutation guardrail
+
+- **No Xero write, SendGrid email, Twilio SMS, tenant email, or payment
+  reconciliation without explicit operator approval.** Every provider
+  call is review-first: extract → confidence → source → approve/edit/
+  ignore → only then mutate.
+- This applies to every surface, every component, every helper.
+- Cross-reference: CLAUDE.md §2.1; design-governance.md across all
+  Xero/Comms/Onboarding entries.
+
+### 10.5.8 Remba review gate
+
+Remba is the required UX sign-off for design-facing changes. Treat the
+following as Remba-pending by default:
+
+- navigation (sidebar items, breadcrumbs, route restructure)
+- page layout (column counts, panel ordering, section hierarchy)
+- density (table row heights, padding, gap values)
+- typography (size, weight, tracking — even when using the existing
+  ladder, applying it to a new surface counts)
+- copy (page titles, descriptions, empty states, error messages,
+  CTAs, microcopy)
+- status semantics (new chips, tone changes, recovery flows)
+- workflow ordering (what happens before what, default selections,
+  required vs optional)
+- visual hierarchy (what draws the eye first; the order of weight in
+  a section)
+- design system primitives (new components in `ui.tsx`, token changes,
+  shadow/radius/spacing additions)
+
+Process for design-facing changes:
+
+1. Ship behind a `pending Remba review` note in
+   `docs/design-governance.md` (add a numbered follow-up entry under
+   the relevant heading).
+2. Mark the corresponding roadmap item as `[~]` in
+   `docs/product-roadmap.md`. Not `[x]`. `[x]` is only after Remba signs
+   off.
+3. State the Remba decision request explicitly in the governance entry
+   — what should Remba review, what alternatives were considered, what
+   tradeoff is on the table.
+4. Don't claim "complete" before Remba sign-off, even if all tests pass.
+
+The point of the gate is not bureaucracy. It is to keep the spec and
+the implementation aligned, so a future external review doesn't find
+the same drift twice.
+
+### 10.5.9 Drift detection
+
+- If code violates one of these guardrails, it is evidence of drift.
+  Restore the rule, or document the deliberate exception in the
+  governance log.
+- When a session like the 2026-05-23 external review surfaces drift,
+  the response is not "rewrite the world" — it is to (a) update this
+  document so the rule is named, (b) ship the highest-leverage fixes,
+  and (c) queue the rest as `pending Remba review` follow-ups.
+- The single most useful question when reviewing a diff is: "Does this
+  match how the existing system was supposed to work, or does it match
+  how the existing code happens to work today?" The first answer is
+  the right one.
+
+---
+
 ## 11. Navigation model
 
 Use this primary navigation:
