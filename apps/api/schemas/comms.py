@@ -17,7 +17,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-CommsKind = Literal["arrears_reminder"]
+CommsKind = Literal["arrears_reminder", "insurance_expiry", "lease_renewal"]
 CommsSeverity = Literal["info", "warning", "danger"]
 
 
@@ -54,3 +54,65 @@ class CommsQueueRead(BaseModel):
     entity_id: UUID
     candidates: list[CommsCandidate]
     generated_at: datetime
+
+
+class CommsDispatchCreate(BaseModel):
+    """Payload for ``POST /api/v1/comms/dispatch``.
+
+    The operator's click on the Approve button is the explicit approval that
+    satisfies the provider-mutation guardrail. The subject and body are sent
+    as-is — the operator can edit them inline before approving and the
+    server does not re-derive the draft on dispatch.
+    """
+
+    kind: CommsKind
+    target_kind: str
+    target_id: UUID
+    subject: str
+    body: str
+    recipient_email: str | None = None
+    recipient_phone: str | None = None
+
+
+class CommsDispatchRead(BaseModel):
+    """Read response for a dispatched draft."""
+
+    candidate_id: str
+    kind: CommsKind
+    target_kind: str
+    target_id: UUID
+    channel: str
+    status: str
+    provider: str | None
+    recipient: str | None
+    provider_message_id: str | None = None
+    error: str | None = None
+    sent_at: datetime
+
+
+class CommsDismissCreate(BaseModel):
+    """Payload for ``POST /api/v1/comms/dismiss``.
+
+    Records the operator's choice to defer a candidate. For arrears that
+    moves ``reminder_paused_until``; for tenant/lease-scoped candidates the
+    backend stores a metadata snooze keyed by candidate id. Defaults to 7
+    days when ``until`` is not supplied.
+    """
+
+    kind: CommsKind
+    target_kind: str
+    target_id: UUID
+    until: date | None = None
+    reason: str | None = None
+
+
+class CommsDismissRead(BaseModel):
+    """Read response for a dismissed candidate."""
+
+    candidate_id: str
+    kind: CommsKind
+    target_kind: str
+    target_id: UUID
+    deferred_until: date
+    reason: str | None = None
+    dismissed_at: datetime

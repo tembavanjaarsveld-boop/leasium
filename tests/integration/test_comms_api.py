@@ -217,3 +217,268 @@ def test_comms_queue_empty_portfolio_returns_no_candidates(
     body = response.json()
     assert body["candidates"] == []
     assert body["entity_id"] == str(entity.id)
+
+
+def _seed_lease_only(session: Session, expiry_in_days: int) -> dict[str, str]:
+    """Seed a property + unit + tenant + active lease without an arrears case.
+
+    Used by the v2 candidate tests so the queue only ever returns one kind.
+    """
+
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Renewal Building",
+        street_address="20 Renewal Street",
+        suburb="Brisbane City",
+        state="QLD",
+        postcode="4000",
+        property_type=PropertyType.commercial_office,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Suite 5")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Renewal Tenant Pty Ltd",
+        trading_name="Renewal Co",
+        contact_name="Sam Renewal",
+        contact_email="sam@renewal.example",
+        contact_phone="+61 400 333 444",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+        commencement_date=date.today() - timedelta(days=365),
+        expiry_date=date.today() + timedelta(days=expiry_in_days),
+    )
+    session.add(lease)
+    session.commit()
+    return {
+        "entity_id": str(entity.id),
+        "tenant_id": str(tenant.id),
+        "lease_id": str(lease.id),
+        "property_id": str(prop.id),
+        "unit_id": str(unit.id),
+    }
+
+
+def test_comms_queue_returns_lease_renewal_candidate(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_lease_only(session, expiry_in_days=45)
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    candidates = body["candidates"]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["kind"] == "lease_renewal"
+    assert candidate["target_kind"] == "lease"
+    assert candidate["target_id"] == scope["lease_id"]
+    assert candidate["property_name"] == "Renewal Building"
+    assert candidate["unit_label"] == "Suite 5"
+    # 45 days out → warning tier.
+    assert candidate["severity"] == "warning"
+    assert "Renewal Building" in candidate["subject"]
+    assert "Suite 5" in candidate["body"]
+
+
+def test_comms_queue_lease_renewal_skips_far_future_expiry(
+    client: TestClient,
+    session: Session,
+) -> None:
+    _seed_lease_only(session, expiry_in_days=200)
+    entity = _entity(session)
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert response.status_code == 200
+    assert response.json()["candidates"] == []
+
+
+def test_comms_dispatch_arrears_records_audit_and_bumps_reminder_stage(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Dispatch fires the SendGrid wire and clocks the arrears reminder."""
+
+    scope = _seed_arrears(session)
+    calls: list[dict[str, object]] = []
+
+    from apps.api.routers import comms as comms_router
+
+    def fake_send(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        calls.append(
+            {
+                "recipient_email": recipient_email,
+                "subject": subject,
+                "body": body,
+                "kind": kind,
+            }
+        )
+        return comms_router._CommsEmailResult(
+            status="queued",
+            provider="sendgrid",
+            recipient=recipient_email,
+            provider_message_id="comms-msg-1",
+        )
+
+    monkeypatch.setattr(comms_router, "_send_comms_email", fake_send)
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": "arrears_reminder",
+            "target_kind": "arrears_case",
+            "target_id": scope["case_id"],
+            "subject": "Urgent: outstanding rent",
+            "body": "Hi Arrears Cafe, please clear the balance.",
+            "recipient_email": "mia@arrears.example",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["status"] == "queued"
+    assert body["candidate_id"] == f"arrears_reminder:arrears_case:{scope['case_id']}"
+    assert body["recipient"] == "mia@arrears.example"
+    assert calls == [
+        {
+            "recipient_email": "mia@arrears.example",
+            "subject": "Urgent: outstanding rent",
+            "body": "Hi Arrears Cafe, please clear the balance.",
+            "kind": "arrears_reminder",
+        }
+    ]
+
+    case = session.get(ArrearsCase, UUID(scope["case_id"]))
+    assert case is not None
+    assert case.reminder_stage == 2  # was 1 from seed, +1 after dispatch
+    assert case.last_reminder_at is not None
+    assert case.next_reminder_on is not None
+
+
+def test_comms_dismiss_arrears_pauses_reminder(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Dismiss moves reminder_paused_until forward."""
+
+    scope = _seed_arrears(session)
+
+    response = client.post(
+        "/api/v1/comms/dismiss",
+        json={
+            "kind": "arrears_reminder",
+            "target_kind": "arrears_case",
+            "target_id": scope["case_id"],
+            "reason": "tenant promised payment by Friday",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["candidate_id"] == f"arrears_reminder:arrears_case:{scope['case_id']}"
+    deferred_until = date.fromisoformat(body["deferred_until"])
+    assert deferred_until > date.today()
+    assert body["reason"] == "tenant promised payment by Friday"
+
+    case = session.get(ArrearsCase, UUID(scope["case_id"]))
+    assert case is not None
+    assert case.reminder_paused_until == deferred_until
+
+    # And the next queue scan should now skip this case (matches the existing
+    # paused-and-future-reminder test from v1).
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+    assert queue.status_code == 200
+    assert queue.json()["candidates"] == []
+
+
+def test_comms_dispatch_rejects_unknown_target_pair(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Dispatch with an inconsistent kind/target_kind/target_id is rejected."""
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": "arrears_reminder",
+            "target_kind": "tenant",  # arrears_reminder targets arrears_case, not tenant
+            "target_id": "00000000-0000-0000-0000-000000000000",
+            "subject": "x",
+            "body": "y",
+            "recipient_email": "mia@example.com",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_comms_queue_returns_insurance_expiry_candidate(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Insurance Plaza",
+        street_address="33 Cover Street",
+        suburb="Brisbane City",
+        state="QLD",
+        postcode="4000",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Shop 7")
+    expiry = date.today() + timedelta(days=10)
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Cover Tenant Pty Ltd",
+        contact_name="Riley Cover",
+        contact_email="riley@cover.example",
+        tenant_metadata={"insurance_expiry_date": expiry.isoformat()},
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+        commencement_date=date.today() - timedelta(days=180),
+        expiry_date=date.today() + timedelta(days=730),
+    )
+    session.add(lease)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert response.status_code == 200
+    candidates = response.json()["candidates"]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["kind"] == "insurance_expiry"
+    assert candidate["target_kind"] == "tenant"
+    assert candidate["target_id"] == str(tenant.id)
+    # 10 days out → warning tier.
+    assert candidate["severity"] == "warning"
+    assert "Insurance Plaza" in candidate["subject"]
+    assert candidate["body"].startswith("Hi Riley Cover,")
