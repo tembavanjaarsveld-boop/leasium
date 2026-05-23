@@ -218,7 +218,7 @@ function InboxWorkspace() {
                 placeholder="Paste the email or message here…"
                 disabled={triageMutation.isPending}
                 aria-label="Inbox message body"
-                className="min-h-[200px] w-full rounded-md border border-border bg-white p-3 text-sm outline-none focus:border-primary"
+                className="min-h-[200px] w-full rounded-md border border-border bg-white p-3 text-sm outline-none focus-visible:border-primary"
               />
             </Field>
             <div className="flex items-center justify-between">

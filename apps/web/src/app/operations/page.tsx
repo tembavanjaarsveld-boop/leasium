@@ -3031,7 +3031,7 @@ function OperationsWorkspace() {
                             }))
                           }
                           rows={2}
-                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         />
                       </label>
                       <label className="grid gap-1.5 text-sm md:col-span-2">
@@ -3047,7 +3047,7 @@ function OperationsWorkspace() {
                             }))
                           }
                           rows={3}
-                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         />
                       </label>
                       <label className="grid gap-1.5 text-sm md:col-span-2">
@@ -3063,7 +3063,7 @@ function OperationsWorkspace() {
                             }))
                           }
                           rows={2}
-                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         />
                       </label>
                       <div className="flex flex-wrap gap-2 md:col-span-2">
@@ -3462,7 +3462,7 @@ function OperationsWorkspace() {
                             }))
                           }
                           rows={3}
-                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                          className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         />
                       </label>
                       <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-3">

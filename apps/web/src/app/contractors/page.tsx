@@ -324,7 +324,7 @@ function AddContractorForm({
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               placeholder="After-hours emergency contact, prefers WhatsApp, etc."
-              className="min-h-20 w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+              className="min-h-20 w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
             />
           </Field>
         </div>

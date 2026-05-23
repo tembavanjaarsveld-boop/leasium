@@ -2117,7 +2117,7 @@ function MaintenanceDetailRoute() {
                           setContractorEmailBody(event.target.value);
                         }}
                         rows={4}
-                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         placeholder={contractorMessageDefault}
                       />
                     </label>
@@ -2247,7 +2247,7 @@ function MaintenanceDetailRoute() {
                           setContractorSmsBody(event.target.value);
                         }}
                         rows={3}
-                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         placeholder={contractorSmsDefault}
                       />
                     </label>
@@ -2596,7 +2596,7 @@ function MaintenanceDetailRoute() {
                     name="description"
                     defaultValue={workOrder.description ?? ""}
                     rows={3}
-                    className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                    className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                     placeholder="Describe the maintenance issue."
                   />
                 </label>
@@ -2609,7 +2609,7 @@ function MaintenanceDetailRoute() {
                     name="notes"
                     defaultValue={workOrder.notes ?? ""}
                     rows={3}
-                    className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                    className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                     placeholder="Internal handling note for this job."
                   />
                 </label>
@@ -2723,7 +2723,7 @@ function MaintenanceDetailRoute() {
                           setCloseoutNoteDraft(event.target.value)
                         }
                         rows={3}
-                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         placeholder={
                           savedCloseoutNote ??
                           "Record final attendance, evidence, or handoff notes."
@@ -2949,7 +2949,7 @@ function MaintenanceDetailRoute() {
                               setOwnerReviewNote(event.target.value)
                             }
                             rows={3}
-                            className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                            className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                             placeholder="Record owner approval, wording edits, or send readiness."
                           />
                         </label>
@@ -3086,7 +3086,7 @@ function MaintenanceDetailRoute() {
                         value={commentBody}
                         onChange={(event) => setCommentBody(event.target.value)}
                         rows={3}
-                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                         placeholder="Add an internal note, contractor update, or tenant-facing comment."
                       />
                     </label>

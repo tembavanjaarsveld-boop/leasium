@@ -191,7 +191,7 @@ export function InlineEditCell({
             }}
             disabled={pending}
             aria-label={ariaLabel}
-            className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus:border-primary"
+            className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus-visible:border-primary"
           >
             {options!.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -225,7 +225,7 @@ export function InlineEditCell({
             }}
             disabled={pending}
             aria-label={ariaLabel}
-            className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus:border-primary"
+            className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus-visible:border-primary"
           />
         )}
         {pending ? (

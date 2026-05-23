@@ -171,7 +171,7 @@ export function SavedViewsMenu({
                               }
                             }}
                             onBlur={() => handleRenameCommit(view.id)}
-                            className="my-1 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus:border-primary"
+                            className="my-1 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus-visible:border-primary"
                             aria-label="Rename saved view"
                           />
                         ) : (
@@ -233,7 +233,7 @@ export function SavedViewsMenu({
                 }
                 disabled={!hasActiveFilters}
                 aria-label="Save current view as"
-                className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+                className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-50"
               />
               <button
                 type="submit"

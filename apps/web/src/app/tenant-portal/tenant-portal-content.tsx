@@ -974,7 +974,7 @@ function OnboardingPanel({
         </label>
         <Field label="Notes for your property manager (optional)">
           <textarea
-            className="min-h-24 w-full resize-y rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+            className="min-h-24 w-full resize-y rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
             value={form.notes ?? ""}
             onChange={(event) => setField("notes", event.target.value)}
           />
@@ -1494,7 +1494,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
                   </div>
                   <Field label="Details">
                     <textarea
-                      className="min-h-28 w-full resize-y rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
+                      className="min-h-28 w-full resize-y rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
                       value={maintenanceDescription}
                       onChange={(event) =>
                         setMaintenanceDescription(event.target.value)
