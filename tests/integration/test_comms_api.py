@@ -19,6 +19,9 @@ from stewart.core.models import (
     InboundMessage,
     Lease,
     LeaseStatus,
+    Obligation,
+    ObligationCategory,
+    ObligationStatus,
     Property,
     PropertyType,
     TenancyUnit,
@@ -540,6 +543,146 @@ def test_inbound_webhook_persists_and_attributes_tenant(
     assert inbound[0]["target_id"] == body["id"]
     assert inbound[0]["tenant_id"] == str(tenant.id)
     assert inbound[0]["subject"] == "Re: Question about my rent"
+
+
+def test_comms_queue_returns_compliance_obligation_candidate(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Compliance obligations due within 45 days surface as candidates."""
+
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Compliance House",
+        street_address="44 Code Street",
+        suburb="Brisbane City",
+        state="QLD",
+        postcode="4000",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Suite 1")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Compliance Tenant Pty Ltd",
+        contact_name="Jess Compliance",
+        contact_email="jess@compliance.example",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+        commencement_date=date.today() - timedelta(days=200),
+        expiry_date=date.today() + timedelta(days=730),
+    )
+    session.add(lease)
+    session.flush()
+    obligation = Obligation(
+        entity_id=entity.id,
+        property_id=prop.id,
+        tenancy_unit_id=unit.id,
+        lease_id=lease.id,
+        title="Annual fire safety certificate",
+        category=ObligationCategory.compliance,
+        status=ObligationStatus.due_soon,
+        due_date=date.today() + timedelta(days=20),
+    )
+    session.add(obligation)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert response.status_code == 200
+    candidates = response.json()["candidates"]
+    compliance = [c for c in candidates if c["kind"] == "compliance_obligation"]
+    assert len(compliance) == 1
+    candidate = compliance[0]
+    assert candidate["target_kind"] == "obligation"
+    assert candidate["target_id"] == str(obligation.id)
+    assert candidate["tenant_id"] == str(tenant.id)
+    assert candidate["property_name"] == "Compliance House"
+    assert candidate["unit_label"] == "Suite 1"
+    # 20 days out + status=due_soon → warning tier.
+    assert candidate["severity"] == "warning"
+    assert "Annual fire safety certificate" in candidate["subject"]
+    assert "Annual fire safety certificate" in candidate["body"]
+    assert candidate["recipient_email"] == "jess@compliance.example"
+
+
+def test_inbound_webhook_classifies_with_ai_triage(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """When OPENAI_API_KEY is set, the webhook stamps the row with the triage result."""
+
+    entity = _entity(session)
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Triage Tenant Pty Ltd",
+        contact_email="rep@triage.example",
+    )
+    session.add(tenant)
+    session.commit()
+
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    def fake_triage(*, body, settings):  # noqa: ANN001, ARG001
+        return (
+            {
+                "kind": "payment_or_arrears",
+                "confidence": 0.84,
+                "summary": "Tenant asks about overdue rent payment processed yesterday.",
+                "suggested_target_kind": "arrears_case",
+            },
+            "resp-1",
+        )
+
+    monkeypatch.setattr(comms_router, "triage_inbox", fake_triage)
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(openai_api_key="sk-test"),
+    )
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        params={"entity_id": str(entity.id)},
+        data={
+            "from": "rep@triage.example",
+            "to": "leasium@inbound.example.org",
+            "subject": "Rent question",
+            "text": "Hi, did my rent payment go through yesterday?",
+        },
+    )
+
+    assert response.status_code == 202
+    message_id = UUID(response.json()["id"])
+    row = session.get(InboundMessage, message_id)
+    assert row is not None
+    assert row.classification_kind == "payment_or_arrears"
+    assert row.classification_confidence is not None
+    assert float(row.classification_confidence) == 0.84
+    assert "overdue rent" in (row.classification_summary or "")
+    assert row.classification_target_kind == "arrears_case"
+
+    # Queue surfaces the classification with elevated severity for payment_or_arrears.
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    inbound = [c for c in queue.json()["candidates"] if c["kind"] == "inbound_email"]
+    assert len(inbound) == 1
+    assert inbound[0]["severity"] == "danger"
+    assert "payment or arrears" in (inbound[0]["detail"] or "")
+    assert "84%" in (inbound[0]["detail"] or "")
 
 
 def test_inbound_webhook_without_matching_tenant(

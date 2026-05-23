@@ -33,11 +33,15 @@ from stewart.core.models import (
     InboundMessage,
     Lease,
     LeaseStatus,
+    Obligation,
+    ObligationCategory,
+    ObligationStatus,
     Property,
     TenancyUnit,
     Tenant,
     UserRole,
 )
+from stewart.ai.inbox import INBOX_KINDS, InboxTriageError, triage_inbox
 from stewart.core.settings import Settings, get_settings
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
@@ -648,6 +652,142 @@ def _lease_renewal_candidates(
     return candidates
 
 
+COMPLIANCE_CATEGORIES = (
+    ObligationCategory.insurance,
+    ObligationCategory.bank_guarantee,
+    ObligationCategory.compliance,
+    ObligationCategory.make_good,
+)
+
+# Statuses that mean the obligation still needs operator attention.
+COMPLIANCE_OPEN_STATUSES = (
+    ObligationStatus.upcoming,
+    ObligationStatus.due_soon,
+    ObligationStatus.overdue,
+)
+
+
+def _compliance_candidates(
+    entity_id: UUID, session: Session
+) -> list[CommsCandidate]:
+    """Surface compliance Obligation rows due in the next 45 days (or overdue).
+
+    The Obligation table already covers compliance (insurance, bank guarantee,
+    make-good, generic compliance) with a due_date + status lifecycle, so the
+    comms queue piggybacks on that rather than introducing a new table. Each
+    candidate drafts a tenant-facing reminder when the obligation is tied to a
+    lease/tenant; obligations attached to a property without a lease (e.g. a
+    fire-safety certificate on a vacant unit) still appear with no recipient
+    so the operator can route them manually.
+    """
+
+    today = date.today()
+    cutoff = today + timedelta(days=45)
+    candidates: list[CommsCandidate] = []
+    now = utcnow()
+    rows = list(
+        session.scalars(
+            select(Obligation)
+            .where(
+                Obligation.entity_id == entity_id,
+                Obligation.deleted_at.is_(None),
+                Obligation.category.in_(COMPLIANCE_CATEGORIES),
+                Obligation.status.in_(COMPLIANCE_OPEN_STATUSES),
+                Obligation.due_date <= cutoff,
+            )
+            .order_by(Obligation.due_date.asc())
+        ).all()
+    )
+    for obligation in rows:
+        tenant: Tenant | None = None
+        property_name: str | None = None
+        unit_label: str | None = None
+        if obligation.lease_id is not None:
+            lease = session.get(Lease, obligation.lease_id)
+            if lease is not None and lease.deleted_at is None:
+                t = session.get(Tenant, lease.tenant_id)
+                if t is not None and t.deleted_at is None:
+                    tenant = t
+        if obligation.property_id is not None:
+            prop = session.get(Property, obligation.property_id)
+            if prop is not None and prop.deleted_at is None:
+                property_name = prop.name
+        if obligation.tenancy_unit_id is not None:
+            unit = session.get(TenancyUnit, obligation.tenancy_unit_id)
+            if unit is not None and unit.deleted_at is None:
+                unit_label = unit.unit_label
+
+        days_until = (obligation.due_date - today).days
+        if obligation.status == ObligationStatus.overdue or days_until < 0:
+            severity: str = "danger"
+            subject_prefix = "Overdue compliance item"
+        elif obligation.status == ObligationStatus.due_soon or days_until <= 14:
+            severity = "warning"
+            subject_prefix = "Compliance item due soon"
+        else:
+            severity = "info"
+            subject_prefix = "Upcoming compliance reminder"
+
+        location_parts = [part for part in (property_name, unit_label) if part]
+        location = " ".join(location_parts) if location_parts else "your tenancy"
+        tenant_name = _tenant_display_name(tenant) if tenant is not None else None
+        greeting = (
+            f"Hi {tenant.contact_name},"
+            if tenant is not None and tenant.contact_name
+            else (f"Hi {tenant_name}," if tenant_name else "Hello,")
+        )
+        body = (
+            f"{greeting}\n\n"
+            f"We have an upcoming compliance item for {location}: "
+            f"\"{obligation.title}\" is due on "
+            f"{obligation.due_date.strftime('%d %b %Y')}.\n\n"
+            "Please send through any documentation that demonstrates this is "
+            "in place. If something has already been completed, reply with the "
+            "evidence and we will close it out.\n\n"
+            "Thanks,\nThe property team"
+        )
+        subject = (
+            f"{subject_prefix}: {obligation.title}"
+            if obligation.title
+            else subject_prefix
+        )
+        detail_parts: list[str] = [
+            obligation.category.value.replace("_", " "),
+            f"due {obligation.due_date.strftime('%d %b %Y')}",
+        ]
+        if days_until < 0:
+            detail_parts.append(f"overdue {abs(days_until)} days")
+        else:
+            detail_parts.append(f"in {days_until} days")
+        detail = ", ".join(detail_parts)
+
+        candidates.append(
+            CommsCandidate(
+                id=f"compliance_obligation:obligation:{obligation.id}",
+                kind="compliance_obligation",
+                target_kind="obligation",
+                target_id=obligation.id,
+                tenant_id=tenant.id if tenant is not None else None,
+                tenant_name=tenant_name,
+                property_name=property_name,
+                unit_label=unit_label,
+                recipient_email=(
+                    tenant.contact_email or tenant.billing_email
+                    if tenant is not None
+                    else None
+                ),
+                recipient_phone=tenant.contact_phone if tenant is not None else None,
+                subject=subject,
+                body=body,
+                severity=severity,  # type: ignore[arg-type]
+                due_at=obligation.due_date,
+                detail=detail,
+                generated_at=now,
+            )
+        )
+    return candidates
+
+
 def _inbound_email_candidates(
     entity_id: UUID, session: Session
 ) -> list[CommsCandidate]:
@@ -700,6 +840,24 @@ def _inbound_email_candidates(
         detail_parts: list[str] = [f"from {message.from_address or 'unknown'}"]
         if tenant is None:
             detail_parts.append("tenant not attributed")
+        if message.classification_kind:
+            label = message.classification_kind.replace("_", " ")
+            confidence = message.classification_confidence
+            if confidence is not None:
+                detail_parts.append(
+                    f"AI: {label} ({int(round(float(confidence) * 100))}%)"
+                )
+            else:
+                detail_parts.append(f"AI: {label}")
+        # Severity reflects classification urgency when present, otherwise info.
+        severity: str = "info"
+        if message.classification_kind == "payment_or_arrears":
+            severity = "danger"
+        elif message.classification_kind == "maintenance_request":
+            severity = "warning"
+        elif message.classification_kind == "spam_or_noise":
+            severity = "info"
+
         candidates.append(
             CommsCandidate(
                 id=f"inbound_email:inbound_message:{message.id}",
@@ -714,7 +872,7 @@ def _inbound_email_candidates(
                 recipient_phone=None,
                 subject=subject,
                 body=body,
-                severity="info",
+                severity=severity,  # type: ignore[arg-type]
                 due_at=None,
                 detail=", ".join(detail_parts),
                 generated_at=now,
@@ -741,6 +899,7 @@ def get_comms_queue(
     candidates = (
         _inbound_email_candidates(entity_id, session)
         + _arrears_candidates(entity_id, session)
+        + _compliance_candidates(entity_id, session)
         + _insurance_candidates(entity_id, session)
         + _lease_renewal_candidates(entity_id, session)
     )
@@ -753,7 +912,7 @@ def get_comms_queue(
 
 def _resolve_dispatch_entity_id(
     payload: CommsDispatchCreate, session: Session
-) -> tuple[UUID, ArrearsCase | Tenant | Lease | InboundMessage]:
+) -> tuple[UUID, ArrearsCase | Tenant | Lease | InboundMessage | Obligation]:
     """Look up the entity_id for a dispatch target and return the source row.
 
     Each kind is scoped to a different table — the target_kind tells us where
@@ -769,6 +928,17 @@ def _resolve_dispatch_entity_id(
                 detail="Inbound message not found.",
             )
         return message.entity_id, message
+    if (
+        payload.kind == "compliance_obligation"
+        and payload.target_kind == "obligation"
+    ):
+        obligation = session.get(Obligation, payload.target_id)
+        if obligation is None or obligation.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Obligation not found.",
+            )
+        return obligation.entity_id, obligation
     if payload.kind == "arrears_reminder" and payload.target_kind == "arrears_case":
         case = session.get(ArrearsCase, payload.target_id)
         if case is None or case.deleted_at is not None:
@@ -812,7 +982,7 @@ def _resolve_dispatch_entity_id(
 
 
 def _update_source_after_dispatch(
-    source: ArrearsCase | Tenant | Lease | InboundMessage, kind: str
+    source: ArrearsCase | Tenant | Lease | InboundMessage | Obligation, kind: str
 ) -> None:
     """Bookkeeping after a draft is dispatched so the candidate doesn't
     re-appear in the queue immediately.
@@ -851,6 +1021,15 @@ def _update_source_after_dispatch(
         }
         metadata[DISMISS_METADATA_KEY] = dismiss
         source.lease_metadata = metadata
+    elif isinstance(source, Obligation):
+        metadata = dict(source.obligation_metadata or {})
+        dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
+        dismiss[kind] = {
+            "dispatched_at": utcnow().isoformat(),
+            "next_eligible_on": (today + timedelta(days=DEFAULT_DISMISS_DAYS)).isoformat(),
+        }
+        metadata[DISMISS_METADATA_KEY] = dismiss
+        source.obligation_metadata = metadata
 
 
 @router.post(
@@ -934,7 +1113,7 @@ def dispatch_comms_draft(
 
 def _resolve_dismiss_entity_id(
     payload: CommsDismissCreate, session: Session
-) -> tuple[UUID, ArrearsCase | Tenant | Lease | InboundMessage]:
+) -> tuple[UUID, ArrearsCase | Tenant | Lease | InboundMessage | Obligation]:
     """Same resolution as dispatch, but for the dismiss verb."""
 
     if payload.kind == "inbound_email" and payload.target_kind == "inbound_message":
@@ -945,6 +1124,17 @@ def _resolve_dismiss_entity_id(
                 detail="Inbound message not found.",
             )
         return message.entity_id, message
+    if (
+        payload.kind == "compliance_obligation"
+        and payload.target_kind == "obligation"
+    ):
+        obligation = session.get(Obligation, payload.target_id)
+        if obligation is None or obligation.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Obligation not found.",
+            )
+        return obligation.entity_id, obligation
     if payload.kind == "arrears_reminder" and payload.target_kind == "arrears_case":
         case = session.get(ArrearsCase, payload.target_id)
         if case is None or case.deleted_at is not None:
@@ -1037,6 +1227,16 @@ def dismiss_comms_candidate(
         }
         metadata[DISMISS_METADATA_KEY] = dismiss
         source.lease_metadata = metadata
+    elif isinstance(source, Obligation):
+        metadata = dict(source.obligation_metadata or {})
+        dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
+        dismiss[payload.kind] = {
+            "dismissed_at": utcnow().isoformat(),
+            "deferred_until": deferred_until.isoformat(),
+            "reason": payload.reason,
+        }
+        metadata[DISMISS_METADATA_KEY] = dismiss
+        source.obligation_metadata = metadata
 
     audit_log(
         session,
@@ -1173,6 +1373,35 @@ async def receive_sendgrid_inbound(
     )
     session.add(message)
     session.flush()
+    # Best-effort AI classification. Soft-fails: if OPENAI_API_KEY is missing
+    # or the call errors, the row is still persisted and the operator can
+    # classify manually from the comms queue. The body itself is never
+    # audited — only kind + confidence — so the inbound classifier matches
+    # the existing /ai/triage guardrail.
+    settings = get_settings()
+    classification_summary: str | None = None
+    if cleaned_text and settings.openai_api_key:
+        try:
+            result, _ = triage_inbox(body=cleaned_text, settings=settings)
+        except InboxTriageError:
+            result = None
+        if result is not None:
+            raw_kind = result.get("kind")
+            if isinstance(raw_kind, str) and raw_kind in INBOX_KINDS:
+                message.classification_kind = raw_kind
+            raw_conf = result.get("confidence")
+            try:
+                confidence = float(raw_conf)  # type: ignore[arg-type]
+                message.classification_confidence = max(0.0, min(1.0, confidence))
+            except (TypeError, ValueError):
+                pass
+            raw_summary = result.get("summary")
+            if isinstance(raw_summary, str):
+                classification_summary = raw_summary.strip()[:400] or None
+                message.classification_summary = classification_summary
+            raw_target = result.get("suggested_target_kind")
+            if isinstance(raw_target, str):
+                message.classification_target_kind = raw_target[:60]
     audit_log(
         session,
         actor="sendgrid.inbound_parse",
@@ -1184,8 +1413,13 @@ async def receive_sendgrid_inbound(
         tool_input={
             "from_domain": cleaned_from.split("@")[-1] if "@" in cleaned_from else None,
             "attributed_tenant_id": str(tenant.id) if tenant is not None else None,
+            "classification_kind": message.classification_kind,
         },
-        tool_output_summary="inbound email received",
+        tool_output_summary=(
+            f"inbound email received and classified as {message.classification_kind}"
+            if message.classification_kind
+            else "inbound email received"
+        ),
         outcome=AuditOutcome.success,
         data_classification="confidential",
     )
