@@ -531,7 +531,7 @@ function FilterButton({
       type="button"
       aria-pressed={active}
       className={cn(
-        "inline-flex min-h-9 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
+        "inline-flex min-h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
         active && "border-primary/25 bg-leasium-blue-soft text-primary",
       )}
       onClick={onClick}
@@ -935,7 +935,7 @@ function NoticeRow({
           ) : null}
           <Link
             href={href}
-            className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-border-strong bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
           >
             <ExternalLink size={14} />
             Open work
@@ -1479,7 +1479,7 @@ function NotificationsWorkspace() {
         <div className="flex justify-end">
           <Link
             href="/operations"
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
           >
             <ExternalLink size={15} />
             Open Work
