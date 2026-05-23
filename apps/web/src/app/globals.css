@@ -76,6 +76,23 @@ textarea {
   outline-offset: 2px;
 }
 
+/* Respect the OS-level "Reduce Motion" preference. SoT §24 (and §10.5.10)
+   call for honoring `prefers-reduced-motion`; this is the global escape
+   hatch that pins every transition/animation to ~0ms when the user has
+   that preference set. Per-component animations can still opt out via
+   `motion-safe:` Tailwind variants if a critical UI cue would be lost
+   without motion. Pending Remba review (2026-05-23 external review §9). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

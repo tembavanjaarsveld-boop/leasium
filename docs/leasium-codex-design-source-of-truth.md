@@ -913,6 +913,23 @@ period the hamburger drawer is enough.
 - Cross-reference: CLAUDE.md §2.1; design-governance.md across all
   Xero/Comms/Onboarding entries.
 
+### 10.5.7a Motion + reduced-motion
+
+- Default motion budget per SoT §5: 120/180/260ms with the
+  `var(--leasium-ease)` curve. Motion is for drawer transitions,
+  hover states, upload progress, panel openings — not decoration.
+- `apps/web/src/app/globals.css` honors `prefers-reduced-motion: reduce`
+  by pinning every transition/animation to ~0ms when the user has
+  that OS-level preference set. This is a global escape hatch — no
+  per-component opt-in needed for it to take effect.
+- If a component's animation conveys critical state information and
+  would be incoherent at 0ms, opt that animation back in with the
+  `motion-safe:` Tailwind variant on the relevant utility, then
+  document the exception in the governance log. This should be rare.
+- Don't add new animations longer than 260ms (SoT slow tier) without
+  documenting why. Marketing animation belongs on marketing surfaces
+  if/when they exist, not on operator workspaces.
+
 ### 10.5.8 Remba review gate
 
 Remba is the required UX sign-off for design-facing changes. Treat the

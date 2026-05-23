@@ -794,6 +794,28 @@ icon-only width, and whether the mobile drawer's labels-always-show
 behaviour holds up when the drawer is wide enough to span much of
 a 480-700px viewport.
 
+### Reduced-motion global override
+
+Status: pending Remba review. The SoT (and the 2026-05-23 external
+review §9 a11y pass) called for respecting `prefers-reduced-motion`
+but the CSS wasn't there. `apps/web/src/app/globals.css` now ships a
+global `@media (prefers-reduced-motion: reduce)` rule that pins every
+transition/animation to ~0.01ms and forces `scroll-behavior: auto`.
+
+Behaviour for users with "Reduce Motion" set in their OS (macOS:
+System Settings → Accessibility → Display → Reduce motion; iOS:
+Settings → Accessibility → Motion → Reduce Motion; Windows: Settings
+→ Accessibility → Visual effects → Animation effects): all hover
+fades, sidebar slides, modal/drawer transitions, spinners, etc.
+become instant. The information is still conveyed — buttons still
+change colour, panels still appear and disappear — just without the
+visual delay.
+
+SoT §10.5.7a documents the rule and the `motion-safe:` opt-out path
+for any component whose animation is genuinely load-bearing
+(currently none in the codebase). Pending Remba review of whether
+any existing animation should opt back in via `motion-safe:`.
+
 ### Dashboard order — metric strip up to position 2 (operator override)
 
 Status: pending Remba review. Per direct operator request 2026-05-23,
