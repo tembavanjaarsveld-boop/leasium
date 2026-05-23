@@ -1413,6 +1413,8 @@ def classify_work_order(
         "warnings": warnings,
         "suggested_contractor_id": str(suggested.id) if suggested is not None else None,
         "suggested_contractor_name": suggested.name if suggested is not None else None,
+        "suggested_contractor_email": suggested.email if suggested is not None else None,
+        "suggested_contractor_phone": suggested.phone if suggested is not None else None,
         "classified_at": utcnow().isoformat(),
         "model_response_id": response_id,
     }

@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
+  Sparkles,
   UserRound,
   Wrench,
 } from "lucide-react";
@@ -39,6 +40,7 @@ import {
 } from "@/components/ui";
 import {
   addMaintenanceWorkOrderComment,
+  classifyMaintenanceWorkOrder,
   documentDownloadUrl,
   type DocumentRecord,
   getMaintenanceWorkOrder,
@@ -1434,6 +1436,18 @@ function MaintenanceDetailRoute() {
     },
   });
 
+  // v2 maintenance categorisation: the operator clicks Classify with AI and
+  // the backend stamps work_order_metadata.ai_classification with a
+  // suggested contractor. Soft-fails 503 when OPENAI_API_KEY is unset.
+  const classifyMutation = useMutation({
+    mutationFn: () => classifyMaintenanceWorkOrder(workOrderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-work-order", workOrderId],
+      });
+    },
+  });
+
   const prepareInvoiceMutation = useMutation({
     mutationFn: (draftId: string) => prepareInvoiceDraftDelivery(draftId),
     onSuccess: () => {
@@ -1943,6 +1957,17 @@ function MaintenanceDetailRoute() {
                   ) : null}
                 </div>
               </SectionPanel>
+
+              <AiClassificationPanel
+                workOrder={workOrder}
+                onClassify={() => classifyMutation.mutate()}
+                isClassifying={classifyMutation.isPending}
+                error={classifyMutation.error as Error | null}
+                onApplySuggestion={(contractorName) => {
+                  updateMutation.mutate({ contractor_name: contractorName });
+                }}
+                applying={updateMutation.isPending}
+              />
 
               <SectionPanel title="Contractor" icon={<UserRound size={17} />}>
                 <div className="grid gap-3 p-4 text-sm">
@@ -3218,6 +3243,199 @@ function ContractorChannelEvidence({
         ))}
       </div>
     </details>
+  );
+}
+
+type AiClassification = {
+  category?: string | null;
+  confidence?: number | null;
+  summary?: string | null;
+  is_urgent?: boolean | null;
+  warnings?: string[] | null;
+  suggested_contractor_id?: string | null;
+  suggested_contractor_name?: string | null;
+  suggested_contractor_email?: string | null;
+  suggested_contractor_phone?: string | null;
+  classified_at?: string | null;
+};
+
+function aiCategoryTone(category: string | null | undefined): Tone {
+  if (!category) return "neutral";
+  if (category === "urgent") return "danger";
+  if (category === "plumbing" || category === "electrical") return "primary";
+  return "neutral";
+}
+
+function AiClassificationPanel({
+  workOrder,
+  onClassify,
+  isClassifying,
+  error,
+  onApplySuggestion,
+  applying,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  onClassify: () => void;
+  isClassifying: boolean;
+  error: Error | null;
+  onApplySuggestion: (name: string) => void;
+  applying: boolean;
+}) {
+  const raw =
+    (workOrder.metadata as { ai_classification?: AiClassification } | undefined)
+      ?.ai_classification ?? null;
+
+  const hasClassification = Boolean(raw && raw.category);
+  const confidencePct =
+    raw && typeof raw.confidence === "number"
+      ? Math.round(raw.confidence * 100)
+      : null;
+  const suggestionAlreadyApplied =
+    raw?.suggested_contractor_name != null &&
+    workOrder.contractor_name === raw.suggested_contractor_name;
+
+  return (
+    <SectionPanel
+      title="AI classification"
+      icon={<Sparkles size={17} className="text-primary" />}
+      actions={
+        hasClassification ? (
+          <StatusBadge tone={aiCategoryTone(raw?.category)}>
+            {raw?.category ?? "unclassified"}
+            {confidencePct !== null ? ` · ${confidencePct}%` : ""}
+          </StatusBadge>
+        ) : null
+      }
+    >
+      <div className="grid gap-3 p-4 text-sm">
+        {!hasClassification ? (
+          <p className="text-muted-foreground">
+            Run the AI categoriser to classify this work order into a trade
+            subcategory (electrical / plumbing / hvac / locks / structural /
+            appliance / cleaning / pest / urgent / other) and surface a
+            suggested contractor from your directory.
+          </p>
+        ) : null}
+
+        {hasClassification ? (
+          <>
+            {raw?.summary ? (
+              <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-foreground">
+                {raw.summary}
+              </p>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2 text-xs">
+              {raw?.is_urgent ? (
+                <StatusBadge tone="danger">Same-day</StatusBadge>
+              ) : null}
+              {raw?.classified_at ? (
+                <span className="text-muted-foreground">
+                  Classified{" "}
+                  {new Date(raw.classified_at).toLocaleString(undefined, {
+                    day: "numeric",
+                    month: "short",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+              ) : null}
+            </div>
+
+            {(raw?.warnings ?? []).length > 0 ? (
+              <ul className="grid gap-1 text-xs text-warning">
+                {(raw?.warnings ?? []).map((warning) => (
+                  <li key={warning} className="flex items-start gap-1">
+                    <Ban size={12} className="mt-0.5 shrink-0" /> {warning}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {raw?.suggested_contractor_name ? (
+              <div className="grid gap-2 rounded-md border border-primary/30 bg-leasium-blue-soft p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-leasium-blue-hover">
+                    Suggested contractor
+                  </span>
+                  {suggestionAlreadyApplied ? (
+                    <StatusBadge tone="success">Applied</StatusBadge>
+                  ) : null}
+                </div>
+                <div className="font-medium text-foreground">
+                  {raw.suggested_contractor_name}
+                </div>
+                {raw.suggested_contractor_email ||
+                raw.suggested_contractor_phone ? (
+                  <div className="text-xs text-muted-foreground">
+                    {raw.suggested_contractor_email ?? "-"}
+                    {raw.suggested_contractor_phone
+                      ? ` · ${raw.suggested_contractor_phone}`
+                      : ""}
+                  </div>
+                ) : null}
+                {!suggestionAlreadyApplied ? (
+                  <div>
+                    <Button
+                      type="button"
+                      onClick={() =>
+                        onApplySuggestion(raw.suggested_contractor_name ?? "")
+                      }
+                      disabled={applying}
+                    >
+                      {applying ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )}
+                      Apply to contractor
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                No contractor in the directory matched the
+                <strong> {raw?.category} </strong>
+                category. Add a contractor on{" "}
+                <Link
+                  href="/contractors"
+                  className="text-primary hover:underline"
+                >
+                  /contractors
+                </Link>{" "}
+                with this category, then re-classify.
+              </div>
+            )}
+          </>
+        ) : null}
+
+        {error ? (
+          <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
+            {error.message}
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            AI never dispatches anything — the operator still clicks Send.
+            Soft-fails 503 when OPENAI_API_KEY is unset.
+          </p>
+          <SecondaryButton
+            type="button"
+            onClick={onClassify}
+            disabled={isClassifying}
+          >
+            {isClassifying ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Sparkles size={15} />
+            )}
+            {hasClassification ? "Re-classify" : "Classify with AI"}
+          </SecondaryButton>
+        </div>
+      </div>
+    </SectionPanel>
   );
 }
 

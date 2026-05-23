@@ -3183,6 +3183,13 @@ export function updateMaintenanceWorkOrder(
   );
 }
 
+export function classifyMaintenanceWorkOrder(workOrderId: string) {
+  return request<MaintenanceWorkOrderRecord>(
+    `/maintenance/work-orders/${workOrderId}/classify`,
+    { method: "POST" },
+  );
+}
+
 export function addMaintenanceWorkOrderComment(
   workOrderId: string,
   payload: {
