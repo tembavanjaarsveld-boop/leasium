@@ -71,7 +71,7 @@ function SetupShell({ children }: { children: ReactNode }) {
 function ClerkNotConfigured() {
   return (
     <SetupShell>
-      <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-leasium-warning-soft p-4">
+      <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning-soft p-4">
         <AlertTriangle className="mt-0.5 text-warning" size={19} />
         <div>
           <h2 className="text-base font-semibold">Clerk is not configured yet</h2>
@@ -82,7 +82,7 @@ function ClerkNotConfigured() {
         </div>
       </div>
       <Link
-        className="text-sm font-semibold text-primary transition hover:text-leasium-blue-hover"
+        className="text-sm font-semibold text-primary transition hover:text-primary-hover"
         href="/sign-in"
       >
         Back to sign in
@@ -105,7 +105,7 @@ function SignedOutState() {
     <>
       <div className="rounded-xl border border-border bg-muted/30 p-4">
         <div className="flex items-start gap-3">
-          <div className="rounded-xl bg-leasium-blue-soft p-2 text-primary">
+          <div className="rounded-xl bg-primary-soft p-2 text-primary">
             <ShieldCheck size={18} />
           </div>
           <div>
@@ -225,7 +225,7 @@ function WorkspaceCreatedState({ result }: { result: SecurityBootstrapRecord }) 
         </p>
       </div>
       <Link
-        className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover"
+        className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover"
         href="/"
       >
         Open workspace

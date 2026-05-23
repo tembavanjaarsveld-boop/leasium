@@ -32,7 +32,7 @@ export default function PublicOnboardingPage() {
 }
 
 const CTA_CLASSES =
-  "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
 function OnboardingWelcome({ token }: { token: string | null }) {
   const portalHref = token ? `/tenant-portal/${token}` : "/tenant-portal";
@@ -220,7 +220,7 @@ function ResolvedInvitation({
         <ArrowRight size={16} />
       </Link>
 
-      <div className="flex items-start gap-2.5 rounded-xl border border-border bg-leasium-blue-soft/40 p-3 text-xs text-muted-foreground">
+      <div className="flex items-start gap-2.5 rounded-xl border border-border bg-primary-soft/40 p-3 text-xs text-muted-foreground">
         <ShieldCheck size={14} className="mt-0.5 shrink-0 text-primary" />
         <span>
           Your property manager only sees what you submit. Nothing is applied

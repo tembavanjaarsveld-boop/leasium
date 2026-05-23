@@ -427,7 +427,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                 // Hover state uses a subtle white tint so the row reads
                 // as "row under cursor" against the navy-900 sidebar.
                 "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-leasium-slate-300 transition hover:bg-white/[0.06] hover:text-white md:justify-center md:gap-0 md:px-0 lg:justify-start lg:gap-3 lg:px-3",
-                // Active state — was bg-leasium-blue-soft/10 (EAF0FF at
+                // Active state — was bg-primary-soft/10 (EAF0FF at
                 // 10% opacity, effectively invisible on navy-900). Now
                 // bg-white/[0.12] gives a real surface tone so operators
                 // can see which item is current without relying purely
@@ -560,7 +560,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               className={cn(
                 "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted",
                 pathname.startsWith("/notifications") &&
-                  "border-primary/30 bg-leasium-blue-soft text-primary",
+                  "border-primary/30 bg-primary-soft text-primary",
               )}
             >
               <Bell size={15} />

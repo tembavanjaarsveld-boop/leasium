@@ -242,6 +242,34 @@ Focus Ring:          #245BFF
 - Red is only for true blockers, overdue risk, destructive actions, or critical compliance problems.
 - Do not rely on colour alone. Pair colour with clear labels and, where useful, icons.
 
+### Token naming convention (two tier)
+
+Stewart exposes colour tokens in two naming layers; they are not
+alternatives — each serves a different role.
+
+**Tier 1 — short semantic aliases.** The public API for the most common
+cases. Names: `primary`, `primary-foreground`, `primary-hover`,
+`primary-pressed`, `primary-soft`, `accent`, `accent-soft`, `success`,
+`success-soft`, `success-strong`, `warning`, `warning-soft`,
+`warning-strong`, `danger`, `danger-soft`, `danger-strong`, `info`,
+`info-soft`, `background`, `foreground`, `muted`, `muted-foreground`,
+`border`, `border-strong`. Use `bg-primary`, `text-success`,
+`hover:bg-primary-hover`, etc. Reach for these first.
+
+**Tier 2 — `leasium-*` explicit shades.** For specific shades that
+short aliases don't cover, plus the navy/slate ramp and brand-specific
+namespaces (`leasium-ownertag-*`, `leasium-micro` text size,
+`leasium-body-compact`). Names: `leasium-navy-{900,800}`,
+`leasium-slate-{50,100,150,200,300,400,500,600,700}`,
+`leasium-teal-hover`, plus the owner-tag palette and typography tokens.
+Use when Tier 1 doesn't have what you need — never as a duplicate of
+something Tier 1 already covers.
+
+CSS variables follow the Tier 2 convention (`--leasium-*`) regardless
+of Tailwind alias availability — they are the canonical Codex SoT
+reference for non-Tailwind contexts (inline styles, SVG attrs,
+third-party embeds). Do not rename CSS variables to match Tier 1.
+
 ---
 
 ## 4. Typography

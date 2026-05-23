@@ -917,10 +917,10 @@ function MetricCard({
 }) {
   const tones = {
     neutral: "bg-muted text-slate",
-    success: "bg-leasium-success-soft text-leasium-success-strong",
-    warning: "bg-leasium-warning-soft text-leasium-warning-strong",
-    danger: "bg-leasium-danger-soft text-leasium-danger-strong",
-    primary: "bg-leasium-blue-soft text-leasium-blue-hover",
+    success: "bg-success-soft text-success-strong",
+    warning: "bg-warning-soft text-warning-strong",
+    danger: "bg-danger-soft text-danger-strong",
+    primary: "bg-primary-soft text-primary-hover",
   };
   return (
     <div className="rounded-2xl border border-border bg-white p-4 shadow-leasiumXs">
@@ -1270,7 +1270,7 @@ function PortfolioQaWorkspace() {
         />
 
         {error ? (
-          <div className="rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
+          <div className="rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
             <div className="font-semibold">QA data did not finish loading.</div>
             <div className="mt-1">{friendlyError(error)}</div>
           </div>
@@ -1812,7 +1812,7 @@ function PortfolioQaWorkspace() {
               </div>
             ) : null}
             {billingBatchMutation.error ? (
-              <div className="border-b border-border bg-leasium-danger-soft px-4 py-3 text-sm text-danger">
+              <div className="border-b border-border bg-danger-soft px-4 py-3 text-sm text-danger">
                 {friendlyError(billingBatchMutation.error)}
               </div>
             ) : null}

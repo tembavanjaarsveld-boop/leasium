@@ -643,10 +643,10 @@ function KpiCard({
 }) {
   const toneClass = {
     neutral: "bg-muted text-leasium-slate-500",
-    success: "bg-leasium-success-soft text-leasium-success-strong",
-    warning: "bg-leasium-warning-soft text-leasium-warning-strong",
-    danger: "bg-leasium-danger-soft text-leasium-danger-strong",
-    primary: "bg-leasium-blue-soft text-leasium-blue-hover",
+    success: "bg-success-soft text-success-strong",
+    warning: "bg-warning-soft text-warning-strong",
+    danger: "bg-danger-soft text-danger-strong",
+    primary: "bg-primary-soft text-primary-hover",
   }[tone];
 
   return (
@@ -1048,7 +1048,7 @@ function BillingReadinessWorkspace() {
         />
 
         {billingReadinessError ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
             <div>
               <div className="font-semibold">
                 Billing data did not finish loading.
@@ -1380,7 +1380,7 @@ function BillingReadinessWorkspace() {
                                 {source.intakeId && draft.document_intake_id ? (
                                   <Link
                                     href={`/intake?review=${draft.document_intake_id}`}
-                                    className="inline-flex items-center gap-1 font-medium text-primary hover:text-leasium-blue-hover"
+                                    className="inline-flex items-center gap-1 font-medium text-primary hover:text-primary-hover"
                                   >
                                     Intake {source.intakeId}
                                     <ArrowUpRight size={12} />
@@ -1647,7 +1647,7 @@ function BillingReadinessWorkspace() {
                                   ) : null}
                                 </div>
                               ) : (
-                                <span className="text-leasium-success">
+                                <span className="text-success">
                                   Ready for invoice approval
                                 </span>
                               )}
@@ -1707,7 +1707,7 @@ function BillingReadinessWorkspace() {
                               ) : null}
                               {emailPreview.bodyText ? (
                                 <details className="mt-2 rounded-lg border border-border bg-white">
-                                  <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-leasium-blue-hover">
+                                  <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-primary-hover">
                                     Message preview
                                   </summary>
                                   <div className="border-t border-border px-3 py-2 text-xs">
@@ -1736,7 +1736,7 @@ function BillingReadinessWorkspace() {
                                     emailPreview.actionUrl ? (
                                       <a
                                         href={emailPreview.actionUrl}
-                                        className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-leasium-blue-hover"
+                                        className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-primary-hover"
                                       >
                                         {emailPreview.actionLabel}
                                       </a>
@@ -2105,7 +2105,7 @@ function BillingReadinessWorkspace() {
                                       : "Approve Xero posting in Settings before provider dispatch."}
                               </div>
                               {providerExceptionReason ? (
-                                <div className="mt-3 grid gap-2 rounded-md border border-danger/20 bg-leasium-danger-soft p-2 text-xs">
+                                <div className="mt-3 grid gap-2 rounded-md border border-danger/20 bg-danger-soft p-2 text-xs">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <StatusBadge tone="danger">
                                       Recovery needed
@@ -2532,7 +2532,7 @@ function BillingReadinessWorkspace() {
                                   {blockers.slice(0, 2).map((blocker) => (
                                     <span
                                       key={blocker.id}
-                                      className="rounded bg-leasium-warning-soft px-1.5 py-0.5 text-xs text-leasium-warning-strong"
+                                      className="rounded bg-warning-soft px-1.5 py-0.5 text-xs text-warning-strong"
                                     >
                                       {blockerTitle(blocker)}
                                     </span>
@@ -2580,7 +2580,7 @@ function BillingReadinessWorkspace() {
               <SectionPanel
                 title="Billing action queue"
                 description="Prioritised work with the right record to open next."
-                icon={<AlertTriangle size={17} className="text-leasium-warning-strong" />}
+                icon={<AlertTriangle size={17} className="text-warning-strong" />}
                 className="order-1"
               >
                 {rentRollLoading ? (

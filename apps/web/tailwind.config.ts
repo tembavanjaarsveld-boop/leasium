@@ -105,9 +105,31 @@ const config: Config = {
         "muted-foreground": "#667085",
         primary: "#245BFF",
         "primary-foreground": "#FFFFFF",
+        // Root-level short aliases for the brand-blue state variants.
+        // Match the corresponding leasium.blue-* shades so consumers
+        // can stay on the short alias family (bg-primary, bg-primary-soft,
+        // hover:bg-primary-hover) without dropping into the leasium
+        // namespace for state changes.
+        "primary-hover": "#1E4FE5",
+        "primary-pressed": "#173FC2",
+        "primary-soft": "#EAF0FF",
         accent: "#27D8C2",
+        "accent-soft": "#E8FAF7",
+        // Semantic state aliases. `warning` and `danger` already existed
+        // at the root; the missing -soft / -strong shades plus the full
+        // success and info families now sit alongside so chips, alerts,
+        // and badges can stay on short aliases end-to-end.
+        success: "#12B76A",
+        "success-soft": "#ECFDF3",
+        "success-strong": "#027A48",
         warning: "#F79009",
+        "warning-soft": "#FFFAEB",
+        "warning-strong": "#B54708",
         danger: "#F04438",
+        "danger-soft": "#FEF3F2",
+        "danger-strong": "#B42318",
+        info: "#2E90FA",
+        "info-soft": "#EFF8FF",
         slate: "#344054",
       },
       fontFamily: {

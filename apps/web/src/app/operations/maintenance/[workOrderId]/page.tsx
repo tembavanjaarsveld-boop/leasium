@@ -2368,7 +2368,7 @@ function MaintenanceDetailRoute() {
                       ) : null}
                       {linkedInvoiceHandoff &&
                       linkedInvoiceRecoveryReasons.length > 0 ? (
-                        <div className="grid gap-2 rounded-md border border-danger/20 bg-leasium-danger-soft p-3">
+                        <div className="grid gap-2 rounded-md border border-danger/20 bg-danger-soft p-3">
                           <div className="flex flex-wrap items-center gap-2">
                             <StatusBadge tone="danger">
                               Recovery needed
@@ -2669,7 +2669,7 @@ function MaintenanceDetailRoute() {
                       ))}
                     </div>
                     {!completionReadiness.blockers.length ? (
-                      <div className="rounded-md border border-leasium-success/20 bg-leasium-success-soft px-3 py-2 text-xs text-leasium-success-strong">
+                      <div className="rounded-md border border-success/20 bg-success-soft px-3 py-2 text-xs text-success-strong">
                         Operations completion ready
                       </div>
                     ) : null}
@@ -2765,7 +2765,7 @@ function MaintenanceDetailRoute() {
                           <a
                             key={document.id}
                             href={documentDownloadUrl(document.id)}
-                            className="inline-flex items-center gap-2 font-semibold text-primary hover:text-leasium-blue-hover"
+                            className="inline-flex items-center gap-2 font-semibold text-primary hover:text-primary-hover"
                             target="_blank"
                             rel="noreferrer"
                           >
@@ -2811,7 +2811,7 @@ function MaintenanceDetailRoute() {
                                     <a
                                       key={document.id}
                                       href={documentDownloadUrl(document.id)}
-                                      className="inline-flex items-center gap-1 font-semibold text-primary hover:text-leasium-blue-hover"
+                                      className="inline-flex items-center gap-1 font-semibold text-primary hover:text-primary-hover"
                                       target="_blank"
                                       rel="noreferrer"
                                     >
@@ -3178,7 +3178,7 @@ function ContractorChannelEvidence({
   }
   return (
     <details className="mt-1 rounded-md border border-border bg-white">
-      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-leasium-blue-hover">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-primary-hover">
         Channel evidence
       </summary>
       <div className="grid gap-2 border-t border-border px-3 py-3">
@@ -3226,7 +3226,7 @@ function ContractorChannelEvidence({
             </div>
             {receipt.rendered_message_preview?.body_text ? (
               <details className="mt-1">
-                <summary className="cursor-pointer text-primary hover:text-leasium-blue-hover">
+                <summary className="cursor-pointer text-primary hover:text-primary-hover">
                   Message preview
                 </summary>
                 <div className="mt-1 whitespace-pre-line rounded-md border border-border bg-white p-2 text-foreground">
@@ -3353,9 +3353,9 @@ function AiClassificationPanel({
             ) : null}
 
             {raw?.suggested_contractor_name ? (
-              <div className="grid gap-2 rounded-md border border-primary/30 bg-leasium-blue-soft p-3">
+              <div className="grid gap-2 rounded-md border border-primary/30 bg-primary-soft p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-leasium-blue-hover">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-primary-hover">
                     Suggested contractor
                   </span>
                   {suggestionAlreadyApplied ? (

@@ -121,13 +121,13 @@ export function propertyOccupancyFromRentRoll(
 export function occupancyBadgeClassName(status: PropertyOccupancyStatus) {
   switch (status) {
     case "leased":
-      return "inline-flex items-center rounded-full border border-leasium-success-strong/30 bg-leasium-success-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-leasium-success-strong";
+      return "inline-flex items-center rounded-full border border-success-strong/30 bg-success-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-success-strong";
     case "leased_internal":
-      return "inline-flex items-center rounded-full border border-primary/30 bg-leasium-blue-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-leasium-blue-hover";
+      return "inline-flex items-center rounded-full border border-primary/30 bg-primary-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-primary-hover";
     case "vacant":
-      return "inline-flex items-center rounded-full border border-leasium-danger-strong/30 bg-leasium-danger-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-leasium-danger-strong";
+      return "inline-flex items-center rounded-full border border-danger-strong/30 bg-danger-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-danger-strong";
     case "partial":
-      return "inline-flex items-center rounded-full border border-leasium-warning-strong/30 bg-leasium-warning-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-leasium-warning-strong";
+      return "inline-flex items-center rounded-full border border-warning-strong/30 bg-warning-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-warning-strong";
     default:
       return "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-muted-foreground";
   }
@@ -208,10 +208,10 @@ export function propertyNextExpiryFromRentRoll(
 
 export function nextExpiryChipClassName(daysUntil: number) {
   if (daysUntil < 30) {
-    return "inline-flex items-center rounded-full border border-leasium-danger-strong/30 bg-leasium-danger-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-leasium-danger-strong";
+    return "inline-flex items-center rounded-full border border-danger-strong/30 bg-danger-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-danger-strong";
   }
   if (daysUntil < 60) {
-    return "inline-flex items-center rounded-full border border-leasium-warning-strong/30 bg-leasium-warning-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-leasium-warning-strong";
+    return "inline-flex items-center rounded-full border border-warning-strong/30 bg-warning-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-warning-strong";
   }
   return "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-muted-foreground";
 }

@@ -167,7 +167,7 @@ function InboxWorkspace() {
         </Select>
       </AppHeader>
       <div className="mx-auto grid max-w-5xl gap-5 px-5 py-6">
-        <section className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-leasium-blue-soft/40 via-white to-leasium-teal-soft/25 px-5 py-4 shadow-leasiumXs">
+        <section className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary-soft/40 via-white to-accent-soft/25 px-5 py-4 shadow-leasiumXs">
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"

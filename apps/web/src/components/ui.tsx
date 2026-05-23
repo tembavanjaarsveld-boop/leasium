@@ -13,7 +13,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}
@@ -282,10 +282,10 @@ export function StatusBadge({
 }) {
   const tones = {
     neutral: "bg-muted text-leasium-slate-500",
-    success: "bg-leasium-success-soft text-leasium-success-strong",
-    warning: "bg-leasium-warning-soft text-leasium-warning-strong",
-    danger: "bg-leasium-danger-soft text-leasium-danger-strong",
-    primary: "bg-leasium-blue-soft text-leasium-blue-hover",
+    success: "bg-success-soft text-success-strong",
+    warning: "bg-warning-soft text-warning-strong",
+    danger: "bg-danger-soft text-danger-strong",
+    primary: "bg-primary-soft text-primary-hover",
   };
   return (
     <span

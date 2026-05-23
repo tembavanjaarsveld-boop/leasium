@@ -138,7 +138,7 @@ export function DashboardCommandCenter({
                 href={item.href}
                 className={[
                   "group grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 transition hover:bg-muted/55 md:grid-cols-[3.25rem_minmax(0,1fr)_auto] md:items-center",
-                  index === 0 ? "bg-leasium-blue-soft/35" : "",
+                  index === 0 ? "bg-primary-soft/35" : "",
                 ].join(" ")}
               >
                 <div className="flex justify-center self-center">
@@ -181,7 +181,7 @@ export function DashboardCommandCenter({
           )}
         </div>
         <aside className="grid content-start gap-4 p-4">
-          <div className="rounded-xl bg-leasium-blue-soft px-3 py-3 text-sm text-leasium-blue-hover">
+          <div className="rounded-xl bg-primary-soft px-3 py-3 text-sm text-primary-hover">
             <div className="font-semibold">Review-first guardrail</div>
             <p className="mt-1 leading-5">
               Smart Intake is the gate. This surface routes work only; applying

@@ -58,7 +58,7 @@ export default function AccessPage() {
 
         <div className="mt-6 rounded-xl border border-border bg-muted/35 p-4">
           <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-leasium-blue-soft p-2 text-primary">
+            <div className="rounded-xl bg-primary-soft p-2 text-primary">
               <LockKeyhole size={18} />
             </div>
             <div>
@@ -84,7 +84,7 @@ export default function AccessPage() {
           </label>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
           <button
-            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!password || submitting}
             type="submit"
           >

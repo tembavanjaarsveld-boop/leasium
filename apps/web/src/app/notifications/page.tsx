@@ -532,7 +532,7 @@ function FilterButton({
       aria-pressed={active}
       className={cn(
         "inline-flex min-h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
-        active && "border-primary/25 bg-leasium-blue-soft text-primary",
+        active && "border-primary/25 bg-primary-soft text-primary",
       )}
       onClick={onClick}
     >
@@ -626,7 +626,7 @@ function MessagePreviewDisclosure({
   const template = templateLabel(preview.template_key, preview.template_version);
   return (
     <details className="mt-2 rounded-lg border border-border bg-white">
-      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-leasium-blue-hover">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-primary-hover">
         Message preview
       </summary>
       <div className="border-t border-border px-3 py-2 text-xs">
@@ -647,7 +647,7 @@ function MessagePreviewDisclosure({
         {preview.action_label && preview.action_url ? (
           <a
             href={preview.action_url}
-            className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-leasium-blue-hover"
+            className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-primary-hover"
           >
             {preview.action_label}
           </a>
@@ -717,7 +717,7 @@ function ReceiptEvidenceDisclosure({
   const rows = receiptRows(receipt);
   return (
     <details className="mt-2 rounded-lg border border-border bg-white">
-      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-leasium-blue-hover">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-primary-hover">
         Receipt evidence
       </summary>
       <div className="border-t border-border px-3 py-2">

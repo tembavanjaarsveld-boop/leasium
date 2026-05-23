@@ -118,7 +118,7 @@ function MetricDeltaBadge({
   return (
     <span
       className={`inline-flex items-center gap-0.5 text-leasium-micro font-semibold ${
-        isPositive ? "text-leasium-success-strong" : "text-leasium-danger-strong"
+        isPositive ? "text-success-strong" : "text-danger-strong"
       }`}
     >
       <span aria-hidden="true">{delta > 0 ? "↑" : "↓"}</span>
@@ -158,7 +158,7 @@ export function DashboardMetricCard({
         <span className="text-sm font-semibold text-muted-foreground">
           {label}
         </span>
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-leasium-blue-soft text-primary transition group-hover:bg-primary group-hover:text-white">
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary-soft text-primary transition group-hover:bg-primary group-hover:text-white">
           {icon}
         </span>
       </div>

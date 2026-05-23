@@ -279,12 +279,12 @@ function SpreadsheetImportWorkspace() {
         </section>
 
         {dryRunMutation.error ? (
-          <div className="rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
+          <div className="rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
             {friendlyError(dryRunMutation.error)}
           </div>
         ) : null}
         {applyMutation.error ? (
-          <div className="rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
+          <div className="rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
             {friendlyError(applyMutation.error)}
           </div>
         ) : null}

@@ -2738,7 +2738,7 @@ function Workspace() {
           </div>
 
           {propertyWorkspaceError ? (
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
               <div>
                 <div className="font-semibold">
                   Property data did not finish loading.
@@ -2858,7 +2858,7 @@ function Workspace() {
                         </p>
                       </div>
                       {activeLeaseIntake ? (
-                        <span className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover">
+                        <span className="rounded-full bg-primary-soft px-2 py-1 text-xs font-semibold text-primary-hover">
                           {intakeStatus}
                         </span>
                       ) : null}
@@ -2873,7 +2873,7 @@ function Workspace() {
                           !selectedEntityId ||
                           propertyDocumentIntakeMutation.isPending
                         }
-                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover disabled:pointer-events-none disabled:opacity-60"
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-60"
                       >
                         <Plus size={15} />
                         New property setup
@@ -3852,7 +3852,7 @@ function Workspace() {
                           >
                             <CheckCircle2
                               size={15}
-                              className="text-leasium-success"
+                              className="text-success"
                             />
                           </SecondaryButton>
                           <SecondaryButton
@@ -4407,7 +4407,7 @@ function Workspace() {
                               href={selectedPropertyImage.pageUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex min-w-0 items-center gap-1 text-primary hover:text-leasium-blue-hover"
+                              className="inline-flex min-w-0 items-center gap-1 text-primary hover:text-primary-hover"
                             >
                               <ExternalLink size={12} />
                               <span className="truncate">Source page</span>
@@ -4983,7 +4983,7 @@ function Workspace() {
                                 {suggestion.value}
                               </span>
                             </span>
-                            <span className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover">
+                            <span className="rounded-full bg-primary-soft px-2 py-1 text-xs font-semibold text-primary-hover">
                               {confidencePercent(suggestion.confidence)}
                             </span>
                           </div>
@@ -6016,14 +6016,14 @@ const BOARD_COLUMNS: {
   label: string;
   tone: string;
 }[] = [
-  { status: "leased", label: "Leased", tone: "bg-leasium-success-soft" },
+  { status: "leased", label: "Leased", tone: "bg-success-soft" },
   {
     status: "leased_internal",
     label: "Leased internal",
-    tone: "bg-leasium-blue-soft",
+    tone: "bg-primary-soft",
   },
-  { status: "partial", label: "Partial", tone: "bg-leasium-warning-soft" },
-  { status: "vacant", label: "Vacant", tone: "bg-leasium-danger-soft" },
+  { status: "partial", label: "Partial", tone: "bg-warning-soft" },
+  { status: "vacant", label: "Vacant", tone: "bg-danger-soft" },
   { status: "unknown", label: "No units", tone: "bg-muted/40" },
 ];
 

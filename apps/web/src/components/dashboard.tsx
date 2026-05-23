@@ -1328,12 +1328,12 @@ function DocumentIntakeApplyOutcomeCard({
           ? "Review-first billing work. Nothing was invoiced or synced."
           : "Review-first automation outcome"
       }
-      icon={<Check size={17} className="text-leasium-success" />}
+      icon={<Check size={17} className="text-success" />}
       actions={<StatusBadge tone="success">Applied</StatusBadge>}
     >
       <div className="grid gap-4 p-4">
-        <div className="grid gap-3 rounded-2xl border border-leasium-success/20 bg-leasium-success-soft p-3 text-sm">
-          <div className="font-semibold text-leasium-success-strong">
+        <div className="grid gap-3 rounded-2xl border border-success/20 bg-success-soft p-3 text-sm">
+          <div className="font-semibold text-success-strong">
             {outcome.workflowType === "lease"
               ? `Created lease register records and ${outcome.obligationCount} ${
                   outcome.obligationCount === 1 ? "task" : "tasks"
@@ -1417,17 +1417,17 @@ function DocumentIntakeApplyOutcomeCard({
             shownChargeSummaries.length > 0 ||
             shownChargeIds.length > 0 ||
             skippedScheduleRows.length > 0) ? (
-            <div className="grid gap-3 border-t border-leasium-success/20 pt-3">
+            <div className="grid gap-3 border-t border-success/20 pt-3">
               {shownLeaseIds.length > 0 ? (
                 <div>
-                  <div className="text-xs font-semibold uppercase text-leasium-success-strong">
+                  <div className="text-xs font-semibold uppercase text-success-strong">
                     Created pending leases
                   </div>
                   <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                     {shownLeaseIds.map((leaseId) => (
                       <span
                         key={leaseId}
-                        className="rounded-full border border-leasium-success/20 bg-white px-2 py-1"
+                        className="rounded-full border border-success/20 bg-white px-2 py-1"
                       >
                         {shortRecordId(leaseId)}
                       </span>
@@ -1437,7 +1437,7 @@ function DocumentIntakeApplyOutcomeCard({
               ) : null}
               {shownChargeSummaries.length > 0 ? (
                 <div>
-                  <div className="text-xs font-semibold uppercase text-leasium-success-strong">
+                  <div className="text-xs font-semibold uppercase text-success-strong">
                     Draft charges prepared
                   </div>
                   <div className="mt-2 grid gap-2">
@@ -1456,14 +1456,14 @@ function DocumentIntakeApplyOutcomeCard({
                 </div>
               ) : shownChargeIds.length > 0 ? (
                 <div>
-                  <div className="text-xs font-semibold uppercase text-leasium-success-strong">
+                  <div className="text-xs font-semibold uppercase text-success-strong">
                     Draft charge rules
                   </div>
                   <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                     {shownChargeIds.map((chargeRuleId) => (
                       <span
                         key={chargeRuleId}
-                        className="rounded-full border border-leasium-success/20 bg-white px-2 py-1"
+                        className="rounded-full border border-success/20 bg-white px-2 py-1"
                       >
                         {shortRecordId(chargeRuleId)}
                       </span>
@@ -1473,7 +1473,7 @@ function DocumentIntakeApplyOutcomeCard({
               ) : null}
               {skippedScheduleRows.length > 0 ? (
                 <div>
-                  <div className="text-xs font-semibold uppercase text-leasium-success-strong">
+                  <div className="text-xs font-semibold uppercase text-success-strong">
                     Schedule rows needing review
                   </div>
                   <div className="mt-2 grid gap-2">
@@ -1509,7 +1509,7 @@ function DocumentIntakeApplyOutcomeCard({
             appliedBy={outcome.appliedBy}
             changes={propertyEvidenceChangeRows}
             history={propertyEvidenceHistory(outcome)}
-            className="border-leasium-success/20 shadow-none"
+            className="border-success/20 shadow-none"
           />
         ) : null}
         <div className="flex flex-wrap justify-end gap-2">
@@ -1542,7 +1542,7 @@ function DocumentIntakeApplyOutcomeCard({
           ) : null}
           <Link
             href="/operations"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover"
           >
             View Operations
           </Link>
@@ -1735,7 +1735,7 @@ function DocumentIntakeReviewPanel({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-primary/15 bg-leasium-blue-soft p-3 text-sm text-leasium-blue-hover">
+        <div className="rounded-2xl border border-primary/15 bg-primary-soft p-3 text-sm text-primary-hover">
           Nothing is applied until you approve the items below and press Apply.
           Ignored items stay out of the reviewed data sent to the workflow.
         </div>
@@ -1758,7 +1758,7 @@ function DocumentIntakeReviewPanel({
           </div>
         ) : null}
         {demo ? (
-          <div className="rounded-xl border border-primary/20 bg-leasium-blue-soft px-3 py-2 text-sm text-leasium-blue-hover">
+          <div className="rounded-xl border border-primary/20 bg-primary-soft px-3 py-2 text-sm text-primary-hover">
             Demo preview only. Upload a live document when you are ready to save
             or apply.
           </div>
@@ -1804,7 +1804,7 @@ function DocumentIntakeReviewPanel({
               <span className="font-medium text-foreground">{applyScope}</span>
             </div>
             {workflowType === "lease" ? (
-              <div className="mt-3 grid gap-2 rounded-xl border border-primary/10 bg-leasium-blue-soft/60 p-3">
+              <div className="mt-3 grid gap-2 rounded-xl border border-primary/10 bg-primary-soft/60 p-3">
                 {leasePlanRows.map((row) => (
                   <div
                     key={row.label}
@@ -1834,7 +1834,7 @@ function DocumentIntakeReviewPanel({
               </div>
             ) : null}
             {workflowType === "purchase_contract" ? (
-              <div className="mt-3 grid gap-2 rounded-xl border border-primary/10 bg-leasium-blue-soft/60 p-3">
+              <div className="mt-3 grid gap-2 rounded-xl border border-primary/10 bg-primary-soft/60 p-3">
                 {propertyPlanRows.map((row) => (
                   <div
                     key={row.label}
@@ -2020,7 +2020,7 @@ function DocumentIntakeReviewPanel({
                               )}
                             </StatusBadge>
                             {itemSource(item) ? (
-                              <span className="rounded-full bg-leasium-blue-soft px-2 py-1 text-xs font-semibold text-leasium-blue-hover">
+                              <span className="rounded-full bg-primary-soft px-2 py-1 text-xs font-semibold text-primary-hover">
                                 {itemSource(item)}
                               </span>
                             ) : null}
@@ -2052,7 +2052,7 @@ function DocumentIntakeReviewPanel({
                                   "rounded-lg px-2 py-1 text-xs font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-50",
                                   action === nextAction
                                     ? nextAction === "ignore"
-                                      ? "bg-leasium-danger-soft text-danger"
+                                      ? "bg-danger-soft text-danger"
                                       : "bg-primary text-white"
                                     : "text-muted-foreground hover:bg-white hover:text-foreground",
                                 ].join(" ")}
@@ -2887,7 +2887,7 @@ export function Dashboard({
         />
 
         {dashboardError ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-leasium-danger-soft p-4 text-sm text-danger">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
             <div>
               <div className="font-semibold">
                 Live data did not finish loading.
@@ -3107,7 +3107,7 @@ export function Dashboard({
                     "grid min-h-32 place-items-center rounded-xl border border-dashed p-4 text-center transition",
                     dragActive
                       ? "border-primary bg-primary/5"
-                      : "border-primary/25 bg-leasium-blue-soft/25 hover:border-primary/50 hover:bg-primary/5",
+                      : "border-primary/25 bg-primary-soft/25 hover:border-primary/50 hover:bg-primary/5",
                     !selectedEntityId || documentIntakeMutation.isPending
                       ? "cursor-not-allowed opacity-60"
                       : "",

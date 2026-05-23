@@ -881,10 +881,10 @@ function MetricCard({
 }) {
   const toneClass = {
     neutral: "bg-muted text-leasium-slate-500",
-    success: "bg-leasium-success-soft text-leasium-success-strong",
-    warning: "bg-leasium-warning-soft text-leasium-warning-strong",
-    danger: "bg-leasium-danger-soft text-leasium-danger-strong",
-    primary: "bg-leasium-blue-soft text-leasium-blue-hover",
+    success: "bg-success-soft text-success-strong",
+    warning: "bg-warning-soft text-warning-strong",
+    danger: "bg-danger-soft text-danger-strong",
+    primary: "bg-primary-soft text-primary-hover",
   }[tone];
   return (
     <div className="rounded-md border border-border bg-white p-4">
@@ -2712,7 +2712,7 @@ function SettingsWorkspace() {
                         </StatusBadge>
                         <Link
                           href={`/properties?entity_id=${selectedEntityId}&owner_tag=${encodeURIComponent(tag.key)}`}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-leasium-blue-hover md:mt-2"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover md:mt-2"
                         >
                           <ExternalLink size={13} />
                           Open tagged properties
@@ -2723,7 +2723,7 @@ function SettingsWorkspace() {
                           <Link
                             key={property.id}
                             href={`/properties?entity_id=${selectedEntityId}&property_id=${property.id}`}
-                            className="min-w-0 text-sm font-medium text-primary hover:text-leasium-blue-hover"
+                            className="min-w-0 text-sm font-medium text-primary hover:text-primary-hover"
                           >
                             <span className="block truncate">
                               {property.name}
@@ -3146,7 +3146,7 @@ function SettingsWorkspace() {
                             {issue.property_id ? (
                               <Link
                                 href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
-                                className="font-medium text-primary hover:text-leasium-blue-hover"
+                                className="font-medium text-primary hover:text-primary-hover"
                               >
                                 Open property
                               </Link>
@@ -3552,7 +3552,7 @@ function SettingsWorkspace() {
                             <input
                               aria-label={`Select ${match.target_name} mapping`}
                               checked={checked}
-                              className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                              className="h-4 w-4 rounded border-border text-primary focus-visible:ring-primary"
                               onChange={(event) =>
                                 setSelectedXeroContactMatches((current) => ({
                                   ...current,
@@ -3977,7 +3977,7 @@ function SettingsWorkspace() {
                                   entityId: selectedEntityId,
                                   invoiceDraftId: result.invoice_draft_id,
                                 })}
-                                className="inline-flex w-fit items-center gap-1 font-medium text-primary hover:text-leasium-blue-hover"
+                                className="inline-flex w-fit items-center gap-1 font-medium text-primary hover:text-primary-hover"
                               >
                                 <ExternalLink size={13} />
                                 Open Billing handoff
@@ -4109,7 +4109,7 @@ function SettingsWorkspace() {
                                       ? "ready_dispatch"
                                       : "needs_action",
                                 })}
-                                className="mt-2 inline-flex items-center gap-1 font-medium text-primary hover:text-leasium-blue-hover"
+                                className="mt-2 inline-flex items-center gap-1 font-medium text-primary hover:text-primary-hover"
                               >
                                 <ExternalLink size={13} />
                                 Open dispatch handoff
@@ -4367,7 +4367,7 @@ function SettingsWorkspace() {
                                       ? "complete"
                                       : "unpaid",
                                 })}
-                                className="mt-1 inline-flex w-fit items-center gap-1 font-medium text-primary hover:text-leasium-blue-hover"
+                                className="mt-1 inline-flex w-fit items-center gap-1 font-medium text-primary hover:text-primary-hover"
                               >
                                 <ExternalLink size={13} />
                                 Open reconciliation handoff
@@ -4449,7 +4449,7 @@ function SettingsWorkspace() {
                               {issue.property_id ? (
                                 <Link
                                   href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
-                                  className="mt-1 inline-flex font-medium text-primary hover:text-leasium-blue-hover"
+                                  className="mt-1 inline-flex font-medium text-primary hover:text-primary-hover"
                                 >
                                   Open property
                                 </Link>

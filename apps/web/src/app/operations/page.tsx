@@ -2203,7 +2203,7 @@ function OperationsWorkspace() {
             }
             disabled={updateObligationMutation.isPending}
           >
-            <CheckCircle2 size={15} className="text-leasium-success" />
+            <CheckCircle2 size={15} className="text-success" />
             Complete
           </SecondaryButton>
           <SecondaryButton
@@ -2614,7 +2614,7 @@ function OperationsWorkspace() {
                       className={cn(
                         "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                         assigneeFilter === "all"
-                          ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
+                          ? "border-primary/30 bg-primary-soft text-primary-hover"
                           : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
                     >
@@ -2630,7 +2630,7 @@ function OperationsWorkspace() {
                       className={cn(
                         "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                         assigneeFilter === "unassigned"
-                          ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
+                          ? "border-primary/30 bg-primary-soft text-primary-hover"
                           : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
                     >
@@ -2652,7 +2652,7 @@ function OperationsWorkspace() {
                       className={cn(
                         "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                         assigneeFilter === "follow_up"
-                          ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
+                          ? "border-primary/30 bg-primary-soft text-primary-hover"
                           : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
                     >
@@ -2669,7 +2669,7 @@ function OperationsWorkspace() {
                         className={cn(
                           "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                           assigneeFilter === "me"
-                            ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
+                            ? "border-primary/30 bg-primary-soft text-primary-hover"
                             : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
                         )}
                       >
@@ -2689,7 +2689,7 @@ function OperationsWorkspace() {
                           className={cn(
                             "inline-flex min-h-10 max-w-full items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                             active
-                              ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
+                              ? "border-primary/30 bg-primary-soft text-primary-hover"
                               : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
                           )}
                           title={`${row.label}${row.role ? ` - ${label(row.role)}` : ""}`}
@@ -3932,7 +3932,7 @@ function AssignmentNoticeInbox({
           <Link
             key={item.id}
             href={item.href}
-            className="grid min-h-[5.25rem] gap-1 rounded-lg border border-border bg-white px-3 py-2 text-xs transition duration-200 ease-leasium hover:border-primary/30 hover:bg-leasium-blue-soft"
+            className="grid min-h-[5.25rem] gap-1 rounded-lg border border-border bg-white px-3 py-2 text-xs transition duration-200 ease-leasium hover:border-primary/30 hover:bg-primary-soft"
           >
             <div className="flex min-w-0 items-center justify-between gap-2">
               <span className="truncate font-semibold text-foreground">
@@ -4002,7 +4002,7 @@ function WorkDigestMessagePreview({
   }
   return (
     <details className="mt-2 rounded-md border border-border bg-muted/30">
-      <summary className="cursor-pointer px-2 py-1.5 text-xs font-semibold text-primary hover:text-leasium-blue-hover">
+      <summary className="cursor-pointer px-2 py-1.5 text-xs font-semibold text-primary hover:text-primary-hover">
         Message preview
       </summary>
       <div className="border-t border-border px-2 py-2 text-xs">
@@ -4026,7 +4026,7 @@ function WorkDigestMessagePreview({
         {preview.action_label && preview.action_url ? (
           <Link
             href={digestItemHref(preview.action_url)}
-            className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-leasium-blue-hover"
+            className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-primary-hover"
           >
             {preview.action_label}
           </Link>
@@ -4042,7 +4042,7 @@ function AssignmentDigestPreview({
   result: WorkAssignmentDigestRunRecord;
 }) {
   return (
-    <div className="mt-3 rounded-xl border border-primary/20 bg-leasium-blue-soft p-3">
+    <div className="mt-3 rounded-xl border border-primary/20 bg-primary-soft p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-sm font-semibold">Work digest generated</div>
@@ -4617,7 +4617,7 @@ function MaintenanceActions({
         className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
         href={`/operations/maintenance/${workOrder.id}`}
       >
-        <CheckCircle2 size={15} className="text-leasium-success" />
+        <CheckCircle2 size={15} className="text-success" />
         Review completion
       </Link>
     </div>
@@ -4678,7 +4678,7 @@ function ArrearsActions({
         disabled={disabled}
         onClick={() => onUpdate({ status: "resolved" })}
       >
-        <CheckCircle2 size={15} className="text-leasium-success" />
+        <CheckCircle2 size={15} className="text-success" />
         Resolve
       </SecondaryButton>
     </div>

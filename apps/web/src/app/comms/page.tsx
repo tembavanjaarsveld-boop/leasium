@@ -333,7 +333,7 @@ function CandidateCard({
     >
       <div className="grid gap-3 p-4">
         {dispatchedStatus ? (
-          <div className="flex items-center gap-2 rounded-md border border-leasium-success-strong/30 bg-leasium-success-soft px-3 py-2 text-sm text-leasium-success-strong">
+          <div className="flex items-center gap-2 rounded-md border border-success-strong/30 bg-success-soft px-3 py-2 text-sm text-success-strong">
             <CheckCircle2 size={16} />
             Sent — status <strong>{dispatchedStatus}</strong>.
             {dispatchedStatus === "skipped" ? (
@@ -386,7 +386,7 @@ function CandidateCard({
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href="/intake"
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-primary/30 bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-leasium-blue-hover"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-primary/30 bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary-hover"
               >
                 <Sparkles size={15} />
                 Upload via Smart Intake
@@ -422,7 +422,7 @@ function CandidateCard({
               </SecondaryButton>
             </div>
             {evidenceFilename ? (
-              <p className="text-xs text-leasium-success-strong">
+              <p className="text-xs text-success-strong">
                 Uploaded {evidenceFilename}. The file is stored against the
                 tenant; finish review in Smart Intake to formally link it to
                 this compliance obligation.

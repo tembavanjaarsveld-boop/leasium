@@ -73,10 +73,10 @@ export type EvidenceDrawerProps = EvidenceSourceTrailProps & {
 
 const toneClasses: Record<EvidenceTone, string> = {
   neutral: "bg-muted text-leasium-slate-500",
-  success: "bg-leasium-success-soft text-leasium-success-strong",
-  warning: "bg-leasium-warning-soft text-leasium-warning-strong",
-  danger: "bg-leasium-danger-soft text-leasium-danger-strong",
-  primary: "bg-leasium-blue-soft text-leasium-blue-hover",
+  success: "bg-success-soft text-success-strong",
+  warning: "bg-warning-soft text-warning-strong",
+  danger: "bg-danger-soft text-danger-strong",
+  primary: "bg-primary-soft text-primary-hover",
 };
 
 function normaliseConfidence(value: number | null | undefined) {
@@ -209,7 +209,7 @@ function DetailLink({
     <a
       href={href}
       className={cn(
-        "inline-flex min-w-0 items-center gap-1 font-medium text-primary hover:text-leasium-blue-hover",
+        "inline-flex min-w-0 items-center gap-1 font-medium text-primary hover:text-primary-hover",
         className,
       )}
     >
@@ -286,7 +286,7 @@ function ChangeRow({ change }: { change: EvidenceFieldChange }) {
           size={16}
           className="hidden justify-self-center text-muted-foreground sm:block"
         />
-        <div className="min-w-0 rounded-md bg-leasium-blue-soft px-3 py-2 text-leasium-blue-hover">
+        <div className="min-w-0 rounded-md bg-primary-soft px-3 py-2 text-primary-hover">
           <div className="text-xs font-medium uppercase">After</div>
           <div className="mt-1 break-words font-medium">
             {formatEvidenceValue(change.after)}

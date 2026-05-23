@@ -43,7 +43,7 @@ function OperatorSignInRequired({ returnTo }: { returnTo: string }) {
           </div>
         </div>
         <div className="flex items-start gap-3 rounded-xl border border-border bg-white p-4 shadow-leasiumXs">
-          <div className="rounded-xl bg-leasium-blue-soft p-2 text-primary">
+          <div className="rounded-xl bg-primary-soft p-2 text-primary">
             <ShieldCheck size={18} />
           </div>
           <div>
