@@ -17,7 +17,12 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-CommsKind = Literal["arrears_reminder", "insurance_expiry", "lease_renewal"]
+CommsKind = Literal[
+    "arrears_reminder",
+    "insurance_expiry",
+    "lease_renewal",
+    "inbound_email",
+]
 CommsSeverity = Literal["info", "warning", "danger"]
 
 

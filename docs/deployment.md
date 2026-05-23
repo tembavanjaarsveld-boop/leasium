@@ -78,6 +78,22 @@ Set Twilio SMS status callbacks and SendGrid Event Webhook URLs to the hosted
 `/api/v1/tenant-onboarding/webhooks/...` endpoints using the shared webhook
 secret so Leasium can show sent, delivered, opened, and failed receipts.
 
+**Inbound email parsing (SendGrid Inbound Parse).** Leasium accepts inbound
+emails through `POST /api/v1/comms/webhooks/sendgrid-inbound?entity_id=<uuid>`.
+To wire this up: (1) add an MX record on a subdomain you control
+(e.g. `inbound.leasium.example.org`) pointing to `mx.sendgrid.net`;
+(2) in the SendGrid console, add an Inbound Parse setting that maps the
+subdomain to `https://<API_HOST>/api/v1/comms/webhooks/sendgrid-inbound?entity_id=<UUID>`
+with the SendGrid "POST the raw, full MIME message" option **off**
+(Leasium parses the form fields); (3) repeat with one Inbound Parse setting
+per entity so each operator portfolio gets a dedicated mailbox.
+The webhook is provider-only (unauthenticated) but verifies the entity
+exists before persisting; a future hardening pass should verify the
+SendGrid signature header. Inbound messages land in the `inbound_message`
+table and surface in the operator comms queue as `inbound_email`
+candidates the operator reviews and replies to via the existing
+dispatch path.
+
 Two distinct SendGrid templates are now used. The original tenant onboarding
 invite (template key `tenant_onboarding_invite`, version `v1`) is sent when the
 operator creates the onboarding row and on resends / reminders; it now only

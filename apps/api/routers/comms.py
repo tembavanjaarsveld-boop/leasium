@@ -16,11 +16,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
@@ -29,6 +29,8 @@ from stewart.core.models import (
     ArrearsCase,
     ArrearsCaseStatus,
     AuditOutcome,
+    Entity,
+    InboundMessage,
     Lease,
     LeaseStatus,
     Property,
@@ -646,6 +648,81 @@ def _lease_renewal_candidates(
     return candidates
 
 
+def _inbound_email_candidates(
+    entity_id: UUID, session: Session
+) -> list[CommsCandidate]:
+    """Surface unprocessed inbound emails as queue candidates.
+
+    Each pending inbound message becomes an `inbound_email` candidate. The
+    draft subject is "Re: <original>"; the draft body opens with a short
+    placeholder for the operator to fill in. Attribution is best-effort and
+    can be empty if the from-address didn't match any tenant.
+    """
+
+    candidates: list[CommsCandidate] = []
+    now = utcnow()
+    rows = list(
+        session.scalars(
+            select(InboundMessage)
+            .where(
+                InboundMessage.entity_id == entity_id,
+                InboundMessage.deleted_at.is_(None),
+                InboundMessage.processed_at.is_(None),
+                InboundMessage.archived_at.is_(None),
+            )
+            .order_by(InboundMessage.created_at.desc())
+        ).all()
+    )
+    for message in rows:
+        tenant: Tenant | None = None
+        if message.attributed_tenant_id is not None:
+            tenant = session.get(Tenant, message.attributed_tenant_id)
+            if tenant is not None and tenant.deleted_at is not None:
+                tenant = None
+        tenant_name = _tenant_display_name(tenant) if tenant is not None else None
+        recipient_email = message.from_address
+        subject = (
+            f"Re: {message.subject}"
+            if message.subject
+            else "Re: your message"
+        )
+        snippet = (message.body_text or "")[:240]
+        if snippet and len(message.body_text or "") > 240:
+            snippet += "…"
+        body = (
+            f"Hi {tenant.contact_name if tenant and tenant.contact_name else 'there'},\n\n"
+            "Thanks for your message — we've received it and will follow up "
+            "shortly. Please let us know if anything in this thread has "
+            "changed in the meantime.\n\n"
+            f"Original message:\n{snippet or '(no body)'}\n\n"
+            "Thanks,\nThe property team"
+        )
+        detail_parts: list[str] = [f"from {message.from_address or 'unknown'}"]
+        if tenant is None:
+            detail_parts.append("tenant not attributed")
+        candidates.append(
+            CommsCandidate(
+                id=f"inbound_email:inbound_message:{message.id}",
+                kind="inbound_email",
+                target_kind="inbound_message",
+                target_id=message.id,
+                tenant_id=tenant.id if tenant is not None else None,
+                tenant_name=tenant_name,
+                property_name=None,
+                unit_label=None,
+                recipient_email=recipient_email,
+                recipient_phone=None,
+                subject=subject,
+                body=body,
+                severity="info",
+                due_at=None,
+                detail=", ".join(detail_parts),
+                generated_at=now,
+            )
+        )
+    return candidates
+
+
 @router.get("/queue", response_model=CommsQueueRead)
 def get_comms_queue(
     entity_id: UUID,
@@ -662,7 +739,8 @@ def get_comms_queue(
 
     assert_entity_role(session, user, entity_id, READ_ROLES)
     candidates = (
-        _arrears_candidates(entity_id, session)
+        _inbound_email_candidates(entity_id, session)
+        + _arrears_candidates(entity_id, session)
         + _insurance_candidates(entity_id, session)
         + _lease_renewal_candidates(entity_id, session)
     )
@@ -675,7 +753,7 @@ def get_comms_queue(
 
 def _resolve_dispatch_entity_id(
     payload: CommsDispatchCreate, session: Session
-) -> tuple[UUID, ArrearsCase | Tenant | Lease]:
+) -> tuple[UUID, ArrearsCase | Tenant | Lease | InboundMessage]:
     """Look up the entity_id for a dispatch target and return the source row.
 
     Each kind is scoped to a different table — the target_kind tells us where
@@ -683,6 +761,14 @@ def _resolve_dispatch_entity_id(
     cannot resolve, before checking entity-level access.
     """
 
+    if payload.kind == "inbound_email" and payload.target_kind == "inbound_message":
+        message = session.get(InboundMessage, payload.target_id)
+        if message is None or message.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Inbound message not found.",
+            )
+        return message.entity_id, message
     if payload.kind == "arrears_reminder" and payload.target_kind == "arrears_case":
         case = session.get(ArrearsCase, payload.target_id)
         if case is None or case.deleted_at is not None:
@@ -726,7 +812,7 @@ def _resolve_dispatch_entity_id(
 
 
 def _update_source_after_dispatch(
-    source: ArrearsCase | Tenant | Lease, kind: str
+    source: ArrearsCase | Tenant | Lease | InboundMessage, kind: str
 ) -> None:
     """Bookkeeping after a draft is dispatched so the candidate doesn't
     re-appear in the queue immediately.
@@ -740,6 +826,9 @@ def _update_source_after_dispatch(
     """
 
     today = date.today()
+    if isinstance(source, InboundMessage):
+        source.processed_at = utcnow()
+        return
     if isinstance(source, ArrearsCase):
         source.last_reminder_at = utcnow()
         source.reminder_stage = (source.reminder_stage or 0) + 1
@@ -845,9 +934,17 @@ def dispatch_comms_draft(
 
 def _resolve_dismiss_entity_id(
     payload: CommsDismissCreate, session: Session
-) -> tuple[UUID, ArrearsCase | Tenant | Lease]:
+) -> tuple[UUID, ArrearsCase | Tenant | Lease | InboundMessage]:
     """Same resolution as dispatch, but for the dismiss verb."""
 
+    if payload.kind == "inbound_email" and payload.target_kind == "inbound_message":
+        message = session.get(InboundMessage, payload.target_id)
+        if message is None or message.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Inbound message not found.",
+            )
+        return message.entity_id, message
     if payload.kind == "arrears_reminder" and payload.target_kind == "arrears_case":
         case = session.get(ArrearsCase, payload.target_id)
         if case is None or case.deleted_at is not None:
@@ -916,7 +1013,9 @@ def dismiss_comms_candidate(
         date.today() + timedelta(days=DEFAULT_DISMISS_DAYS)
     )
     candidate_id = f"{payload.kind}:{payload.target_kind}:{payload.target_id}"
-    if isinstance(source, ArrearsCase):
+    if isinstance(source, InboundMessage):
+        source.archived_at = utcnow()
+    elif isinstance(source, ArrearsCase):
         source.reminder_paused_until = deferred_until
     elif isinstance(source, Tenant):
         metadata = dict(source.tenant_metadata or {})
@@ -970,3 +1069,128 @@ def dismiss_comms_candidate(
         reason=payload.reason,
         dismissed_at=utcnow(),
     )
+
+
+def _attribute_inbound_tenant(
+    entity_id: UUID, from_address: str | None, session: Session
+) -> Tenant | None:
+    """Best-effort tenant attribution from an inbound from-address.
+
+    Matches the address against the entity's tenants' contact_email or
+    billing_email. Returns the first match, or None if none. Operators
+    re-attribute manually from the comms queue when the match is ambiguous.
+    """
+
+    cleaned = (from_address or "").strip().lower()
+    if not cleaned:
+        return None
+    tenants = list(
+        session.scalars(
+            select(Tenant).where(
+                Tenant.entity_id == entity_id,
+                Tenant.deleted_at.is_(None),
+            )
+        ).all()
+    )
+    for tenant in tenants:
+        contact = (tenant.contact_email or "").strip().lower()
+        billing = (tenant.billing_email or "").strip().lower()
+        if contact == cleaned or billing == cleaned:
+            return tenant
+    return None
+
+
+@router.post(
+    "/webhooks/sendgrid-inbound",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def receive_sendgrid_inbound(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    entity_id: UUID,
+    from_address: Annotated[str | None, Form(alias="from")] = None,
+    to: str | None = Form(default=None),
+    subject: str | None = Form(default=None),
+    text: str | None = Form(default=None),
+    html: str | None = Form(default=None),
+) -> dict[str, object]:
+    """Receive a parsed inbound email from SendGrid Inbound Parse.
+
+    Reads the SendGrid form payload, attributes to a tenant by matching the
+    from-address against existing tenant contacts, and persists an
+    ``inbound_message`` row. Classification is deferred — a follow-up slice
+    wires this into the existing /ai/triage classifier under the same
+    guardrail. Returns 202 so SendGrid stops retrying once the row is
+    persisted, even if no tenant was attributed.
+
+    Auth: the inbound endpoint is webhook-only and not session-protected;
+    SendGrid signs requests via a shared secret configured in the
+    provider console. v1 trusts the entity_id passed in the query because
+    SendGrid Inbound Parse is configured per-MX-domain and each route is
+    only reachable by the provider. A future hardening pass should verify
+    the shared signature header.
+    """
+
+    # Validate the entity exists before persisting anything.
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entity not found.",
+        )
+
+    cleaned_from = (from_address or "").strip()
+    cleaned_to = (to or "").strip()
+    cleaned_subject = (subject or "").strip() or None
+    cleaned_text = (text or "").strip() or None
+    cleaned_html = (html or "").strip() or None
+
+    tenant = _attribute_inbound_tenant(entity_id, cleaned_from, session)
+
+    # Capture remaining form fields for later debugging without dragging
+    # them into structured columns. We never log the body in audit metadata
+    # because it can contain confidential tenant detail.
+    try:
+        form = await request.form()
+        raw_payload: dict[str, Any] = {
+            key: str(value)[:2000] for key, value in form.items()
+        }
+    except Exception:  # pragma: no cover - defensive against odd payloads
+        raw_payload = {}
+
+    message = InboundMessage(
+        entity_id=entity_id,
+        channel="email",
+        provider="sendgrid",
+        from_address=cleaned_from or None,
+        to_address=cleaned_to or None,
+        subject=cleaned_subject,
+        body_text=cleaned_text,
+        body_html=cleaned_html,
+        attributed_tenant_id=tenant.id if tenant is not None else None,
+        raw_payload=raw_payload,
+        inbound_metadata={"received_via": "sendgrid_inbound_parse"},
+    )
+    session.add(message)
+    session.flush()
+    audit_log(
+        session,
+        actor="sendgrid.inbound_parse",
+        entity_id=entity_id,
+        action="receive",
+        target_table="inbound_message",
+        target_id=message.id,
+        tool_name="sendgrid.inbound_parse",
+        tool_input={
+            "from_domain": cleaned_from.split("@")[-1] if "@" in cleaned_from else None,
+            "attributed_tenant_id": str(tenant.id) if tenant is not None else None,
+        },
+        tool_output_summary="inbound email received",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    session.commit()
+    return {
+        "id": str(message.id),
+        "attributed_tenant_id": str(tenant.id) if tenant is not None else None,
+    }

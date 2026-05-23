@@ -16,6 +16,7 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -1027,6 +1028,88 @@ Index(
         BrandedCommunicationTemplate.deleted_at.is_(None)
         & (BrandedCommunicationTemplate.is_active.is_(True))
     ),
+)
+
+
+class InboundMessage(Base):
+    """A single inbound message captured from email / SMS / WhatsApp.
+
+    The webhook stores the raw payload, runs the existing /ai/triage
+    classifier, attempts tenant/lease attribution from the from-address and
+    subject, and persists the result. The comms queue surfaces unprocessed
+    rows as ``inbound_email`` candidates the operator can review and reply
+    to.
+
+    Provider-mutation guardrail still applies — the webhook never sends a
+    reply automatically; the operator approves a draft via the comms queue.
+    """
+
+    __tablename__ = "inbound_message"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    channel: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str | None] = mapped_column(Text)
+    from_address: Mapped[str | None] = mapped_column(Text)
+    from_name: Mapped[str | None] = mapped_column(Text)
+    to_address: Mapped[str | None] = mapped_column(Text)
+    subject: Mapped[str | None] = mapped_column(Text)
+    body_text: Mapped[str | None] = mapped_column(Text)
+    body_html: Mapped[str | None] = mapped_column(Text)
+    classification_kind: Mapped[str | None] = mapped_column(Text)
+    classification_confidence: Mapped[float | None] = mapped_column(Numeric(3, 2))
+    classification_summary: Mapped[str | None] = mapped_column(Text)
+    classification_target_kind: Mapped[str | None] = mapped_column(Text)
+    classification_target_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True)
+    )
+    attributed_tenant_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenant.id")
+    )
+    attributed_lease_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("lease.id")
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw_payload: Mapped[dict[str, Any]] = mapped_column(
+        "raw_payload", JsonbCompat, nullable=False, default=dict
+    )
+    inbound_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "inbound_metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship()
+    attributed_tenant: Mapped["Tenant | None"] = relationship()
+    attributed_lease: Mapped["Lease | None"] = relationship()
+
+
+Index(
+    "inbound_message_entity_pending_idx",
+    InboundMessage.entity_id,
+    postgresql_where=(
+        InboundMessage.deleted_at.is_(None)
+        & InboundMessage.processed_at.is_(None)
+        & InboundMessage.archived_at.is_(None)
+    ),
+    sqlite_where=(
+        InboundMessage.deleted_at.is_(None)
+        & InboundMessage.processed_at.is_(None)
+        & InboundMessage.archived_at.is_(None)
+    ),
+)
+Index(
+    "inbound_message_tenant_idx",
+    InboundMessage.attributed_tenant_id,
+    postgresql_where=InboundMessage.deleted_at.is_(None),
 )
 
 

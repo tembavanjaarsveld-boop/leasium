@@ -16,6 +16,7 @@ from stewart.core.models import (
     ArrearsCase,
     ArrearsCaseStatus,
     Entity,
+    InboundMessage,
     Lease,
     LeaseStatus,
     Property,
@@ -482,3 +483,94 @@ def test_comms_queue_returns_insurance_expiry_candidate(
     assert candidate["severity"] == "warning"
     assert "Insurance Plaza" in candidate["subject"]
     assert candidate["body"].startswith("Hi Riley Cover,")
+
+
+def test_inbound_webhook_persists_and_attributes_tenant(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """The SendGrid inbound webhook stores the message and attributes by from-address."""
+
+    entity = _entity(session)
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Inbound Tenant Pty Ltd",
+        contact_email="rep@inbound.example",
+    )
+    session.add(tenant)
+    session.commit()
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        params={"entity_id": str(entity.id)},
+        data={
+            "from": "rep@inbound.example",
+            "to": "leasium@inbound.example.org",
+            "subject": "Question about my rent",
+            "text": "Hi team, can you confirm the rent went out yesterday?",
+        },
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["attributed_tenant_id"] == str(tenant.id)
+    message_id = UUID(body["id"])
+
+    row = session.get(InboundMessage, message_id)
+    assert row is not None
+    assert row.entity_id == entity.id
+    assert row.channel == "email"
+    assert row.provider == "sendgrid"
+    assert row.from_address == "rep@inbound.example"
+    assert row.subject == "Question about my rent"
+    assert row.body_text == "Hi team, can you confirm the rent went out yesterday?"
+    assert row.attributed_tenant_id == tenant.id
+    assert row.processed_at is None
+    assert row.archived_at is None
+
+    # And the comms queue surfaces it as an inbound_email candidate.
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert queue.status_code == 200
+    candidates = queue.json()["candidates"]
+    inbound = [c for c in candidates if c["kind"] == "inbound_email"]
+    assert len(inbound) == 1
+    assert inbound[0]["target_id"] == body["id"]
+    assert inbound[0]["tenant_id"] == str(tenant.id)
+    assert inbound[0]["subject"] == "Re: Question about my rent"
+
+
+def test_inbound_webhook_without_matching_tenant(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """If no tenant matches the from-address, the row is still persisted."""
+
+    entity = _entity(session)
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        params={"entity_id": str(entity.id)},
+        data={
+            "from": "stranger@nowhere.example",
+            "to": "leasium@inbound.example.org",
+            "subject": "Just curious",
+            "text": "Hello.",
+        },
+    )
+
+    assert response.status_code == 202
+    assert response.json()["attributed_tenant_id"] is None
+
+    # And the comms queue surfaces it with a "tenant not attributed" detail.
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    candidates = queue.json()["candidates"]
+    inbound = [c for c in candidates if c["kind"] == "inbound_email"]
+    assert len(inbound) == 1
+    assert inbound[0]["tenant_id"] is None
+    assert "tenant not attributed" in (inbound[0]["detail"] or "")
