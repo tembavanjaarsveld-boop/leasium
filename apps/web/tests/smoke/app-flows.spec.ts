@@ -211,6 +211,78 @@ test("AI inbox promotes a classified message into a maintenance draft", async ({
   );
 });
 
+test("AI inbox vendor classification offers a contractor picker", async ({
+  page,
+}) => {
+  // Override triage + promote to exercise the vendor_or_contractor path.
+  // The default mockLeasiumApi returns maintenance_request; per-test
+  // routes registered before goto win.
+  await page.route("**/api/v1/ai/triage", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        kind: "vendor_or_contractor",
+        confidence: 0.7,
+        summary: "New locksmith introducing themselves to the panel.",
+        suggested_action: "Add Sam's Locksmiths to the directory.",
+        suggested_target_kind: "smart_intake",
+        suggested_target_href: "/contractors",
+        suggested_property: null,
+        suggested_tenant: null,
+        suggested_lease: null,
+        suggested_contractor: null,
+        key_facts: [{ label: "Trade", value: "Locksmith" }],
+        warnings: [],
+        guardrails: [],
+        response_id: "resp_vendor_smoke",
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/ai/triage/promote", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        target_kind: "contractor",
+        target_id: "33333333-3333-3333-3333-333333333333",
+        target_href: "/contractors",
+        target_label: "Sam Lock",
+      }),
+    });
+  });
+
+  await page.goto("/inbox");
+  await page.getByRole("button", { name: "Try sample" }).click();
+  await page.getByRole("button", { name: /Classify/ }).click();
+
+  const promotePanel = page.getByTestId("promote-panel");
+  await expect(promotePanel).toBeVisible();
+  await expect(
+    promotePanel.getByText(/Add to contractor directory/i),
+  ).toBeVisible();
+
+  // The contractor picker is shown for vendor_or_contractor (with the
+  // "Create new contractor" empty option), not the property/tenant
+  // dropdowns.
+  await expect(
+    promotePanel.getByLabel("Promote contractor"),
+  ).toBeVisible();
+  await expect(promotePanel.getByLabel("Promote contractor")).toHaveValue("");
+
+  await promotePanel.getByRole("button", { name: /Promote to draft/ }).click();
+  await expect(page).toHaveURL(/\/contractors/);
+});
+
 test("tenants saved views capture and re-apply filter combos", async ({
   page,
 }) => {

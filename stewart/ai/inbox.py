@@ -65,6 +65,7 @@ INBOX_SCHEMA: dict[str, Any] = {
         "suggested_property_id",
         "suggested_tenant_id",
         "suggested_lease_id",
+        "suggested_contractor_id",
         "key_facts",
         "warnings",
     ],
@@ -92,6 +93,7 @@ INBOX_SCHEMA: dict[str, Any] = {
         "suggested_property_id": {"type": ["string", "null"]},
         "suggested_tenant_id": {"type": ["string", "null"]},
         "suggested_lease_id": {"type": ["string", "null"]},
+        "suggested_contractor_id": {"type": ["string", "null"]},
         "key_facts": {
             "type": "array",
             "maxItems": 6,
@@ -165,10 +167,11 @@ def triage_inbox(
         " currency, AU state abbreviations."
         "\n9. If `entity_index` is provided, attempt to match the message"
         " to one of the listed records. Set `suggested_property_id`,"
-        " `suggested_tenant_id`, and `suggested_lease_id` to the matching"
-        " UUID from the index (copy the id verbatim — never invent one)."
-        " If you cannot match with confidence, set the field to null. Do"
-        " not guess; an unmatched message is better than a wrong match."
+        " `suggested_tenant_id`, `suggested_lease_id`, and"
+        " `suggested_contractor_id` to the matching UUID from the index"
+        " (copy the id verbatim — never invent one). If you cannot match"
+        " with confidence, set the field to null. Do not guess; an"
+        " unmatched message is better than a wrong match."
     )
 
     message_payload: dict[str, Any] = {"message_body": body}

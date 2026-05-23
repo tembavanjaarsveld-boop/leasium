@@ -27,6 +27,7 @@ import {
   type InboxPromoteKind,
   type InboxTriageKind,
   type InboxTriageRecord,
+  listContractors,
   listEntities,
   listLeasesByTenant,
   listProperties,
@@ -54,13 +55,15 @@ const PROMOTE_KIND_LABEL: Record<InboxPromoteKind, string> = {
   maintenance_request: "Create maintenance work order",
   payment_or_arrears: "Open arrears case",
   lease_change: "Send to Smart Intake review",
+  vendor_or_contractor: "Add to contractor directory",
 };
 
 function isPromotable(kind: InboxTriageKind): kind is InboxPromoteKind {
   return (
     kind === "maintenance_request" ||
     kind === "payment_or_arrears" ||
-    kind === "lease_change"
+    kind === "lease_change" ||
+    kind === "vendor_or_contractor"
   );
 }
 
@@ -111,6 +114,7 @@ function InboxWorkspace() {
   const [promotePropertyId, setPromotePropertyId] = useState("");
   const [promoteTenantId, setPromoteTenantId] = useState("");
   const [promoteLeaseId, setPromoteLeaseId] = useState("");
+  const [promoteContractorId, setPromoteContractorId] = useState("");
   const [promoteError, setPromoteError] = useState<string | null>(null);
 
   const entitiesQuery = useQuery({
@@ -137,6 +141,15 @@ function InboxWorkspace() {
       Boolean(promoteTenantId) &&
       Boolean(result) &&
       result?.kind === "lease_change",
+  });
+
+  const contractorsQuery = useQuery({
+    queryKey: ["inbox-promote-contractors", selectedEntityId],
+    queryFn: () => listContractors(selectedEntityId),
+    enabled:
+      Boolean(selectedEntityId) &&
+      Boolean(result) &&
+      result?.kind === "vendor_or_contractor",
   });
 
   useEffect(() => {
@@ -172,6 +185,7 @@ function InboxWorkspace() {
       setPromotePropertyId(data.suggested_property?.id ?? "");
       setPromoteTenantId(data.suggested_tenant?.id ?? "");
       setPromoteLeaseId(data.suggested_lease?.id ?? "");
+      setPromoteContractorId(data.suggested_contractor?.id ?? "");
     },
     onError: (err) => {
       setError(friendlyError(err));
@@ -203,6 +217,7 @@ function InboxWorkspace() {
     setPromotePropertyId("");
     setPromoteTenantId("");
     setPromoteLeaseId("");
+    setPromoteContractorId("");
   }
 
   function handleSample() {
@@ -223,12 +238,15 @@ function InboxWorkspace() {
       property_id: promotePropertyId || null,
       tenant_id: promoteTenantId || null,
       lease_id: promoteLeaseId || null,
+      contractor_id: promoteContractorId || null,
     });
   }
 
   const showPromote = result !== null && isPromotable(result.kind);
   const promoteRequiresTenant = result?.kind === "payment_or_arrears";
   const promoteShowsLeasePicker = result?.kind === "lease_change";
+  const promoteShowsContractorPicker =
+    result?.kind === "vendor_or_contractor";
   const promoteDisabled =
     !showPromote ||
     promoteMutation.isPending ||
@@ -236,8 +254,14 @@ function InboxWorkspace() {
 
   const promoteKindLabel = useMemo(() => {
     if (!result || !isPromotable(result.kind)) return null;
+    if (
+      result.kind === "vendor_or_contractor" &&
+      promoteContractorId
+    ) {
+      return "Open contractor profile";
+    }
     return PROMOTE_KIND_LABEL[result.kind];
-  }, [result]);
+  }, [result, promoteContractorId]);
 
   const submitDisabled =
     !selectedEntityId || !body.trim() || triageMutation.isPending;
@@ -397,80 +421,105 @@ function InboxWorkspace() {
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Property">
-                      <Select
-                        aria-label="Promote property"
-                        value={promotePropertyId}
-                        onChange={(event) =>
-                          setPromotePropertyId(event.target.value)
-                        }
-                      >
-                        <option value="">No property attached</option>
-                        {(propertiesQuery.data ?? []).map((property) => (
-                          <option key={property.id} value={property.id}>
-                            {property.name}
-                            {property.street_address
-                              ? ` — ${property.street_address}`
-                              : ""}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                    <Field
-                      label={
-                        promoteRequiresTenant
-                          ? "Tenant (required)"
-                          : "Tenant"
-                      }
-                    >
-                      <Select
-                        aria-label="Promote tenant"
-                        value={promoteTenantId}
-                        onChange={(event) => {
-                          setPromoteTenantId(event.target.value);
-                          setPromoteLeaseId("");
-                        }}
-                      >
-                        <option value="">
-                          {promoteRequiresTenant
-                            ? "Pick a tenant"
-                            : "No tenant attached"}
-                        </option>
-                        {(tenantsQuery.data ?? []).map((tenant) => (
-                          <option key={tenant.id} value={tenant.id}>
-                            {tenant.trading_name || tenant.legal_name}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                    {promoteShowsLeasePicker ? (
-                      <Field label="Lease">
+                    {promoteShowsContractorPicker ? (
+                      <Field label="Contractor">
                         <Select
-                          aria-label="Promote lease"
-                          value={promoteLeaseId}
+                          aria-label="Promote contractor"
+                          value={promoteContractorId}
                           onChange={(event) =>
-                            setPromoteLeaseId(event.target.value)
+                            setPromoteContractorId(event.target.value)
                           }
-                          disabled={!promoteTenantId}
                         >
-                          <option value="">No lease attached</option>
-                          {(leasesQuery.data ?? []).map((lease) => (
-                            <option key={lease.id} value={lease.id}>
-                              {lease.status} —{" "}
-                              {lease.commencement_date ?? "no start"}
-                              {lease.expiry_date
-                                ? ` → ${lease.expiry_date}`
+                          <option value="">Create new contractor</option>
+                          {(contractorsQuery.data ?? []).map((contractor) => (
+                            <option key={contractor.id} value={contractor.id}>
+                              {contractor.name}
+                              {contractor.company_name
+                                ? ` (${contractor.company_name})`
                                 : ""}
                             </option>
                           ))}
                         </Select>
                       </Field>
-                    ) : null}
+                    ) : (
+                      <>
+                        <Field label="Property">
+                          <Select
+                            aria-label="Promote property"
+                            value={promotePropertyId}
+                            onChange={(event) =>
+                              setPromotePropertyId(event.target.value)
+                            }
+                          >
+                            <option value="">No property attached</option>
+                            {(propertiesQuery.data ?? []).map((property) => (
+                              <option key={property.id} value={property.id}>
+                                {property.name}
+                                {property.street_address
+                                  ? ` — ${property.street_address}`
+                                  : ""}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field
+                          label={
+                            promoteRequiresTenant
+                              ? "Tenant (required)"
+                              : "Tenant"
+                          }
+                        >
+                          <Select
+                            aria-label="Promote tenant"
+                            value={promoteTenantId}
+                            onChange={(event) => {
+                              setPromoteTenantId(event.target.value);
+                              setPromoteLeaseId("");
+                            }}
+                          >
+                            <option value="">
+                              {promoteRequiresTenant
+                                ? "Pick a tenant"
+                                : "No tenant attached"}
+                            </option>
+                            {(tenantsQuery.data ?? []).map((tenant) => (
+                              <option key={tenant.id} value={tenant.id}>
+                                {tenant.trading_name || tenant.legal_name}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        {promoteShowsLeasePicker ? (
+                          <Field label="Lease">
+                            <Select
+                              aria-label="Promote lease"
+                              value={promoteLeaseId}
+                              onChange={(event) =>
+                                setPromoteLeaseId(event.target.value)
+                              }
+                              disabled={!promoteTenantId}
+                            >
+                              <option value="">No lease attached</option>
+                              {(leasesQuery.data ?? []).map((lease) => (
+                                <option key={lease.id} value={lease.id}>
+                                  {lease.status} —{" "}
+                                  {lease.commencement_date ?? "no start"}
+                                  {lease.expiry_date
+                                    ? ` → ${lease.expiry_date}`
+                                    : ""}
+                                </option>
+                              ))}
+                            </Select>
+                          </Field>
+                        ) : null}
+                      </>
+                    )}
                   </div>
 
                   {(result.suggested_property ||
                     result.suggested_tenant ||
-                    result.suggested_lease) ? (
+                    result.suggested_lease ||
+                    result.suggested_contractor) ? (
                     <div className="text-xs text-muted-foreground">
                       AI suggested
                       {result.suggested_property
@@ -486,6 +535,15 @@ function InboxWorkspace() {
                               ? ","
                               : ""
                           } lease “${result.suggested_lease.label}”`
+                        : ""}
+                      {result.suggested_contractor
+                        ? `${
+                            result.suggested_property ||
+                            result.suggested_tenant ||
+                            result.suggested_lease
+                              ? ","
+                              : ""
+                          } contractor “${result.suggested_contractor.label}”`
                         : ""}
                       . Override above if needed.
                     </div>

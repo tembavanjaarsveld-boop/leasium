@@ -58,6 +58,7 @@ import {
   createDocumentIntakeFromDocument,
   createTenantOnboarding,
   deleteDocument,
+  deleteTenant,
   documentDownloadUrl,
   DocumentCategory,
   DocumentIntakeRecord,
@@ -1146,6 +1147,16 @@ function TenantDetail() {
     },
   });
 
+  const deleteTenantMutation = useMutation({
+    mutationFn: () => deleteTenant(tenantId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenants"] });
+      queryClient.invalidateQueries({ queryKey: ["tenant", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
+      router.push("/tenants");
+    },
+  });
+
   const prepareReviewMutation = useMutation({
     mutationFn: createDocumentIntakeFromDocument,
     onSuccess: (intake) => {
@@ -1259,11 +1270,52 @@ function TenantDetail() {
               Contact, billing, onboarding, documents, and lease history.
             </p>
           </div>
-          <SecondaryButton type="button" onClick={startEdit}>
-            <Edit3 size={15} />
-            Edit profile
-          </SecondaryButton>
+          <div className="flex flex-wrap items-center gap-2">
+            <SecondaryButton type="button" onClick={startEdit}>
+              <Edit3 size={15} />
+              Edit profile
+            </SecondaryButton>
+            <SecondaryButton
+              type="button"
+              onClick={() => {
+                const activeLeases = linkedLeases.filter(
+                  (lease) =>
+                    lease.status === "active" ||
+                    lease.status === "holding_over",
+                ).length;
+                const warning =
+                  activeLeases > 0
+                    ? `\n\n${activeLeases} active lease${
+                        activeLeases === 1 ? "" : "s"
+                      } will stay on file but lose their tenant link.`
+                    : "";
+                if (
+                  typeof window === "undefined" ||
+                  window.confirm(
+                    `Delete ${tenantName(tenant)}? This soft-deletes the tenant and can be restored from the database if needed.${warning}`,
+                  )
+                ) {
+                  deleteTenantMutation.mutate();
+                }
+              }}
+              disabled={deleteTenantMutation.isPending}
+              className="text-danger hover:bg-danger/5"
+              aria-label="Delete tenant"
+            >
+              {deleteTenantMutation.isPending ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Trash2 size={15} />
+              )}
+              Delete tenant
+            </SecondaryButton>
+          </div>
         </section>
+        {deleteTenantMutation.error ? (
+          <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+            {friendlyError(deleteTenantMutation.error)}
+          </p>
+        ) : null}
 
         {editing && form ? (
           <SectionPanel

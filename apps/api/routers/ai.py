@@ -29,11 +29,13 @@ from stewart.ai.inbox import (
     triage_inbox,
 )
 from stewart.ai.lease_change import LeaseChangeError, extract_lease_change
+from stewart.ai.vendor_intake import VendorIntakeError, extract_vendor_intake
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
     ArrearsCase,
     ArrearsCaseStatus,
+    Contractor,
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
@@ -472,6 +474,10 @@ def triage(
         result.get("suggested_lease_id"),
         index_lookup.get("leases", {}),
     )
+    suggested_contractor = _validate_index_match(
+        result.get("suggested_contractor_id"),
+        index_lookup.get("contractors", {}),
+    )
 
     raw_facts = result.get("key_facts")
     key_facts: list[InboxKeyFact] = []
@@ -514,6 +520,7 @@ def triage(
             "matched_property": suggested_property is not None,
             "matched_tenant": suggested_tenant is not None,
             "matched_lease": suggested_lease is not None,
+            "matched_contractor": suggested_contractor is not None,
         },
         tool_output_summary=(
             f"Classified as {kind} (confidence {confidence:.2f})."
@@ -532,6 +539,7 @@ def triage(
         suggested_property=suggested_property,
         suggested_tenant=suggested_tenant,
         suggested_lease=suggested_lease,
+        suggested_contractor=suggested_contractor,
         key_facts=key_facts,
         warnings=warnings,
         guardrails=list(INBOX_TRIAGE_GUARDRAILS),
@@ -599,6 +607,15 @@ def _build_triage_entity_index(
         ).all()
     ) if units_by_id else []
 
+    contractors = list(
+        session.scalars(
+            select(Contractor).where(
+                Contractor.entity_id == entity_id,
+                Contractor.deleted_at.is_(None),
+            )
+        ).all()
+    )
+
     prompt_index = {
         "properties": [
             {
@@ -631,12 +648,26 @@ def _build_triage_entity_index(
             }
             for lease in leases[:200]
         ],
+        "contractors": [
+            {
+                "id": str(contractor.id),
+                "name": contractor.name,
+                "company_name": contractor.company_name,
+                "categories": list(contractor.categories or []),
+            }
+            for contractor in contractors[:200]
+        ],
     }
 
     def _property_label(prop: Property) -> str:
         if prop.street_address:
             return f"{prop.name} — {prop.street_address}".strip(" —")
         return prop.name
+
+    def _contractor_label(contractor: Contractor) -> str:
+        if contractor.company_name:
+            return f"{contractor.name} ({contractor.company_name})"
+        return contractor.name
 
     lookup: dict[str, dict[str, str]] = {
         "properties": {
@@ -651,6 +682,10 @@ def _build_triage_entity_index(
                 f"Lease {str(lease.id)[:8]} ({lease.status.value})"
             )
             for lease in leases
+        },
+        "contractors": {
+            str(contractor.id): _contractor_label(contractor)
+            for contractor in contractors
         },
     }
     return prompt_index, lookup
@@ -743,6 +778,26 @@ def _lease_in_entity(
     return lease
 
 
+def _contractor_in_entity(
+    contractor_id: UUID,
+    entity_id: UUID,
+    session: Session,
+) -> Contractor:
+    contractor = session.scalar(
+        select(Contractor).where(
+            Contractor.id == contractor_id,
+            Contractor.entity_id == entity_id,
+            Contractor.deleted_at.is_(None),
+        )
+    )
+    if contractor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found in this entity.",
+        )
+    return contractor
+
+
 def _lease_snapshot(
     lease_id: UUID | None,
     session: Session,
@@ -810,6 +865,10 @@ def promote_triage(
         _tenant_in_entity(payload.tenant_id, payload.entity_id, session)
     if payload.lease_id is not None:
         _lease_in_entity(payload.lease_id, payload.entity_id, session)
+    if payload.contractor_id is not None:
+        _contractor_in_entity(
+            payload.contractor_id, payload.entity_id, session
+        )
 
     summary = payload.summary.strip()
     title = _truncate_title(summary)
@@ -1001,6 +1060,125 @@ def promote_triage(
             target_id=intake.id,
             target_href=f"/intake?intake_id={intake.id}",
             target_label=title or "Lease change from inbox",
+        )
+
+    if payload.kind == "vendor_or_contractor":
+        # Matched contractor → no draft, just deep-link the operator into
+        # the existing directory entry.
+        if payload.contractor_id is not None:
+            existing = _contractor_in_entity(
+                payload.contractor_id, payload.entity_id, session
+            )
+            audit_log(
+                session,
+                actor=user.actor,
+                user_id=user.id,
+                entity_id=payload.entity_id,
+                action="query",
+                target_table="contractor",
+                target_id=existing.id,
+                tool_name="ai_inbox_promote",
+                tool_input={
+                    "kind": payload.kind,
+                    "summary_length": len(summary),
+                    "match": "existing",
+                },
+                tool_output_summary=(
+                    "Routed inbox message to existing contractor profile."
+                ),
+                data_classification="internal",
+            )
+            session.commit()
+            return InboxPromoteRead(
+                target_kind="contractor",
+                target_id=existing.id,
+                target_href="/contractors",
+                target_label=existing.name,
+            )
+
+        # No match → extract draft directory fields and create a new
+        # Contractor row at priority=3 (backup) for the operator to
+        # review and activate from /contractors.
+        extraction_outcome = "skipped"
+        contractor_kwargs: dict[str, Any] = {
+            "entity_id": payload.entity_id,
+            "name": title or summary[:120] or "Vendor from inbox",
+            "priority": 3,
+            "categories": [],
+            "contractor_metadata": {
+                "source": "ai_inbox_promote",
+                "summary": summary,
+            },
+        }
+
+        try:
+            extracted, response_id = extract_vendor_intake(
+                body=payload.body,
+                settings=settings,
+            )
+        except VendorIntakeError as exc:
+            contractor_kwargs["contractor_metadata"][
+                "extraction_error"
+            ] = str(exc)
+            extraction_outcome = "soft_failed"
+        else:
+            extraction_outcome = "extracted"
+            extracted_name = extracted.get("name")
+            if isinstance(extracted_name, str) and extracted_name.strip():
+                contractor_kwargs["name"] = extracted_name.strip()[:200]
+            for field in ("company_name", "email", "phone", "notes"):
+                value = extracted.get(field)
+                if isinstance(value, str) and value.strip():
+                    contractor_kwargs[field] = value.strip()[:240]
+            categories = extracted.get("categories")
+            if isinstance(categories, list):
+                contractor_kwargs["categories"] = [
+                    c
+                    for c in categories
+                    if isinstance(c, str) and c.strip()
+                ][:4]
+            raw_conf = extracted.get("confidence")
+            try:
+                conf_value = float(raw_conf) if raw_conf is not None else None
+            except (TypeError, ValueError):
+                conf_value = None
+            contractor_kwargs["contractor_metadata"].update(
+                {
+                    "ai_confidence": conf_value,
+                    "openai_response_id": response_id,
+                }
+            )
+
+        contractor = Contractor(**contractor_kwargs)
+        session.add(contractor)
+        session.flush()
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=payload.entity_id,
+            action="create",
+            target_table="contractor",
+            target_id=contractor.id,
+            tool_name="ai_inbox_promote",
+            tool_input={
+                "kind": payload.kind,
+                "summary_length": len(summary),
+                "extraction": extraction_outcome,
+                "match": "new",
+            },
+            tool_output_summary=(
+                "Promoted inbox message to new contractor directory entry"
+                f" ({extraction_outcome})."
+            ),
+            data_classification="internal",
+        )
+        session.commit()
+        return InboxPromoteRead(
+            target_kind="contractor",
+            target_id=contractor.id,
+            target_href="/contractors",
+            target_label=contractor.name,
         )
 
     # Pydantic enforces InboxPromoteKind, so this is unreachable in practice.

@@ -11,9 +11,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.ai.inbox import InboxTriageError
 from stewart.ai.lease_change import LeaseChangeError
+from stewart.ai.vendor_intake import VendorIntakeError
 from stewart.core.models import (
     ArrearsCase,
     AuditAction,
+    Contractor,
     DocumentIntake,
     Entity,
     MaintenanceWorkOrder,
@@ -117,6 +119,7 @@ def test_inbox_triage_returns_classification_and_audits(
                 "suggested_property_id": property_id,
                 "suggested_tenant_id": tenant_id,
                 "suggested_lease_id": None,
+                "suggested_contractor_id": None,
                 "key_facts": [
                     {"label": "Property", "value": "28 Queen Street"},
                     {"label": "Unit", "value": "Unit 3"},
@@ -188,6 +191,7 @@ def test_inbox_triage_returns_classification_and_audits(
         "matched_property": True,
         "matched_tenant": True,
         "matched_lease": False,
+        "matched_contractor": False,
     }
 
 
@@ -214,6 +218,7 @@ def test_inbox_triage_drops_invented_ids(
                 "suggested_property_id": fake_property_id,
                 "suggested_tenant_id": "not-a-uuid",
                 "suggested_lease_id": None,
+                "suggested_contractor_id": None,
                 "key_facts": [],
                 "warnings": [],
             },
@@ -234,6 +239,7 @@ def test_inbox_triage_drops_invented_ids(
     assert body["suggested_property"] is None
     assert body["suggested_tenant"] is None
     assert body["suggested_lease"] is None
+    assert body["suggested_contractor"] is None
 
 
 def test_inbox_triage_503_when_helper_unavailable(
@@ -608,3 +614,193 @@ def test_promote_rejects_property_from_other_entity(
     )
     assert response.status_code == 404
     assert "Property" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# v2.2: vendor_or_contractor promote path.
+# ---------------------------------------------------------------------------
+
+
+def _seed_contractor(
+    client: TestClient,
+    entity_id: str,
+    *,
+    name: str = "Reliable Plumbing",
+    company_name: str | None = "Reliable Plumbing Pty Ltd",
+    categories: list[str] | None = None,
+) -> dict[str, Any]:
+    response = client.post(
+        "/api/v1/contractors",
+        json={
+            "entity_id": entity_id,
+            "name": name,
+            "company_name": company_name,
+            "categories": categories or ["plumbing"],
+            "email": "ops@reliableplumbing.example",
+            "phone": "0400111222",
+            "priority": 1,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_promote_vendor_or_contractor_with_match_routes_no_draft(
+    client: TestClient, session: Session
+) -> None:
+    """When the operator passes contractor_id, the promote endpoint
+    returns a deep-link to the existing directory entry without
+    creating a new Contractor row."""
+    entity_id = _entity_id(session)
+    contractor = _seed_contractor(client, entity_id)
+
+    contractor_count_before = session.scalar(
+        select(Contractor).where(Contractor.entity_id == UUID(entity_id))
+    )
+    assert contractor_count_before is not None
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": entity_id,
+            "kind": "vendor_or_contractor",
+            "summary": "Existing plumber following up on a job.",
+            "body": (
+                "Hi team, this is Reliable Plumbing — just confirming we're"
+                " booked in for Unit 3 Queen Street on Tuesday at 9am."
+            ),
+            "contractor_id": contractor["id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_kind"] == "contractor"
+    assert body["target_id"] == contractor["id"]
+    assert body["target_href"] == "/contractors"
+
+    # No additional Contractor rows were created.
+    all_contractors = list(
+        session.scalars(
+            select(Contractor).where(Contractor.entity_id == UUID(entity_id))
+        ).all()
+    )
+    assert len(all_contractors) == 1
+    assert str(all_contractors[0].id) == contractor["id"]
+
+
+def test_promote_vendor_or_contractor_unmatched_extracts_new_contractor(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    """When no contractor_id is supplied and the AI extractor succeeds,
+    a new Contractor row is created at priority=3 with the extracted
+    fields populated."""
+    entity_id = _entity_id(session)
+
+    def fake_extract(
+        *, body: str, settings: Any
+    ) -> tuple[dict[str, Any], str | None]:
+        return (
+            {
+                "name": "Sam Lock",
+                "company_name": "Sam's Locksmiths",
+                "email": "sam@samslocks.example",
+                "phone": "0411 222 333",
+                "categories": ["locks"],
+                "notes": "Mobile locksmith covering Brisbane CBD.",
+                "confidence": 0.78,
+                "warnings": [],
+            },
+            "resp_vendor_intake_001",
+        )
+
+    monkeypatch.setattr(ai_router, "extract_vendor_intake", fake_extract)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": entity_id,
+            "kind": "vendor_or_contractor",
+            "summary": "New locksmith introducing themselves.",
+            "body": (
+                "G'day, Sam from Sam's Locksmiths here. We're mobile around"
+                " Brisbane CBD and would love to be on your panel for"
+                " emergency lockouts. Reach me on 0411 222 333 or sam@"
+                "samslocks.example."
+            ),
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_kind"] == "contractor"
+    assert body["target_href"] == "/contractors"
+
+    contractor = session.scalar(
+        select(Contractor).where(Contractor.id == UUID(body["target_id"]))
+    )
+    assert contractor is not None
+    assert contractor.priority == 3  # Backup tier — operator promotes after review.
+    assert contractor.name == "Sam Lock"
+    assert contractor.company_name == "Sam's Locksmiths"
+    assert contractor.email == "sam@samslocks.example"
+    assert contractor.categories == ["locks"]
+    metadata = contractor.contractor_metadata
+    assert metadata["source"] == "ai_inbox_promote"
+    assert metadata["ai_confidence"] == 0.78
+    assert metadata["openai_response_id"] == "resp_vendor_intake_001"
+
+
+def test_promote_vendor_or_contractor_extractor_soft_fails_to_minimal_row(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    """When the extractor raises, the operator still gets a draft
+    Contractor row seeded from the triage summary so they can fill in
+    the rest from /contractors."""
+    entity_id = _entity_id(session)
+
+    def fake_extract(
+        *, body: str, settings: Any
+    ) -> tuple[dict[str, Any], str | None]:
+        raise VendorIntakeError("OpenAI vendor intake request failed.")
+
+    monkeypatch.setattr(ai_router, "extract_vendor_intake", fake_extract)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": entity_id,
+            "kind": "vendor_or_contractor",
+            "summary": "Locksmith introducing themselves.",
+            "body": "Hi team, locksmith here, we operate around Brisbane.",
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    contractor = session.scalar(
+        select(Contractor).where(Contractor.id == UUID(body["target_id"]))
+    )
+    assert contractor is not None
+    assert contractor.name.startswith("Locksmith introducing")
+    assert contractor.priority == 3
+    assert contractor.categories == []
+    assert (
+        "extraction_error" in contractor.contractor_metadata
+    ), "soft-fail should record why extraction didn't run"
+
+
+def test_promote_rejects_contractor_from_other_entity(
+    client: TestClient, session: Session
+) -> None:
+    entity_id = _entity_id(session)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": entity_id,
+            "kind": "vendor_or_contractor",
+            "summary": "Follow-up.",
+            "body": "Body that is at least ten characters long for validation.",
+            "contractor_id": str(uuid4()),  # Does not exist in entity.
+        },
+    )
+    assert response.status_code == 404
+    assert "Contractor" in response.json()["detail"]

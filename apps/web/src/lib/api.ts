@@ -2526,6 +2526,7 @@ export type InboxTriageRecord = {
   suggested_property: InboxTriageMatch | null;
   suggested_tenant: InboxTriageMatch | null;
   suggested_lease: InboxTriageMatch | null;
+  suggested_contractor: InboxTriageMatch | null;
   key_facts: InboxKeyFactRecord[];
   warnings: string[];
   guardrails: string[];
@@ -2545,12 +2546,14 @@ export function triageInboxMessage(payload: {
 export type InboxPromoteKind =
   | "maintenance_request"
   | "payment_or_arrears"
-  | "lease_change";
+  | "lease_change"
+  | "vendor_or_contractor";
 
 export type InboxPromoteTargetKind =
   | "maintenance_work_order"
   | "arrears_case"
-  | "document_intake";
+  | "document_intake"
+  | "contractor";
 
 export type InboxPromoteRecord = {
   target_kind: InboxPromoteTargetKind;
@@ -2567,6 +2570,7 @@ export function promoteInboxMessage(payload: {
   property_id?: string | null;
   tenant_id?: string | null;
   lease_id?: string | null;
+  contractor_id?: string | null;
 }) {
   return request<InboxPromoteRecord>("/ai/triage/promote", {
     method: "POST",

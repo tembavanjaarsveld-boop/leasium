@@ -84,6 +84,7 @@ class InboxTriageRead(BaseModel):
     suggested_property: InboxTriageMatch | None = None
     suggested_tenant: InboxTriageMatch | None = None
     suggested_lease: InboxTriageMatch | None = None
+    suggested_contractor: InboxTriageMatch | None = None
     key_facts: list[InboxKeyFact] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     guardrails: list[str] = Field(default_factory=list)
@@ -100,6 +101,7 @@ InboxPromoteKind = Literal[
     "maintenance_request",
     "payment_or_arrears",
     "lease_change",
+    "vendor_or_contractor",
 ]
 
 
@@ -107,6 +109,7 @@ InboxPromoteTargetKind = Literal[
     "maintenance_work_order",
     "arrears_case",
     "document_intake",
+    "contractor",
 ]
 
 
@@ -118,6 +121,7 @@ class InboxPromoteRequest(BaseModel):
     property_id: UUID | None = None
     tenant_id: UUID | None = None
     lease_id: UUID | None = None
+    contractor_id: UUID | None = None
 
 
 class InboxPromoteRead(BaseModel):

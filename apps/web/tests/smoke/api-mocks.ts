@@ -2876,6 +2876,7 @@ export async function mockLeasiumApi(
           label: "Acme Bakery",
         },
         suggested_lease: null,
+        suggested_contractor: null,
         key_facts: [
           { label: "Property", value: "28 Queen Street" },
           { label: "Severity", value: "Non-urgent" },
