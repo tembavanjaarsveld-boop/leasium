@@ -791,6 +791,43 @@ Chip base style:
 className="inline-flex min-h-6 items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold"
 ```
 
+### Chip system
+
+Use `chipClass()` from `apps/web/src/components/ui.tsx` (or its JSX
+wrapper `StatusBadge`) for every chip/pill/badge in the product. Two
+density variants and a bordered modifier cover every observed pattern:
+
+| Density | Sizing | Use for |
+| --- | --- | --- |
+| `default` | `min-h-6 px-2 py-1 text-xs leading-none` | Top-of-card status badges, in-line content chips, hero pills. |
+| `compact` | `min-h-5 px-2 py-0.5 text-leasium-micro leading-4` | Table-row chips, status pills inside dense lists, evidence/receipt metadata. |
+
+Tones are the five `StatusTone` values from `components/ui.tsx`:
+`neutral`, `success`, `warning`, `danger`, `primary`. Each tone has a
+"soft" variant (no border) and a "bordered" variant (tone-coloured
+border + soft fill). Use bordered for dense list rows where the chip
+needs more definition against the row background; use the soft default
+elsewhere.
+
+Examples:
+
+```tsx
+import { StatusBadge, chipClass } from "@/components/ui";
+
+// JSX wrapper - default density, neutral tone.
+<StatusBadge tone="success">Ready</StatusBadge>
+
+// className helper for non-JSX call sites (e.g. lib helpers that
+// return class strings, or one-off inline elements).
+<span className={chipClass("warning", { density: "compact", bordered: true })}>
+  Partial · 3/5
+</span>
+```
+
+Never declare new ad-hoc chip class strings (`rounded-full border ...
+bg-X-soft text-X-strong`). Add a new tone to `chipClass` if a fresh
+semantic is needed; otherwise pick the closest existing tone.
+
 ---
 
 ## 10. UX principles

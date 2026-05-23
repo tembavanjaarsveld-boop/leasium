@@ -1,3 +1,4 @@
+import { chipClass } from "@/components/ui";
 import type { PropertyRecord } from "@/lib/api";
 
 export type PropertyOccupancyStatus =
@@ -119,17 +120,18 @@ export function propertyOccupancyFromRentRoll(
 }
 
 export function occupancyBadgeClassName(status: PropertyOccupancyStatus) {
+  const chipOptions = { density: "compact", bordered: true } as const;
   switch (status) {
     case "leased":
-      return "inline-flex items-center rounded-full border border-success-strong/30 bg-success-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-success-strong";
+      return chipClass("success", chipOptions);
     case "leased_internal":
-      return "inline-flex items-center rounded-full border border-primary/30 bg-primary-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-primary-hover";
+      return chipClass("primary", chipOptions);
     case "vacant":
-      return "inline-flex items-center rounded-full border border-danger-strong/30 bg-danger-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-danger-strong";
+      return chipClass("danger", chipOptions);
     case "partial":
-      return "inline-flex items-center rounded-full border border-warning-strong/30 bg-warning-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-warning-strong";
+      return chipClass("warning", chipOptions);
     default:
-      return "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-muted-foreground";
+      return chipClass("neutral", chipOptions);
   }
 }
 
@@ -207,13 +209,14 @@ export function propertyNextExpiryFromRentRoll(
 }
 
 export function nextExpiryChipClassName(daysUntil: number) {
+  const chipOptions = { density: "compact", bordered: true } as const;
   if (daysUntil < 30) {
-    return "inline-flex items-center rounded-full border border-danger-strong/30 bg-danger-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-danger-strong";
+    return chipClass("danger", chipOptions);
   }
   if (daysUntil < 60) {
-    return "inline-flex items-center rounded-full border border-warning-strong/30 bg-warning-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-warning-strong";
+    return chipClass("warning", chipOptions);
   }
-  return "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-muted-foreground";
+  return chipClass("neutral", chipOptions);
 }
 
 export function nextExpiryChipLabel(expiry: NextLeaseExpiry) {

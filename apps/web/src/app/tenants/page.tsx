@@ -29,6 +29,7 @@ import {
   Select,
   SkeletonRows,
   StatusBadge,
+  chipClass,
 } from "@/components/ui";
 import {
   cancelTenantOnboarding,
@@ -786,7 +787,7 @@ function TenantWorkspace() {
                       </button>
                       <div className="text-xs text-muted-foreground">{tenant.abn ?? "No ABN recorded"}</div>
                       {summary ? (
-                        <div className="mt-1 inline-flex items-center rounded-full border border-success-strong/30 bg-success-soft px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-success-strong">
+                        <div className={`mt-1 ${chipClass("success", { density: "compact", bordered: true })}`}>
                           {summary.activeLeases}{" "}
                           {summary.activeLeases === 1 ? "active lease" : "active leases"}
                           {summary.totalAnnualCents > 0

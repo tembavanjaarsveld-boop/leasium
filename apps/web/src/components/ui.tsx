@@ -273,6 +273,76 @@ export type StatusTone =
   | "danger"
   | "primary";
 
+export type ChipDensity = "default" | "compact";
+
+export type ChipClassOptions = {
+  /** "default" = StatusBadge size (min-h-6, text-xs); "compact" = table/chip
+   *  density (min-h-5, text-leasium-micro). */
+  density?: ChipDensity;
+  /** When true, adds a tone-coloured border in addition to the soft fill.
+   *  Matches the "bordered chip" pattern used throughout property /
+   *  occupancy / arrears surfaces. */
+  bordered?: boolean;
+};
+
+/**
+ * Single source of truth for chip/pill/badge class strings. Both
+ * StatusBadge (JSX wrapper) and the lib/*-occupancy / lib/*-arrears
+ * className helpers call into this so the visual system stays consistent.
+ *
+ * Codex SoT §9 documents the chip system; this helper implements it.
+ */
+export function chipClass(
+  tone: StatusTone = "neutral",
+  options: ChipClassOptions = {},
+): string {
+  const { density = "default", bordered = false } = options;
+
+  const base = "inline-flex items-center rounded-full font-semibold";
+
+  const sizing =
+    density === "compact"
+      ? "min-h-5 px-2 py-0.5 text-leasium-micro leading-4"
+      : "min-h-6 px-2 py-1 text-xs leading-none";
+
+  const toneStyles: Record<
+    StatusTone,
+    { soft: string; bordered: string }
+  > = {
+    neutral: {
+      soft: "bg-muted text-leasium-slate-500",
+      bordered:
+        "border border-border bg-muted text-muted-foreground",
+    },
+    success: {
+      soft: "bg-success-soft text-success-strong",
+      bordered:
+        "border border-success-strong/30 bg-success-soft text-success-strong",
+    },
+    warning: {
+      soft: "bg-warning-soft text-warning-strong",
+      bordered:
+        "border border-warning-strong/30 bg-warning-soft text-warning-strong",
+    },
+    danger: {
+      soft: "bg-danger-soft text-danger-strong",
+      bordered:
+        "border border-danger-strong/30 bg-danger-soft text-danger-strong",
+    },
+    primary: {
+      soft: "bg-primary-soft text-primary-hover",
+      bordered:
+        "border border-primary/30 bg-primary-soft text-primary-hover",
+    },
+  };
+
+  const toneClass = bordered
+    ? toneStyles[tone].bordered
+    : toneStyles[tone].soft;
+
+  return cn(base, sizing, toneClass);
+}
+
 export function StatusBadge({
   tone = "neutral",
   children,
@@ -280,22 +350,8 @@ export function StatusBadge({
   tone?: StatusTone;
   children: React.ReactNode;
 }) {
-  const tones = {
-    neutral: "bg-muted text-leasium-slate-500",
-    success: "bg-success-soft text-success-strong",
-    warning: "bg-warning-soft text-warning-strong",
-    danger: "bg-danger-soft text-danger-strong",
-    primary: "bg-primary-soft text-primary-hover",
-  };
   return (
-    <span
-      className={cn(
-        "inline-flex min-h-6 items-center whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold leading-none",
-        tones[tone],
-      )}
-    >
-      {children}
-    </span>
+    <span className={cn(chipClass(tone), "whitespace-nowrap")}>{children}</span>
   );
 }
 
