@@ -4049,10 +4049,12 @@ export function Dashboard({
           />
         </section>
 
-        <UpcomingLeaseEventsPanel
-          overview={insightsOverviewQuery.data}
-          isLoading={insightsOverviewQuery.isLoading}
-        />
+        {!isIntakeWorkspace ? (
+          <UpcomingLeaseEventsPanel
+            overview={insightsOverviewQuery.data}
+            isLoading={insightsOverviewQuery.isLoading}
+          />
+        ) : null}
 
         <AskLeasiumPanel entityId={selectedEntityId} />
 
