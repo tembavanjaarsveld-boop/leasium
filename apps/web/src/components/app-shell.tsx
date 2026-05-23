@@ -376,15 +376,25 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
     );
   }
 
+  // Sidebar content is shared between the fixed desktop sidebar (`md` and
+  // `lg+`) and the mobile drawer (sub-`md`). At `md` the fixed sidebar
+  // collapses to a 64px icon-only rail, so brand text + nav labels +
+  // comms count + shortcuts label all hide at `md` and reappear at `lg`.
+  // The mobile drawer is sub-`md` only (the hamburger is hidden at `md+`),
+  // so when the drawer opens it never hits the `md` media query and
+  // labels stay visible inside it. Pending Remba review (2026-05-23
+  // external review §8.1 — sidebar collapse at md instead of disappearing
+  // at lg).
   const sidebarContent = (
     <>
       <Link
         href="/"
         onClick={() => setMobileNavOpen(false)}
-        className="flex min-w-0 items-center gap-3 px-4 py-5"
+        className="flex min-w-0 items-center gap-3 px-4 py-5 md:justify-center md:px-2 lg:justify-start lg:px-4"
+        title="Leasium"
       >
         <LeasiumMark className="h-10 w-10" />
-        <div className="min-w-0">
+        <div className="min-w-0 md:hidden lg:block">
           <h1 className="truncate text-base font-semibold leading-5 tracking-normal text-white">
             Leasium
           </h1>
@@ -409,10 +419,14 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               key={item.href}
               href={item.href}
               onClick={() => setMobileNavOpen(false)}
+              // `title` provides a hover tooltip when the sidebar is
+              // collapsed to icon-only at `md`. Labels still render at
+              // sub-`md` (drawer) and `lg+` (full sidebar).
+              title={item.label}
               className={cn(
                 // Hover state uses a subtle white tint so the row reads
                 // as "row under cursor" against the navy-900 sidebar.
-                "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-leasium-slate-300 transition hover:bg-white/[0.06] hover:text-white",
+                "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-leasium-slate-300 transition hover:bg-white/[0.06] hover:text-white md:justify-center md:gap-0 md:px-0 lg:justify-start lg:gap-3 lg:px-3",
                 // Active state — was bg-leasium-blue-soft/10 (EAF0FF at
                 // 10% opacity, effectively invisible on navy-900). Now
                 // bg-white/[0.12] gives a real surface tone so operators
@@ -420,16 +434,18 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                 // on the 2px left rail. Pending Remba review
                 // (2026-05-23 external review §2.1).
                 active &&
-                  "border-l-2 border-primary bg-white/[0.12] pl-[10px] text-white",
+                  "border-l-2 border-primary bg-white/[0.12] pl-[10px] text-white md:border-l-0 md:pl-0 lg:border-l-2 lg:pl-[10px]",
               )}
             >
               <Icon size={16} className="shrink-0" />
-              <span className="flex-1 truncate">{item.label}</span>
+              <span className="flex-1 truncate md:hidden lg:inline">
+                {item.label}
+              </span>
               {showCommsBadge ? (
                 <span
                   aria-label={`${commsBadge!.total} drafts in the comms queue, ${commsBadge!.urgent} urgent`}
                   className={cn(
-                    "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold leading-none",
+                    "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold leading-none md:hidden lg:inline-flex",
                     commsBadge!.urgent > 0
                       ? "bg-danger text-white"
                       : "bg-white/15 text-white",
@@ -451,9 +467,10 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             setCheatsheetOpen(true);
             setMobileNavOpen(false);
           }}
-          className="flex w-full items-center justify-between rounded-md px-2 py-1.5 transition hover:bg-white/5 hover:text-white"
+          title="Keyboard shortcuts"
+          className="flex w-full items-center justify-between rounded-md px-2 py-1.5 transition hover:bg-white/5 hover:text-white md:justify-center"
         >
-          <span>Keyboard shortcuts</span>
+          <span className="md:hidden lg:inline">Keyboard shortcuts</span>
           <kbd className="rounded border border-white/10 px-1 py-0.5 text-[10px] font-medium">
             ?
           </kbd>
@@ -464,18 +481,20 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
 
   return (
     <>
-      {/* Desktop sidebar — fixed on lg+. Layout.tsx applies lg:pl-60
-          to the body so page content sits to the right of this. */}
+      {/* Desktop sidebar — fixed on md+. Collapses to icon-only (w-16) at
+          md, expands to full (w-60) at lg+. globals.css adjusts the body
+          padding-left to match. Below md the sidebar is hidden and the
+          hamburger opens a full-width drawer instead. */}
       <aside
         aria-label="Primary navigation"
-        className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:w-60 lg:flex-col lg:bg-leasium-navy-900 lg:text-white lg:shadow-leasiumSm"
+        className="hidden md:flex md:fixed md:inset-y-0 md:left-0 md:z-30 md:w-16 md:flex-col md:bg-leasium-navy-900 md:text-white md:shadow-leasiumSm lg:w-60"
       >
         {sidebarContent}
       </aside>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer — only reachable below md (hamburger hides at md+). */}
       {mobileNavOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 md:hidden">
           <div
             className="absolute inset-0 bg-leasium-navy-900/60"
             onClick={() => setMobileNavOpen(false)}
@@ -506,7 +525,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             type="button"
             onClick={() => setMobileNavOpen(true)}
             aria-label="Open navigation"
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted lg:hidden"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted md:hidden"
           >
             <Menu size={15} />
           </button>

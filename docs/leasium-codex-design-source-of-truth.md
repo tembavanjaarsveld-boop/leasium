@@ -830,6 +830,28 @@ workspace pages largely use `<SectionPanel>` everywhere; retrofitting
 those is queued behind the page-file split. New surfaces should default
 to `<Surface>` for body content from now on.
 
+### 10.5.4a Sidebar breakpoints
+
+The fixed sidebar has three states by viewport:
+
+- **sub-md (<768px)**: sidebar hidden, hamburger button in the header
+  opens a full-width drawer overlay. Drawer carries the full sidebar
+  content (mark + wordmark + labels).
+- **md (768–1023px)**: fixed sidebar at 64px, icon-only. No labels,
+  no comms count, no shortcuts text. `title` attributes on each nav
+  link provide native hover tooltips so the label is still
+  discoverable. Body padding-left is 64px.
+- **lg+ (≥1024px)**: fixed sidebar at 240px, full content. Body
+  padding-left is 240px.
+
+The active-nav state at md drops the 2px left rail (which would
+clash with a 64px-wide square row); the bg-white/[0.12] surface
+tone alone carries the selected-row signal at icon-only width.
+
+A bottom-nav for the most-used five destinations at sub-md was
+considered (review §8.2) and deferred — for the internal-first
+period the hamburger drawer is enough.
+
 ### 10.5.5 Status chip vocabulary
 
 - Use only the named chips in §9. Don't invent ad-hoc tone-and-text

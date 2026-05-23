@@ -756,6 +756,44 @@ calmer or marketing-heavy at 30px on small pages; and whether
 Surface should ever auto-collapse its divider when it's the only
 section on a page.
 
+### Mobile/tablet IA — sidebar collapse at md
+
+Status: pending Remba review. The fixed sidebar in
+`apps/web/src/components/app-shell.tsx` previously disappeared
+entirely below `lg` (1024px), forcing tablet operators (iPad at
+768/810, Android tablets in the 800-900 range, landscape phones)
+into the hamburger-drawer experience even though they had room for
+persistent nav.
+
+Now the sidebar has three states:
+
+- sub-md (<768px): hidden, hamburger drawer overlay (unchanged).
+- md (768-1023px): collapsed to 64px icon-only rail. Brand text,
+  nav labels, comms count, and shortcuts text all hide via
+  `md:hidden lg:inline`/`lg:block` classes. `title` attributes on
+  every nav link provide native hover tooltips so labels stay
+  discoverable on hover-capable devices.
+- lg+ (≥1024px): full 240px sidebar (unchanged).
+
+`globals.css` adjusts `body.app-shell-active` padding-left to match
+(0/64/240px across breakpoints). The active-nav state at md drops
+the 2px left rail since it clashes with a 64px-wide square row; the
+`bg-white/[0.12]` surface tone alone signals the selected row at
+icon-only width.
+
+Deliberately deferred (per CLAUDE.md §2.3 internal-first guidance):
+- Bottom-nav for the most-used five destinations at sub-md (review
+  §8.2). Hamburger drawer is enough for the internal beta.
+- Tablet-specific tap-target sizing pass on the icon rail.
+
+Remba should review whether 64px is the right icon-rail width,
+whether the `title` hover tooltip is enough discovery for tablet
+users (some tablets can hover via stylus or pointer mode; others
+can't), whether the active state needs a different signal at
+icon-only width, and whether the mobile drawer's labels-always-show
+behaviour holds up when the drawer is wide enough to span much of
+a 480-700px viewport.
+
 ### Deferred from the external review
 
 Not addressed yet, queued for follow-up:
@@ -763,6 +801,8 @@ Not addressed yet, queued for follow-up:
 - Page-file size policy — extract `dashboard.tsx`, `property-workspace.tsx`,
   `settings/page.tsx`, `operations/page.tsx` into composed sections at
   ~400 lines each. Surface adoption rides with that work.
+- Mobile bottom-nav at sub-md (review §8.2) — deferred per
+  internal-first scope.
 - Container hierarchy — introduce a workspace `<Surface>` distinct from
   the aside `<SectionPanel>` so dense table pages stop reading as a stack
   of look-alike white cards.
