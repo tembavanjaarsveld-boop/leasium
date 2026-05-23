@@ -261,11 +261,23 @@ export function Surface({
   );
 }
 
+// StatusTone is the canonical chip-tone union, reused by per-domain
+// chip primitives that compose StatusBadge. Exported here so newly
+// extracted components don't need to redeclare the union inline; the
+// inline copies that exist in operator pages today will migrate
+// opportunistically.
+export type StatusTone =
+  | "neutral"
+  | "success"
+  | "warning"
+  | "danger"
+  | "primary";
+
 export function StatusBadge({
   tone = "neutral",
   children,
 }: {
-  tone?: "neutral" | "success" | "warning" | "danger" | "primary";
+  tone?: StatusTone;
   children: React.ReactNode;
 }) {
   const tones = {

@@ -794,13 +794,62 @@ icon-only width, and whether the mobile drawer's labels-always-show
 behaviour holds up when the drawer is wide enough to span much of
 a 480-700px viewport.
 
+### Page-file split — dashboard.tsx phase 1
+
+Status: pending Remba review. First slice of the page-file extraction
+queue. `apps/web/src/components/dashboard.tsx` is still the largest
+component file in the repo (4,500+ lines after the metric/order
+reshape earlier this review). This commit establishes the
+co-located `src/components/dashboard/` directory pattern and pulls
+out the two cleanly-bounded panels that already had simple prop
+contracts:
+
+- `AskLeasiumPanel` (227 lines, including its citation-kind helper
+  + suggestion-chip constant) → `src/components/dashboard/AskLeasiumPanel.tsx`
+- `ActivityFeedPanel` (180 lines, including its action-kind tone
+  map + relative-time/time-bucket helpers) →
+  `src/components/dashboard/ActivityFeedPanel.tsx`
+
+dashboard.tsx imports both from the new files. Behavior is
+unchanged — exact same JSX rendered with the same props from the
+parent Dashboard component. Net: dashboard.tsx 4,463 → 4,048 lines
+(−415), pattern established for the remaining extractions.
+
+Same-commit drift consolidation: two small helpers that were
+duplicated across many operator pages now have a canonical home:
+
+- `friendlyError(error: unknown) => string` is now in
+  `apps/web/src/lib/utils.ts`. Was reimplemented inline in 15 page
+  files. New extractions import it from there; existing inline
+  copies will be migrated opportunistically.
+- `StatusTone` union (the chip-tone union used to type the value
+  side of per-domain tone maps) is now an exported type from
+  `apps/web/src/components/ui.tsx` and also drives `StatusBadge`'s
+  `tone` prop. Was reimplemented inline as `type StatusTone =
+  "neutral" | "success" | "warning" | "danger" | "primary"` in 7
+  page files. Same opportunistic-migration plan.
+
+Remba should review whether the co-located
+`src/components/dashboard/` directory is the right home for these
+extractions (alternatives: `src/app/_components/`, an in-route
+co-located folder once the dashboard moves into `/dashboard`), and
+whether extractions should aim to bring the parent file under 400
+lines per the SoT §10.5.3 cap or accept that some orchestrator
+files will stay larger.
+
 ### Deferred from the external review
 
 Not addressed yet, queued for follow-up:
 
-- Page-file size policy — extract `dashboard.tsx`, `property-workspace.tsx`,
-  `settings/page.tsx`, `operations/page.tsx` into composed sections at
-  ~400 lines each. Surface adoption rides with that work.
+- Page-file split phase 2+ — extract `DashboardCommandCenter`,
+  `UpcomingLeaseEventsPanel`, `DocumentIntakeApplyOutcomeCard`,
+  `DocumentIntakeReviewPanel`, and `DashboardMetricCard` from
+  dashboard.tsx (~1,500 more lines).
+- Page-file split for `property-workspace.tsx` (6,120 lines),
+  `settings/page.tsx` (4,517 lines), `operations/page.tsx` (4,694
+  lines). Surface adoption rides with each.
+- Migration of inline `friendlyError` / `StatusTone` redeclarations
+  in the remaining 15 / 7 pages.
 - Mobile bottom-nav at sub-md (review §8.2) — deferred per
   internal-first scope.
 - Container hierarchy — introduce a workspace `<Surface>` distinct from
