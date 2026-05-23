@@ -4232,6 +4232,52 @@ export function getCommsQueueCounts(entityId: string) {
   );
 }
 
+// ---- Owner statements (per-owner monthly roll-up) -------------------------
+
+export type OwnerPropertyLineRecord = {
+  property_id: string;
+  property_name: string;
+  invoiced_cents: number;
+  paid_cents: number;
+  outstanding_cents: number;
+  invoice_count: number;
+};
+
+export type OwnerStatementRecord = {
+  owner_identity: string;
+  owner_legal_name: string | null;
+  trustee_name: string | null;
+  trust_name: string | null;
+  invoice_issuer_name: string | null;
+  billing_contact_name: string | null;
+  billing_email: string | null;
+  property_count: number;
+  properties: OwnerPropertyLineRecord[];
+  invoiced_cents: number;
+  paid_cents: number;
+  outstanding_cents: number;
+  invoice_count: number;
+};
+
+export type OwnerStatementsRecord = {
+  entity_id: string;
+  month: string;
+  month_start: string;
+  month_end: string;
+  owners: OwnerStatementRecord[];
+  generated_at: string;
+};
+
+export function getOwnerStatements(entityId: string, month?: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  if (month) {
+    params.set("month", month);
+  }
+  return request<OwnerStatementsRecord>(
+    `/owners/statements?${params.toString()}`,
+  );
+}
+
 export function dispatchCommsDraft(payload: CommsDispatchPayload) {
   return request<CommsDispatchRecord>("/comms/dispatch", {
     method: "POST",

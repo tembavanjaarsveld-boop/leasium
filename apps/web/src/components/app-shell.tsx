@@ -12,6 +12,7 @@ import {
   Inbox as InboxIcon,
   Keyboard,
   Menu,
+  Receipt,
   Search,
   Send,
   Settings as SettingsIcon,
@@ -125,6 +126,12 @@ const navItems: NavItem[] = [
   },
   { href: "/insights", label: "Insights", icon: Sparkles },
   {
+    href: "/statements",
+    label: "Statements",
+    icon: Receipt,
+    shortcut: "G F",
+  },
+  {
     href: "/portfolio-qa",
     label: "Portfolio QA",
     icon: HelpCircle,
@@ -226,6 +233,7 @@ const SHORTCUT_NAV: ShortcutNav[] = [
   { key: "t", href: "/tenants", label: "Tenants" },
   { key: "o", href: "/operations", label: "Work (Operations)" },
   { key: "c", href: "/comms", label: "Comms queue" },
+  { key: "f", href: "/statements", label: "Owner statements" },
   { key: "b", href: "/billing-readiness", label: "Billing Readiness" },
   { key: "n", href: "/notifications", label: "Notifications" },
   { key: "q", href: "/portfolio-qa", label: "Portfolio QA" },
