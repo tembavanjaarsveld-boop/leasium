@@ -84,6 +84,54 @@ export function Field({
   );
 }
 
+// Page title — the operator-mode version of the SoT H1 scale.
+// SoT spec is 36/44/700; we use 30/36/650 (text-3xl + tracking-tight)
+// because internal dashboards feel marketing-heavy above ~32px.
+// This is the only <h1> on a workspace page; SectionTitle is <h2>.
+// Pending Remba review (2026-05-23 typography hierarchy restore).
+export function PageTitle({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <h1
+      className={cn(
+        "text-3xl font-semibold leading-9 tracking-tight text-foreground",
+        className,
+      )}
+    >
+      {children}
+    </h1>
+  );
+}
+
+// Section title — sits inside a workspace page, one level below PageTitle.
+// SoT spec is 24/32/650; we use 18/28/600 (text-lg semibold) as a
+// calibration between the spec and the dense operator surfaces. Renders
+// as <h2> so the document outline is PageTitle <h1> → SectionTitle <h2>.
+// Pending Remba review (2026-05-23 typography hierarchy restore).
+export function SectionTitle({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <h2
+      className={cn(
+        "text-lg font-semibold leading-7 tracking-tight text-foreground",
+        className,
+      )}
+    >
+      {children}
+    </h2>
+  );
+}
+
 export function PageHeader({
   title,
   description,
@@ -96,9 +144,9 @@ export function PageHeader({
   return (
     <section className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 className="text-xl font-semibold">{title}</h2>
+        <PageTitle>{title}</PageTitle>
         {description ? (
-          <p className="mt-1 text-sm leading-5 text-muted-foreground">
+          <p className="mt-1.5 text-sm leading-5 text-muted-foreground">
             {description}
           </p>
         ) : null}
@@ -136,7 +184,7 @@ export function SectionPanel({
             {title ? (
               <div className="flex items-center gap-2">
                 {icon}
-                <h3 className="text-[15px] font-semibold leading-5">{title}</h3>
+                <SectionTitle>{title}</SectionTitle>
               </div>
             ) : null}
             {description ? (
