@@ -7,15 +7,10 @@ import {
   Building2,
   Command,
   FileSpreadsheet,
-  HardHat,
-  HelpCircle,
   Home,
-  Inbox as InboxIcon,
   Keyboard,
   Menu,
-  Receipt,
   Search,
-  Send,
   Settings as SettingsIcon,
   Sparkles,
   Users,
@@ -78,6 +73,15 @@ type CommandAction = {
   meta: string;
 };
 
+// Primary nav trimmed 2026-05-23 (external design review): 13 → 8 items.
+// Reachable via Cmd-K command palette but not in sidebar:
+//   AI Inbox (folds conceptually into Smart Intake)
+//   Contractors, Comms (folded under Work)
+//   Statements (folded under Billing)
+//   Portfolio QA (cleanup workspace — palette-only)
+// G-shortcuts for the removed items still work via SHORTCUT_NAV below
+// so keyboard users keep their muscle memory while the IA settles.
+// Pending Remba review.
 const navItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: Home, shortcut: "G D" },
   {
@@ -85,12 +89,6 @@ const navItems: NavItem[] = [
     label: "Smart Intake",
     icon: FileSpreadsheet,
     shortcut: "G I",
-  },
-  {
-    href: "/inbox",
-    label: "AI Inbox",
-    icon: InboxIcon,
-    shortcut: "G M",
   },
   {
     href: "/properties",
@@ -114,36 +112,12 @@ const navItems: NavItem[] = [
     shortcut: "G O",
   },
   {
-    href: "/contractors",
-    label: "Contractors",
-    icon: HardHat,
-    shortcut: "G R",
-  },
-  {
-    href: "/comms",
-    label: "Comms",
-    icon: Send,
-    shortcut: "G C",
-  },
-  {
     href: "/billing-readiness",
     label: "Billing",
     icon: Wallet,
     shortcut: "G B",
   },
   { href: "/insights", label: "Insights", icon: Sparkles },
-  {
-    href: "/statements",
-    label: "Statements",
-    icon: Receipt,
-    shortcut: "G F",
-  },
-  {
-    href: "/portfolio-qa",
-    label: "Portfolio QA",
-    icon: HelpCircle,
-    shortcut: "G Q",
-  },
   {
     href: "/settings",
     label: "Settings",
