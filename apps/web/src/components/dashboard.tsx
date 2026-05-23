@@ -2953,6 +2953,125 @@ export function Dashboard({
           />
         ) : null}
 
+        {/* Metric grid trimmed 2026-05-23 (external design review §3.1):
+            6 → 4 operational cards. Properties + Tenants counts are not
+            "act now" metrics — they're navigational, and the sidebar
+            already links to both. The four operational cards (Operations,
+            Billing blockers, Needs review, Blocked docs) all answer
+            "what needs me right now?" which is what the metric strip is for.
+            Pending Remba review. */}
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <DashboardMetricCard
+            href="/operations"
+            label="Operations"
+            count={obligationsLoading ? "..." : urgentObligations.length}
+            chip={
+              obligationsLoading
+                ? "Loading"
+                : urgentObligations.length
+                  ? "Act now"
+                  : "Clear"
+            }
+            tone={
+              obligationsLoading
+                ? "neutral"
+                : urgentObligations.length
+                  ? "warning"
+                  : "success"
+            }
+            nextAction={
+              obligationsLoading
+                ? "Loading key dates."
+                : urgentObligations[0]
+                  ? urgentObligations[0].title
+                  : "No urgent dates need action."
+            }
+            icon={<AlertTriangle size={17} />}
+            trend={obligationsTrend}
+          />
+          <DashboardMetricCard
+            href="/billing-readiness"
+            label="Billing blockers"
+            count={rentRollLoading ? "..." : billingIssues.length}
+            chip={
+              rentRollLoading
+                ? "Loading"
+                : billingIssues.length
+                  ? "Blocked"
+                  : "Ready"
+            }
+            tone={
+              rentRollLoading
+                ? "neutral"
+                : billingIssues.length
+                  ? "danger"
+                  : "success"
+            }
+            nextAction={
+              rentRollLoading
+                ? "Loading billing readiness."
+                : billingIssues[0]
+                  ? billingIssues[0].blockers[0]
+                  : "Invoice run is ready from current data."
+            }
+            icon={<ReceiptText size={17} />}
+          />
+          <DashboardMetricCard
+            href="/intake"
+            label="Needs review"
+            count={documentIntakesLoading ? "..." : needsReviewCount}
+            chip={
+              documentIntakesLoading
+                ? "Loading"
+                : needsReviewCount
+                  ? "Review"
+                  : "Empty"
+            }
+            tone={
+              documentIntakesLoading
+                ? "neutral"
+                : needsReviewCount
+                  ? "primary"
+                  : "neutral"
+            }
+            nextAction={
+              documentIntakesLoading
+                ? "Loading review queue."
+                : needsReviewCount
+                  ? "Approve extracted document data."
+                  : "Drop documents into Smart Intake."
+            }
+            icon={<Sparkles size={17} />}
+          />
+          <DashboardMetricCard
+            href="/intake"
+            label="Blocked docs"
+            count={documentIntakesLoading ? "..." : failedIntakeCount}
+            chip={
+              documentIntakesLoading
+                ? "Loading"
+                : failedIntakeCount
+                  ? "Fix"
+                  : "Clear"
+            }
+            tone={
+              documentIntakesLoading
+                ? "neutral"
+                : failedIntakeCount
+                  ? "danger"
+                  : "success"
+            }
+            nextAction={
+              documentIntakesLoading
+                ? "Checking document reads."
+                : failedIntakeCount
+                  ? "Review documents Leasium could not read."
+                  : "No intake failures right now."
+            }
+            icon={<FileText size={17} />}
+          />
+        </section>
+
         <section className="grid gap-5 lg:grid-cols-[430px_minmax(0,1fr)]">
           <div className="grid gap-5">
             <SectionPanel
@@ -3439,125 +3558,6 @@ export function Dashboard({
               </section>
             ) : null}
           </div>
-        </section>
-
-        {/* Metric grid trimmed 2026-05-23 (external design review §3.1):
-            6 → 4 operational cards. Properties + Tenants counts are not
-            "act now" metrics — they're navigational, and the sidebar
-            already links to both. The four operational cards (Operations,
-            Billing blockers, Needs review, Blocked docs) all answer
-            "what needs me right now?" which is what the metric strip is for.
-            Pending Remba review. */}
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <DashboardMetricCard
-            href="/operations"
-            label="Operations"
-            count={obligationsLoading ? "..." : urgentObligations.length}
-            chip={
-              obligationsLoading
-                ? "Loading"
-                : urgentObligations.length
-                  ? "Act now"
-                  : "Clear"
-            }
-            tone={
-              obligationsLoading
-                ? "neutral"
-                : urgentObligations.length
-                  ? "warning"
-                  : "success"
-            }
-            nextAction={
-              obligationsLoading
-                ? "Loading key dates."
-                : urgentObligations[0]
-                  ? urgentObligations[0].title
-                  : "No urgent dates need action."
-            }
-            icon={<AlertTriangle size={17} />}
-            trend={obligationsTrend}
-          />
-          <DashboardMetricCard
-            href="/billing-readiness"
-            label="Billing blockers"
-            count={rentRollLoading ? "..." : billingIssues.length}
-            chip={
-              rentRollLoading
-                ? "Loading"
-                : billingIssues.length
-                  ? "Blocked"
-                  : "Ready"
-            }
-            tone={
-              rentRollLoading
-                ? "neutral"
-                : billingIssues.length
-                  ? "danger"
-                  : "success"
-            }
-            nextAction={
-              rentRollLoading
-                ? "Loading billing readiness."
-                : billingIssues[0]
-                  ? billingIssues[0].blockers[0]
-                  : "Invoice run is ready from current data."
-            }
-            icon={<ReceiptText size={17} />}
-          />
-          <DashboardMetricCard
-            href="/intake"
-            label="Needs review"
-            count={documentIntakesLoading ? "..." : needsReviewCount}
-            chip={
-              documentIntakesLoading
-                ? "Loading"
-                : needsReviewCount
-                  ? "Review"
-                  : "Empty"
-            }
-            tone={
-              documentIntakesLoading
-                ? "neutral"
-                : needsReviewCount
-                  ? "primary"
-                  : "neutral"
-            }
-            nextAction={
-              documentIntakesLoading
-                ? "Loading review queue."
-                : needsReviewCount
-                  ? "Approve extracted document data."
-                  : "Drop documents into Smart Intake."
-            }
-            icon={<Sparkles size={17} />}
-          />
-          <DashboardMetricCard
-            href="/intake"
-            label="Blocked docs"
-            count={documentIntakesLoading ? "..." : failedIntakeCount}
-            chip={
-              documentIntakesLoading
-                ? "Loading"
-                : failedIntakeCount
-                  ? "Fix"
-                  : "Clear"
-            }
-            tone={
-              documentIntakesLoading
-                ? "neutral"
-                : failedIntakeCount
-                  ? "danger"
-                  : "success"
-            }
-            nextAction={
-              documentIntakesLoading
-                ? "Checking document reads."
-                : failedIntakeCount
-                  ? "Review documents Leasium could not read."
-                  : "No intake failures right now."
-            }
-            icon={<FileText size={17} />}
-          />
         </section>
 
         {!isIntakeWorkspace ? (

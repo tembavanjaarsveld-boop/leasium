@@ -794,6 +794,48 @@ icon-only width, and whether the mobile drawer's labels-always-show
 behaviour holds up when the drawer is wide enough to span much of
 a 480-700px viewport.
 
+### Dashboard order — metric strip up to position 2 (operator override)
+
+Status: pending Remba review. Per direct operator request 2026-05-23,
+the four-up metric strip on `/` (Operations, Billing blockers, Needs
+review, Blocked docs) moved from position 3 to position 2.
+
+Previous order (set earlier this review per §3 of the external
+review):
+
+1. Daily Command Center
+2. Two-column Smart Intake + Needs Attention
+3. Metric strip
+4. Upcoming lease events
+5. Ask Leasium
+6. Activity feed
+
+New order:
+
+1. Daily Command Center
+2. **Metric strip** (was 3)
+3. Two-column Smart Intake + Needs Attention (was 2)
+4. Upcoming lease events
+5. Ask Leasium
+6. Activity feed
+
+Rationale: the operational-metric cards already carry status chips
+("Act now" / "Blocked" / "Empty" / "Clear"), 7-day trend deltas, and
+a "next action" line per card. They're status-with-action, not
+summary stats. Putting them adjacent to the Command Center makes the
+at-a-glance scan land in one continuous first-viewport read.
+
+This is a deliberate revision of the §3.1 + §3.2 ordering call
+earlier in this review. SoT §10.5.6 updated to match — the original
+"Smart Intake at position 2" rule the SoT recorded was based on the
+review's "hero workflow" reading; the operator's actual day-to-day
+preference is the metric scan first. SoT now records the override
+with explicit rationale so future authors don't re-flip it.
+
+Remba should confirm whether this order reads as calmer in
+practice, and whether the Smart Intake drop zone still feels
+discoverable at position 3.
+
 ### Page-file split — dashboard.tsx phase 3
 
 Status: pending Remba review. Third extraction slice.

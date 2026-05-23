@@ -885,13 +885,23 @@ period the hamburger drawer is enough.
 
 ### 10.5.6 Dashboard structure
 
-- Order is fixed: **Command center → Smart Intake → Operational metrics
-  → Context (lease events / Ask Leasium / Activity feed)**.
+- Order is fixed: **Command center → Operational metrics → Smart Intake
+  + Needs attention → Context (lease events / Ask Leasium / Activity
+  feed)**.
 - The metric strip carries operational counts only (Operations, Billing
   blockers, Needs review, Blocked docs). Cap at 4. Navigational counts
   (Properties, Tenants) belong in the sidebar, not the metric strip.
 - The Smart Intake drop zone MUST sit in the first viewport at common
   laptop sizes (1440px). It is the product wedge.
+- 2026-05-23 operator override: the metric strip moved from position 3
+  (below Smart Intake) to position 2 (immediately after Command
+  Center). Rationale: the operational-metric cards already carry
+  status chips ("Act now" / "Blocked" / "Empty" / "Clear"), trend
+  deltas, and a "next action" line per card — they're status-with-
+  action, not summary stats, and an at-a-glance scan of them
+  alongside the Command Center is the natural first-viewport read.
+  Smart Intake + Needs attention slips one position down but stays
+  comfortably above the fold on standard laptop screens.
 
 ### 10.5.7 Provider mutation guardrail
 
