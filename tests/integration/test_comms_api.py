@@ -6,7 +6,8 @@ arrears reminder drafts only; future slices extend to document-chase and
 lease-event drafts.
 """
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -142,7 +143,7 @@ def test_comms_queue_skips_paused_and_future_reminder_cases(
     """Cases the operator has chosen to defer are excluded from the queue."""
 
     scope = _seed_arrears(session)
-    case = session.get(ArrearsCase, scope["case_id"])
+    case = session.get(ArrearsCase, UUID(scope["case_id"]))
     assert case is not None
     case.reminder_paused_until = date.today() + timedelta(days=14)
     session.commit()
@@ -175,7 +176,7 @@ def test_comms_queue_skips_resolved_and_zero_balance_cases(
     """Resolved or zero-balance cases never appear in the queue."""
 
     scope = _seed_arrears(session)
-    case = session.get(ArrearsCase, scope["case_id"])
+    case = session.get(ArrearsCase, UUID(scope["case_id"]))
     assert case is not None
     case.status = ArrearsCaseStatus.resolved
     session.commit()
