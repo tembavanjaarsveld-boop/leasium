@@ -614,6 +614,40 @@ makes the dashboard feel more active or more cluttered; and whether
 the metric strip should sit above or below the two-column block in
 a future iteration once Remba has eyes on Vercel.
 
+### Public onboarding first-impression — `/onboarding/[token]`
+
+Status: pending Remba review. The page at
+`apps/web/src/app/onboarding/[token]/page.tsx` has been rewritten from
+a 60-line "Your onboarding has moved into your Leasium account"
+redirect stub into a real first-impression surface. The page still
+hands the tenant off to the portal — it does not restore the public
+onboarding form, since the Tenant portal onboarding v1 work
+intentionally retired that — but it now welcomes the tenant by name,
+identifies the property (and unit, where one is on file), shows the
+onboarding status with due-date and link-expiry reassurance, includes
+a calm "your property manager only sees what you submit, nothing is
+applied until they review and confirm" trust line, and offers a
+single prominent "Continue to portal" CTA.
+
+Context is loaded via the existing `getTenantPortal(token)` public
+endpoint — no new API surface. The token used here and on
+`/tenant-portal/[token]` is the same value, so the same record
+resolves. Three render states: skeleton while the token resolves,
+the full welcome card when the API returns, and a calm fallback
+("You're invited to onboard") when the token is missing, expired, or
+the API errors. A separate "already submitted" path turns the CTA
+into "Open your portal" and drops the property/due-date block so the
+page doesn't ask the tenant to act when they don't need to.
+
+Remba should review the welcome-by-name copy, whether the property
+chip placement reads as helpful context or visual clutter, whether
+the trust line at the bottom should sit inside or outside the card,
+whether the "Invitation active" status pill is the right wording
+versus simpler labels like "Ready", and whether the expired/error
+fallback ("If your invitation link has expired, your property manager
+can send a fresh one") needs an explicit "request fresh link" path
+later.
+
 ### Deferred from the external review
 
 Not addressed yet, queued for follow-up:
@@ -621,8 +655,6 @@ Not addressed yet, queued for follow-up:
 - Page-file size policy — extract `dashboard.tsx`, `property-workspace.tsx`,
   `settings/page.tsx`, `operations/page.tsx` into composed sections at
   ~400 lines each.
-- Public onboarding first-impression — restore property/agency context
-  on `/onboarding/[token]` instead of redirecting straight to the portal.
 - Container hierarchy — introduce a workspace `<Surface>` distinct from
   the aside `<SectionPanel>` so dense table pages stop reading as a stack
   of look-alike white cards.
