@@ -2226,7 +2226,7 @@ function OperationsWorkspace() {
     if (item.kind === "onboarding") {
       return (
         <Link
-          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
           href="/tenants"
         >
           <MailCheck size={15} />
@@ -2237,7 +2237,7 @@ function OperationsWorkspace() {
     if (item.kind === "document_intake") {
       return (
         <Link
-          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
           href="/intake"
         >
           <Sparkles size={15} />
@@ -2603,7 +2603,7 @@ function OperationsWorkspace() {
               >
                 <div className="border-b border-border bg-muted/30 px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="inline-flex min-h-9 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
+                    <span className="inline-flex min-h-10 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
                       <UserRound size={14} className="text-primary" />
                       Team workload
                     </span>
@@ -2612,7 +2612,7 @@ function OperationsWorkspace() {
                       aria-label={`Show all open work, ${openQueueItems.length}`}
                       onClick={() => setAssigneeFilter("all")}
                       className={cn(
-                        "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                        "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                         assigneeFilter === "all"
                           ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
                           : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -2628,7 +2628,7 @@ function OperationsWorkspace() {
                       aria-label={`Show unowned work, ${unassignedWorkCount}`}
                       onClick={() => setAssigneeFilter("unassigned")}
                       className={cn(
-                        "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                        "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                         assigneeFilter === "unassigned"
                           ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
                           : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -2639,7 +2639,7 @@ function OperationsWorkspace() {
                         {unassignedWorkCount}
                       </span>
                     </button>
-                    <span className="inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                    <span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
                       Assigned
                       <span className="text-foreground">
                         {assignedWorkCount}
@@ -2650,7 +2650,7 @@ function OperationsWorkspace() {
                       aria-label={`Show assignment follow-ups, ${followUpDueCount}`}
                       onClick={() => setAssigneeFilter("follow_up")}
                       className={cn(
-                        "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                        "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                         assigneeFilter === "follow_up"
                           ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
                           : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -2667,7 +2667,7 @@ function OperationsWorkspace() {
                         aria-label={`Show my work, ${myWorkCount}`}
                         onClick={() => setAssigneeFilter("me")}
                         className={cn(
-                          "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                          "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                           assigneeFilter === "me"
                             ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
                             : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -2687,7 +2687,7 @@ function OperationsWorkspace() {
                           aria-label={`Show ${row.label} work, ${row.count}`}
                           onClick={() => setAssigneeFilter(filter)}
                           className={cn(
-                            "inline-flex min-h-9 max-w-full items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                            "inline-flex min-h-10 max-w-full items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                             active
                               ? "border-primary/30 bg-leasium-blue-soft text-leasium-blue-hover"
                               : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -4614,7 +4614,7 @@ function MaintenanceActions({
         </SecondaryButton>
       ) : null}
       <Link
-        className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
         href={`/operations/maintenance/${workOrder.id}`}
       >
         <CheckCircle2 size={15} className="text-leasium-success" />

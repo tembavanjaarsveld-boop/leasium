@@ -1840,7 +1840,7 @@ function MaintenanceDetailRoute() {
             <div className="flex flex-wrap gap-2">
               <Link
                 href="/operations"
-                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
               >
                 <ArrowLeft size={16} />
                 Operations
@@ -2334,7 +2334,7 @@ function MaintenanceDetailRoute() {
                           </div>
                           <Link
                             href={linkedInvoiceHandoff.href}
-                            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                           >
                             <ArrowUpRight size={14} />
                             {linkedInvoiceHandoff.action}
@@ -2360,7 +2360,7 @@ function MaintenanceDetailRoute() {
                           </div>
                           <Link
                             href={linkedInvoiceHandoff.href}
-                            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                           >
                             <ArrowUpRight size={14} />
                             Recover in Billing
@@ -2423,7 +2423,7 @@ function MaintenanceDetailRoute() {
                           href={invoiceDraftPreviewUrl(linkedInvoiceDraft.id)}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                         >
                           <Eye size={14} />
                           Preview
@@ -2433,7 +2433,7 @@ function MaintenanceDetailRoute() {
                             href={documentDownloadUrl(
                               linkedInvoicePdfDocumentId,
                             )}
-                            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                           >
                             <Download size={14} />
                             PDF
@@ -3017,7 +3017,7 @@ function MaintenanceDetailRoute() {
                         {document.documentId ? (
                           <a
                             href={documentDownloadUrl(document.documentId)}
-                            className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                            className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
                             target="_blank"
                             rel="noreferrer"
                           >
