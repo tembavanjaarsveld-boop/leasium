@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { HTMLAttributes, ReactNode } from "react";
 
+import { useUnmountDelay } from "@/lib/use-unmount-delay";
 import { cn } from "@/lib/utils";
 
 type EvidenceTone = "neutral" | "success" | "warning" | "danger" | "primary";
@@ -519,7 +520,9 @@ export function EvidenceDrawer({
   className,
   ...trailProps
 }: EvidenceDrawerProps) {
-  if (!open) {
+  const { shouldRender, isClosing } = useUnmountDelay(open, 300);
+
+  if (!shouldRender) {
     return null;
   }
 
@@ -528,14 +531,24 @@ export function EvidenceDrawer({
       <button
         type="button"
         aria-label={closeLabel}
-        className="absolute inset-0 cursor-default bg-leasium-navy-900/35 animate-leasium-backdrop-in"
+        className={cn(
+          "absolute inset-0 cursor-default bg-leasium-navy-900/35",
+          isClosing
+            ? "animate-leasium-backdrop-out"
+            : "animate-leasium-backdrop-in",
+        )}
         onClick={() => onOpenChange(false)}
       />
       <aside
         role="dialog"
         aria-modal="true"
         aria-labelledby="evidence-drawer-title"
-        className="absolute right-0 top-0 flex h-full w-full max-w-[440px] flex-col bg-white shadow-leasiumLg animate-leasium-drawer-in-right"
+        className={cn(
+          "absolute right-0 top-0 flex h-full w-full max-w-[440px] flex-col bg-white shadow-leasiumLg",
+          isClosing
+            ? "animate-leasium-drawer-out-right"
+            : "animate-leasium-drawer-in-right",
+        )}
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">

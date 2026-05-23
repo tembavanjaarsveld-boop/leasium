@@ -188,9 +188,57 @@ textarea {
   }
 }
 
+/* Exit keyframes. Use the ease-in token (elements accelerating away)
+   per Codex SoT §5. Paired with useUnmountDelay() in
+   lib/use-unmount-delay.ts so the component stays mounted long enough
+   for the animation to finish. Durations match the enter side so
+   timing stays symmetric. */
+@keyframes leasiumDrawerSlideOutRight {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
+@keyframes leasiumDrawerSlideOutLeft {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+
+@keyframes leasiumModalFadeScaleOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes leasiumBackdropFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 .animate-leasium-drawer-in-right {
   animation: leasiumDrawerSlideInRight var(--leasium-duration-slow)
     var(--leasium-ease) both;
+}
+
+.animate-leasium-drawer-out-right {
+  animation: leasiumDrawerSlideOutRight var(--leasium-duration-slow)
+    var(--leasium-ease-in) both;
 }
 
 .animate-leasium-drawer-in-left {
@@ -198,12 +246,27 @@ textarea {
     var(--leasium-ease) both;
 }
 
+.animate-leasium-drawer-out-left {
+  animation: leasiumDrawerSlideOutLeft var(--leasium-duration-slow)
+    var(--leasium-ease-in) both;
+}
+
 .animate-leasium-modal-in {
   animation: leasiumModalFadeScale var(--leasium-duration-base)
     var(--leasium-ease) both;
 }
 
+.animate-leasium-modal-out {
+  animation: leasiumModalFadeScaleOut var(--leasium-duration-base)
+    var(--leasium-ease-in) both;
+}
+
 .animate-leasium-backdrop-in {
   animation: leasiumBackdropFadeIn var(--leasium-duration-base)
     var(--leasium-ease) both;
+}
+
+.animate-leasium-backdrop-out {
+  animation: leasiumBackdropFadeOut var(--leasium-duration-base)
+    var(--leasium-ease-in) both;
 }

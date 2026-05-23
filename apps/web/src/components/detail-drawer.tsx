@@ -4,6 +4,8 @@ import { X } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 
 import { SecondaryButton } from "@/components/ui";
+import { useUnmountDelay } from "@/lib/use-unmount-delay";
+import { cn } from "@/lib/utils";
 
 /**
  * Generic right-side detail drawer for in-flow editing/preview without
@@ -36,6 +38,10 @@ export function DetailDrawer({
   children: ReactNode;
   testId?: string;
 }) {
+  // Drawer enter animation runs at Slow=300ms; matching exit keeps the
+  // panel mounted long enough for the slide-out keyframe to finish.
+  const { shouldRender, isClosing } = useUnmountDelay(open, 300);
+
   useEffect(() => {
     if (!open) return undefined;
     function onKey(event: KeyboardEvent) {
@@ -49,15 +55,15 @@ export function DetailDrawer({
   }, [open, onClose]);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!shouldRender) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [open]);
+  }, [shouldRender]);
 
-  if (!open) {
+  if (!shouldRender) {
     return null;
   }
 
@@ -73,9 +79,21 @@ export function DetailDrawer({
         type="button"
         aria-label="Close drawer"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-900/50 transition-opacity duration-200 ease-leasium animate-leasium-backdrop-in"
+        className={cn(
+          "absolute inset-0 bg-slate-900/50 transition-opacity duration-200 ease-leasium",
+          isClosing
+            ? "animate-leasium-backdrop-out"
+            : "animate-leasium-backdrop-in",
+        )}
       />
-      <div className="relative flex h-full w-full max-w-[560px] flex-col bg-white shadow-leasiumLg transition duration-200 ease-leasium animate-leasium-drawer-in-right">
+      <div
+        className={cn(
+          "relative flex h-full w-full max-w-[560px] flex-col bg-white shadow-leasiumLg transition duration-200 ease-leasium",
+          isClosing
+            ? "animate-leasium-drawer-out-right"
+            : "animate-leasium-drawer-in-right",
+        )}
+      >
         <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold leading-6 text-foreground">

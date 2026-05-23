@@ -25,6 +25,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LeasiumMark } from "@/components/brand";
 import { getCommsQueueCounts } from "@/lib/api";
+import { useUnmountDelay } from "@/lib/use-unmount-delay";
 import { cn } from "@/lib/utils";
 
 const COMMS_BADGE_ENTITY_KEY = "leasium.entity_id";
@@ -265,6 +266,13 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const [shortcutPending, setShortcutPending] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // Delayed-unmount controls so each modal/drawer plays its exit
+  // animation before unmounting. Durations match the enter side: modals
+  // use Base=200ms (matches modal-fade-scale), the mobile drawer uses
+  // Slow=300ms (matches the drawer slide).
+  const commandRender = useUnmountDelay(commandOpen, 200);
+  const cheatsheetRender = useUnmountDelay(cheatsheetOpen, 200);
+  const mobileNavRender = useUnmountDelay(mobileNavOpen, 300);
   const commsBadge = useCommsBadge();
   const shortcutTimeoutRef = useRef<number | null>(null);
   const filteredActions = useMemo(() => {
@@ -493,16 +501,26 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       </aside>
 
       {/* Mobile drawer — only reachable below md (hamburger hides at md+). */}
-      {mobileNavOpen ? (
+      {mobileNavRender.shouldRender ? (
         <div className="fixed inset-0 z-50 md:hidden">
           <div
-            className="absolute inset-0 bg-leasium-navy-900/60 animate-leasium-backdrop-in"
+            className={cn(
+              "absolute inset-0 bg-leasium-navy-900/60",
+              mobileNavRender.isClosing
+                ? "animate-leasium-backdrop-out"
+                : "animate-leasium-backdrop-in",
+            )}
             onClick={() => setMobileNavOpen(false)}
             aria-hidden
           />
           <aside
             aria-label="Primary navigation"
-            className="absolute inset-y-0 left-0 flex w-60 flex-col bg-leasium-navy-900 text-white shadow-leasiumLg animate-leasium-drawer-in-left"
+            className={cn(
+              "absolute inset-y-0 left-0 flex w-60 flex-col bg-leasium-navy-900 text-white shadow-leasiumLg",
+              mobileNavRender.isClosing
+                ? "animate-leasium-drawer-out-left"
+                : "animate-leasium-drawer-in-left",
+            )}
           >
             <div className="flex items-center justify-end px-2 pt-2">
               <button
@@ -577,9 +595,23 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           G… press a letter to jump (D/P/T/O/I/B/N/Q/S)
         </div>
       ) : null}
-      {cheatsheetOpen ? (
-        <div className="fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm animate-leasium-backdrop-in">
-          <div className="mx-auto max-w-lg overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg animate-leasium-modal-in">
+      {cheatsheetRender.shouldRender ? (
+        <div
+          className={cn(
+            "fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm",
+            cheatsheetRender.isClosing
+              ? "animate-leasium-backdrop-out"
+              : "animate-leasium-backdrop-in",
+          )}
+        >
+          <div
+            className={cn(
+              "mx-auto max-w-lg overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg",
+              cheatsheetRender.isClosing
+                ? "animate-leasium-modal-out"
+                : "animate-leasium-modal-in",
+            )}
+          >
             <div className="flex items-center gap-3 border-b border-border px-4 py-3">
               <Keyboard size={17} className="text-primary" />
               <h2 className="flex-1 text-sm font-semibold text-foreground">
@@ -639,9 +671,23 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           </div>
         </div>
       ) : null}
-      {commandOpen ? (
-        <div className="fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm animate-leasium-backdrop-in">
-          <div className="mx-auto max-w-xl overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg animate-leasium-modal-in">
+      {commandRender.shouldRender ? (
+        <div
+          className={cn(
+            "fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm",
+            commandRender.isClosing
+              ? "animate-leasium-backdrop-out"
+              : "animate-leasium-backdrop-in",
+          )}
+        >
+          <div
+            className={cn(
+              "mx-auto max-w-xl overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg",
+              commandRender.isClosing
+                ? "animate-leasium-modal-out"
+                : "animate-leasium-modal-in",
+            )}
+          >
             <div className="flex items-center gap-3 border-b border-border px-4 py-3">
               <Command size={17} className="text-primary" />
               <input

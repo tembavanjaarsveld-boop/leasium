@@ -49,6 +49,7 @@ import {
 import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
+import { useUnmountDelay } from "@/lib/use-unmount-delay";
 import { cn } from "@/lib/utils";
 import {
   Button,
@@ -1265,6 +1266,13 @@ function Workspace() {
   const [leaseEditorOpen, setLeaseEditorOpen] = useState(false);
   const [leaseMoreOpen, setLeaseMoreOpen] = useState(false);
   const [unitEditorOpen, setUnitEditorOpen] = useState(false);
+  // Delayed-unmount for the three workspace modals so each plays its
+  // exit animation before unmounting. Right-slide drawers (lease,
+  // property) hold the Slow=300ms duration; the centred unit editor
+  // matches Base=200ms.
+  const leaseEditorRender = useUnmountDelay(leaseEditorOpen, 300);
+  const propertyEditorRender = useUnmountDelay(propertyEditorOpen, 300);
+  const unitEditorRender = useUnmountDelay(unitEditorOpen, 200);
   const [activeLeaseIntakeId, setActiveLeaseIntakeId] = useState<string>("");
   const [leaseReviewDraftId, setLeaseReviewDraftId] = useState<string>("");
   const [leaseReviewDraft, setLeaseReviewDraft] =
@@ -5380,9 +5388,14 @@ function Workspace() {
           ) : null}
         </section>
 
-        {leaseEditorOpen ? (
+        {leaseEditorRender.shouldRender ? (
           <div
-            className="fixed inset-0 z-50 grid bg-foreground/20 backdrop-blur-[1px] animate-leasium-backdrop-in lg:justify-items-end"
+            className={cn(
+              "fixed inset-0 z-50 grid bg-foreground/20 backdrop-blur-[1px] lg:justify-items-end",
+              leaseEditorRender.isClosing
+                ? "animate-leasium-backdrop-out"
+                : "animate-leasium-backdrop-in",
+            )}
             role="dialog"
             aria-modal="true"
             aria-labelledby="lease-editor-title"
@@ -5394,7 +5407,12 @@ function Workspace() {
               onClick={closeLeaseEditor}
             />
             <form
-              className="relative grid h-full w-full max-w-xl grid-rows-[auto_1fr_auto] border-l border-border bg-white shadow-xl animate-leasium-drawer-in-right"
+              className={cn(
+                "relative grid h-full w-full max-w-xl grid-rows-[auto_1fr_auto] border-l border-border bg-white shadow-xl",
+                leaseEditorRender.isClosing
+                  ? "animate-leasium-drawer-out-right"
+                  : "animate-leasium-drawer-in-right",
+              )}
               onSubmit={leaseForm.handleSubmit((values) =>
                 leaseMutation.mutate(values),
               )}
@@ -5675,9 +5693,14 @@ function Workspace() {
           </div>
         ) : null}
 
-        {unitEditorOpen ? (
+        {unitEditorRender.shouldRender ? (
           <div
-            className="fixed inset-0 z-50 grid place-items-center bg-foreground/20 px-4 backdrop-blur-[1px] animate-leasium-backdrop-in"
+            className={cn(
+              "fixed inset-0 z-50 grid place-items-center bg-foreground/20 px-4 backdrop-blur-[1px]",
+              unitEditorRender.isClosing
+                ? "animate-leasium-backdrop-out"
+                : "animate-leasium-backdrop-in",
+            )}
             role="dialog"
             aria-modal="true"
             aria-labelledby="unit-editor-title"
@@ -5689,7 +5712,12 @@ function Workspace() {
               onClick={closeUnitEditor}
             />
             <form
-              className="relative w-full max-w-md rounded-md border border-border bg-white shadow-xl animate-leasium-modal-in"
+              className={cn(
+                "relative w-full max-w-md rounded-md border border-border bg-white shadow-xl",
+                unitEditorRender.isClosing
+                  ? "animate-leasium-modal-out"
+                  : "animate-leasium-modal-in",
+              )}
               onSubmit={unitForm.handleSubmit((values) =>
                 unitMutation.mutate(values),
               )}
@@ -5770,9 +5798,14 @@ function Workspace() {
           </div>
         ) : null}
 
-        {propertyEditorOpen ? (
+        {propertyEditorRender.shouldRender ? (
           <div
-            className="fixed inset-0 z-50 grid bg-foreground/20 backdrop-blur-[1px] animate-leasium-backdrop-in lg:justify-items-end"
+            className={cn(
+              "fixed inset-0 z-50 grid bg-foreground/20 backdrop-blur-[1px] lg:justify-items-end",
+              propertyEditorRender.isClosing
+                ? "animate-leasium-backdrop-out"
+                : "animate-leasium-backdrop-in",
+            )}
             role="dialog"
             aria-modal="true"
             aria-labelledby="property-editor-title"
@@ -5783,7 +5816,14 @@ function Workspace() {
               aria-label="Close property editor"
               onClick={closePropertyEditor}
             />
-            <aside className="relative h-full w-full max-w-xl overflow-y-auto border-l border-border bg-white p-4 shadow-xl animate-leasium-drawer-in-right">
+            <aside
+              className={cn(
+                "relative h-full w-full max-w-xl overflow-y-auto border-l border-border bg-white p-4 shadow-xl",
+                propertyEditorRender.isClosing
+                  ? "animate-leasium-drawer-out-right"
+                  : "animate-leasium-drawer-in-right",
+              )}
+            >
               <div className="mb-4 flex items-center justify-between">
                 <h2
                   id="property-editor-title"
