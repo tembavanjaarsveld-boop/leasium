@@ -215,6 +215,43 @@ Tier 2 follows after the highest-leverage Tier 1 items land.
 - [~] Tier 3 v1: AI inbox processor (Re-Leased Credia Action equivalent). New `/inbox` route + `POST /api/v1/ai/triage` endpoint. Operator pastes a message body; OpenAI returns a strict-JSON classification (kind, confidence, summary, suggested action, suggested target kind, key facts, warnings). Kinds: maintenance_request / payment_or_arrears / lease_change / tenant_contact / vendor_or_contractor / general / spam_or_noise. The classification card shows a deep-link "Take it from here" button pointing at the right Leasium surface (Operations, Tenants, Properties, etc.) so the reviewed workflow takes over. v1 is read-only — no records are created automatically. Backend audits body length + kind + confidence (not the body itself). Sidebar nav + G+M shortcut wired. Pending Remba review.
 - [~] Tier 3 v1 mobile audit pass: surveyed Dashboard / Operations / Notifications / Tenants / Properties / Tenant portal at <480px and 480-1024px viewport widths. Fixes shipped this pass: (1) AppHeader utility row now wraps — the entity selector drops to its own full-width row on mobile so it doesn't crush the icon cluster, and the Keyboard cheatsheet button is hidden below sm (operators on phones don't use keyboard shortcuts). (2) Dashboard metric grid gains intermediate breakpoints (`sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6`) so the 6 cards never get stuck two-wide-three-rows on a laptop. (3) Properties workspace table swapped `overflow-hidden` for `overflow-x-auto` with `min-w-[640px]` so it scrolls horizontally on phones instead of clipping. Operations / Notifications / Tenant portal already used `md:`/`xl:`/`flex-wrap` patterns so they reflow correctly without changes — confirmed during audit. Pending Remba review.
 
+### Automation backlog — driving "minimise humans in the loop"
+
+The 2026-05-23 [automation strategy](automation-strategy-2026-05-23.md) frames every item below: the platform's purpose is to take work *off* the operator. Each automation drafts and queues; the operator approves. The provider-mutation guardrail in [`CLAUDE.md`](../CLAUDE.md) is non-negotiable for every item in this list.
+
+**Near-term (next 1-3 sprints):**
+
+- [ ] **Scheduled comms loop v1.** `/api/v1/comms/queue` endpoint scans arrears cases past due, documents approaching expiry (insurance / bank guarantee / lease), and leases approaching expiry; returns draft candidates with kind + subject + body + recipient. Operator-facing queue page surfaces each draft with Approve / Edit / Dismiss. Approve fires the existing SendGrid pipe under the explicit-approval rule. Template-based drafts in v1; AI-drafted body in v2. Foundation slice — backend endpoint + tests landing first as a working slice.
+- [ ] **Inbound email parsing.** SendGrid Inbound Parse webhook → AI classifier (reusing the `/api/v1/ai/triage` shape) → attribution to tenant/lease → drafts the operator reply. Closes the loop on the AI Inbox so messages arrive *to* Leasium rather than being pasted. Needs SendGrid Inbound Parse + a DNS MX record.
+- [ ] **Inbound SMS parsing.** Twilio Studio flow → webhook → shares the classifier above. Each property or portfolio gets a unique Twilio number. Cheap once email parsing is wired.
+- [ ] **Compliance obligation model + reminders.** `compliance_obligation` table (recurring schedule per kind: insurance, smoke alarm, gas safety, fire safety, electrical, lease document expiry). Reuses the scheduled comms loop dispatch.
+- [ ] **Maintenance status forwarding automation.** AI drafts the "tenant → contractor" and "contractor → tenant" forwards in the work-order timeline. Operator approves each forward; the email/SMS goes through existing pipes.
+
+**Medium-term (next 1-2 quarters):**
+
+- [ ] **Annual rent increase batch.** Per-lease formula (CPI / fixed / market) → AI generates notice + draft email + updated charge rule for the affected leases. Operator approves the batch.
+- [ ] **Owner monthly statements.** Per-owner monthly compile of rent received / outgoings / management fees → PDF + email draft. Operator approves.
+- [ ] **Tenant-uploaded lease auto-match.** Tenant uploads signed lease → AI extracts terms → diffs against Leasium's draft → if the diff is below a threshold and the lease is signed, the lease auto-activates (still operator-reviewable from the activity feed).
+- [ ] **Tenant-uploaded insurance auto-update.** Tenant uploads certificate → AI extracts insurer / policy number / expiry → updates tenant metadata + sets a renewal compliance obligation.
+- [ ] **Maintenance categorisation + contractor draft.** Tenant submits a work order with photos → AI categorises (electrical / plumbing / urgent / cosmetic) → suggests a contractor from the operator's directory → drafts the contractor brief. Operator clicks send.
+- [ ] **Bank-feed reconciliation v1.** Basiq (AU) bank-feed OAuth → AI matches each transaction against expected charge rules → operator approves a batch. Removes the majority of reconciliation hours.
+- [ ] **Trust account compliance reports.** RBA-style monthly reconciliation report drafts. Lands once bank-feed is shipped.
+- [ ] **Folder-watch document intake.** Dropbox / Google Drive / OneDrive OAuth + polling worker → drops new files into Smart Intake automatically.
+- [ ] **DocuSign integration.** DocuSign Connect webhook + envelope create API. Lease sent for signature from within Leasium; completed envelope updates lease status from `pending` to `active`. Replaces the manual "did the tenant sign" check.
+- [ ] **Inspection report intake.** Operator runs an inspection on a phone → uploads notes + photos → AI extracts findings → creates work orders.
+
+**Big bets (post internal-first period):**
+
+- [ ] **WhatsApp Business inbound + outbound.** WhatsApp Business API approval + template messaging. Same classifier as email/SMS. Australia-heavy tenant population would benefit. Meta approval gates this.
+- [ ] **Voice / phone call intake.** Twilio Voice + OpenAI Whisper transcription. Inbound tenant call becomes a transcript + AI summary on the tenant timeline. Big bet; needs operator workflow design.
+- [ ] **Vacancy marketing copy generation.** Vacant property → AI drafts listing copy + price recommendation + photo selection. Requires market-rate data integration (RP Data / CoreLogic) for the price band.
+- [ ] **Vacancy applicant triage.** Applications arrive via listing platforms (realestate.com.au / Domain) → AI summarises affordability + references + flags → operator approves the shortlist. Needs listing-platform integrations.
+- [ ] **Predictive maintenance.** Pattern recognition over inspection + work-order history. Suggests preventive jobs before they become reactive. Needs years of internal data to train usefully.
+- [ ] **Year-end tax pack generation.** Compiles annual statements for each owner. Touches tax accounting; needs accountant sign-off on the format.
+- [ ] **Council / statutory communication routing.** Inbound council letters → AI classifies + routes to the right property/lease.
+- [ ] **Tenant self-serve rent adjustment.** Tenant requests rent relief via the portal → AI summarises affordability evidence → operator approves.
+- [ ] **Automated lease termination workflow.** Lease end-of-term → AI runs bond release → final account → tenant exit communications. Operator approves each stage.
+
 ### Pre-existing backlog (still valid, lower priority)
 
 - [ ] Apply the new `20260520_0018_maintenance_arrears_foundations`, `20260520_0019_tenant_portal_accounts`, `20260521_0020_register_import_plans`, `20260521_0021_operator_notification_preferences`, and `20260522_0022_branded_communication_templates` migrations in hosted Neon/Render if auto-migrations do not run.
