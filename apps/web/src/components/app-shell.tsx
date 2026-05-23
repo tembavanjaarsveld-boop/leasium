@@ -1,6 +1,7 @@
 "use client";
 
 import { UserButton, useUser } from "@clerk/nextjs";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   Building2,
@@ -26,7 +27,40 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LeasiumMark } from "@/components/brand";
+import { getCommsQueueCounts } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+const COMMS_BADGE_ENTITY_KEY = "leasium.entity_id";
+
+function useCommsBadge(): { urgent: number; total: number } | null {
+  const [entityId, setEntityId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(COMMS_BADGE_ENTITY_KEY);
+    setEntityId(stored);
+    // Listen for entity changes from any page that writes the key.
+    function onStorage(event: StorageEvent) {
+      if (event.key === COMMS_BADGE_ENTITY_KEY) {
+        setEntityId(event.newValue);
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const countsQuery = useQuery({
+    queryKey: ["comms-queue-counts", entityId],
+    queryFn: () => getCommsQueueCounts(entityId ?? ""),
+    enabled: Boolean(entityId),
+    // The sidebar fires this on every page mount; cache for 60s to keep
+    // the badge fresh without thrashing the API.
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+  });
+  return countsQuery.data
+    ? { urgent: countsQuery.data.urgent, total: countsQuery.data.total }
+    : null;
+}
 
 type NavItem = {
   href: string;
@@ -241,6 +275,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const [shortcutPending, setShortcutPending] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const commsBadge = useCommsBadge();
   const shortcutTimeoutRef = useRef<number | null>(null);
   const filteredActions = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -375,6 +410,10 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         {navItems.map((item) => {
           const active = isNavActive(item);
           const Icon = item.icon;
+          const showCommsBadge =
+            item.href === "/comms" &&
+            commsBadge !== null &&
+            commsBadge.total > 0;
           return (
             <Link
               key={item.href}
@@ -388,6 +427,21 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             >
               <Icon size={16} className="shrink-0" />
               <span className="flex-1 truncate">{item.label}</span>
+              {showCommsBadge ? (
+                <span
+                  aria-label={`${commsBadge!.total} drafts in the comms queue, ${commsBadge!.urgent} urgent`}
+                  className={cn(
+                    "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold leading-none",
+                    commsBadge!.urgent > 0
+                      ? "bg-danger text-white"
+                      : "bg-white/15 text-white",
+                  )}
+                >
+                  {commsBadge!.urgent > 0
+                    ? commsBadge!.urgent
+                    : commsBadge!.total}
+                </span>
+              ) : null}
             </Link>
           );
         })}

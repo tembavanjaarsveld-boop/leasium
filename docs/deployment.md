@@ -78,6 +78,19 @@ Set Twilio SMS status callbacks and SendGrid Event Webhook URLs to the hosted
 `/api/v1/tenant-onboarding/webhooks/...` endpoints using the shared webhook
 secret so Leasium can show sent, delivered, opened, and failed receipts.
 
+**DocuSign integration (scaffolded, not yet wired to real sends).** When the
+DocuSign developer account is provisioned, set on the API service:
+
+- `DOCUSIGN_ACCOUNT_ID` — DocuSign Account GUID
+- `DOCUSIGN_INTEGRATION_KEY` — Integration Key from the DocuSign console
+- `DOCUSIGN_USER_ID` — User GUID for the JWT grant (operator service account)
+- `DOCUSIGN_RSA_PRIVATE_KEY` — full PEM-encoded RSA private key
+- `DOCUSIGN_BASE_URL` (optional) — overrides the demo `https://demo.docusign.net/restapi`; production is `https://www.docusign.net/restapi`
+- `DOCUSIGN_AUTH_BASE_URL` (optional) — overrides the demo auth host
+- `DOCUSIGN_WEBHOOK_SECRET` (optional) — shared secret for verifying Connect webhook signatures
+
+Until all four required values are set, `stewart.integrations.docusign.send_lease_for_signature` returns `status="skipped"` with a clear `not_configured` error and never calls DocuSign. The shape of the dataclasses (`LeaseSignatureRequest`, `LeaseSignatureResult`) matches the SendGrid `DeliveryResult` pattern so the operator-facing receipt surface can render the same way once the real envelope-create + Connect-webhook plumbing lands in the next slice.
+
 **Inbound email parsing (SendGrid Inbound Parse).** Leasium accepts inbound
 emails through `POST /api/v1/comms/webhooks/sendgrid-inbound?entity_id=<uuid>`.
 To wire this up: (1) add an MX record on a subdomain you control

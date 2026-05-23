@@ -18,12 +18,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
+  ExternalLink,
   Inbox,
   Loader2,
+  Paperclip,
   Send,
+  Sparkles,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
@@ -45,6 +49,7 @@ import {
   dispatchCommsDraft,
   getCommsQueue,
   listEntities,
+  uploadDocument,
 } from "@/lib/api";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -55,6 +60,8 @@ const KIND_LABEL: Record<CommsKind, string> = {
   arrears_reminder: "Arrears reminder",
   insurance_expiry: "Insurance expiry",
   lease_renewal: "Lease renewal",
+  inbound_email: "Inbound email",
+  compliance_obligation: "Compliance reminder",
 };
 
 const SEVERITY_TONE: Record<CommsSeverity, StatusTone> = {
@@ -121,6 +128,8 @@ function CommsContent() {
       arrears_reminder: 0,
       insurance_expiry: 0,
       lease_renewal: 0,
+      inbound_email: 0,
+      compliance_obligation: 0,
     };
     for (const candidate of candidates) {
       tally[candidate.kind]++;
@@ -274,6 +283,30 @@ function CandidateCard({
   const dismissError = dismissMutation.error as Error | null;
   const tone = SEVERITY_TONE[candidate.severity];
 
+  // Evidence-attach lives on compliance obligations only. Smart Intake is
+  // the recommended path (AI extracts metadata + attributes the document);
+  // the manual file picker is a last-resort fallback so operators don't
+  // need to navigate elsewhere mid-flow. Backend v1 lands the upload in
+  // StoredDocument keyed to entity + tenant; v2 plumbs back-attribution
+  // into obligation_metadata.
+  const showEvidencePanel = candidate.kind === "compliance_obligation";
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [evidenceFilename, setEvidenceFilename] = useState<string | null>(null);
+  const evidenceMutation = useMutation({
+    mutationFn: (file: File) =>
+      uploadDocument({
+        entityId,
+        tenantId: candidate.tenant_id ?? undefined,
+        category: "other",
+        notes: `Compliance evidence for "${candidate.subject}"`,
+        file,
+      }),
+    onSuccess: (record) => {
+      setEvidenceFilename(record.filename);
+    },
+  });
+  const evidenceError = evidenceMutation.error as Error | null;
+
   return (
     <SectionPanel
       title={KIND_LABEL[candidate.kind]}
@@ -333,6 +366,71 @@ function CandidateCard({
             className="min-h-[180px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition duration-200 ease-leasium focus:border-primary focus:ring-2 focus:ring-primary/15"
           />
         </Field>
+
+        {showEvidencePanel ? (
+          <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-sm">
+            <div className="flex items-center gap-2 font-medium">
+              <Paperclip size={15} className="text-primary" />
+              Attach evidence
+            </div>
+            <p className="text-xs text-muted-foreground">
+              The recommended path: drop the document into Smart Intake so the
+              AI extracts the insurer / certificate detail and the file is
+              attributed automatically. The manual fallback below is for one-off
+              attachments only.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/intake"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-primary/30 bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-leasium-blue-hover"
+              >
+                <Sparkles size={15} />
+                Upload via Smart Intake
+                <ExternalLink size={13} />
+              </Link>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf,image/png,image/jpeg"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    evidenceMutation.mutate(file);
+                  }
+                  // Reset so the same filename can be re-picked.
+                  event.target.value = "";
+                }}
+              />
+              <SecondaryButton
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={evidenceMutation.isPending}
+              >
+                {evidenceMutation.isPending ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Paperclip size={15} />
+                )}
+                {evidenceMutation.isPending
+                  ? "Uploading…"
+                  : "Or attach a file manually"}
+              </SecondaryButton>
+            </div>
+            {evidenceFilename ? (
+              <p className="text-xs text-leasium-success-strong">
+                Uploaded {evidenceFilename}. The file is stored against the
+                tenant; finish review in Smart Intake to formally link it to
+                this compliance obligation.
+              </p>
+            ) : null}
+            {evidenceError ? (
+              <p className="text-xs text-danger">
+                {friendlyError(evidenceError)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {dispatchError ? (
           <p className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">

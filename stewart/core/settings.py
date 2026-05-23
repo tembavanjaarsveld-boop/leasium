@@ -102,6 +102,17 @@ class Settings(BaseSettings):
     tenant_onboarding_template_version: str = "v1"
     tenant_portal_invite_template_key: str = "tenant_portal_invite"
     tenant_portal_invite_template_version: str = "v1"
+    # DocuSign integration. Empty by default — operators populate when the
+    # DocuSign developer account is provisioned. send_lease_for_signature in
+    # stewart.integrations.docusign soft-fails with a clear "DocuSign is not
+    # configured" message until all four are present.
+    docusign_account_id: str = ""
+    docusign_integration_key: str = ""
+    docusign_user_id: str = ""
+    docusign_rsa_private_key: str = ""
+    docusign_base_url: str = "https://demo.docusign.net/restapi"
+    docusign_auth_base_url: str = "https://account-d.docusign.net"
+    docusign_webhook_secret: str = ""
     slack_webhook_url: str = ""
 
     @field_validator("database_url", "test_database_url", mode="before")

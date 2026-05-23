@@ -4138,7 +4138,9 @@ export function applyPropertyImage(payload: {
 export type CommsKind =
   | "arrears_reminder"
   | "insurance_expiry"
-  | "lease_renewal";
+  | "lease_renewal"
+  | "inbound_email"
+  | "compliance_obligation";
 export type CommsSeverity = "info" | "warning" | "danger";
 
 export type CommsCandidateRecord = {
@@ -4211,6 +4213,21 @@ export type CommsDismissRecord = {
 export function getCommsQueue(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
   return request<CommsQueueRecord>(`/comms/queue?${params.toString()}`);
+}
+
+export type CommsQueueCountsRecord = {
+  entity_id: string;
+  total: number;
+  urgent: number;
+  by_kind: Record<CommsKind, number>;
+  generated_at: string;
+};
+
+export function getCommsQueueCounts(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<CommsQueueCountsRecord>(
+    `/comms/queue/counts?${params.toString()}`,
+  );
 }
 
 export function dispatchCommsDraft(payload: CommsDispatchPayload) {

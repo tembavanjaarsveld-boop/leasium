@@ -51,6 +51,7 @@ from apps.api.schemas.comms import (
     CommsDismissRead,
     CommsDispatchCreate,
     CommsDispatchRead,
+    CommsQueueCountsRead,
     CommsQueueRead,
 )
 
@@ -906,6 +907,49 @@ def get_comms_queue(
     return CommsQueueRead(
         entity_id=entity_id,
         candidates=candidates,
+        generated_at=utcnow(),
+    )
+
+
+@router.get("/queue/counts", response_model=CommsQueueCountsRead)
+def get_comms_queue_counts(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> CommsQueueCountsRead:
+    """Lightweight queue counts for the sidebar nav badge.
+
+    Reuses the same scanners as ``/queue`` so a candidate that surfaces in
+    the queue is reflected in the counts. The badge updates every time the
+    sidebar mounts; this endpoint is cheap enough to call on every page
+    load.
+    """
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    candidates = (
+        _inbound_email_candidates(entity_id, session)
+        + _arrears_candidates(entity_id, session)
+        + _compliance_candidates(entity_id, session)
+        + _insurance_candidates(entity_id, session)
+        + _lease_renewal_candidates(entity_id, session)
+    )
+    by_kind: dict[str, int] = {
+        "arrears_reminder": 0,
+        "insurance_expiry": 0,
+        "lease_renewal": 0,
+        "inbound_email": 0,
+        "compliance_obligation": 0,
+    }
+    urgent = 0
+    for candidate in candidates:
+        by_kind[candidate.kind] = by_kind.get(candidate.kind, 0) + 1
+        if candidate.severity == "danger":
+            urgent += 1
+    return CommsQueueCountsRead(
+        entity_id=entity_id,
+        total=len(candidates),
+        urgent=urgent,
+        by_kind=by_kind,  # type: ignore[arg-type]
         generated_at=utcnow(),
     )
 

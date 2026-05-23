@@ -62,6 +62,22 @@ class CommsQueueRead(BaseModel):
     generated_at: datetime
 
 
+class CommsQueueCountsRead(BaseModel):
+    """Lightweight count summary for the sidebar nav badge.
+
+    Built on the same scanners as ``CommsQueueRead`` but returns only totals
+    by severity so the AppHeader can render an in-app notification badge on
+    the Comms nav entry without paying the full candidate-construction cost
+    on every page load.
+    """
+
+    entity_id: UUID
+    total: int
+    urgent: int
+    by_kind: dict[CommsKind, int]
+    generated_at: datetime
+
+
 class CommsDispatchCreate(BaseModel):
     """Payload for ``POST /api/v1/comms/dispatch``.
 
