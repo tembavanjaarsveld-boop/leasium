@@ -806,7 +806,7 @@ def _resolve_dispatch_entity_id(
             )
         return prop.entity_id, lease
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail="Unsupported comms target.",
     )
 
@@ -982,7 +982,7 @@ def _resolve_dismiss_entity_id(
             )
         return prop.entity_id, lease
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail="Unsupported comms target.",
     )
 
