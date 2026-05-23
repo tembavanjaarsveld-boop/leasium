@@ -1287,7 +1287,7 @@ function BillingReadinessWorkspace() {
                 {highlightedMaintenanceWorkOrder ? (
                   <Link
                     href={`/operations/maintenance/${highlightedMaintenanceWorkOrder.id}`}
-                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                   >
                     <ArrowUpRight size={15} />
                     Open work order
@@ -1778,7 +1778,7 @@ function BillingReadinessWorkspace() {
                                     href={invoiceDraftPreviewUrl(draft.id)}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                                   >
                                     <Eye size={14} />
                                     Preview
@@ -1791,7 +1791,7 @@ function BillingReadinessWorkspace() {
                                       metadataText(pdfArtifact.document_id) ??
                                         "",
                                     )}
-                                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                                   >
                                     <ReceiptText size={14} />
                                     PDF
@@ -1903,7 +1903,7 @@ function BillingReadinessWorkspace() {
                           type="button"
                           aria-pressed={isActive}
                           onClick={() => setDeliveryFilter(filter.id)}
-                          className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition duration-200 ease-leasium ${
+                          className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition duration-200 ease-leasium ${
                             isActive
                               ? "border-primary bg-primary text-primary-foreground"
                               : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -2315,7 +2315,7 @@ function BillingReadinessWorkspace() {
                                     href={invoiceDraftPreviewUrl(draft.id)}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                                   >
                                     <Eye size={14} />
                                     Preview
@@ -2328,7 +2328,7 @@ function BillingReadinessWorkspace() {
                                       metadataText(pdfArtifact.document_id) ??
                                         "",
                                     )}
-                                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                                   >
                                     <ReceiptText size={14} />
                                     PDF
@@ -2635,7 +2635,7 @@ function BillingReadinessWorkspace() {
                                 </div>
                                 <Link
                                   href={action.href}
-                                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                                 >
                                   <ArrowUpRight size={15} />
                                   {action.label}
