@@ -992,43 +992,111 @@ Not addressed yet, queued for follow-up:
   `bg-leasium-blue-soft/10` tint (effectively invisible on navy-900) with
   a real surface tone.
 
-### Token consistency pass v1 (2026-05-23) — Remba pending
+### Token consistency pass v1 (2026-05-23) — Remba approved
 
 Slice landed against the Visual polish + brand gap surfaced by the
 competitive rating against Re-Leased / PropertyMe / PropertyTree. Driven
 by Ticket 1 of the polish-skill plan (`docs/external-skills/hallmark/`
 and `docs/external-skills/anthropic-frontend-design/` informed the
-rubric; Codex SoT remains the source of truth). All five items below
-are visible and so Remba-pending per §2.2 of CLAUDE.md.
+rubric; Codex SoT remains the source of truth). All six items below
+are visible and Remba-approved 2026-05-23 alongside the Motion polish v1
+slice (commit bb65224).
 
-- [~] Added `Micro: 11px / 14px / 600 / 0.01em` step to Codex SoT §4
+- [x] Added `Micro: 11px / 14px / 600 / 0.01em` step to Codex SoT §4
   Typography. New Tailwind utility `text-leasium-micro`. Migrated all 35
   ad-hoc `text-[11px]` and `text-[10px]` usages (13 files: app-shell,
   property-workspace, dashboard, dashboard/*, saved-views-menu,
   property-occupancy, plus 6 page files). The 6 `text-[10px]` callers
-  bumped up 1px to align on the new token — Remba should confirm the
-  bump in chip/kbd contexts looks right.
-- [~] Mirrored full Codex slate ramp (200 / 150 / 100 / 50) into
+  bumped up 1px to align on the new token — Remba confirmed the bump
+  in chip/kbd contexts reads correctly.
+- [x] Mirrored full Codex slate ramp (200 / 150 / 100 / 50) into
   `tailwind.config.ts`. Previously truncated at slate-300.
-- [~] Added Codex `borderRadius` extension to `tailwind.config.ts`
+- [x] Added Codex `borderRadius` extension to `tailwind.config.ts`
   (`leasiumXs` through `leasium2xl`). Previously missing entirely;
   `rounded-leasium*` consumers silently fell through to Tailwind defaults.
-- [~] Added missing CSS vars in `globals.css`:
+- [x] Added missing CSS vars in `globals.css`:
   `--leasium-radius-xs/-xl/-2xl` and `--leasium-shadow-md/-lg`. Now
   available for non-Tailwind contexts (inline styles, SVG, third-party
   embeds).
-- [~] Added `tabular-nums` at the `<table>` className level across 13
+- [x] Added `tabular-nums` at the `<table>` className level across 13
   table elements in 6 files (billing-readiness, tenants,
   intake/spreadsheet, settings, property-workspace, statements). Numbers
   now align in arrears, rent roll, statements, and intake review.
-- [~] Extracted hardcoded sparkline colours in
+- [x] Extracted hardcoded sparkline colours in
   `DashboardMetricCard.tsx` into a `SPARKLINE_STROKE` const referencing
   Codex tokens. SVG stroke props can't take Tailwind classes, so the
   const stays in the file with a pointer to lift it to a shared module
   if other charts need it.
 
-Verified: ESLint + tsc both pass clean on all 18 touched files.
-Playwright smoke not run in this session — Temba to run on the Mac.
+Verified: ESLint + tsc clean on all 18 touched files; Playwright smoke
+re-run on Temba's Mac and passed.
+
+### Motion polish v1 (2026-05-23) — Remba approved
+
+Two no-decision items from Ticket 3 of the polish plan, shipped in
+commit bb65224.
+
+- [x] Added `ease-leasium` to the DetailDrawer backdrop opacity
+  transition. The one outlier across 80 transitions that paired
+  `duration-200` without an easing token; backdrop fade now matches
+  the panel ease.
+- [x] Migrated `focus:` → `focus-visible:` on 62 className occurrences
+  across 11 files for the form-input pattern (`outline-none` paired
+  with `focus:border-primary` / `focus:ring-2` / `focus:ring-primary`).
+  Form inputs no longer flash a focus ring on mouse click; keyboard
+  navigation behaviour is unchanged. One checkbox case
+  (`focus:ring-primary` without `outline-none`) intentionally left for
+  a follow-up.
+
+### Motion polish v2 (2026-05-23) — Remba pending
+
+Four decision-needed items from Ticket 3 of the polish plan, shipped
+after Remba pre-approved the recommendations.
+
+- [~] Codex SoT §5 motion scale amended to Fast 150 / Base 200 /
+  Slow 300 (was 120 / 180 / 260). Aligns with Tailwind stock durations
+  so the 80 existing `duration-200` callers continue to read as Codex
+  Base without a token migration. New authoring guidance: prefer
+  `duration-leasiumFast/Base/Slow` tokens for new work so future scale
+  changes are one config edit, not 80.
+- [~] Added two new easings to Codex SoT §5 alongside the existing
+  Enter (`ease-leasium`): Exit (`ease-leasiumIn`,
+  `cubic-bezier(0.7, 0, 0.84, 0)`) for elements leaving and Toggle
+  (`ease-leasiumToggle`, `cubic-bezier(0.65, 0, 0.35, 1)`) for
+  symmetric state changes. Mirrored as CSS vars
+  (`--leasium-ease-in`, `--leasium-ease-toggle`) and Tailwind tokens.
+- [~] Added three @keyframes blocks to `globals.css`:
+  `leasiumDrawerSlideInRight`, `leasiumModalFadeScale`, and
+  `leasiumBackdropFadeIn`. Surfaced as Tailwind-style utility classes
+  `animate-leasium-drawer-in-right`, `animate-leasium-modal-in`, and
+  `animate-leasium-backdrop-in`. All animate `transform` and `opacity`
+  only (GPU-composited, no layout trigger).
+- [~] Applied the enter animations to four high-traffic surfaces:
+  DetailDrawer (`components/detail-drawer.tsx`), EvidenceDrawer
+  (`components/evidence-drawer.tsx`), the keyboard cheatsheet modal,
+  and the command palette modal (both in `components/app-shell.tsx`).
+  Drawer entries slide in from the right at Slow=300ms; modal entries
+  fade and gently scale at Base=200ms; backdrops fade in at Base.
+  Reduced-motion preference still collapses everything to 0.01ms via
+  the existing global escape hatch.
+
+Remba should review: animation feel (too long? too snappy?),
+direction (right-slide for drawers is correct for the workspace
+layout), and modal scale magnitude (0.97 → 1 — barely perceptible).
+
+### Deferred from Motion polish v2 — pending decision
+
+- Mobile nav drawer (`app-shell.tsx:497`) slides in from the LEFT;
+  needs a separate `drawerSlideInLeft` keyframe or a CSS variable
+  flip. Deferred per CLAUDE.md §2.3 (mobile is below the
+  internal-first laptop priority).
+- Three property-workspace modals (`property-workspace.tsx:5385/5680/5775`)
+  still pop in instantly. Deferred until the planned page-file split
+  for `property-workspace.tsx` (6,120 lines) lands.
+- Exit / close animations not yet implemented. Drawers and modals
+  unmount on close in a single render cycle. Hallmark recommends
+  ~75% of enter duration for exits; Codex SoT §5 now documents the
+  exit easing token but no surface uses it yet.
 
 ### Deferred from the token consistency pass — pending decision
 

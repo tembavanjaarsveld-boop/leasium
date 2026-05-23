@@ -304,13 +304,37 @@ LG: 0 20px 48px rgba(16, 24, 40, 0.12)
 ### Motion
 
 ```txt
-Fast:     120ms
-Base:     180ms
-Slow:     260ms
-Easing:   cubic-bezier(0.16, 1, 0.3, 1)
+Fast:     150ms
+Base:     200ms
+Slow:     300ms
+
+Easings:
+  Enter (default):  cubic-bezier(0.16, 1, 0.3, 1)   /* ease-out */
+  Exit:             cubic-bezier(0.7,  0, 0.84, 0)  /* ease-in */
+  Toggle:           cubic-bezier(0.65, 0, 0.35, 1)  /* ease-in-out */
 ```
 
-Motion should be subtle. Use it for drawer transitions, hover states, upload progress, and panel opening. Respect `prefers-reduced-motion`.
+The duration scale aligns with Tailwind's stock `duration-150/-200/-300`
+so the existing 80 `duration-200` callers continue to read as Codex
+Base without a token migration. Use Base for most transitions, Fast
+for button press / toggle ticks / colour shifts, Slow for drawer,
+modal, page reveal, and accordion enters.
+
+Easings are paired with direction. Enter (the default `ease-leasium`)
+slows into place — use it for elements arriving on screen and for
+state toggles where direction is ambiguous. Exit (`ease-leasiumIn`)
+accelerates away — use it for elements leaving. Toggle
+(`ease-leasiumToggle`) is symmetric — use it for state changes that
+don't have a clear enter/exit semantic (e.g. expand/collapse).
+
+Animate only `transform` and `opacity` (GPU-composited; no layout
+trigger). Exit durations should be ~75% of the enter duration when
+both sides of a transition are visible.
+
+Respect `prefers-reduced-motion`. `globals.css` already collapses
+all motion to 0.01ms under that preference; per-component animations
+can still opt out via `motion-safe:` Tailwind variants if a critical
+UI cue would be lost without motion.
 
 ---
 
@@ -476,8 +500,18 @@ export const leasiumTheme = {
     leasiumLg: "0 20px 48px rgba(16, 24, 40, 0.12)",
   },
 
+  transitionDuration: {
+    leasiumFast: "150ms",
+    leasiumBase: "200ms",
+    leasiumSlow: "300ms",
+  },
+
   transitionTimingFunction: {
+    // leasium is the default ease (Enter / ease-out) used by every
+    // existing transition; keep the short name as the public API.
     leasium: "cubic-bezier(0.16, 1, 0.3, 1)",
+    leasiumIn: "cubic-bezier(0.7, 0, 0.84, 0)",
+    leasiumToggle: "cubic-bezier(0.65, 0, 0.35, 1)",
   },
 };
 ```

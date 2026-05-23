@@ -73,9 +73,9 @@ export function DetailDrawer({
         type="button"
         aria-label="Close drawer"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-900/50 transition-opacity duration-200 ease-leasium"
+        className="absolute inset-0 bg-slate-900/50 transition-opacity duration-200 ease-leasium animate-leasium-backdrop-in"
       />
-      <div className="relative flex h-full w-full max-w-[560px] flex-col bg-white shadow-leasiumLg transition duration-200 ease-leasium">
+      <div className="relative flex h-full w-full max-w-[560px] flex-col bg-white shadow-leasiumLg transition duration-200 ease-leasium animate-leasium-drawer-in-right">
         <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold leading-6 text-foreground">

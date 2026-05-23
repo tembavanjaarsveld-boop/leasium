@@ -528,14 +528,14 @@ export function EvidenceDrawer({
       <button
         type="button"
         aria-label={closeLabel}
-        className="absolute inset-0 cursor-default bg-leasium-navy-900/35"
+        className="absolute inset-0 cursor-default bg-leasium-navy-900/35 animate-leasium-backdrop-in"
         onClick={() => onOpenChange(false)}
       />
       <aside
         role="dialog"
         aria-modal="true"
         aria-labelledby="evidence-drawer-title"
-        className="absolute right-0 top-0 flex h-full w-full max-w-[440px] flex-col bg-white shadow-leasiumLg"
+        className="absolute right-0 top-0 flex h-full w-full max-w-[440px] flex-col bg-white shadow-leasiumLg animate-leasium-drawer-in-right"
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">

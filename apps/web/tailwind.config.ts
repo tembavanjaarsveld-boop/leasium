@@ -116,8 +116,28 @@ const config: Config = {
           { lineHeight: "14px", fontWeight: "600", letterSpacing: "0.01em" },
         ],
       },
+      // transitionDuration mirrors docs/leasium-codex-design-source-of-truth.md §5
+      // (Motion). Aligns with Tailwind stock durations 150/200/300 so the
+      // 80 existing `duration-200` callers continue to read as Codex Base
+      // without a token migration. Authors of new motion should prefer the
+      // tokenised names (`duration-leasiumBase` etc.) so future scale
+      // changes are one config-file edit, not 80.
+      transitionDuration: {
+        leasiumFast: "150ms",
+        leasiumBase: "200ms",
+        leasiumSlow: "300ms",
+      },
       transitionTimingFunction: {
+        // `ease-leasium` (Enter / ease-out) is the default used by every
+        // existing transition; keep the short name as the public API.
         leasium: "cubic-bezier(0.16, 1, 0.3, 1)",
+        // ease-leasiumIn (Exit / ease-in) — for elements leaving the
+        // viewport. Pair with ~75% of the enter duration.
+        leasiumIn: "cubic-bezier(0.7, 0, 0.84, 0)",
+        // ease-leasiumToggle (Toggle / ease-in-out) — for symmetric
+        // state changes (expand/collapse, theme toggle) where neither
+        // enter nor exit semantics dominate.
+        leasiumToggle: "cubic-bezier(0.65, 0, 0.35, 1)",
       },
     },
   },

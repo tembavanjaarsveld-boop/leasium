@@ -578,8 +578,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         </div>
       ) : null}
       {cheatsheetOpen ? (
-        <div className="fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm">
-          <div className="mx-auto max-w-lg overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg">
+        <div className="fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm animate-leasium-backdrop-in">
+          <div className="mx-auto max-w-lg overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg animate-leasium-modal-in">
             <div className="flex items-center gap-3 border-b border-border px-4 py-3">
               <Keyboard size={17} className="text-primary" />
               <h2 className="flex-1 text-sm font-semibold text-foreground">
@@ -640,8 +640,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         </div>
       ) : null}
       {commandOpen ? (
-        <div className="fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm">
-          <div className="mx-auto max-w-xl overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg">
+        <div className="fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm animate-leasium-backdrop-in">
+          <div className="mx-auto max-w-xl overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg animate-leasium-modal-in">
             <div className="flex items-center gap-3 border-b border-border px-4 py-3">
               <Command size={17} className="text-primary" />
               <input
