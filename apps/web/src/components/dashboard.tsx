@@ -73,10 +73,6 @@ import {
   TenantRecord,
   TenantOnboardingRecord,
 } from "@/lib/api";
-import {
-  portfolioOccupancyTotals,
-  propertyOccupancyFromRentRoll,
-} from "@/lib/property-occupancy";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const DEMO_MODE_STORAGE_KEY = "leasium.demo_mode";
@@ -3371,18 +3367,6 @@ export function Dashboard({
   const entitySelectionLoading =
     entitiesLoading ||
     (!demoMode && !selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
-  const propertiesLoading =
-    entitySelectionLoading ||
-    (!demoMode &&
-      Boolean(selectedEntityId) &&
-      !propertiesQuery.data &&
-      (propertiesQuery.isLoading || propertiesQuery.isFetching));
-  const tenantsLoading =
-    entitySelectionLoading ||
-    (!demoMode &&
-      Boolean(selectedEntityId) &&
-      !tenantsQuery.data &&
-      (tenantsQuery.isLoading || tenantsQuery.isFetching));
   const obligationsLoading =
     entitySelectionLoading ||
     (!demoMode &&
@@ -3435,10 +3419,6 @@ export function Dashboard({
       rentRollQuery.error ??
       onboardingQuery.error ??
       documentIntakesQuery.error);
-  const displayPropertiesCount = demoMode
-    ? 1
-    : (propertiesQuery.data?.length ?? 0);
-  const displayTenantsCount = demoMode ? 3 : (tenantsQuery.data?.length ?? 0);
   const displayObligations = useMemo(
     () => (demoMode ? demoObligationRows : (obligationsQuery.data ?? [])),
     [demoMode, demoObligationRows, obligationsQuery.data],
@@ -3455,30 +3435,6 @@ export function Dashboard({
     [demoMode, obligationsQuery.data],
   );
 
-  const portfolioOccupancy = useMemo(() => {
-    const properties = demoMode ? [] : (propertiesQuery.data ?? []);
-    if (!properties.length) {
-      return null;
-    }
-    const occupancies = properties.map((property) =>
-      propertyOccupancyFromRentRoll(property, displayRentRoll),
-    );
-    return portfolioOccupancyTotals(occupancies);
-  }, [demoMode, displayRentRoll, propertiesQuery.data]);
-  const propertiesOccupancySummary = useMemo(() => {
-    if (!portfolioOccupancy) {
-      return null;
-    }
-    const leasedTotal =
-      portfolioOccupancy.leased + portfolioOccupancy.leasedInternal;
-    const parts: string[] = [];
-    if (leasedTotal > 0) parts.push(`${leasedTotal} leased`);
-    if (portfolioOccupancy.partial > 0)
-      parts.push(`${portfolioOccupancy.partial} partial`);
-    if (portfolioOccupancy.vacant > 0)
-      parts.push(`${portfolioOccupancy.vacant} vacant`);
-    return parts.length ? parts.join(" · ") : null;
-  }, [portfolioOccupancy]);
   const displayOnboardings = useMemo(
     () => (demoMode ? demoOnboardingRows : (onboardingQuery.data ?? [])),
     [demoMode, demoOnboardingRows, onboardingQuery.data],
@@ -3881,184 +3837,6 @@ export function Dashboard({
             counts={commandCenterCounts}
           />
         ) : null}
-
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <DashboardMetricCard
-            href="/properties"
-            label="Properties"
-            count={propertiesLoading ? "..." : displayPropertiesCount}
-            chip={
-              propertiesLoading
-                ? "Loading"
-                : displayPropertiesCount
-                  ? "Live"
-                  : "Setup"
-            }
-            tone={
-              propertiesLoading
-                ? "neutral"
-                : displayPropertiesCount
-                  ? "success"
-                  : "neutral"
-            }
-            nextAction={
-              propertiesLoading
-                ? "Loading live property data."
-                : displayPropertiesCount
-                  ? (propertiesOccupancySummary ??
-                    "Open the portfolio workspace.")
-                  : "Create or import your first property."
-            }
-            icon={<Layers3 size={17} />}
-          />
-          <DashboardMetricCard
-            href="/tenants"
-            label="Tenants"
-            count={tenantsLoading ? "..." : displayTenantsCount}
-            chip={
-              tenantsLoading
-                ? "Loading"
-                : activeOnboardings.length
-                  ? "Waiting"
-                  : "Ready"
-            }
-            tone={
-              tenantsLoading
-                ? "neutral"
-                : activeOnboardings.length
-                  ? "primary"
-                  : "success"
-            }
-            nextAction={
-              tenantsLoading
-                ? "Loading tenant records."
-                : activeOnboardings.length
-                  ? `${activeOnboardings.length} onboarding link waiting on tenants.`
-                  : "Add tenants or send onboarding links."
-            }
-            icon={<UserRound size={17} />}
-          />
-          <DashboardMetricCard
-            href="/operations"
-            label="Operations"
-            count={obligationsLoading ? "..." : urgentObligations.length}
-            chip={
-              obligationsLoading
-                ? "Loading"
-                : urgentObligations.length
-                  ? "Act now"
-                  : "Clear"
-            }
-            tone={
-              obligationsLoading
-                ? "neutral"
-                : urgentObligations.length
-                  ? "warning"
-                  : "success"
-            }
-            nextAction={
-              obligationsLoading
-                ? "Loading key dates."
-                : urgentObligations[0]
-                  ? urgentObligations[0].title
-                  : "No urgent dates need action."
-            }
-            icon={<AlertTriangle size={17} />}
-            trend={obligationsTrend}
-          />
-          <DashboardMetricCard
-            href="/billing-readiness"
-            label="Billing blockers"
-            count={rentRollLoading ? "..." : billingIssues.length}
-            chip={
-              rentRollLoading
-                ? "Loading"
-                : billingIssues.length
-                  ? "Blocked"
-                  : "Ready"
-            }
-            tone={
-              rentRollLoading
-                ? "neutral"
-                : billingIssues.length
-                  ? "danger"
-                  : "success"
-            }
-            nextAction={
-              rentRollLoading
-                ? "Loading billing readiness."
-                : billingIssues[0]
-                  ? billingIssues[0].blockers[0]
-                  : "Invoice run is ready from current data."
-            }
-            icon={<ReceiptText size={17} />}
-          />
-          <DashboardMetricCard
-            href="/intake"
-            label="Needs review"
-            count={documentIntakesLoading ? "..." : needsReviewCount}
-            chip={
-              documentIntakesLoading
-                ? "Loading"
-                : needsReviewCount
-                  ? "Review"
-                  : "Empty"
-            }
-            tone={
-              documentIntakesLoading
-                ? "neutral"
-                : needsReviewCount
-                  ? "primary"
-                  : "neutral"
-            }
-            nextAction={
-              documentIntakesLoading
-                ? "Loading review queue."
-                : needsReviewCount
-                  ? "Approve extracted document data."
-                  : "Drop documents into Smart Intake."
-            }
-            icon={<Sparkles size={17} />}
-          />
-          <DashboardMetricCard
-            href="/intake"
-            label="Blocked docs"
-            count={documentIntakesLoading ? "..." : failedIntakeCount}
-            chip={
-              documentIntakesLoading
-                ? "Loading"
-                : failedIntakeCount
-                  ? "Fix"
-                  : "Clear"
-            }
-            tone={
-              documentIntakesLoading
-                ? "neutral"
-                : failedIntakeCount
-                  ? "danger"
-                  : "success"
-            }
-            nextAction={
-              documentIntakesLoading
-                ? "Checking document reads."
-                : failedIntakeCount
-                  ? "Review documents Leasium could not read."
-                  : "No intake failures right now."
-            }
-            icon={<FileText size={17} />}
-          />
-        </section>
-
-        {!isIntakeWorkspace ? (
-          <UpcomingLeaseEventsPanel
-            overview={insightsOverviewQuery.data}
-            isLoading={insightsOverviewQuery.isLoading}
-          />
-        ) : null}
-
-        <AskLeasiumPanel entityId={selectedEntityId} />
-
-        <ActivityFeedPanel entityId={selectedEntityId} />
 
         <section className="grid gap-5 lg:grid-cols-[430px_minmax(0,1fr)]">
           <div className="grid gap-5">
@@ -4550,6 +4328,137 @@ export function Dashboard({
             ) : null}
           </div>
         </section>
+
+        {/* Metric grid trimmed 2026-05-23 (external design review §3.1):
+            6 → 4 operational cards. Properties + Tenants counts are not
+            "act now" metrics — they're navigational, and the sidebar
+            already links to both. The four operational cards (Operations,
+            Billing blockers, Needs review, Blocked docs) all answer
+            "what needs me right now?" which is what the metric strip is for.
+            Pending Remba review. */}
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <DashboardMetricCard
+            href="/operations"
+            label="Operations"
+            count={obligationsLoading ? "..." : urgentObligations.length}
+            chip={
+              obligationsLoading
+                ? "Loading"
+                : urgentObligations.length
+                  ? "Act now"
+                  : "Clear"
+            }
+            tone={
+              obligationsLoading
+                ? "neutral"
+                : urgentObligations.length
+                  ? "warning"
+                  : "success"
+            }
+            nextAction={
+              obligationsLoading
+                ? "Loading key dates."
+                : urgentObligations[0]
+                  ? urgentObligations[0].title
+                  : "No urgent dates need action."
+            }
+            icon={<AlertTriangle size={17} />}
+            trend={obligationsTrend}
+          />
+          <DashboardMetricCard
+            href="/billing-readiness"
+            label="Billing blockers"
+            count={rentRollLoading ? "..." : billingIssues.length}
+            chip={
+              rentRollLoading
+                ? "Loading"
+                : billingIssues.length
+                  ? "Blocked"
+                  : "Ready"
+            }
+            tone={
+              rentRollLoading
+                ? "neutral"
+                : billingIssues.length
+                  ? "danger"
+                  : "success"
+            }
+            nextAction={
+              rentRollLoading
+                ? "Loading billing readiness."
+                : billingIssues[0]
+                  ? billingIssues[0].blockers[0]
+                  : "Invoice run is ready from current data."
+            }
+            icon={<ReceiptText size={17} />}
+          />
+          <DashboardMetricCard
+            href="/intake"
+            label="Needs review"
+            count={documentIntakesLoading ? "..." : needsReviewCount}
+            chip={
+              documentIntakesLoading
+                ? "Loading"
+                : needsReviewCount
+                  ? "Review"
+                  : "Empty"
+            }
+            tone={
+              documentIntakesLoading
+                ? "neutral"
+                : needsReviewCount
+                  ? "primary"
+                  : "neutral"
+            }
+            nextAction={
+              documentIntakesLoading
+                ? "Loading review queue."
+                : needsReviewCount
+                  ? "Approve extracted document data."
+                  : "Drop documents into Smart Intake."
+            }
+            icon={<Sparkles size={17} />}
+          />
+          <DashboardMetricCard
+            href="/intake"
+            label="Blocked docs"
+            count={documentIntakesLoading ? "..." : failedIntakeCount}
+            chip={
+              documentIntakesLoading
+                ? "Loading"
+                : failedIntakeCount
+                  ? "Fix"
+                  : "Clear"
+            }
+            tone={
+              documentIntakesLoading
+                ? "neutral"
+                : failedIntakeCount
+                  ? "danger"
+                  : "success"
+            }
+            nextAction={
+              documentIntakesLoading
+                ? "Checking document reads."
+                : failedIntakeCount
+                  ? "Review documents Leasium could not read."
+                  : "No intake failures right now."
+            }
+            icon={<FileText size={17} />}
+          />
+        </section>
+
+        {!isIntakeWorkspace ? (
+          <UpcomingLeaseEventsPanel
+            overview={insightsOverviewQuery.data}
+            isLoading={insightsOverviewQuery.isLoading}
+          />
+        ) : null}
+
+        <AskLeasiumPanel entityId={selectedEntityId} />
+
+        <ActivityFeedPanel entityId={selectedEntityId} />
+
       </div>
     </main>
   );
