@@ -1084,7 +1084,6 @@ function TenantPortalContent({ token }: { token: string | null }) {
     if (gateClaimMutation.isError) return;
     if (gateClaimMutation.isSuccess) return;
     if (!invitePreviewQuery.data) return;
-    if (!invitePreviewQuery.data.claimable) return;
     gateClaimMutation.mutate();
   }, [
     token,
@@ -1382,50 +1381,53 @@ function TenantPortalContent({ token }: { token: string | null }) {
               ) : null}
             </dl>
             <div className="mt-6 grid gap-3 rounded-md border border-primary/30 bg-primary/5 p-4">
-              {!preview.claimable ? (
-                <div className="grid gap-2 text-sm">
-                  <StatusBadge tone="warning">Invite already used</StatusBadge>
-                  <p className="text-muted-foreground">
-                    This invite link has already been claimed. Sign in with
-                    the tenant account you set up earlier, or ask the
-                    property team for a fresh link.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <SignInButton mode="redirect" fallbackRedirectUrl="/tenant-portal">
-                      <Button type="button">
-                        <LogIn size={16} />
-                        Sign in
-                      </Button>
-                    </SignInButton>
-                  </div>
-                </div>
-              ) : !clerkLoaded ? (
+              {!clerkLoaded ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 size={16} className="animate-spin text-primary" />
                   Checking sign-in…
                 </div>
               ) : !clerkSignedIn ? (
                 <div className="grid gap-2 text-sm">
-                  <p className="text-foreground">
-                    Create or sign in to your tenant account first. Then you
-                    can complete onboarding and use your portal without this
-                    invite link.
-                  </p>
+                  {!preview.claimable ? (
+                    <>
+                      <StatusBadge tone="warning">Invite already used</StatusBadge>
+                      <p className="text-muted-foreground">
+                        This invite link has already been claimed. Sign in with
+                        the tenant account you set up earlier, or ask the
+                        property team for a fresh link.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-foreground">
+                      Create or sign in to your tenant account first. Then you
+                      can complete onboarding and use your portal without this
+                      invite link.
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-2">
-                    <SignUpButton
-                      mode="redirect"
-                      fallbackRedirectUrl={returnTo}
-                    >
-                      <Button type="button">
-                        <LogIn size={16} />
-                        Create account
-                      </Button>
-                    </SignUpButton>
+                    {preview.claimable ? (
+                      <SignUpButton
+                        mode="redirect"
+                        fallbackRedirectUrl={returnTo}
+                      >
+                        <Button type="button">
+                          <LogIn size={16} />
+                          Create account
+                        </Button>
+                      </SignUpButton>
+                    ) : null}
                     <SignInButton
                       mode="redirect"
                       fallbackRedirectUrl={returnTo}
                     >
-                      <SecondaryButton type="button">Sign in</SecondaryButton>
+                      {preview.claimable ? (
+                        <SecondaryButton type="button">Sign in</SecondaryButton>
+                      ) : (
+                        <Button type="button">
+                          <LogIn size={16} />
+                          Sign in
+                        </Button>
+                      )}
                     </SignInButton>
                   </div>
                 </div>
