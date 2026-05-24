@@ -1,6 +1,6 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-05-23
+Last updated: 2026-05-24
 
 ## Current State
 
@@ -8,7 +8,9 @@ Last updated: 2026-05-23
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Production frontend: `https://leasium.vercel.app`
-- Latest pushed commit: tip of `main` after the 2026-05-23 visual-polish + brand sweep. Run `git log --oneline -12` to see the slice (9 commits prefixed `Polish v1…v7 …` plus `Add external agent-skills as in-repo reference`).
+- **Latest pushed commit: `08c23d1` Tenant invite email: refresh copy for soft-switch flow.** Run `git log --oneline -12` to see the recent slices — they walk back through the soft-switch claim gate (`638eeed`, `35b1f4a`), residential property_type + Unit picker work (`b84c223`), Delete tenant button (`fd5e7e5`), and the AI inbox v2 / v2.1 / v2.2 stack (`a9f4e84`, `1666a96`, with v2.2 bundled into `1666a96`).
+- **Working tree is clean.** All slices in this session are pushed.
+- **Mac tooling change (2026-05-24):** Node v26 installed via Homebrew; Desktop Commander MCP server (`@wonderwhy-er/desktop-commander`) is configured in Claude Desktop. Future Claude sessions in this workspace have `mcp__Desktop_Commander__*` tools available — they execute commands directly on the Mac (pytest, ruff, alembic, git, next dev, playwright). Sandbox-can't-write-git and no-local-Node constraints from prior sessions no longer apply.
 - The 2026-05-22 UX-review backlog is fully landed except Tier 2 (g) dark mode (deliberately deprioritised under the SKJ internal-first-6-months direction). All shipped items are marked `[x]` or `[~]` in `docs/product-roadmap.md`.
 - Visual polish + brand sweep (2026-05-23): nine commits resolving Tickets 1-5 of the polish plan after the competitive UX rating identified visual polish as Leasium's weakest dimension vs Re-Leased / PropertyMe / PropertyTree. Codex source-of-truth amendments in §3 (owner tag palette + two-tier naming), §4 (Body Compact 15px + Micro 11px), §5 (motion scale 150/200/300 + ease-in/toggle), §8 (empty-state convention), §9 (chip system). Tailwind config gained 36 owner-tag tokens, 11 short-alias variants, transition durations, exit easings, four custom fontSize steps. `globals.css` gained six @keyframes (drawer in/out left/right, modal in/out, backdrop in/out) and matching utility classes. New `useUnmountDelay` hook drives drawer/modal exit animations on 8 surfaces. New `chipClass()` helper in `components/ui.tsx` collapses every chip/pill/badge declaration through one tone × density × bordered surface. EmptyState component gained an `icon` slot; ~40 high-traffic empty states opt-in. Remba had been retired from the loop ("forget Remba, this is a prototype" at slice mid-point) so commits land without the [~] pending markers used in earlier slices.
 - 2026-05-23 Remba sign-off note: the Token consistency pass v1 + Motion polish v1 items in `docs/design-governance.md` flipped `[~]` → `[x]` mid-session before Remba was retired. The follow-up Polish v2-v7 work landed without governance markers per the prototype-mode call.
@@ -29,9 +31,11 @@ Last updated: 2026-05-23
 ## Takeover Priority
 
 1. Read `CLAUDE.md` at the repo root before starting. It encodes the behavioural baseline (state assumptions, simplest possible change, surgical edits, verifiable success criteria) plus the Leasium-specific guardrails.
-2. Run `git status --short` and `git log --oneline -10` to see what has shipped recently and whether the tree is clean.
-3. Pick the next ticket from `docs/product-roadmap.md` "Next Build Order" or the Pre-existing backlog (Operations polish, Xero deepening, Portfolio QA cleanup, Branded templates, Dark mode).
-4. Keep all provider actions review-first: no Xero mutation, SendGrid email, Twilio SMS, tenant email, or payment reconciliation should happen without explicit operator approval.
+2. Run `git status --short` and `git log --oneline -10` to confirm the tree is clean (it should be — last push was `08c23d1`).
+3. **Render needs to apply migrations `20260524_0025` (residential property_type) and `20260524_0026` (tenant_onboarding.token_consumed_at)** if it hasn't already on its last deploy. Render start command runs `alembic upgrade head` so this should be automatic — verify by checking the deploy log for those revision IDs.
+4. **Outstanding from this session:** verify the tenant portal claim gate end-to-end on live (`https://leasium.vercel.app`). Temba was hitting a 409 "already linked to another tenant" because his Clerk login had a prior portal account on an older Tenant row; the fix is to unlink the old account from `/tenants/{id}` → "Portal access" → "Unlink" (not delete tenant — Unlink is the right surgical fix). Re-sending an invite from `/tenants` should now show the new email copy ("Set up your tenant portal for X" / "Sign in to continue").
+5. Pick the next ticket from `docs/product-roadmap.md` "Next Build Order" or the Recommended Next Tickets list below. The AI inbox v2.x trilogy is complete; v2.3 (tenant_contact promote) is the natural next step in that thread, or pivot to Operations polish / Xero deepening / Portfolio QA cleanup.
+6. Keep all provider actions review-first: no Xero mutation, SendGrid email, Twilio SMS, tenant email, or payment reconciliation should happen without explicit operator approval.
 
 ## Project Map
 
@@ -492,28 +496,49 @@ Treat these as pending UX/design sign-off:
 
 ## Recommended Next Tickets
 
-The 2026-05-22 UX-review backlog is done except dark mode. Pick from these in roughly leverage order for the SKJ internal-first-6-months window:
+The 2026-05-22 UX-review backlog is done except dark mode. The AI inbox v2 stack (promote → lease-change extraction → contractor matching) and the tenant portal soft-switch are now both shipped this session. Pick from these in roughly leverage order for the SKJ internal-first-6-months window:
 
-1. **Operations polish** — deeper activity/audit presentation on the work-order detail page, safer edit affordances on list rows (right now any wrong inline-edit on status/priority is one click + auto-commit; consider a brief undo toast), owner/tenant-facing completion review paths, clearer row density at small viewports. Daily-driver surface, high leverage.
-2. **Xero deepening** — accounting snapshot guardrails, stale reconciliation indicators on Billing Readiness invoice rows, richer accounting-readiness snapshots. Finance team will live here every month.
-3. **Portfolio QA cleanup** — bulk fix review, AI-assisted enrichment candidates (the helper exists; productise it), clearer completion/reporting state. One-off but high-impact while the SKJ portfolio import is still being shaken out.
-4. **AI inbox v2** — currently classify + deep-link only. v2 promotes the approved classification into an actual draft (maintenance work order, arrears case, smart-intake record) so the operator's next click is reviewing the draft, not re-keying. Highest leverage AI follow-up.
-5. **Tier 2 (g) Dark mode** — dark tokens in the design source of truth, `.dark` class via system preference + an account-menu toggle, contrast audit across the 5 most-used surfaces. Deliberately deferred during the internal-first-6-months window; revisit when external tenants/contractors land.
-6. **Tenant portal UX audit** — predates the sidebar / inline-edit / activity-feed / Leasium AI work. Likely feels visually less polished than the operator side. Worth a Tier-1-style tier-list once more tenants are on it. v2 candidates: tenant-side activity feed scoped to their tenancy, tenant inline edit of their own contact details, tenant maintenance request status visibility.
-7. **Multi-view v2 for Properties** — Map view (Leaflet vs Mapbox decision) + Calendar view (rent reviews + lease expiries — although the upcoming-events panel on the Dashboard already covers most of this).
-8. **Pre-existing backlog** still valid: branded communications editable templates UI + send-time wiring (deprioritised under internal-first-6-months), Smart Intake spreadsheet improvements, evidence/source-trail pattern reuse expansion, Work assignment digest coverage.
+1. **AI inbox v2.3 — tenant_contact promote.** Last actionable kind not yet promotable. When triage classifies as `tenant_contact` and matches a tenant, a small new extractor (mirroring `stewart/ai/lease_change.py` / `stewart/ai/vendor_intake.py`) pulls proposed contact-detail updates (name / email / phone) from the message body. Promote panel shows current value next to proposed value with a checkbox per field; operator approves the subset, server PATCHes the Tenant. Cleanest follow-up to v2.2.
+2. **Tenant portal claim-gate polish.** Two improvements deferred from the soft-switch slice: (a) the 409 "already linked" message could detect the case and offer "Sign out of Leasium / use a different login" inline instead of leaving the operator to deduce the cause; (b) an operator-side **co-tenant invite** affordance on `/tenants/{id}` so households can each get their own portal account — currently only one Clerk account links per token.
+3. **Operator-side read-only tenant preview.** The soft switch killed the "Preview as tenant" affordance (token URL now lands on a sign-in wall). A dedicated read-only operator-side mimic of the tenant portal — same components, server fetches via operator session — would replace it cleanly and is more honest than impersonation.
+4. **Operations polish** — deeper activity/audit presentation on the work-order detail page, safer edit affordances on list rows (right now any wrong inline-edit on status/priority is one click + auto-commit; consider a brief undo toast), owner/tenant-facing completion review paths, clearer row density at small viewports. Daily-driver surface, high leverage.
+5. **Xero deepening** — accounting snapshot guardrails, stale reconciliation indicators on Billing Readiness invoice rows, richer accounting-readiness snapshots. Finance team will live here every month.
+6. **Portfolio QA cleanup** — bulk fix review, AI-assisted enrichment candidates (the helper exists; productise it), clearer completion/reporting state. One-off but high-impact while the SKJ portfolio import is still being shaken out.
+7. **Tier 2 (g) Dark mode** — dark tokens in the design source of truth, `.dark` class via system preference + an account-menu toggle, contrast audit across the 5 most-used surfaces. Deliberately deferred during the internal-first-6-months window; revisit when external tenants/contractors land.
+8. **Tenant portal UX audit** — predates the sidebar / inline-edit / activity-feed / Leasium AI work. v2 candidates: tenant-side activity feed scoped to their tenancy, tenant inline edit of their own contact details, tenant maintenance request status visibility.
+9. **Multi-view v2 for Properties** — Map view (Leaflet vs Mapbox decision) + Calendar view (rent reviews + lease expiries — although the upcoming-events panel on the Dashboard already covers most of this).
+10. **Pre-existing backlog** still valid: branded communications editable templates UI + send-time wiring (deprioritised under internal-first-6-months), Smart Intake spreadsheet improvements, evidence/source-trail pattern reuse expansion, Work assignment digest coverage.
 
-The pending migration list in `docs/product-roadmap.md` (the `20260520_*` / `20260521_*` / `20260522_*` set) still needs to be applied on hosted Neon/Render if auto-migrations don't run. Confirm before declaring any new backend slice "deployed".
+Hosted Neon/Render migrations as of `08c23d1`: latest required revisions are `20260524_0025` (residential property_type) and `20260524_0026` (tenant_onboarding.token_consumed_at) on top of the earlier `20260520_*` / `20260521_*` / `20260522_*` / `20260523_*` set. Render's start command runs `alembic upgrade head` so these should apply automatically — verify by grepping the deploy log for those revision IDs.
 
 ## Resume Checklist
 
-- Start with `git status --short`.
-- If the tree is clean, pull latest `main`.
+- Start with `git status --short` + `git log --oneline -10`. Tip should be `08c23d1` if no one has pushed since.
 - If there are local edits, inspect them before changing files.
-- Use `.venv/bin/python -m pytest ...` for backend tests because `uv` is not available in this shell.
-- For frontend checks, use commands from `apps/web/package.json`; the app expects the bundled Next WASM dir in scripts.
-- Use `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build` for production web builds.
+- **Tooling on Temba's Mac (current as of 2026-05-24):**
+  - Node v26 installed via Homebrew (`brew install node`).
+  - Desktop Commander MCP server configured in `~/Library/Application Support/Claude/claude_desktop_config.json`. Claude sessions in this workspace have `mcp__Desktop_Commander__*` tools that run real shell commands on the Mac.
+  - macOS-aarch64 `.venv` at `.venv/`; use `.venv/bin/python -m pytest ...`, `.venv/bin/python -m ruff check ...`, `.venv/bin/alembic upgrade head`, `.venv/bin/uvicorn apps.api.main:app --reload`.
+  - Frontend tooling: `apps/web/node_modules/.bin/{next,playwright,eslint,tsc}` — runs on the Mac via Node.
 - Keep Smart Intake review-first: extracted value, confidence, source, approve/edit/ignore, and no mutation until Apply.
 - Keep provider actions explicit: no Xero write, SendGrid email, Twilio SMS, or payment reconciliation without reviewed operator approval.
-- Keep Remba in the loop for navigation, layout, workflow, copy, density, visual hierarchy, and design system changes.
-  - Caveat from the 2026-05-23 polish sweep: Temba retired Remba mid-session ("forget about Remba, this is a prototype, just fling it"). Subsequent commits land without [~] Remba-pending markers. If that direction holds, prune the Remba review queue and update `CLAUDE.md §2.2`. If Remba comes back into the loop, re-introduce the markers for new visible-impact slices.
+- Remba was retired mid-session on 2026-05-23 ("forget about Remba, this is a prototype, just fling it"). Subsequent commits land without `[~]` Remba-pending markers. If Temba reverses that direction, re-introduce the markers for new visible-impact slices and rebuild the queue in `docs/design-governance.md`.
+- For destructive/mutating commands (writes, commits, force-pushes, deletes), show before running. Pre-approval like "just go" or "yeah commit + push" means batch execution is fine. Tests + linters + reads — run directly, output is the deliverable.
+
+## Session 2026-05-24 summary (handing back to Codex)
+
+Eight slices shipped, all on `main`:
+
+1. **AI inbox v2** (`1666a96`) — `POST /api/v1/ai/triage/promote` creates the right draft per kind: `maintenance_request` → MaintenanceWorkOrder, `payment_or_arrears` → ArrearsCase, `lease_change` → synthetic StoredDocument + DocumentIntake. Triage now passes entity_index and validates suggested property/tenant/lease ids. Three latent `assert_entity_role` arity bugs fixed in the same file.
+2. **AI inbox v2.1** (`a9f4e84`) — new `stewart/ai/lease_change.py` pre-extracts proposed change shaped to `DocumentIntakeExtraction` keys (parties / properties / key_dates / money_amounts / proposed_actions). DocumentIntake lands `ready_for_review` (or `needs_attention` < 0.5 confidence), soft-fails to `uploaded` when extractor errors. Zero frontend change — existing Smart Intake renders the populated groups.
+3. **AI inbox v2.2** (bundled in `1666a96` per commit message) — new `stewart/ai/vendor_intake.py`. Triage gains `suggested_contractor`. `vendor_or_contractor` becomes promotable: matched contractor → deep-link only, unmatched → new Contractor row at priority=3 with extracted name/company/email/phone/categories. Frontend promote panel swaps property/tenant/lease pickers for a Contractor dropdown.
+4. **Delete tenant button** (`fd5e7e5`) — SecondaryButton next to Edit profile on `/tenants/[id]`, uses `window.confirm()`, warns about active leases that will lose their tenant link.
+5. **Smarter Unit picker on Send invite** (`b84c223`) — 0 units → auto-create "Main premises", 1 unit → auto-select + chip, 2+ → required dropdown.
+6. **Residential property_type + contextual ABN** (`b84c223`) — alembic `20260524_0025` adds `residential` to PropertyType. TenantLeaseContextRead projects `property_type`. Tenant detail edit form hides Trading-as + ABN when any of the tenant's leases is on a residential property.
+7. **Tenant portal soft-switch claim gate** (`35b1f4a` + fix `638eeed`) — alembic `20260524_0026` adds `tenant_onboarding.token_consumed_at`. `_portal_scope` rejects consumed tokens with 410 Gone. `claim_tenant_portal_account` stamps consumption and gates a consumed-token reclaim to "same Clerk user with prior history". New public `GET /api/v1/tenant-portal/invites/{token}/preview` for context-only data on the unauthenticated gate. Frontend `/tenant-portal/{token}` renders a full-page claim gate (preview + Clerk widget) and auto-claims after sign-in. Disabled the unauthenticated token-scoped portalQuery entirely.
+8. **Tenant invite email copy** (`08c23d1`) — subject "Complete tenant onboarding" → "Set up your tenant portal", body intro reframed for the sign-in-first flow, CTA "Complete onboarding" → "Sign in to continue", postscript explains the link is single-use.
+
+Verified Mac-side: `pytest tests/integration/test_tenant_portal_api.py -q` shows 13 passing. Sandbox-side: ESLint + tsc clean on every touched file. Render needs migrations 0025 + 0026 applied (auto-runs via alembic on deploy).
+
+Open items at session end:
+- Temba was hitting a 409 "already linked to another tenant" on the live deploy because his Clerk account had a prior portal link on an older Tenant row. He attempted "delete tenant" which doesn't unlink the portal account; the actual fix is `/tenants/{id}` → "Portal access" → **Unlink** button. He may have figured it out before the session ended — verify if the v2.3 work picks up before re-sending another test invite.
