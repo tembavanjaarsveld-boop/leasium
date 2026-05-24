@@ -2,6 +2,7 @@
 
 import {
   SignInButton,
+  SignOutButton,
   SignUpButton,
   UserButton,
   useAuth,
@@ -220,6 +221,31 @@ function onboardingReviewed(portal: TenantPortalRecord) {
 
 function onboardingApplied(portal: TenantPortalRecord) {
   return portal.onboarding.status === "applied";
+}
+
+function tenantPortalClaimErrorMessage(error: unknown) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : "Something went wrong setting up your tenant account.";
+  const lower = message.toLowerCase();
+  if (lower.includes("already linked to another tenant")) {
+    return "This login is already linked to another tenant. Sign out and choose the tenant login for this invite, or ask the property team to unlink the old portal access and send a fresh invite.";
+  }
+  if (lower.includes("invite link has been used")) {
+    return "This invite link has already been claimed. Sign in with the tenant account that used it, or ask the property team for a fresh invite.";
+  }
+  if (lower.includes("revoked")) {
+    return "This tenant login has been revoked by the property team. Ask them to restore access or send a fresh invite.";
+  }
+  return message;
+}
+
+function tenantPortalClaimNeedsDifferentLogin(error: unknown) {
+  return (
+    error instanceof Error &&
+    error.message.toLowerCase().includes("already linked to another tenant")
+  );
 }
 
 function PortalShell({ children }: { children: React.ReactNode }) {
@@ -752,13 +778,25 @@ function TenantAccountPanel({
           the tenant portal without the original invite link.
         </p>
         {claimMutation.error ? (
-          <div className="grid gap-1 rounded-md border border-danger/20 bg-danger/5 p-3 text-sm text-danger">
-            <span>{claimMutation.error.message}</span>
+          <div className="grid gap-3 rounded-md border border-danger/20 bg-danger/5 p-3 text-sm">
+            <span className="text-danger">
+              {tenantPortalClaimErrorMessage(claimMutation.error)}
+            </span>
             <span className="text-muted-foreground">
               {accountStatus?.status === "revoked"
                 ? accountStatus.recovery_hint
                 : "If this is the wrong tenant or the invite has expired, ask the property team to send a fresh portal link."}
             </span>
+            {tenantPortalClaimNeedsDifferentLogin(claimMutation.error) ? (
+              <div className="justify-self-start">
+                <SignOutButton redirectUrl={returnTo}>
+                  <SecondaryButton type="button">
+                    <LogIn size={15} />
+                    Use another login
+                  </SecondaryButton>
+                </SignOutButton>
+              </div>
+            ) : null}
           </div>
         ) : null}
         <Button
@@ -1600,21 +1638,31 @@ function TenantPortalContent({ token }: { token: string | null }) {
                   </div>
                 </div>
               ) : gateClaimMutation.isError ? (
-                <div className="grid gap-2 text-sm">
+                <div className="grid gap-3 text-sm">
                   <StatusBadge tone="danger">
-                    Couldn&apos;t finish account setup
+                    Couldn&apos;t link this login
                   </StatusBadge>
                   <p className="text-muted-foreground">
-                    {gateClaimMutation.error instanceof Error
-                      ? gateClaimMutation.error.message
-                      : "Something went wrong setting up your tenant account."}
+                    {tenantPortalClaimErrorMessage(gateClaimMutation.error)}
                   </p>
-                  <Button
-                    type="button"
-                    onClick={() => gateClaimMutation.mutate()}
-                  >
-                    Try again
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => gateClaimMutation.mutate()}
+                    >
+                      Try again
+                    </Button>
+                    {tenantPortalClaimNeedsDifferentLogin(
+                      gateClaimMutation.error,
+                    ) ? (
+                      <SignOutButton redirectUrl={returnTo}>
+                        <SecondaryButton type="button">
+                          <LogIn size={15} />
+                          Use another login
+                        </SecondaryButton>
+                      </SignOutButton>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">

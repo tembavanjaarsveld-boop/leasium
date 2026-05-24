@@ -1133,7 +1133,11 @@ def claim_tenant_portal_account(
         else:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="This tenant portal login is already linked to another tenant.",
+                detail=(
+                    "This tenant portal login is already linked to another tenant. "
+                    "Sign out and use the tenant login for this invite, or ask the "
+                    "property team to unlink the old portal access and send a fresh invite."
+                ),
             )
     if account is None:
         account = TenantPortalAccount(

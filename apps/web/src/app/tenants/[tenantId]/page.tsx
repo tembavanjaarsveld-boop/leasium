@@ -864,6 +864,9 @@ function TenantDetail() {
     EnrichmentSuggestion[]
   >([]);
   const [freshLinkNotice, setFreshLinkNotice] = useState<string | null>(null);
+  const [portalInviteNotice, setPortalInviteNotice] = useState<string | null>(
+    null,
+  );
 
   const tenantQuery = useQuery({
     queryKey: ["tenant", tenantId],
@@ -958,6 +961,12 @@ function TenantDetail() {
   const portalAccounts = portalAccountsQuery.data ?? [];
   const latestSentOnboarding = tenantOnboardings.find(
     (item) => item.status === "sent",
+  );
+  const latestSentOnboardingExpired = isExpiredDateTime(
+    latestSentOnboarding?.expires_at,
+  );
+  const hasActivePortalAccount = portalAccounts.some(
+    (account) => account.status === "active",
   );
   const linkedLeases = tenantLeaseContexts.length
     ? tenantLeaseContexts
@@ -1066,10 +1075,14 @@ function TenantDetail() {
 
   const sendPortalInviteMutation = useMutation({
     mutationFn: sendTenantOnboardingPortalInvite,
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({
         queryKey: ["tenant-onboardings", tenant?.entity_id],
       });
+      setFreshLinkNotice(null);
+      setPortalInviteNotice(
+        `Portal invite sent. Link expires ${formatDate(updated.expires_at)}.`,
+      );
     },
   });
 
@@ -1089,6 +1102,7 @@ function TenantDetail() {
       queryClient.invalidateQueries({
         queryKey: ["tenant-onboardings", tenant?.entity_id],
       });
+      setPortalInviteNotice(null);
       setFreshLinkNotice(
         `Fresh portal link copied. Expires ${formatDate(updated.expires_at)}.`,
       );
@@ -1471,6 +1485,49 @@ function TenantDetail() {
               icon={<ShieldCheck size={17} />}
             >
               <div className="grid gap-3 p-4 text-sm">
+                {hasActivePortalAccount &&
+                latestSentOnboarding &&
+                !latestSentOnboardingExpired ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/20 bg-primary/5 p-3">
+                    <div className="min-w-0">
+                      <div className="font-medium">
+                        Invite another portal login
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        For a co-tenant or second contact. Existing logins stay
+                        linked.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        onClick={() =>
+                          sendPortalInviteMutation.mutate(
+                            latestSentOnboarding.id,
+                          )
+                        }
+                        disabled={sendPortalInviteMutation.isPending}
+                      >
+                        <Send size={16} />
+                        Send invite
+                      </Button>
+                      <SecondaryButton
+                        type="button"
+                        onClick={() =>
+                          freshLinkMutation.mutate({
+                            onboardingId: latestSentOnboarding.id,
+                            reason:
+                              "Operator copied a fresh co-tenant portal link from the tenant profile.",
+                          })
+                        }
+                        disabled={freshLinkMutation.isPending}
+                      >
+                        <ClipboardCopy size={15} />
+                        Copy link
+                      </SecondaryButton>
+                    </div>
+                  </div>
+                ) : null}
                 {portalAccounts.map((account) => {
                   const accountOnboarding =
                     tenantOnboardings.find(
@@ -1575,6 +1632,11 @@ function TenantDetail() {
                     {freshLinkNotice}
                   </div>
                 ) : null}
+                {portalInviteNotice ? (
+                  <div className="rounded-md border border-success/20 bg-success/5 px-3 py-2 text-xs font-medium text-success">
+                    {portalInviteNotice}
+                  </div>
+                ) : null}
                 {!portalAccountsQuery.isLoading &&
                 portalAccounts.length === 0 ? (
                   <EmptyState
@@ -1605,6 +1667,7 @@ function TenantDetail() {
                 revokePortalAccountMutation.error ||
                 restorePortalAccountMutation.error ||
                 unlinkPortalAccountMutation.error ||
+                sendPortalInviteMutation.error ||
                 freshLinkMutation.error ? (
                   <p className="text-sm text-danger">
                     {friendlyError(
@@ -1612,6 +1675,7 @@ function TenantDetail() {
                         revokePortalAccountMutation.error ??
                         restorePortalAccountMutation.error ??
                         unlinkPortalAccountMutation.error ??
+                        sendPortalInviteMutation.error ??
                         freshLinkMutation.error,
                     )}
                   </p>

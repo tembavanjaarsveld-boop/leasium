@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from apps.api.main import app
+from apps.api.routers import tenant_onboarding as tenant_onboarding_router
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,6 +31,7 @@ from stewart.core.models import (
     TenantPortalAccountStatus,
 )
 from stewart.core.settings import Settings, get_settings
+from stewart.integrations.communications import DeliveryResult
 
 
 def _entity(session: Session) -> Entity:
@@ -506,7 +508,9 @@ def test_tenant_portal_account_blocks_conflicting_and_revoked_logins(
     )
     assert conflict_response.status_code == 409
     assert conflict_response.json()["detail"] == (
-        "This tenant portal login is already linked to another tenant."
+        "This tenant portal login is already linked to another tenant. "
+        "Sign out and use the tenant login for this invite, or ask the property team "
+        "to unlink the old portal access and send a fresh invite."
     )
 
     account = session.scalar(
@@ -541,6 +545,73 @@ def test_tenant_portal_account_blocks_conflicting_and_revoked_logins(
     )
     assert reclaim_response.status_code == 403
     assert reclaim_response.json()["detail"] == "Tenant portal account is revoked."
+
+
+def test_operator_portal_invite_reopens_claim_for_additional_tenant_login(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    sends: list[str] = []
+
+    def fake_portal_send(invite, settings):  # noqa: ANN001, ARG001
+        sends.append(invite.onboarding_url)
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+                provider_message_id="portal-invite-cotenant",
+            )
+        ]
+
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "send_tenant_portal_invite",
+        fake_portal_send,
+    )
+
+    first_claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+    assert first_claim_response.status_code == 200
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    assert onboarding.token_consumed_at is not None
+
+    invite_response = client.post(
+        f"/api/v1/tenant-onboarding/{scope['onboarding_id']}/send-portal-invite",
+    )
+
+    assert invite_response.status_code == 200
+    body = invite_response.json()
+    assert body["token"] != scope["token"]
+    assert sends == [body["portal_url"]]
+    session.refresh(onboarding)
+    assert onboarding.token_consumed_at is None
+
+    co_tenant_claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-two"},
+        json={"portal_token": body["token"]},
+    )
+
+    assert co_tenant_claim_response.status_code == 200
+    provider_ids = {
+        account.auth_provider_id
+        for account in session.scalars(
+            select(TenantPortalAccount).where(
+                TenantPortalAccount.tenant_id == UUID(scope["tenant_id"]),
+                TenantPortalAccount.deleted_at.is_(None),
+            )
+        )
+    }
+    assert provider_ids == {"tenant-subject-one", "tenant-subject-two"}
 
 
 def test_deleted_tenant_portal_link_does_not_block_fresh_invite_claim(

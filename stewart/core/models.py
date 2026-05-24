@@ -835,8 +835,9 @@ class TenantOnboarding(Base):
     # Stamped when a Clerk user successfully claims this onboarding's
     # token by linking a TenantPortalAccount. Once set, every token-
     # scoped data endpoint refuses the token (soft-switch claim gate).
-    # The claim endpoint allows lookup past this for idempotent re-link
-    # of the SAME Clerk account; new claimants are rejected.
+    # Operator-sent fresh portal links rotate the token and clear this
+    # timestamp so a co-tenant can claim their own login without
+    # unlinking an existing tenant portal account.
     token_consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_reason: Mapped[str | None] = mapped_column(Text)
     submitted_data: Mapped[dict[str, Any]] = mapped_column(

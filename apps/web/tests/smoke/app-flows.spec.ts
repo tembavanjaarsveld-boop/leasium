@@ -1152,6 +1152,10 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Portal access" }),
   ).toBeVisible();
+  await expect(page.getByText("Invite another portal login")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send invite" })).toBeVisible();
+  await page.getByRole("button", { name: "Send invite" }).click();
+  await expect(page.getByText("Portal invite sent.")).toBeVisible();
   await expect(page.getByText("tenant-subject-one")).toBeVisible();
   await expect(page.getByRole("button", { name: "Revoke" })).toBeVisible();
   await expect(

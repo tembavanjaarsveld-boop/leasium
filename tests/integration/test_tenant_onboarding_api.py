@@ -313,6 +313,10 @@ def test_tenant_onboarding_fresh_link_rotates_expired_token(
     assert create_response.status_code == 201
     old_token = create_response.json()["token"]
     onboarding_id = create_response.json()["id"]
+    onboarding = session.get(TenantOnboarding, UUID(onboarding_id))
+    assert onboarding is not None
+    onboarding.token_consumed_at = utcnow()
+    session.commit()
     sent_urls.clear()
 
     fresh_response = client.post(
@@ -328,6 +332,8 @@ def test_tenant_onboarding_fresh_link_rotates_expired_token(
     assert body["resent_at"] is not None
     assert body["onboarding_url"].endswith(body["token"])
     assert body["portal_url"].endswith(body["token"])
+    session.refresh(onboarding)
+    assert onboarding.token_consumed_at is None
     assert sent_urls == [body["onboarding_url"]]
 
     old_public_response = client.get(f"/api/v1/tenant-onboarding/public/{old_token}")

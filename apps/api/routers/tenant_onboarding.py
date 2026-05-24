@@ -1331,6 +1331,11 @@ def send_tenant_onboarding_portal_invite(
             detail="Expired onboarding links cannot send portal invites.",
         )
     lease, prop, tenant = _lease_scope(onboarding.lease_id, session)
+    if onboarding.token_consumed_at is not None:
+        onboarding.token = _new_token(session)
+        onboarding.token_consumed_at = None
+        onboarding.resent_at = utcnow()
+        session.flush()
     _deliver_portal_invite(onboarding, lease, prop, tenant, user, session)
     session.commit()
     session.refresh(onboarding)
@@ -1354,8 +1359,10 @@ def refresh_tenant_onboarding_link(
     lease, prop, tenant = _lease_scope(onboarding.lease_id, session)
     now = utcnow()
     previous_expires_at = onboarding.expires_at
+    previous_token_consumed_at = onboarding.token_consumed_at
     refreshed_expires_at = now + timedelta(days=payload.expires_in_days)
     onboarding.token = _new_token(session)
+    onboarding.token_consumed_at = None
     onboarding.expires_at = refreshed_expires_at
     onboarding.status = TenantOnboardingStatus.sent
     onboarding.last_sent_at = now
@@ -1369,6 +1376,11 @@ def refresh_tenant_onboarding_link(
         "expires_at": refreshed_expires_at.isoformat(),
         "previous_expires_at": (
             previous_expires_at.isoformat() if previous_expires_at is not None else None
+        ),
+        "previous_token_consumed_at": (
+            previous_token_consumed_at.isoformat()
+            if previous_token_consumed_at is not None
+            else None
         ),
     }
     history = delivery_data.get("fresh_link_history")
