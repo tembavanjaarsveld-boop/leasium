@@ -519,14 +519,49 @@ function billingDeliveryHref(entityId: string, filter: DeliveryFilter) {
   return `/billing-readiness?${params.toString()}`;
 }
 
+function monthFromDateString(value: string | null | undefined) {
+  return value && /^\d{4}-\d{2}/.test(value) ? value.slice(0, 7) : null;
+}
+
+function statementMonthForDrafts(
+  drafts: InvoiceDraftRecord[],
+  fallbackDate: string,
+) {
+  const months = drafts
+    .map((draft) => monthFromDateString(draft.issue_date))
+    .filter((month): month is string => Boolean(month))
+    .sort();
+  return months.at(-1) ?? fallbackDate.slice(0, 7);
+}
+
+function ownerStatementsHref({
+  entityId,
+  month,
+  closeStatus,
+}: {
+  entityId: string;
+  month: string;
+  closeStatus: "ready" | "incomplete" | "unpaid" | "blocked";
+}) {
+  const params = new URLSearchParams({
+    entity_id: entityId,
+    month,
+    from: "billing-readiness",
+    close_status: closeStatus,
+  });
+  return `/statements?${params.toString()}`;
+}
+
 function buildMonthEndChecklist({
   invoiceDrafts,
   freshness,
   entityId,
+  statementMonth,
 }: {
   invoiceDrafts: InvoiceDraftRecord[];
   freshness: XeroAccountingFreshnessRecord | null;
   entityId: string;
+  statementMonth: string;
 }): MonthEndChecklistItem[] {
   const approvedDrafts = invoiceDrafts.filter(
     (draft) => draft.status === "approved",
@@ -578,6 +613,13 @@ function buildMonthEndChecklist({
     providerRecoveryCount === 0 &&
     readyDispatchCount === 0 &&
     unpaidCount === 0;
+  const closeStatus = closeReady
+    ? "ready"
+    : accountingStatus === "blocked" || providerRecoveryCount > 0
+      ? "blocked"
+      : unpaidCount > 0 || paymentReviewCount > 0
+        ? "unpaid"
+        : "incomplete";
 
   return [
     {
@@ -678,9 +720,14 @@ function buildMonthEndChecklist({
       detail: closeReady
         ? "Ready to use in owner and accounting reporting."
         : "Close the open checklist items before relying on owner or accounting reporting.",
-      status: closeReady ? "clear" : "review",
-      actionLabel: closeReady ? "Open Insights" : undefined,
-      href: closeReady ? `/insights?entity_id=${entityId}` : undefined,
+      status:
+        closeStatus === "blocked" ? "blocked" : closeReady ? "clear" : "review",
+      actionLabel: "Open statements",
+      href: ownerStatementsHref({
+        entityId,
+        month: statementMonth,
+        closeStatus,
+      }),
     },
   ];
 }
@@ -1346,6 +1393,10 @@ function BillingReadinessWorkspace() {
     () => invoiceDrafts.filter((draft) => draft.status === "approved"),
     [invoiceDrafts],
   );
+  const statementMonth = useMemo(
+    () => statementMonthForDrafts(approvedInvoiceDrafts, asOf),
+    [approvedInvoiceDrafts, asOf],
+  );
   const filteredApprovedInvoiceDrafts = useMemo(
     () =>
       approvedInvoiceDrafts.filter((draft) =>
@@ -1371,8 +1422,9 @@ function BillingReadinessWorkspace() {
         invoiceDrafts,
         freshness: xeroAccountingFreshness,
         entityId: selectedEntityId,
+        statementMonth,
       }),
-    [invoiceDrafts, selectedEntityId, xeroAccountingFreshness],
+    [invoiceDrafts, selectedEntityId, statementMonth, xeroAccountingFreshness],
   );
   const invoiceDraftByBillingDraftId = useMemo(() => {
     const drafts = new Map<string, InvoiceDraftRecord>();

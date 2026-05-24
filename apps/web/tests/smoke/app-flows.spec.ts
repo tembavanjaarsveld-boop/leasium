@@ -115,6 +115,18 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     primaryDispatchRow.getByRole("button", { name: "Email" }),
   ).toBeVisible();
+
+  await page.getByRole("link", { name: "Open statements" }).click();
+  await expect(page).toHaveURL(/\/statements\?.*month=2026-05/);
+  await expect(
+    page.getByRole("heading", { name: "Owner statements" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Statement pack readiness" }),
+  ).toBeVisible();
+  await expect(page.getByText("Statement pack blocked")).toBeVisible();
+  await expect(page.getByText("2 statement invoices")).toBeVisible();
+  await expect(page.getByText("Queen Street Property Trust").first()).toBeVisible();
 });
 
 test("dashboard Leasium AI panel answers with cited record", async ({

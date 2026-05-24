@@ -1905,6 +1905,106 @@ export async function mockLeasiumApi(
     };
   };
 
+  const ownerStatements = (month: string) => {
+    type OwnerLine = {
+      property_id: string;
+      property_name: string;
+      invoiced_cents: number;
+      paid_cents: number;
+      outstanding_cents: number;
+      invoice_count: number;
+    };
+    type OwnerStatement = {
+      owner_identity: string;
+      owner_legal_name: string | null;
+      trustee_name: string | null;
+      trust_name: string | null;
+      invoice_issuer_name: string | null;
+      billing_contact_name: string | null;
+      billing_email: string | null;
+      property_count: number;
+      properties: OwnerLine[];
+      invoiced_cents: number;
+      paid_cents: number;
+      outstanding_cents: number;
+      invoice_count: number;
+    };
+    const owners = new Map<string, OwnerStatement>();
+    for (const draft of localInvoiceDrafts) {
+      if (draft.status !== "approved" || !draft.issue_date.startsWith(month)) {
+        continue;
+      }
+      const property =
+        properties.find((item) => item.id === draft.property_id) ??
+        properties[0];
+      const ownerIdentity =
+        property.trust_name ??
+        property.owner_legal_name ??
+        property.invoice_issuer_name ??
+        "Unattributed";
+      const owner =
+        owners.get(ownerIdentity) ??
+        {
+          owner_identity: ownerIdentity,
+          owner_legal_name: property.owner_legal_name,
+          trustee_name: property.trustee_name,
+          trust_name: property.trust_name,
+          invoice_issuer_name: property.invoice_issuer_name,
+          billing_contact_name: property.billing_contact_name,
+          billing_email: property.billing_email,
+          property_count: 0,
+          properties: [],
+          invoiced_cents: 0,
+          paid_cents: 0,
+          outstanding_cents: 0,
+          invoice_count: 0,
+        };
+      const metadata = jsonRecord(draft.metadata as JsonBody | undefined);
+      const paymentStatus = jsonRecord(metadata.payment_status);
+      const paidCents =
+        paymentStatus.status === "paid"
+          ? Number(paymentStatus.paid_cents ?? draft.total_cents)
+          : 0;
+      const outstandingCents = Math.max(draft.total_cents - paidCents, 0);
+      let line = owner.properties.find(
+        (item) => item.property_id === property.id,
+      );
+      if (!line) {
+        line = {
+          property_id: property.id,
+          property_name: property.name,
+          invoiced_cents: 0,
+          paid_cents: 0,
+          outstanding_cents: 0,
+          invoice_count: 0,
+        };
+        owner.properties.push(line);
+        owner.property_count += 1;
+      }
+      line.invoiced_cents += draft.total_cents;
+      line.paid_cents += paidCents;
+      line.outstanding_cents += outstandingCents;
+      line.invoice_count += 1;
+      owner.invoiced_cents += draft.total_cents;
+      owner.paid_cents += paidCents;
+      owner.outstanding_cents += outstandingCents;
+      owner.invoice_count += 1;
+      owners.set(ownerIdentity, owner);
+    }
+    const [year, monthNumber] = month.split("-").map(Number);
+    const monthEndDay = new Date(year, monthNumber, 0).getDate();
+    return {
+      entity_id: entityId,
+      month,
+      month_start: `${month}-01`,
+      month_end: `${month}-${String(monthEndDay).padStart(2, "0")}`,
+      owners: Array.from(owners.values()).sort(
+        (left, right) => right.invoiced_cents - left.invoiced_cents,
+      ),
+      generated_at: "2026-05-25T00:00:00.000Z",
+    };
+  };
+
   const xeroExceptionItemBase = () => ({
     property_id: null,
     property_name: null,
@@ -5545,6 +5645,14 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/invoice-drafts") {
       await fulfillJson(route, localInvoiceDrafts);
+      return;
+    }
+
+    if (method === "GET" && path === "/owners/statements") {
+      await fulfillJson(
+        route,
+        ownerStatements(url.searchParams.get("month") ?? "2026-05"),
+      );
       return;
     }
 

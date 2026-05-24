@@ -11,7 +11,17 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { Building2, FileText, RefreshCw, Wallet } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  Building2,
+  CheckCircle2,
+  FileText,
+  ReceiptText,
+  RefreshCw,
+  Wallet,
+} from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
@@ -27,12 +37,30 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  getXeroStatus,
+  listInvoiceDrafts,
   getOwnerStatements,
   listEntities,
+  type InvoiceDraftRecord,
   type OwnerStatementRecord,
+  type OwnerStatementsRecord,
+  type XeroAccountingFreshnessRecord,
 } from "@/lib/api";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
+
+type StatementPackStatus = "ready" | "incomplete" | "unpaid" | "blocked";
+
+type StatementPackReadiness = {
+  status: StatementPackStatus;
+  title: string;
+  detail: string;
+  statementInvoiceCount: number;
+  localApprovedCount: number;
+  unpaidLocalCount: number;
+  ownerCount: number;
+  outstandingCents: number;
+};
 
 function defaultMonth(): string {
   const now = new Date();
@@ -41,6 +69,10 @@ function defaultMonth(): string {
   const year = month === 0 ? now.getFullYear() - 1 : now.getFullYear();
   const prevMonth = month === 0 ? 12 : month;
   return `${year}-${String(prevMonth).padStart(2, "0")}`;
+}
+
+function validMonth(value: string | null) {
+  return value && /^\d{4}-\d{2}$/.test(value) ? value : null;
 }
 
 function formatMoney(cents: number, currency = "AUD"): string {
@@ -55,6 +87,116 @@ function formatMoney(cents: number, currency = "AUD"): string {
 function friendlyError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return "Something went wrong.";
+}
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function metadataText(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function invoicePaymentLabel(draft: InvoiceDraftRecord) {
+  const paymentStatus = metadataRecord(draft.metadata.payment_status);
+  return metadataText(paymentStatus.status) ?? "unpaid";
+}
+
+function statementPackStatusFromQuery(
+  value: string | null,
+): StatementPackStatus | null {
+  return value === "ready" ||
+    value === "incomplete" ||
+    value === "unpaid" ||
+    value === "blocked"
+    ? value
+    : null;
+}
+
+function statementPackTone(status: StatementPackStatus) {
+  if (status === "ready") return "success" as const;
+  if (status === "blocked") return "danger" as const;
+  return "warning" as const;
+}
+
+function statementPackLabel(status: StatementPackStatus) {
+  if (status === "ready") return "Ready";
+  if (status === "blocked") return "Blocked";
+  if (status === "unpaid") return "Unpaid";
+  return "Incomplete";
+}
+
+function buildStatementPackReadiness({
+  statements,
+  invoiceDrafts,
+  freshness,
+  month,
+  handoffStatus,
+}: {
+  statements: OwnerStatementsRecord | undefined;
+  invoiceDrafts: InvoiceDraftRecord[];
+  freshness: XeroAccountingFreshnessRecord | null;
+  month: string;
+  handoffStatus: StatementPackStatus | null;
+}): StatementPackReadiness {
+  const monthlyApproved = invoiceDrafts.filter(
+    (draft) => draft.status === "approved" && draft.issue_date?.startsWith(month),
+  );
+  const localApprovedCount = monthlyApproved.length;
+  const unpaidLocalCount = monthlyApproved.filter(
+    (draft) => invoicePaymentLabel(draft) !== "paid",
+  ).length;
+  const owners = statements?.owners ?? [];
+  const statementInvoiceCount = owners.reduce(
+    (total, owner) => total + owner.invoice_count,
+    0,
+  );
+  const outstandingCents = owners.reduce(
+    (total, owner) => total + owner.outstanding_cents,
+    0,
+  );
+  const accountingBlocked =
+    freshness?.status === "attention" ||
+    (freshness?.readiness_blocker_count ?? 0) > 0;
+  const status: StatementPackStatus =
+    handoffStatus === "blocked" || accountingBlocked
+      ? "blocked"
+      : statementInvoiceCount === 0
+        ? "incomplete"
+        : handoffStatus === "unpaid" ||
+            outstandingCents > 0 ||
+            unpaidLocalCount > 0
+          ? "unpaid"
+          : "ready";
+  const title =
+    status === "ready"
+      ? "Statement pack ready"
+      : status === "blocked"
+        ? "Statement pack blocked"
+        : status === "unpaid"
+          ? "Payment review still open"
+          : "Statement pack incomplete";
+  const detail =
+    status === "ready"
+      ? "Owner totals are ready to review from the closed billing run."
+      : status === "blocked"
+        ? "Resolve the accounting or dispatch blockers before relying on this pack."
+        : status === "unpaid"
+          ? "Statements can be reviewed, but outstanding or unreconciled payments remain."
+          : "Approve invoices for this month before the owner statement pack is complete.";
+
+  return {
+    status,
+    title,
+    detail,
+    statementInvoiceCount,
+    localApprovedCount,
+    unpaidLocalCount,
+    ownerCount: owners.length,
+    outstandingCents,
+  };
 }
 
 export default function StatementsPage() {
@@ -73,9 +215,26 @@ function StatementsContent() {
 
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [month, setMonth] = useState(defaultMonth());
+  const [handoffSource, setHandoffSource] = useState<string | null>(null);
+  const [handoffStatus, setHandoffStatus] =
+    useState<StatementPackStatus | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const entityId = params.get("entity_id");
+    const queryMonth = validMonth(params.get("month"));
+    const source = params.get("from");
+    const closeStatus = statementPackStatusFromQuery(
+      params.get("close_status"),
+    );
+    if (queryMonth) setMonth(queryMonth);
+    if (source) setHandoffSource(source);
+    if (closeStatus) setHandoffStatus(closeStatus);
+    if (entityId) {
+      setSelectedEntityId(entityId);
+      return;
+    }
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
     if (stored) setSelectedEntityId(stored);
   }, []);
@@ -96,6 +255,18 @@ function StatementsContent() {
     enabled: Boolean(selectedEntityId && month),
   });
 
+  const invoiceDraftsQuery = useQuery({
+    queryKey: ["owner-statement-readiness-invoice-drafts", selectedEntityId],
+    queryFn: () => listInvoiceDrafts({ entity_id: selectedEntityId }),
+    enabled: Boolean(selectedEntityId),
+  });
+
+  const xeroStatusQuery = useQuery({
+    queryKey: ["owner-statement-readiness-xero-status", selectedEntityId],
+    queryFn: () => getXeroStatus(selectedEntityId),
+    enabled: Boolean(selectedEntityId),
+  });
+
   const owners = useMemo(
     () => statementsQuery.data?.owners ?? [],
     [statementsQuery.data?.owners],
@@ -112,6 +283,24 @@ function StatementsContent() {
       { invoiced: 0, paid: 0, outstanding: 0, invoiceCount: 0, propertyCount: 0 },
     );
   }, [owners]);
+  const statementReadiness = useMemo(
+    () =>
+      buildStatementPackReadiness({
+        statements: statementsQuery.data,
+        invoiceDrafts: invoiceDraftsQuery.data ?? [],
+        freshness: xeroStatusQuery.data?.accounting_freshness ?? null,
+        month,
+        handoffStatus,
+      }),
+    [
+      handoffStatus,
+      invoiceDraftsQuery.data,
+      month,
+      statementsQuery.data,
+      xeroStatusQuery.data?.accounting_freshness,
+    ],
+  );
+  const openedFromBilling = handoffSource === "billing-readiness";
 
   return (
     <main className="min-h-screen">
@@ -154,6 +343,21 @@ function StatementsContent() {
             ) : null}
           </div>
         </section>
+
+        <StatementReadinessPanel
+          readiness={statementReadiness}
+          month={month}
+          openedFromBilling={openedFromBilling}
+          loading={
+            statementsQuery.isLoading ||
+            invoiceDraftsQuery.isLoading ||
+            xeroStatusQuery.isLoading
+          }
+          billingHref={`/billing-readiness?${new URLSearchParams({
+            entity_id: selectedEntityId,
+            tab: "delivery",
+          }).toString()}`}
+        />
 
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric
@@ -236,6 +440,88 @@ function Metric({
         <div className="mt-0.5 text-xs text-muted-foreground">{detail}</div>
       ) : null}
     </div>
+  );
+}
+
+function StatementReadinessPanel({
+  readiness,
+  month,
+  openedFromBilling,
+  loading,
+  billingHref,
+}: {
+  readiness: StatementPackReadiness;
+  month: string;
+  openedFromBilling: boolean;
+  loading: boolean;
+  billingHref: string;
+}) {
+  const tone = statementPackTone(readiness.status);
+  const icon =
+    readiness.status === "ready" ? (
+      <CheckCircle2 size={17} />
+    ) : readiness.status === "blocked" ? (
+      <AlertTriangle size={17} />
+    ) : (
+      <ReceiptText size={17} />
+    );
+  return (
+    <SectionPanel
+      title="Statement pack readiness"
+      description={
+        openedFromBilling
+          ? "Opened from the Billing Readiness month-end checklist."
+          : "Owner statement readiness for the selected month."
+      }
+      icon={<span className="text-primary">{icon}</span>}
+      actions={
+        <StatusBadge tone={loading ? "neutral" : tone}>
+          {loading ? "Checking" : statementPackLabel(readiness.status)}
+        </StatusBadge>
+      }
+    >
+      <div className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="grid gap-2">
+          <div className="text-sm font-semibold text-foreground">
+            {readiness.title}
+          </div>
+          <p className="text-sm text-muted-foreground">{readiness.detail}</p>
+          <div className="flex flex-wrap gap-2">
+            <StatusBadge tone="neutral">Month {month}</StatusBadge>
+            <StatusBadge tone="neutral">
+              {readiness.ownerCount}{" "}
+              {readiness.ownerCount === 1 ? "owner" : "owners"}
+            </StatusBadge>
+            <StatusBadge tone="primary">
+              {readiness.statementInvoiceCount} statement{" "}
+              {readiness.statementInvoiceCount === 1 ? "invoice" : "invoices"}
+            </StatusBadge>
+            <StatusBadge tone="neutral">
+              {readiness.localApprovedCount} approved locally
+            </StatusBadge>
+            <StatusBadge
+              tone={readiness.unpaidLocalCount > 0 ? "warning" : "success"}
+            >
+              {readiness.unpaidLocalCount} unpaid locally
+            </StatusBadge>
+            <StatusBadge
+              tone={readiness.outstandingCents > 0 ? "warning" : "success"}
+            >
+              {formatMoney(readiness.outstandingCents)} outstanding
+            </StatusBadge>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+          <Link
+            href={billingHref}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+          >
+            <ArrowUpRight size={15} />
+            Open Billing Readiness
+          </Link>
+        </div>
+      </div>
+    </SectionPanel>
   );
 }
 
