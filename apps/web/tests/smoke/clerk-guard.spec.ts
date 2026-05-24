@@ -36,6 +36,7 @@ test.describe("Clerk middleware guard", () => {
 
   test("keeps public operator and tenant routes open", async ({ request }) => {
     for (const path of [
+      "/account",
       "/welcome",
       "/setup",
       "/__clerk/v1/client",

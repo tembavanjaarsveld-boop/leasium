@@ -1,5 +1,6 @@
 export const publicOperatorPathPrefixes = [
   "/access",
+  "/account",
   "/api/access",
   "/sign-in",
   "/sign-up",

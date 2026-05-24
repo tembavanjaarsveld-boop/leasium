@@ -2368,7 +2368,12 @@ export function getSecurityWorkspace() {
   return request<SecurityWorkspaceRecord>("/security/workspace");
 }
 
-export function getCurrentOperator() {
+export function getCurrentOperator(authToken?: string | null) {
+  if (authToken) {
+    return publicRequest<SecurityMeRecord>("/me", {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+  }
   return request<SecurityMeRecord>("/me");
 }
 

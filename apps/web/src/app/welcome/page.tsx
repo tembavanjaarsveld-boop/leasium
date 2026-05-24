@@ -24,7 +24,9 @@ export const metadata: Metadata = {
     "Sign in to the Leasium agent workspace or tenant portal.",
 };
 
-const agentSignInHref = "/sign-in?redirect_url=%2F";
+const accountSignInHref = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  ? "/account"
+  : "https://leasium.ai/account";
 
 const workflowSteps = [
   {
@@ -89,16 +91,16 @@ export default function WelcomePage() {
         </Link>
         <nav className="flex items-center gap-2 text-sm">
           <Link
-            href="/tenant-portal"
+            href={accountSignInHref}
             className="inline-flex min-h-10 items-center justify-center rounded-xl px-3 font-semibold text-leasium-slate-600 transition duration-200 ease-leasium hover:text-leasium-navy-800"
           >
-            Tenant sign in
+            Sign in
           </Link>
           <Link
-            href={agentSignInHref}
+            href="/tenant-portal"
             className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border-strong bg-white px-3 font-semibold text-leasium-slate-600 shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-slate-50"
           >
-            Agent sign in
+            Tenant invite
           </Link>
         </nav>
       </header>
@@ -109,20 +111,20 @@ export default function WelcomePage() {
             Leasium sign in
           </span>
           <h1 className="text-4xl font-bold tracking-tight text-leasium-navy-800 sm:text-5xl">
-            Choose your Leasium workspace.
+            Sign in to your Leasium account.
           </h1>
           <p className="max-w-xl text-lg leading-relaxed text-leasium-slate-500">
-            Agents manage lease operations. Tenants complete onboarding and open
-            their portal. Pick the path that matches your invitation.
+            One sign-in works for property teams and tenants. Leasium checks the
+            account and opens the right workspace.
           </p>
           <div className="grid gap-3">
             <Link
-              href={agentSignInHref}
+              href={accountSignInHref}
               className="group inline-flex min-h-12 items-center justify-between gap-3 rounded-xl bg-leasium-blue px-5 text-sm font-semibold text-white shadow-leasiumSm transition duration-200 ease-leasium hover:bg-leasium-blue-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
             >
               <span className="flex items-center gap-2">
                 <LogIn size={18} aria-hidden="true" />
-                Agent sign in
+                Sign in
               </span>
               <ArrowRight
                 size={16}
@@ -136,7 +138,7 @@ export default function WelcomePage() {
             >
               <span className="flex items-center gap-2">
                 <UserRound size={18} aria-hidden="true" />
-                Tenant sign in
+                I have a tenant invite
               </span>
               <ArrowRight
                 size={16}
@@ -176,11 +178,11 @@ export default function WelcomePage() {
             </div>
             <div className="flex flex-wrap gap-3">
               <Link
-                href={agentSignInHref}
+                href={accountSignInHref}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-leasium-blue px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
               >
                 <LogIn size={16} aria-hidden="true" />
-                Agent sign in
+                Sign in
               </Link>
               <Link
                 href="/setup"
@@ -211,11 +213,11 @@ export default function WelcomePage() {
             </div>
             <div className="flex flex-wrap gap-3">
               <Link
-                href="/tenant-portal"
+                href={accountSignInHref}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-leasium-navy-800 px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-navy-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
               >
                 <KeyRound size={16} aria-hidden="true" />
-                Tenant sign in
+                Sign in
               </Link>
               <p className="inline-flex min-h-11 items-center text-xs leading-relaxed text-leasium-slate-500">
                 New tenant? Start from the invite email so your portal links to
@@ -362,7 +364,7 @@ export default function WelcomePage() {
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link
-                  href={agentSignInHref}
+                  href={accountSignInHref}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-leasium-blue px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
                 >
                   Sign in <ArrowRight size={16} aria-hidden="true" />
@@ -396,10 +398,10 @@ export default function WelcomePage() {
           </p>
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/tenant-portal"
+              href={accountSignInHref}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-leasium-navy-800 px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-navy-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
             >
-              Open portal <ArrowRight size={16} aria-hidden="true" />
+              Sign in <ArrowRight size={16} aria-hidden="true" />
             </Link>
             <p className="inline-flex min-h-11 items-center text-xs text-leasium-slate-500">
               Have a setup link? Use the link in your invite email.

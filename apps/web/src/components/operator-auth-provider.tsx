@@ -99,17 +99,24 @@ function OperatorAuthBridge({ children }: { children: React.ReactNode }) {
 
 export function OperatorAuthProvider({ children }: { children: React.ReactNode }) {
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  const proxyUrl =
+    process.env.NEXT_PUBLIC_CLERK_PROXY_URL ??
+    (process.env.NODE_ENV === "production"
+      ? "https://leasium.ai/__clerk"
+      : undefined);
 
   if (!publishableKey) {
     return <>{children}</>;
   }
 
+  const proxyProps = proxyUrl ? { proxyUrl } : {};
+
   return (
     <ClerkProvider
       publishableKey={publishableKey}
-      proxyUrl="/__clerk"
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
+      {...proxyProps}
     >
       <OperatorAuthBridge>{children}</OperatorAuthBridge>
     </ClerkProvider>

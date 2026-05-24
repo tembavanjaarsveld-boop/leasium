@@ -32,7 +32,12 @@ export default function SignInPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-background px-6 py-12">
       <div className="grid justify-items-center gap-4">
-        <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" />
+        <SignIn
+          routing="path"
+          path="/sign-in"
+          signUpUrl="/sign-up"
+          fallbackRedirectUrl="/account"
+        />
         <Link
           className="text-sm font-semibold text-muted-foreground transition hover:text-primary"
           href="/setup"
