@@ -283,6 +283,66 @@ test("AI inbox vendor classification offers a contractor picker", async ({
   await expect(page).toHaveURL(/\/contractors/);
 });
 
+test("AI inbox tenant contact classification applies selected fields", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/ai/triage", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        kind: "tenant_contact",
+        confidence: 0.84,
+        summary: "Tenant wants billing contact details updated.",
+        suggested_action: "Review the proposed tenant contact changes.",
+        suggested_target_kind: "tenant",
+        suggested_target_href: "/tenants",
+        suggested_property: null,
+        suggested_tenant: {
+          id: "22222222-2222-2222-2222-222222222222",
+          label: "Acme Bakery",
+        },
+        suggested_lease: null,
+        suggested_contractor: null,
+        key_facts: [{ label: "New email", value: "accounts@acmebakery.example" }],
+        warnings: [],
+        guardrails: [],
+        response_id: "resp_tenant_contact_smoke",
+      }),
+    });
+  });
+
+  await page.goto("/inbox");
+  await page.getByRole("button", { name: "Try sample" }).click();
+  await page.getByRole("button", { name: /Classify/ }).click();
+
+  const promotePanel = page.getByTestId("promote-panel");
+  await expect(promotePanel).toBeVisible();
+  await expect(
+    promotePanel.getByText(/Update tenant contact details/i),
+  ).toBeVisible();
+  await expect(promotePanel.getByLabel("Promote tenant")).toHaveValue(
+    "22222222-2222-2222-2222-222222222222",
+  );
+
+  await promotePanel.getByRole("button", { name: "Prepare updates" }).click();
+  await expect(
+    promotePanel.getByText("Proposed: accounts@acmebakery.example"),
+  ).toBeVisible();
+  await expect(promotePanel.getByText("Proposed: 0411 222 333")).toBeVisible();
+
+  await promotePanel
+    .getByRole("button", { name: "Apply selected fields" })
+    .click();
+  await expect(page).toHaveURL(
+    /\/tenants\/22222222-2222-2222-2222-222222222222/,
+  );
+});
+
 test("tenants saved views capture and re-apply filter combos", async ({
   page,
 }) => {

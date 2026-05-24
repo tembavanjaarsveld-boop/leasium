@@ -25,6 +25,8 @@ import {
 } from "@/components/ui";
 import {
   type InboxPromoteKind,
+  type InboxTenantContactField,
+  type InboxTenantContactPreviewRecord,
   type InboxTriageKind,
   type InboxTriageRecord,
   listContractors,
@@ -32,6 +34,7 @@ import {
   listLeasesByTenant,
   listProperties,
   listTenants,
+  previewTenantContactUpdate,
   promoteInboxMessage,
   triageInboxMessage,
 } from "@/lib/api";
@@ -55,6 +58,7 @@ const PROMOTE_KIND_LABEL: Record<InboxPromoteKind, string> = {
   maintenance_request: "Create maintenance work order",
   payment_or_arrears: "Open arrears case",
   lease_change: "Send to Smart Intake review",
+  tenant_contact: "Update tenant contact details",
   vendor_or_contractor: "Add to contractor directory",
 };
 
@@ -63,6 +67,7 @@ function isPromotable(kind: InboxTriageKind): kind is InboxPromoteKind {
     kind === "maintenance_request" ||
     kind === "payment_or_arrears" ||
     kind === "lease_change" ||
+    kind === "tenant_contact" ||
     kind === "vendor_or_contractor"
   );
 }
@@ -115,6 +120,10 @@ function InboxWorkspace() {
   const [promoteTenantId, setPromoteTenantId] = useState("");
   const [promoteLeaseId, setPromoteLeaseId] = useState("");
   const [promoteContractorId, setPromoteContractorId] = useState("");
+  const [tenantContactPreview, setTenantContactPreview] =
+    useState<InboxTenantContactPreviewRecord | null>(null);
+  const [selectedTenantContactFields, setSelectedTenantContactFields] =
+    useState<Partial<Record<InboxTenantContactField, boolean>>>({});
   const [promoteError, setPromoteError] = useState<string | null>(null);
 
   const entitiesQuery = useQuery({
@@ -186,6 +195,8 @@ function InboxWorkspace() {
       setPromoteTenantId(data.suggested_tenant?.id ?? "");
       setPromoteLeaseId(data.suggested_lease?.id ?? "");
       setPromoteContractorId(data.suggested_contractor?.id ?? "");
+      setTenantContactPreview(null);
+      setSelectedTenantContactFields({});
     },
     onError: (err) => {
       setError(friendlyError(err));
@@ -198,6 +209,27 @@ function InboxWorkspace() {
     onMutate: () => setPromoteError(null),
     onSuccess: (data) => {
       router.push(data.target_href);
+    },
+    onError: (err) => setPromoteError(friendlyError(err)),
+  });
+
+  const tenantContactPreviewMutation = useMutation({
+    mutationFn: previewTenantContactUpdate,
+    onMutate: () => {
+      setPromoteError(null);
+      setTenantContactPreview(null);
+      setSelectedTenantContactFields({});
+    },
+    onSuccess: (data) => {
+      setTenantContactPreview(data);
+      setSelectedTenantContactFields(
+        Object.fromEntries(
+          data.proposed_updates.map((proposal) => [
+            proposal.field,
+            proposal.selected_by_default,
+          ]),
+        ) as Partial<Record<InboxTenantContactField, boolean>>,
+      );
     },
     onError: (err) => setPromoteError(friendlyError(err)),
   });
@@ -218,6 +250,8 @@ function InboxWorkspace() {
     setPromoteTenantId("");
     setPromoteLeaseId("");
     setPromoteContractorId("");
+    setTenantContactPreview(null);
+    setSelectedTenantContactFields({});
   }
 
   function handleSample() {
@@ -225,11 +259,23 @@ function InboxWorkspace() {
     setResult(null);
     setError(null);
     setPromoteError(null);
+    setTenantContactPreview(null);
+    setSelectedTenantContactFields({});
   }
 
   function handlePromote() {
     if (!result || !selectedEntityId) return;
     if (!isPromotable(result.kind)) return;
+    const tenantContactUpdates =
+      result.kind === "tenant_contact" && tenantContactPreview
+        ? Object.fromEntries(
+            tenantContactPreview.proposed_updates
+              .filter(
+                (proposal) => selectedTenantContactFields[proposal.field],
+              )
+              .map((proposal) => [proposal.field, proposal.proposed_value]),
+          )
+        : undefined;
     promoteMutation.mutate({
       entity_id: selectedEntityId,
       kind: result.kind,
@@ -239,18 +285,36 @@ function InboxWorkspace() {
       tenant_id: promoteTenantId || null,
       lease_id: promoteLeaseId || null,
       contractor_id: promoteContractorId || null,
+      tenant_contact_updates: tenantContactUpdates,
+    });
+  }
+
+  function handlePrepareTenantContact() {
+    if (!selectedEntityId || !promoteTenantId) return;
+    tenantContactPreviewMutation.mutate({
+      entity_id: selectedEntityId,
+      tenant_id: promoteTenantId,
+      body: body.trim(),
     });
   }
 
   const showPromote = result !== null && isPromotable(result.kind);
-  const promoteRequiresTenant = result?.kind === "payment_or_arrears";
+  const promoteRequiresTenant =
+    result?.kind === "payment_or_arrears" || result?.kind === "tenant_contact";
   const promoteShowsLeasePicker = result?.kind === "lease_change";
+  const promoteShowsTenantContactPreview = result?.kind === "tenant_contact";
   const promoteShowsContractorPicker =
     result?.kind === "vendor_or_contractor";
+  const selectedTenantContactUpdateCount =
+    tenantContactPreview?.proposed_updates.filter(
+      (proposal) => selectedTenantContactFields[proposal.field],
+    ).length ?? 0;
   const promoteDisabled =
     !showPromote ||
     promoteMutation.isPending ||
-    (promoteRequiresTenant && !promoteTenantId);
+    (promoteRequiresTenant && !promoteTenantId) ||
+    (promoteShowsTenantContactPreview &&
+      (!tenantContactPreview || selectedTenantContactUpdateCount === 0));
 
   const promoteKindLabel = useMemo(() => {
     if (!result || !isPromotable(result.kind)) return null;
@@ -413,9 +477,10 @@ function InboxWorkspace() {
                         Promote to a Leasium draft
                       </div>
                       <p className="text-sm text-foreground">
-                        {promoteKindLabel}. Leasium creates the draft;
-                        nothing is sent until you approve from inside the
-                        target surface.
+                        {promoteKindLabel}.{" "}
+                        {promoteShowsTenantContactPreview
+                          ? "Leasium updates only the checked fields; nothing is sent."
+                          : "Leasium creates the draft; nothing is sent until you approve from inside the target surface."}
                       </p>
                     </div>
                   </div>
@@ -452,6 +517,16 @@ function InboxWorkspace() {
                             }
                           >
                             <option value="">No property attached</option>
+                            {result.suggested_property &&
+                            promotePropertyId === result.suggested_property.id &&
+                            !(propertiesQuery.data ?? []).some(
+                              (property) =>
+                                property.id === result.suggested_property?.id,
+                            ) ? (
+                              <option value={result.suggested_property.id}>
+                                {result.suggested_property.label}
+                              </option>
+                            ) : null}
                             {(propertiesQuery.data ?? []).map((property) => (
                               <option key={property.id} value={property.id}>
                                 {property.name}
@@ -475,6 +550,8 @@ function InboxWorkspace() {
                             onChange={(event) => {
                               setPromoteTenantId(event.target.value);
                               setPromoteLeaseId("");
+                              setTenantContactPreview(null);
+                              setSelectedTenantContactFields({});
                             }}
                           >
                             <option value="">
@@ -482,6 +559,16 @@ function InboxWorkspace() {
                                 ? "Pick a tenant"
                                 : "No tenant attached"}
                             </option>
+                            {result.suggested_tenant &&
+                            promoteTenantId === result.suggested_tenant.id &&
+                            !(tenantsQuery.data ?? []).some(
+                              (tenant) =>
+                                tenant.id === result.suggested_tenant?.id,
+                            ) ? (
+                              <option value={result.suggested_tenant.id}>
+                                {result.suggested_tenant.label}
+                              </option>
+                            ) : null}
                             {(tenantsQuery.data ?? []).map((tenant) => (
                               <option key={tenant.id} value={tenant.id}>
                                 {tenant.trading_name || tenant.legal_name}
@@ -515,6 +602,111 @@ function InboxWorkspace() {
                       </>
                     )}
                   </div>
+
+                  {promoteShowsTenantContactPreview ? (
+                    <div className="grid gap-3 rounded-md border border-border bg-white p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold">
+                            Contact updates
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Review proposed values before updating the tenant
+                            record.
+                          </p>
+                        </div>
+                        <SecondaryButton
+                          type="button"
+                          onClick={handlePrepareTenantContact}
+                          disabled={
+                            !promoteTenantId ||
+                            tenantContactPreviewMutation.isPending
+                          }
+                        >
+                          {tenantContactPreviewMutation.isPending ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Sparkles size={14} />
+                          )}
+                          Prepare updates
+                        </SecondaryButton>
+                      </div>
+
+                      {tenantContactPreview ? (
+                        <div className="grid gap-2">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <span>{tenantContactPreview.summary}</span>
+                            {tenantContactPreview.confidence !== null ? (
+                              <StatusBadge
+                                tone={confidenceTone(
+                                  tenantContactPreview.confidence,
+                                )}
+                              >
+                                {Math.round(
+                                  tenantContactPreview.confidence * 100,
+                                )}
+                                %
+                              </StatusBadge>
+                            ) : null}
+                          </div>
+                          {tenantContactPreview.proposed_updates.length ? (
+                            <div className="grid gap-2">
+                              {tenantContactPreview.proposed_updates.map(
+                                (proposal) => (
+                                  <label
+                                    key={proposal.field}
+                                    className="grid gap-2 rounded-md border border-border bg-muted/20 px-3 py-2 text-sm md:grid-cols-[auto_160px_minmax(0,1fr)] md:items-center"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      className="mt-1 md:mt-0"
+                                      checked={Boolean(
+                                        selectedTenantContactFields[
+                                          proposal.field
+                                        ],
+                                      )}
+                                      onChange={(event) =>
+                                        setSelectedTenantContactFields(
+                                          (current) => ({
+                                            ...current,
+                                            [proposal.field]:
+                                              event.target.checked,
+                                          }),
+                                        )
+                                      }
+                                    />
+                                    <span className="font-medium">
+                                      {proposal.label}
+                                    </span>
+                                    <span className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                                      <span>
+                                        Current:{" "}
+                                        {proposal.current_value || "Blank"}
+                                      </span>
+                                      <span className="font-semibold text-foreground">
+                                        Proposed: {proposal.proposed_value}
+                                      </span>
+                                    </span>
+                                  </label>
+                                ),
+                              )}
+                            </div>
+                          ) : (
+                            <div className="rounded-md border border-warning/30 bg-warning/5 p-2 text-xs text-warning">
+                              No changed contact fields were found.
+                            </div>
+                          )}
+                          {tenantContactPreview.warnings.length ? (
+                            <div className="grid gap-1 rounded-md border border-warning/30 bg-warning/5 p-2 text-xs text-warning">
+                              {tenantContactPreview.warnings.map((warning) => (
+                                <div key={warning}>{warning}</div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   {(result.suggested_property ||
                     result.suggested_tenant ||
@@ -568,7 +760,10 @@ function InboxWorkspace() {
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1">
-                          <ArrowRight size={14} /> Promote to draft
+                          <ArrowRight size={14} />{" "}
+                          {promoteShowsTenantContactPreview
+                            ? "Apply selected fields"
+                            : "Promote to draft"}
                         </span>
                       )}
                     </Button>

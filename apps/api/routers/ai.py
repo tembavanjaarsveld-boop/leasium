@@ -29,6 +29,11 @@ from stewart.ai.inbox import (
     triage_inbox,
 )
 from stewart.ai.lease_change import LeaseChangeError, extract_lease_change
+from stewart.ai.tenant_contact import (
+    TENANT_CONTACT_GUARDRAILS,
+    TenantContactError,
+    extract_tenant_contact,
+)
 from stewart.ai.vendor_intake import VendorIntakeError, extract_vendor_intake
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
@@ -62,6 +67,9 @@ from apps.api.schemas.ai import (
     InboxPromoteRead,
     InboxPromoteRequest,
     InboxTargetKind,
+    InboxTenantContactFieldProposal,
+    InboxTenantContactPreviewRead,
+    InboxTenantContactPreviewRequest,
     InboxTriageMatch,
     InboxTriageRead,
     InboxTriageRequest,
@@ -714,6 +722,13 @@ PROMOTE_WRITE_ROLES = {
     UserRole.ops,
 }
 
+TENANT_CONTACT_FIELD_LABELS = {
+    "contact_name": "Contact name",
+    "contact_email": "Contact email",
+    "contact_phone": "Phone",
+    "billing_email": "Billing email",
+}
+
 
 def _property_in_entity(
     property_id: UUID,
@@ -832,6 +847,156 @@ def _lease_snapshot(
             else None
         ),
     }
+
+
+def _tenant_snapshot(tenant: Tenant) -> dict[str, Any]:
+    """Compact tenant view for tenant-contact extraction prompts."""
+
+    return {
+        "id": str(tenant.id),
+        "legal_name": tenant.legal_name,
+        "trading_name": tenant.trading_name,
+        "contact_name": tenant.contact_name,
+        "contact_email": tenant.contact_email,
+        "contact_phone": tenant.contact_phone,
+        "billing_email": tenant.billing_email,
+    }
+
+
+def _tenant_contact_label(tenant: Tenant) -> str:
+    return tenant.trading_name or tenant.legal_name
+
+
+def _clean_contact_value(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    return cleaned[:240] if cleaned else None
+
+
+def _tenant_contact_proposals(
+    *,
+    tenant: Tenant,
+    extracted: dict[str, Any],
+) -> list[InboxTenantContactFieldProposal]:
+    proposals: list[InboxTenantContactFieldProposal] = []
+    for field, label in TENANT_CONTACT_FIELD_LABELS.items():
+        proposed = _clean_contact_value(extracted.get(field))
+        if proposed is None:
+            continue
+        current = getattr(tenant, field)
+        current_clean = current.strip() if isinstance(current, str) else None
+        if current_clean == proposed:
+            continue
+        proposals.append(
+            InboxTenantContactFieldProposal(
+                field=field,  # type: ignore[arg-type]
+                label=label,
+                current_value=current_clean,
+                proposed_value=proposed,
+                selected_by_default=True,
+            )
+        )
+    return proposals
+
+
+def _tenant_contact_warnings(extracted: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    raw_warnings = extracted.get("warnings")
+    if isinstance(raw_warnings, list):
+        for warning in raw_warnings:
+            if isinstance(warning, str) and warning.strip():
+                warnings.append(warning.strip()[:240])
+    return warnings
+
+
+@router.post(
+    "/triage/tenant-contact-preview",
+    response_model=InboxTenantContactPreviewRead,
+)
+def preview_tenant_contact_update(
+    payload: InboxTenantContactPreviewRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> InboxTenantContactPreviewRead:
+    """Extract proposed tenant contact updates for operator review.
+
+    This endpoint is read-only. The follow-up promote call applies only
+    the fields the operator has explicitly approved.
+    """
+
+    assert_entity_role(session, user, payload.entity_id, PROMOTE_WRITE_ROLES)
+    tenant = _tenant_in_entity(payload.tenant_id, payload.entity_id, session)
+
+    try:
+        extracted, response_id = extract_tenant_contact(
+            body=payload.body,
+            settings=settings,
+            tenant_snapshot=_tenant_snapshot(tenant),
+        )
+    except TenantContactError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    raw_confidence = extracted.get("confidence")
+    try:
+        confidence = (
+            max(0.0, min(1.0, float(raw_confidence)))
+            if raw_confidence is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        confidence = None
+
+    raw_summary = extracted.get("summary")
+    summary = (
+        raw_summary.strip()[:400]
+        if isinstance(raw_summary, str) and raw_summary.strip()
+        else "Review tenant contact updates."
+    )
+    proposed_updates = _tenant_contact_proposals(
+        tenant=tenant,
+        extracted=extracted,
+    )
+    warnings = _tenant_contact_warnings(extracted)
+    if not proposed_updates:
+        warnings.append(
+            "No changed tenant contact fields were clearly extracted."
+        )
+
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=payload.entity_id,
+        action="query",
+        target_table="tenant",
+        target_id=tenant.id,
+        tool_name="ai_inbox_contact_preview",
+        tool_input={
+            "body_length": len(payload.body),
+            "proposed_field_count": len(proposed_updates),
+            "warning_count": len(warnings),
+        },
+        tool_output_summary=(
+            f"Prepared {len(proposed_updates)} tenant contact update(s)."
+        ),
+        data_classification="internal",
+    )
+    session.commit()
+
+    return InboxTenantContactPreviewRead(
+        tenant=InboxTriageMatch(id=tenant.id, label=_tenant_contact_label(tenant)),
+        summary=summary,
+        confidence=confidence,
+        proposed_updates=proposed_updates,
+        warnings=warnings,
+        guardrails=list(TENANT_CONTACT_GUARDRAILS),
+        response_id=response_id,
+    )
 
 
 def _truncate_title(text: str, *, limit: int = 120) -> str:
@@ -954,6 +1119,82 @@ def promote_triage(
             target_id=case.id,
             target_href=f"/operations?tab=arrears&case_id={case.id}",
             target_label=title or "Arrears case from inbox",
+        )
+
+    if payload.kind == "tenant_contact":
+        if payload.tenant_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Promoting tenant contact updates requires a matched tenant.",
+            )
+        tenant = _tenant_in_entity(payload.tenant_id, payload.entity_id, session)
+        approved_updates: dict[str, str] = {}
+        previous_values: dict[str, str | None] = {}
+        for field in TENANT_CONTACT_FIELD_LABELS:
+            if field not in payload.tenant_contact_updates:
+                continue
+            proposed = _clean_contact_value(payload.tenant_contact_updates[field])
+            if proposed is None:
+                continue
+            current = getattr(tenant, field)
+            current_clean = current.strip() if isinstance(current, str) else None
+            if current_clean == proposed:
+                continue
+            approved_updates[field] = proposed
+            previous_values[field] = current_clean
+
+        if not approved_updates:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Choose at least one changed tenant contact field to apply.",
+            )
+
+        for field, proposed in approved_updates.items():
+            setattr(tenant, field, proposed)
+
+        metadata = dict(tenant.tenant_metadata or {})
+        history_raw = metadata.get("ai_inbox_contact_promotions")
+        history = history_raw if isinstance(history_raw, list) else []
+        history = [
+            *history[-9:],
+            {
+                "promoted_at": utcnow().isoformat(),
+                "promoted_by_user_id": str(user.id),
+                "summary": summary,
+                "fields": sorted(approved_updates.keys()),
+            },
+        ]
+        metadata["ai_inbox_contact_promotions"] = history
+        tenant.tenant_metadata = metadata
+
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=payload.entity_id,
+            action="update",
+            target_table="tenant",
+            target_id=tenant.id,
+            tool_name="ai_inbox_promote",
+            tool_input={
+                "kind": payload.kind,
+                "summary_length": len(summary),
+                "fields": sorted(approved_updates.keys()),
+                "previous_values_present": sorted(previous_values.keys()),
+            },
+            tool_output_summary=(
+                "Promoted inbox message to tenant contact update"
+                f" ({len(approved_updates)} field(s))."
+            ),
+            data_classification="internal",
+        )
+        session.commit()
+        session.refresh(tenant)
+        return InboxPromoteRead(
+            target_kind="tenant",
+            target_id=tenant.id,
+            target_href=f"/tenants/{tenant.id}",
+            target_label=_tenant_contact_label(tenant),
         )
 
     if payload.kind == "lease_change":

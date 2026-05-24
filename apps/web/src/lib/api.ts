@@ -2549,13 +2549,53 @@ export type InboxPromoteKind =
   | "maintenance_request"
   | "payment_or_arrears"
   | "lease_change"
+  | "tenant_contact"
   | "vendor_or_contractor";
 
 export type InboxPromoteTargetKind =
   | "maintenance_work_order"
   | "arrears_case"
   | "document_intake"
+  | "tenant"
   | "contractor";
+
+export type InboxTenantContactField =
+  | "contact_name"
+  | "contact_email"
+  | "contact_phone"
+  | "billing_email";
+
+export type InboxTenantContactFieldProposalRecord = {
+  field: InboxTenantContactField;
+  label: string;
+  current_value: string | null;
+  proposed_value: string;
+  selected_by_default: boolean;
+};
+
+export type InboxTenantContactPreviewRecord = {
+  tenant: InboxTriageMatch;
+  summary: string;
+  confidence: number | null;
+  proposed_updates: InboxTenantContactFieldProposalRecord[];
+  warnings: string[];
+  guardrails: string[];
+  response_id: string | null;
+};
+
+export function previewTenantContactUpdate(payload: {
+  entity_id: string;
+  tenant_id: string;
+  body: string;
+}) {
+  return request<InboxTenantContactPreviewRecord>(
+    "/ai/triage/tenant-contact-preview",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
 
 export type InboxPromoteRecord = {
   target_kind: InboxPromoteTargetKind;
@@ -2573,6 +2613,7 @@ export function promoteInboxMessage(payload: {
   tenant_id?: string | null;
   lease_id?: string | null;
   contractor_id?: string | null;
+  tenant_contact_updates?: Partial<Record<InboxTenantContactField, string>>;
 }) {
   return request<InboxPromoteRecord>("/ai/triage/promote", {
     method: "POST",

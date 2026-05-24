@@ -101,6 +101,7 @@ InboxPromoteKind = Literal[
     "maintenance_request",
     "payment_or_arrears",
     "lease_change",
+    "tenant_contact",
     "vendor_or_contractor",
 ]
 
@@ -109,8 +110,42 @@ InboxPromoteTargetKind = Literal[
     "maintenance_work_order",
     "arrears_case",
     "document_intake",
+    "tenant",
     "contractor",
 ]
+
+TenantContactField = Literal[
+    "contact_name",
+    "contact_email",
+    "contact_phone",
+    "billing_email",
+]
+
+
+class InboxTenantContactPreviewRequest(BaseModel):
+    entity_id: UUID
+    tenant_id: UUID
+    body: str = Field(min_length=10, max_length=8000)
+
+
+class InboxTenantContactFieldProposal(BaseModel):
+    field: TenantContactField
+    label: str
+    current_value: str | None = None
+    proposed_value: str
+    selected_by_default: bool = True
+
+
+class InboxTenantContactPreviewRead(BaseModel):
+    tenant: InboxTriageMatch
+    summary: str
+    confidence: float | None = None
+    proposed_updates: list[InboxTenantContactFieldProposal] = Field(
+        default_factory=list
+    )
+    warnings: list[str] = Field(default_factory=list)
+    guardrails: list[str] = Field(default_factory=list)
+    response_id: str | None = None
 
 
 class InboxPromoteRequest(BaseModel):
@@ -122,6 +157,7 @@ class InboxPromoteRequest(BaseModel):
     tenant_id: UUID | None = None
     lease_id: UUID | None = None
     contractor_id: UUID | None = None
+    tenant_contact_updates: dict[str, str | None] = Field(default_factory=dict)
 
 
 class InboxPromoteRead(BaseModel):

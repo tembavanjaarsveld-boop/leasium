@@ -2891,12 +2891,57 @@ export async function mockLeasiumApi(
     }
 
     if (method === "POST" && path === "/ai/triage/promote") {
+      const requestBody = route.request().postDataJSON() as {
+        kind?: string;
+      } | null;
+      if (requestBody?.kind === "tenant_contact") {
+        await fulfillJson(route, {
+          target_kind: "tenant",
+          target_id: "22222222-2222-2222-2222-222222222222",
+          target_href: "/tenants/22222222-2222-2222-2222-222222222222",
+          target_label: "Acme Bakery",
+        });
+        return;
+      }
       await fulfillJson(route, {
         target_kind: "maintenance_work_order",
         target_id: "99999999-9999-9999-9999-999999999999",
         target_href:
           "/operations/maintenance/99999999-9999-9999-9999-999999999999",
         target_label: "Tenant reports a slow kitchen tap leak.",
+      });
+      return;
+    }
+
+    if (method === "POST" && path === "/ai/triage/tenant-contact-preview") {
+      await fulfillJson(route, {
+        tenant: {
+          id: "22222222-2222-2222-2222-222222222222",
+          label: "Acme Bakery",
+        },
+        summary: "Tenant asked to update billing contact details.",
+        confidence: 0.86,
+        proposed_updates: [
+          {
+            field: "contact_email",
+            label: "Contact email",
+            current_value: "tenant@acmebakery.example",
+            proposed_value: "accounts@acmebakery.example",
+            selected_by_default: true,
+          },
+          {
+            field: "contact_phone",
+            label: "Phone",
+            current_value: null,
+            proposed_value: "0411 222 333",
+            selected_by_default: true,
+          },
+        ],
+        warnings: [],
+        guardrails: [
+          "Tenant-contact extraction is read-only. It proposes contact-detail changes for operator review; it does not email tenants or change records by itself.",
+        ],
+        response_id: "resp_tenant_contact_smoke",
       });
       return;
     }

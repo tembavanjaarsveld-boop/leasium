@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.ai.inbox import InboxTriageError
 from stewart.ai.lease_change import LeaseChangeError
+from stewart.ai.tenant_contact import TenantContactError
 from stewart.ai.vendor_intake import VendorIntakeError
 from stewart.core.models import (
     ArrearsCase,
@@ -19,6 +20,7 @@ from stewart.core.models import (
     DocumentIntake,
     Entity,
     MaintenanceWorkOrder,
+    Tenant,
 )
 
 
@@ -365,12 +367,22 @@ def test_promote_arrears_requires_matched_tenant(
 
 
 def test_promote_lease_change_soft_fails_without_openai_key(
-    client: TestClient, session: Session
+    client: TestClient, session: Session, monkeypatch
 ) -> None:
     """When OPENAI_API_KEY is unset the extractor raises; promote falls
     back to v2.0 behaviour (uploaded status, empty extracted_data) with
     a warning recorded in review_data — no 5xx."""
     context = _lease_context(client, session)
+
+    def fake_extract(
+        *,
+        body: str,
+        settings: Any,
+        lease_snapshot: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
+        raise LeaseChangeError("OpenAI API key is not configured.")
+
+    monkeypatch.setattr(ai_router, "extract_lease_change", fake_extract)
 
     response = client.post(
         "/api/v1/ai/triage/promote",
@@ -614,6 +626,183 @@ def test_promote_rejects_property_from_other_entity(
     )
     assert response.status_code == 404
     assert "Property" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# v2.3: tenant_contact promote path.
+# ---------------------------------------------------------------------------
+
+
+def test_preview_tenant_contact_extracts_reviewable_proposals(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    context = _lease_context(client, session)
+    captured: dict[str, Any] = {}
+
+    def fake_extract(
+        *,
+        body: str,
+        settings: Any,
+        tenant_snapshot: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
+        captured["tenant_snapshot"] = tenant_snapshot
+        return (
+            {
+                "summary": "Tenant asked to update the accounts contact.",
+                "confidence": 0.87,
+                "contact_name": "Jane Accounts",
+                "contact_email": "accounts@acmebakery.example",
+                "contact_phone": "0411 222 333",
+                "billing_email": "accounts@acmebakery.example",
+                "warnings": [],
+            },
+            "resp_tenant_contact_001",
+        )
+
+    monkeypatch.setattr(ai_router, "extract_tenant_contact", fake_extract)
+
+    response = client.post(
+        "/api/v1/ai/triage/tenant-contact-preview",
+        json={
+            "entity_id": context["entity_id"],
+            "tenant_id": context["tenant_id"],
+            "body": (
+                "Hi, please use Jane Accounts for our billing contact from"
+                " now on: accounts@acmebakery.example or 0411 222 333."
+            ),
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["tenant"]["id"] == context["tenant_id"]
+    assert body["confidence"] == 0.87
+    assert body["response_id"] == "resp_tenant_contact_001"
+    assert captured["tenant_snapshot"]["billing_email"] == (
+        "billing@acmebakery.example"
+    )
+    proposals = {item["field"]: item for item in body["proposed_updates"]}
+    assert proposals["contact_name"]["proposed_value"] == "Jane Accounts"
+    assert proposals["contact_email"]["current_value"] is None
+    assert proposals["billing_email"]["current_value"] == (
+        "billing@acmebakery.example"
+    )
+
+
+def test_preview_tenant_contact_soft_fails_without_extractor(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    context = _lease_context(client, session)
+
+    def fake_extract(
+        *,
+        body: str,
+        settings: Any,
+        tenant_snapshot: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
+        raise TenantContactError("OpenAI tenant-contact request failed.")
+
+    monkeypatch.setattr(ai_router, "extract_tenant_contact", fake_extract)
+
+    response = client.post(
+        "/api/v1/ai/triage/tenant-contact-preview",
+        json={
+            "entity_id": context["entity_id"],
+            "tenant_id": context["tenant_id"],
+            "body": "Please update the billing email to accounts@example.test.",
+        },
+    )
+    assert response.status_code == 503
+    assert "tenant-contact" in response.json()["detail"]
+
+
+def test_promote_tenant_contact_updates_selected_fields(
+    client: TestClient, session: Session
+) -> None:
+    context = _lease_context(client, session)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "tenant_contact",
+            "summary": "Tenant changed billing contact details.",
+            "body": (
+                "Please use Jane Accounts on accounts@acmebakery.example and"
+                " 0411 222 333 for tenant contact updates."
+            ),
+            "tenant_id": context["tenant_id"],
+            "tenant_contact_updates": {
+                "contact_name": "Jane Accounts",
+                "contact_email": "accounts@acmebakery.example",
+                "contact_phone": "0411 222 333",
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_kind"] == "tenant"
+    assert body["target_href"] == f"/tenants/{context['tenant_id']}"
+
+    tenant = session.scalar(
+        select(Tenant).where(Tenant.id == UUID(context["tenant_id"]))
+    )
+    assert tenant is not None
+    assert tenant.contact_name == "Jane Accounts"
+    assert tenant.contact_email == "accounts@acmebakery.example"
+    assert tenant.contact_phone == "0411 222 333"
+    assert tenant.billing_email == "billing@acmebakery.example"
+    history = tenant.tenant_metadata["ai_inbox_contact_promotions"]
+    assert history[-1]["fields"] == [
+        "contact_email",
+        "contact_name",
+        "contact_phone",
+    ]
+
+    audit_row = session.scalar(
+        select(AuditAction)
+        .where(
+            AuditAction.tool_name == "ai_inbox_promote",
+            AuditAction.target_table == "tenant",
+        )
+        .order_by(AuditAction.occurred_at.desc())
+    )
+    assert audit_row is not None
+    assert audit_row.action == "update"
+
+
+def test_promote_tenant_contact_requires_tenant_and_selected_fields(
+    client: TestClient, session: Session
+) -> None:
+    context = _lease_context(client, session)
+
+    missing_tenant = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "tenant_contact",
+            "summary": "Tenant changed contact details.",
+            "body": "Please update the contact email to accounts@example.test.",
+            "tenant_contact_updates": {
+                "contact_email": "accounts@example.test",
+            },
+        },
+    )
+    assert missing_tenant.status_code == 422
+    assert "tenant" in missing_tenant.json()["detail"].lower()
+
+    no_fields = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "tenant_contact",
+            "summary": "Tenant changed contact details.",
+            "body": "Please update the contact email to accounts@example.test.",
+            "tenant_id": context["tenant_id"],
+            "tenant_contact_updates": {},
+        },
+    )
+    assert no_fields.status_code == 422
+    assert "field" in no_fields.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
