@@ -79,6 +79,17 @@ type BlockerGroup = {
   items: BlockerItem[];
 };
 
+type MonthEndChecklistStatus = "clear" | "review" | "blocked";
+
+type MonthEndChecklistItem = {
+  id: string;
+  title: string;
+  detail: string;
+  status: MonthEndChecklistStatus;
+  actionLabel?: string;
+  href?: string;
+};
+
 type BillingWorkspaceTab =
   | "readiness"
   | "billing-drafts"
@@ -137,6 +148,10 @@ function deliveryFilterFromQuery(value: string | null): DeliveryFilter | null {
   return deliveryFilters.some((filter) => filter.id === value)
     ? (value as DeliveryFilter)
     : null;
+}
+
+function countLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 type BlockerAction = {
@@ -470,6 +485,271 @@ function AccountingFreshnessStrip({
           <ArrowUpRight size={15} />
           Review payments
         </Link>
+      </div>
+    </div>
+  );
+}
+
+function checklistStatusTone(status: MonthEndChecklistStatus): StatusTone {
+  if (status === "clear") {
+    return "success";
+  }
+  if (status === "blocked") {
+    return "danger";
+  }
+  return "warning";
+}
+
+function checklistStatusLabel(status: MonthEndChecklistStatus) {
+  if (status === "clear") {
+    return "Clear";
+  }
+  if (status === "blocked") {
+    return "Needs attention";
+  }
+  return "Review";
+}
+
+function billingDeliveryHref(entityId: string, filter: DeliveryFilter) {
+  const params = new URLSearchParams({
+    entity_id: entityId,
+    tab: "delivery",
+    filter,
+  });
+  return `/billing-readiness?${params.toString()}`;
+}
+
+function buildMonthEndChecklist({
+  invoiceDrafts,
+  freshness,
+  entityId,
+}: {
+  invoiceDrafts: InvoiceDraftRecord[];
+  freshness: XeroAccountingFreshnessRecord | null;
+  entityId: string;
+}): MonthEndChecklistItem[] {
+  const approvedDrafts = invoiceDrafts.filter(
+    (draft) => draft.status === "approved",
+  );
+  const reviews = approvedDrafts.map((draft) => invoiceDeliveryReview(draft));
+  const approvedCount = approvedDrafts.length;
+  const needsXeroApprovalCount = reviews.filter(
+    (review) => !review.xeroApproved,
+  ).length;
+  const providerRecoveryCount = reviews.filter(
+    (review) => review.xeroFailed || review.emailFailed,
+  ).length;
+  const readyDispatchCount = reviews.filter(
+    (review) =>
+      review.readyForProviderDispatch &&
+      !review.xeroFailed &&
+      !review.emailFailed,
+  ).length;
+  const providerCompleteCount = reviews.filter(
+    (review) => review.providerComplete,
+  ).length;
+  const remainingProviderCount = approvedCount - providerCompleteCount;
+  const unpaidCount = reviews.filter(
+    (review) => review.paymentLabel !== "paid",
+  ).length;
+  const paymentReviewCount = approvedDrafts.filter((draft) =>
+    Boolean(invoicePaymentFreshnessCue(draft, freshness)),
+  ).length;
+  const accountingStatus: MonthEndChecklistStatus = !freshness
+    ? "review"
+    : freshness.readiness_blocker_count > 0 || freshness.status === "attention"
+      ? "blocked"
+      : freshness.readiness_warning_count > 0 || freshness.status !== "ready"
+        ? "review"
+        : "clear";
+  const accountingDetail = !freshness
+    ? "Accounting freshness is unavailable; use local invoice state only until it refreshes."
+    : accountingStatus === "clear"
+      ? "Accounting setup and reconciliation are clear from local metadata."
+      : `${countLabel(freshness.readiness_blocker_count, "blocker")} and ${countLabel(
+          freshness.readiness_warning_count,
+          "warning",
+        )} from local Xero readiness.`;
+  const xeroHref = `/settings?tab=xero&entity_id=${entityId}`;
+  const closeReady =
+    approvedCount > 0 &&
+    accountingStatus === "clear" &&
+    needsXeroApprovalCount === 0 &&
+    providerRecoveryCount === 0 &&
+    readyDispatchCount === 0 &&
+    unpaidCount === 0;
+
+  return [
+    {
+      id: "accounting",
+      title: "Accounting setup",
+      detail: accountingDetail,
+      status: accountingStatus,
+      actionLabel: accountingStatus === "clear" ? undefined : "Review Xero",
+      href: accountingStatus === "clear" ? undefined : xeroHref,
+    },
+    {
+      id: "approvals",
+      title: "Invoice approvals",
+      detail:
+        approvedCount === 0
+          ? "No approved invoices are ready for dispatch yet."
+          : needsXeroApprovalCount > 0
+            ? `${needsXeroApprovalCount}/${approvedCount} approved invoices still need Xero approval.`
+            : `${countLabel(approvedCount, "approved invoice")} ${
+                approvedCount === 1 ? "has" : "have"
+              } Xero approval recorded.`,
+      status:
+        approvedCount === 0 || needsXeroApprovalCount > 0
+          ? "review"
+          : "clear",
+      actionLabel: needsXeroApprovalCount > 0 ? "Review Xero" : undefined,
+      href: needsXeroApprovalCount > 0 ? xeroHref : undefined,
+    },
+    {
+      id: "dispatch",
+      title: "Provider dispatch",
+      detail:
+        approvedCount === 0
+          ? "No approved invoices to send yet."
+          : providerRecoveryCount > 0
+            ? `${countLabel(
+                providerRecoveryCount,
+                "provider recovery",
+                "provider recoveries",
+              )} ${providerRecoveryCount === 1 ? "needs" : "need"} attention before month end.`
+            : readyDispatchCount > 0
+              ? `${countLabel(readyDispatchCount, "approved invoice")} ${
+                  readyDispatchCount === 1 ? "is" : "are"
+                } ready to dispatch.`
+              : providerCompleteCount === approvedCount
+                ? "All approved invoices have Xero and tenant email receipts."
+                : `${countLabel(remainingProviderCount, "approved invoice")} ${
+                    remainingProviderCount === 1
+                      ? "still needs"
+                      : "still need"
+                  } provider completion.`,
+      status:
+        providerRecoveryCount > 0
+          ? "blocked"
+          : readyDispatchCount > 0 ||
+              providerCompleteCount !== approvedCount ||
+              approvedCount === 0
+            ? "review"
+            : "clear",
+      actionLabel:
+        providerRecoveryCount > 0
+          ? "Open recovery"
+          : readyDispatchCount > 0
+            ? "Show ready"
+            : undefined,
+      href:
+        providerRecoveryCount > 0
+          ? billingDeliveryHref(entityId, "needs_action")
+          : readyDispatchCount > 0
+            ? billingDeliveryHref(entityId, "ready_dispatch")
+            : undefined,
+    },
+    {
+      id: "payments",
+      title: "Payment reconciliation",
+      detail:
+        approvedCount === 0
+          ? "No approved invoices to reconcile yet."
+          : paymentReviewCount > 0
+            ? `${countLabel(paymentReviewCount, "Xero-linked payment review")} ${
+                paymentReviewCount === 1 ? "is" : "are"
+              } open.`
+            : unpaidCount > 0
+              ? `${countLabel(unpaidCount, "approved invoice")} ${
+                  unpaidCount === 1 ? "is" : "are"
+                } still unpaid locally.`
+              : "All approved invoices are paid locally.",
+      status:
+        paymentReviewCount > 0 || unpaidCount > 0 || approvedCount === 0
+          ? "review"
+          : "clear",
+      actionLabel: paymentReviewCount > 0 ? "Review payments" : undefined,
+      href: paymentReviewCount > 0 ? xeroHref : undefined,
+    },
+    {
+      id: "pack",
+      title: "Month-end pack",
+      detail: closeReady
+        ? "Ready to use in owner and accounting reporting."
+        : "Close the open checklist items before relying on owner or accounting reporting.",
+      status: closeReady ? "clear" : "review",
+      actionLabel: closeReady ? "Open Insights" : undefined,
+      href: closeReady ? `/insights?entity_id=${entityId}` : undefined,
+    },
+  ];
+}
+
+function MonthEndChecklistStrip({ items }: { items: MonthEndChecklistItem[] }) {
+  const clearCount = items.filter((item) => item.status === "clear").length;
+  const blockedCount = items.filter((item) => item.status === "blocked").length;
+  return (
+    <div className="border-b border-border bg-white px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Month-end checklist
+          </h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            One scan before owner statements or accounting reports go out.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <StatusBadge tone={blockedCount ? "danger" : "primary"}>
+            {clearCount}/{items.length} clear
+          </StatusBadge>
+          {blockedCount ? (
+            <StatusBadge tone="danger">
+              {countLabel(blockedCount, "blocker")}
+            </StatusBadge>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-3 divide-y divide-border border-y border-border">
+        {items.map((item) => {
+          const tone = checklistStatusTone(item.status);
+          const icon =
+            item.status === "clear" ? (
+              <CheckCircle2 size={16} />
+            ) : item.status === "blocked" ? (
+              <AlertTriangle size={16} />
+            ) : (
+              <ReceiptText size={16} />
+            );
+          return (
+            <div
+              key={item.id}
+              className="grid gap-2 py-3 text-sm md:grid-cols-[180px_minmax(0,1fr)_auto] md:items-center"
+            >
+              <div className="flex min-w-0 items-center gap-2 font-medium text-foreground">
+                <span className="text-primary">{icon}</span>
+                <span className="truncate">{item.title}</span>
+              </div>
+              <div className="min-w-0 text-muted-foreground">
+                {item.detail}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                <StatusBadge tone={tone}>
+                  {checklistStatusLabel(item.status)}
+                </StatusBadge>
+                {item.href && item.actionLabel ? (
+                  <Link
+                    href={item.href}
+                    className="inline-flex min-h-8 items-center gap-2 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                  >
+                    <ArrowUpRight size={13} />
+                    {item.actionLabel}
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1084,6 +1364,15 @@ function BillingReadinessWorkspace() {
         ]),
       ) as Record<DeliveryFilter, number>,
     [approvedInvoiceDrafts],
+  );
+  const monthEndChecklistItems = useMemo(
+    () =>
+      buildMonthEndChecklist({
+        invoiceDrafts,
+        freshness: xeroAccountingFreshness,
+        entityId: selectedEntityId,
+      }),
+    [invoiceDrafts, selectedEntityId, xeroAccountingFreshness],
   );
   const invoiceDraftByBillingDraftId = useMemo(() => {
     const drafts = new Map<string, InvoiceDraftRecord>();
@@ -2053,6 +2342,9 @@ function BillingReadinessWorkspace() {
                     Accounting freshness snapshot is unavailable. Billing rows
                     still show local invoice delivery and payment state.
                   </div>
+                ) : null}
+                {!invoiceDraftsLoading && !xeroStatusQuery.isLoading ? (
+                  <MonthEndChecklistStrip items={monthEndChecklistItems} />
                 ) : null}
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-left text-sm tabular-nums">

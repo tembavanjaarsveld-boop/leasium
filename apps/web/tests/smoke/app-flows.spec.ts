@@ -96,6 +96,15 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   ).toBeVisible();
 
   await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Month-end checklist" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("1 provider recovery needs attention before month end."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("2 approved invoices are still unpaid locally."),
+  ).toBeVisible();
   await expect(page.getByText("Needs Xero approval").first()).toBeVisible();
   const primaryDispatchRow = page.getByRole("row").filter({
     hasText: "INV-1001",
@@ -1660,6 +1669,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     staleDispatchRow.getByText("Payment check missing"),
   ).toBeVisible();
   await expect(staleDispatchRow.getByText("Review payments")).toBeVisible();
+  await expect(
+    page.getByText("1 Xero-linked payment review is open."),
+  ).toBeVisible();
 
   await page.goto("/settings?tab=xero");
   const freshnessPanel = page
