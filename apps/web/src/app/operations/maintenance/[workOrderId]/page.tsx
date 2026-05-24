@@ -94,6 +94,31 @@ type ContractorSmsTemplate = {
   body: string;
 };
 
+type ActivityAudience =
+  | "tenant"
+  | "contractor"
+  | "provider"
+  | "internal"
+  | "system";
+
+type ActivityTimelineEntry = {
+  at: string;
+  label: string;
+  detail: string;
+  meta: string[];
+  audience: ActivityAudience;
+  audienceLabel: string;
+  tone: Tone;
+};
+
+type ActivityAuditCard = {
+  label: string;
+  badge: string;
+  value: string;
+  detail: string;
+  tone: Tone;
+};
+
 function label(value: string | null | undefined) {
   if (!value) {
     return "-";
@@ -198,6 +223,12 @@ function metadataStringList(value: unknown) {
 
 function metadataRecordList(value: unknown) {
   return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function uniqueList(values: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(values.filter((item): item is string => Boolean(item))),
+  );
 }
 
 function formText(data: FormData, key: string) {
@@ -1101,35 +1132,120 @@ function activityRows(workOrder: MaintenanceWorkOrderRecord) {
   }
   return rawHistory
     .filter((entry): entry is Record<string, unknown> => Boolean(entry))
-    .map((entry) => ({
-      at:
-        typeof entry.timestamp === "string"
-          ? entry.timestamp
-          : typeof entry.at === "string"
-            ? entry.at
-            : workOrder.updated_at,
-      label: label(
+    .map((entry): ActivityTimelineEntry => {
+      const event =
         typeof entry.event === "string"
           ? entry.event
           : typeof entry.action === "string"
             ? entry.action
-            : "Activity",
-      ),
-      meta: [
-        typeof entry.visibility === "string"
-          ? `${label(entry.visibility)} visible`
-          : null,
-        typeof entry.status === "string" ? label(entry.status) : null,
-        typeof entry.source === "string" ? label(entry.source) : null,
-        typeof entry.actor === "string" ? entry.actor : null,
-      ].filter((item): item is string => Boolean(item)),
-      detail:
-        typeof entry.summary === "string"
-          ? entry.summary
-          : [entry.actor, entry.source].filter(Boolean).join(" - ") ||
-            "Maintenance activity updated.",
-    }))
+            : "Activity";
+      const visibility =
+        typeof entry.visibility === "string" ? entry.visibility : null;
+      const source = typeof entry.source === "string" ? entry.source : null;
+      const actor = typeof entry.actor === "string" ? entry.actor : null;
+      const status = typeof entry.status === "string" ? entry.status : null;
+      const audience = activityAudience({ visibility, source, actor, event });
+      return {
+        at:
+          typeof entry.timestamp === "string"
+            ? entry.timestamp
+            : typeof entry.at === "string"
+              ? entry.at
+              : workOrder.updated_at,
+        label: label(event),
+        meta: uniqueList([
+          status ? label(status) : null,
+          source ? label(source) : null,
+          actor,
+        ]),
+        detail:
+          typeof entry.summary === "string"
+            ? entry.summary
+            : [actor, source].filter(Boolean).join(" - ") ||
+              "Maintenance activity updated.",
+        audience,
+        audienceLabel: activityAudienceLabel(audience),
+        tone: activityTone(status, audience),
+      };
+    })
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+}
+
+function buildActivityAuditCards({
+  timeline,
+  quoteDocumentsCount,
+  closeoutPhotoCount,
+  closeoutHistoryCount,
+  ownerReviewAt,
+  contractorEmailEvidenceCount,
+  contractorSmsEvidenceCount,
+}: {
+  timeline: ActivityTimelineEntry[];
+  quoteDocumentsCount: number;
+  closeoutPhotoCount: number;
+  closeoutHistoryCount: number;
+  ownerReviewAt: string | null;
+  contractorEmailEvidenceCount: number;
+  contractorSmsEvidenceCount: number;
+}): ActivityAuditCard[] {
+  const latest = timeline[0] ?? null;
+  const tenantVisibleCount = timeline.filter(
+    (entry) => entry.audience === "tenant",
+  ).length;
+  const contractorVisibleCount = timeline.filter(
+    (entry) => entry.audience === "contractor",
+  ).length;
+  const providerEvidenceCount =
+    timeline.filter((entry) => entry.audience === "provider").length +
+    contractorEmailEvidenceCount +
+    contractorSmsEvidenceCount;
+  const evidenceCount = quoteDocumentsCount + closeoutPhotoCount;
+  return [
+    {
+      label: "Latest update",
+      badge: "Live",
+      value: latest ? latest.label : "None",
+      detail: latest
+        ? `${formatDateTime(latest.at)} · ${latest.audienceLabel}`
+        : "No activity has been recorded yet.",
+      tone: latest?.tone ?? "neutral",
+    },
+    {
+      label: "External visibility",
+      badge: "Visible",
+      value: `${tenantVisibleCount + contractorVisibleCount}`,
+      detail: `${tenantVisibleCount} tenant-visible · ${contractorVisibleCount} contractor-visible`,
+      tone:
+        tenantVisibleCount || contractorVisibleCount ? "primary" : "neutral",
+    },
+    {
+      label: "Provider evidence",
+      badge: "Evidence",
+      value: `${providerEvidenceCount}`,
+      detail:
+        providerEvidenceCount > 0
+          ? "Email, SMS, or provider receipt rows are attached."
+          : "No provider evidence has been recorded yet.",
+      tone: providerEvidenceCount > 0 ? "success" : "warning",
+    },
+    {
+      label: "Closeout trail",
+      badge: "Closeout",
+      value: `${evidenceCount}`,
+      detail: closeoutHistoryCount
+        ? `${closeoutHistoryCount} closeout event${closeoutHistoryCount === 1 ? "" : "s"} · ${
+            ownerReviewAt ? "owner reviewed" : "owner review pending"
+          }`
+        : "No closeout evidence or completion audit yet.",
+      tone: closeoutHistoryCount
+        ? ownerReviewAt
+          ? "success"
+          : "warning"
+        : evidenceCount
+          ? "primary"
+          : "neutral",
+    },
+  ];
 }
 
 function linkedDocuments(
@@ -1184,6 +1300,86 @@ function quoteDocumentRows(
     category: document.category,
     byteSize: document.byte_size,
   }));
+}
+
+function activityAudience({
+  visibility,
+  source,
+  actor,
+  event,
+}: {
+  visibility: string | null;
+  source: string | null;
+  actor: string | null;
+  event: string | null;
+}): ActivityAudience {
+  const normalized = [visibility, source, actor, event]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (visibility === "tenant" || normalized.includes("tenant_portal")) {
+    return "tenant";
+  }
+  if (visibility === "contractor") {
+    return "contractor";
+  }
+  if (
+    normalized.includes("provider") ||
+    normalized.includes("sendgrid") ||
+    normalized.includes("twilio") ||
+    normalized.includes("sms") ||
+    normalized.includes("email_attempted")
+  ) {
+    return "provider";
+  }
+  if (source === "system" || actor === "system") {
+    return "system";
+  }
+  return "internal";
+}
+
+function activityAudienceLabel(audience: ActivityAudience) {
+  const labels: Record<ActivityAudience, string> = {
+    tenant: "Tenant visible",
+    contractor: "Contractor visible",
+    provider: "Provider evidence",
+    internal: "Internal audit",
+    system: "System audit",
+  };
+  return labels[audience];
+}
+
+function activityAudienceTone(audience: ActivityAudience): Tone {
+  if (audience === "tenant") {
+    return "primary";
+  }
+  if (audience === "contractor") {
+    return "warning";
+  }
+  if (audience === "provider") {
+    return "success";
+  }
+  return "neutral";
+}
+
+function activityTone(status: string | null, audience: ActivityAudience): Tone {
+  const normalized = status?.toLowerCase();
+  if (["failed", "declined", "cancelled"].includes(normalized ?? "")) {
+    return "danger";
+  }
+  if (
+    ["pending", "queued", "attention", "skipped"].includes(normalized ?? "")
+  ) {
+    return "warning";
+  }
+  if (
+    ["completed", "approved", "sent", "delivered", "opened"].includes(
+      normalized ?? "",
+    )
+  ) {
+    return "success";
+  }
+  return activityAudienceTone(audience);
 }
 
 function MaintenanceDetailRoute() {
@@ -1387,6 +1583,17 @@ function MaintenanceDetailRoute() {
   );
   const contractorSmsRows = workOrder
     ? contractorSmsHistoryRows(workOrder)
+    : [];
+  const activityAuditCards = workOrder
+    ? buildActivityAuditCards({
+        timeline,
+        quoteDocumentsCount: quoteDocuments.length,
+        closeoutPhotoCount: closeoutPhotos.length,
+        closeoutHistoryCount: closeoutHistory.length,
+        ownerReviewAt,
+        contractorEmailEvidenceCount: contractorHistoryRows.length,
+        contractorSmsEvidenceCount: contractorSmsRows.length,
+      })
     : [];
   const latestContractorReceipt = contractorReceiptRows[0] ?? null;
   const latestContractorReceiptStatus =
@@ -3082,6 +3289,28 @@ function MaintenanceDetailRoute() {
 
               <SectionPanel title="Activity" icon={<History size={17} />}>
                 <div className="grid gap-3 p-4">
+                  {activityAuditCards.length ? (
+                    <div className="grid gap-2 rounded-xl bg-muted/40 p-3 md:grid-cols-4">
+                      {activityAuditCards.map((card) => (
+                        <div key={card.label} className="grid gap-1 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              {card.label}
+                            </span>
+                            <StatusBadge tone={card.tone}>
+                              {card.badge}
+                            </StatusBadge>
+                          </div>
+                          <div className="truncate text-base font-semibold text-foreground">
+                            {card.value}
+                          </div>
+                          <div className="text-xs leading-5 text-muted-foreground">
+                            {card.detail}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <form className="grid gap-3" onSubmit={handleCommentSubmit}>
                     <label className="grid gap-1.5 text-sm">
                       <span className="font-medium text-foreground">
@@ -3136,9 +3365,12 @@ function MaintenanceDetailRoute() {
                   {timeline.map((entry, index) => (
                     <div
                       key={`${entry.at}-${entry.label}-${index}`}
-                      className="grid gap-1 text-sm"
+                      className="grid gap-1 rounded-lg border border-border bg-white px-3 py-3 text-sm"
                     >
                       <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge tone={entry.tone}>
+                          {entry.audienceLabel}
+                        </StatusBadge>
                         <span className="font-medium">{entry.label}</span>
                         <span className="text-xs text-muted-foreground">
                           {formatDateTime(entry.at)}

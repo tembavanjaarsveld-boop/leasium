@@ -769,6 +769,14 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("shopfront-ac-photo.jpg")).toBeVisible();
   await expect(page.getByText("Edit work-order details")).toBeVisible();
+  await expect(page.getByText("Latest update")).toBeVisible();
+  await expect(page.getByText("External visibility")).toBeVisible();
+  await expect(
+    page.getByText("2 tenant-visible · 0 contractor-visible"),
+  ).toBeVisible();
+  await expect(page.getByText("Provider evidence").first()).toBeVisible();
+  await expect(page.getByText("Closeout trail")).toBeVisible();
+  await expect(page.getByText("Internal audit").first()).toBeVisible();
   // Channel evidence disclosure renders the normalized contractor channel
   // receipt (this work order's mock email_delivery is in a failed state).
   await page.getByText("Channel evidence").click();
@@ -863,7 +871,9 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       .first(),
   ).toBeVisible();
   await expect(
-    page.getByText(/Please confirm your first available attendance window/),
+    page
+      .getByText(/Please confirm your first available attendance window/)
+      .last(),
   ).toBeVisible();
   await expect(page.getByText("07 3000 1111")).toBeVisible();
   await expect(
