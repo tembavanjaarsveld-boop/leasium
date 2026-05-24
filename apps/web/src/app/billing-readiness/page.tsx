@@ -35,6 +35,7 @@ import {
   createInvoiceDraftFromBillingDraft,
   dispatchXeroInvoiceProviders,
   documentDownloadUrl,
+  getXeroStatus,
   invoiceDraftPreviewUrl,
   listBillingDrafts,
   listEntities,
@@ -53,6 +54,7 @@ import {
   type InvoiceDraftRecord,
   type InvoiceDraftStatus,
   type RentRollRow,
+  type XeroAccountingFreshnessRecord,
 } from "@/lib/api";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -381,6 +383,96 @@ function xeroStatusLabel(
     return "Needs Xero approval";
   }
   return "Ready for Xero";
+}
+
+function accountingFreshnessTone(
+  status: XeroAccountingFreshnessRecord["status"] | undefined,
+): StatusTone {
+  if (status === "ready") {
+    return "success";
+  }
+  if (status === "stale" || status === "missing") {
+    return "warning";
+  }
+  if (status === "attention") {
+    return "danger";
+  }
+  return "neutral";
+}
+
+function invoicePaymentFreshnessCue(
+  draft: InvoiceDraftRecord,
+  freshness: XeroAccountingFreshnessRecord | null,
+) {
+  if (!freshness) {
+    return null;
+  }
+  const paymentStatus = invoicePaymentStatus(draft);
+  const paymentLabel = metadataText(paymentStatus.status) ?? "unpaid";
+  const xeroSync = invoiceXeroSync(draft);
+  const xeroInvoiceId = metadataText(xeroSync.xero_invoice_id);
+  const isXeroLinked = xeroSync.xero_synced === true || Boolean(xeroInvoiceId);
+  if (!isXeroLinked || paymentLabel === "paid") {
+    return null;
+  }
+  if (!freshness.stale_reconciliation && freshness.status === "ready") {
+    return null;
+  }
+  const missing = freshness.last_payment_reconciliation_at === null;
+  return {
+    label: missing ? "Payment check missing" : "Reconciliation stale",
+    tone: accountingFreshnessTone(freshness.status),
+    detail:
+      freshness.summary ||
+      "Review provider payments before relying on the local payment status.",
+  };
+}
+
+function AccountingFreshnessStrip({
+  freshness,
+  xeroHref,
+}: {
+  freshness: XeroAccountingFreshnessRecord;
+  xeroHref: string;
+}) {
+  const tone = accountingFreshnessTone(freshness.status);
+  return (
+    <div className="border-b border-border bg-muted/20 px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone={tone}>
+              Accounting {freshness.status.replaceAll("_", " ")}
+            </StatusBadge>
+            <StatusBadge
+              tone={freshness.stale_reconciliation ? "warning" : "success"}
+            >
+              {freshness.stale_reconciliation
+                ? "Reconciliation stale"
+                : "Reconciliation current"}
+            </StatusBadge>
+            <StatusBadge tone="neutral">
+              Stale window: {freshness.stale_after_days} days
+            </StatusBadge>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {freshness.summary}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Snapshot only; no Xero call, invoice posting, tenant email, or
+            payment reconciliation runs from loading this page.
+          </p>
+        </div>
+        <Link
+          href={xeroHref}
+          className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+        >
+          <ArrowUpRight size={15} />
+          Review payments
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 function invoiceDeliveryReview(draft: InvoiceDraftRecord) {
@@ -728,6 +820,11 @@ function BillingReadinessWorkspace() {
     queryFn: () => listInvoiceDrafts({ entity_id: selectedEntityId }),
     enabled: Boolean(selectedEntityId),
   });
+  const xeroStatusQuery = useQuery({
+    queryKey: ["billing-readiness-xero-status", selectedEntityId],
+    queryFn: () => getXeroStatus(selectedEntityId),
+    enabled: Boolean(selectedEntityId),
+  });
   const maintenanceQuery = useQuery({
     queryKey: ["billing-readiness-maintenance", selectedEntityId],
     queryFn: () => listMaintenanceWorkOrders({ entity_id: selectedEntityId }),
@@ -760,7 +857,8 @@ function BillingReadinessWorkspace() {
     Boolean(selectedEntityId) &&
     (rentRollQuery.isFetching ||
       billingDraftsQuery.isFetching ||
-      invoiceDraftsQuery.isFetching) &&
+      invoiceDraftsQuery.isFetching ||
+      xeroStatusQuery.isFetching) &&
     !billingReadinessLoading;
   const billingReadinessError =
     entitiesQuery.error ??
@@ -849,6 +947,9 @@ function BillingReadinessWorkspace() {
         queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
       });
       queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-xero-status", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
         queryKey: ["billing-readiness-rent-roll", selectedEntityId],
       });
     },
@@ -869,6 +970,9 @@ function BillingReadinessWorkspace() {
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-xero-status", selectedEntityId],
       });
     },
   });
@@ -933,6 +1037,8 @@ function BillingReadinessWorkspace() {
     };
   }, [rentRows, rowsWithBlockers.length]);
   const invoiceDrafts = invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS;
+  const xeroAccountingFreshness =
+    xeroStatusQuery.data?.accounting_freshness ?? null;
   const maintenanceWorkOrders =
     maintenanceQuery.data ?? EMPTY_MAINTENANCE_WORK_ORDERS;
   const maintenanceByInvoiceDraftId = useMemo(() => {
@@ -1029,13 +1135,15 @@ function BillingReadinessWorkspace() {
                   rentRollQuery.refetch();
                   billingDraftsQuery.refetch();
                   invoiceDraftsQuery.refetch();
+                  xeroStatusQuery.refetch();
                   maintenanceQuery.refetch();
                 }}
                 disabled={
                   !selectedEntityId ||
                   rentRollQuery.isFetching ||
                   billingDraftsQuery.isFetching ||
-                  invoiceDraftsQuery.isFetching
+                  invoiceDraftsQuery.isFetching ||
+                  xeroStatusQuery.isFetching
                 }
               >
                 {billingReadinessRefreshing ? (
@@ -1070,6 +1178,7 @@ function BillingReadinessWorkspace() {
                   rentRollQuery.refetch();
                   billingDraftsQuery.refetch();
                   invoiceDraftsQuery.refetch();
+                  xeroStatusQuery.refetch();
                 }
               }}
             >
@@ -1929,6 +2038,22 @@ function BillingReadinessWorkspace() {
                     })}
                   </div>
                 </div>
+                {xeroAccountingFreshness ? (
+                  <AccountingFreshnessStrip
+                    freshness={xeroAccountingFreshness}
+                    xeroHref={`/settings?tab=xero&entity_id=${selectedEntityId}`}
+                  />
+                ) : xeroStatusQuery.isLoading ? (
+                  <div className="border-b border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                    Checking accounting freshness...
+                  </div>
+                ) : null}
+                {xeroStatusQuery.error ? (
+                  <div className="border-b border-warning/20 bg-warning-soft px-4 py-3 text-sm text-warning">
+                    Accounting freshness snapshot is unavailable. Billing rows
+                    still show local invoice delivery and payment state.
+                  </div>
+                ) : null}
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
@@ -1966,6 +2091,11 @@ function BillingReadinessWorkspace() {
                         } = review;
                         const paymentReconciliationEntries =
                           invoicePaymentReconciliationEntries(draft);
+                        const paymentFreshnessCue =
+                          invoicePaymentFreshnessCue(
+                            draft,
+                            xeroAccountingFreshness,
+                          );
                         const isRecordingDelivery =
                           recordInvoiceDeliveryMutation.isPending &&
                           recordInvoiceDeliveryMutation.variables === draft.id;
@@ -2312,6 +2442,27 @@ function BillingReadinessWorkspace() {
                                 {formatMoney(draft.total_cents)} due{" "}
                                 {formatDate(draft.due_date)}
                               </div>
+                              {paymentFreshnessCue ? (
+                                <div className="mt-3 grid gap-2 rounded-md border border-warning/20 bg-warning-soft p-2 text-xs">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <StatusBadge
+                                      tone={paymentFreshnessCue.tone}
+                                    >
+                                      {paymentFreshnessCue.label}
+                                    </StatusBadge>
+                                  </div>
+                                  <div className="text-muted-foreground">
+                                    {paymentFreshnessCue.detail}
+                                  </div>
+                                  <Link
+                                    href={`/settings?tab=xero&entity_id=${selectedEntityId}`}
+                                    className="inline-flex min-h-8 w-fit items-center gap-2 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                                  >
+                                    <ArrowUpRight size={13} />
+                                    Review payments
+                                  </Link>
+                                </div>
+                              ) : null}
                             </td>
                             <td className="min-w-72 px-3 py-3">
                               <div className="flex flex-wrap gap-2">

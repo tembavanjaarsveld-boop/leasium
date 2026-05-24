@@ -2906,7 +2906,7 @@ function SettingsWorkspace() {
                     >
                       {status.accounting_freshness.stale_reconciliation
                         ? `Reconciliation stale after ${status.accounting_freshness.stale_after_days} days`
-                        : `Stale window: ${status.accounting_freshness.stale_after_days} days`}
+                        : "Reconciliation current"}
                     </StatusBadge>
                   </span>
                 </div>

@@ -1480,7 +1480,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   const brandSubtitle = page
-    .getByText("Lease operations, automated", { exact: true })
+    .getByText("Lease operations", { exact: true })
     .first();
   const primaryNav = page.getByRole("navigation", { name: "Primary" });
   const settingsNavLink = page.getByRole("link", { name: "Settings" }).first();
@@ -1648,6 +1648,20 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByText("Xero payment status needs review"),
   ).toBeVisible();
+
+  await page.getByRole("link", { name: "Open dispatch handoff" }).click();
+  await expect(page).toHaveURL(/\/billing-readiness/);
+  await expect(page.getByText("Accounting missing")).toBeVisible();
+  await expect(page.getByText("Reconciliation stale").first()).toBeVisible();
+  const staleDispatchRow = page.getByRole("row").filter({
+    hasText: "INV-1001",
+  });
+  await expect(
+    staleDispatchRow.getByText("Payment check missing"),
+  ).toBeVisible();
+  await expect(staleDispatchRow.getByText("Review payments")).toBeVisible();
+
+  await page.goto("/settings?tab=xero");
   const freshnessPanel = page
     .locator("section")
     .filter({
@@ -1668,7 +1682,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page
     .getByRole("button", { exact: true, name: "Review payments" })
     .click();
-  await expect(page.getByText("Payment reconciliation review")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Payment reconciliation review" }),
+  ).toBeVisible();
   await expect(
     page.getByText("Payment status can be reconciled locally."),
   ).toBeVisible();
