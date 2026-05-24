@@ -28,6 +28,20 @@ workspace setup under `/setup` remain accessible without the password.
 
 The web app is only the frontend. The FastAPI backend still needs a separate host.
 
+Current production domains:
+
+- `leasium.ai` is the primary Vercel domain.
+- `www.leasium.ai` is also attached to the same Vercel project.
+- Keep `NEXT_PUBLIC_API_BASE_URL` on `https://leasium-api.onrender.com/api/v1`
+  until Render has verified and issued TLS for `https://api.leasium.ai`.
+
+VentraIP DNS for the Vercel frontend:
+
+```text
+A      leasium.ai      216.198.79.1
+CNAME  www             a08403df2f706cb2.vercel-dns-017.com
+```
+
 ## API Host
 
 Set the API host environment from `.env.example`, with production values for:
@@ -65,11 +79,30 @@ Set the API host environment from `.env.example`, with production values for:
 - `XERO_STATE_SECRET`
 - `XERO_TOKEN_ENCRYPTION_KEY`
 
-`FRONTEND_URL` must match the Vercel domain so browser requests pass CORS.
+`FRONTEND_URL` must match the Vercel domain so browser requests pass CORS. For
+the current `leasium.ai` cutover, Render should use `https://leasium.ai` and
+`CORS_ALLOWED_ORIGINS` should include `https://leasium.ai`,
+`https://www.leasium.ai`, and any temporary Vercel fallback domains still used
+for testing.
 `PUBLIC_API_URL` must match the hosted API origin so Twilio SMS callbacks can
 report delivery status back into Leasium.
 Use `CORS_ALLOWED_ORIGINS` for extra explicit domains, separated by commas. Use
 `CORS_ALLOWED_ORIGIN_REGEX` only for controlled preview URL patterns.
+
+Render custom API domain:
+
+```text
+CNAME  api             leasium-api.onrender.com
+```
+
+Do not move `NEXT_PUBLIC_API_BASE_URL`, `PUBLIC_API_URL`, Xero redirect URIs, or
+provider webhook URLs to `https://api.leasium.ai` until Render shows the custom
+domain as verified and the certificate is active.
+
+If Render verifies the domain but shows a certificate error right after creating
+the DNS record, check public recursive DNS for stale NXDOMAIN responses on
+`api.leasium.ai` A lookups before changing anything. The authoritative VentraIP
+record can be correct while resolver negative caches still need to expire.
 
 Tenant onboarding delivery uses Twilio SendGrid for email and Twilio Messaging
 for SMS. If any channel is not configured, Leasium records the channel as
