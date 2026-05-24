@@ -1053,21 +1053,19 @@ def claim_tenant_portal_account(
         allow_consumed=True,
     )
     # If the token has already been consumed, only the Clerk user who
-    # claimed it (i.e. has an active TenantPortalAccount linked to the
-    # same tenant) may proceed — and only to refresh their existing
-    # link. Anyone else gets 410 Gone.
+    # previously claimed it (i.e. has ANY history with this tenant —
+    # active, revoked, or unlinked) may proceed. The existing revoked /
+    # unlinked / relink logic further down then produces the right
+    # response (403 revoked, 200 relink, etc.). Anyone else gets 410.
     if token_scope.onboarding.token_consumed_at is not None:
-        existing_link = session.scalar(
+        prior_link = session.scalar(
             select(TenantPortalAccount).where(
                 TenantPortalAccount.auth_provider == "clerk",
                 TenantPortalAccount.auth_provider_id == provider_id,
                 TenantPortalAccount.tenant_id == token_scope.tenant.id,
-                TenantPortalAccount.status == TenantPortalAccountStatus.active,
-                TenantPortalAccount.revoked_at.is_(None),
-                TenantPortalAccount.deleted_at.is_(None),
             )
         )
-        if existing_link is None:
+        if prior_link is None:
             raise HTTPException(
                 status_code=status.HTTP_410_GONE,
                 detail=(
