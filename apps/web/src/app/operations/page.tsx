@@ -718,6 +718,23 @@ function assignedUserName(item: QueueItem) {
   return workAssignment(item.record.metadata)?.assignedName ?? null;
 }
 
+function assignmentSummary(metadata: Record<string, unknown>) {
+  const assignment = workAssignment(metadata);
+  if (assignment?.assignedName) {
+    return assignment.assignedName;
+  }
+  return assignment?.assignedUserId ? "Assigned" : "Unassigned";
+}
+
+function queueAssignmentSummary(item: QueueItem) {
+  if (!isAssignableQueueItem(item)) {
+    return "";
+  }
+  return (
+    assignedUserName(item) ?? (assignedUserId(item) ? "Assigned" : "Unassigned")
+  );
+}
+
 function memberAssigneeFilter(memberId: string): AssigneeFilter {
   return `member:${memberId}`;
 }
@@ -2244,6 +2261,7 @@ function OperationsWorkspace() {
     onAssign,
     onAction,
     onNotify,
+    assigneeAriaLabel,
   }: {
     itemId: string;
     title: string;
@@ -2251,10 +2269,12 @@ function OperationsWorkspace() {
     onAssign: (assigneeId: string) => void;
     onAction: (action: WorkAssignmentAction) => void;
     onNotify: () => void;
+    assigneeAriaLabel?: string;
   }) {
     return (
       <WorkAssignmentControl
         title={title}
+        assigneeAriaLabel={assigneeAriaLabel}
         assignment={workAssignment(metadata)}
         members={assignableMembers}
         value={assignmentValue(itemId, metadata)}
@@ -2268,7 +2288,41 @@ function OperationsWorkspace() {
     );
   }
 
-  function renderQueueActions(item: QueueItem) {
+  function renderQueueAssignmentControl(
+    item: AssignableQueueItem,
+    assigneeAriaLabel?: string,
+  ) {
+    return renderAssignmentControl({
+      itemId: item.id,
+      title: item.title,
+      metadata: item.record.metadata,
+      assigneeAriaLabel,
+      onAssign: (assigneeId) => assignQueueItem(item, assigneeId),
+      onAction: (action) => actionQueueItem(item, action),
+      onNotify: () => sendAssignmentNotification(item),
+    });
+  }
+
+  function renderMaintenanceAssignmentControl(
+    workOrder: MaintenanceWorkOrderRecord,
+    assigneeAriaLabel?: string,
+  ) {
+    return renderAssignmentControl({
+      itemId: `maintenance-${workOrder.id}`,
+      title: workOrder.title,
+      metadata: workOrder.metadata,
+      assigneeAriaLabel,
+      onAssign: (assigneeId) => assignMaintenance(workOrder, assigneeId),
+      onAction: (action) => actionMaintenance(workOrder, action),
+      onNotify: () =>
+        sendMaintenanceAssignmentNotificationMutation.mutate(workOrder),
+    });
+  }
+
+  function renderQueueActions(
+    item: QueueItem,
+    options?: { compactLabels?: boolean },
+  ) {
     if (item.kind === "obligation") {
       if (item.completed) {
         return <StatusBadge tone="success">{item.chip}</StatusBadge>;
@@ -2278,6 +2332,11 @@ function OperationsWorkspace() {
           <SecondaryButton
             type="button"
             className="h-9 px-3"
+            aria-label={
+              options?.compactLabels
+                ? "Mark obligation done from work controls"
+                : undefined
+            }
             onClick={() =>
               updateObligationMutation.mutate({
                 obligation: item.record,
@@ -2292,6 +2351,11 @@ function OperationsWorkspace() {
           <SecondaryButton
             type="button"
             className="h-9 px-3"
+            aria-label={
+              options?.compactLabels
+                ? "Skip obligation from work controls"
+                : undefined
+            }
             onClick={() =>
               updateObligationMutation.mutate({
                 obligation: item.record,
@@ -2336,6 +2400,7 @@ function OperationsWorkspace() {
             updateMaintenanceMutation.mutate({ id: item.record.id, data })
           }
           disabled={updateMaintenanceMutation.isPending}
+          compactLabels={options?.compactLabels}
         />
       );
     }
@@ -2346,6 +2411,7 @@ function OperationsWorkspace() {
           updateArrearsMutation.mutate({ id: item.record.id, data })
         }
         disabled={updateArrearsMutation.isPending}
+        compactLabels={options?.compactLabels}
       />
     );
   }
@@ -2812,7 +2878,7 @@ function OperationsWorkspace() {
                   {filteredOpenQueueItems.map((item) => (
                     <div
                       key={item.id}
-                      className="grid gap-3 px-4 py-4 xl:grid-cols-[minmax(18rem,1fr)_22rem_auto] xl:items-start"
+                      className="grid gap-2 px-4 py-3 sm:gap-3 sm:py-4 xl:grid-cols-[minmax(18rem,1fr)_22rem_auto] xl:items-start"
                     >
                       <Link href={item.href} className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -2834,19 +2900,33 @@ function OperationsWorkspace() {
                         </p>
                       </Link>
                       {isAssignableQueueItem(item) ? (
-                        <div className="w-full xl:w-[22rem]">
-                          {renderAssignmentControl({
-                            itemId: item.id,
-                            title: item.title,
-                            metadata: item.record.metadata,
-                            onAssign: (assigneeId) =>
-                              assignQueueItem(item, assigneeId),
-                            onAction: (action) => actionQueueItem(item, action),
-                            onNotify: () => sendAssignmentNotification(item),
-                          })}
-                        </div>
+                        <>
+                          <div className="hidden w-full xl:block xl:w-[22rem]">
+                            {renderQueueAssignmentControl(item)}
+                          </div>
+                          <MobileRowDisclosure
+                            title="Work controls"
+                            subtitle={queueAssignmentSummary(item)}
+                            icon={<UserRound size={15} />}
+                          >
+                            {renderQueueAssignmentControl(
+                              item,
+                              `Work controls owner selector: ${item.title}`,
+                            )}
+                            <div className="grid gap-2">
+                              {renderQueueActions(item, {
+                                compactLabels: true,
+                              })}
+                            </div>
+                          </MobileRowDisclosure>
+                        </>
                       ) : null}
-                      <div className="grid w-full gap-2 sm:w-auto sm:grid-flow-col xl:grid-flow-row xl:justify-items-stretch">
+                      <div
+                        className={cn(
+                          "grid w-full gap-2 sm:w-auto sm:grid-flow-col xl:grid-flow-row xl:justify-items-stretch",
+                          isAssignableQueueItem(item) && "hidden xl:grid",
+                        )}
+                      >
                         {renderQueueActions(item)}
                       </div>
                     </div>
@@ -3221,7 +3301,7 @@ function OperationsWorkspace() {
                     {filteredMaintenance.map((workOrder) => (
                       <div
                         key={workOrder.id}
-                        className="grid gap-3 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center"
+                        className="grid gap-2 px-4 py-3 sm:gap-3 sm:py-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center"
                       >
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -3319,20 +3399,8 @@ function OperationsWorkspace() {
                             ) : null}
                           </div>
                         </div>
-                        <div className="grid gap-2 xl:justify-items-end">
-                          {renderAssignmentControl({
-                            itemId: `maintenance-${workOrder.id}`,
-                            title: workOrder.title,
-                            metadata: workOrder.metadata,
-                            onAssign: (assigneeId) =>
-                              assignMaintenance(workOrder, assigneeId),
-                            onAction: (action) =>
-                              actionMaintenance(workOrder, action),
-                            onNotify: () =>
-                              sendMaintenanceAssignmentNotificationMutation.mutate(
-                                workOrder,
-                              ),
-                          })}
+                        <div className="hidden gap-2 xl:grid xl:justify-items-end">
+                          {renderMaintenanceAssignmentControl(workOrder)}
                           <MaintenanceActions
                             workOrder={workOrder}
                             onUpdate={(data) =>
@@ -3350,6 +3418,33 @@ function OperationsWorkspace() {
                             }
                           />
                         </div>
+                        <MobileRowDisclosure
+                          title="Work-order actions"
+                          subtitle={assignmentSummary(workOrder.metadata)}
+                          icon={<ClipboardList size={15} />}
+                        >
+                          {renderMaintenanceAssignmentControl(
+                            workOrder,
+                            `Work-order owner selector: ${workOrder.title}`,
+                          )}
+                          <MaintenanceActions
+                            workOrder={workOrder}
+                            onUpdate={(data) =>
+                              updateMaintenanceMutation.mutate({
+                                id: workOrder.id,
+                                data,
+                              })
+                            }
+                            disabled={updateMaintenanceMutation.isPending}
+                            expanded={expandedMaintenanceId === workOrder.id}
+                            onToggleDetails={() =>
+                              setExpandedMaintenanceId((current) =>
+                                current === workOrder.id ? null : workOrder.id,
+                              )
+                            }
+                            compactLabels
+                          />
+                        </MobileRowDisclosure>
                         {expandedMaintenanceId === workOrder.id ? (
                           <div className="xl:col-span-2">
                             <MaintenanceDetailPanel
@@ -3791,8 +3886,40 @@ function OperationsWorkspace() {
   );
 }
 
+function MobileRowDisclosure({
+  title,
+  subtitle,
+  icon,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <details className="rounded-xl border border-border bg-muted/30 text-sm xl:hidden">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2">
+        <span className="inline-flex min-w-0 items-center gap-2 font-semibold text-foreground">
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-white text-primary shadow-leasiumXs">
+            {icon}
+          </span>
+          <span className="truncate">{title}</span>
+        </span>
+        <span className="max-w-[11rem] shrink-0 truncate text-right text-xs font-medium text-muted-foreground">
+          {subtitle}
+        </span>
+      </summary>
+      <div className="grid gap-3 border-t border-border bg-white/70 p-3">
+        {children}
+      </div>
+    </details>
+  );
+}
+
 function WorkAssignmentControl({
   title,
+  assigneeAriaLabel,
   assignment,
   members,
   value,
@@ -3804,6 +3931,7 @@ function WorkAssignmentControl({
   membersLoading,
 }: {
   title: string;
+  assigneeAriaLabel?: string;
   assignment: WorkAssignment | null;
   members: SecurityMemberRecord[];
   value: string;
@@ -3902,7 +4030,7 @@ function WorkAssignmentControl({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Select
-          aria-label={`Assignee for ${title}`}
+          aria-label={assigneeAriaLabel ?? `Assignee for ${title}`}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled || membersLoading || !hasMembers}
@@ -4681,12 +4809,14 @@ function MaintenanceActions({
   disabled,
   expanded,
   onToggleDetails,
+  compactLabels,
 }: {
   workOrder: MaintenanceWorkOrderRecord;
   onUpdate: (data: Parameters<typeof updateMaintenanceWorkOrder>[1]) => void;
   disabled: boolean;
   expanded?: boolean;
   onToggleDetails?: () => void;
+  compactLabels?: boolean;
 }) {
   if (!maintenanceIsOpen(workOrder)) {
     return <StatusBadge tone="success">{label(workOrder.status)}</StatusBadge>;
@@ -4698,6 +4828,7 @@ function MaintenanceActions({
         <SecondaryButton
           type="button"
           className="h-9 px-3"
+          aria-label={compactLabels ? "Open work-order panel" : undefined}
           disabled={disabled}
           onClick={onToggleDetails}
         >
@@ -4709,6 +4840,7 @@ function MaintenanceActions({
         <SecondaryButton
           type="button"
           className="h-9 px-3"
+          aria-label={compactLabels ? "Mark work order triaged" : undefined}
           disabled={disabled}
           onClick={() => onUpdate({ status: "triaged" })}
         >
@@ -4721,6 +4853,7 @@ function MaintenanceActions({
         <SecondaryButton
           type="button"
           className="h-9 px-3"
+          aria-label={compactLabels ? "Approve work order" : undefined}
           disabled={disabled}
           onClick={() =>
             onUpdate({
@@ -4738,6 +4871,7 @@ function MaintenanceActions({
         <SecondaryButton
           type="button"
           className="h-9 px-3"
+          aria-label={compactLabels ? "Start work order" : undefined}
           disabled={disabled}
           onClick={() => onUpdate({ status: "in_progress" })}
         >
@@ -4746,6 +4880,7 @@ function MaintenanceActions({
         </SecondaryButton>
       ) : null}
       <Link
+        aria-label={compactLabels ? "Open completion review" : undefined}
         className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
         href={`/operations/maintenance/${workOrder.id}`}
       >
@@ -4760,10 +4895,12 @@ function ArrearsActions({
   arrearsCase,
   onUpdate,
   disabled,
+  compactLabels,
 }: {
   arrearsCase: ArrearsCaseRecord;
   onUpdate: (data: Parameters<typeof updateArrearsCase>[1]) => void;
   disabled: boolean;
+  compactLabels?: boolean;
 }) {
   if (!arrearsIsOpen(arrearsCase)) {
     return (
@@ -4776,6 +4913,7 @@ function ArrearsActions({
       <SecondaryButton
         type="button"
         className="h-9 px-3"
+        aria-label={compactLabels ? "Record arrears follow-up" : undefined}
         disabled={disabled}
         onClick={() =>
           onUpdate({
@@ -4791,6 +4929,9 @@ function ArrearsActions({
         <SecondaryButton
           type="button"
           className="h-9 px-3"
+          aria-label={
+            compactLabels ? "Queue credit-control escalation" : undefined
+          }
           disabled={disabled}
           onClick={() =>
             onUpdate({
@@ -4807,6 +4948,7 @@ function ArrearsActions({
       <SecondaryButton
         type="button"
         className="h-9 px-3"
+        aria-label={compactLabels ? "Close arrears case" : undefined}
         disabled={disabled}
         onClick={() => onUpdate({ status: "resolved" })}
       >

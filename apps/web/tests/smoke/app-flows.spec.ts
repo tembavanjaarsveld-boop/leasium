@@ -633,6 +633,42 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expect(page.getByText("Job completion handoff")).toBeVisible();
 });
 
+test("operations workspace keeps mobile rows compact", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/operations");
+
+  await expect(
+    page.getByRole("heading", { name: "Operations", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+
+  const queueControls = page
+    .locator("summary")
+    .filter({ hasText: "Work controls" })
+    .first();
+  const airconAssignee = page
+    .getByLabel("Work controls owner selector: Air conditioning fault")
+    .first();
+  await expect(queueControls).toBeVisible();
+  await expect(airconAssignee).not.toBeVisible();
+  await queueControls.click();
+  await expect(airconAssignee).toBeVisible();
+
+  await page.getByRole("tab", { name: /Maintenance/ }).click();
+  const workOrderActions = page
+    .locator("summary")
+    .filter({ hasText: "Work-order actions" })
+    .first();
+  await expect(workOrderActions).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open completion review" }).first(),
+  ).not.toBeVisible();
+  await workOrderActions.click();
+  await expect(
+    page.getByRole("link", { name: "Open completion review" }).first(),
+  ).toBeVisible();
+});
+
 test("notification center shows work notices and digest receipts", async ({
   page,
 }) => {

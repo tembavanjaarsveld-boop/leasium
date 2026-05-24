@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-05-23
+Last updated: 2026-05-24
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -287,6 +287,8 @@ Status: pending Remba review. The backend now has migration-backed maintenance w
 ## Operations Workspace
 
 Status: pending Remba review. `/operations` now replaces the top-nav Tasks entry while preserving `/tasks` as a redirect. It keeps the original triage queue and adds Maintenance and Arrears tabs with KPI cards, quick-create panels, tenant-portal submitted requests, expandable maintenance detail, quote approval context, invoice draft linking, activity history, and status actions for approvals, work starts, completion, reminders, escalation, and resolution. Maintenance rows now also link to a dedicated work-order route for deeper contractor quote evidence, invoice context, and activity history. Remba should review whether Operations is the right long-term IA home, whether the first viewport is too dense on laptops, and whether maintenance/arrears detail pages should become the default pattern over expandable rows.
+
+2026-05-24 update: Operations row-density follow-up keeps queue and maintenance rows scannable on small screens by collapsing assignment-heavy controls behind mobile-only disclosures below `xl`: `Work controls` in the queue and `Work-order actions` on maintenance rows. Desktop keeps the existing full control columns. Remba/Temba should review this on a real phone to confirm the disclosure labels feel obvious and that hiding controls by default does not slow daily operators down.
 
 2026-05-21 update: maintenance detail now shows a read-only Operations-to-Billing handoff panel for linked invoice drafts, and Billing Readiness can open from that handoff with the invoice highlighted plus a return link to the work order. Remba should review whether this makes ownership clear enough: Operations owns contractor/quote/approval/completion, while Billing Readiness owns invoice delivery prep, tenant email, Xero dispatch, and payment reconciliation.
 

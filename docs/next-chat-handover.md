@@ -498,9 +498,9 @@ Treat these as pending UX/design sign-off:
 
 The 2026-05-22 UX-review backlog is done except dark mode. The AI inbox v2 stack through v2.3 (promote → lease-change extraction → contractor matching → tenant-contact promote) and the tenant portal soft-switch are now shipped. Claim-gate polish, co-tenant/additional-login invites, and the operator-side read-only tenant portal preview are also complete. Pick from these in roughly leverage order for the SKJ internal-first-6-months window:
 
-1. **Operations polish** — clearer row density at small viewports, plus Remba review of the new inline-edit undo toast, activity audit strip, and completion recipient-review cards. Daily-driver surface, high leverage.
-2. **Xero deepening** — accounting snapshot guardrails, stale reconciliation indicators on Billing Readiness invoice rows, richer accounting-readiness snapshots. Finance team will live here every month.
-3. **Portfolio QA cleanup** — bulk fix review, AI-assisted enrichment candidates (the helper exists; productise it), clearer completion/reporting state. One-off but high-impact while the SKJ portfolio import is still being shaken out.
+1. **Xero deepening** — accounting snapshot guardrails, stale reconciliation indicators on Billing Readiness invoice rows, richer accounting-readiness snapshots. Finance team will live here every month.
+2. **Portfolio QA cleanup** — bulk fix review, AI-assisted enrichment candidates (the helper exists; productise it), clearer completion/reporting state. One-off but high-impact while the SKJ portfolio import is still being shaken out.
+3. **Operations live review** — the small-viewport row-density pass is implemented; Temba/Remba should sanity-check the new `Work controls` and `Work-order actions` disclosures on a real phone, plus review the inline-edit undo toast, activity audit strip, and completion recipient-review cards.
 4. **Tier 2 (g) Dark mode** — dark tokens in the design source of truth, `.dark` class via system preference + an account-menu toggle, contrast audit across the 5 most-used surfaces. Deliberately deferred during the internal-first-6-months window; revisit when external tenants/contractors land.
 5. **Tenant portal UX audit** — predates the sidebar / inline-edit / activity-feed / Leasium AI work. v2 candidates: tenant-side activity feed scoped to their tenancy, tenant inline edit of their own contact details, tenant maintenance request status visibility.
 6. **Multi-view v2 for Properties** — Map view (Leaflet vs Mapbox decision) + Calendar view (rent reviews + lease expiries — although the upcoming-events panel on the Dashboard already covers most of this).
@@ -510,7 +510,7 @@ Hosted Neon/Render migrations as of `08c23d1`: latest required revisions are `20
 
 ## Resume Checklist
 
-- Start with `git status --short` + `git log --oneline -10`. Tip should be `08c23d1` if no one has pushed since.
+- Start with `git status --short` + `git log --oneline -10`. Tip should include the latest Operations row-density commit if this handover was pushed; `90bd99b` was the pre-slice tip.
 - If there are local edits, inspect them before changing files.
 - **Tooling on Temba's Mac (current as of 2026-05-24):**
   - Node v26 installed via Homebrew (`brew install node`).
@@ -539,3 +539,9 @@ Verified Mac-side: `pytest tests/integration/test_tenant_portal_api.py -q` shows
 
 Open items at session end:
 - Temba was hitting a 409 "already linked to another tenant" on the live deploy because his Clerk account had a prior portal link on an older Tenant row. He attempted "delete tenant" which doesn't unlink the portal account; the actual fix is `/tenants/{id}` → "Portal access" → **Unlink** button. He may have figured it out before the session ended — verify if the v2.3 work picks up before re-sending another test invite.
+
+## Codex continuation 2026-05-24
+
+- Operations small-viewport row-density pass implemented on `/operations`: assignable queue rows now collapse assignment + row actions into `Work controls` below `xl`; maintenance rows collapse assignment + completion/detail actions into `Work-order actions` below `xl`; desktop columns are unchanged.
+- Added smoke coverage for the 390px compact path in `apps/web/tests/smoke/app-flows.spec.ts`.
+- Docs updated in `docs/product-roadmap.md` and `docs/design-governance.md`; Recommended Next Tickets now promote Xero deepening and leave Operations as live-review only.
