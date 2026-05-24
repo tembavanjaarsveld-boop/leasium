@@ -22,8 +22,21 @@ test.describe("Clerk middleware guard", () => {
     expect(decodeURIComponent(location)).toContain("/settings");
   });
 
+  test("sends signed-out bare domain traffic to the welcome hub", async ({
+    request,
+  }) => {
+    const response = await request.get("/", {
+      headers: { accept: "text/html" },
+      maxRedirects: 0,
+    });
+
+    expect(response.status()).toBe(307);
+    expect(response.headers().location ?? "").toContain("/welcome");
+  });
+
   test("keeps public operator and tenant routes open", async ({ request }) => {
     for (const path of [
+      "/welcome",
       "/setup",
       "/__clerk/v1/client",
       "/accept-invite?token=example",

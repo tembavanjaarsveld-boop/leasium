@@ -59,6 +59,13 @@ const clerkProtectedMiddleware = clerkMiddleware(
   async (auth, request) => {
     const authState = await auth();
     if (!authState.userId) {
+      if (request.nextUrl.pathname === "/") {
+        const welcomeUrl = request.nextUrl.clone();
+        welcomeUrl.pathname = "/welcome";
+        welcomeUrl.search = "";
+        return NextResponse.redirect(welcomeUrl);
+      }
+
       const signInUrl = request.nextUrl.clone();
       signInUrl.pathname = "/sign-in";
       signInUrl.searchParams.set(
