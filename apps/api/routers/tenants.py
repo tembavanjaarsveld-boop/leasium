@@ -865,7 +865,42 @@ def delete_tenant(
     session: Annotated[Session, Depends(get_session)],
 ) -> None:
     tenant = _get_tenant_for_user(tenant_id, user, session, WRITE_ROLES)
-    tenant.deleted_at = utcnow()
+    now = utcnow()
+    tenant.deleted_at = now
+    portal_accounts = session.scalars(
+        select(TenantPortalAccount).where(
+            TenantPortalAccount.tenant_id == tenant.id,
+            TenantPortalAccount.entity_id == tenant.entity_id,
+            TenantPortalAccount.deleted_at.is_(None),
+        )
+    ).all()
+    for account in portal_accounts:
+        account.deleted_at = now
+        metadata = dict(account.account_metadata or {})
+        metadata["unlinked_at"] = now.isoformat()
+        metadata["unlinked_by_user_id"] = str(user.id)
+        metadata["unlinked_reason"] = "Tenant profile was deleted."
+        account.account_metadata = metadata
+        _record_account_recovery(
+            account,
+            action="unlinked",
+            at=now,
+            user=user,
+            reason="Tenant profile was deleted.",
+        )
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=tenant.entity_id,
+            action="unlink",
+            target_table="tenant_portal_account",
+            target_id=account.id,
+            tool_name="tenant.delete",
+            tool_input={"tenant_id": str(tenant.id)},
+            tool_output_summary="Tenant portal account unlinked because tenant was deleted.",
+            data_classification="confidential",
+        )
     audit_log(
         session,
         actor=user.actor,

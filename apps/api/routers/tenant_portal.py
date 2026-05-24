@@ -1100,12 +1100,41 @@ def claim_tenant_portal_account(
             TenantPortalAccount.deleted_at.is_(None),
         )
     )
-    if account is not None and account.tenant_id != token_scope.tenant.id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This tenant portal login is already linked to another tenant.",
-        )
     now = utcnow()
+    if account is not None and account.tenant_id != token_scope.tenant.id:
+        linked_tenant = session.get(Tenant, account.tenant_id)
+        if linked_tenant is not None and linked_tenant.deleted_at is not None:
+            account.deleted_at = now
+            account.account_metadata = {
+                **(account.account_metadata or {}),
+                "unlinked_at": now.isoformat(),
+                "unlinked_reason": "Linked tenant was deleted before a fresh invite claim.",
+            }
+            audit_log(
+                session,
+                actor=f"tenant-portal-account:{account.id}",
+                entity_id=account.entity_id,
+                action="unlink",
+                target_table="tenant_portal_account",
+                target_id=account.id,
+                outcome=AuditOutcome.success,
+                tool_name="tenant_portal.account_claim",
+                tool_input={
+                    "tenant_id": str(linked_tenant.id),
+                    "replacement_tenant_id": str(token_scope.tenant.id),
+                },
+                tool_output_summary=(
+                    "Stale tenant portal account unlinked because its tenant was deleted."
+                ),
+                data_classification="confidential",
+            )
+            session.flush()
+            account = None
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This tenant portal login is already linked to another tenant.",
+            )
     if account is None:
         account = TenantPortalAccount(
             entity_id=token_scope.onboarding.entity_id,

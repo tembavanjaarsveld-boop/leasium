@@ -543,6 +543,79 @@ def test_tenant_portal_account_blocks_conflicting_and_revoked_logins(
     assert reclaim_response.json()["detail"] == "Tenant portal account is revoked."
 
 
+def test_deleted_tenant_portal_link_does_not_block_fresh_invite_claim(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    provider_id = "tenant-subject-one"
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+    original_account = _account_by_provider(session, provider_id)
+
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    tenant.deleted_at = datetime.now(UTC)
+    session.commit()
+
+    fresh_claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["other_token"]},
+    )
+
+    assert fresh_claim_response.status_code == 200
+    session.refresh(original_account)
+    assert original_account.deleted_at is not None
+    assert original_account.account_metadata["unlinked_reason"] == (
+        "Linked tenant was deleted before a fresh invite claim."
+    )
+    fresh_account = _account_by_provider(session, provider_id)
+    assert fresh_account.id != original_account.id
+    assert fresh_account.tenant_id == UUID(scope["other_tenant_id"])
+
+
+def test_delete_tenant_unlinks_active_portal_accounts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    provider_id = "tenant-subject-one"
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+    original_account = _account_by_provider(session, provider_id)
+
+    delete_response = client.delete(f"/api/v1/tenants/{scope['tenant_id']}")
+
+    assert delete_response.status_code == 204
+    session.refresh(original_account)
+    assert original_account.deleted_at is not None
+    assert original_account.account_metadata["unlinked_reason"] == "Tenant profile was deleted."
+    assert original_account.account_metadata["last_recovery_receipt"]["action"] == "unlinked"
+
+    fresh_claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["other_token"]},
+    )
+    assert fresh_claim_response.status_code == 200
+    fresh_account = _account_by_provider(session, provider_id)
+    assert fresh_account.id != original_account.id
+    assert fresh_account.tenant_id == UUID(scope["other_tenant_id"])
+
+
 def test_operator_can_list_tenant_portal_accounts_for_tenant(
     client: TestClient,
     session: Session,
