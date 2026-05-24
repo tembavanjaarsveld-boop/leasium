@@ -15,6 +15,7 @@ import {
   KeyRound,
   Link2,
   Loader2,
+  MessageSquare,
   Plus,
   RefreshCw,
   Save,
@@ -73,10 +74,13 @@ import {
   refreshTenantOnboardingLink,
   resendTenantOnboarding,
   reviewTenantOnboarding,
+  respondTenantLeaseQuestion,
   sendTenantOnboardingPortalInvite,
   restoreTenantPortalAccount,
   revokeTenantPortalAccount,
   TenantPortalAccountRecord,
+  TenantLeaseAgreementRecord,
+  TenantLeaseQuestionRecord,
   TenantPayload,
   TenantReviewedChangeRecord,
   TenantRecord,
@@ -209,6 +213,91 @@ function statusTone(status: string, dueDate?: string | null) {
     return "danger" as const;
   }
   return status === "sent" ? ("primary" as const) : ("warning" as const);
+}
+
+function leaseAgreementFromDelivery(
+  deliveryData:
+    | { lease_agreement?: TenantLeaseAgreementRecord }
+    | null
+    | undefined,
+) {
+  return deliveryData?.lease_agreement ?? null;
+}
+
+function leaseAgreementBlocksApply(
+  agreement: TenantLeaseAgreementRecord | null,
+) {
+  if (!agreement) {
+    return false;
+  }
+  return agreement.open_question_count > 0 || agreement.status !== "signed";
+}
+
+function leaseAgreementApplyReason(
+  agreement: TenantLeaseAgreementRecord | null,
+) {
+  if (!agreement) {
+    return null;
+  }
+  if (agreement.open_question_count > 0) {
+    return "Answer lease questions before applying.";
+  }
+  if (agreement.status !== "signed") {
+    return "Lease agreement needs signing before applying.";
+  }
+  return null;
+}
+
+function leaseAgreementTone(agreement: TenantLeaseAgreementRecord | null) {
+  if (!agreement) {
+    return "neutral" as const;
+  }
+  if (agreement.status === "signed") {
+    return "success" as const;
+  }
+  if (agreement.open_question_count > 0) {
+    return "warning" as const;
+  }
+  if (agreement.status === "ready_to_sign") {
+    return "primary" as const;
+  }
+  return "neutral" as const;
+}
+
+function leaseAgreementLabel(agreement: TenantLeaseAgreementRecord | null) {
+  if (!agreement) {
+    return "Not started";
+  }
+  if (agreement.status === "signed") {
+    return "Signed";
+  }
+  if (agreement.open_question_count > 0) {
+    return "Questions open";
+  }
+  if (agreement.status === "ready_to_sign") {
+    return "Ready to sign";
+  }
+  return "Review pending";
+}
+
+function leaseQuestionTone(status: TenantLeaseQuestionRecord["status"]) {
+  if (status === "answered" || status === "resolved") {
+    return "success" as const;
+  }
+  if (status === "needs_revision" || status === "legal_review") {
+    return "warning" as const;
+  }
+  return "primary" as const;
+}
+
+function leaseQuestionLabel(status: TenantLeaseQuestionRecord["status"]) {
+  if (status === "legal_review") {
+    return "Legal review";
+  }
+  if (status === "needs_revision") {
+    return "Needs revision";
+  }
+  return status.replaceAll("_", " ");
 }
 
 function portalAccountTone(status: TenantPortalAccountRecord["status"]) {
@@ -859,6 +948,9 @@ function TenantDetail() {
   const [reviewNotesById, setReviewNotesById] = useState<
     Record<string, string>
   >({});
+  const [leaseQuestionAnswersById, setLeaseQuestionAnswersById] = useState<
+    Record<string, string>
+  >({});
   const [enrichmentSuggestions, setEnrichmentSuggestions] = useState<
     EnrichmentSuggestion[]
   >([]);
@@ -1123,6 +1215,31 @@ function TenantDetail() {
       queryClient.invalidateQueries({
         queryKey: ["tenant-onboardings", tenant?.entity_id],
       });
+    },
+  });
+
+  const respondLeaseQuestionMutation = useMutation({
+    mutationFn: ({
+      onboardingId,
+      questionId,
+      status,
+    }: {
+      onboardingId: string;
+      questionId: string;
+      status: Exclude<TenantLeaseQuestionRecord["status"], "open">;
+    }) =>
+      respondTenantLeaseQuestion(onboardingId, questionId, {
+        status,
+        answer: cleanText(leaseQuestionAnswersById[questionId] ?? ""),
+      }),
+    onSuccess: (_updated, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
+      setLeaseQuestionAnswersById((current) => ({
+        ...current,
+        [variables.questionId]: "",
+      }));
     },
   });
 
@@ -1953,6 +2070,13 @@ function TenantDetail() {
                   );
                   const submittedData = item.submitted_data ?? {};
                   const linkExpired = isExpiredDateTime(item.expires_at);
+                  const leaseAgreement = leaseAgreementFromDelivery(
+                    item.delivery_data,
+                  );
+                  const applyBlocked =
+                    leaseAgreementBlocksApply(leaseAgreement);
+                  const applyBlockReason =
+                    leaseAgreementApplyReason(leaseAgreement);
                   const providerDetail = (
                     <>
                       <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
@@ -2163,7 +2287,10 @@ function TenantDetail() {
                               onClick={() =>
                                 applyOnboardingMutation.mutate(item.id)
                               }
-                              disabled={applyOnboardingMutation.isPending}
+                              disabled={
+                                applyOnboardingMutation.isPending ||
+                                applyBlocked
+                              }
                             >
                               <Save size={16} />
                               Apply
@@ -2184,6 +2311,135 @@ function TenantDetail() {
                       <div className="hidden gap-3 md:grid">
                         {providerDetail}
                       </div>
+                      {leaseAgreement ? (
+                        <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 font-semibold">
+                              <MessageSquare size={14} />
+                              Lease agreement
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {leaseAgreement.signed_at ? (
+                                <span className="text-muted-foreground">
+                                  Signed{" "}
+                                  {formatDateTime(leaseAgreement.signed_at)}
+                                </span>
+                              ) : null}
+                              <StatusBadge
+                                tone={leaseAgreementTone(leaseAgreement)}
+                              >
+                                {leaseAgreementLabel(leaseAgreement)}
+                              </StatusBadge>
+                            </div>
+                          </div>
+                          {applyBlockReason ? (
+                            <div className="text-muted-foreground">
+                              {applyBlockReason}
+                            </div>
+                          ) : null}
+                          <div className="grid gap-2">
+                            {leaseAgreement.questions.map((question) => {
+                              const answerDraft =
+                                leaseQuestionAnswersById[question.id] ??
+                                question.answer ??
+                                "";
+                              return (
+                                <div
+                                  key={question.id}
+                                  className="grid gap-2 rounded border border-border bg-white px-3 py-2"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="font-medium">
+                                      {question.clause_reference ||
+                                        "Lease agreement"}
+                                    </div>
+                                    <StatusBadge
+                                      tone={leaseQuestionTone(question.status)}
+                                    >
+                                      {leaseQuestionLabel(question.status)}
+                                    </StatusBadge>
+                                  </div>
+                                  <div className="text-muted-foreground">
+                                    {question.question}
+                                  </div>
+                                  {question.answered_at ? (
+                                    <div className="text-muted-foreground">
+                                      Answered{" "}
+                                      {formatDateTime(question.answered_at)}
+                                    </div>
+                                  ) : null}
+                                  <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                                    <Field label="Response">
+                                      <Input
+                                        value={answerDraft}
+                                        placeholder="Answer the tenant's question"
+                                        onChange={(event) =>
+                                          setLeaseQuestionAnswersById(
+                                            (current) => ({
+                                              ...current,
+                                              [question.id]: event.target.value,
+                                            }),
+                                          )
+                                        }
+                                      />
+                                    </Field>
+                                    <div className="flex flex-wrap gap-2">
+                                      <SecondaryButton
+                                        type="button"
+                                        className="h-10"
+                                        disabled={
+                                          respondLeaseQuestionMutation.isPending ||
+                                          !answerDraft.trim()
+                                        }
+                                        onClick={() =>
+                                          respondLeaseQuestionMutation.mutate({
+                                            onboardingId: item.id,
+                                            questionId: question.id,
+                                            status: "answered",
+                                          })
+                                        }
+                                      >
+                                        <Send size={14} />
+                                        Send
+                                      </SecondaryButton>
+                                      <SecondaryButton
+                                        type="button"
+                                        className="h-10"
+                                        disabled={
+                                          respondLeaseQuestionMutation.isPending ||
+                                          !answerDraft.trim()
+                                        }
+                                        onClick={() =>
+                                          respondLeaseQuestionMutation.mutate({
+                                            onboardingId: item.id,
+                                            questionId: question.id,
+                                            status: "resolved",
+                                          })
+                                        }
+                                      >
+                                        <Check size={14} />
+                                        Resolve
+                                      </SecondaryButton>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {!leaseAgreement.questions.length ? (
+                              <div className="rounded border border-border bg-white px-3 py-2 text-muted-foreground">
+                                No lease agreement questions yet.
+                              </div>
+                            ) : null}
+                          </div>
+                          {respondLeaseQuestionMutation.error ? (
+                            <div className="text-danger">
+                              {friendlyError(
+                                respondLeaseQuestionMutation.error,
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                       {item.status === "submitted" ? (
                         <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs">
                           <div className="font-semibold">

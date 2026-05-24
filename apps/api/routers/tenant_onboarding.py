@@ -49,6 +49,7 @@ from apps.api.routers.tenants import (
 )
 from apps.api.schemas.documents import DocumentRead
 from apps.api.schemas.tenant_onboarding import (
+    TenantLeaseQuestionResponse,
     TenantOnboardingCancel,
     TenantOnboardingCreate,
     TenantOnboardingFreshLink,
@@ -59,6 +60,13 @@ from apps.api.schemas.tenant_onboarding import (
     TenantOnboardingReminderUpdate,
     TenantOnboardingReview,
     TenantOnboardingSubmit,
+)
+from apps.api.tenant_lease_agreement import (
+    blocking_lease_question_count,
+    lease_agreement_exists,
+    lease_agreement_read,
+    lease_agreement_signed,
+    respond_to_lease_question,
 )
 
 router = APIRouter(prefix="/tenant-onboarding", tags=["tenant-onboarding"])
@@ -89,6 +97,10 @@ def _read(row: TenantOnboarding) -> TenantOnboardingRead:
     response = TenantOnboardingRead.model_validate(row)
     response.onboarding_url = _onboarding_url(row.token)
     response.portal_url = _portal_url(row.token)
+    if lease_agreement_exists(row):
+        delivery_data = dict(response.delivery_data or {})
+        delivery_data["lease_agreement"] = lease_agreement_read(row)
+        response.delivery_data = delivery_data
     return response
 
 
@@ -1457,6 +1469,63 @@ def review_tenant_onboarding(
     return _read(onboarding)
 
 
+@router.post(
+    "/{onboarding_id}/lease-questions/{question_id}/respond",
+    response_model=TenantOnboardingRead,
+)
+def respond_tenant_onboarding_lease_question(
+    onboarding_id: UUID,
+    question_id: str,
+    payload: TenantLeaseQuestionResponse,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantOnboardingRead:
+    onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)
+    if onboarding.status not in {
+        TenantOnboardingStatus.sent,
+        TenantOnboardingStatus.submitted,
+        TenantOnboardingStatus.reviewed,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Lease agreement questions can only be answered during onboarding.",
+        )
+    if payload.status in {"answered", "resolved"} and not payload.answer:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="An answer is required before sending a lease agreement response.",
+        )
+    updated = respond_to_lease_question(
+        onboarding,
+        question_id=question_id,
+        answer=payload.answer,
+        response_status=payload.status,
+        actor=user.actor,
+        user_id=user.id,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lease agreement question not found.",
+        )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=onboarding.entity_id,
+        action="respond_lease_question",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+        tool_name="tenant_onboarding.lease_question_response",
+        tool_input={"question_id": question_id, "status": payload.status},
+        tool_output_summary="Answered tenant lease agreement question.",
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(onboarding)
+    return _read(onboarding)
+
+
 @router.post("/{onboarding_id}/apply", response_model=TenantOnboardingRead)
 def apply_tenant_onboarding(
     onboarding_id: UUID,
@@ -1476,6 +1545,16 @@ def apply_tenant_onboarding(
     tenant = session.get(Tenant, onboarding.tenant_id)
     if tenant is None or tenant.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")
+    if blocking_lease_question_count(onboarding):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Resolve lease agreement questions before applying onboarding.",
+        )
+    if lease_agreement_exists(onboarding) and not lease_agreement_signed(onboarding):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Lease agreement must be signed before applying onboarding.",
+        )
 
     changes = []
     if isinstance(onboarding.review_data, dict) and isinstance(

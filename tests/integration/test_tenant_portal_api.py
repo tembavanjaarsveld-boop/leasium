@@ -1265,6 +1265,101 @@ def test_tenant_portal_onboarding_submit_writes_submitted_data(
     assert tenant.legal_name == "Portal Tenant One Pty Ltd"
 
 
+def test_tenant_portal_lease_questions_gate_signing_and_apply(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    bearer_headers = {"Authorization": "Bearer tenant-subject-one"}
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers=bearer_headers,
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+
+    question_response = client.post(
+        "/api/v1/tenant-portal/lease-questions",
+        headers=bearer_headers,
+        json={
+            "clause_reference": "Clause 12",
+            "question": "Can you confirm how the make-good obligation works?",
+        },
+    )
+    assert question_response.status_code == 200
+    agreement = question_response.json()["lease_agreement"]
+    assert agreement["status"] == "questions_open"
+    assert agreement["open_question_count"] == 1
+    question = agreement["questions"][0]
+    assert question["status"] == "open"
+    assert question["clause_reference"] == "Clause 12"
+
+    submitted_response = client.post(
+        "/api/v1/tenant-portal/onboarding/submit",
+        headers=bearer_headers,
+        json={
+            "legal_name": "Portal Tenant Submitted Pty Ltd",
+            "trading_name": "Portal One",
+            "contact_name": "Avery Tenant",
+            "contact_email": "avery@portal-one.example",
+            "contact_phone": "+61 400 111 222",
+            "insurance_confirmed": True,
+            "accepted": True,
+        },
+    )
+    assert submitted_response.status_code == 200
+
+    review_response = client.post(
+        f"/api/v1/tenant-onboarding/{scope['onboarding_id']}/review",
+        json={"approved": True, "notes": "Ready for lease signing."},
+    )
+    assert review_response.status_code == 200
+
+    blocked_apply_response = client.post(
+        f"/api/v1/tenant-onboarding/{scope['onboarding_id']}/apply"
+    )
+    assert blocked_apply_response.status_code == 409
+    assert blocked_apply_response.json()["detail"] == (
+        "Resolve lease agreement questions before applying onboarding."
+    )
+
+    answer_response = client.post(
+        f"/api/v1/tenant-onboarding/{scope['onboarding_id']}"
+        f"/lease-questions/{question['id']}/respond",
+        json={
+            "answer": "The make-good requirement is limited to tenant-installed works.",
+            "status": "answered",
+        },
+    )
+    assert answer_response.status_code == 200
+    answered_questions = answer_response.json()["delivery_data"]["lease_agreement"]["questions"]
+    assert answered_questions[0]["status"] == "answered"
+
+    unsigned_apply_response = client.post(
+        f"/api/v1/tenant-onboarding/{scope['onboarding_id']}/apply"
+    )
+    assert unsigned_apply_response.status_code == 409
+    assert unsigned_apply_response.json()["detail"] == (
+        "Lease agreement must be signed before applying onboarding."
+    )
+
+    sign_response = client.post(
+        "/api/v1/tenant-portal/lease-agreement/sign",
+        headers=bearer_headers,
+        json={"accepted": True},
+    )
+    assert sign_response.status_code == 200
+    signed_agreement = sign_response.json()["lease_agreement"]
+    assert signed_agreement["status"] == "signed"
+    assert signed_agreement["signed_at"] is not None
+
+    apply_response = client.post(f"/api/v1/tenant-onboarding/{scope['onboarding_id']}/apply")
+    assert apply_response.status_code == 200
+    assert apply_response.json()["status"] == "applied"
+
+
 def test_tenant_portal_onboarding_submit_rejects_non_sent_status(
     client: TestClient,
     session: Session,

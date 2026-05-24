@@ -56,6 +56,8 @@ from apps.api.schemas.tenant_portal import (
     TenantPortalInvitePreviewRead,
     TenantPortalInvoiceLineRead,
     TenantPortalInvoiceRead,
+    TenantPortalLeaseAgreementSignCreate,
+    TenantPortalLeaseQuestionCreate,
     TenantPortalLeaseRead,
     TenantPortalMaintenanceHistoryItemRead,
     TenantPortalMaintenanceRequestCreate,
@@ -66,6 +68,13 @@ from apps.api.schemas.tenant_portal import (
     TenantPortalPaymentSummaryRead,
     TenantPortalRead,
     TenantPortalTenantRead,
+)
+from apps.api.tenant_lease_agreement import (
+    append_lease_question,
+    blocking_lease_question_count,
+    lease_agreement_read,
+    lease_agreement_signed,
+    mark_lease_agreement_signed,
 )
 
 router = APIRouter(prefix="/tenant-portal", tags=["tenant-portal"])
@@ -1002,6 +1011,7 @@ def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
             submitted_data=scope.onboarding.submitted_data or None,
             portal_invite_sent_at=_portal_invite_sent_at(scope.onboarding.delivery_data),
         ),
+        lease_agreement=lease_agreement_read(scope.onboarding),
         compliance=_compliance(scope, documents),
         invoices=[_invoice_read(invoice) for invoice in invoices],
         payment_summary=_payment_summary(invoices),
@@ -1587,6 +1597,107 @@ def submit_tenant_portal_onboarding(
     )
     session.commit()
     session.refresh(onboarding)
+    return _portal_read(scope, session)
+
+
+@router.post("/lease-questions", response_model=TenantPortalRead)
+def ask_tenant_portal_lease_question(
+    payload: TenantPortalLeaseQuestionCreate,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+    x_tenant_portal_token: Annotated[str | None, Header()] = None,
+) -> TenantPortalRead:
+    scope = _portal_scope_for_request(
+        request,
+        session,
+        settings,
+        authorization=authorization,
+        header_token=x_tenant_portal_token,
+    )
+    if scope.onboarding.status not in {
+        TenantOnboardingStatus.sent,
+        TenantOnboardingStatus.submitted,
+        TenantOnboardingStatus.reviewed,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Lease agreement questions are only available during onboarding.",
+        )
+    if lease_agreement_signed(scope.onboarding):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Lease agreement has already been signed.",
+        )
+    question = append_lease_question(
+        scope.onboarding,
+        question=payload.question,
+        clause_reference=payload.clause_reference,
+        actor=scope.auth.actor,
+    )
+    audit_log(
+        session,
+        actor=scope.auth.actor,
+        entity_id=scope.onboarding.entity_id,
+        action="ask_lease_question",
+        target_table="tenant_onboarding",
+        target_id=scope.onboarding.id,
+        outcome=AuditOutcome.success,
+        tool_name="tenant_portal.lease_question",
+        tool_output_summary=f"Tenant asked lease agreement question {question['id']}.",
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(scope.onboarding)
+    return _portal_read(scope, session)
+
+
+@router.post("/lease-agreement/sign", response_model=TenantPortalRead)
+def sign_tenant_portal_lease_agreement(
+    payload: TenantPortalLeaseAgreementSignCreate,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+    x_tenant_portal_token: Annotated[str | None, Header()] = None,
+) -> TenantPortalRead:
+    scope = _portal_scope_for_request(
+        request,
+        session,
+        settings,
+        authorization=authorization,
+        header_token=x_tenant_portal_token,
+    )
+    if not payload.accepted:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Acceptance is required.",
+        )
+    if scope.onboarding.status != TenantOnboardingStatus.reviewed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Property team review must be completed before signing.",
+        )
+    if blocking_lease_question_count(scope.onboarding):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Resolve lease agreement questions before signing.",
+        )
+    mark_lease_agreement_signed(scope.onboarding, actor=scope.auth.actor)
+    audit_log(
+        session,
+        actor=scope.auth.actor,
+        entity_id=scope.onboarding.entity_id,
+        action="sign_lease_agreement",
+        target_table="tenant_onboarding",
+        target_id=scope.onboarding.id,
+        outcome=AuditOutcome.success,
+        tool_name="tenant_portal.lease_agreement_sign",
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(scope.onboarding)
     return _portal_read(scope, session)
 
 

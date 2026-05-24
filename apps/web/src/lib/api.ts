@@ -718,6 +718,7 @@ export type OnboardingDeliveryData = {
   history?: Array<Record<string, unknown>>;
   receipts?: Array<Record<string, unknown>>;
   reminders?: OnboardingReminderData;
+  lease_agreement?: TenantLeaseAgreementRecord;
 };
 
 export type TenantOnboardingPublicRecord = {
@@ -838,6 +839,46 @@ export type TenantPortalOnboardingRecord = {
   document_count: number;
   submitted_data: Record<string, unknown> | null;
   portal_invite_sent_at: string | null;
+};
+
+export type TenantLeaseQuestionStatus =
+  | "open"
+  | "answered"
+  | "resolved"
+  | "needs_revision"
+  | "legal_review";
+
+export type TenantLeaseQuestionRecord = {
+  id: string;
+  question: string;
+  clause_reference: string | null;
+  status: TenantLeaseQuestionStatus;
+  answer: string | null;
+  asked_at: string | null;
+  asked_by_actor: string | null;
+  answered_at: string | null;
+  answered_by_actor: string | null;
+  answered_by_user_id: string | null;
+  resolved_at: string | null;
+};
+
+export type TenantLeaseAgreementRecord = {
+  status: "not_ready" | "questions_open" | "ready_to_sign" | "signed";
+  open_question_count: number;
+  questions: TenantLeaseQuestionRecord[];
+  signed_at: string | null;
+  signed_by_actor: string | null;
+  signing_locked_reason: string | null;
+};
+
+export type TenantLeaseQuestionPayload = {
+  question: string;
+  clause_reference?: string | null;
+};
+
+export type TenantLeaseQuestionResponsePayload = {
+  answer?: string | null;
+  status?: Exclude<TenantLeaseQuestionStatus, "open">;
 };
 
 export type TenantPortalOnboardingSubmitPayload = {
@@ -973,6 +1014,7 @@ export type TenantPortalRecord = {
   tenant: TenantPortalTenantRecord;
   lease: TenantPortalLeaseRecord;
   onboarding: TenantPortalOnboardingRecord;
+  lease_agreement: TenantLeaseAgreementRecord;
   compliance: TenantPortalComplianceRecord;
   invoices: TenantPortalInvoiceRecord[];
   payment_summary: TenantPortalPaymentSummaryRecord;
@@ -3152,6 +3194,20 @@ export function reviewTenantOnboarding(
   );
 }
 
+export function respondTenantLeaseQuestion(
+  onboardingId: string,
+  questionId: string,
+  payload: TenantLeaseQuestionResponsePayload,
+) {
+  return request<TenantOnboardingRecord>(
+    `/tenant-onboarding/${onboardingId}/lease-questions/${questionId}/respond`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export function applyTenantOnboarding(onboardingId: string) {
   return request<TenantOnboardingRecord>(
     `/tenant-onboarding/${onboardingId}/apply`,
@@ -3778,6 +3834,60 @@ export function submitTenantPortalOnboarding(
     );
   }
   return request<TenantPortalRecord>("/tenant-portal/onboarding/submit", init);
+}
+
+export function askTenantPortalLeaseQuestion(
+  payload: TenantLeaseQuestionPayload,
+  options: { token?: string | null; authToken?: string | null } = {},
+) {
+  const init: RequestInit = {
+    method: "POST",
+    body: JSON.stringify(payload),
+  };
+  if (options.authToken) {
+    return publicRequest<TenantPortalRecord>("/tenant-portal/lease-questions", {
+      ...init,
+      headers: tenantPortalBearerHeaders(options.authToken),
+    });
+  }
+  if (options.token) {
+    return publicRequest<TenantPortalRecord>("/tenant-portal/lease-questions", {
+      ...init,
+      headers: tenantPortalHeaders(options.token),
+    });
+  }
+  return request<TenantPortalRecord>("/tenant-portal/lease-questions", init);
+}
+
+export function signTenantPortalLeaseAgreement(
+  options: { token?: string | null; authToken?: string | null } = {},
+) {
+  const init: RequestInit = {
+    method: "POST",
+    body: JSON.stringify({ accepted: true }),
+  };
+  if (options.authToken) {
+    return publicRequest<TenantPortalRecord>(
+      "/tenant-portal/lease-agreement/sign",
+      {
+        ...init,
+        headers: tenantPortalBearerHeaders(options.authToken),
+      },
+    );
+  }
+  if (options.token) {
+    return publicRequest<TenantPortalRecord>(
+      "/tenant-portal/lease-agreement/sign",
+      {
+        ...init,
+        headers: tenantPortalHeaders(options.token),
+      },
+    );
+  }
+  return request<TenantPortalRecord>(
+    "/tenant-portal/lease-agreement/sign",
+    init,
+  );
 }
 
 export function uploadTenantPortalDocument(payload: {

@@ -1,10 +1,10 @@
 """Schemas for tenant onboarding links and submissions."""
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from stewart.core.models import TenantOnboardingStatus
 
 from apps.api.schemas.common import ApiModel
@@ -28,6 +28,21 @@ class TenantOnboardingFreshLink(BaseModel):
 class TenantOnboardingReview(BaseModel):
     approved: bool = True
     notes: str | None = None
+
+
+class TenantLeaseQuestionResponse(BaseModel):
+    answer: str | None = None
+    status: Literal["answered", "resolved", "needs_revision", "legal_review"] = "answered"
+
+    @field_validator("answer", mode="before")
+    @classmethod
+    def _optional_answer(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Answer must be text.")
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class TenantOnboardingReminderStepUpdate(BaseModel):

@@ -18,6 +18,8 @@ import {
   ImagePlus,
   Loader2,
   LogIn,
+  MessageSquare,
+  PenLine,
   ReceiptText,
   Send,
   ShieldCheck,
@@ -39,6 +41,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  askTenantPortalLeaseQuestion,
   claimTenantPortalAccount,
   createTenantPortalAccountMaintenanceRequest,
   createTenantPortalMaintenanceRequest,
@@ -53,11 +56,13 @@ import {
   submitTenantPortalOnboarding,
   tenantPortalDocumentDownloadUrl,
   TenantPortalDocumentRecord,
+  TenantLeaseQuestionRecord,
   TenantPortalMaintenanceRequestPayload,
   TenantPortalNotificationPreferencesRecord,
   TenantPortalNotificationPreferencesPayload,
   TenantPortalOnboardingSubmitPayload,
   TenantPortalRecord,
+  signTenantPortalLeaseAgreement,
   updateTenantPortalAccountNotificationPreferences,
   updateTenantPortalNotificationPreferences,
   uploadTenantPortalAccountDocument,
@@ -221,6 +226,60 @@ function onboardingReviewed(portal: TenantPortalRecord) {
 
 function onboardingApplied(portal: TenantPortalRecord) {
   return portal.onboarding.status === "applied";
+}
+
+function blockingLeaseQuestion(question: TenantLeaseQuestionRecord) {
+  return ["open", "needs_revision", "legal_review"].includes(question.status);
+}
+
+function leaseAgreementTone(
+  status: TenantPortalRecord["lease_agreement"]["status"],
+) {
+  if (status === "signed") {
+    return "success" as const;
+  }
+  if (status === "questions_open") {
+    return "warning" as const;
+  }
+  if (status === "ready_to_sign") {
+    return "primary" as const;
+  }
+  return "neutral" as const;
+}
+
+function leaseAgreementLabel(
+  status: TenantPortalRecord["lease_agreement"]["status"],
+) {
+  if (status === "questions_open") {
+    return "Questions open";
+  }
+  if (status === "ready_to_sign") {
+    return "Ready to sign";
+  }
+  if (status === "signed") {
+    return "Signed";
+  }
+  return "Review pending";
+}
+
+function leaseQuestionStatusLabel(status: TenantLeaseQuestionRecord["status"]) {
+  if (status === "legal_review") {
+    return "Legal review";
+  }
+  if (status === "needs_revision") {
+    return "Needs revision";
+  }
+  return label(status);
+}
+
+function leaseQuestionTone(status: TenantLeaseQuestionRecord["status"]) {
+  if (status === "answered" || status === "resolved") {
+    return "success" as const;
+  }
+  if (status === "legal_review" || status === "needs_revision") {
+    return "warning" as const;
+  }
+  return "primary" as const;
 }
 
 function tenantPortalClaimErrorMessage(error: unknown) {
@@ -1117,6 +1176,223 @@ function OnboardingPanel({
   );
 }
 
+function LeaseAgreementPanel({
+  portal,
+  token,
+  accountAuthToken,
+  onSaved,
+}: {
+  portal: TenantPortalRecord;
+  token: string | null;
+  accountAuthToken: string | null;
+  onSaved: () => void;
+}) {
+  const [clauseReference, setClauseReference] = useState("");
+  const [question, setQuestion] = useState("");
+  const [acceptedForSigning, setAcceptedForSigning] = useState(false);
+  const agreement = portal.lease_agreement;
+  const questions = agreement.questions;
+  const signed = agreement.status === "signed";
+  const canAskQuestion =
+    !signed &&
+    ["sent", "submitted", "reviewed"].includes(portal.onboarding.status);
+  const canSign = agreement.status === "ready_to_sign" && acceptedForSigning;
+  const blockingCount = questions.filter(blockingLeaseQuestion).length;
+
+  const askMutation = useMutation({
+    mutationFn: () =>
+      askTenantPortalLeaseQuestion(
+        {
+          question,
+          clause_reference: clauseReference.trim() || null,
+        },
+        { token, authToken: accountAuthToken },
+      ),
+    onSuccess: () => {
+      setQuestion("");
+      setClauseReference("");
+      onSaved();
+    },
+  });
+
+  const signMutation = useMutation({
+    mutationFn: () =>
+      signTenantPortalLeaseAgreement({ token, authToken: accountAuthToken }),
+    onSuccess: () => {
+      setAcceptedForSigning(false);
+      onSaved();
+    },
+  });
+
+  const askError = askMutation.error as Error | null;
+  const signError = signMutation.error as Error | null;
+  const signingDetail = signed
+    ? `Signed ${formatDateTime(agreement.signed_at)}.`
+    : agreement.signing_locked_reason ||
+      "Review is complete and the lease agreement can be signed.";
+
+  return (
+    <Panel
+      title="Lease agreement"
+      icon={<PenLine size={18} />}
+      actions={
+        <StatusBadge tone={leaseAgreementTone(agreement.status)}>
+          {leaseAgreementLabel(agreement.status)}
+        </StatusBadge>
+      }
+    >
+      <div className="grid gap-4 p-4">
+        <div className="grid gap-2 text-sm text-muted-foreground">
+          <p>
+            Ask agreement questions here before signing. Your property team can
+            answer from your tenant record.
+          </p>
+          {blockingCount ? (
+            <p className="font-medium text-warning-strong">
+              {blockingCount} question{blockingCount === 1 ? "" : "s"} need
+              attention before signing.
+            </p>
+          ) : null}
+        </div>
+
+        <form
+          className="grid gap-3 rounded-md border border-border bg-muted/30 p-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (question.trim()) {
+              askMutation.mutate();
+            }
+          }}
+        >
+          <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
+            <Field label="Clause">
+              <Input
+                value={clauseReference}
+                disabled={!canAskQuestion || askMutation.isPending}
+                placeholder="Optional"
+                onChange={(event) => setClauseReference(event.target.value)}
+              />
+            </Field>
+            <Field label="Question">
+              <textarea
+                className="min-h-24 w-full resize-y rounded-md border border-border bg-white px-3 py-2 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+                value={question}
+                disabled={!canAskQuestion || askMutation.isPending}
+                onChange={(event) => setQuestion(event.target.value)}
+              />
+            </Field>
+          </div>
+          {askError ? (
+            <p className="text-sm text-danger">{askError.message}</p>
+          ) : null}
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              disabled={
+                !canAskQuestion || askMutation.isPending || !question.trim()
+              }
+            >
+              {askMutation.isPending ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <MessageSquare size={16} />
+              )}
+              Ask question
+            </Button>
+          </div>
+        </form>
+
+        <div className="grid gap-2">
+          {questions.map((item) => (
+            <div
+              key={item.id}
+              className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-semibold">
+                  {item.clause_reference || "Lease agreement"}
+                </div>
+                <StatusBadge tone={leaseQuestionTone(item.status)}>
+                  {leaseQuestionStatusLabel(item.status)}
+                </StatusBadge>
+              </div>
+              <p className="text-muted-foreground">{item.question}</p>
+              {item.answer ? (
+                <div className="rounded-md bg-primary-soft px-3 py-2 text-primary-hover">
+                  {item.answer}
+                </div>
+              ) : null}
+              <div className="text-xs text-muted-foreground">
+                Asked {formatDateTime(item.asked_at)}
+              </div>
+            </div>
+          ))}
+          {!questions.length ? (
+            <div className="rounded-md border border-border bg-white px-3 py-4 text-sm text-muted-foreground">
+              No lease agreement questions yet.
+            </div>
+          ) : null}
+        </div>
+
+        <div className="grid gap-3 rounded-md border border-border bg-white p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-semibold">Signing</div>
+              <div className="text-sm text-muted-foreground">
+                {signingDetail}
+              </div>
+            </div>
+            {signed ? (
+              <StatusBadge tone="success">Complete</StatusBadge>
+            ) : (
+              <StatusBadge
+                tone={
+                  agreement.status === "ready_to_sign" ? "primary" : "neutral"
+                }
+              >
+                {agreement.status === "ready_to_sign" ? "Ready" : "Locked"}
+              </StatusBadge>
+            )}
+          </div>
+          {!signed ? (
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={acceptedForSigning}
+                disabled={agreement.status !== "ready_to_sign"}
+                onChange={(event) =>
+                  setAcceptedForSigning(event.target.checked)
+                }
+              />
+              <span>I have reviewed and signed the lease agreement.</span>
+            </label>
+          ) : null}
+          {signError ? (
+            <p className="text-sm text-danger">{signError.message}</p>
+          ) : null}
+          {!signed ? (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                disabled={!canSign || signMutation.isPending}
+                onClick={() => signMutation.mutate()}
+              >
+                {signMutation.isPending ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <PenLine size={16} />
+                )}
+                Confirm signed
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function TenantLoginNotConfiguredNotice() {
   return (
     <div className="grid gap-2 rounded-md border border-primary/30 bg-primary/5 p-4 text-sm">
@@ -1703,6 +1979,8 @@ function TenantPortalContent({ token }: { token: string | null }) {
 
   const detailsSubmitted = onboardingSubmitted(portal);
   const detailsReviewed = onboardingReviewed(portal);
+  const leaseAgreement = portal.lease_agreement;
+  const leaseAgreementSigned = leaseAgreement.status === "signed";
   const requiredDocuments = portal.compliance.items;
   const documentsComplete =
     requiredDocuments.length > 0 &&
@@ -1783,6 +2061,15 @@ function TenantPortalContent({ token }: { token: string | null }) {
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="grid gap-5">
               <OnboardingPanel
+                portal={portal}
+                token={token}
+                accountAuthToken={accountAuthToken}
+                onSaved={() => {
+                  refreshPortal();
+                }}
+              />
+
+              <LeaseAgreementPanel
                 portal={portal}
                 token={token}
                 accountAuthToken={accountAuthToken}
@@ -1989,8 +2276,25 @@ function TenantPortalContent({ token }: { token: string | null }) {
                   />
                   <OnboardingStep
                     title="Lease pack and signing"
-                    detail="The lease pack and signature request come after review."
-                    state="locked"
+                    detail={
+                      leaseAgreementSigned
+                        ? "Lease agreement signing is complete."
+                        : leaseAgreement.open_question_count
+                          ? "Lease questions need answers before signing."
+                          : detailsReviewed
+                            ? "Review is complete. Confirm signing when ready."
+                            : "The lease pack and signature request come after review."
+                    }
+                    state={
+                      leaseAgreementSigned
+                        ? "complete"
+                        : detailsReviewed &&
+                            leaseAgreement.open_question_count === 0
+                          ? "current"
+                          : detailsReviewed
+                            ? "waiting"
+                            : "locked"
+                    }
                   />
                 </div>
               </Panel>

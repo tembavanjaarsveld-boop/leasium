@@ -98,6 +98,58 @@ class TenantPortalOnboardingRead(BaseModel):
     portal_invite_sent_at: datetime | None = None
 
 
+class TenantPortalLeaseQuestionCreate(BaseModel):
+    question: str
+    clause_reference: str | None = None
+
+    @field_validator("question", mode="before")
+    @classmethod
+    def _required_question(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Question is required.")
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Question is required.")
+        return cleaned
+
+    @field_validator("clause_reference", mode="before")
+    @classmethod
+    def _optional_reference(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Reference must be text.")
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class TenantPortalLeaseAgreementSignCreate(BaseModel):
+    accepted: bool = True
+
+
+class TenantPortalLeaseQuestionRead(BaseModel):
+    id: str
+    question: str
+    clause_reference: str | None = None
+    status: Literal["open", "answered", "resolved", "needs_revision", "legal_review"]
+    answer: str | None = None
+    asked_at: datetime | None = None
+    asked_by_actor: str | None = None
+    answered_at: datetime | None = None
+    answered_by_actor: str | None = None
+    answered_by_user_id: UUID | None = None
+    resolved_at: datetime | None = None
+
+
+class TenantPortalLeaseAgreementRead(BaseModel):
+    status: Literal["not_ready", "questions_open", "ready_to_sign", "signed"]
+    open_question_count: int
+    questions: list[TenantPortalLeaseQuestionRead] = Field(default_factory=list)
+    signed_at: datetime | None = None
+    signed_by_actor: str | None = None
+    signing_locked_reason: str | None = None
+
+
 class TenantPortalDocumentRead(BaseModel):
     id: UUID
     filename: str
@@ -235,6 +287,7 @@ class TenantPortalRead(BaseModel):
     tenant: TenantPortalTenantRead
     lease: TenantPortalLeaseRead
     onboarding: TenantPortalOnboardingRead
+    lease_agreement: TenantPortalLeaseAgreementRead
     compliance: TenantPortalComplianceRead
     invoices: list[TenantPortalInvoiceRead]
     payment_summary: TenantPortalPaymentSummaryRead
