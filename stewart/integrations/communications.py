@@ -290,7 +290,7 @@ def _date_label(value: date | datetime | None) -> str:
 
 
 def _email_subject(invite: TenantOnboardingInvite) -> str:
-    return f"Complete tenant onboarding for {invite.property_name}"
+    return f"Set up your tenant portal for {invite.property_name}"
 
 
 def _operator_invite_subject(invite: OperatorInviteEmail) -> str:
@@ -313,15 +313,26 @@ def _email_text(invite: TenantOnboardingInvite) -> str:
         [
             greeting,
             "",
-            "Please review and complete your tenant onboarding details in Leasium.",
+            (
+                "You've been invited to the Leasium tenant portal. Click"
+                " the link below to create or sign in to your tenant"
+                " account — once you're signed in you can complete your"
+                " onboarding details, view your lease, and access"
+                " documents, payments, and maintenance in one place."
+            ),
             "",
             f"Property: {invite.property_name}",
             f"Area: {invite.unit_label}",
-            f"Due: {due}",
+            f"Onboarding due: {due}",
             "",
             invite.onboarding_url,
             "",
-            "Nothing is applied to the tenant profile until the property team reviews it.",
+            (
+                "After you sign in once, your account stays linked — the"
+                " invite link is no longer needed. Nothing you submit is"
+                " applied to your tenant profile until the property team"
+                " reviews it."
+            ),
             "",
             invite.brand_name,
         ]
@@ -372,19 +383,26 @@ def _email_html(invite: TenantOnboardingInvite) -> str:
         </div>
         <p style="margin:0 0 14px;">{greeting}</p>
         <p style="margin:0 0 18px;color:#475467;line-height:1.55;">
-          Please review and complete your tenant onboarding details.
+          You&#x2019;ve been invited to the Leasium tenant portal. Sign in
+          or create your tenant account to complete your onboarding,
+          view your lease, and access documents, payments, and
+          maintenance in one place.
         </p>
         <div style="border:1px solid #E4E7EC;border-radius:12px;padding:16px;margin-bottom:20px;">
           <p style="margin:0 0 4px;font-weight:700;">{escape(invite.property_name)}</p>
           {address}
           <p style="margin:12px 0 0;color:#475467;">Area: {escape(invite.unit_label)}</p>
-          <p style="margin:4px 0 0;color:#475467;">Due: {escape(_date_label(invite.due_date))}</p>
+          <p style="margin:4px 0 0;color:#475467;">
+            Onboarding due: {escape(_date_label(invite.due_date))}
+          </p>
         </div>
         <a href="{escape(invite.onboarding_url)}" style="{button_style}">
-          Complete onboarding
+          Sign in to continue
         </a>
         <p style="margin:20px 0 0;color:#667085;font-size:13px;line-height:1.45;">
-          Nothing is applied to the tenant profile until the property team reviews it.
+          After you sign in once your account stays linked &mdash; the
+          invite link is no longer needed. Nothing you submit is applied
+          to your tenant profile until the property team reviews it.
         </p>
       </div>
     </div>

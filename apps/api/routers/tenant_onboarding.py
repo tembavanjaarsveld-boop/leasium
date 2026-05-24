@@ -98,7 +98,7 @@ def _template_metadata(invite: TenantOnboardingInvite) -> dict[str, object]:
         "version": invite.template_version,
         "brand_name": invite.brand_name,
         "from_name": get_settings().sendgrid_from_name,
-        "email_subject": f"Complete tenant onboarding for {invite.property_name}",
+        "email_subject": f"Set up your tenant portal for {invite.property_name}",
         "sms_sender": invite.brand_name,
     }
 
