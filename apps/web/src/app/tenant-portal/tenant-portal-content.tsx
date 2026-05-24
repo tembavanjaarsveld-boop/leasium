@@ -64,9 +64,17 @@ import {
 } from "@/lib/api";
 
 export function TenantPortalPage({ token = null }: { token?: string | null }) {
+  const tenantAccountAuthEnabled = Boolean(
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  );
+
   return (
     <QueryProvider>
-      <TenantPortalContent token={token} />
+      {tenantAccountAuthEnabled ? (
+        <TenantPortalContent token={token} />
+      ) : (
+        <TenantPortalContentWithoutAuth token={token} />
+      )}
     </QueryProvider>
   );
 }
@@ -199,6 +207,21 @@ function tenantDisplayName(tenant: TenantPortalRecord["tenant"]) {
   return tenant.trading_name || tenant.legal_name;
 }
 
+function onboardingSubmitted(portal: TenantPortalRecord) {
+  return (
+    Boolean(portal.onboarding.submitted_at) ||
+    ["submitted", "reviewed", "applied"].includes(portal.onboarding.status)
+  );
+}
+
+function onboardingReviewed(portal: TenantPortalRecord) {
+  return ["reviewed", "applied"].includes(portal.onboarding.status);
+}
+
+function onboardingApplied(portal: TenantPortalRecord) {
+  return portal.onboarding.status === "applied";
+}
+
 function PortalShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-background">
@@ -213,6 +236,47 @@ function PortalShell({ children }: { children: React.ReactNode }) {
       </header>
       {children}
     </main>
+  );
+}
+
+type OnboardingStepState = "complete" | "current" | "waiting" | "locked";
+
+const onboardingStepTone: Record<
+  OnboardingStepState,
+  "success" | "primary" | "warning" | "neutral"
+> = {
+  complete: "success",
+  current: "primary",
+  waiting: "warning",
+  locked: "neutral",
+};
+
+const onboardingStepLabel: Record<OnboardingStepState, string> = {
+  complete: "Done",
+  current: "Now",
+  waiting: "Waiting",
+  locked: "Next",
+};
+
+function OnboardingStep({
+  title,
+  detail,
+  state,
+}: {
+  title: string;
+  detail: string;
+  state: OnboardingStepState;
+}) {
+  return (
+    <div className="grid gap-2 rounded-md border border-border px-3 py-2 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-medium">{title}</span>
+        <StatusBadge tone={onboardingStepTone[state]}>
+          {onboardingStepLabel[state]}
+        </StatusBadge>
+      </div>
+      <p className="text-xs leading-5 text-muted-foreground">{detail}</p>
+    </div>
   );
 }
 
@@ -1015,6 +1079,126 @@ function OnboardingPanel({
   );
 }
 
+function TenantLoginNotConfiguredNotice() {
+  return (
+    <div className="grid gap-2 rounded-md border border-primary/30 bg-primary/5 p-4 text-sm">
+      <StatusBadge tone="warning">Tenant login not configured</StatusBadge>
+      <p className="text-muted-foreground">
+        Tenant account creation is not switched on in this environment. Ask the
+        property team to enable tenant login or send a fresh invite when account
+        setup is ready.
+      </p>
+    </div>
+  );
+}
+
+function TenantLoginNotConfiguredPanel() {
+  return (
+    <Panel title="Account Access" icon={<UserRound size={18} />}>
+      <div className="p-4">
+        <TenantLoginNotConfiguredNotice />
+      </div>
+    </Panel>
+  );
+}
+
+function TenantPortalContentWithoutAuth({ token }: { token: string | null }) {
+  const invitePreviewQuery = useQuery({
+    queryKey: ["tenant-portal-invite-preview", token],
+    queryFn: () => getTenantPortalInvitePreview(token as string),
+    enabled: Boolean(token),
+    retry: false,
+  });
+
+  if (!token) {
+    return (
+      <PortalShell>
+        <div className="mx-auto grid max-w-xl gap-5 px-5 py-8">
+          <section className="rounded-md border border-border bg-white p-5">
+            <p className="text-sm font-medium text-primary">Tenant Portal</p>
+            <h2 className="mt-1 text-2xl font-semibold">Open your portal</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Sign in with your Leasium tenant account.
+            </p>
+          </section>
+          <TenantLoginNotConfiguredPanel />
+        </div>
+      </PortalShell>
+    );
+  }
+
+  if (invitePreviewQuery.isLoading) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-background p-6">
+        <Loader2 className="animate-spin text-primary" size={28} />
+      </main>
+    );
+  }
+
+  if (invitePreviewQuery.error || !invitePreviewQuery.data) {
+    return (
+      <PortalShell>
+        <div className="grid min-h-[70vh] place-items-center px-5 py-8">
+          <div className="max-w-md rounded-md border border-border bg-white p-6 text-center">
+            <LeasiumMark className="mx-auto mb-4" />
+            <h2 className="text-lg font-semibold">Invite not found</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This invite link is no longer valid. Ask the property team for a
+              fresh tenant portal link.
+            </p>
+          </div>
+        </div>
+      </PortalShell>
+    );
+  }
+
+  const preview = invitePreviewQuery.data;
+
+  return (
+    <PortalShell>
+      <div className="mx-auto grid max-w-2xl gap-5 px-5 py-10">
+        <div className="rounded-md border border-border bg-white p-6">
+          <div className="flex items-center gap-3">
+            <LeasiumMark />
+            <div>
+              <p className="text-sm font-medium text-primary">
+                Tenant Account Setup
+              </p>
+              <h2 className="text-xl font-semibold">
+                {preview.tenant_display_name}
+              </h2>
+            </div>
+          </div>
+          <dl className="mt-5 grid gap-2 text-sm">
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                Property
+              </dt>
+              <dd className="font-medium">{preview.property_name}</dd>
+              {preview.property_address ? (
+                <dd className="text-muted-foreground">
+                  {preview.property_address}
+                </dd>
+              ) : null}
+            </div>
+            {preview.expires_at ? (
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Invite expires
+                </dt>
+                <dd>{formatDateTime(preview.expires_at)}</dd>
+              </div>
+            ) : null}
+          </dl>
+          <div className="mt-6">
+            <TenantLoginNotConfiguredNotice />
+          </div>
+        </div>
+      </div>
+    </PortalShell>
+  );
+}
+
 function TenantPortalContent({ token }: { token: string | null }) {
   // Soft-switch claim gate — the token URL never exposes data without
   // a Clerk session. The token is now solely a one-time claim entry-
@@ -1109,9 +1293,6 @@ function TenantPortalContent({ token }: { token: string | null }) {
     null,
   );
   const [maintenancePhotoInputKey, setMaintenancePhotoInputKey] = useState(0);
-  const tenantAccountAuthEnabled = Boolean(
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
-  );
   const accountScoped = portal?.auth.mode === "tenant_portal_account";
 
   useEffect(() => {
@@ -1286,26 +1467,13 @@ function TenantPortalContent({ token }: { token: string | null }) {
               Sign in with your Leasium tenant account.
             </p>
           </section>
-          {tenantAccountAuthEnabled ? (
-            <TenantAccountPanel
-              token={null}
-              tokenTenantId={null}
-              tokenTenantName={null}
-              tokenExpiresAt={null}
-              onAccountPortal={handleAccountPortal}
-            />
-          ) : (
-            <Panel title="Account Access" icon={<UserRound size={18} />}>
-              <div className="grid gap-2 p-4 text-sm">
-                <StatusBadge tone="warning">
-                  Tenant login not configured
-                </StatusBadge>
-                <p className="text-muted-foreground">
-                  Ask the property team for your tenant portal link.
-                </p>
-              </div>
-            </Panel>
-          )}
+          <TenantAccountPanel
+            token={null}
+            tokenTenantId={null}
+            tokenTenantName={null}
+            tokenExpiresAt={null}
+            onAccountPortal={handleAccountPortal}
+          />
         </div>
       </PortalShell>
     );
@@ -1479,6 +1647,346 @@ function TenantPortalContent({ token }: { token: string | null }) {
             <p className="mt-2 text-sm text-muted-foreground">
               Ask the property team for a fresh tenant portal link.
             </p>
+          </div>
+        </div>
+      </PortalShell>
+    );
+  }
+
+  const detailsSubmitted = onboardingSubmitted(portal);
+  const detailsReviewed = onboardingReviewed(portal);
+  const requiredDocuments = portal.compliance.items;
+  const documentsComplete =
+    requiredDocuments.length > 0 &&
+    requiredDocuments.every((item) => item.status === "received");
+
+  if (!onboardingApplied(portal)) {
+    return (
+      <PortalShell>
+        <div className="mx-auto grid max-w-6xl gap-5 px-5 py-6">
+          <section className="rounded-md border border-border bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+                <p className="text-sm font-medium text-primary">
+                  Tenant onboarding
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold">
+                  Let&apos;s get your tenancy ready.
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Complete the essentials here first. Maintenance, payments,
+                  and the full document library unlock after your property
+                  team finishes the onboarding review.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <StatusBadge tone="success">Account ready</StatusBadge>
+                <StatusBadge
+                  tone={
+                    portal.onboarding.status === "cancelled"
+                      ? "danger"
+                      : detailsSubmitted
+                        ? "warning"
+                        : "primary"
+                  }
+                >
+                  {label(portal.onboarding.status)}
+                </StatusBadge>
+              </div>
+            </div>
+            <dl className="mt-5 grid gap-3 text-sm md:grid-cols-3">
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">
+                  Tenant
+                </dt>
+                <dd className="mt-1 font-medium">
+                  {tenantDisplayName(portal.tenant)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">
+                  Property
+                </dt>
+                <dd className="mt-1 font-medium">
+                  {portal.lease.property_name} - {portal.lease.unit_label}
+                </dd>
+                {portal.lease.property_address ? (
+                  <dd className="text-muted-foreground">
+                    {portal.lease.property_address}
+                  </dd>
+                ) : null}
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">
+                  Due
+                </dt>
+                <dd className="mt-1 font-medium">
+                  {formatDate(portal.onboarding.due_date)}
+                </dd>
+                {portal.onboarding.submitted_at ? (
+                  <dd className="text-muted-foreground">
+                    Submitted {formatDateTime(portal.onboarding.submitted_at)}
+                  </dd>
+                ) : null}
+              </div>
+            </dl>
+          </section>
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="grid gap-5">
+              <OnboardingPanel
+                portal={portal}
+                token={token}
+                accountAuthToken={accountAuthToken}
+                onSaved={() => {
+                  refreshPortal();
+                }}
+              />
+
+              <Panel
+                title="Required Documents"
+                icon={<UploadCloud size={18} />}
+                actions={
+                  <StatusBadge tone={documentsComplete ? "success" : "warning"}>
+                    {documentsComplete ? "Received" : "Needed"}
+                  </StatusBadge>
+                }
+              >
+                <div className="grid gap-4 p-4">
+                  <p className="text-sm text-muted-foreground">
+                    Upload only the documents requested for onboarding. Your
+                    property team reviews each file before marking it complete.
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {requiredDocuments.map((item) => (
+                      <div
+                        key={item.key}
+                        className="rounded-md border border-border p-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-semibold">{item.label}</div>
+                          <StatusBadge tone={complianceTone(item.status)}>
+                            {label(item.status)}
+                          </StatusBadge>
+                        </div>
+                        <div className="mt-2 text-sm text-muted-foreground">
+                          {item.document_count} file
+                          {item.document_count === 1 ? "" : "s"}
+                          {item.due_date
+                            ? ` - ${formatDate(item.due_date)}`
+                            : ""}
+                        </div>
+                      </div>
+                    ))}
+                    {!requiredDocuments.length ? (
+                      <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground md:col-span-3">
+                        No required document checklist has been set yet.
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {portal.compliance.uploads_enabled ? (
+                    <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3">
+                      <Field label="Document">
+                        <Input
+                          type="file"
+                          onChange={(event) =>
+                            setUploadFile(event.target.files?.[0] ?? null)
+                          }
+                        />
+                      </Field>
+                      <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+                        <Field label="Type">
+                          <Select
+                            value={uploadCategory}
+                            onChange={(event) =>
+                              setUploadCategory(
+                                event.target.value as DocumentCategory,
+                              )
+                            }
+                          >
+                            {visibleCategories.map((category) => (
+                              <option key={category} value={category}>
+                                {categoryLabels[category]}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label="Notes">
+                          <Input
+                            value={uploadNotes}
+                            onChange={(event) =>
+                              setUploadNotes(event.target.value)
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {uploadMutation.error ? (
+                          <span className="text-sm text-danger">
+                            {uploadMutation.error.message}
+                          </span>
+                        ) : null}
+                        <Button
+                          type="button"
+                          onClick={() => uploadMutation.mutate()}
+                          disabled={!uploadFile || uploadMutation.isPending}
+                        >
+                          {uploadMutation.isPending ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <UploadCloud size={16} />
+                          )}
+                          Upload for review
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-2">
+                    {portal.compliance.uploaded_documents.map((document) =>
+                      accountScoped ? (
+                        <button
+                          key={document.id}
+                          aria-label={`Download ${document.filename}`}
+                          className="grid gap-2 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+                          type="button"
+                          disabled={documentDownloadMutation.isPending}
+                          onClick={() =>
+                            documentDownloadMutation.mutate({
+                              documentId: document.id,
+                              filename: document.filename,
+                            })
+                          }
+                        >
+                          <TenantDocumentSummary document={document} />
+                        </button>
+                      ) : token ? (
+                        <a
+                          key={document.id}
+                          aria-label={`Download ${document.filename}`}
+                          className="grid gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-muted md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+                          href={tenantPortalDocumentDownloadUrl(
+                            token,
+                            document.id,
+                          )}
+                        >
+                          <TenantDocumentSummary document={document} />
+                        </a>
+                      ) : null,
+                    )}
+                    {documentDownloadMutation.error ? (
+                      <span className="text-sm text-danger">
+                        {documentDownloadMutation.error.message}
+                      </span>
+                    ) : null}
+                    {!portal.compliance.uploaded_documents.length ? (
+                      <div className="rounded-md border border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
+                        No onboarding documents have been uploaded yet.
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </Panel>
+            </div>
+
+            <aside className="grid content-start gap-5">
+              <Panel title="Checklist" icon={<CheckCircle2 size={18} />}>
+                <div className="grid gap-3 p-4">
+                  <OnboardingStep
+                    title="Tenant account"
+                    detail="Your secure tenant account has been created or confirmed."
+                    state="complete"
+                  />
+                  <OnboardingStep
+                    title="Confirm details"
+                    detail={
+                      detailsSubmitted
+                        ? "Your submitted details are with the property team."
+                        : "Confirm contact, billing, emergency, and lease-start details."
+                    }
+                    state={detailsSubmitted ? "complete" : "current"}
+                  />
+                  <OnboardingStep
+                    title="Required documents"
+                    detail={
+                      documentsComplete
+                        ? "Requested onboarding files have been received."
+                        : "Upload the requested files for property team review."
+                    }
+                    state={
+                      documentsComplete
+                        ? "complete"
+                        : detailsSubmitted
+                          ? "current"
+                          : "waiting"
+                    }
+                  />
+                  <OnboardingStep
+                    title="Property team review"
+                    detail={
+                      detailsReviewed
+                        ? "Review is complete. Final setup is being applied."
+                        : detailsSubmitted
+                          ? "The property team checks your details and documents."
+                          : "Review starts after your details are submitted."
+                    }
+                    state={
+                      detailsReviewed
+                        ? "complete"
+                        : detailsSubmitted
+                          ? "current"
+                          : "waiting"
+                    }
+                  />
+                  <OnboardingStep
+                    title="Lease pack and signing"
+                    detail="The lease pack and signature request come after review."
+                    state="locked"
+                  />
+                </div>
+              </Panel>
+
+              <Panel title="Lease Snapshot" icon={<Building2 size={18} />}>
+                <dl className="grid gap-3 p-4 text-sm">
+                  <div>
+                    <dt className="text-muted-foreground">Property</dt>
+                    <dd className="font-medium">
+                      {portal.lease.property_name}
+                    </dd>
+                    {portal.lease.property_address ? (
+                      <dd className="text-muted-foreground">
+                        {portal.lease.property_address}
+                      </dd>
+                    ) : null}
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Unit</dt>
+                    <dd className="font-medium">{portal.lease.unit_label}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Lease dates</dt>
+                    <dd className="font-medium">
+                      {formatDate(portal.lease.commencement_date)} to{" "}
+                      {formatDate(portal.lease.expiry_date)}
+                    </dd>
+                  </div>
+                </dl>
+              </Panel>
+
+              <Panel title="What Happens Next" icon={<FileText size={18} />}>
+                <div className="grid gap-2 p-4 text-sm text-muted-foreground">
+                  <p>
+                    After review, your property team sends the lease pack for
+                    signing and confirms when the tenancy is move-in ready.
+                  </p>
+                  <p>
+                    The full portal opens after onboarding is applied, with
+                    payments, maintenance, and ongoing documents in one place.
+                  </p>
+                </div>
+              </Panel>
+            </aside>
           </div>
         </div>
       </PortalShell>
@@ -2028,17 +2536,15 @@ function TenantPortalContent({ token }: { token: string | null }) {
               </dl>
             </Panel>
 
-            {tenantAccountAuthEnabled ? (
-              <TenantAccountPanel
-                token={token}
-                tokenTenantId={tokenPortal?.tenant.id ?? null}
-                tokenTenantName={
-                  tokenPortal ? tenantDisplayName(tokenPortal.tenant) : null
-                }
-                tokenExpiresAt={tokenPortal?.onboarding.expires_at ?? null}
-                onAccountPortal={handleAccountPortal}
-              />
-            ) : null}
+            <TenantAccountPanel
+              token={token}
+              tokenTenantId={tokenPortal?.tenant.id ?? null}
+              tokenTenantName={
+                tokenPortal ? tenantDisplayName(tokenPortal.tenant) : null
+              }
+              tokenExpiresAt={tokenPortal?.onboarding.expires_at ?? null}
+              onAccountPortal={handleAccountPortal}
+            />
 
             <PreferencesForm
               token={token}

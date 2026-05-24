@@ -3869,6 +3869,22 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (
+      method === "GET" &&
+      /^\/tenant-portal\/invites\/[^/]+\/preview$/.test(path)
+    ) {
+      const baseSession = tenantPortalSession();
+      await fulfillJson(route, {
+        property_name: `${baseSession.lease.property_name} — ${baseSession.lease.unit_label}`,
+        property_address: baseSession.lease.property_address,
+        tenant_display_name:
+          baseSession.tenant.trading_name ?? baseSession.tenant.legal_name,
+        expires_at: baseSession.onboarding.expires_at,
+        claimable: !tenantAccountLinked,
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/tenant-portal/account/status") {
       if (!tenantAccountLinked) {
         await fulfillJson(route, {

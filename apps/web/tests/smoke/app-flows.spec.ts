@@ -1121,66 +1121,73 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText("Fresh portal link copied.")).toBeVisible();
 });
 
-test("tenant portal shows scoped self-service data", async ({ page }) => {
+test("tenant portal invite is account-first before onboarding", async ({ page }) => {
+  test.skip(
+    !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    "Runs only when tenant account auth is enabled.",
+  );
   await page.goto("/tenant-portal/tenant-token-1");
 
   await expect(
     page.getByRole("heading", { name: "Bright Cafe" }),
   ).toBeVisible();
-  await expect(page.getByText("Token scoped")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible();
-  await expect(page.getByText("INV-1001")).toBeVisible();
-  await expect(page.getByText("May rent and outgoings")).toBeVisible();
+  await expect(page.getByText("Tenant Account Setup")).toBeVisible();
+  await expect(
+    page.getByText(/Create or sign in to your tenant account first/),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Payments" }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Maintenance" }),
-  ).toBeVisible();
-  await expect(page.getByText("Air conditioning fault")).toBeVisible();
-  await expect(
-    page.getByText("Tenant submitted maintenance request."),
-  ).toBeVisible();
-  await expect(page.getByText("Team update")).toBeVisible();
-  await expect(
-    page.getByText("We have asked the contractor for an attendance window."),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Updated contractor and approval status."),
   ).toHaveCount(0);
-  await expect(page.getByText("2 files")).toBeVisible();
-  await page.getByLabel("Request title").fill("Shopfront light fault");
-  await page.getByLabel("Priority").selectOption("high");
-  await page
-    .getByLabel("Details")
-    .fill("Entry light is flickering during trading hours.");
-  await page.getByLabel("Location or reference").fill("Front entry");
-  await page.getByLabel("Photo", { exact: true }).setInputFiles({
-    name: "shopfront-light.jpg",
-    mimeType: "image/jpeg",
-    buffer: Buffer.from("mock image bytes"),
-  });
-  await page.getByRole("button", { name: "Submit request" }).click();
+});
+
+test("tenant portal invite handles missing tenant login setup", async ({
+  page,
+}) => {
+  test.skip(
+    Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY),
+    "Runs only when tenant account auth is not configured.",
+  );
+  await page.goto("/tenant-portal/tenant-token-1");
+
   await expect(
-    page.getByText("Shopfront light fault", { exact: true }).first(),
+    page.getByRole("heading", { name: "Bright Cafe" }),
   ).toBeVisible();
-  await expect(page.getByText("Front entry")).toBeVisible();
-  await expect(page.getByText("1 file", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Compliance" })).toBeVisible();
-  await expect(page.getByText("bright-cafe-insurance.pdf")).toBeVisible();
+  await expect(page.getByText("Tenant Account Setup")).toBeVisible();
   await expect(
-    page.getByText(
-      /Insurance\s+-\s+45 KB\s+-\s+tenant onboarding\s+-\s+18 May 2026/,
-    ),
-  ).toBeVisible();
-  await expect(page.getByText("Current certificate.")).toBeVisible();
-  await expect(page.getByText("shopfront-light.jpg")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Notification Preferences" }),
+    page.getByText("Tenant login not configured"),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Complete your onboarding" }),
-  ).toBeVisible();
+    page.getByRole("heading", { name: "Payments" }),
+  ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Submit for review" }),
-  ).toBeDisabled();
+    page.getByRole("heading", { name: "Maintenance" }),
+  ).toHaveCount(0);
+});
+
+test("tenant portal onboarding room keeps setup focused", async ({ page }) => {
+  test.skip(
+    !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    "Runs only when tenant account auth is enabled.",
+  );
+  await mockLeasiumApi(page, { tenantAccountLinked: true });
+  await page.goto("/tenant-portal");
+
+  await expect(
+    page.getByRole("heading", { name: "Let's get your tenancy ready." }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Checklist" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Required Documents" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Payments" })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Maintenance" }),
+  ).toHaveCount(0);
   await page
     .getByLabel(
       "I confirm the information above is correct to the best of my knowledge. My property manager will review before any changes apply.",
@@ -1192,11 +1199,6 @@ test("tenant portal shows scoped self-service data", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByText(/property manager will review and confirm/i),
-  ).toBeVisible();
-  await page.getByLabel("SMS updates").uncheck();
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(
-    page.getByText(/Saved .*Preferred channel: email/),
   ).toBeVisible();
 });
 
