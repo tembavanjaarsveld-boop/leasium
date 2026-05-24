@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Loader2, Pencil, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -70,16 +70,23 @@ export function InlineEditCell({
   const [draft, setDraft] = useState(value ?? "");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const draftRef = useRef(value ?? "");
+  const pendingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const selectRef = useRef<HTMLSelectElement | null>(null);
+
+  const updateDraft = useCallback((next: string) => {
+    draftRef.current = next;
+    setDraft(next);
+  }, []);
 
   // Keep the draft in sync with prop changes while not editing — so an
   // external refresh (React Query cache update) reflects immediately.
   useEffect(() => {
     if (!editing) {
-      setDraft(value ?? "");
+      updateDraft(value ?? "");
     }
-  }, [value, editing]);
+  }, [value, editing, updateDraft]);
 
   useEffect(() => {
     if (!editing) return;
@@ -102,8 +109,8 @@ export function InlineEditCell({
   const displayText = display || placeholder;
   const isEmpty = !display;
 
-  const commit = async () => {
-    const trimmed = draft.trim();
+  const commit = async (rawDraft = draftRef.current) => {
+    const trimmed = rawDraft.trim();
     const nextValue = trimmed === "" ? null : trimmed;
     const previousValue = value ?? null;
     if (nextValue === previousValue) {
@@ -111,6 +118,7 @@ export function InlineEditCell({
       setError(null);
       return;
     }
+    pendingRef.current = true;
     setPending(true);
     setError(null);
     try {
@@ -119,12 +127,13 @@ export function InlineEditCell({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save.");
     } finally {
+      pendingRef.current = false;
       setPending(false);
     }
   };
 
   const cancel = () => {
-    setDraft(value ?? "");
+    updateDraft(value ?? "");
     setEditing(false);
     setError(null);
   };
@@ -171,10 +180,11 @@ export function InlineEditCell({
             ref={selectRef}
             value={draft}
             onChange={(event) => {
-              setDraft(event.target.value);
+              const nextDraft = event.target.value;
+              updateDraft(nextDraft);
               // Commit immediately on select change (Enter-to-confirm
               // is awkward for a dropdown).
-              window.setTimeout(() => void commit(), 0);
+              window.setTimeout(() => void commit(nextDraft), 0);
             }}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
@@ -184,7 +194,11 @@ export function InlineEditCell({
             }}
             onBlur={() => {
               window.setTimeout(() => {
-                if (editing && !pending) {
+                if (
+                  editing &&
+                  !pendingRef.current &&
+                  draftRef.current === (value ?? "")
+                ) {
                   cancel();
                 }
               }, 100);
@@ -204,11 +218,11 @@ export function InlineEditCell({
             ref={inputRef}
             type={type}
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => updateDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                void commit();
+                void commit(draftRef.current);
               } else if (event.key === "Escape") {
                 event.preventDefault();
                 cancel();
@@ -218,8 +232,8 @@ export function InlineEditCell({
               // Defer so a click on Save/Cancel buttons registers before
               // the blur fires and closes the cell.
               window.setTimeout(() => {
-                if (editing && !pending) {
-                  void commit();
+                if (editing && !pendingRef.current) {
+                  void commit(draftRef.current);
                 }
               }, 100);
             }}

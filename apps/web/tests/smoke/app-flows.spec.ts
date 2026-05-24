@@ -560,28 +560,42 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   ).toBeVisible();
   await page.getByLabel("Queue assignee").selectOption("follow_up");
   await expect(page.getByText("No assignment follow-ups due")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /Air conditioning fault 1d/ }),
-  ).not.toBeVisible();
+  const queueMaintenanceLink = page.getByRole("link", {
+    name: /Air conditioning fault.*Maintenance/,
+  });
+  await expect(queueMaintenanceLink).not.toBeVisible();
   await expect(page.getByText("Bright Cafe arrears")).not.toBeVisible();
   await page
     .getByLabel("Queue assignee")
     .selectOption({ label: "Temba van Jaarsveld" });
-  await expect(
-    page.getByRole("link", { name: /Air conditioning fault 1d/ }),
-  ).toBeVisible();
+  await expect(queueMaintenanceLink).toBeVisible();
   await expect(page.getByText("Bright Cafe arrears")).not.toBeVisible();
   await page.getByLabel("Queue assignee").selectOption("unassigned");
   await expect(page.getByText("Insurance certificate renewal")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /Air conditioning fault 1d/ }),
-  ).not.toBeVisible();
+  await expect(queueMaintenanceLink).not.toBeVisible();
   await page.getByLabel("Queue assignee").selectOption("all");
 
   await page.getByRole("tab", { name: /Maintenance/ }).click();
   await expect(page.getByText("Cool Air Services")).toBeVisible();
   await expect(
     page.getByText("Assigned to Temba van Jaarsveld").first(),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Edit Status for Air conditioning fault" })
+    .click();
+  await page
+    .getByLabel("Status for Air conditioning fault", { exact: true })
+    .selectOption("triaged");
+  await expect(page.getByText("Status changed to triaged")).toBeVisible();
+  await expect(
+    page.getByText("Air conditioning fault was previously awaiting approval."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByText("Status changed to triaged")).not.toBeVisible();
+  await expect(
+    page
+      .getByRole("button", { name: "Edit Status for Air conditioning fault" })
+      .filter({ hasText: "Awaiting approval" }),
   ).toBeVisible();
   const completionReviewLink = page
     .getByRole("link", { name: "Review completion" })
@@ -600,10 +614,7 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expect(page.getByText("INV-1001").first()).toBeVisible();
   await page.getByRole("button", { exact: true, name: "Approve" }).click();
   await expect(
-    page
-      .locator("span")
-      .filter({ hasText: /^approved$/ })
-      .first(),
+    page.locator("dd").filter({ hasText: /^approved$/ }).first(),
   ).toBeVisible();
 
   await page.getByRole("tab", { name: /Arrears/ }).click();

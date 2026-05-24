@@ -262,6 +262,20 @@ type AssignmentNoticeInboxItem = {
   at: string | null;
 };
 
+type MaintenanceUndoField = "status" | "priority";
+
+type MaintenanceInlineUndo = {
+  id: string;
+  entityId: string;
+  workOrderId: string;
+  title: string;
+  field: MaintenanceUndoField;
+  previous: MaintenanceWorkOrderStatus | MaintenancePriority;
+  next: MaintenanceWorkOrderStatus | MaintenancePriority;
+  undoing: boolean;
+  error: string | null;
+};
+
 const ASSIGNMENT_EMAIL_DELIVERED_STATUSES = [
   "queued",
   "sent",
@@ -541,6 +555,11 @@ function formatMoney(cents: number | null | undefined, currency = "AUD") {
 
 function label(value: string | null | undefined) {
   return value ? value.replaceAll("_", " ") : "None";
+}
+
+function sentenceLabel(value: string | null | undefined) {
+  const text = label(value);
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function propertyName(
@@ -1427,6 +1446,8 @@ function OperationsWorkspace() {
     useState<MaintenanceFormState>(emptyMaintenanceForm);
   const [arrearsForm, setArrearsForm] =
     useState<ArrearsFormState>(emptyArrearsForm);
+  const [maintenanceInlineUndo, setMaintenanceInlineUndo] =
+    useState<MaintenanceInlineUndo | null>(null);
   const queryClient = useQueryClient();
 
   const entitiesQuery = useQuery({
@@ -1456,6 +1477,16 @@ function OperationsWorkspace() {
       window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
     }
   }, [selectedEntityId]);
+
+  useEffect(() => {
+    if (!maintenanceInlineUndo || maintenanceInlineUndo.undoing) return;
+    const timeout = window.setTimeout(() => {
+      setMaintenanceInlineUndo((current) =>
+        current?.id === maintenanceInlineUndo.id ? null : current,
+      );
+    }, 9000);
+    return () => window.clearTimeout(timeout);
+  }, [maintenanceInlineUndo]);
 
   const selectedEntity = entitiesQuery.data?.find(
     (entity) => entity.id === selectedEntityId,
@@ -1591,11 +1622,13 @@ function OperationsWorkspace() {
   // row reflects the new state immediately; rolls back + rethrows on
   // failure so InlineEditCell surfaces the error inline.
   async function saveWorkOrderField(
-    workOrderId: string,
-    field: "status" | "priority",
+    workOrder: MaintenanceWorkOrderRecord,
+    field: MaintenanceUndoField,
     next: string | null,
   ): Promise<void> {
     if (next == null) return;
+    const previousValue = workOrder[field];
+    if (next === previousValue) return;
     const queryKey = ["operations-maintenance", selectedEntityId];
     const previous =
       queryClient.getQueryData<MaintenanceWorkOrderRecord[]>(queryKey) ?? null;
@@ -1603,20 +1636,69 @@ function OperationsWorkspace() {
       queryClient.setQueryData<MaintenanceWorkOrderRecord[]>(
         queryKey,
         previous.map((row) =>
-          row.id === workOrderId ? { ...row, [field]: next } : row,
+          row.id === workOrder.id ? { ...row, [field]: next } : row,
         ),
       );
     }
     try {
-      await updateMaintenanceWorkOrder(workOrderId, {
+      await updateMaintenanceWorkOrder(workOrder.id, {
         [field]: next,
       } as Parameters<typeof updateMaintenanceWorkOrder>[1]);
+      setMaintenanceInlineUndo({
+        id: `${workOrder.id}-${field}-${Date.now()}`,
+        entityId: selectedEntityId,
+        workOrderId: workOrder.id,
+        title: workOrder.title,
+        field,
+        previous: previousValue,
+        next: next as MaintenanceWorkOrderStatus | MaintenancePriority,
+        undoing: false,
+        error: null,
+      });
       invalidateOperations();
     } catch (err) {
       if (previous) {
         queryClient.setQueryData(queryKey, previous);
       }
       throw err;
+    }
+  }
+
+  async function undoMaintenanceInlineEdit() {
+    if (!maintenanceInlineUndo) return;
+    const undo = maintenanceInlineUndo;
+    const queryKey = ["operations-maintenance", undo.entityId];
+    const previous =
+      queryClient.getQueryData<MaintenanceWorkOrderRecord[]>(queryKey) ?? null;
+    setMaintenanceInlineUndo({ ...undo, undoing: true, error: null });
+    if (previous) {
+      queryClient.setQueryData<MaintenanceWorkOrderRecord[]>(
+        queryKey,
+        previous.map((row) =>
+          row.id === undo.workOrderId
+            ? { ...row, [undo.field]: undo.previous }
+            : row,
+        ),
+      );
+    }
+    try {
+      await updateMaintenanceWorkOrder(undo.workOrderId, {
+        [undo.field]: undo.previous,
+      } as Parameters<typeof updateMaintenanceWorkOrder>[1]);
+      setMaintenanceInlineUndo(null);
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", undo.entityId],
+      });
+      invalidateOperations();
+    } catch (err) {
+      if (previous) {
+        queryClient.setQueryData(queryKey, previous);
+      }
+      setMaintenanceInlineUndo({
+        ...undo,
+        undoing: false,
+        error: friendlyError(err),
+      });
     }
   }
 
@@ -3160,7 +3242,7 @@ function OperationsWorkspace() {
                                 options={MAINTENANCE_STATUS_OPTIONS}
                                 onSave={(next) =>
                                   saveWorkOrderField(
-                                    workOrder.id,
+                                    workOrder,
                                     "status",
                                     next,
                                   )
@@ -3178,7 +3260,7 @@ function OperationsWorkspace() {
                                 options={MAINTENANCE_PRIORITY_OPTIONS}
                                 onSave={(next) =>
                                   saveWorkOrderField(
-                                    workOrder.id,
+                                    workOrder,
                                     "priority",
                                     next,
                                   )
@@ -3659,6 +3741,52 @@ function OperationsWorkspace() {
           </>
         ) : null}
       </div>
+      {maintenanceInlineUndo ? (
+        <div
+          className="fixed bottom-5 left-5 right-5 z-40 rounded-2xl border border-border bg-white p-4 shadow-leasiumSm md:left-auto md:w-[420px]"
+          role="status"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-foreground">
+                {sentenceLabel(maintenanceInlineUndo.field)} changed to{" "}
+                {label(maintenanceInlineUndo.next)}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {maintenanceInlineUndo.title} was previously{" "}
+                {label(maintenanceInlineUndo.previous)}.
+              </p>
+              {maintenanceInlineUndo.error ? (
+                <p className="mt-2 text-xs text-danger">
+                  {maintenanceInlineUndo.error}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <SecondaryButton
+                type="button"
+                className="min-h-9 px-3"
+                onClick={() => void undoMaintenanceInlineEdit()}
+                disabled={maintenanceInlineUndo.undoing}
+              >
+                {maintenanceInlineUndo.undoing ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={14} />
+                )}
+                Undo
+              </SecondaryButton>
+              <button
+                type="button"
+                className="min-h-9 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition hover:bg-muted"
+                onClick={() => setMaintenanceInlineUndo(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
