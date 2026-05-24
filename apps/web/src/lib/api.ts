@@ -3568,6 +3568,20 @@ export function getTenantPortal(token: string) {
   });
 }
 
+export type TenantPortalInvitePreviewRecord = {
+  property_name: string;
+  property_address: string | null;
+  tenant_display_name: string;
+  expires_at: string | null;
+  claimable: boolean;
+};
+
+export function getTenantPortalInvitePreview(token: string) {
+  return publicRequest<TenantPortalInvitePreviewRecord>(
+    `/tenant-portal/invites/${encodeURIComponent(token)}/preview`,
+  );
+}
+
 export function getTenantPortalAccountSession(authToken?: string | null) {
   if (authToken) {
     return publicRequest<TenantPortalRecord>("/tenant-portal/account/session", {

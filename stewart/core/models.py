@@ -832,6 +832,12 @@ class TenantOnboarding(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Stamped when a Clerk user successfully claims this onboarding's
+    # token by linking a TenantPortalAccount. Once set, every token-
+    # scoped data endpoint refuses the token (soft-switch claim gate).
+    # The claim endpoint allows lookup past this for idempotent re-link
+    # of the SAME Clerk account; new claimants are rejected.
+    token_consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_reason: Mapped[str | None] = mapped_column(Text)
     submitted_data: Mapped[dict[str, Any]] = mapped_column(
         JsonbCompat, nullable=False, default=dict

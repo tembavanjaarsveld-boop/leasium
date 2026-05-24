@@ -8,6 +8,22 @@ from pydantic import BaseModel, Field, field_validator
 from stewart.core.models import DocumentCategory, MaintenancePriority
 
 
+class TenantPortalInvitePreviewRead(BaseModel):
+    """Minimum-viable, unauthenticated context for the claim gate.
+
+    Returned by GET /api/v1/tenant-portal/invites/{token}/preview. Holds
+    only the fields a tenant needs to confirm they're in the right place
+    before authenticating: which property and what the link's expiry is.
+    Never includes tenant contact details, financial data, or documents.
+    """
+
+    property_name: str
+    property_address: str | None = None
+    tenant_display_name: str
+    expires_at: datetime | None = None
+    claimable: bool
+
+
 class TenantPortalAccountClaimCreate(BaseModel):
     portal_token: str
 

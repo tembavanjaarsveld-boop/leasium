@@ -47,7 +47,9 @@ import {
   getTenantPortal,
   getTenantPortalAccountSession,
   getTenantPortalAccountStatus,
+  getTenantPortalInvitePreview,
   MaintenancePriority,
+  TenantPortalInvitePreviewRecord,
   submitTenantPortalOnboarding,
   tenantPortalDocumentDownloadUrl,
   TenantPortalDocumentRecord,
@@ -1013,6 +1015,14 @@ function OnboardingPanel({
 }
 
 function TenantPortalContent({ token }: { token: string | null }) {
+  // Soft-switch claim gate — the token URL never exposes data without
+  // a Clerk session. The token is now solely a one-time claim entry-
+  // point that links a TenantPortalAccount and is then consumed.
+  // The token-scoped `getTenantPortal` call is disabled entirely;
+  // post-claim, every data read flows through the account-scoped
+  // endpoints below.
+  const { getToken: getClerkToken, isLoaded: clerkLoaded, isSignedIn: clerkSignedIn } =
+    useAuth();
   const portalQuery = useQuery({
     queryKey: ["tenant-portal", token],
     queryFn: () => {
@@ -1021,7 +1031,17 @@ function TenantPortalContent({ token }: { token: string | null }) {
       }
       return getTenantPortal(token);
     },
+    enabled: false, // Token-scoped data fetch is gated; see claim flow.
+  });
+
+  // Lightweight invite preview — used only by the claim gate to show
+  // "you've been invited to {property}" before the tenant signs in.
+  // Never returns financial data, contact details, or documents.
+  const invitePreviewQuery = useQuery({
+    queryKey: ["tenant-portal-invite-preview", token],
+    queryFn: () => getTenantPortalInvitePreview(token as string),
     enabled: Boolean(token),
+    retry: false,
   });
   const [accountPortal, setAccountPortal] = useState<TenantPortalRecord | null>(
     null,
@@ -1034,6 +1054,45 @@ function TenantPortalContent({ token }: { token: string | null }) {
     },
     [],
   );
+
+  // Claim gate state — when the visitor lands on /tenant-portal/{token}
+  // with a Clerk session, this fires once to link the TenantPortalAccount
+  // and consume the token. Subsequent visits flow straight through to
+  // the account-scoped session.
+  const gateClaimMutation = useMutation({
+    mutationFn: async () => {
+      if (!token) {
+        throw new Error("Tenant portal token is required.");
+      }
+      const authToken = await getClerkToken();
+      if (!authToken) {
+        throw new Error("Sign in before claiming the invite.");
+      }
+      const portal = await claimTenantPortalAccount(token, authToken);
+      return { authToken, portal };
+    },
+    onSuccess: (result) => {
+      handleAccountPortal(result.portal, result.authToken);
+    },
+  });
+  useEffect(() => {
+    if (!token) return;
+    if (!clerkLoaded || !clerkSignedIn) return;
+    if (accountPortal) return;
+    if (gateClaimMutation.isPending) return;
+    if (gateClaimMutation.isError) return;
+    if (gateClaimMutation.isSuccess) return;
+    if (!invitePreviewQuery.data) return;
+    if (!invitePreviewQuery.data.claimable) return;
+    gateClaimMutation.mutate();
+  }, [
+    token,
+    clerkLoaded,
+    clerkSignedIn,
+    accountPortal,
+    gateClaimMutation,
+    invitePreviewQuery.data,
+  ]);
   const tokenPortal = portalQuery.data;
   const portal = accountPortal ?? tokenPortal;
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -1247,6 +1306,151 @@ function TenantPortalContent({ token }: { token: string | null }) {
               </div>
             </Panel>
           )}
+        </div>
+      </PortalShell>
+    );
+  }
+
+  // Soft-switch claim gate. When the visitor lands on /tenant-portal/{token}
+  // and there's no linked account portal yet, this is the *only* thing
+  // they see — no rent ledger, no documents, no maintenance history.
+  // It either (a) prompts Clerk sign-in/sign-up with property context,
+  // (b) shows a "linking your account…" spinner while gateClaimMutation
+  // runs, (c) explains the invite has already been used, or (d)
+  // surfaces a claim error with a retry path.
+  if (token && !accountPortal) {
+    if (invitePreviewQuery.isLoading) {
+      return (
+        <main className="grid min-h-screen place-items-center bg-background p-6">
+          <Loader2 className="animate-spin text-primary" size={28} />
+        </main>
+      );
+    }
+    if (invitePreviewQuery.error || !invitePreviewQuery.data) {
+      return (
+        <PortalShell>
+          <div className="grid min-h-[70vh] place-items-center px-5 py-8">
+            <div className="max-w-md rounded-md border border-border bg-white p-6 text-center">
+              <LeasiumMark className="mx-auto mb-4" />
+              <h2 className="text-lg font-semibold">Invite not found</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This invite link is no longer valid. Ask the property team
+                for a fresh tenant portal link.
+              </p>
+            </div>
+          </div>
+        </PortalShell>
+      );
+    }
+    const preview = invitePreviewQuery.data;
+    const returnTo = `/tenant-portal/${encodeURIComponent(token)}`;
+    return (
+      <PortalShell>
+        <div className="mx-auto grid max-w-2xl gap-5 px-5 py-10">
+          <div className="rounded-md border border-border bg-white p-6">
+            <div className="flex items-center gap-3">
+              <LeasiumMark />
+              <div>
+                <p className="text-sm font-medium text-primary">
+                  Tenant Portal Invite
+                </p>
+                <h2 className="text-xl font-semibold">
+                  {preview.tenant_display_name}
+                </h2>
+              </div>
+            </div>
+            <dl className="mt-5 grid gap-2 text-sm">
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Property
+                </dt>
+                <dd className="font-medium">{preview.property_name}</dd>
+                {preview.property_address ? (
+                  <dd className="text-muted-foreground">
+                    {preview.property_address}
+                  </dd>
+                ) : null}
+              </div>
+              {preview.expires_at ? (
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Invite expires
+                  </dt>
+                  <dd>{formatDateTime(preview.expires_at)}</dd>
+                </div>
+              ) : null}
+            </dl>
+            <div className="mt-6 grid gap-3 rounded-md border border-primary/30 bg-primary/5 p-4">
+              {!preview.claimable ? (
+                <div className="grid gap-2 text-sm">
+                  <StatusBadge tone="warning">Invite already used</StatusBadge>
+                  <p className="text-muted-foreground">
+                    This invite link has already been claimed. Sign in with
+                    the tenant account you set up earlier, or ask the
+                    property team for a fresh link.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <SignInButton mode="redirect" fallbackRedirectUrl="/tenant-portal">
+                      <Button type="button">
+                        <LogIn size={16} />
+                        Sign in
+                      </Button>
+                    </SignInButton>
+                  </div>
+                </div>
+              ) : !clerkLoaded ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 size={16} className="animate-spin text-primary" />
+                  Checking sign-in…
+                </div>
+              ) : !clerkSignedIn ? (
+                <div className="grid gap-2 text-sm">
+                  <p className="text-foreground">
+                    Create or sign in to your tenant account to access your
+                    portal. After you sign in once, your account stays
+                    linked and the invite link is no longer needed.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <SignUpButton
+                      mode="redirect"
+                      fallbackRedirectUrl={returnTo}
+                    >
+                      <Button type="button">
+                        <LogIn size={16} />
+                        Create account
+                      </Button>
+                    </SignUpButton>
+                    <SignInButton
+                      mode="redirect"
+                      fallbackRedirectUrl={returnTo}
+                    >
+                      <SecondaryButton type="button">Sign in</SecondaryButton>
+                    </SignInButton>
+                  </div>
+                </div>
+              ) : gateClaimMutation.isError ? (
+                <div className="grid gap-2 text-sm">
+                  <StatusBadge tone="danger">Couldn&apos;t link account</StatusBadge>
+                  <p className="text-muted-foreground">
+                    {gateClaimMutation.error instanceof Error
+                      ? gateClaimMutation.error.message
+                      : "Something went wrong linking your account."}
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={() => gateClaimMutation.mutate()}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 size={16} className="animate-spin text-primary" />
+                  Linking your account…
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </PortalShell>
     );

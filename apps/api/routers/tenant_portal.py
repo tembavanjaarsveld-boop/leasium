@@ -52,6 +52,7 @@ from apps.api.schemas.tenant_portal import (
     TenantPortalComplianceItemRead,
     TenantPortalComplianceRead,
     TenantPortalDocumentRead,
+    TenantPortalInvitePreviewRead,
     TenantPortalInvoiceLineRead,
     TenantPortalInvoiceRead,
     TenantPortalLeaseRead,
@@ -259,7 +260,16 @@ def _portal_scope(
     *,
     header_token: str | None = None,
     form_token: str | None = None,
+    allow_consumed: bool = False,
 ) -> PortalScope:
+    """Resolve a token-scoped portal request.
+
+    By default refuses tokens that have been claimed via the soft-switch
+    claim gate (`tenant_onboarding.token_consumed_at` is set). The claim
+    endpoint itself passes `allow_consumed=True` so it can look up the
+    onboarding for an idempotent re-link of the same Clerk account; the
+    claim handler then rejects mismatched re-claim attempts.
+    """
     auth = _portal_auth(request, header_token=header_token, form_token=form_token)
     onboarding = session.scalar(
         select(TenantOnboarding).where(
@@ -273,6 +283,16 @@ def _portal_scope(
         or _is_expired(onboarding)
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portal not found.")
+    if not allow_consumed and onboarding.token_consumed_at is not None:
+        # The invite has been claimed by a Clerk account; the token is
+        # no longer a valid access path. Tenants sign in via Clerk.
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail=(
+                "This invite link has been used. Sign in with the tenant"
+                " portal account it was claimed by."
+            ),
+        )
 
     tenant = session.get(Tenant, onboarding.tenant_id)
     if (
@@ -965,6 +985,58 @@ def _portal_document_id_strings(
     return validated
 
 
+@router.get(
+    "/invites/{token}/preview",
+    response_model=TenantPortalInvitePreviewRead,
+)
+def preview_tenant_portal_invite(
+    token: str,
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantPortalInvitePreviewRead:
+    """Minimum-viable preview for the claim gate.
+
+    Public (unauthenticated) — returns only enough context for the
+    tenant to confirm they're claiming the right property before they
+    sign in. Never returns financial data, contact details, or
+    documents. Used by the /tenant-portal/[token] claim gate when no
+    Clerk session exists.
+    """
+    onboarding = session.scalar(
+        select(TenantOnboarding).where(
+            TenantOnboarding.token == token,
+            TenantOnboarding.deleted_at.is_(None),
+        )
+    )
+    if (
+        onboarding is None
+        or onboarding.status == TenantOnboardingStatus.cancelled
+        or _is_expired(onboarding)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invite not found.",
+        )
+    tenant = session.get(Tenant, onboarding.tenant_id)
+    if tenant is None or tenant.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invite not found.",
+        )
+    _, prop, unit = _lease_scope(onboarding.lease_id, session)
+    address_parts = [prop.street_address, prop.suburb, prop.state]
+    address = ", ".join(part for part in address_parts if part) or None
+    property_label = (
+        f"{prop.name} — {unit.unit_label}" if unit.unit_label else prop.name
+    )
+    return TenantPortalInvitePreviewRead(
+        property_name=property_label,
+        property_address=address,
+        tenant_display_name=tenant.trading_name or tenant.legal_name,
+        expires_at=onboarding.expires_at,
+        claimable=onboarding.token_consumed_at is None,
+    )
+
+
 @router.post("/account/claim", response_model=TenantPortalRead)
 def claim_tenant_portal_account(
     payload: TenantPortalAccountClaimCreate,
@@ -978,7 +1050,31 @@ def claim_tenant_portal_account(
         request,
         session,
         header_token=payload.portal_token,
+        allow_consumed=True,
     )
+    # If the token has already been consumed, only the Clerk user who
+    # claimed it (i.e. has an active TenantPortalAccount linked to the
+    # same tenant) may proceed — and only to refresh their existing
+    # link. Anyone else gets 410 Gone.
+    if token_scope.onboarding.token_consumed_at is not None:
+        existing_link = session.scalar(
+            select(TenantPortalAccount).where(
+                TenantPortalAccount.auth_provider == "clerk",
+                TenantPortalAccount.auth_provider_id == provider_id,
+                TenantPortalAccount.tenant_id == token_scope.tenant.id,
+                TenantPortalAccount.status == TenantPortalAccountStatus.active,
+                TenantPortalAccount.revoked_at.is_(None),
+                TenantPortalAccount.deleted_at.is_(None),
+            )
+        )
+        if existing_link is None:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail=(
+                    "This invite link has been used. Sign in with the"
+                    " tenant portal account it was claimed by."
+                ),
+            )
     revoked_account = session.scalar(
         select(TenantPortalAccount).where(
             TenantPortalAccount.auth_provider == "clerk",
@@ -1050,6 +1146,10 @@ def claim_tenant_portal_account(
             "tenant_onboarding_id": str(token_scope.onboarding.id),
         }
         audit_action = "refresh"
+    # Soft-switch: the first successful claim consumes the token so the
+    # bare URL stops working. Idempotent for the same Clerk account.
+    if token_scope.onboarding.token_consumed_at is None:
+        token_scope.onboarding.token_consumed_at = now
     audit_log(
         session,
         actor=f"tenant-portal-account:{account.id}",

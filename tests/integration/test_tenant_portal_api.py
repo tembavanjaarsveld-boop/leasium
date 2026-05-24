@@ -422,13 +422,19 @@ def test_tenant_portal_account_claim_and_bearer_session_are_scoped(
     assert bearer_response.json()["auth"]["mode"] == "tenant_portal_account"
     assert bearer_response.json()["tenant"]["id"] == scope["tenant_id"]
 
+    # Soft-switch: after the token is claimed, the bare token URL is
+    # dead. The old test asserted 200; the security model now requires
+    # 410 Gone so a leaked link cannot bypass the Clerk gate.
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    assert onboarding.token_consumed_at is not None, (
+        "claim should consume the invite token"
+    )
     token_response = client.get(
         "/api/v1/tenant-portal/session",
         headers={"x-tenant-portal-token": scope["token"]},
     )
-    assert token_response.status_code == 200
-    assert token_response.json()["auth"]["mode"] == "tenant_portal_token"
-    assert token_response.json()["auth"]["tenant_auth_configured"] is False
+    assert token_response.status_code == 410
 
     preferences_response = client.patch(
         "/api/v1/tenant-portal/notification-preferences",
