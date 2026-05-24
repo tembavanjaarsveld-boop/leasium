@@ -1165,6 +1165,19 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText("Billing email").first()).toBeVisible();
   await expect(page.getByText("accounts@bright.example").first()).toBeVisible();
   await expect(page.getByText("Applied ABN")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Preview portal" })).toBeVisible();
+  await page.getByRole("link", { name: "Preview portal" }).click();
+  await expect(page).toHaveURL(/\/tenants\/tenant-1\/portal-preview\/onboarding-1/);
+  await expect(page.getByRole("heading", { name: "Tenant portal preview" })).toBeVisible();
+  await expect(page.getByText("Operator preview", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(/No tenant portal account is created/),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible();
+  await expect(page.getByText("INV-1001")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Submit for review" })).toHaveCount(0);
+  await page.getByRole("link", { name: "Back to tenant" }).first().click();
+  await expect(page).toHaveURL(/\/tenants\/tenant-1$/);
 
   await page.getByRole("button", { name: "Revoke" }).click();
   await expect(

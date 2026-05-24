@@ -56,6 +56,7 @@ class TenantPortalAuthRead(BaseModel):
         "tenant_portal_token",
         "tenant_portal_token_dev_fallback",
         "tenant_portal_account",
+        "operator_preview",
     ]
     token_source: Literal["header", "query", "form", "bearer"]
     tenant_auth_configured: bool = False

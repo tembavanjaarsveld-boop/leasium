@@ -11,7 +11,6 @@ import {
   Clock3,
   Download,
   Edit3,
-  ExternalLink,
   FileText,
   KeyRound,
   Link2,
@@ -2362,20 +2361,14 @@ function TenantDetail() {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {activeOnboarding && !activeOnboardingExpired ? (
-                          <SecondaryButton
-                            type="button"
-                            title="Open the tenant portal in a new tab as this tenant — operator-only and audited."
-                            onClick={() =>
-                              window.open(
-                                activeOnboarding.portal_url,
-                                "_blank",
-                                "noopener,noreferrer",
-                              )
-                            }
+                          <Link
+                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                            href={`/tenants/${tenantId}/portal-preview/${activeOnboarding.id}`}
+                            title="Open a read-only operator preview of the tenant portal."
                           >
-                            <ExternalLink size={15} />
-                            Preview as tenant
-                          </SecondaryButton>
+                            <ShieldCheck size={15} />
+                            Preview portal
+                          </Link>
                         ) : null}
                         {activeOnboarding &&
                         activeOnboarding.status === "sent" &&

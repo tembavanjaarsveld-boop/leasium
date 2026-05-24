@@ -40,10 +40,11 @@ from stewart.core.models import (
     TenantOnboardingStatus,
     TenantPortalAccount,
     TenantPortalAccountStatus,
+    UserRole,
 )
 from stewart.core.settings import Settings, get_settings
 
-from apps.api.deps import get_session
+from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.tenant_onboarding import TenantOnboardingSubmit
 from apps.api.schemas.tenant_portal import (
     TenantPortalAccountClaimCreate,
@@ -73,6 +74,13 @@ PORTAL_TOKEN_HEADER = "x-tenant-portal-token"
 PORTAL_TOKEN_QUERY = "portal_token"
 PORTAL_PREFERENCES_KEY = "portal_notification_preferences"
 ACTIVITY_HISTORY_KEY = "activity_history"
+READ_ROLES = {
+    UserRole.owner,
+    UserRole.admin,
+    UserRole.finance,
+    UserRole.ops,
+    UserRole.viewer,
+}
 PORTAL_UPLOAD_CATEGORIES = (
     DocumentCategory.insurance,
     DocumentCategory.bank_guarantee,
@@ -141,8 +149,38 @@ class PortalAccountAuth:
 
 
 @dataclass(frozen=True)
+class OperatorPreviewAuth:
+    user: CurrentUser
+
+    @property
+    def mode(self) -> Literal["operator_preview"]:
+        return "operator_preview"
+
+    @property
+    def source(self) -> Literal["bearer"]:
+        return "bearer"
+
+    @property
+    def actor(self) -> str:
+        return self.user.actor
+
+    def read(self) -> TenantPortalAuthRead:
+        return TenantPortalAuthRead(
+            mode=self.mode,
+            token_source="bearer",
+            tenant_auth_configured=True,
+            dev_fallback=False,
+            boundary="operator_session",
+            detail=(
+                "Read-only operator preview scoped by the signed-in Leasium role. "
+                "No tenant portal account is created."
+            ),
+        )
+
+
+@dataclass(frozen=True)
 class PortalScope:
-    auth: PortalAuth | PortalAccountAuth
+    auth: PortalAuth | PortalAccountAuth | OperatorPreviewAuth
     onboarding: TenantOnboarding
     lease: Lease
     property: Property
@@ -315,6 +353,45 @@ def _portal_scope(
 
     return PortalScope(
         auth=auth,
+        onboarding=onboarding,
+        lease=lease,
+        property=prop,
+        unit=unit,
+        tenant=tenant,
+    )
+
+
+def _operator_preview_scope(
+    onboarding_id: UUID,
+    user: CurrentUser,
+    session: Session,
+) -> PortalScope:
+    onboarding = session.get(TenantOnboarding, onboarding_id)
+    if onboarding is None or onboarding.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portal not found.")
+    assert_entity_role(session, user, onboarding.entity_id, READ_ROLES)
+
+    tenant = session.get(Tenant, onboarding.tenant_id)
+    if (
+        tenant is None
+        or tenant.deleted_at is not None
+        or tenant.entity_id != onboarding.entity_id
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portal not found.")
+
+    lease, prop, unit = _lease_scope(onboarding.lease_id, session)
+    if (
+        lease.tenant_id != tenant.id
+        or prop.entity_id != onboarding.entity_id
+        or tenant.entity_id != prop.entity_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Portal scope is inconsistent.",
+        )
+
+    return PortalScope(
+        auth=OperatorPreviewAuth(user=user),
         onboarding=onboarding,
         lease=lease,
         property=prop,
@@ -878,6 +955,14 @@ def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
             "Maintenance requests only include tenant portal submissions for this tenant account.",
             "Notification preference updates do not send email or SMS.",
         ]
+    elif scope.auth.mode == "operator_preview":
+        guardrails = [
+            "Operator preview is read-only and does not create a tenant portal session.",
+            "Only tenant-visible portal data is shown.",
+            "Only approved invoice drafts are visible to tenants.",
+            "Maintenance requests only include tenant portal submissions for this onboarding.",
+            "Notification preference updates do not send email or SMS.",
+        ]
     else:
         guardrails = [
             "Tenant portal responses are scoped to the tenant attached to the onboarding token.",
@@ -1341,6 +1426,15 @@ def get_tenant_portal(
         header_token=x_tenant_portal_token,
     )
     return _portal_read(scope, session)
+
+
+@router.get("/operator-preview/{onboarding_id}", response_model=TenantPortalRead)
+def get_tenant_portal_operator_preview(
+    onboarding_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantPortalRead:
+    return _portal_read(_operator_preview_scope(onboarding_id, user, session), session)
 
 
 @router.get(

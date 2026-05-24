@@ -3930,6 +3930,31 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (
+      method === "GET" &&
+      path === "/tenant-portal/operator-preview/onboarding-1"
+    ) {
+      const baseSession = tenantPortalSession();
+      await fulfillJson(route, {
+        ...baseSession,
+        auth: {
+          mode: "operator_preview",
+          token_source: "bearer",
+          tenant_auth_configured: true,
+          dev_fallback: false,
+          boundary: "operator_session",
+          detail:
+            "Read-only operator preview scoped by the signed-in Leasium role. No tenant portal account is created.",
+        },
+        guardrails: [
+          "Operator preview is read-only and does not create a tenant portal session.",
+          "Only tenant-visible portal data is shown.",
+          "Only approved invoice drafts are visible to tenants.",
+        ],
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/tenant-portal/account/status") {
       if (!tenantAccountLinked) {
         await fulfillJson(route, {

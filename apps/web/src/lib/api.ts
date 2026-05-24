@@ -785,7 +785,8 @@ export type TenantPortalAuthRecord = {
   mode:
     | "tenant_portal_token"
     | "tenant_portal_token_dev_fallback"
-    | "tenant_portal_account";
+    | "tenant_portal_account"
+    | "operator_preview";
   token_source: "header" | "query" | "form" | "bearer";
   tenant_auth_configured: boolean;
   dev_fallback: boolean;
@@ -3630,6 +3631,12 @@ export function getTenantPortalAccountSession(authToken?: string | null) {
     });
   }
   return request<TenantPortalRecord>("/tenant-portal/account/session");
+}
+
+export function getTenantPortalOperatorPreview(onboardingId: string) {
+  return request<TenantPortalRecord>(
+    `/tenant-portal/operator-preview/${onboardingId}`,
+  );
 }
 
 export function getTenantPortalAccountStatus(authToken?: string | null) {

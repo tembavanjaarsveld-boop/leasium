@@ -614,6 +614,27 @@ def test_operator_portal_invite_reopens_claim_for_additional_tenant_login(
     assert provider_ids == {"tenant-subject-one", "tenant-subject-two"}
 
 
+def test_operator_can_preview_tenant_portal_read_only(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+
+    response = client.get(
+        f"/api/v1/tenant-portal/operator-preview/{scope['onboarding_id']}",
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["auth"]["mode"] == "operator_preview"
+    assert body["auth"]["boundary"] == "operator_session"
+    assert "No tenant portal account is created" in body["auth"]["detail"]
+    assert body["tenant"]["id"] == scope["tenant_id"]
+    assert body["lease"]["lease_id"] == scope["lease_id"]
+    assert body["onboarding"]["id"] == scope["onboarding_id"]
+    assert "Operator preview is read-only" in body["guardrails"][0]
+
+
 def test_deleted_tenant_portal_link_does_not_block_fresh_invite_claim(
     client: TestClient,
     session: Session,
