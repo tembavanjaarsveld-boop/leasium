@@ -976,8 +976,17 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(page.getByText("Owner update ready")).toBeVisible();
   await expect(page.getByText("Contractor follow-up ready")).toBeVisible();
   await expect(page.getByText("Tenant update ready")).toBeVisible();
+  await expect(page.getByText("Contractor closeout review")).toBeVisible();
+  await expect(page.getByText("Needs contractor review")).toBeVisible();
+  await expect(page.getByText("Tenant closeout review")).toBeVisible();
+  await expect(page.getByText("Needs tenant review")).toBeVisible();
   await expect(
     page.getByText("Review this copy before sending anything outside Leasium."),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Review-only; no owner, tenant, contractor, email, or portal message is sent from this panel.",
+    ),
   ).toBeVisible();
   await expect(page.getByText("Owner completion review")).toBeVisible();
   await expect(page.getByText("Needs owner review")).toBeVisible();
@@ -993,6 +1002,32 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByText("Owner reviewed completion copy before sending."),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Tenant review note" })
+    .fill("Tenant update reviewed for portal-safe wording.");
+  await page.getByRole("button", { name: "Mark tenant reviewed" }).click();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Tenant review recorded$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Tenant update reviewed for portal-safe wording."),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Contractor review note" })
+    .fill("Contractor follow-up copy reviewed before sending.");
+  await page.getByRole("button", { name: "Mark contractor reviewed" }).click();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Contractor review recorded$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Contractor follow-up copy reviewed before sending."),
   ).toBeVisible();
   await page.getByRole("button", { name: "Reopen job" }).click();
   await expect(page.getByText("Job reopened")).toBeVisible();

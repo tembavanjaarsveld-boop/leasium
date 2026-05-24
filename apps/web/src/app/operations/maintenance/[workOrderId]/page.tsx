@@ -119,6 +119,27 @@ type ActivityAuditCard = {
   tone: Tone;
 };
 
+type CompletionReviewAudience = "owner" | "tenant" | "contractor";
+
+type CompletionReviewRow = {
+  audience: CompletionReviewAudience;
+  title: string;
+  readyLabel: string;
+  body: string;
+  reviewedAt: string | null;
+  note: string | null;
+  statusLabel: string;
+  buttonLabel: string;
+  textareaLabel: string;
+  placeholder: string;
+};
+
+const emptyCompletionReviewNotes: Record<CompletionReviewAudience, string> = {
+  owner: "",
+  tenant: "",
+  contractor: "",
+};
+
 function label(value: string | null | undefined) {
   if (!value) {
     return "-";
@@ -1398,7 +1419,9 @@ function MaintenanceDetailRoute() {
   const [contractorSmsBody, setContractorSmsBody] = useState("");
   const [closeoutNoteDraft, setCloseoutNoteDraft] = useState("");
   const [closeoutPhoto, setCloseoutPhoto] = useState<File | null>(null);
-  const [ownerReviewNote, setOwnerReviewNote] = useState("");
+  const [completionReviewNotes, setCompletionReviewNotes] = useState<
+    Record<CompletionReviewAudience, string>
+  >(emptyCompletionReviewNotes);
   const [commentBody, setCommentBody] = useState("");
   const [commentVisibility, setCommentVisibility] = useState<
     "internal" | "contractor" | "tenant"
@@ -1445,24 +1468,75 @@ function MaintenanceDetailRoute() {
   const savedCloseoutAt = metadataText(closeout.completed_at);
   const closeoutCommunication = metadataRecord(closeout.communication);
   const ownerUpdateCopy = metadataText(closeoutCommunication.owner_update);
+  const tenantUpdateCopy = metadataText(closeoutCommunication.tenant_update);
+  const contractorFollowUpCopy = metadataText(
+    closeoutCommunication.contractor_follow_up,
+  );
+  const communicationReview = metadataRecord(closeout.communication_review);
   const ownerReview = workOrder ? ownerReviewRecord(workOrder) : {};
-  const ownerReviewAt = metadataText(ownerReview.reviewed_at);
-  const ownerReviewNoteSaved = metadataText(ownerReview.note);
+  const ownerCommunicationReview = metadataRecord(communicationReview.owner);
+  const tenantCommunicationReview = metadataRecord(communicationReview.tenant);
+  const contractorCommunicationReview = metadataRecord(
+    communicationReview.contractor,
+  );
+  const ownerReviewAt =
+    metadataText(ownerCommunicationReview.reviewed_at) ??
+    metadataText(ownerReview.reviewed_at);
+  const ownerReviewNoteSaved =
+    metadataText(ownerCommunicationReview.note) ?? metadataText(ownerReview.note);
+  const tenantReviewAt = metadataText(tenantCommunicationReview.reviewed_at);
+  const tenantReviewNoteSaved = metadataText(tenantCommunicationReview.note);
+  const contractorReviewAt = metadataText(
+    contractorCommunicationReview.reviewed_at,
+  );
+  const contractorReviewNoteSaved = metadataText(
+    contractorCommunicationReview.note,
+  );
   const ownerReviewHistory = workOrder ? ownerReviewHistoryRows(workOrder) : [];
-  const closeoutCommunicationRows = [
+  const completionReviewRows: CompletionReviewRow[] = [
     {
-      label: "Owner update ready",
-      body: metadataText(closeoutCommunication.owner_update),
+      audience: "owner",
+      title: "Owner completion review",
+      readyLabel: "Owner update ready",
+      body: ownerUpdateCopy,
+      reviewedAt: ownerReviewAt,
+      note: ownerReviewNoteSaved,
+      statusLabel: ownerReviewAt
+        ? "Owner review recorded"
+        : "Needs owner review",
+      buttonLabel: "Mark owner reviewed",
+      textareaLabel: "Owner review note",
+      placeholder: "Record owner approval, wording edits, or send readiness.",
     },
     {
-      label: "Contractor follow-up ready",
-      body: metadataText(closeoutCommunication.contractor_follow_up),
+      audience: "contractor",
+      title: "Contractor closeout review",
+      readyLabel: "Contractor follow-up ready",
+      body: contractorFollowUpCopy,
+      reviewedAt: contractorReviewAt,
+      note: contractorReviewNoteSaved,
+      statusLabel: contractorReviewAt
+        ? "Contractor review recorded"
+        : "Needs contractor review",
+      buttonLabel: "Mark contractor reviewed",
+      textareaLabel: "Contractor review note",
+      placeholder: "Record contractor wording edits or follow-up readiness.",
     },
     {
-      label: "Tenant update ready",
-      body: metadataText(closeoutCommunication.tenant_update),
+      audience: "tenant",
+      title: "Tenant closeout review",
+      readyLabel: "Tenant update ready",
+      body: tenantUpdateCopy,
+      reviewedAt: tenantReviewAt,
+      note: tenantReviewNoteSaved,
+      statusLabel: tenantReviewAt
+        ? "Tenant review recorded"
+        : "Needs tenant review",
+      buttonLabel: "Mark tenant reviewed",
+      textareaLabel: "Tenant review note",
+      placeholder: "Record tenant wording edits or portal update readiness.",
     },
-  ].filter((row): row is { label: string; body: string } => Boolean(row.body));
+  ].filter((row): row is CompletionReviewRow => Boolean(row.body));
   const closeoutPhotos = workOrder
     ? closeoutPhotoRows(workOrder, documents)
     : [];
@@ -1943,46 +2017,86 @@ function MaintenanceDetailRoute() {
     },
   });
 
-  const ownerReviewMutation = useMutation({
-    mutationFn: () => {
+  const completionReviewMutation = useMutation({
+    mutationFn: (audience: CompletionReviewAudience) => {
       if (!workOrder) {
         throw new Error("Work order is still loading.");
       }
       const existingCloseout = closeoutRecord(workOrder);
       const communication = metadataRecord(existingCloseout.communication);
-      const ownerUpdate = metadataText(communication.owner_update);
-      if (!ownerUpdate) {
-        throw new Error("Complete the work order before owner review.");
+      const copyByAudience: Record<CompletionReviewAudience, string | null> = {
+        owner: metadataText(communication.owner_update),
+        tenant: metadataText(communication.tenant_update),
+        contractor: metadataText(communication.contractor_follow_up),
+      };
+      const reviewCopy = copyByAudience[audience];
+      if (!reviewCopy) {
+        throw new Error("Complete the work order before closeout review.");
       }
+      const existingCommunicationReview = metadataRecord(
+        existingCloseout.communication_review,
+      );
+      const existingAudienceReview = metadataRecord(
+        existingCommunicationReview[audience],
+      );
+      const existingCommunicationHistory = metadataRecordList(
+        existingCommunicationReview.history,
+      );
       const existingOwnerReview = metadataRecord(existingCloseout.owner_review);
       const existingHistory = metadataRecordList(existingOwnerReview.history);
       const reviewedAt = new Date().toISOString();
-      const note = ownerReviewNote.trim();
-      return updateMaintenanceWorkOrder(workOrder.id, {
-        metadata: {
-          closeout: {
-            ...existingCloseout,
-            owner_review: {
-              ...existingOwnerReview,
+      const note = completionReviewNotes[audience].trim();
+      const nextCommunicationReview = {
+        ...existingCommunicationReview,
+        [audience]: {
+          ...existingAudienceReview,
+          status: "reviewed",
+          reviewed_at: reviewedAt,
+          note: note || null,
+          copy: reviewCopy,
+        },
+        history: [
+          ...existingCommunicationHistory,
+          {
+            audience,
+            status: "reviewed",
+            reviewed_at: reviewedAt,
+            note: note || null,
+          },
+        ],
+      };
+      const nextCloseout: Record<string, unknown> = {
+        ...existingCloseout,
+        communication_review: nextCommunicationReview,
+      };
+      if (audience === "owner") {
+        nextCloseout.owner_review = {
+          ...existingOwnerReview,
+          status: "reviewed",
+          reviewed_at: reviewedAt,
+          note: note || null,
+          owner_update: reviewCopy,
+          history: [
+            ...existingHistory,
+            {
               status: "reviewed",
               reviewed_at: reviewedAt,
               note: note || null,
-              owner_update: ownerUpdate,
-              history: [
-                ...existingHistory,
-                {
-                  status: "reviewed",
-                  reviewed_at: reviewedAt,
-                  note: note || null,
-                },
-              ],
             },
-          },
+          ],
+        };
+      }
+      return updateMaintenanceWorkOrder(workOrder.id, {
+        metadata: {
+          closeout: nextCloseout,
         },
       });
     },
-    onSuccess: () => {
-      setOwnerReviewNote("");
+    onSuccess: (_data, audience) => {
+      setCompletionReviewNotes((current) => ({
+        ...current,
+        [audience]: "",
+      }));
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
       });
@@ -3077,62 +3191,89 @@ function MaintenanceDetailRoute() {
                         ))}
                       </div>
                     ) : null}
-                    {closeoutCommunicationRows.length ? (
+                    {completionReviewRows.length ? (
                       <div className="grid gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
                         <div className="font-semibold text-foreground">
                           Completion communications
                         </div>
-                        {closeoutCommunicationRows.map((row) => (
+                        {completionReviewRows.map((row) => (
                           <div
-                            key={row.label}
-                            className="grid gap-1 rounded-md border border-border bg-white px-2 py-2"
+                            key={row.audience}
+                            className="grid gap-2 rounded-md border border-border bg-white px-2 py-2"
                           >
-                            <StatusBadge tone="primary">
-                              {row.label}
-                            </StatusBadge>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="font-semibold text-foreground">
+                                {row.title}
+                              </div>
+                              <StatusBadge tone="primary">
+                                {row.readyLabel}
+                              </StatusBadge>
+                              <StatusBadge
+                                tone={row.reviewedAt ? "success" : "warning"}
+                              >
+                                {row.statusLabel}
+                              </StatusBadge>
+                            </div>
                             <div className="whitespace-pre-line text-muted-foreground">
                               {row.body}
                             </div>
+                            {row.reviewedAt ? (
+                              <div className="grid gap-1 rounded-md border border-border bg-muted/30 px-2 py-2">
+                                <div className="font-semibold text-foreground">
+                                  {row.statusLabel}
+                                </div>
+                                <div className="text-muted-foreground">
+                                  {formatDateTime(row.reviewedAt)}
+                                </div>
+                                {row.note ? (
+                                  <div className="text-muted-foreground">
+                                    {row.note}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            <label className="grid gap-1.5">
+                              <span className="font-medium text-foreground">
+                                {row.textareaLabel}
+                              </span>
+                              <textarea
+                                aria-label={row.textareaLabel}
+                                value={completionReviewNotes[row.audience]}
+                                onChange={(event) =>
+                                  setCompletionReviewNotes((current) => ({
+                                    ...current,
+                                    [row.audience]: event.target.value,
+                                  }))
+                                }
+                                rows={2}
+                                className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+                                placeholder={row.placeholder}
+                              />
+                            </label>
+                            <Button
+                              type="button"
+                              className="w-fit"
+                              disabled={
+                                workOrder.status !== "completed" ||
+                                completionReviewMutation.isPending
+                              }
+                              onClick={() =>
+                                completionReviewMutation.mutate(row.audience)
+                              }
+                            >
+                              {completionReviewMutation.isPending ? (
+                                <Loader2 size={16} className="animate-spin" />
+                              ) : (
+                                <CheckCircle2 size={16} />
+                              )}
+                              {row.buttonLabel}
+                            </Button>
                           </div>
                         ))}
                         <div className="text-muted-foreground">
                           Review this copy before sending anything outside
                           Leasium.
                         </div>
-                      </div>
-                    ) : null}
-                    {ownerUpdateCopy ? (
-                      <div className="grid gap-2 rounded-md border border-leasium-blue/20 bg-leasium-blue/5 px-3 py-2 text-xs">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="font-semibold text-foreground">
-                            Owner completion review
-                          </div>
-                          <StatusBadge
-                            tone={ownerReviewAt ? "success" : "warning"}
-                          >
-                            {ownerReviewAt
-                              ? "Owner review recorded"
-                              : "Needs owner review"}
-                          </StatusBadge>
-                        </div>
-                        <div className="whitespace-pre-line rounded-md border border-border bg-white px-2 py-2 text-muted-foreground">
-                          {ownerUpdateCopy}
-                        </div>
-                        {ownerReviewAt ? (
-                          <div className="grid gap-1 rounded-md border border-border bg-white px-2 py-2">
-                            <div className="font-semibold text-foreground">
-                              Owner review recorded
-                            </div>
-                            <div className="text-muted-foreground">
-                              {formatDateTime(ownerReviewAt)}
-                            </div>
-                            {ownerReviewNoteSaved ? (
-                              <div className="text-muted-foreground">
-                                {ownerReviewNoteSaved}
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
                         {ownerReviewHistory.length > 1 ? (
                           <div className="grid gap-1 rounded-md border border-border bg-white px-2 py-2">
                             <div className="font-semibold text-foreground">
@@ -3149,42 +3290,13 @@ function MaintenanceDetailRoute() {
                             ))}
                           </div>
                         ) : null}
-                        <label className="grid gap-1.5">
-                          <span className="font-medium text-foreground">
-                            Owner review note
-                          </span>
-                          <textarea
-                            aria-label="Owner review note"
-                            value={ownerReviewNote}
-                            onChange={(event) =>
-                              setOwnerReviewNote(event.target.value)
-                            }
-                            rows={3}
-                            className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
-                            placeholder="Record owner approval, wording edits, or send readiness."
-                          />
-                        </label>
-                        <Button
-                          type="button"
-                          disabled={
-                            workOrder.status !== "completed" ||
-                            ownerReviewMutation.isPending
-                          }
-                          onClick={() => ownerReviewMutation.mutate()}
-                        >
-                          {ownerReviewMutation.isPending ? (
-                            <Loader2 size={16} className="animate-spin" />
-                          ) : (
-                            <CheckCircle2 size={16} />
-                          )}
-                          Mark owner reviewed
-                        </Button>
                         <div className="text-muted-foreground">
-                          Review-only; no owner message is sent from this panel.
+                          Review-only; no owner, tenant, contractor, email, or
+                          portal message is sent from this panel.
                         </div>
-                        {ownerReviewMutation.error ? (
+                        {completionReviewMutation.error ? (
                           <p className="text-sm text-danger">
-                            {friendlyError(ownerReviewMutation.error)}
+                            {friendlyError(completionReviewMutation.error)}
                           </p>
                         ) : null}
                       </div>
