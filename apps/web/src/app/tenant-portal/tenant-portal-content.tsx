@@ -15,7 +15,6 @@ import {
   Download,
   FileText,
   ImagePlus,
-  Link2,
   Loader2,
   LogIn,
   ReceiptText,
@@ -322,7 +321,7 @@ function PreferencesForm({
         : token
           ? updateTenantPortalNotificationPreferences(token, preferences)
           : Promise.reject(
-              new Error("Sign in to a linked tenant account before saving."),
+              new Error("Sign in to your tenant account before saving."),
             ),
     onSuccess: onSaved,
   });
@@ -492,11 +491,13 @@ function TenantAccountPanel({
   const claimMutation = useMutation({
     mutationFn: async () => {
       if (!token) {
-        throw new Error("Open your tenant invite link once before linking.");
+        throw new Error(
+          "Open your tenant invite link once before finishing account setup.",
+        );
       }
       const authToken = await getToken();
       if (!authToken) {
-        throw new Error("Sign in before linking this portal.");
+        throw new Error("Sign in before finishing tenant account setup.");
       }
       const portal = await claimTenantPortalAccount(token, authToken);
       return { authToken, portal };
@@ -524,8 +525,8 @@ function TenantAccountPanel({
         <div className="grid gap-3 p-4 text-sm">
           <p className="text-muted-foreground">
             {token
-              ? "Create or sign in to a tenant login, then link this portal once. Linked accounts keep working after the original link expires."
-              : "Create or sign in to a tenant login to open your linked portal. If your link expired or was lost, ask the property team for a fresh one."}
+              ? "Create or sign in to your tenant account first. Once that is done, onboarding continues inside the portal."
+              : "Create or sign in to your tenant account to open your portal. If your link expired or was lost, ask the property team for a fresh one."}
           </p>
           <div className="flex flex-wrap gap-2">
             <SignUpButton mode="redirect" fallbackRedirectUrl={returnTo}>
@@ -548,7 +549,7 @@ function TenantAccountPanel({
       <Panel title="Account Access" icon={<UserRound size={18} />}>
         <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
           <Loader2 size={16} className="animate-spin text-primary" />
-          Checking linked account.
+          Checking tenant account.
         </div>
       </Panel>
     );
@@ -598,11 +599,11 @@ function TenantAccountPanel({
         <div className="grid gap-2 p-4 text-sm">
           <StatusBadge tone="warning">Different tenant</StatusBadge>
           <p className="text-muted-foreground">
-            This login is already linked to another tenant portal.
+            This login is already connected to another tenant portal.
           </p>
           <p className="text-muted-foreground">
             Sign out and choose the login for {tokenTenantName ?? "this tenant"},
-            or ask the property team to unlink and relink this account.
+            or ask the property team to update this account&apos;s portal access.
           </p>
           <p className="text-xs text-muted-foreground">{tokenExpiryCopy}</p>
         </div>
@@ -619,7 +620,7 @@ function TenantAccountPanel({
       >
         <div className="grid gap-2 p-4 text-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge tone="success">Account linked</StatusBadge>
+            <StatusBadge tone="success">Account ready</StatusBadge>
             <span className="text-muted-foreground">
               {user?.primaryEmailAddress?.emailAddress ??
                 user?.fullName ??
@@ -627,8 +628,8 @@ function TenantAccountPanel({
             </span>
           </div>
           <p className="text-muted-foreground">
-            Future portal sessions can use this tenant account boundary, even
-            after the original portal link expires.
+            Future portal sessions use this tenant account, even after the
+            original invite link expires.
           </p>
           {accountStatus?.recovery_action === "restored" &&
           accountStatus.recovery_at ? (
@@ -639,7 +640,7 @@ function TenantAccountPanel({
           ) : null}
           <p className="text-xs text-muted-foreground">
             If this account should move to another tenant, ask the property team
-            to unlink it before relinking.
+            to update the portal access.
           </p>
         </div>
       </Panel>
@@ -654,7 +655,7 @@ function TenantAccountPanel({
         actions={<UserButton />}
       >
         <div className="grid gap-2 p-4 text-sm">
-          <StatusBadge tone="warning">No portal linked</StatusBadge>
+          <StatusBadge tone="warning">No portal account</StatusBadge>
           <p className="text-muted-foreground">
             Open your original tenant portal link once to connect this login.
           </p>
@@ -680,11 +681,11 @@ function TenantAccountPanel({
     >
       <div className="grid gap-3 p-4 text-sm">
         <p className="text-muted-foreground">
-          Link this portal to your signed-in tenant account.
+          Finish setting up this signed-in tenant account.
         </p>
         <p className="text-xs text-muted-foreground">
-          {tokenExpiryCopy} Once linked, you can come back through the tenant
-          portal entry without the original invite link.
+          {tokenExpiryCopy} Once setup is complete, you can come back through
+          the tenant portal without the original invite link.
         </p>
         {claimMutation.error ? (
           <div className="grid gap-1 rounded-md border border-danger/20 bg-danger/5 p-3 text-sm text-danger">
@@ -692,7 +693,7 @@ function TenantAccountPanel({
             <span className="text-muted-foreground">
               {accountStatus?.status === "revoked"
                 ? accountStatus.recovery_hint
-                : "If this is the wrong tenant or the link has expired, ask the property team to send a fresh portal link."}
+                : "If this is the wrong tenant or the invite has expired, ask the property team to send a fresh portal link."}
             </span>
           </div>
         ) : null}
@@ -704,9 +705,9 @@ function TenantAccountPanel({
           {claimMutation.isPending ? (
             <Loader2 size={16} className="animate-spin" />
           ) : (
-            <Link2 size={16} />
+            <ShieldCheck size={16} />
           )}
-          Link portal
+          Finish account setup
         </Button>
       </div>
     </Panel>
@@ -1017,7 +1018,7 @@ function OnboardingPanel({
 function TenantPortalContent({ token }: { token: string | null }) {
   // Soft-switch claim gate — the token URL never exposes data without
   // a Clerk session. The token is now solely a one-time claim entry-
-  // point that links a TenantPortalAccount and is then consumed.
+  // point that creates the TenantPortalAccount boundary and is then consumed.
   // The token-scoped `getTenantPortal` call is disabled entirely;
   // post-claim, every data read flows through the account-scoped
   // endpoints below.
@@ -1056,7 +1057,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
   );
 
   // Claim gate state — when the visitor lands on /tenant-portal/{token}
-  // with a Clerk session, this fires once to link the TenantPortalAccount
+  // with a Clerk session, this fires once to create the TenantPortalAccount
   // and consume the token. Subsequent visits flow straight through to
   // the account-scoped session.
   const gateClaimMutation = useMutation({
@@ -1154,7 +1155,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
         });
       }
       if (!token) {
-        throw new Error("Sign in to a linked tenant account before uploading.");
+        throw new Error("Sign in to your tenant account before uploading.");
       }
       return uploadTenantPortalDocument({
         token,
@@ -1204,7 +1205,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
               : null;
         if (!document) {
           throw new Error(
-            "Sign in to a linked tenant account before submitting.",
+            "Sign in to your tenant account before submitting.",
           );
         }
         payload.photo_document_ids = [document.id];
@@ -1218,7 +1219,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
       }
       if (!token) {
         throw new Error(
-          "Sign in to a linked tenant account before submitting.",
+          "Sign in to your tenant account before submitting.",
         );
       }
       return createTenantPortalMaintenanceRequest(token, payload);
@@ -1283,7 +1284,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
             <p className="text-sm font-medium text-primary">Tenant Portal</p>
             <h2 className="mt-1 text-2xl font-semibold">Open your portal</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Sign in with the tenant login linked to your Leasium portal.
+              Sign in with your Leasium tenant account.
             </p>
           </section>
           {tenantAccountAuthEnabled ? (
@@ -1312,10 +1313,10 @@ function TenantPortalContent({ token }: { token: string | null }) {
   }
 
   // Soft-switch claim gate. When the visitor lands on /tenant-portal/{token}
-  // and there's no linked account portal yet, this is the *only* thing
+  // and there's no account-scoped portal yet, this is the *only* thing
   // they see — no rent ledger, no documents, no maintenance history.
   // It either (a) prompts Clerk sign-in/sign-up with property context,
-  // (b) shows a "linking your account…" spinner while gateClaimMutation
+  // (b) shows a "setting up your account…" spinner while gateClaimMutation
   // runs, (c) explains the invite has already been used, or (d)
   // surfaces a claim error with a retry path.
   if (token && !accountPortal) {
@@ -1352,7 +1353,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
               <LeasiumMark />
               <div>
                 <p className="text-sm font-medium text-primary">
-                  Tenant Portal Invite
+                  Tenant Account Setup
                 </p>
                 <h2 className="text-xl font-semibold">
                   {preview.tenant_display_name}
@@ -1406,9 +1407,9 @@ function TenantPortalContent({ token }: { token: string | null }) {
               ) : !clerkSignedIn ? (
                 <div className="grid gap-2 text-sm">
                   <p className="text-foreground">
-                    Create or sign in to your tenant account to access your
-                    portal. After you sign in once, your account stays
-                    linked and the invite link is no longer needed.
+                    Create or sign in to your tenant account first. Then you
+                    can complete onboarding and use your portal without this
+                    invite link.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <SignUpButton
@@ -1430,11 +1431,13 @@ function TenantPortalContent({ token }: { token: string | null }) {
                 </div>
               ) : gateClaimMutation.isError ? (
                 <div className="grid gap-2 text-sm">
-                  <StatusBadge tone="danger">Couldn&apos;t link account</StatusBadge>
+                  <StatusBadge tone="danger">
+                    Couldn&apos;t finish account setup
+                  </StatusBadge>
                   <p className="text-muted-foreground">
                     {gateClaimMutation.error instanceof Error
                       ? gateClaimMutation.error.message
-                      : "Something went wrong linking your account."}
+                      : "Something went wrong setting up your tenant account."}
                   </p>
                   <Button
                     type="button"
@@ -1446,7 +1449,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
               ) : (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 size={16} className="animate-spin text-primary" />
-                  Linking your account…
+                  Setting up your account…
                 </div>
               )}
             </div>
