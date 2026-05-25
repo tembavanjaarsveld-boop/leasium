@@ -2,18 +2,19 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
+import httpx
 import jwt
 from fastapi import Depends, Header, HTTPException, status
 from jwt import PyJWKClient
 from jwt.exceptions import InvalidTokenError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from stewart.core.db import get_session
-from stewart.core.models import AppUser, UserEntityRole, UserRole
+from stewart.core.db import get_session, utcnow
+from stewart.core.models import AppUser, OperatorInviteStatus, UserEntityRole, UserRole
 from stewart.core.settings import Settings, get_settings
 
 
@@ -24,6 +25,12 @@ class CurrentUser:
     email: str
     display_name: str
     actor: str
+
+
+@dataclass(frozen=True)
+class ClerkIdentity:
+    provider_id: str
+    verified_email: str | None = None
 
 
 def _dev_user(settings: Settings) -> CurrentUser:
@@ -47,10 +54,16 @@ def _clerk_user(
             detail="Missing Clerk bearer token.",
         )
     token = authorization.removeprefix("Bearer ").strip()
-    provider_id = _clerk_provider_id(token, settings)
+    identity = _clerk_identity(token, settings)
+    provider_id = identity.provider_id
     user = session.scalar(select(AppUser).where(AppUser.auth_provider_id == provider_id))
+    if user is None:
+        user = _link_operator_by_verified_email(identity, session, settings)
     if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown Clerk user.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unknown Clerk user.",
+        )
     return CurrentUser(
         id=user.id,
         organisation_id=user.organisation_id,
@@ -75,9 +88,15 @@ def get_current_user(
 def _clerk_provider_id(token: str, settings: Settings) -> str:
     """Return the verified Clerk subject."""
 
+    return _clerk_identity(token, settings).provider_id
+
+
+def _clerk_identity(token: str, settings: Settings) -> ClerkIdentity:
+    """Return the verified Clerk subject and any verified email claim."""
+
     if not settings.clerk_jwks_url:
         if settings.clerk_allow_legacy_token_mapping:
-            return token
+            return ClerkIdentity(provider_id=token)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Clerk JWKS is not configured.",
@@ -104,13 +123,113 @@ def _clerk_provider_id(token: str, settings: Settings) -> str:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not verify Clerk session.",
         ) from exc
+    if not isinstance(decoded, dict):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Clerk session is not valid.",
+        )
     subject = decoded.get("sub")
     if not isinstance(subject, str) or not subject:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Clerk session is missing a subject.",
         )
-    return subject
+    return ClerkIdentity(
+        provider_id=subject,
+        verified_email=_verified_email_from_claims(decoded),
+    )
+
+
+def _normalise_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _verified_email_from_claims(decoded: dict[str, Any]) -> str | None:
+    email = decoded.get("email")
+    email_verified = decoded.get("email_verified")
+    if isinstance(email, str) and email.strip() and email_verified is True:
+        return _normalise_email(email)
+    return None
+
+
+def _verified_email_from_clerk_user(provider_id: str, settings: Settings) -> str | None:
+    secret = settings.clerk_secret_key.strip()
+    if not secret:
+        return None
+
+    try:
+        response = httpx.get(
+            f"https://api.clerk.com/v1/users/{provider_id}",
+            headers={"Authorization": f"Bearer {secret}"},
+            timeout=5.0,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError:
+        return None
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    primary_email_id = payload.get("primary_email_address_id")
+    email_addresses = payload.get("email_addresses")
+    if not isinstance(primary_email_id, str) or not isinstance(email_addresses, list):
+        return None
+
+    for email_address in email_addresses:
+        if (
+            not isinstance(email_address, dict)
+            or email_address.get("id") != primary_email_id
+        ):
+            continue
+        verification = email_address.get("verification")
+        if not isinstance(verification, dict) or verification.get("status") != "verified":
+            return None
+        email = email_address.get("email_address")
+        if isinstance(email, str) and email.strip():
+            return _normalise_email(email)
+    return None
+
+
+def _link_operator_by_verified_email(
+    identity: ClerkIdentity,
+    session: Session,
+    settings: Settings,
+) -> AppUser | None:
+    email = identity.verified_email or _verified_email_from_clerk_user(
+        identity.provider_id,
+        settings,
+    )
+    if email is None:
+        return None
+    email = _normalise_email(email)
+
+    existing_provider_user = session.scalar(
+        select(AppUser).where(AppUser.auth_provider_id == identity.provider_id)
+    )
+    if existing_provider_user is not None:
+        return existing_provider_user if existing_provider_user.is_active else None
+
+    user = session.scalar(
+        select(AppUser).where(
+            func.lower(AppUser.email) == email,
+            AppUser.is_active.is_(True),
+        )
+    )
+    if user is None:
+        return None
+
+    user.auth_provider_id = identity.provider_id
+    user.invite_status = OperatorInviteStatus.accepted
+    user.invite_accepted_at = user.invite_accepted_at or utcnow()
+    user.invite_last_error = None
+    user.invite_token_hash = None
+    session.commit()
+    session.refresh(user)
+    return user
 
 
 def assert_entity_role(

@@ -1,11 +1,20 @@
 """Auth and role dependency tests."""
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.auth import _clerk_provider_id, _dev_user, assert_entity_role
-from stewart.core.models import Entity, UserRole
+from stewart.core import auth as auth_module
+from stewart.core.auth import (
+    ClerkIdentity,
+    _clerk_provider_id,
+    _clerk_user,
+    _dev_user,
+    _verified_email_from_clerk_user,
+    assert_entity_role,
+)
+from stewart.core.models import AppUser, Entity, OperatorInviteStatus, UserRole
 from stewart.core.settings import Settings, get_settings
 
 
@@ -49,7 +58,137 @@ def test_clerk_provider_id_legacy_token_mapping_requires_explicit_flag() -> None
         _clerk_provider_id("user_legacy_owner", disabled_settings)
 
     assert exc_info.value.status_code == 401
-    assert _clerk_provider_id("user_legacy_owner", enabled_settings) == "user_legacy_owner"
+    assert (
+        _clerk_provider_id("user_legacy_owner", enabled_settings)
+        == "user_legacy_owner"
+    )
+
+
+def test_clerk_user_links_existing_operator_by_verified_email_claim(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    seeded_user = session.scalar(select(AppUser))
+    assert seeded_user is not None
+    settings = Settings(
+        _env_file=None,
+        auth_mode="clerk",
+        clerk_jwks_url="https://clerk.example/.well-known/jwks.json",
+    )
+
+    def fake_clerk_identity(token: str, auth_settings: Settings) -> ClerkIdentity:
+        assert token == "signed-in-session"
+        assert auth_settings is settings
+        return ClerkIdentity(
+            provider_id="user_new_clerk_subject",
+            verified_email=seeded_user.email.upper(),
+        )
+
+    monkeypatch.setattr(auth_module, "_clerk_identity", fake_clerk_identity)
+
+    current_user = _clerk_user("Bearer signed-in-session", session, settings)
+
+    user = session.scalar(select(AppUser).where(AppUser.email == seeded_user.email))
+    assert user is not None
+    assert current_user.id == user.id
+    assert user.auth_provider_id == "user_new_clerk_subject"
+    assert user.invite_status == OperatorInviteStatus.accepted
+    assert user.invite_accepted_at is not None
+
+
+def test_clerk_user_rejects_unknown_verified_email(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        auth_mode="clerk",
+        clerk_jwks_url="https://clerk.example/.well-known/jwks.json",
+    )
+
+    monkeypatch.setattr(
+        auth_module,
+        "_clerk_identity",
+        lambda token, auth_settings: ClerkIdentity(
+            provider_id="user_new_clerk_subject",
+            verified_email="missing@example.com",
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        _clerk_user("Bearer signed-in-session", session, settings)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Unknown Clerk user."
+
+
+def test_verified_email_from_clerk_user_uses_verified_primary_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(_env_file=None, clerk_secret_key="sk_test_clerk")
+    requests: list[httpx.Request] = []
+
+    def fake_get(
+        url: str,
+        headers: dict[str, str],
+        timeout: float,
+    ) -> httpx.Response:
+        request = httpx.Request("GET", url, headers=headers)
+        requests.append(request)
+        assert timeout == 5.0
+        return httpx.Response(
+            200,
+            json={
+                "primary_email_address_id": "email_primary",
+                "email_addresses": [
+                    {
+                        "id": "email_primary",
+                        "email_address": " Ash@SKJCapital.com ",
+                        "verification": {"status": "verified"},
+                    }
+                ],
+            },
+            request=request,
+        )
+
+    monkeypatch.setattr(auth_module.httpx, "get", fake_get)
+
+    email = _verified_email_from_clerk_user("user_clerk_subject", settings)
+
+    assert email == "ash@skjcapital.com"
+    assert requests[0].url == "https://api.clerk.com/v1/users/user_clerk_subject"
+    assert requests[0].headers["authorization"] == "Bearer sk_test_clerk"
+
+
+def test_verified_email_from_clerk_user_rejects_unverified_primary_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(_env_file=None, clerk_secret_key="sk_test_clerk")
+
+    def fake_get(
+        url: str,
+        headers: dict[str, str],  # noqa: ARG001
+        timeout: float,  # noqa: ARG001
+    ) -> httpx.Response:
+        request = httpx.Request("GET", url)
+        return httpx.Response(
+            200,
+            json={
+                "primary_email_address_id": "email_primary",
+                "email_addresses": [
+                    {
+                        "id": "email_primary",
+                        "email_address": "ash@skjcapital.com",
+                        "verification": {"status": "unverified"},
+                    }
+                ],
+            },
+            request=request,
+        )
+
+    monkeypatch.setattr(auth_module.httpx, "get", fake_get)
+
+    assert _verified_email_from_clerk_user("user_clerk_subject", settings) is None
 
 
 def test_assert_entity_role_allows_matching_role(session: Session) -> None:
