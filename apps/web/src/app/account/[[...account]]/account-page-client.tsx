@@ -10,7 +10,6 @@ import {
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import {
@@ -124,7 +123,6 @@ function AccountSignIn() {
 }
 
 function AccountRouter() {
-  const router = useRouter();
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const [routeState, setRouteState] = useState<RouteState>("idle");
@@ -157,7 +155,7 @@ function AccountRouter() {
           await getCurrentOperator(authToken);
           if (!cancelled) {
             setRouteState("operator");
-            router.replace("/");
+            window.location.assign("/");
           }
           return;
         } catch {
@@ -168,7 +166,7 @@ function AccountRouter() {
           await getTenantPortalAccountSession(authToken);
           if (!cancelled) {
             setRouteState("tenant");
-            router.replace("/tenant-portal");
+            window.location.assign("/tenant-portal");
           }
           return;
         } catch {
@@ -192,7 +190,7 @@ function AccountRouter() {
     return () => {
       cancelled = true;
     };
-  }, [getToken, isLoaded, isSignedIn, router]);
+  }, [getToken, isLoaded, isSignedIn]);
 
   if (!isLoaded) {
     return (
