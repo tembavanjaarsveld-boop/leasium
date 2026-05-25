@@ -15,6 +15,17 @@ import { Button, SecondaryButton } from "@/components/ui";
 import { setApiAuthTokenProvider } from "@/lib/api";
 import { isPublicOperatorPath } from "@/lib/operator-routes";
 
+const PRODUCTION_CLERK_PROXY_URL = "https://leasium.ai/__clerk";
+
+function clerkProxyUrl() {
+  const configuredProxyUrl = process.env.NEXT_PUBLIC_CLERK_PROXY_URL?.trim();
+  if (configuredProxyUrl) {
+    return configuredProxyUrl;
+  }
+
+  return process.env.NODE_ENV === "production" ? PRODUCTION_CLERK_PROXY_URL : undefined;
+}
+
 function OperatorAuthLoading() {
   return (
     <main className="min-h-screen bg-leasium-bg px-5 py-10 text-foreground">
@@ -121,7 +132,7 @@ function OperatorAuthBridge({ children }: { children: React.ReactNode }) {
 
 export function OperatorAuthProvider({ children }: { children: React.ReactNode }) {
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const proxyUrl = process.env.NEXT_PUBLIC_CLERK_PROXY_URL?.trim() || undefined;
+  const proxyUrl = clerkProxyUrl();
 
   if (!publishableKey) {
     return <>{children}</>;
