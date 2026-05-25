@@ -126,6 +126,10 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
       return clerkProtectedMiddleware(request, event);
     }
 
+    if (request.nextUrl.pathname === "/") {
+      return NextResponse.next();
+    }
+
     if (!isPublicOperatorPath(request.nextUrl.pathname)) {
       return clerkProtectedMiddleware(request, event);
     }

@@ -3,7 +3,7 @@
 import { ClerkProvider, SignInButton, SignUpButton, useAuth } from "@clerk/nextjs";
 import { Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import {
@@ -85,12 +85,19 @@ function OperatorSignInRequired({ returnTo }: { returnTo: string }) {
 function OperatorAuthBridge({ children }: { children: React.ReactNode }) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const authTimedOut = useAuthLoadTimeout(isLoaded);
 
   useEffect(() => {
     setApiAuthTokenProvider(() => getToken());
     return () => setApiAuthTokenProvider(null);
   }, [getToken]);
+
+  useEffect(() => {
+    if (isLoaded && !isSignedIn && pathname === "/") {
+      router.replace("/welcome");
+    }
+  }, [isLoaded, isSignedIn, pathname, router]);
 
   if (isPublicOperatorPath(pathname)) {
     return <>{children}</>;
@@ -118,6 +125,10 @@ function OperatorAuthBridge({ children }: { children: React.ReactNode }) {
   }
 
   if (!isSignedIn) {
+    if (pathname === "/") {
+      return <OperatorAuthLoading />;
+    }
+
     return <OperatorSignInRequired returnTo={pathname} />;
   }
 
