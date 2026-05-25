@@ -186,6 +186,8 @@ Status: pending Remba review. Tenant detail now surfaces property/unit/lease con
 
 2026-05-25 update: tenant onboarding has been tightened around the account-first flow. The tenant form now exposes only the core contact fields by default, optional details sit behind a disclosure, and tenant-facing review copy avoids exposing the internal `reviewed` state. The required-documents step now reads as not required when no checklist exists, instead of implying the tenant is blocked. Tenant detail now gives operators one primary onboarding action for the common path: Approve & apply when clear, Approve for signing when lease signing is next, or Mark reviewed when questions still block signing. Remba should review whether those action labels make the sequence obvious without hiding the review-first guardrail.
 
+2026-05-25 preview follow-up: the read-only operator tenant portal preview now uses the same tenant-friendly `In review` label and shows an explicit "Not required" checklist row when no onboarding documents are requested, instead of leaving the checklist empty.
+
 ## Operations Work-Order Detail
 
 Status: pending Remba review. The dedicated work-order page now carries quote/evidence upload, invoice linking, approval context, and structured internal/contractor/tenant comments in the activity timeline. Keep this page focused on resolving one maintenance job, with comments and evidence supporting the job rather than becoming a general message center.

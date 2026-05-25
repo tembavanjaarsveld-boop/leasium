@@ -69,6 +69,13 @@ function label(value: string) {
   return value.replaceAll("_", " ");
 }
 
+function onboardingStatusLabel(status: TenantPortalRecord["onboarding"]["status"]) {
+  if (status === "reviewed") {
+    return "In review";
+  }
+  return label(status);
+}
+
 function statusTone(status: string) {
   if (["paid", "received", "complete", "approved"].includes(status)) {
     return "success" as const;
@@ -175,7 +182,7 @@ function PreviewLoaded({
               ) : null}
             </div>
             <StatusBadge tone={statusTone(portal.onboarding.status)}>
-              {label(portal.onboarding.status)}
+              {onboardingStatusLabel(portal.onboarding.status)}
             </StatusBadge>
           </div>
           <div className="grid gap-3 md:grid-cols-4">
@@ -208,24 +215,38 @@ function PreviewLoaded({
               icon={<CalendarClock size={17} className="text-primary" />}
             >
               <div className="grid gap-3 p-4">
-                {portal.compliance.items.map((item) => (
-                  <div
-                    key={item.key}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm"
-                  >
+                {portal.compliance.items.length ? (
+                  portal.compliance.items.map((item) => (
+                    <div
+                      key={item.key}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm"
+                    >
+                      <div>
+                        <div className="font-medium">{item.label}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {item.document_count} document
+                          {item.document_count === 1 ? "" : "s"}
+                          {item.due_date
+                            ? ` · Due ${formatDate(item.due_date)}`
+                            : ""}
+                        </div>
+                      </div>
+                      <StatusBadge tone={statusTone(item.status)}>
+                        {label(item.status)}
+                      </StatusBadge>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
                     <div>
-                      <div className="font-medium">{item.label}</div>
+                      <div className="font-medium">Required documents</div>
                       <div className="mt-1 text-xs text-muted-foreground">
-                        {item.document_count} document
-                        {item.document_count === 1 ? "" : "s"}
-                        {item.due_date ? ` · Due ${formatDate(item.due_date)}` : ""}
+                        No required document checklist for this onboarding.
                       </div>
                     </div>
-                    <StatusBadge tone={statusTone(item.status)}>
-                      {label(item.status)}
-                    </StatusBadge>
+                    <StatusBadge tone="success">Not required</StatusBadge>
                   </div>
-                ))}
+                )}
               </div>
             </SectionPanel>
 
