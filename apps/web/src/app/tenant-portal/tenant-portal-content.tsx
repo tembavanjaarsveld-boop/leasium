@@ -30,6 +30,10 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import {
+  ClerkSessionUnavailableNotice,
+  useAuthLoadTimeout,
+} from "@/components/auth-config-notice";
 import { LeasiumMark } from "@/components/brand";
 import { QueryProvider } from "@/components/query-provider";
 import {
@@ -579,6 +583,7 @@ function TenantAccountPanel({
 }) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
+  const authTimedOut = useAuthLoadTimeout(isLoaded);
   const returnTo = token
     ? `/tenant-portal/${encodeURIComponent(token)}`
     : "/tenant-portal";
@@ -660,10 +665,14 @@ function TenantAccountPanel({
   if (!isLoaded) {
     return (
       <Panel title="Account Access" icon={<UserRound size={18} />}>
-        <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-          <Loader2 size={16} className="animate-spin text-primary" />
-          Checking sign-in.
-        </div>
+        {authTimedOut ? (
+          <ClerkSessionUnavailableNotice className="m-4" />
+        ) : (
+          <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+            <Loader2 size={16} className="animate-spin text-primary" />
+            Checking sign-in.
+          </div>
+        )}
       </Panel>
     );
   }
@@ -1522,6 +1531,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
   // endpoints below.
   const { getToken: getClerkToken, isLoaded: clerkLoaded, isSignedIn: clerkSignedIn } =
     useAuth();
+  const clerkLoadTimedOut = useAuthLoadTimeout(clerkLoaded);
   const portalQuery = useQuery({
     queryKey: ["tenant-portal", token],
     queryFn: () => {
@@ -1864,10 +1874,14 @@ function TenantPortalContent({ token }: { token: string | null }) {
             </dl>
             <div className="mt-6 grid gap-3 rounded-md border border-primary/30 bg-primary/5 p-4">
               {!clerkLoaded ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 size={16} className="animate-spin text-primary" />
-                  Checking sign-in…
-                </div>
+                clerkLoadTimedOut ? (
+                  <ClerkSessionUnavailableNotice />
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 size={16} className="animate-spin text-primary" />
+                    Checking sign-in…
+                  </div>
+                )
               ) : !clerkSignedIn ? (
                 <div className="grid gap-2 text-sm">
                   {!preview.claimable ? (

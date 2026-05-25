@@ -6,6 +6,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
+import {
+  ClerkSessionUnavailableNotice,
+  useAuthLoadTimeout,
+} from "@/components/auth-config-notice";
 import { LeasiumMark } from "@/components/brand";
 import { Button, SecondaryButton } from "@/components/ui";
 import { setApiAuthTokenProvider } from "@/lib/api";
@@ -76,6 +80,7 @@ function OperatorSignInRequired({ returnTo }: { returnTo: string }) {
 function OperatorAuthBridge({ children }: { children: React.ReactNode }) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const pathname = usePathname();
+  const authTimedOut = useAuthLoadTimeout(isLoaded);
 
   useEffect(() => {
     setApiAuthTokenProvider(() => getToken());
@@ -87,7 +92,24 @@ function OperatorAuthBridge({ children }: { children: React.ReactNode }) {
   }
 
   if (!isLoaded) {
-    return <OperatorAuthLoading />;
+    return authTimedOut ? (
+      <main className="min-h-screen bg-leasium-bg px-5 py-10 text-foreground">
+        <section className="mx-auto grid max-w-xl gap-5">
+          <div className="flex items-center gap-3">
+            <LeasiumMark className="h-12 w-12" />
+            <div>
+              <div className="text-sm font-semibold text-primary">
+                Leasium operator login
+              </div>
+              <h1 className="text-2xl font-semibold">Checking your session</h1>
+            </div>
+          </div>
+          <ClerkSessionUnavailableNotice />
+        </section>
+      </main>
+    ) : (
+      <OperatorAuthLoading />
+    );
   }
 
   if (!isSignedIn) {

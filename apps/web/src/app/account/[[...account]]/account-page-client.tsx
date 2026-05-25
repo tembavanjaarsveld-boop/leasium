@@ -13,6 +13,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import {
+  ClerkSessionUnavailableNotice,
+  useAuthLoadTimeout,
+} from "@/components/auth-config-notice";
 import { LeasiumMark } from "@/components/brand";
 import { getCurrentOperator, getTenantPortalAccountSession } from "@/lib/api";
 
@@ -125,6 +129,7 @@ function AccountRouter() {
   const { user } = useUser();
   const [routeState, setRouteState] = useState<RouteState>("idle");
   const [routeError, setRouteError] = useState<string | null>(null);
+  const authTimedOut = useAuthLoadTimeout(isLoaded);
 
   useEffect(() => {
     let cancelled = false;
@@ -192,10 +197,14 @@ function AccountRouter() {
   if (!isLoaded) {
     return (
       <AccountShell>
-        <div className="flex max-w-xl items-center gap-3 rounded-xl border border-border bg-white p-5 text-sm text-muted-foreground shadow-leasiumXs">
-          <Loader2 className="animate-spin text-primary" size={18} />
-          Checking your Leasium session.
-        </div>
+        {authTimedOut ? (
+          <ClerkSessionUnavailableNotice className="max-w-xl" />
+        ) : (
+          <div className="flex max-w-xl items-center gap-3 rounded-xl border border-border bg-white p-5 text-sm text-muted-foreground shadow-leasiumXs">
+            <Loader2 className="animate-spin text-primary" size={18} />
+            Checking your Leasium session.
+          </div>
+        )}
       </AccountShell>
     );
   }
