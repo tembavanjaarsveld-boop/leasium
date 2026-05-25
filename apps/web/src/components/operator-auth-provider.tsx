@@ -99,12 +99,7 @@ function OperatorAuthBridge({ children }: { children: React.ReactNode }) {
 
 export function OperatorAuthProvider({ children }: { children: React.ReactNode }) {
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const hasClerkDomain = Boolean(process.env.NEXT_PUBLIC_CLERK_DOMAIN?.trim());
-  const proxyUrl =
-    process.env.NEXT_PUBLIC_CLERK_PROXY_URL ??
-    (process.env.NODE_ENV === "production" && !hasClerkDomain
-      ? "/__clerk"
-      : undefined);
+  const proxyUrl = process.env.NEXT_PUBLIC_CLERK_PROXY_URL?.trim() || undefined;
 
   if (!publishableKey) {
     return <>{children}</>;

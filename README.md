@@ -30,8 +30,8 @@ callbacks and SendGrid Event Webhooks.
 ## Deployment
 
 Vercel should deploy the frontend from `apps/web`. Set
-`NEXT_PUBLIC_API_BASE_URL` in Vercel to the hosted API base URL. The FastAPI API
-is deployed separately and must set `FRONTEND_URL` to the Vercel domain.
+`NEXT_PUBLIC_API_BASE_URL=https://api.leasium.ai/api/v1` in Vercel. The FastAPI
+API is deployed separately and must set `FRONTEND_URL=https://leasium.ai`.
 Set `LEASIUM_ACCESS_PASSWORD` in Vercel to enable the temporary private-beta
 password gate. Leave it blank locally to skip the gate.
 

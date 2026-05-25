@@ -127,9 +127,10 @@ is a single feature.
   bundled Next WASM SWC.
 - `uv` is not available; use `.venv/bin/python -m pytest`,
   `.venv/bin/alembic`, `.venv/bin/uvicorn`.
-- Node.js is **not installed** on Temba's Mac. `next dev` cannot run
-  locally — the default review path for frontend changes is
-  **push-to-Vercel** at `https://leasium.vercel.app`, not localhost.
+- Node.js is installed on Temba's Mac. The default review path for frontend
+  changes is the canonical Vercel custom domain at `https://leasium.ai`.
+  Treat `https://leasium.vercel.app` as an implementation alias, not a product
+  URL.
 - The Cowork sandbox can write to git but not unlink under `.git/`.
   Stale lockfiles need to be renamed (`mv .git/index.lock
   .git/index.lock.bak-…`) before each git command. Commits land

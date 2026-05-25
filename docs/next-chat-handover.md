@@ -7,11 +7,12 @@ Last updated: 2026-05-25
 - Repo: `/Users/tembavanjaarsveld/Documents/Stewart`
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
-- Production frontend: `https://leasium.ai` (Vercel). Fallback preview/live URL remains `https://leasium.vercel.app`.
-- Production API: `https://leasium-api.onrender.com/api/v1` remains the active frontend API base until Render finishes issuing the certificate for `https://api.leasium.ai`.
-- Domain cutover note: VentraIP authoritative DNS has `api.leasium.ai CNAME leasium-api.onrender.com`, and Render verifies the domain, but certificate issuance was still erroring immediately after cutover because public recursive resolvers had cached old NXDOMAIN responses for `api.leasium.ai` A lookups. Do not change the DNS record unless it is still failing after the negative cache clears; retry Render certificate verification later.
-- **Latest pushed commit:** `71208cc` (`Add owner statements billing handoff`) at the time of the 2026-05-25 domain cutover. Run `git log --oneline -12` to confirm before editing.
-- **Working tree is not clean.** Local unpublished welcome-page work is present in `apps/web/src/app/welcome/page.tsx` plus the `/welcome` public route prefix in `apps/web/src/lib/operator-routes.ts`. Do not treat those files as Codex domain-cutover changes unless Temba explicitly asks to finish/push them.
+- Production frontend: `https://leasium.ai` (Vercel). Treat `https://leasium.vercel.app` as a provider alias only, not a product URL.
+- Production API: `https://api.leasium.ai/api/v1` (Render custom domain). `https://leasium-api.onrender.com` is a provider fallback only.
+- Domain cutover note: `api.leasium.ai` now resolves and serves the Render API certificate. Production frontend/API/env/provider links should use `leasium.ai` and `api.leasium.ai`.
+- Clerk cutover note: live Vercel was previously serving a publishable key that decoded to `clerk.leasium.vercel.app`. That creates split-domain sessions. The canonical target is a Clerk setup anchored to `leasium.ai` (prefer `clerk.leasium.ai` via Clerk DNS/CNAME, or exact `https://leasium.ai/__clerk` proxy if enabled in Clerk Dashboard and Vercel env).
+- **Latest pushed commit:** run `git log --oneline -12` to confirm before editing. The 2026-05-25 domain cleanup removes Vercel-host fallbacks from account/tenant auth paths and documents the canonical `leasium.ai` / `api.leasium.ai` setup.
+- **Working tree:** expected clean after each pushed slice. If not, inspect with `git status --short` before editing.
 - **Mac tooling change (2026-05-24):** Node v26 installed via Homebrew; Desktop Commander MCP server (`@wonderwhy-er/desktop-commander`) is configured in Claude Desktop. Future Claude sessions in this workspace have `mcp__Desktop_Commander__*` tools available — they execute commands directly on the Mac (pytest, ruff, alembic, git, next dev, playwright). Sandbox-can't-write-git and no-local-Node constraints from prior sessions no longer apply.
 - The 2026-05-22 UX-review backlog is fully landed except Tier 2 (g) dark mode (deliberately deprioritised under the SKJ internal-first-6-months direction). All shipped items are marked `[x]` or `[~]` in `docs/product-roadmap.md`.
 - Visual polish + brand sweep (2026-05-23): nine commits resolving Tickets 1-5 of the polish plan after the competitive UX rating identified visual polish as Leasium's weakest dimension vs Re-Leased / PropertyMe / PropertyTree. Codex source-of-truth amendments in §3 (owner tag palette + two-tier naming), §4 (Body Compact 15px + Micro 11px), §5 (motion scale 150/200/300 + ease-in/toggle), §8 (empty-state convention), §9 (chip system). Tailwind config gained 36 owner-tag tokens, 11 short-alias variants, transition durations, exit easings, four custom fontSize steps. `globals.css` gained six @keyframes (drawer in/out left/right, modal in/out, backdrop in/out) and matching utility classes. New `useUnmountDelay` hook drives drawer/modal exit animations on 8 surfaces. New `chipClass()` helper in `components/ui.tsx` collapses every chip/pill/badge declaration through one tone × density × bordered surface. EmptyState component gained an `icon` slot; ~40 high-traffic empty states opt-in. Remba had been retired from the loop ("forget Remba, this is a prototype" at slice mid-point) so commits land without the [~] pending markers used in earlier slices.
@@ -35,7 +36,7 @@ Last updated: 2026-05-25
 1. Read `CLAUDE.md` at the repo root before starting. It encodes the behavioural baseline (state assumptions, simplest possible change, surgical edits, verifiable success criteria) plus the Leasium-specific guardrails.
 2. Run `git status --short` and `git log --oneline -10` to confirm the tree is clean and the tip includes the latest Codex continuation slices.
 3. **Render needs to apply migrations `20260524_0025` (residential property_type) and `20260524_0026` (tenant_onboarding.token_consumed_at)** if it hasn't already on its last deploy. Render start command runs `alembic upgrade head` so this should be automatic — verify by checking the deploy log for those revision IDs.
-4. **Outstanding from this session:** verify the tenant portal claim gate end-to-end on live (`https://leasium.ai`, or `https://leasium.vercel.app` while local DNS caches settle). Temba was hitting a 409 "already linked to another tenant" because his Clerk login had a prior portal account on an older Tenant row; the fix is to unlink the old account from `/tenants/{id}` → "Portal access" → "Unlink" (not delete tenant — Unlink is the right surgical fix). Re-sending an invite from `/tenants` should now show the new email copy ("Set up your tenant portal for X" / "Sign in to continue").
+4. **Outstanding from this session:** verify the tenant portal claim gate end-to-end on live at `https://leasium.ai` after Clerk is anchored to the Leasium domain. Temba was hitting a 409 "already linked to another tenant" because his Clerk login had a prior portal account on an older Tenant row; the fix is to unlink the old account from `/tenants/{id}` → "Portal access" → "Unlink" (not delete tenant — Unlink is the right surgical fix). Re-sending an invite from `/tenants` should now show the new email copy ("Set up your tenant portal for X" / "Sign in to continue").
 5. Pick the next ticket from `docs/product-roadmap.md` "Next Build Order" or the Recommended Next Tickets list below. The AI inbox v2.x trilogy is complete; v2.3 (tenant_contact promote) is the natural next step in that thread, or pivot to Operations polish / Xero deepening / Portfolio QA cleanup.
 6. Keep all provider actions review-first: no Xero mutation, SendGrid email, Twilio SMS, tenant email, or payment reconciliation should happen without explicit operator approval.
 
@@ -63,8 +64,8 @@ Last updated: 2026-05-25
 - Local web app: `http://localhost:3000`
 - Local API base for web: `http://localhost:8000/api/v1`
 - Production frontend: `https://leasium.ai`
-- Vercel fallback URL: `https://leasium.vercel.app`
-- Production API base for the web app: `https://leasium-api.onrender.com/api/v1` until Render finishes TLS for `api.leasium.ai`.
+- Vercel provider alias: `https://leasium.vercel.app`
+- Production API base for the web app: `https://api.leasium.ai/api/v1`
 - GitHub remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
 - Backend runtime: Python 3.12 with `.venv` already present.
 - Frontend dependencies: `apps/web/node_modules` already present.

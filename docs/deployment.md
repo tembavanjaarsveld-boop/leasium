@@ -15,9 +15,12 @@ Recommended Vercel project settings:
 Required Vercel environment variable:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=https://your-api-host.example.com/api/v1
+NEXT_PUBLIC_API_BASE_URL=https://api.leasium.ai/api/v1
 LEASIUM_ACCESS_PASSWORD=choose-a-temporary-private-beta-password
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
+# Only set this when Clerk's proxy URL is enabled in the Clerk Dashboard.
+# Prefer Clerk's DNS/CNAME setup for clerk.leasium.ai when available.
+NEXT_PUBLIC_CLERK_PROXY_URL=
 ```
 
 `LEASIUM_ACCESS_PASSWORD` enables the temporary app-level password gate for the
@@ -32,8 +35,9 @@ Current production domains:
 
 - `leasium.ai` is the primary Vercel domain.
 - `www.leasium.ai` is also attached to the same Vercel project.
-- Keep `NEXT_PUBLIC_API_BASE_URL` on `https://leasium-api.onrender.com/api/v1`
-  until Render has verified and issued TLS for `https://api.leasium.ai`.
+- `api.leasium.ai` is the primary Render API domain.
+- `leasium-api.onrender.com` is a provider fallback only and should not appear
+  in tenant/operator links or frontend environment variables.
 
 VentraIP DNS for the Vercel frontend:
 
@@ -79,13 +83,13 @@ Set the API host environment from `.env.example`, with production values for:
 - `XERO_STATE_SECRET`
 - `XERO_TOKEN_ENCRYPTION_KEY`
 
-`FRONTEND_URL` must match the Vercel domain so browser requests pass CORS. For
-the current `leasium.ai` cutover, Render should use `https://leasium.ai` and
-`CORS_ALLOWED_ORIGINS` should include `https://leasium.ai`,
-`https://www.leasium.ai`, and any temporary Vercel fallback domains still used
-for testing.
+`FRONTEND_URL` must be `https://leasium.ai` so browser requests pass CORS and
+all email/SMS links use the branded domain. `CORS_ALLOWED_ORIGINS` should include
+`https://leasium.ai` and `https://www.leasium.ai`. Add Vercel preview URLs only
+for deliberate preview testing, not as production fallbacks.
 `PUBLIC_API_URL` must match the hosted API origin so Twilio SMS callbacks can
-report delivery status back into Leasium.
+report delivery status back into Leasium. For production, use
+`https://api.leasium.ai`.
 Use `CORS_ALLOWED_ORIGINS` for extra explicit domains, separated by commas. Use
 `CORS_ALLOWED_ORIGIN_REGEX` only for controlled preview URL patterns.
 
@@ -95,14 +99,36 @@ Render custom API domain:
 CNAME  api             leasium-api.onrender.com
 ```
 
-Do not move `NEXT_PUBLIC_API_BASE_URL`, `PUBLIC_API_URL`, Xero redirect URIs, or
-provider webhook URLs to `https://api.leasium.ai` until Render shows the custom
-domain as verified and the certificate is active.
+Set production URL variables to the branded hosts now that the API certificate
+is active:
 
-If Render verifies the domain but shows a certificate error right after creating
-the DNS record, check public recursive DNS for stale NXDOMAIN responses on
-`api.leasium.ai` A lookups before changing anything. The authoritative VentraIP
-record can be correct while resolver negative caches still need to expire.
+```bash
+FRONTEND_URL=https://leasium.ai
+PUBLIC_API_URL=https://api.leasium.ai
+NEXT_PUBLIC_API_BASE_URL=https://api.leasium.ai/api/v1
+XERO_REDIRECT_URI=https://api.leasium.ai/api/v1/xero/oauth/callback
+```
+
+Provider webhook URLs should also use `https://api.leasium.ai`.
+
+## Clerk Domains
+
+The frontend and API must agree on the same Clerk issuer. Do not mix a
+`leasium.ai` app session with a `leasium.vercel.app` Clerk frontend API.
+
+Preferred production setup:
+
+- Clerk application domain: `leasium.ai`
+- Clerk frontend API host: `clerk.leasium.ai`
+- Vercel `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: a live key that decodes to
+  `clerk.leasium.ai`
+- Render `CLERK_JWKS_URL`: `https://clerk.leasium.ai/.well-known/jwks.json`
+- Render `CLERK_ISSUER`: `https://clerk.leasium.ai`
+
+If Clerk is configured to use the Leasium proxy instead of a CNAME frontend API,
+set the proxy URL in the Clerk Dashboard first, then set Vercel
+`NEXT_PUBLIC_CLERK_PROXY_URL=https://leasium.ai/__clerk`. Do not set a proxy URL
+as a workaround unless the Clerk Dashboard is configured for the exact same URL.
 
 Tenant onboarding delivery uses Twilio SendGrid for email and Twilio Messaging
 for SMS. If any channel is not configured, Leasium records the channel as
