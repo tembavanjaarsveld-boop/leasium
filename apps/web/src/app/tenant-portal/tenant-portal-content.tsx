@@ -2015,8 +2015,9 @@ function TenantPortalContent({ token }: { token: string | null }) {
   const leaseAgreement = portal.lease_agreement;
   const leaseAgreementSigned = leaseAgreement.status === "signed";
   const requiredDocuments = portal.compliance.items;
+  const documentsRequired = requiredDocuments.length > 0;
   const documentsComplete =
-    requiredDocuments.length > 0 &&
+    !documentsRequired ||
     requiredDocuments.every((item) => item.status === "received");
 
   if (!onboardingApplied(portal)) {
@@ -2107,14 +2108,19 @@ function TenantPortalContent({ token }: { token: string | null }) {
                 icon={<UploadCloud size={18} />}
                 actions={
                   <StatusBadge tone={documentsComplete ? "success" : "warning"}>
-                    {documentsComplete ? "Received" : "Needed"}
+                    {!documentsRequired
+                      ? "Not required"
+                      : documentsComplete
+                        ? "Received"
+                        : "Needed"}
                   </StatusBadge>
                 }
               >
                 <div className="grid gap-4 p-4">
                   <p className="text-sm text-muted-foreground">
-                    Upload only the documents requested for onboarding. Your
-                    property team reviews each file before marking it complete.
+                    {documentsRequired
+                      ? "Upload only the documents requested for onboarding. Your property team reviews each file before marking it complete."
+                      : "No documents are required right now. You can still upload supporting files if your property team asks for them."}
                   </p>
                   <div className="grid gap-3 md:grid-cols-3">
                     {requiredDocuments.map((item) => (
@@ -2139,7 +2145,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
                     ))}
                     {!requiredDocuments.length ? (
                       <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground md:col-span-3">
-                        No required document checklist has been set yet.
+                        No required document checklist for this onboarding.
                       </div>
                     ) : null}
                   </div>
@@ -2271,14 +2277,16 @@ function TenantPortalContent({ token }: { token: string | null }) {
                     detail={
                       detailsSubmitted
                         ? "Your submitted details are with the property team."
-                        : "Confirm contact, billing, emergency, and lease-start details."
+                        : "Confirm your core contact details."
                     }
                     state={detailsSubmitted ? "complete" : "current"}
                   />
                   <OnboardingStep
                     title="Required documents"
                     detail={
-                      documentsComplete
+                      !documentsRequired
+                        ? "No documents are required right now."
+                        : documentsComplete
                         ? "Requested onboarding files have been received."
                         : "Upload the requested files for property team review."
                     }
