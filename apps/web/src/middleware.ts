@@ -2,6 +2,7 @@ import { clerkMiddleware } from "@clerk/nextjs/server";
 import type { NextFetchEvent } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 
+import { fallbackAccountUrl, shouldUseFallbackAccountHost } from "@/lib/auth-host";
 import { isPublicOperatorPath } from "@/lib/operator-routes";
 
 const ACCESS_COOKIE = "leasium_access";
@@ -13,6 +14,30 @@ function accessPassword() {
 
 function isClerkProxyPath(pathname: string) {
   return pathname === "/__clerk" || pathname.startsWith("/__clerk/");
+}
+
+function isFallbackAccountPath(pathname: string) {
+  return [
+    "/account",
+    "/accept-invite",
+    "/setup",
+    "/sign-in",
+    "/sign-up",
+    "/tenant-portal",
+  ].some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
+
+function redirectFallbackAccountHost(request: NextRequest) {
+  if (
+    !isFallbackAccountPath(request.nextUrl.pathname) ||
+    !shouldUseFallbackAccountHost(request.headers.get("host"))
+  ) {
+    return null;
+  }
+
+  return NextResponse.redirect(
+    fallbackAccountUrl(request.nextUrl.pathname, request.nextUrl.search),
+  );
 }
 
 function clerkServerConfigured() {
@@ -85,6 +110,11 @@ const clerkProtectedMiddleware = clerkMiddleware(
 );
 
 export async function middleware(request: NextRequest, event: NextFetchEvent) {
+  const fallbackAccountResponse = redirectFallbackAccountHost(request);
+  if (fallbackAccountResponse) {
+    return fallbackAccountResponse;
+  }
+
   if (clerkServerConfigured()) {
     const accessResponse = await enforceAccessGate(request);
     if (accessResponse) {
