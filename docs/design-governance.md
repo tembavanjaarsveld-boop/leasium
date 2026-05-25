@@ -117,6 +117,10 @@ Progress notes:
   Recent Activity panel so tenants can see the latest onboarding, lease,
   document, maintenance, and preference updates without the page turning into
   a crowded admin dashboard. This remains pending Remba review.
+- 2026-05-25 follow-up: Full tenant portal side rail now also shows confirmed
+  Contact Details. v1 is deliberately read-only so tenant edits do not bypass
+  the reviewed onboarding/change-control path. This remains pending Remba
+  review.
 
 Remba decision:
 

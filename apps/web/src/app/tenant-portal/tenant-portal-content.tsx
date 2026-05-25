@@ -625,6 +625,45 @@ function RecentActivityPanel({
   );
 }
 
+function ContactDetailsPanel({ portal }: { portal: TenantPortalRecord }) {
+  const contactRows = [
+    ["Legal name", portal.tenant.legal_name],
+    ["Trading name", portal.tenant.trading_name],
+    ["Contact name", portal.tenant.contact_name],
+    ["Email", portal.tenant.contact_email],
+    ["Phone", portal.tenant.contact_phone],
+    ["Billing email", portal.tenant.billing_email],
+  ].filter(([, value]) => Boolean(value));
+
+  return (
+    <Panel
+      title="Contact Details"
+      icon={<UserRound size={18} />}
+      actions={<StatusBadge tone="success">Confirmed</StatusBadge>}
+    >
+      <div className="grid gap-3 p-4 text-sm">
+        <dl className="grid gap-3">
+          {contactRows.map(([term, value]) => (
+            <div key={term}>
+              <dt className="text-muted-foreground">{term}</dt>
+              <dd className="font-medium">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        {!contactRows.length ? (
+          <div className="rounded-md border border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
+            No contact details are on file yet.
+          </div>
+        ) : null}
+        <p className="text-xs leading-5 text-muted-foreground">
+          If something looks wrong, send a note to the property team before
+          signing or paying anything that depends on these details.
+        </p>
+      </div>
+    </Panel>
+  );
+}
+
 function Panel({
   title,
   icon,
@@ -3133,6 +3172,8 @@ function TenantPortalContent({ token }: { token: string | null }) {
 
           <aside className="grid content-start gap-5">
             <RecentActivityPanel activities={recentActivity} />
+
+            <ContactDetailsPanel portal={portal} />
 
             <Panel title="Lease" icon={<Building2 size={18} />}>
               <dl className="grid gap-3 p-4 text-sm">
