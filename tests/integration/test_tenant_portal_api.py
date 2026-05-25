@@ -1298,6 +1298,13 @@ def test_tenant_portal_contact_change_request_waits_for_operator_apply(
     assert requests[0]["status"] == "submitted"
     assert requests[0]["changes"][0]["field"] == "contact_name"
 
+    duplicate_response = client.post(
+        "/api/v1/tenant-portal/contact-change-requests",
+        headers={"x-tenant-portal-token": scope["token"]},
+        json={"contact_email": "another@example.com"},
+    )
+    assert duplicate_response.status_code == 409
+
     detail_response = client.get(f"/api/v1/tenants/{scope['tenant_id']}/detail")
     assert detail_response.status_code == 200
     change_request = detail_response.json()["reviewed_changes"][0]

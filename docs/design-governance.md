@@ -129,6 +129,9 @@ Progress notes:
 - 2026-05-25 follow-up 3: Operators can now dismiss tenant contact-change
   requests without mutating the tenant record, and the tenant portal shows the
   request as reviewed/closed. This remains pending Remba review.
+- 2026-05-25 follow-up 4: Tenant portal now blocks duplicate pending contact
+  change requests and hides the request form while a request is in review. This
+  remains pending Remba review.
 
 Remba decision:
 

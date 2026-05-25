@@ -1861,6 +1861,14 @@ def create_contact_change_request(
     requests = metadata.get(PORTAL_CONTACT_REQUESTS_KEY)
     if not isinstance(requests, list):
         requests = []
+    if any(isinstance(item, dict) and item.get("status") == "submitted" for item in requests):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "A contact change request is already in review. Wait for the "
+                "property team to apply or close it before sending another."
+            ),
+        )
     request_entry = {
         "id": str(uuid7()),
         "status": "submitted",

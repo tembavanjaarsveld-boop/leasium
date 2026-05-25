@@ -780,7 +780,7 @@ function ContactDetailsPanel({
             detail changes.
           </div>
         ) : null}
-        {changeOpen ? (
+        {pendingContactRequests.length ? null : changeOpen ? (
           <form
             className="grid gap-3 rounded-md border border-border bg-muted/30 p-3"
             onSubmit={(event) => {
