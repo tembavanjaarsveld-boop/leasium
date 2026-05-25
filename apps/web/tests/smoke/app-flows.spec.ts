@@ -1288,6 +1288,8 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible();
   await expect(page.getByText("INV-1001")).toBeVisible();
+  await expect(page.getByText("Contact change request")).toBeVisible();
+  await expect(page.getByText("new.accounts@bright.example")).toBeVisible();
   await expect(page.getByRole("button", { name: "Submit for review" })).toHaveCount(0);
   await page.getByRole("link", { name: "Back to tenant" }).first().click();
   await expect(page).toHaveURL(/\/tenants\/tenant-1$/);

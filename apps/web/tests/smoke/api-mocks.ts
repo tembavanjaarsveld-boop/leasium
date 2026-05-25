@@ -1255,6 +1255,24 @@ const tenantPortalSession = (
         : [],
     })),
   notification_preferences: tenantPortalNotificationPreferences,
+  contact_change_requests: [
+    {
+      id: "contact-request-1",
+      status: "submitted",
+      submitted_at: "2026-05-20T10:00:00.000Z",
+      applied_at: null,
+      dismissed_at: null,
+      notes: "Please send billing notices here.",
+      changes: [
+        {
+          field: "billing_email",
+          label: "Billing email",
+          before: "accounts@bright.example",
+          after: "new.accounts@bright.example",
+        },
+      ],
+    },
+  ],
   guardrails: [
     "Tenant portal responses are scoped to the tenant attached to the onboarding token.",
     "Only approved invoice drafts are visible to tenants.",

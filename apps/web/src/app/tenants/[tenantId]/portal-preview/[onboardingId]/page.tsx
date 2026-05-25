@@ -8,6 +8,7 @@ import {
   Download,
   FileText,
   Loader2,
+  MessageSquare,
   ReceiptText,
   ShieldCheck,
   Wrench,
@@ -173,6 +174,7 @@ function PreviewLoaded({
   portal: TenantPortalRecord;
 }) {
   const tenantName = portal.tenant.trading_name || portal.tenant.legal_name;
+  const latestContactRequest = portal.contact_change_requests[0] ?? null;
   return (
     <main className="min-h-screen bg-background text-foreground">
       <AppHeader />
@@ -390,21 +392,59 @@ function PreviewLoaded({
               title="Tenant contact"
               icon={<Building2 size={17} className="text-primary" />}
             >
-              <dl className="grid gap-3 p-4 text-sm">
-                {[
-                  ["Primary contact", portal.tenant.contact_name],
-                  ["Contact email", portal.tenant.contact_email],
-                  ["Phone", portal.tenant.contact_phone],
-                  ["Billing email", portal.tenant.billing_email],
-                ].map(([term, value]) => (
-                  <div key={term}>
-                    <dt className="text-xs font-semibold uppercase text-muted-foreground">
-                      {term}
-                    </dt>
-                    <dd className="mt-1">{value || "-"}</dd>
+              <div className="grid gap-3 p-4 text-sm">
+                <dl className="grid gap-3">
+                  {[
+                    ["Primary contact", portal.tenant.contact_name],
+                    ["Contact email", portal.tenant.contact_email],
+                    ["Phone", portal.tenant.contact_phone],
+                    ["Billing email", portal.tenant.billing_email],
+                  ].map(([term, value]) => (
+                    <div key={term}>
+                      <dt className="text-xs font-semibold uppercase text-muted-foreground">
+                        {term}
+                      </dt>
+                      <dd className="mt-1">{value || "-"}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {latestContactRequest ? (
+                  <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 font-medium">
+                        <MessageSquare size={15} className="text-primary" />
+                        Contact change request
+                      </div>
+                      <StatusBadge
+                        tone={
+                          latestContactRequest.status === "submitted"
+                            ? "warning"
+                            : statusTone(latestContactRequest.status)
+                        }
+                      >
+                        {label(latestContactRequest.status)}
+                      </StatusBadge>
+                    </div>
+                    <div className="grid gap-1 text-xs text-muted-foreground">
+                      {latestContactRequest.changes.map((change) => (
+                        <div key={change.field}>
+                          <span className="font-medium text-foreground">
+                            {change.label}
+                          </span>
+                          : {String(change.after ?? "-")}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {latestContactRequest.applied_at
+                        ? `Applied ${formatDateTime(latestContactRequest.applied_at)}`
+                        : latestContactRequest.dismissed_at
+                          ? `Closed ${formatDateTime(latestContactRequest.dismissed_at)}`
+                          : `Submitted ${formatDateTime(latestContactRequest.submitted_at)}`}
+                    </div>
                   </div>
-                ))}
-              </dl>
+                ) : null}
+              </div>
             </SectionPanel>
 
             <SectionPanel title="Guardrails" icon={<ShieldCheck size={17} className="text-primary" />}>

@@ -132,6 +132,10 @@ Progress notes:
 - 2026-05-25 follow-up 4: Tenant portal now blocks duplicate pending contact
   change requests and hides the request form while a request is in review. This
   remains pending Remba review.
+- 2026-05-25 follow-up 5: Operator portal preview now mirrors tenant contact
+  change request status so property teams can see the same in-review/applied/
+  dismissed state without opening the live tenant portal. This remains pending
+  Remba review.
 
 Remba decision:
 
