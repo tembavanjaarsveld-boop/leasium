@@ -1218,6 +1218,23 @@ function TenantDetail() {
     },
   });
 
+  const approveAndApplyOnboardingMutation = useMutation({
+    mutationFn: async (onboardingId: string) => {
+      await reviewTenantOnboarding(onboardingId, {
+        approved: true,
+        notes: cleanText(reviewNotesById[onboardingId] ?? ""),
+      });
+      return applyTenantOnboarding(onboardingId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
+      queryClient.invalidateQueries({ queryKey: ["tenant", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
+    },
+  });
+
   const respondLeaseQuestionMutation = useMutation({
     mutationFn: ({
       onboardingId,
@@ -2077,6 +2094,26 @@ function TenantDetail() {
                     leaseAgreementBlocksApply(leaseAgreement);
                   const applyBlockReason =
                     leaseAgreementApplyReason(leaseAgreement);
+                  const hasBlockingLeaseQuestions =
+                    (leaseAgreement?.open_question_count ?? 0) > 0;
+                  const submittedActionLabel = applyBlocked
+                    ? hasBlockingLeaseQuestions
+                      ? "Mark reviewed"
+                      : "Approve for signing"
+                    : "Approve & apply";
+                  const submittedActionIcon = applyBlocked ? (
+                    <Check size={16} />
+                  ) : (
+                    <Save size={16} />
+                  );
+                  const onboardingActionPending =
+                    reviewOnboardingMutation.isPending ||
+                    approveAndApplyOnboardingMutation.isPending ||
+                    applyOnboardingMutation.isPending;
+                  const onboardingActionError =
+                    reviewOnboardingMutation.error ??
+                    approveAndApplyOnboardingMutation.error ??
+                    applyOnboardingMutation.error;
                   const providerDetail = (
                     <>
                       <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
@@ -2271,17 +2308,22 @@ function TenantDetail() {
                           {item.status === "submitted" ? (
                             <Button
                               type="button"
-                              onClick={() =>
-                                reviewOnboardingMutation.mutate(item.id)
-                              }
-                              disabled={reviewOnboardingMutation.isPending}
+                              onClick={() => {
+                                if (applyBlocked) {
+                                  reviewOnboardingMutation.mutate(item.id);
+                                  return;
+                                }
+                                approveAndApplyOnboardingMutation.mutate(
+                                  item.id,
+                                );
+                              }}
+                              disabled={onboardingActionPending}
                             >
-                              <Check size={16} />
-                              Review
+                              {submittedActionIcon}
+                              {submittedActionLabel}
                             </Button>
                           ) : null}
-                          {item.status === "submitted" ||
-                          item.status === "reviewed" ? (
+                          {item.status === "reviewed" ? (
                             <Button
                               type="button"
                               onClick={() =>
@@ -2551,7 +2593,7 @@ function TenantDetail() {
                           <Field label="Review notes">
                             <Input
                               value={reviewNotesById[item.id] ?? ""}
-                              placeholder="Optional note before marking reviewed"
+                              placeholder="Optional note before approval"
                               onChange={(event) =>
                                 setReviewNotesById((current) => ({
                                   ...current,
@@ -2560,6 +2602,11 @@ function TenantDetail() {
                               }
                             />
                           </Field>
+                        </div>
+                      ) : null}
+                      {onboardingActionError ? (
+                        <div className="text-sm text-danger">
+                          {friendlyError(onboardingActionError)}
                         </div>
                       ) : null}
                     </div>
