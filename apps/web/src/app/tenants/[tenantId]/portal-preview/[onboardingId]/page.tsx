@@ -89,6 +89,39 @@ function statusTone(status: string) {
   return "neutral" as const;
 }
 
+function maintenanceStatusDetail(
+  status: string,
+  dueDate?: string | null,
+  completedAt?: string | null,
+) {
+  if (status === "completed") {
+    return completedAt
+      ? `Completed ${formatDateTime(completedAt)}.`
+      : "Completed by the property team.";
+  }
+  if (status === "cancelled") {
+    return "Closed by the property team.";
+  }
+  if (status === "in_progress") {
+    return "A contractor or property team member is working on this.";
+  }
+  if (status === "assigned") {
+    return "Assigned to the right person or contractor.";
+  }
+  if (status === "awaiting_approval") {
+    return "Waiting for property team approval before work starts.";
+  }
+  if (status === "approved") {
+    return "Approved and waiting to be scheduled.";
+  }
+  if (status === "triaged") {
+    return dueDate
+      ? `Reviewed by the property team. Target date ${formatDate(dueDate)}.`
+      : "Reviewed by the property team.";
+  }
+  return "Submitted to the property team.";
+}
+
 function Metric({
   label: metricLabel,
   value,
@@ -288,6 +321,13 @@ function PreviewLoaded({
                           {request.description}
                         </p>
                       ) : null}
+                      <p className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-muted-foreground">
+                        {maintenanceStatusDetail(
+                          request.status,
+                          request.due_date,
+                          request.completed_at,
+                        )}
+                      </p>
                       <div className="text-xs text-muted-foreground">
                         Requested {formatDateTime(request.requested_at)}
                         {request.due_date ? ` · Due ${formatDate(request.due_date)}` : ""}

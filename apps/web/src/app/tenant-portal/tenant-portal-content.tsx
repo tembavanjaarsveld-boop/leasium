@@ -194,6 +194,39 @@ function maintenanceTone(status: string) {
   return "warning" as const;
 }
 
+function maintenanceStatusDetail(
+  status: string,
+  dueDate?: string | null,
+  completedAt?: string | null,
+) {
+  if (status === "completed") {
+    return completedAt
+      ? `Completed ${formatDateTime(completedAt)}.`
+      : "Completed by the property team.";
+  }
+  if (status === "cancelled") {
+    return "Closed by the property team.";
+  }
+  if (status === "in_progress") {
+    return "A contractor or property team member is working on this.";
+  }
+  if (status === "assigned") {
+    return "Assigned to the right person or contractor.";
+  }
+  if (status === "awaiting_approval") {
+    return "Waiting for property team approval before work starts.";
+  }
+  if (status === "approved") {
+    return "Approved and waiting to be scheduled.";
+  }
+  if (status === "triaged") {
+    return dueDate
+      ? `Reviewed by the property team. Target date ${formatDate(dueDate)}.`
+      : "Reviewed by the property team.";
+  }
+  return "Submitted to the property team.";
+}
+
 function priorityTone(priority: MaintenancePriority) {
   if (priority === "urgent") {
     return "danger" as const;
@@ -2704,6 +2737,13 @@ function TenantPortalContent({ token }: { token: string | null }) {
                             {request.description}
                           </div>
                         ) : null}
+                        <div className="mt-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                          {maintenanceStatusDetail(
+                            request.status,
+                            request.due_date,
+                            request.completed_at,
+                          )}
+                        </div>
                         {request.source_reference ? (
                           <div className="mt-2 text-sm">
                             {request.source_reference}
