@@ -978,6 +978,14 @@ export type TenantPortalNotificationPreferencesPayload = {
   compliance_reminders_enabled?: boolean;
 };
 
+export type TenantPortalContactChangeRequestPayload = {
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  billing_email?: string | null;
+  notes?: string | null;
+};
+
 export type TenantPortalMaintenanceRequestRecord = {
   id: string;
   title: string;
@@ -3041,6 +3049,20 @@ export function updateTenant(
   });
 }
 
+export function applyTenantContactChangeRequest(
+  tenantId: string,
+  requestId: string,
+  payload: { notes?: string | null } = {},
+) {
+  return request<TenantRecord>(
+    `/tenants/${tenantId}/contact-change-requests/${requestId}/apply`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export function deleteTenant(tenantId: string) {
   return request<void>(`/tenants/${tenantId}`, {
     method: "DELETE",
@@ -3776,6 +3798,38 @@ export function updateTenantPortalAccountNotificationPreferences(
   }
   return request<TenantPortalNotificationPreferencesRecord>(
     "/tenant-portal/notification-preferences",
+    init,
+  );
+}
+
+export function submitTenantPortalContactChangeRequest(
+  payload: TenantPortalContactChangeRequestPayload,
+  options: { token?: string | null; authToken?: string | null } = {},
+) {
+  const init: RequestInit = {
+    method: "POST",
+    body: JSON.stringify(payload),
+  };
+  if (options.authToken) {
+    return publicRequest<TenantPortalRecord>(
+      "/tenant-portal/contact-change-requests",
+      {
+        ...init,
+        headers: tenantPortalBearerHeaders(options.authToken),
+      },
+    );
+  }
+  if (options.token) {
+    return publicRequest<TenantPortalRecord>(
+      "/tenant-portal/contact-change-requests",
+      {
+        ...init,
+        headers: tenantPortalHeaders(options.token),
+      },
+    );
+  }
+  return request<TenantPortalRecord>(
+    "/tenant-portal/contact-change-requests",
     init,
   );
 }

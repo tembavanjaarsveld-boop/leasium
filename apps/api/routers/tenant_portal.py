@@ -21,9 +21,11 @@ from fastapi import (
 )
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from stewart.core.audit import audit_log
 from stewart.core.auth import _clerk_provider_id
 from stewart.core.db import utcnow
+from stewart.core.ids import uuid7
 from stewart.core.models import (
     AuditOutcome,
     DocumentCategory,
@@ -52,6 +54,7 @@ from apps.api.schemas.tenant_portal import (
     TenantPortalAuthRead,
     TenantPortalComplianceItemRead,
     TenantPortalComplianceRead,
+    TenantPortalContactChangeRequestCreate,
     TenantPortalDocumentRead,
     TenantPortalInvitePreviewRead,
     TenantPortalInvoiceLineRead,
@@ -82,6 +85,7 @@ router = APIRouter(prefix="/tenant-portal", tags=["tenant-portal"])
 PORTAL_TOKEN_HEADER = "x-tenant-portal-token"
 PORTAL_TOKEN_QUERY = "portal_token"
 PORTAL_PREFERENCES_KEY = "portal_notification_preferences"
+PORTAL_CONTACT_REQUESTS_KEY = "portal_contact_change_requests"
 ACTIVITY_HISTORY_KEY = "activity_history"
 READ_ROLES = {
     UserRole.owner,
@@ -96,6 +100,12 @@ PORTAL_UPLOAD_CATEGORIES = (
     DocumentCategory.lease,
     DocumentCategory.onboarding,
     DocumentCategory.other,
+)
+CONTACT_CHANGE_FIELDS: tuple[tuple[str, str], ...] = (
+    ("contact_name", "Primary contact"),
+    ("contact_email", "Contact email"),
+    ("contact_phone", "Phone"),
+    ("billing_email", "Billing email"),
 )
 
 
@@ -934,6 +944,29 @@ def _notification_preferences(tenant: Tenant) -> TenantPortalNotificationPrefere
     )
 
 
+def _contact_change_rows(
+    tenant: Tenant,
+    payload: TenantPortalContactChangeRequestCreate,
+) -> list[dict[str, object]]:
+    data = payload.model_dump(exclude_unset=True)
+    rows: list[dict[str, object]] = []
+    for field, label in CONTACT_CHANGE_FIELDS:
+        if field not in data:
+            continue
+        before = getattr(tenant, field)
+        after = data.get(field)
+        if before != after:
+            rows.append(
+                {
+                    "field": field,
+                    "label": label,
+                    "before": before,
+                    "after": after,
+                }
+            )
+    return rows
+
+
 def _portal_invite_sent_at(delivery_data: dict[str, object] | None) -> datetime | None:
     """Return the timestamp of the last portal-invite delivery, if any.
 
@@ -1740,6 +1773,69 @@ def update_notification_preferences(
     session.commit()
     session.refresh(scope.tenant)
     return _notification_preferences(scope.tenant)
+
+
+@router.post("/contact-change-requests", response_model=TenantPortalRead)
+def create_contact_change_request(
+    payload: TenantPortalContactChangeRequestCreate,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+    x_tenant_portal_token: Annotated[str | None, Header()] = None,
+) -> TenantPortalRead:
+    scope = _portal_scope_for_request(
+        request,
+        session,
+        settings,
+        authorization=authorization,
+        header_token=x_tenant_portal_token,
+    )
+    if scope.onboarding.status != TenantOnboardingStatus.applied:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Contact changes can be requested after onboarding is complete.",
+        )
+
+    changes = _contact_change_rows(scope.tenant, payload)
+    if not changes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Change at least one contact detail before submitting.",
+        )
+
+    now = utcnow()
+    metadata = dict(scope.tenant.tenant_metadata or {})
+    requests = metadata.get(PORTAL_CONTACT_REQUESTS_KEY)
+    if not isinstance(requests, list):
+        requests = []
+    request_entry = {
+        "id": str(uuid7()),
+        "status": "submitted",
+        "submitted_at": now.isoformat(),
+        "submitted_by": scope.auth.actor,
+        "notes": payload.notes,
+        "changes": changes,
+    }
+    requests.append(request_entry)
+    metadata[PORTAL_CONTACT_REQUESTS_KEY] = requests[-20:]
+    scope.tenant.tenant_metadata = metadata
+    flag_modified(scope.tenant, "tenant_metadata")
+    audit_log(
+        session,
+        actor=scope.auth.actor,
+        entity_id=scope.onboarding.entity_id,
+        action="submit_contact_change_request",
+        target_table="tenant",
+        target_id=scope.tenant.id,
+        tool_name="tenant_portal.contact_change_request",
+        tool_input={"fields": [change["field"] for change in changes]},
+        tool_output_summary="Tenant submitted a reviewed contact-change request.",
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(scope.tenant)
+    return _portal_read(scope, session)
 
 
 @router.post(

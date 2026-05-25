@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
@@ -26,6 +27,7 @@ from stewart.core.models import (
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.register import (
     TenantActivityItemRead,
+    TenantContactChangeRequestAction,
     TenantCreate,
     TenantDetailRead,
     TenantLeaseContextRead,
@@ -58,6 +60,7 @@ TENANT_METADATA_FIELDS: tuple[tuple[str, str], ...] = (
     ("emergency_contact_name", "Emergency contact"),
     ("emergency_contact_phone", "Emergency phone"),
 )
+PORTAL_CONTACT_REQUESTS_KEY = "portal_contact_change_requests"
 
 
 def _property_address(prop: Property) -> str | None:
@@ -785,6 +788,38 @@ def _reviewed_change_history(
                     status=str(entry.get("status") or "applied"),
                     notes=notes if isinstance(notes, str) else None,
                     changes=_change_rows(entry.get("changes")),
+            )
+        )
+
+    portal_requests = (tenant.tenant_metadata or {}).get(PORTAL_CONTACT_REQUESTS_KEY)
+    if isinstance(portal_requests, list):
+        for entry in portal_requests:
+            if not isinstance(entry, dict):
+                continue
+            request_id = entry.get("id")
+            occurred_at = (
+                _parse_datetime(entry.get("applied_at"))
+                or _parse_datetime(entry.get("submitted_at"))
+                or _parse_datetime(entry.get("dismissed_at"))
+            )
+            if occurred_at is None:
+                continue
+            source_uuid: UUID | None = None
+            if isinstance(request_id, str):
+                try:
+                    source_uuid = UUID(request_id)
+                except ValueError:
+                    source_uuid = None
+            notes = entry.get("notes")
+            rows.append(
+                TenantReviewedChangeRead(
+                    occurred_at=occurred_at,
+                    source="tenant_portal_contact_request",
+                    source_label="Tenant portal request",
+                    source_id=source_uuid,
+                    status=str(entry.get("status") or "submitted"),
+                    notes=notes if isinstance(notes, str) else None,
+                    changes=_change_rows(entry.get("changes")),
                 )
             )
 
@@ -852,6 +887,104 @@ def update_tenant(
         action="update",
         target_table="tenant",
         target_id=tenant.id,
+    )
+    session.commit()
+    session.refresh(tenant)
+    return tenant
+
+
+@router.post(
+    "/{tenant_id}/contact-change-requests/{request_id}/apply",
+    response_model=TenantRead,
+)
+def apply_contact_change_request(
+    tenant_id: UUID,
+    request_id: UUID,
+    payload: TenantContactChangeRequestAction,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Tenant:
+    tenant = _get_tenant_for_user(tenant_id, user, session, WRITE_ROLES)
+    metadata = dict(tenant.tenant_metadata or {})
+    portal_requests = metadata.get(PORTAL_CONTACT_REQUESTS_KEY)
+    if not isinstance(portal_requests, list):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact change request not found.",
+        )
+
+    request_index = next(
+        (
+            index
+            for index, entry in enumerate(portal_requests)
+            if isinstance(entry, dict) and entry.get("id") == str(request_id)
+        ),
+        None,
+    )
+    if request_index is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact change request not found.",
+        )
+    entry = portal_requests[request_index]
+    if not isinstance(entry, dict):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact change request not found.",
+        )
+    if entry.get("status") != "submitted":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only submitted contact change requests can be applied.",
+        )
+
+    changes = entry.get("changes")
+    if not isinstance(changes, list) or not changes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Contact change request has no applicable fields.",
+        )
+
+    allowed_fields = {"contact_name", "contact_email", "contact_phone", "billing_email"}
+    applied_fields: list[str] = []
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        field = change.get("field")
+        if not isinstance(field, str) or field not in allowed_fields:
+            continue
+        setattr(tenant, field, change.get("after"))
+        applied_fields.append(field)
+    if not applied_fields:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Contact change request has no applicable fields.",
+        )
+
+    now = utcnow()
+    entry = {
+        **entry,
+        "status": "applied",
+        "applied_at": now.isoformat(),
+        "applied_by_user_id": str(user.id),
+        "apply_notes": payload.notes,
+    }
+    portal_requests[request_index] = entry
+    metadata[PORTAL_CONTACT_REQUESTS_KEY] = portal_requests
+    tenant.tenant_metadata = metadata
+    flag_modified(tenant, "tenant_metadata")
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=tenant.entity_id,
+        action="apply_contact_change_request",
+        target_table="tenant",
+        target_id=tenant.id,
+        tool_name="tenants.contact_change_request_apply",
+        tool_input={"request_id": str(request_id), "fields": applied_fields},
+        tool_output_summary="Applied tenant portal contact-change request.",
+        data_classification="confidential",
     )
     session.commit()
     session.refresh(tenant)

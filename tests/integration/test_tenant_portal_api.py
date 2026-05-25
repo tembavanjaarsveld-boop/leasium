@@ -1265,6 +1265,55 @@ def test_tenant_portal_onboarding_submit_writes_submitted_data(
     assert tenant.legal_name == "Portal Tenant One Pty Ltd"
 
 
+def test_tenant_portal_contact_change_request_waits_for_operator_apply(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    onboarding.status = TenantOnboardingStatus.applied
+    session.commit()
+
+    response = client.post(
+        "/api/v1/tenant-portal/contact-change-requests",
+        headers={"x-tenant-portal-token": scope["token"]},
+        json={
+            "contact_name": "Avery Updated",
+            "contact_email": "avery.updated@example.com",
+            "contact_phone": "+61 400 111 333",
+            "billing_email": "accounts.updated@example.com",
+            "notes": "Please update my accounts contact.",
+        },
+    )
+
+    assert response.status_code == 200
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    assert tenant.contact_email == "avery@portal-one.example"
+    requests = tenant.tenant_metadata["portal_contact_change_requests"]
+    assert requests[0]["status"] == "submitted"
+    assert requests[0]["changes"][0]["field"] == "contact_name"
+
+    detail_response = client.get(f"/api/v1/tenants/{scope['tenant_id']}/detail")
+    assert detail_response.status_code == 200
+    change_request = detail_response.json()["reviewed_changes"][0]
+    assert change_request["source"] == "tenant_portal_contact_request"
+    assert change_request["status"] == "submitted"
+
+    apply_response = client.post(
+        f"/api/v1/tenants/{scope['tenant_id']}/contact-change-requests/{requests[0]['id']}/apply",
+        json={"notes": "Reviewed with tenant."},
+    )
+
+    assert apply_response.status_code == 200
+    assert apply_response.json()["contact_email"] == "avery.updated@example.com"
+    session.refresh(tenant)
+    assert tenant.contact_name == "Avery Updated"
+    assert tenant.billing_email == "accounts.updated@example.com"
+    assert tenant.tenant_metadata["portal_contact_change_requests"][0]["status"] == "applied"
+
+
 def test_tenant_portal_lease_questions_gate_signing_and_apply(
     client: TestClient,
     session: Session,

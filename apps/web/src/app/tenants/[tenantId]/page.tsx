@@ -53,6 +53,7 @@ import {
 } from "@/components/ui";
 import {
   applyPublicEnrichment,
+  applyTenantContactChangeRequest,
   cancelTenantOnboarding,
   applyTenantOnboarding,
   createDocumentIntakeFromDocument,
@@ -1030,6 +1031,12 @@ function TenantDetail() {
 
   const tenantDocuments = documentsQuery.data ?? [];
   const tenantReviewedChanges = tenantDetail?.reviewed_changes ?? [];
+  const pendingContactRequests = tenantReviewedChanges.filter(
+    (entry) =>
+      entry.source === "tenant_portal_contact_request" &&
+      entry.status === "submitted" &&
+      entry.source_id,
+  );
   const tenantEnrichmentHistoryRows = tenantEnrichmentHistory(tenant);
   const tenantSourceCitationRows = tenantSourceCitations(tenant);
   const latestTenantEvidence = latestEvidenceChangeSet(
@@ -1091,6 +1098,16 @@ function TenantDetail() {
       queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
       setEditing(false);
+    },
+  });
+
+  const applyContactRequestMutation = useMutation({
+    mutationFn: (requestId: string) =>
+      applyTenantContactChangeRequest(tenantId, requestId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenant", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenants"] });
     },
   });
 
@@ -1612,6 +1629,87 @@ function TenantDetail() {
                 </div>
               </dl>
             </SectionPanel>
+
+            {pendingContactRequests.length ? (
+              <SectionPanel
+                title="Tenant requests"
+                icon={<MessageSquare size={17} />}
+              >
+                <div className="grid gap-3 p-4 text-sm">
+                  {pendingContactRequests.map((request) => (
+                    <div
+                      key={request.source_id ?? request.occurred_at}
+                      className="grid gap-3 rounded-md border border-warning/30 bg-warning/5 p-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div className="font-medium">
+                            Contact change requested
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Submitted {formatDateTime(request.occurred_at)}
+                          </div>
+                        </div>
+                        <StatusBadge tone="warning">Review</StatusBadge>
+                      </div>
+                      <div className="grid gap-2">
+                        {request.changes.map((change) => (
+                          <div
+                            key={change.field}
+                            className="grid gap-1 rounded-md border border-border bg-white px-3 py-2"
+                          >
+                            <div className="text-xs font-semibold text-muted-foreground">
+                              {change.label}
+                            </div>
+                            <div className="grid gap-1 text-xs">
+                              <span className="text-muted-foreground">
+                                Current: {String(change.before ?? "-")}
+                              </span>
+                              <span className="font-medium">
+                                Requested: {String(change.after ?? "-")}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {request.notes ? (
+                        <p className="text-xs text-muted-foreground">
+                          {request.notes}
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {applyContactRequestMutation.error ? (
+                          <span className="text-sm text-danger">
+                            {friendlyError(applyContactRequestMutation.error)}
+                          </span>
+                        ) : null}
+                        <Button
+                          type="button"
+                          disabled={
+                            !request.source_id ||
+                            applyContactRequestMutation.isPending
+                          }
+                          onClick={() => {
+                            if (request.source_id) {
+                              applyContactRequestMutation.mutate(
+                                request.source_id,
+                              );
+                            }
+                          }}
+                        >
+                          {applyContactRequestMutation.isPending ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <Check size={16} />
+                          )}
+                          Apply request
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </SectionPanel>
+            ) : null}
 
             <SectionPanel
               title="Portal access"

@@ -59,8 +59,10 @@ import {
   getTenantPortalInvitePreview,
   MaintenancePriority,
   TenantPortalInvitePreviewRecord,
+  submitTenantPortalContactChangeRequest,
   submitTenantPortalOnboarding,
   tenantPortalDocumentDownloadUrl,
+  TenantPortalContactChangeRequestPayload,
   TenantPortalDocumentRecord,
   TenantLeaseQuestionRecord,
   TenantPortalMaintenanceRequestPayload,
@@ -625,7 +627,42 @@ function RecentActivityPanel({
   );
 }
 
-function ContactDetailsPanel({ portal }: { portal: TenantPortalRecord }) {
+function ContactDetailsPanel({
+  portal,
+  token,
+  accountAuthToken,
+  onSaved,
+}: {
+  portal: TenantPortalRecord;
+  token: string | null;
+  accountAuthToken: string | null;
+  onSaved: () => void;
+}) {
+  const [changeOpen, setChangeOpen] = useState(false);
+  const [changeForm, setChangeForm] =
+    useState<TenantPortalContactChangeRequestPayload>(() => ({
+      contact_name: portal.tenant.contact_name ?? "",
+      contact_email: portal.tenant.contact_email ?? "",
+      contact_phone: portal.tenant.contact_phone ?? "",
+      billing_email: portal.tenant.billing_email ?? "",
+      notes: "",
+    }));
+
+  useEffect(() => {
+    setChangeForm({
+      contact_name: portal.tenant.contact_name ?? "",
+      contact_email: portal.tenant.contact_email ?? "",
+      contact_phone: portal.tenant.contact_phone ?? "",
+      billing_email: portal.tenant.billing_email ?? "",
+      notes: "",
+    });
+  }, [
+    portal.tenant.billing_email,
+    portal.tenant.contact_email,
+    portal.tenant.contact_name,
+    portal.tenant.contact_phone,
+  ]);
+
   const contactRows = [
     ["Legal name", portal.tenant.legal_name],
     ["Trading name", portal.tenant.trading_name],
@@ -634,6 +671,25 @@ function ContactDetailsPanel({ portal }: { portal: TenantPortalRecord }) {
     ["Phone", portal.tenant.contact_phone],
     ["Billing email", portal.tenant.billing_email],
   ].filter(([, value]) => Boolean(value));
+
+  const contactChangeMutation = useMutation({
+    mutationFn: () =>
+      submitTenantPortalContactChangeRequest(changeForm, {
+        token,
+        authToken: accountAuthToken,
+      }),
+    onSuccess: () => {
+      setChangeOpen(false);
+      onSaved();
+    },
+  });
+
+  function setChangeField<K extends keyof TenantPortalContactChangeRequestPayload>(
+    field: K,
+    value: TenantPortalContactChangeRequestPayload[K],
+  ) {
+    setChangeForm((current) => ({ ...current, [field]: value }));
+  }
 
   return (
     <Panel
@@ -659,6 +715,89 @@ function ContactDetailsPanel({ portal }: { portal: TenantPortalRecord }) {
           If something looks wrong, send a note to the property team before
           signing or paying anything that depends on these details.
         </p>
+        {changeOpen ? (
+          <form
+            className="grid gap-3 rounded-md border border-border bg-muted/30 p-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              contactChangeMutation.mutate();
+            }}
+          >
+            <div className="text-sm font-semibold">Request a change</div>
+            <div className="grid gap-3">
+              <Field label="Contact name">
+                <Input
+                  value={changeForm.contact_name ?? ""}
+                  onChange={(event) =>
+                    setChangeField("contact_name", event.target.value)
+                  }
+                />
+              </Field>
+              <Field label="Contact email">
+                <Input
+                  type="email"
+                  value={changeForm.contact_email ?? ""}
+                  onChange={(event) =>
+                    setChangeField("contact_email", event.target.value)
+                  }
+                />
+              </Field>
+              <Field label="Phone">
+                <Input
+                  value={changeForm.contact_phone ?? ""}
+                  onChange={(event) =>
+                    setChangeField("contact_phone", event.target.value)
+                  }
+                />
+              </Field>
+              <Field label="Billing email">
+                <Input
+                  type="email"
+                  value={changeForm.billing_email ?? ""}
+                  onChange={(event) =>
+                    setChangeField("billing_email", event.target.value)
+                  }
+                />
+              </Field>
+              <Field label="Note for the property team">
+                <Input
+                  value={changeForm.notes ?? ""}
+                  onChange={(event) =>
+                    setChangeField("notes", event.target.value)
+                  }
+                />
+              </Field>
+            </div>
+            {contactChangeMutation.error ? (
+              <p className="text-sm text-danger">
+                {contactChangeMutation.error.message}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <SecondaryButton
+                type="button"
+                onClick={() => setChangeOpen(false)}
+              >
+                Cancel
+              </SecondaryButton>
+              <Button type="submit" disabled={contactChangeMutation.isPending}>
+                {contactChangeMutation.isPending ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Send size={16} />
+                )}
+                Send request
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <div className="justify-self-start">
+            <SecondaryButton type="button" onClick={() => setChangeOpen(true)}>
+              <PenLine size={15} />
+              Request change
+            </SecondaryButton>
+          </div>
+        )}
       </div>
     </Panel>
   );
@@ -3173,7 +3312,16 @@ function TenantPortalContent({ token }: { token: string | null }) {
           <aside className="grid content-start gap-5">
             <RecentActivityPanel activities={recentActivity} />
 
-            <ContactDetailsPanel portal={portal} />
+            <ContactDetailsPanel
+              portal={portal}
+              token={token}
+              accountAuthToken={
+                portal.auth.mode === "tenant_portal_account"
+                  ? accountAuthToken
+                  : null
+              }
+              onSaved={refreshPortal}
+            />
 
             <Panel title="Lease" icon={<Building2 size={18} />}>
               <dl className="grid gap-3 p-4 text-sm">

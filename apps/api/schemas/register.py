@@ -220,6 +220,10 @@ class TenantUpdate(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class TenantContactChangeRequestAction(BaseModel):
+    notes: str | None = None
+
+
 class TenantRead(ApiModel):
     id: UUID
     entity_id: UUID

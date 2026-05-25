@@ -230,6 +230,31 @@ class TenantPortalNotificationPreferencesUpdate(BaseModel):
     compliance_reminders_enabled: bool | None = None
 
 
+class TenantPortalContactChangeRequestCreate(BaseModel):
+    contact_name: str | None = None
+    contact_email: str | None = None
+    contact_phone: str | None = None
+    billing_email: str | None = None
+    notes: str | None = None
+
+    @field_validator(
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "billing_email",
+        "notes",
+        mode="before",
+    )
+    @classmethod
+    def _optional_text(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Value must be text.")
+        cleaned = value.strip()
+        return cleaned or None
+
+
 class TenantPortalMaintenanceRequestCreate(BaseModel):
     title: str
     description: str

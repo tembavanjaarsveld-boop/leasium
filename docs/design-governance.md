@@ -121,6 +121,10 @@ Progress notes:
   Contact Details. v1 is deliberately read-only so tenant edits do not bypass
   the reviewed onboarding/change-control path. This remains pending Remba
   review.
+- 2026-05-25 follow-up 2: Tenant portal Contact Details now includes a
+  reviewed change-request flow for contact name/email/phone/billing email.
+  Operators review and apply the request from tenant detail; legal/trading
+  identity remains operator-controlled. This remains pending Remba review.
 
 Remba decision:
 
