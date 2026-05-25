@@ -16,8 +16,8 @@ function ClerkNotConfigured() {
         <p className="text-sm text-muted-foreground">
           Clerk keys need to be added before invite acceptance can create a login.
         </p>
-        <Link className="text-sm font-semibold text-primary" href="/setup">
-          First workspace setup
+        <Link className="text-sm font-semibold text-primary" href="https://leasium.ai/welcome">
+          Open live Leasium
         </Link>
       </section>
     </main>
@@ -40,9 +40,9 @@ export default function SignUpPage() {
         />
         <Link
           className="text-sm font-semibold text-muted-foreground transition hover:text-primary"
-          href="/setup"
+          href="/welcome"
         >
-          First workspace setup
+          Back to welcome
         </Link>
       </div>
     </main>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ClerkProvider, SignInButton, SignUpButton, useAuth } from "@clerk/nextjs";
+import { ClerkProvider, SignInButton, useAuth } from "@clerk/nextjs";
 import { Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -11,7 +11,7 @@ import {
   useAuthLoadTimeout,
 } from "@/components/auth-config-notice";
 import { LeasiumMark } from "@/components/brand";
-import { Button, SecondaryButton } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { setApiAuthTokenProvider } from "@/lib/api";
 import { isPublicOperatorPath } from "@/lib/operator-routes";
 
@@ -58,8 +58,8 @@ function OperatorSignInRequired({ returnTo }: { returnTo: string }) {
           <div>
             <h2 className="text-base font-semibold">Operator access is required</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Use your invited operator login, or run first workspace setup if this is a
-              clean production workspace.
+              Use the email address your property team invited. If this login is not
+              recognised, ask an owner or admin to resend your operator invite.
             </p>
           </div>
         </div>
@@ -67,14 +67,11 @@ function OperatorSignInRequired({ returnTo }: { returnTo: string }) {
           <SignInButton mode="redirect" fallbackRedirectUrl={returnTo}>
             <Button type="button">Sign in</Button>
           </SignInButton>
-          <SignUpButton mode="redirect" fallbackRedirectUrl={returnTo}>
-            <SecondaryButton type="button">Create login</SecondaryButton>
-          </SignUpButton>
           <Link
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
-            href="/setup"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+            href="/welcome"
           >
-            First workspace setup
+            Back to welcome
           </Link>
         </div>
       </section>

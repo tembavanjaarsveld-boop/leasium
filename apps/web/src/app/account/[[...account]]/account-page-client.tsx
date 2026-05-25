@@ -61,9 +61,9 @@ function ClerkNotConfigured() {
           </Link>
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition hover:bg-muted"
-            href="/setup"
+            href="/welcome"
           >
-            First workspace setup
+            Back to welcome
           </Link>
         </div>
       </div>

@@ -184,12 +184,6 @@ export default function WelcomePage() {
                 <LogIn size={16} aria-hidden="true" />
                 Sign in
               </Link>
-              <Link
-                href="/setup"
-                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-leasium-slate-700 shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
-              >
-                First workspace setup
-              </Link>
             </div>
           </article>
 
@@ -368,12 +362,6 @@ export default function WelcomePage() {
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-leasium-blue px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-blue-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
                 >
                   Sign in <ArrowRight size={16} aria-hidden="true" />
-                </Link>
-                <Link
-                  href="/setup"
-                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-leasium-slate-700 shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
-                >
-                  First setup
                 </Link>
               </div>
         </article>
