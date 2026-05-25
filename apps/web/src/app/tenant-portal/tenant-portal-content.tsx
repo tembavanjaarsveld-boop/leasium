@@ -12,6 +12,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Bell,
   Building2,
+  ChevronDown,
   CheckCircle2,
   Download,
   FileText,
@@ -230,6 +231,15 @@ function onboardingReviewed(portal: TenantPortalRecord) {
 
 function onboardingApplied(portal: TenantPortalRecord) {
   return portal.onboarding.status === "applied";
+}
+
+function tenantOnboardingStatusLabel(
+  status: TenantPortalRecord["onboarding"]["status"],
+) {
+  if (status === "reviewed") {
+    return "In review";
+  }
+  return label(status);
 }
 
 function blockingLeaseQuestion(question: TenantLeaseQuestionRecord) {
@@ -984,17 +994,17 @@ function OnboardingPanel({
       portal.onboarding.status === "submitted"
         ? `Submitted ${formatDateTime(portal.onboarding.submitted_at)}. Your property manager will review and confirm shortly.`
         : portal.onboarding.status === "reviewed"
-          ? "Reviewed by your property manager. They will apply the updates to your record."
+          ? "Your property manager has reviewed your submission. The lease pack is next."
           : portal.onboarding.status === "applied"
             ? "Applied. Your contact details are now confirmed in Leasium."
-            : `Onboarding is ${label(portal.onboarding.status)}.`;
+            : `Onboarding is ${tenantOnboardingStatusLabel(portal.onboarding.status)}.`;
     return (
       <Panel
         title="Onboarding"
         icon={<UserRound size={18} />}
         actions={
           <StatusBadge tone={statusTone}>
-            {label(portal.onboarding.status)}
+            {tenantOnboardingStatusLabel(portal.onboarding.status)}
           </StatusBadge>
         }
       >
@@ -1041,8 +1051,8 @@ function OnboardingPanel({
         }}
       >
         <p className="text-sm text-muted-foreground">
-          Confirm the details below. Your property manager will review your
-          submission before any changes apply to your tenant record.
+          Confirm the core details below. Your property manager reviews this
+          before any tenant record changes.
         </p>
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Legal name">
@@ -1052,20 +1062,6 @@ function OnboardingPanel({
               onChange={(event) =>
                 setField("legal_name", event.target.value)
               }
-            />
-          </Field>
-          <Field label="Trading name (optional)">
-            <Input
-              value={form.trading_name ?? ""}
-              onChange={(event) =>
-                setField("trading_name", event.target.value)
-              }
-            />
-          </Field>
-          <Field label="ABN (optional)">
-            <Input
-              value={form.abn ?? ""}
-              onChange={(event) => setField("abn", event.target.value)}
             />
           </Field>
           <Field label="Contact name">
@@ -1089,49 +1085,79 @@ function OnboardingPanel({
           </Field>
           <Field label="Contact phone">
             <Input
+              required
               value={form.contact_phone ?? ""}
               onChange={(event) =>
                 setField("contact_phone", event.target.value)
               }
             />
           </Field>
-          <Field label="Billing email (optional)">
-            <Input
-              value={form.billing_email ?? ""}
-              onChange={(event) =>
-                setField("billing_email", event.target.value)
-              }
-            />
-          </Field>
-          <Field label="Insurance expiry (optional)">
-            <Input
-              type="date"
-              value={form.insurance_expiry_date ?? ""}
-              onChange={(event) =>
-                setField(
-                  "insurance_expiry_date",
-                  event.target.value || null,
-                )
-              }
-            />
-          </Field>
-          <Field label="Emergency contact name (optional)">
-            <Input
-              value={form.emergency_contact_name ?? ""}
-              onChange={(event) =>
-                setField("emergency_contact_name", event.target.value)
-              }
-            />
-          </Field>
-          <Field label="Emergency contact phone (optional)">
-            <Input
-              value={form.emergency_contact_phone ?? ""}
-              onChange={(event) =>
-                setField("emergency_contact_phone", event.target.value)
-              }
-            />
-          </Field>
         </div>
+        <details className="group rounded-md border border-border bg-muted/30 p-3">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold">
+            Add optional details
+            <ChevronDown
+              size={16}
+              className="shrink-0 transition group-open:rotate-180"
+            />
+          </summary>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <Field label="Trading name">
+              <Input
+                value={form.trading_name ?? ""}
+                onChange={(event) =>
+                  setField("trading_name", event.target.value)
+                }
+              />
+            </Field>
+            <Field label="ABN">
+              <Input
+                value={form.abn ?? ""}
+                onChange={(event) => setField("abn", event.target.value)}
+              />
+            </Field>
+            <Field label="Billing email">
+              <Input
+                value={form.billing_email ?? ""}
+                onChange={(event) =>
+                  setField("billing_email", event.target.value)
+                }
+              />
+            </Field>
+            <Field label="Insurance expiry">
+              <Input
+                type="date"
+                value={form.insurance_expiry_date ?? ""}
+                onChange={(event) =>
+                  setField("insurance_expiry_date", event.target.value || null)
+                }
+              />
+            </Field>
+            <Field label="Emergency contact name">
+              <Input
+                value={form.emergency_contact_name ?? ""}
+                onChange={(event) =>
+                  setField("emergency_contact_name", event.target.value)
+                }
+              />
+            </Field>
+            <Field label="Emergency contact phone">
+              <Input
+                value={form.emergency_contact_phone ?? ""}
+                onChange={(event) =>
+                  setField("emergency_contact_phone", event.target.value)
+                }
+              />
+            </Field>
+            <Field label="Notes for your property manager">
+              <textarea
+                className="min-h-24 w-full resize-y rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 md:col-span-2"
+                value={form.notes ?? ""}
+                onChange={(event) => setField("notes", event.target.value)}
+              />
+            </Field>
+          </div>
+        </details>
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
@@ -1145,13 +1171,6 @@ function OnboardingPanel({
             I confirm a current insurance policy is in place for this tenancy.
           </span>
         </label>
-        <Field label="Notes for your property manager (optional)">
-          <textarea
-            className="min-h-24 w-full resize-y rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
-            value={form.notes ?? ""}
-            onChange={(event) => setField("notes", event.target.value)}
-          />
-        </Field>
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
@@ -2030,7 +2049,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
                         : "primary"
                   }
                 >
-                  {label(portal.onboarding.status)}
+                  {tenantOnboardingStatusLabel(portal.onboarding.status)}
                 </StatusBadge>
               </div>
             </div>
@@ -2389,7 +2408,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <Metric
             label="Onboarding"
-            value={label(portal.onboarding.status)}
+            value={tenantOnboardingStatusLabel(portal.onboarding.status)}
             detail={
               portal.onboarding.submitted_at
                 ? `Submitted ${formatDateTime(portal.onboarding.submitted_at)}`
