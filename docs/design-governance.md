@@ -113,6 +113,10 @@ Progress notes:
   messaging once both the Xero draft and tenant email are recorded. This remains
   pending Remba review, especially around whether dispatch should live here,
   Settings, or both during pre-production.
+- 2026-05-25: Full tenant portal side rail now includes a tenant-scoped
+  Recent Activity panel so tenants can see the latest onboarding, lease,
+  document, maintenance, and preference updates without the page turning into
+  a crowded admin dashboard. This remains pending Remba review.
 
 Remba decision:
 

@@ -14,6 +14,7 @@ import {
   Building2,
   ChevronDown,
   CheckCircle2,
+  Clock3,
   Download,
   FileText,
   ImagePlus,
@@ -225,6 +226,139 @@ function maintenanceStatusDetail(
       : "Reviewed by the property team.";
   }
   return "Submitted to the property team.";
+}
+
+type TenantPortalActivityItem = {
+  key: string;
+  title: string;
+  detail: string;
+  timestamp: string;
+  tone: "primary" | "success" | "warning" | "neutral";
+};
+
+function buildTenantPortalActivity(portal: TenantPortalRecord) {
+  const items: TenantPortalActivityItem[] = [];
+
+  function addActivity(item: TenantPortalActivityItem | null) {
+    if (item?.timestamp) {
+      items.push(item);
+    }
+  }
+
+  addActivity(
+    portal.onboarding.submitted_at
+      ? {
+          key: `onboarding-${portal.onboarding.id}`,
+          title: "Onboarding sent",
+          detail: "Your details were sent to the property team for review.",
+          timestamp: portal.onboarding.submitted_at,
+          tone: "primary",
+        }
+      : portal.onboarding.last_sent_at
+        ? {
+            key: `invite-${portal.onboarding.id}`,
+            title: "Portal invite sent",
+            detail: "The property team sent this tenant portal invite.",
+            timestamp: portal.onboarding.last_sent_at,
+            tone: "neutral",
+          }
+        : null,
+  );
+
+  addActivity(
+    portal.lease_agreement.signed_at
+      ? {
+          key: "lease-signed",
+          title: "Lease signed",
+          detail: "Your lease pack has been signed.",
+          timestamp: portal.lease_agreement.signed_at,
+          tone: "success",
+        }
+      : null,
+  );
+
+  portal.lease_agreement.questions.forEach((question) => {
+    addActivity(
+      question.answered_at
+        ? {
+            key: `lease-question-answered-${question.id}`,
+            title: "Lease question answered",
+            detail: question.clause_reference
+              ? `The team responded to your question about ${question.clause_reference}.`
+              : "The team responded to one of your lease questions.",
+            timestamp: question.answered_at,
+            tone: "success",
+          }
+        : question.asked_at
+          ? {
+              key: `lease-question-asked-${question.id}`,
+              title: "Lease question sent",
+              detail: question.clause_reference
+                ? `Question raised for ${question.clause_reference}.`
+                : "A lease question was sent to the property team.",
+              timestamp: question.asked_at,
+              tone: "warning",
+            }
+          : null,
+    );
+  });
+
+  portal.compliance.uploaded_documents.forEach((document) => {
+    addActivity({
+      key: `document-${document.id}`,
+      title: "Document uploaded",
+      detail: `${document.filename} - ${categoryLabels[document.category]}.`,
+      timestamp: document.created_at,
+      tone: "success",
+    });
+  });
+
+  portal.maintenance_requests.forEach((request) => {
+    if (request.history.length) {
+      request.history.forEach((entry, index) => {
+        addActivity({
+          key: `maintenance-history-${request.id}-${index}`,
+          title: maintenanceEventLabel(entry.event),
+          detail: `${request.title} - ${entry.summary}`,
+          timestamp: entry.timestamp,
+          tone:
+            entry.status === "completed"
+              ? "success"
+              : entry.status === "cancelled"
+                ? "neutral"
+                : "primary",
+        });
+      });
+      return;
+    }
+
+    addActivity({
+      key: `maintenance-${request.id}`,
+      title: "Maintenance request sent",
+      detail: request.title,
+      timestamp: request.requested_at,
+      tone: "primary",
+    });
+  });
+
+  addActivity(
+    portal.notification_preferences.updated_at
+      ? {
+          key: "notification-preferences",
+          title: "Preferences saved",
+          detail: "Your portal notification preferences were updated.",
+          timestamp: portal.notification_preferences.updated_at,
+          tone: "neutral",
+        }
+      : null,
+  );
+
+  return items
+    .sort(
+      (left, right) =>
+        new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
+    )
+    .slice(0, 6);
 }
 
 function priorityTone(priority: MaintenancePriority) {
@@ -459,6 +593,35 @@ function TenantDocumentSummary({
         <Download size={14} />
       </span>
     </>
+  );
+}
+
+function RecentActivityPanel({
+  activities,
+}: {
+  activities: TenantPortalActivityItem[];
+}) {
+  return (
+    <Panel title="Recent Activity" icon={<Clock3 size={18} />}>
+      <div className="grid gap-3 p-4">
+        {activities.map((activity) => (
+          <div key={activity.key} className="grid gap-1 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-medium">{activity.title}</div>
+              <StatusBadge tone={activity.tone}>
+                {formatDate(activity.timestamp)}
+              </StatusBadge>
+            </div>
+            <p className="text-muted-foreground">{activity.detail}</p>
+          </div>
+        ))}
+        {!activities.length ? (
+          <div className="rounded-md border border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
+            Activity will appear here as your portal updates.
+          </div>
+        ) : null}
+      </div>
+    </Panel>
   );
 }
 
@@ -2419,6 +2582,8 @@ function TenantPortalContent({ token }: { token: string | null }) {
     );
   }
 
+  const recentActivity = buildTenantPortalActivity(portal);
+
   return (
     <PortalShell>
       <div className="mx-auto grid max-w-6xl gap-5 px-5 py-6">
@@ -2967,6 +3132,8 @@ function TenantPortalContent({ token }: { token: string | null }) {
           </div>
 
           <aside className="grid content-start gap-5">
+            <RecentActivityPanel activities={recentActivity} />
+
             <Panel title="Lease" icon={<Building2 size={18} />}>
               <dl className="grid gap-3 p-4 text-sm">
                 <div>
