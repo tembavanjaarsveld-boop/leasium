@@ -6,6 +6,24 @@ import { isPublicOperatorPath } from "@/lib/operator-routes";
 
 const ACCESS_COOKIE = "leasium_access";
 const ACCESS_TOKEN_INPUT_PREFIX = "leasium-access-v1:";
+const CANONICAL_WEB_HOST = "leasium.ai";
+const VERCEL_PROVIDER_HOST = "leasium.vercel.app";
+
+function hostWithoutPort(host: string | null) {
+  return (host ?? "").split(":")[0]?.toLowerCase() ?? "";
+}
+
+function redirectProviderAlias(request: NextRequest) {
+  if (hostWithoutPort(request.headers.get("host")) !== VERCEL_PROVIDER_HOST) {
+    return null;
+  }
+
+  const redirectUrl = request.nextUrl.clone();
+  redirectUrl.protocol = "https:";
+  redirectUrl.hostname = CANONICAL_WEB_HOST;
+  redirectUrl.port = "";
+  return NextResponse.redirect(redirectUrl, 308);
+}
 
 function accessPassword() {
   return process.env.LEASIUM_ACCESS_PASSWORD?.trim() ?? "";
@@ -93,6 +111,11 @@ const clerkProtectedMiddleware = clerkMiddleware(
 );
 
 export async function middleware(request: NextRequest, event: NextFetchEvent) {
+  const canonicalResponse = redirectProviderAlias(request);
+  if (canonicalResponse) {
+    return canonicalResponse;
+  }
+
   if (clerkServerConfigured()) {
     const accessResponse = await enforceAccessGate(request);
     if (accessResponse) {
