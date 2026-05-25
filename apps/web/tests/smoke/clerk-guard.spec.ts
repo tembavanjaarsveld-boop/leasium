@@ -8,7 +8,7 @@ test.describe("Clerk middleware guard", () => {
     "Runs only with the dedicated Clerk guard smoke environment.",
   );
 
-  test("redirects protected workspace routes before page data loads", async ({
+  test("lets workspace routes load for the client-side auth bridge", async ({
     request,
   }) => {
     const response = await request.get("/settings", {
@@ -16,13 +16,12 @@ test.describe("Clerk middleware guard", () => {
       maxRedirects: 0,
     });
 
-    expect(response.status()).toBe(307);
+    expect(response.status()).toBe(200);
     const location = response.headers().location ?? "";
-    expect(location).toContain("/sign-in");
-    expect(decodeURIComponent(location)).toContain("/settings");
+    expect(location).toBe("");
   });
 
-  test("sends signed-out bare domain traffic to the welcome hub", async ({
+  test("lets the workspace root load for the client-side auth bridge", async ({
     request,
   }) => {
     const response = await request.get("/", {
@@ -30,8 +29,8 @@ test.describe("Clerk middleware guard", () => {
       maxRedirects: 0,
     });
 
-    expect(response.status()).toBe(307);
-    expect(response.headers().location ?? "").toContain("/welcome");
+    expect(response.status()).toBe(200);
+    expect(response.headers().location ?? "").toBe("");
   });
 
   test("keeps public operator and tenant routes open", async ({ request }) => {

@@ -83,24 +83,6 @@ const clerkProtectedMiddleware = clerkMiddleware(
       return NextResponse.next();
     }
 
-    const authState = await auth();
-    if (!authState.userId) {
-      if (request.nextUrl.pathname === "/") {
-        const welcomeUrl = request.nextUrl.clone();
-        welcomeUrl.pathname = "/welcome";
-        welcomeUrl.search = "";
-        return NextResponse.redirect(welcomeUrl);
-      }
-
-      const signInUrl = request.nextUrl.clone();
-      signInUrl.pathname = "/sign-in";
-      signInUrl.searchParams.set(
-        "redirect_url",
-        `${request.nextUrl.pathname}${request.nextUrl.search}`,
-      );
-      return NextResponse.redirect(signInUrl);
-    }
-
     return NextResponse.next();
   },
   {
@@ -123,14 +105,6 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
     }
 
     if (isClerkProxyPath(request.nextUrl.pathname)) {
-      return clerkProtectedMiddleware(request, event);
-    }
-
-    if (request.nextUrl.pathname === "/") {
-      return NextResponse.next();
-    }
-
-    if (!isPublicOperatorPath(request.nextUrl.pathname)) {
       return clerkProtectedMiddleware(request, event);
     }
 
