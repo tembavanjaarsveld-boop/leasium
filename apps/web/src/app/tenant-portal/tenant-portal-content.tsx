@@ -2813,8 +2813,25 @@ function TenantPortalContent({ token }: { token: string | null }) {
               </div>
             </Panel>
 
-            <Panel title="Compliance" icon={<ShieldCheck size={18} />}>
+            <Panel
+              title="Compliance"
+              icon={<ShieldCheck size={18} />}
+              actions={
+                <StatusBadge tone={documentsComplete ? "success" : "warning"}>
+                  {!documentsRequired
+                    ? "Not required"
+                    : documentsComplete
+                      ? "Received"
+                      : "Needed"}
+                </StatusBadge>
+              }
+            >
               <div className="grid gap-3 p-4">
+                <p className="text-sm text-muted-foreground">
+                  {documentsRequired
+                    ? "Keep required compliance documents current here."
+                    : "No compliance documents are required right now. You can still upload supporting files if your property team asks for them."}
+                </p>
                 <div className="grid gap-3 md:grid-cols-3">
                   {portal.compliance.items.map((item) => (
                     <div
@@ -2834,6 +2851,18 @@ function TenantPortalContent({ token }: { token: string | null }) {
                       </div>
                     </div>
                   ))}
+                  {!portal.compliance.items.length ? (
+                    <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground md:col-span-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-semibold">Required documents</div>
+                        <StatusBadge tone="success">Not required</StatusBadge>
+                      </div>
+                      <div className="mt-2">
+                        No compliance document checklist is active for this
+                        tenancy.
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3">
