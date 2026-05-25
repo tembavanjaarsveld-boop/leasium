@@ -292,12 +292,17 @@ def _statement_pdf_bytes(statement: OwnerStatementRead, month: str) -> bytes:
     """Render a compact text PDF without introducing a new provider dependency."""
 
     lines = [
-        f"Owner statement - {statement.owner_identity}",
+        "LEASIUM OWNER STATEMENT",
+        "Review-only export. Not sent to owner.",
+        "",
+        f"Owner: {statement.owner_identity}",
         f"Month: {month}",
         "",
+        "Billing",
         f"Billing contact: {statement.billing_contact_name or 'Not recorded'}",
         f"Billing email: {statement.billing_email or 'Not recorded'}",
         "",
+        "Summary",
         f"Invoiced: {_format_money(statement.invoiced_cents)}",
         f"Paid: {_format_money(statement.paid_cents)}",
         f"Outstanding: {_format_money(statement.outstanding_cents)}",
@@ -305,15 +310,16 @@ def _statement_pdf_bytes(statement: OwnerStatementRead, month: str) -> bytes:
         f"Invoices: {statement.invoice_count}",
         "",
         "Property breakdown",
+        "Property | Invoiced | Paid | Outstanding | Invoices",
     ]
     for prop in statement.properties:
         lines.extend(
             [
-                f"- {prop.property_name}",
-                f"  Invoiced {_format_money(prop.invoiced_cents)} | "
-                f"Paid {_format_money(prop.paid_cents)} | "
-                f"Outstanding {_format_money(prop.outstanding_cents)} | "
-                f"Invoices {prop.invoice_count}",
+                (
+                    f"{prop.property_name} | {_format_money(prop.invoiced_cents)} | "
+                    f"{_format_money(prop.paid_cents)} | "
+                    f"{_format_money(prop.outstanding_cents)} | {prop.invoice_count}"
+                ),
             ]
         )
     lines.extend(
