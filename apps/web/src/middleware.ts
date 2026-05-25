@@ -6,7 +6,6 @@ import { isPublicOperatorPath } from "@/lib/operator-routes";
 
 const ACCESS_COOKIE = "leasium_access";
 const ACCESS_TOKEN_INPUT_PREFIX = "leasium-access-v1:";
-const CLERK_PROXY_HOSTS = new Set(["leasium.ai", "www.leasium.ai"]);
 
 function accessPassword() {
   return process.env.LEASIUM_ACCESS_PASSWORD?.trim() ?? "";
@@ -23,9 +22,8 @@ function clerkServerConfigured() {
   );
 }
 
-function clerkProxyEnabled(url: URL) {
-  return Boolean(process.env.NEXT_PUBLIC_CLERK_PROXY_URL?.trim()) ||
-    CLERK_PROXY_HOSTS.has(url.hostname);
+function clerkProxyEnabled() {
+  return Boolean(process.env.NEXT_PUBLIC_CLERK_PROXY_URL?.trim());
 }
 
 async function accessToken(password: string) {

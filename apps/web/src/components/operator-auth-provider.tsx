@@ -15,15 +15,9 @@ import { Button, SecondaryButton } from "@/components/ui";
 import { setApiAuthTokenProvider } from "@/lib/api";
 import { isPublicOperatorPath } from "@/lib/operator-routes";
 
-const PRODUCTION_CLERK_PROXY_URL = "https://leasium.ai/__clerk";
-
 function clerkProxyUrl() {
   const configuredProxyUrl = process.env.NEXT_PUBLIC_CLERK_PROXY_URL?.trim();
-  if (configuredProxyUrl) {
-    return configuredProxyUrl;
-  }
-
-  return process.env.NODE_ENV === "production" ? PRODUCTION_CLERK_PROXY_URL : undefined;
+  return configuredProxyUrl || undefined;
 }
 
 function OperatorAuthLoading() {
