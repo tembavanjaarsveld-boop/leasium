@@ -14,10 +14,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from stewart.core.models import BrandedCommunicationTemplate, UserRole
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.branded_templates import BrandedTemplateRead
-from stewart.core.models import BrandedCommunicationTemplate, UserRole
 
 router = APIRouter(
     prefix="/branded-communication-templates",
@@ -40,7 +40,7 @@ def list_branded_templates(
     session: Annotated[Session, Depends(get_session)],
     include_inactive: bool = False,
 ) -> list[BrandedCommunicationTemplate]:
-    assert_entity_role(user, entity_id, READ_ROLES)
+    assert_entity_role(session, user, entity_id, READ_ROLES)
     query = select(BrandedCommunicationTemplate).where(
         BrandedCommunicationTemplate.entity_id == entity_id,
         BrandedCommunicationTemplate.deleted_at.is_(None),
@@ -67,5 +67,5 @@ def get_branded_template(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Branded template not found.",
         )
-    assert_entity_role(user, template.entity_id, READ_ROLES)
+    assert_entity_role(session, user, template.entity_id, READ_ROLES)
     return template

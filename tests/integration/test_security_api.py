@@ -265,6 +265,7 @@ def test_owner_can_invite_and_update_operator_roles(
     assert created["email"] == "ops.team@example.com"
     assert created["display_name"] == "Ops Team"
     assert created["is_active"] is True
+    assert created["access_status"] == "invited"
     assert created["login_linked"] is False
     assert created["invite_email_status"] == "sent"
     assert created["invite_sent_at"] is not None
@@ -316,6 +317,7 @@ def test_owner_can_invite_and_update_operator_roles(
     updated = update_response.json()
     assert updated["display_name"] == "Operations Team"
     assert updated["is_active"] is False
+    assert updated["access_status"] == "disabled"
     assert updated["roles"][0]["role"] == "viewer"
     assert updated["notification_preferences"]["work_assignment_email_enabled"] is False
     assert updated["notification_preferences"]["work_assignment_sms_enabled"] is True
@@ -409,6 +411,63 @@ def test_operator_invite_accept_links_clerk_identity(
     assert member is not None
     assert member.auth_provider_id == "user_clerk_invitee"
     assert member.invite_token_hash is None
+
+
+def test_owner_can_unlink_operator_login(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    sent_urls: list[str] = []
+
+    def fake_send(invite, settings):  # noqa: ANN001, ARG001
+        sent_urls.append(invite.accept_url)
+        return DeliveryResult(channel="email", status="queued", provider="sendgrid")
+
+    monkeypatch.setattr(security_router, "send_operator_invite_email", fake_send)
+
+    create_response = client.post(
+        "/api/v1/security/members",
+        json={
+            "email": "unlink@example.com",
+            "display_name": "Unlink User",
+            "roles": [{"entity_id": str(entity.id), "role": "admin"}],
+        },
+    )
+    assert create_response.status_code == 201
+    token = parse_qs(urlparse(sent_urls[0]).query)["token"][0]
+    accept_response = client.post(
+        "/api/v1/security/invitations/accept",
+        json={
+            "token": token,
+            "auth_provider_id": "user_clerk_unlink",
+            "email": "unlink@example.com",
+            "display_name": "Unlink User",
+        },
+    )
+    assert accept_response.status_code == 200
+    member_id = accept_response.json()["member"]["id"]
+    assert accept_response.json()["member"]["access_status"] == "login_linked"
+
+    unlink_response = client.post(f"/api/v1/security/members/{member_id}/unlink-login")
+
+    assert unlink_response.status_code == 200
+    body = unlink_response.json()
+    assert body["access_status"] == "not_linked"
+    assert body["login_linked"] is False
+    assert body["invite_email_status"] == "not_sent"
+    member = session.get(AppUser, UUID(member_id))
+    assert member is not None
+    assert member.auth_provider_id is None
+    assert member.invite_token_hash is None
+    assert member.invite_accepted_at is None
+    audit_actions = session.scalars(
+        select(AuditAction.action)
+        .where(AuditAction.target_table == "app_user")
+        .order_by(AuditAction.occurred_at)
+    ).all()
+    assert audit_actions[-1] == "unlink"
 
 
 def test_security_mutations_require_owner_or_admin(

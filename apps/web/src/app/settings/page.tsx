@@ -63,6 +63,7 @@ import {
   startXeroOAuth,
   updateSecurityMember,
   updateChargeRule,
+  unlinkSecurityMemberLogin,
   updateXeroConnection,
   type XeroContactApplyPreviewRecord,
   type XeroChartTaxValidationPreviewRecord,
@@ -351,6 +352,32 @@ function paymentConfidenceTone(
 
 function roleForEntity(member: SecurityMemberRecord, entityId: string) {
   return member.roles.find((role) => role.entity_id === entityId);
+}
+
+function accessStatusTone(member: SecurityMemberRecord): StatusTone {
+  if (member.access_status === "login_linked") {
+    return "success";
+  }
+  if (member.access_status === "invited") {
+    return "primary";
+  }
+  if (member.access_status === "disabled") {
+    return "neutral";
+  }
+  return "warning";
+}
+
+function accessStatusLabel(member: SecurityMemberRecord) {
+  if (member.access_status === "login_linked") {
+    return "Login linked";
+  }
+  if (member.access_status === "invited") {
+    return "Invited";
+  }
+  if (member.access_status === "disabled") {
+    return "Disabled";
+  }
+  return "Not linked";
 }
 
 function inviteTone(member: SecurityMemberRecord): StatusTone {
@@ -1267,6 +1294,13 @@ function SettingsWorkspace() {
     },
   });
 
+  const unlinkLoginMutation = useMutation({
+    mutationFn: (memberId: string) => unlinkSecurityMemberLogin(memberId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["security-workspace"] });
+    },
+  });
+
   const memberMutation = useMutation({
     mutationFn: ({
       memberId,
@@ -1651,6 +1685,13 @@ function SettingsWorkspace() {
               : "Could not send the operator invite."}
           </div>
         ) : null}
+        {unlinkLoginMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {unlinkLoginMutation.error instanceof Error
+              ? unlinkLoginMutation.error.message
+              : "Could not unlink the operator login."}
+          </div>
+        ) : null}
 
         {activeTab === "security" ? (
           <>
@@ -1861,6 +1902,9 @@ function SettingsWorkspace() {
                       const isSendingInvite =
                         resendInviteMutation.isPending &&
                         resendInviteMutation.variables === member.id;
+                      const isUnlinking =
+                        unlinkLoginMutation.isPending &&
+                        unlinkLoginMutation.variables === member.id;
                       return (
                         <tr
                           key={member.id}
@@ -1876,14 +1920,15 @@ function SettingsWorkspace() {
                           </td>
                           <td className="px-3 py-3">
                             <div className="flex flex-wrap gap-2">
-                              <StatusBadge
-                                tone={member.is_active ? "success" : "neutral"}
-                              >
-                                {member.is_active ? "Active" : "Inactive"}
+                              <StatusBadge tone={accessStatusTone(member)}>
+                                {accessStatusLabel(member)}
                               </StatusBadge>
-                              <StatusBadge tone={inviteTone(member)}>
-                                {inviteLabel(member)}
-                              </StatusBadge>
+                              {member.access_status !== "login_linked" &&
+                              member.access_status !== "disabled" ? (
+                                <StatusBadge tone={inviteTone(member)}>
+                                  {inviteLabel(member)}
+                                </StatusBadge>
+                              ) : null}
                             </div>
                             <div className="mt-2 max-w-48 text-xs text-muted-foreground">
                               {member.invite_email_detail}
@@ -1984,6 +2029,28 @@ function SettingsWorkspace() {
                                     <Send size={14} />
                                   )}
                                   Send invite
+                                </SecondaryButton>
+                              ) : null}
+                              {member.login_linked && !isSelf ? (
+                                <SecondaryButton
+                                  type="button"
+                                  disabled={
+                                    isUnlinking ||
+                                    !securityQuery.data?.can_manage_security
+                                  }
+                                  onClick={() =>
+                                    unlinkLoginMutation.mutate(member.id)
+                                  }
+                                >
+                                  {isUnlinking ? (
+                                    <Loader2
+                                      size={14}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <KeyRound size={14} />
+                                  )}
+                                  Unlink login
                                 </SecondaryButton>
                               ) : null}
                               <SecondaryButton

@@ -1242,7 +1242,7 @@ function LeaseAgreementPanel({
 
   return (
     <Panel
-      title="Lease agreement"
+      title="Lease questions and signing"
       icon={<PenLine size={18} />}
       actions={
         <StatusBadge tone={leaseAgreementTone(agreement.status)}>
@@ -1253,8 +1253,8 @@ function LeaseAgreementPanel({
       <div className="grid gap-4 p-4">
         <div className="grid gap-2 text-sm text-muted-foreground">
           <p>
-            Ask agreement questions here before signing. Your property team can
-            answer from your tenant record.
+            Ask lease questions here before signing. Signing unlocks after the
+            property team reviews your details and required documents.
           </p>
           {blockingCount ? (
             <p className="font-medium text-warning-strong">
@@ -2014,9 +2014,9 @@ function TenantPortalContent({ token }: { token: string | null }) {
                   Let&apos;s get your tenancy ready.
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Complete the essentials here first. Maintenance, payments,
-                  and the full document library unlock after your property
-                  team finishes the onboarding review.
+                  Create your account, confirm your details, upload requested
+                  documents, ask any lease questions, then sign once the
+                  property team review is complete.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -2075,15 +2075,6 @@ function TenantPortalContent({ token }: { token: string | null }) {
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="grid gap-5">
               <OnboardingPanel
-                portal={portal}
-                token={token}
-                accountAuthToken={accountAuthToken}
-                onSaved={() => {
-                  refreshPortal();
-                }}
-              />
-
-              <LeaseAgreementPanel
                 portal={portal}
                 token={token}
                 accountAuthToken={accountAuthToken}
@@ -2237,6 +2228,15 @@ function TenantPortalContent({ token }: { token: string | null }) {
                   </div>
                 </div>
               </Panel>
+
+              <LeaseAgreementPanel
+                portal={portal}
+                token={token}
+                accountAuthToken={accountAuthToken}
+                onSaved={() => {
+                  refreshPortal();
+                }}
+              />
             </div>
 
             <aside className="grid content-start gap-5">

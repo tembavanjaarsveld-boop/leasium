@@ -348,6 +348,7 @@ export type SecurityMemberRecord = {
   email: string;
   display_name: string;
   is_active: boolean;
+  access_status: "disabled" | "login_linked" | "invited" | "not_linked" | string;
   login_linked: boolean;
   invite_email_status:
     | "not_sent"
@@ -2439,6 +2440,15 @@ export function updateSecurityMember(
 export function resendSecurityMemberInvite(memberId: string) {
   return request<SecurityMemberInviteRecord>(
     `/security/members/${memberId}/invite`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function unlinkSecurityMemberLogin(memberId: string) {
+  return request<SecurityMemberRecord>(
+    `/security/members/${memberId}/unlink-login`,
     {
       method: "POST",
     },

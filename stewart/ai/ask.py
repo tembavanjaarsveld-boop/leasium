@@ -32,8 +32,11 @@ class AskError(RuntimeError):
 
 
 ASK_GUARDRAILS = [
-    "Ask Leasium is read-only. It does not change records or send provider messages.",
-    "Every factual claim must include a citation. The model is instructed to refuse to guess when context is missing.",
+    "Read-only: Ask Leasium does not change records or send provider messages.",
+    (
+        "Every factual claim must include a citation. The model is instructed "
+        "to refuse to guess when context is missing."
+    ),
 ]
 
 

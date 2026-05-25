@@ -105,7 +105,11 @@ def _contractor_channel_receipt(
     if channel == "email" and not recipient_email:
         recipient_email = contractor_recipient if "@" in (contractor_recipient or "") else None
     if channel == "sms" and not recipient_phone:
-        recipient_phone = contractor_recipient if (contractor_recipient or "").strip().startswith("+") else None
+        recipient_phone = (
+            contractor_recipient
+            if (contractor_recipient or "").strip().startswith("+")
+            else None
+        )
 
     detail = _text(latest_receipt.get("error")) or _text(send.get("error"))
     provider_message_id = (
@@ -118,11 +122,41 @@ def _contractor_channel_receipt(
     template_version = _text(send.get("template_version")) or _text(
         latest_receipt.get("template_version")
     )
+    if template_key is None and channel == "email":
+        template_key = "maintenance_contractor_update"
+    if template_key is None and channel == "sms":
+        template_key = "maintenance_contractor_sms"
+    if template_version is None and template_key is not None:
+        template_version = "v1"
     attempt_count = _int(send.get("retry_count"))
+    if attempt_count == 0 and send:
+        attempt_count = 1
     delivered = status_value in delivered_statuses
 
     body = _text(send.get("body"))
     subject = _text(send.get("subject"))
+    provider_history = _provider_history_from_metadata(delivery_dict.get("history"))
+    if not provider_history and send:
+        provider_history = [
+            WorkAssignmentProviderHistoryRead(
+                event=f"contractor_{channel}_attempted",
+                channel=channel,
+                status=status_value,
+                raw_event=None,
+                provider=provider,
+                attempted_at=_text(send.get("attempted_at")),
+                received_at=None,
+                recipient_email=recipient_email,
+                recipient_phone=recipient_phone,
+                provider_message_id=provider_message_id,
+                error=detail,
+                template_key=template_key,
+                template_version=template_version,
+                delivery_trigger=None,
+                recovery_of_generated_at=None,
+                delivery_attempt_count=attempt_count,
+            )
+        ]
     rendered_preview: WorkAssignmentRenderedMessagePreviewRead | None = None
     if body and provider:
         rendered_preview = WorkAssignmentRenderedMessagePreviewRead(
@@ -158,9 +192,7 @@ def _contractor_channel_receipt(
         delivery_attempt_count=attempt_count,
         message_sent=delivered,
         action_available=False,
-        provider_history=_provider_history_from_metadata(
-            delivery_dict.get("history")
-        ),
+        provider_history=provider_history,
         rendered_message_preview=rendered_preview,
     )
 

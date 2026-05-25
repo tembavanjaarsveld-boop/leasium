@@ -1,6 +1,12 @@
 "use client";
 
-import { SignIn, UserButton, useAuth, useUser } from "@clerk/nextjs";
+import {
+  SignIn,
+  SignOutButton,
+  UserButton,
+  useAuth,
+  useUser,
+} from "@clerk/nextjs";
 import {
   ArrowRight,
   Building2,
@@ -128,6 +134,7 @@ function AccountRouter() {
   const [routeState, setRouteState] = useState<RouteState>("idle");
   const [routeError, setRouteError] = useState<string | null>(null);
   const authTimedOut = useAuthLoadTimeout(isLoaded);
+  const signedInEmail = user?.primaryEmailAddress?.emailAddress ?? "";
 
   useEffect(() => {
     let cancelled = false;
@@ -250,16 +257,24 @@ function AccountRouter() {
         <p className="text-sm leading-relaxed text-muted-foreground">
           {routeState === "error"
             ? routeError
-            : "Operators need an operator invite. Tenants need to open their tenant invite email once so Leasium can connect the login to the right portal."}
+            : signedInEmail
+              ? `${signedInEmail} signed in successfully, but Leasium could not match that email to an operator or tenant portal yet.`
+              : "You signed in successfully, but Leasium could not match this login to an operator or tenant portal yet."}
         </p>
         <div className="grid gap-3 rounded-xl border border-border bg-leasium-slate-50 p-4 text-sm">
           <div className="flex items-start gap-2">
             <CheckCircle2 className="mt-0.5 text-success-strong" size={16} />
-            <span>Already a tenant? Ask the property team for a fresh portal link.</span>
+            <span>
+              Operator? Ask an owner/admin to add this exact email as an
+              operator or resend the operator invite.
+            </span>
           </div>
           <div className="flex items-start gap-2">
             <CheckCircle2 className="mt-0.5 text-success-strong" size={16} />
-            <span>Already an operator? Ask an owner/admin to resend your invite.</span>
+            <span>
+              Tenant? Open the tenant invite email first. That one-time link
+              connects this login to the correct tenant portal.
+            </span>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -276,6 +291,14 @@ function AccountRouter() {
           >
             Tenant portal
           </Link>
+          <SignOutButton redirectUrl="/welcome">
+            <button
+              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition hover:bg-muted"
+              type="button"
+            >
+              Use another login
+            </button>
+          </SignOutButton>
         </div>
       </div>
     </AccountShell>

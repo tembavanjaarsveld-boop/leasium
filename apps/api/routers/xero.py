@@ -394,7 +394,8 @@ def _accounting_freshness(
             )
         if approved_unsynced_invoice_count > 0:
             summary_parts.append(
-                f"{approved_unsynced_invoice_count} approved {invoice_label} still need Xero draft creation"
+                f"{approved_unsynced_invoice_count} approved {invoice_label} "
+                "still need Xero draft creation"
             )
         summary = "; ".join(summary_parts) + "."
     else:
@@ -1528,7 +1529,7 @@ def _freshness_exception_from_status(
         label="Payment reconciliation freshness needs review",
         detail=freshness.summary,
         action=(
-            "Preview provider payments before relying on the accounting snapshot "
+            "Run preview payments from the provider before relying on the accounting snapshot "
             "for Xero-linked invoices."
         ),
         next_action="preview_payment_reconciliation",

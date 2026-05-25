@@ -4,7 +4,6 @@ Backend-only v1 of the owner monthly statements feature.
 """
 
 from datetime import date
-from uuid import UUID
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -12,13 +11,13 @@ from sqlalchemy.orm import Session
 from stewart.core.models import (
     BillingDraft,
     BillingDraftStatus,
+    DocumentCategory,
     Entity,
     InvoiceDraft,
     InvoiceDraftStatus,
     Property,
     PropertyType,
     StoredDocument,
-    DocumentCategory,
 )
 
 
@@ -43,16 +42,6 @@ def _seed_owner_with_invoices(
 
     entity = _entity(session)
     # Each invoice needs a billing_draft + a stored_document.
-    bd = BillingDraft(
-        entity_id=entity.id,
-        title=f"Billing for {trust_name}",
-        currency="AUD",
-        status=BillingDraftStatus.approved,
-        billed_total_cents=0,
-        paid_total_cents=0,
-    )
-    session.add(bd)
-    session.flush()
     doc = StoredDocument(
         entity_id=entity.id,
         filename="owner-statement-seed.pdf",
@@ -61,6 +50,15 @@ def _seed_owner_with_invoices(
         category=DocumentCategory.invoice,
     )
     session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title=f"Billing for {trust_name}",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    session.add(bd)
     session.flush()
 
     property_ids: list[str] = []
@@ -244,14 +242,6 @@ def test_owner_statements_unattributed_bucket(
     """A property with no owner identification falls into 'Unattributed'."""
 
     entity = _entity(session)
-    bd = BillingDraft(
-        entity_id=entity.id,
-        title="Unattributed Billing",
-        currency="AUD",
-        status=BillingDraftStatus.approved,
-        billed_total_cents=0,
-        paid_total_cents=0,
-    )
     doc = StoredDocument(
         entity_id=entity.id,
         filename="unattr.pdf",
@@ -259,7 +249,16 @@ def test_owner_statements_unattributed_bucket(
         file_data=b"x",
         category=DocumentCategory.invoice,
     )
-    session.add_all([bd, doc])
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Unattributed Billing",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    session.add(bd)
     session.flush()
     prop = Property(
         entity_id=entity.id,

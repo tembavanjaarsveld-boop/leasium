@@ -203,7 +203,7 @@ def list_activity(
 ) -> ActivityFeedRead:
     """Return the most recent audit rows for `entity_id`, newest first."""
 
-    assert_entity_role(user, entity_id, READ_ROLES)
+    assert_entity_role(session, user, entity_id, READ_ROLES)
 
     fetch_limit = limit + 1
     rows = list(

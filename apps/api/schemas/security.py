@@ -81,6 +81,7 @@ class SecurityMemberRead(ApiModel):
     email: str
     display_name: str
     is_active: bool
+    access_status: Literal["disabled", "login_linked", "invited", "not_linked"]
     login_linked: bool
     invite_email_status: OperatorInviteStatus
     invite_email_detail: str

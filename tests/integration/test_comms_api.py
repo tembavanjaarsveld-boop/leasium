@@ -456,6 +456,7 @@ def test_comms_queue_rent_review_without_formula_surfaces_with_needs_rule(
     prop = Property(
         entity_id=entity.id,
         name="No-Formula House",
+        street_address="9 No Formula Street",
         property_type=PropertyType.commercial_retail,
     )
     session.add(prop)
@@ -506,6 +507,7 @@ def test_comms_queue_rent_review_skips_far_future_review(
     prop = Property(
         entity_id=entity.id,
         name="Far Future",
+        street_address="1 Far Future Road",
         property_type=PropertyType.commercial_retail,
     )
     session.add(prop)

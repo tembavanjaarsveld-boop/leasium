@@ -3,7 +3,7 @@
 import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -185,6 +185,8 @@ def _bootstrap_clerk_provider_id(authorization: str | None, settings: Settings) 
 
 
 def _invite_detail(member: AppUser) -> str:
+    if not member.is_active:
+        return "This operator is disabled and cannot access Leasium."
     if member.auth_provider_id or member.invite_status == OperatorInviteStatus.accepted:
         return "Provider login is linked for this operator."
     if member.invite_status == OperatorInviteStatus.sent:
@@ -198,6 +200,18 @@ def _invite_detail(member: AppUser) -> str:
     if member.invite_status == OperatorInviteStatus.revoked:
         return "The last operator invite was revoked."
     return "No operator invite email has been sent yet; access is recorded only."
+
+
+def _member_access_status(
+    member: AppUser,
+) -> Literal["disabled", "login_linked", "invited", "not_linked"]:
+    if not member.is_active:
+        return "disabled"
+    if member.auth_provider_id or member.invite_status == OperatorInviteStatus.accepted:
+        return "login_linked"
+    if member.invite_status == OperatorInviteStatus.sent:
+        return "invited"
+    return "not_linked"
 
 
 def _notification_preferences(member: AppUser) -> SecurityNotificationPreferences:
@@ -294,6 +308,7 @@ def _member_read(
         email=member.email,
         display_name=member.display_name,
         is_active=member.is_active,
+        access_status=_member_access_status(member),
         login_linked=login_linked,
         invite_email_status=OperatorInviteStatus.accepted if login_linked else member.invite_status,
         invite_email_detail=_invite_detail(member),
@@ -689,6 +704,49 @@ def resend_security_member_invite(
         delivery_status=result.status,
         delivery_detail=result.error,
     )
+
+
+@router.post("/members/{member_id}/unlink-login", response_model=SecurityMemberRead)
+def unlink_security_member_login(
+    member_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> SecurityMemberRead:
+    _assert_can_manage_security(session, user)
+    member = session.get(AppUser, member_id)
+    if member is None or member.organisation_id != user.organisation_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
+    if member.id == user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot unlink your own operator login.",
+        )
+    if not member.auth_provider_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This operator does not have a linked provider login.",
+        )
+
+    member.auth_provider_id = None
+    member.invite_status = OperatorInviteStatus.not_sent
+    member.invite_accepted_at = None
+    member.invite_token_hash = None
+    member.invite_expires_at = None
+    member.invite_last_error = "Provider login unlinked by an owner/admin."
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        target_table="app_user",
+        target_id=member.id,
+        action="unlink",
+        tool_name="security.member_unlink_login",
+        tool_input={"email": member.email},
+    )
+    session.commit()
+    session.refresh(member)
+    roles_by_user = _role_rows(session, user.organisation_id)
+    return _member_read(member, roles_by_user)
 
 
 @router.post("/invitations/accept", response_model=SecurityInviteAcceptRead)
