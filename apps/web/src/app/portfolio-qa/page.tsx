@@ -153,10 +153,26 @@ type SourceEvidence = {
 
 const tabs: Array<{ id: QaTab; label: string; description: string }> = [
   { id: "issues", label: "Data QA", description: "Missing or odd records" },
-  { id: "contacts", label: "Tenant contacts", description: "Clean invite details" },
-  { id: "sources", label: "Source history", description: "Spreadsheet and intake trails" },
-  { id: "onboarding", label: "Onboarding prep", description: "Ready or blocked" },
-  { id: "billing", label: "Billing drafts", description: "Prepare internal drafts" },
+  {
+    id: "contacts",
+    label: "Tenant contacts",
+    description: "Clean invite details",
+  },
+  {
+    id: "sources",
+    label: "Source history",
+    description: "Spreadsheet and intake trails",
+  },
+  {
+    id: "onboarding",
+    label: "Onboarding prep",
+    description: "Ready or blocked",
+  },
+  {
+    id: "billing",
+    label: "Billing drafts",
+    description: "Prepare internal drafts",
+  },
 ];
 
 function friendlyError(error: unknown) {
@@ -374,10 +390,13 @@ function registerImportRows({
   metadata: Record<string, unknown>;
 }): SourceRow[] {
   return sourceHistoryRowsFromMetadata(metadata).map((entry, index) => {
-    const filename = textValue(entry.filename) ?? metadataText(metadata, "source_filename");
-    const sheet = textValue(entry.sheet) ?? metadataText(metadata, "source_sheet");
+    const filename =
+      textValue(entry.filename) ?? metadataText(metadata, "source_filename");
+    const sheet =
+      textValue(entry.sheet) ?? metadataText(metadata, "source_sheet");
     const row = textValue(entry.row) ?? numberValue(entry.row);
-    const sourceHint = textValue(entry.source_hint) ?? metadataText(metadata, "source_hint");
+    const sourceHint =
+      textValue(entry.source_hint) ?? metadataText(metadata, "source_hint");
     const changes = evidenceChangesFromUnknown(entry.changes);
     return {
       id: `${kind.toLowerCase()}-register-${title}-${index}`,
@@ -386,19 +405,27 @@ function registerImportRows({
       detail:
         [filename, sheet ? `${sheet}${row ? ` row ${row}` : ""}` : null]
           .filter(Boolean)
-          .join(" / ") || sourceHint || "Register import",
+          .join(" / ") ||
+        sourceHint ||
+        "Register import",
       source: "Register import",
       href,
       evidence: {
         title: `${title} register import`,
-        description: "Workbook action, reviewed field changes, and source row provenance.",
-        sourceDocument: filename ? { label: filename, detail: "Imported workbook" } : "Imported workbook",
+        description:
+          "Workbook action, reviewed field changes, and source row provenance.",
+        sourceDocument: filename
+          ? { label: filename, detail: "Imported workbook" }
+          : "Imported workbook",
         sourceLocation: sourceLocationFromParts({ sheet, row, sourceHint }),
-        confidence: numberValue(entry.confidence) ?? numberValue(metadata.confidence),
+        confidence:
+          numberValue(entry.confidence) ?? numberValue(metadata.confidence),
         changes,
         history: [
           {
-            label: changes.length ? "Import action applied" : "Import source recorded",
+            label: changes.length
+              ? "Import action applied"
+              : "Import source recorded",
             description:
               sourceHint ??
               [filename, sheet ? `${sheet}${row ? ` row ${row}` : ""}` : null]
@@ -423,7 +450,9 @@ function citationRows({
   href: string;
   metadata: Record<string, unknown>;
 }): SourceRow[] {
-  const citations = isRecord(metadata.source_citations) ? metadata.source_citations : null;
+  const citations = isRecord(metadata.source_citations)
+    ? metadata.source_citations
+    : null;
   if (!citations) {
     return [];
   }
@@ -438,7 +467,9 @@ function citationRows({
         field,
         label: fieldLabel(field),
         before: null,
-        after: textValue(isRecord(source) ? source.citation : null) ?? location.label,
+        after:
+          textValue(isRecord(source) ? source.citation : null) ??
+          location.label,
         sourceLocation: location,
         confidence: confidenceValue(source),
       } satisfies EvidenceFieldChange;
@@ -457,7 +488,8 @@ function citationRows({
       href,
       evidence: {
         title: `${title} field citations`,
-        description: "Reviewed source citations stored against individual fields.",
+        description:
+          "Reviewed source citations stored against individual fields.",
         sourceDocument: "Reviewed evidence",
         changes,
         history: changes.map((change) => ({
@@ -487,14 +519,20 @@ function propertyApplyRows(property: PropertyRecord): SourceRow[] {
       kind: "Property",
       title: property.name,
       detail:
-        [documentType ? label(documentType) : null, shortId(intakeId) ?? shortId(documentId)]
+        [
+          documentType ? label(documentType) : null,
+          shortId(intakeId) ?? shortId(documentId),
+        ]
           .filter(Boolean)
           .join(" / ") || "Smart Intake apply history",
       source: "Smart Intake",
-      href: intakeId ? `/intake?review=${intakeId}` : `/properties?entity_id=${property.entity_id}&property_id=${property.id}`,
+      href: intakeId
+        ? `/intake?review=${intakeId}`
+        : `/properties?entity_id=${property.entity_id}&property_id=${property.id}`,
       evidence: {
         title: `${property.name} Smart Intake history`,
-        description: "Source document and before/after changes applied to this property.",
+        description:
+          "Source document and before/after changes applied to this property.",
         sourceDocument: {
           label: documentType ? label(documentType) : "Smart Intake document",
           href: intakeId ? `/intake?review=${intakeId}` : undefined,
@@ -545,7 +583,8 @@ function tenantEnrichmentRows(tenant: TenantRecord): SourceRow[] {
       href: `/tenants/${tenant.id}`,
       evidence: {
         title: `${tenantName(tenant)} public enrichment`,
-        description: "Reviewed public-source field changes applied to this tenant.",
+        description:
+          "Reviewed public-source field changes applied to this tenant.",
         sourceDocument: {
           label: "Public enrichment",
           detail: textValue(entry.label) ?? fieldLabel(field),
@@ -558,7 +597,8 @@ function tenantEnrichmentRows(tenant: TenantRecord): SourceRow[] {
         history: [
           {
             label: `${fieldLabel(field)} enriched`,
-            description: textValue(isRecord(source) ? source.citation : null) ?? undefined,
+            description:
+              textValue(isRecord(source) ? source.citation : null) ?? undefined,
             occurredAt: textValue(entry.applied_at),
             tone: "success",
           },
@@ -673,7 +713,8 @@ function buildIssues({
     if (missing.length) {
       issues.push({
         id: `tenant-contact-${tenant.id}`,
-        severity: !tenant.contact_email && !tenant.billing_email ? "danger" : "warning",
+        severity:
+          !tenant.contact_email && !tenant.billing_email ? "danger" : "warning",
         area: "Tenant",
         title: `${tenantName(tenant)} needs contact cleanup`,
         detail: `Missing ${missing.join(", ")}.`,
@@ -732,7 +773,9 @@ function buildIssues({
   }
 
   for (const intake of intakes) {
-    if (["ready_for_review", "needs_attention", "failed"].includes(intake.status)) {
+    if (
+      ["ready_for_review", "needs_attention", "failed"].includes(intake.status)
+    ) {
       issues.push({
         id: `intake-${intake.id}`,
         severity: intake.status === "failed" ? "danger" : "primary",
@@ -764,7 +807,10 @@ function buildSources({
   const rows: SourceRow[] = [];
   for (const property of properties) {
     const href = `/properties?entity_id=${property.entity_id}&property_id=${property.id}`;
-    if (sourceDetail(property.metadata) || metadataText(property.metadata, "portfolio_import_source")) {
+    if (
+      sourceDetail(property.metadata) ||
+      metadataText(property.metadata, "portfolio_import_source")
+    ) {
       rows.push({
         id: `property-${property.id}`,
         kind: "Property",
@@ -792,14 +838,20 @@ function buildSources({
   }
   for (const tenant of tenants) {
     const href = `/tenants/${tenant.id}`;
-    if (sourceDetail(tenant.metadata) || metadataText(tenant.metadata, "insurance_status")) {
+    if (
+      sourceDetail(tenant.metadata) ||
+      metadataText(tenant.metadata, "insurance_status")
+    ) {
       rows.push({
         id: `tenant-${tenant.id}`,
         kind: "Tenant",
         title: tenantName(tenant),
         detail:
           sourceDetail(tenant.metadata) ||
-          [metadataText(tenant.metadata, "insurance_status"), metadataText(tenant.metadata, "arrears")]
+          [
+            metadataText(tenant.metadata, "insurance_status"),
+            metadataText(tenant.metadata, "arrears"),
+          ]
             .filter(Boolean)
             .join(" / "),
         source: sourceLabel(tenant.metadata),
@@ -823,12 +875,16 @@ function buildSources({
     );
   }
   for (const obligation of obligations) {
-    if (sourceDetail(obligation.metadata) || metadataText(obligation.metadata, "portfolio_import_key")) {
+    if (
+      sourceDetail(obligation.metadata) ||
+      metadataText(obligation.metadata, "portfolio_import_key")
+    ) {
       rows.push({
         id: `obligation-${obligation.id}`,
         kind: "Operations",
         title: obligation.title,
-        detail: sourceDetail(obligation.metadata) || formatDate(obligation.due_date),
+        detail:
+          sourceDetail(obligation.metadata) || formatDate(obligation.due_date),
         source: sourceLabel(obligation.metadata),
         href: "/operations",
       });
@@ -869,8 +925,16 @@ function buildTenantPrep(
     .filter((row) => row.lease_id || row.tenant_id)
     .map((row) => {
       const tenant = row.tenant_id ? tenantById.get(row.tenant_id) : undefined;
-      const onboarding = latestOnboarding(row.lease_id, row.tenant_id, onboardings);
-      const email = tenant?.billing_email || tenant?.contact_email || row.tenant_billing_email || null;
+      const onboarding = latestOnboarding(
+        row.lease_id,
+        row.tenant_id,
+        onboardings,
+      );
+      const email =
+        tenant?.billing_email ||
+        tenant?.contact_email ||
+        row.tenant_billing_email ||
+        null;
       const onboardingExpired = isExpiredDateTime(onboarding?.expires_at);
       const blockers = [
         !row.lease_id ? "No active lease" : null,
@@ -886,7 +950,9 @@ function buildTenantPrep(
         id: row.lease_id ?? row.tenancy_unit_id,
         tenantId: row.tenant_id,
         leaseId: row.lease_id,
-        tenantName: tenant ? tenantName(tenant) : (row.tenant_name ?? "Tenant missing"),
+        tenantName: tenant
+          ? tenantName(tenant)
+          : (row.tenant_name ?? "Tenant missing"),
         propertyName: row.property_name,
         unitLabel: row.unit_label,
         email,
@@ -895,7 +961,11 @@ function buildTenantPrep(
         onboarding,
       } satisfies TenantPrepRow;
     })
-    .sort((a, b) => Number(b.ready) - Number(a.ready) || a.tenantName.localeCompare(b.tenantName));
+    .sort(
+      (a, b) =>
+        Number(b.ready) - Number(a.ready) ||
+        a.tenantName.localeCompare(b.tenantName),
+    );
 }
 
 function tenantMissingContactFields(tenant: TenantRecord) {
@@ -909,7 +979,8 @@ function tenantMissingContactFields(tenant: TenantRecord) {
 
 function propertyMissingBillingFields(property: PropertyRecord) {
   const ownerScoped =
-    property.ownership_structure && property.ownership_structure !== "current_entity";
+    property.ownership_structure &&
+    property.ownership_structure !== "current_entity";
   return [
     ownerScoped && !property.owner_legal_name ? "legal owner" : null,
     ownerScoped && !property.owner_abn ? "owner ABN" : null,
@@ -948,7 +1019,9 @@ function propertyBillingPayload(
     billing_contact_name: cleanText(
       draft.billing_contact_name ?? property.billing_contact_name ?? "",
     ),
-    billing_email: cleanText(draft.billing_email ?? property.billing_email ?? ""),
+    billing_email: cleanText(
+      draft.billing_email ?? property.billing_email ?? "",
+    ),
     ownership_split: cleanText(
       draft.ownership_split ?? property.ownership_split ?? "",
     ),
@@ -972,7 +1045,12 @@ function buildEnrichmentCandidates({
     "trust_name",
     "invoice_issuer_name",
   ] as const;
-  const tenantFields = ["legal_name", "trading_name", "abn", "registered_address"] as const;
+  const tenantFields = [
+    "legal_name",
+    "trading_name",
+    "abn",
+    "registered_address",
+  ] as const;
   const candidates: EnrichmentCandidate[] = [];
 
   for (const property of properties) {
@@ -983,7 +1061,8 @@ function buildEnrichmentCandidates({
       candidates.push({
         id: `property-enrichment-${property.id}`,
         title: property.name,
-        detail: "Property public enrichment can propose address and ownership fields.",
+        detail:
+          "Property public enrichment can propose address and ownership fields.",
         href: `/properties?entity_id=${property.entity_id}&property_id=${property.id}`,
         fields: fields.map(fieldLabel),
       });
@@ -996,7 +1075,9 @@ function buildEnrichmentCandidates({
       : {};
     const fields = tenantFields.filter((field) => {
       if (field === "registered_address") {
-        return !tenant.metadata.registered_address && !metadata.registered_address;
+        return (
+          !tenant.metadata.registered_address && !metadata.registered_address
+        );
       }
       return !tenant[field];
     });
@@ -1004,7 +1085,8 @@ function buildEnrichmentCandidates({
       candidates.push({
         id: `tenant-enrichment-${tenant.id}`,
         title: tenantName(tenant),
-        detail: "Tenant public enrichment can propose ABN, trading name, and registered address.",
+        detail:
+          "Tenant public enrichment can propose ABN, trading name, and registered address.",
         href: `/tenants/${tenant.id}`,
         fields: fields.map(fieldLabel),
       });
@@ -1012,7 +1094,10 @@ function buildEnrichmentCandidates({
   }
 
   return candidates
-    .sort((a, b) => b.fields.length - a.fields.length || a.title.localeCompare(b.title))
+    .sort(
+      (a, b) =>
+        b.fields.length - a.fields.length || a.title.localeCompare(b.title),
+    )
     .slice(0, 8);
 }
 
@@ -1031,6 +1116,12 @@ function buildCompletionItems({
   billingDrafts: BillingDraftRecord[];
   sources: SourceRow[];
 }): QaCompletionItem[] {
+  const dangerIssues = issues.filter(
+    (issue) => issue.severity === "danger",
+  ).length;
+  const warningIssues = issues.filter(
+    (issue) => issue.severity === "warning",
+  ).length;
   const readyPrep = tenantPrep.filter((row) => row.ready).length;
   const activeBillingDrafts = billingDrafts.filter(
     (draft) => !["void", "superseded"].includes(draft.status),
@@ -1039,10 +1130,10 @@ function buildCompletionItems({
     {
       id: "data-qa",
       label: "Data QA",
-      ready: Math.max(0, issues.length - issues.filter((issue) => issue.severity === "danger").length),
+      ready: Math.max(0, issues.length - dangerIssues - warningIssues),
       total: issues.length,
       detail: issues.length
-        ? `${issues.filter((issue) => issue.severity === "danger").length} urgent blockers`
+        ? `${dangerIssues} urgent blockers, ${warningIssues} warnings`
         : "No open QA issues",
       tab: "issues",
     },
@@ -1143,23 +1234,39 @@ function PortfolioCompletionPanel({
   onOpenTab: (tab: QaTab) => void;
 }) {
   const total = items.reduce((sum, item) => sum + item.total, 0);
-  const ready = items.reduce((sum, item) => sum + Math.min(item.ready, item.total), 0);
+  const ready = items.reduce(
+    (sum, item) => sum + Math.min(item.ready, item.total),
+    0,
+  );
   const completion = total > 0 ? Math.round((ready / total) * 100) : 100;
   return (
     <SectionPanel
-      title="Cleanup completion report"
-      description="One scan for the import shakeout: what is ready, what needs review, and where AI enrichment can help."
+      title="Cleanup readiness report"
+      description="A practical scan of what can move now, what needs review, and where public enrichment may help."
       icon={<ClipboardList size={17} className="text-primary" />}
       actions={
-        <StatusBadge tone={completion >= 90 ? "success" : completion >= 60 ? "warning" : "danger"}>
-          {completion}% ready
+        <StatusBadge
+          tone={
+            completion >= 90
+              ? "success"
+              : completion >= 60
+                ? "warning"
+                : "danger"
+          }
+        >
+          {completion}% checks ready
         </StatusBadge>
       }
     >
       <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => {
-            const percent = item.total > 0 ? Math.round((Math.min(item.ready, item.total) / item.total) * 100) : 100;
+            const percent =
+              item.total > 0
+                ? Math.round(
+                    (Math.min(item.ready, item.total) / item.total) * 100,
+                  )
+                : 100;
             return (
               <button
                 key={item.id}
@@ -1169,8 +1276,18 @@ function PortfolioCompletionPanel({
                 className="rounded-xl border border-border bg-white p-4 text-left shadow-leasiumXs transition hover:bg-muted/60"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-foreground">{item.label}</div>
-                  <StatusBadge tone={percent >= 90 ? "success" : percent >= 60 ? "warning" : "danger"}>
+                  <div className="text-sm font-semibold text-foreground">
+                    {item.label}
+                  </div>
+                  <StatusBadge
+                    tone={
+                      percent >= 90
+                        ? "success"
+                        : percent >= 60
+                          ? "warning"
+                          : "danger"
+                    }
+                  >
                     {percent}%
                   </StatusBadge>
                 </div>
@@ -1187,7 +1304,9 @@ function PortfolioCompletionPanel({
                     style={{ width: `${percent}%` }}
                   />
                 </div>
-                <p className="mt-3 text-sm text-muted-foreground">{item.detail}</p>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {item.detail}
+                </p>
               </button>
             );
           })}
@@ -1197,13 +1316,16 @@ function PortfolioCompletionPanel({
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm font-semibold text-foreground">
-                AI-assisted enrichment candidates
+                Public enrichment candidates
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                Review public suggestions from the record detail before applying fields.
+                Open each record to review sourced suggestions before applying
+                fields.
               </p>
             </div>
-            <StatusBadge tone={enrichmentCandidates.length ? "primary" : "success"}>
+            <StatusBadge
+              tone={enrichmentCandidates.length ? "primary" : "success"}
+            >
               {enrichmentCandidates.length} queued
             </StatusBadge>
           </div>
@@ -1221,7 +1343,9 @@ function PortfolioCompletionPanel({
                       {candidate.fields.length} fields
                     </StatusBadge>
                   </div>
-                  <p className="text-sm text-muted-foreground">{candidate.detail}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {candidate.detail}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {candidate.fields.slice(0, 4).join(", ")}
                     {candidate.fields.length > 4 ? "..." : ""}
@@ -1246,17 +1370,28 @@ function PortfolioQaWorkspace() {
   const [activeTab, setActiveTab] = useState<QaTab>("issues");
   const [search, setSearch] = useState("");
   const [selectedLeaseIds, setSelectedLeaseIds] = useState<string[]>([]);
-  const [tenantDrafts, setTenantDrafts] = useState<Record<string, TenantContactDraft>>({});
-  const [propertyDrafts, setPropertyDrafts] = useState<Record<string, PropertyBillingDraft>>({});
+  const [tenantDrafts, setTenantDrafts] = useState<
+    Record<string, TenantContactDraft>
+  >({});
+  const [propertyDrafts, setPropertyDrafts] = useState<
+    Record<string, PropertyBillingDraft>
+  >({});
   const [focusedTenantId, setFocusedTenantId] = useState<string | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
-  const [billingBatch, setBillingBatch] = useState<BillingDraftBatchRecord | null>(null);
+  const [billingBatch, setBillingBatch] =
+    useState<BillingDraftBatchRecord | null>(null);
   const [onboardingResult, setOnboardingResult] = useState("");
   const [propertyFixResult, setPropertyFixResult] = useState("");
   const [tenantFixResult, setTenantFixResult] = useState("");
 
-  const entitiesQuery = useQuery({ queryKey: ["entities"], queryFn: listEntities });
-  const entities = useMemo(() => entitiesQuery.data ?? [], [entitiesQuery.data]);
+  const entitiesQuery = useQuery({
+    queryKey: ["entities"],
+    queryFn: listEntities,
+  });
+  const entities = useMemo(
+    () => entitiesQuery.data ?? [],
+    [entitiesQuery.data],
+  );
 
   useEffect(() => {
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
@@ -1273,7 +1408,10 @@ function PortfolioQaWorkspace() {
     if (!selectedEntityId && first) {
       setSelectedEntityId(first);
       window.localStorage.setItem(ENTITY_STORAGE_KEY, first);
-    } else if (selectedEntityId && !entities.some((entity) => entity.id === selectedEntityId)) {
+    } else if (
+      selectedEntityId &&
+      !entities.some((entity) => entity.id === selectedEntityId)
+    ) {
       setSelectedEntityId(first);
       if (first) {
         window.localStorage.setItem(ENTITY_STORAGE_KEY, first);
@@ -1335,12 +1473,24 @@ function PortfolioQaWorkspace() {
     enabled: Boolean(selectedEntityId),
   });
 
-  const properties = useMemo(() => propertiesQuery.data ?? [], [propertiesQuery.data]);
+  const properties = useMemo(
+    () => propertiesQuery.data ?? [],
+    [propertiesQuery.data],
+  );
   const tenants = useMemo(() => tenantsQuery.data ?? [], [tenantsQuery.data]);
-  const rentRoll = useMemo(() => rentRollQuery.data ?? [], [rentRollQuery.data]);
-  const obligations = useMemo(() => obligationsQuery.data ?? [], [obligationsQuery.data]);
+  const rentRoll = useMemo(
+    () => rentRollQuery.data ?? [],
+    [rentRollQuery.data],
+  );
+  const obligations = useMemo(
+    () => obligationsQuery.data ?? [],
+    [obligationsQuery.data],
+  );
   const intakes = useMemo(() => intakesQuery.data ?? [], [intakesQuery.data]);
-  const onboardings = useMemo(() => onboardingsQuery.data ?? [], [onboardingsQuery.data]);
+  const onboardings = useMemo(
+    () => onboardingsQuery.data ?? [],
+    [onboardingsQuery.data],
+  );
   const billingDrafts = useMemo(
     () => billingDraftsQuery.data ?? [],
     [billingDraftsQuery.data],
@@ -1351,7 +1501,14 @@ function PortfolioQaWorkspace() {
     [properties, tenants, rentRoll, obligations, intakes],
   );
   const sources = useMemo(
-    () => buildSources({ properties, tenants, obligations, intakes, drafts: billingDrafts }),
+    () =>
+      buildSources({
+        properties,
+        tenants,
+        obligations,
+        intakes,
+        drafts: billingDrafts,
+      }),
     [properties, tenants, obligations, intakes, billingDrafts],
   );
   const tenantPrep = useMemo(
@@ -1393,10 +1550,20 @@ function PortfolioQaWorkspace() {
     (row) => row.ready && row.leaseId && selectedLeaseIds.includes(row.leaseId),
   );
   const searchableIssues = issues.filter((issue) =>
-    [issue.area, issue.title, issue.detail].join(" ").toLowerCase().includes(search.toLowerCase()),
+    [issue.area, issue.title, issue.detail]
+      .join(" ")
+      .toLowerCase()
+      .includes(search.toLowerCase()),
   );
   const searchableSources = sources.filter((source) =>
-    [source.kind, source.title, source.detail, source.source, source.evidence?.title, source.evidence?.description]
+    [
+      source.kind,
+      source.title,
+      source.detail,
+      source.source,
+      source.evidence?.title,
+      source.evidence?.description,
+    ]
       .join(" ")
       .toLowerCase()
       .includes(search.toLowerCase()),
@@ -1430,7 +1597,13 @@ function PortfolioQaWorkspace() {
     billingDraftsQuery.error;
 
   const updateTenantMutation = useMutation({
-    mutationFn: ({ tenant, draft }: { tenant: TenantRecord; draft: TenantContactDraft }) => {
+    mutationFn: ({
+      tenant,
+      draft,
+    }: {
+      tenant: TenantRecord;
+      draft: TenantContactDraft;
+    }) => {
       return updateTenant(tenant.id, tenantContactPayload(tenant, draft));
     },
     onSuccess: (_tenant, variables) => {
@@ -1439,14 +1612,22 @@ function PortfolioQaWorkspace() {
         delete next[variables.tenant.id];
         return next;
       });
-      setTenantFixResult(`${tenantName(variables.tenant)} contact details saved.`);
-      queryClient.invalidateQueries({ queryKey: ["tenants", selectedEntityId] });
-      queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
+      setTenantFixResult(
+        `${tenantName(variables.tenant)} contact details saved.`,
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["tenants", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["rent-roll", selectedEntityId],
+      });
     },
   });
 
   const updateTenantBatchMutation = useMutation({
-    mutationFn: async (items: Array<{ tenant: TenantRecord; draft: TenantContactDraft }>) => {
+    mutationFn: async (
+      items: Array<{ tenant: TenantRecord; draft: TenantContactDraft }>,
+    ) => {
       const results = await Promise.allSettled(
         items.map(({ tenant, draft }) =>
           updateTenant(tenant.id, tenantContactPayload(tenant, draft)),
@@ -1474,8 +1655,12 @@ function PortfolioQaWorkspace() {
           ? `${saved} tenant contact fixes saved; ${failed} need review.`
           : `${saved} tenant contact fixes saved.`,
       );
-      queryClient.invalidateQueries({ queryKey: ["tenants", selectedEntityId] });
-      queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenants", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["rent-roll", selectedEntityId],
+      });
     },
   });
 
@@ -1493,10 +1678,18 @@ function PortfolioQaWorkspace() {
         delete next[variables.property.id];
         return next;
       });
-      setPropertyFixResult(`${variables.property.name} billing identity saved.`);
-      queryClient.invalidateQueries({ queryKey: ["properties", selectedEntityId] });
-      queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
-      queryClient.invalidateQueries({ queryKey: ["billing-drafts", selectedEntityId] });
+      setPropertyFixResult(
+        `${variables.property.name} billing identity saved.`,
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["properties", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["rent-roll", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["billing-drafts", selectedEntityId],
+      });
     },
   });
 
@@ -1531,9 +1724,15 @@ function PortfolioQaWorkspace() {
           ? `${saved} owner billing fixes saved; ${failed} need review.`
           : `${saved} owner billing fixes saved.`,
       );
-      queryClient.invalidateQueries({ queryKey: ["properties", selectedEntityId] });
-      queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
-      queryClient.invalidateQueries({ queryKey: ["billing-drafts", selectedEntityId] });
+      queryClient.invalidateQueries({
+        queryKey: ["properties", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["rent-roll", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["billing-drafts", selectedEntityId],
+      });
     },
   });
 
@@ -1556,10 +1755,14 @@ function PortfolioQaWorkspace() {
       const sent = results.filter((item) => item.status === "fulfilled").length;
       const failed = results.length - sent;
       setOnboardingResult(
-        failed ? `${sent} invite links created, ${failed} need review.` : `${sent} invite links created.`,
+        failed
+          ? `${sent} invite links created, ${failed} need review.`
+          : `${sent} invite links created.`,
       );
       setSelectedLeaseIds([]);
-      queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", selectedEntityId] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", selectedEntityId],
+      });
     },
   });
 
@@ -1567,11 +1770,15 @@ function PortfolioQaWorkspace() {
     mutationFn: () =>
       createBillingDraftsFromChargeRules({
         entity_id: selectedEntityId,
-        lease_ids: rentRoll.map((row) => row.lease_id).filter((id): id is string => Boolean(id)),
+        lease_ids: rentRoll
+          .map((row) => row.lease_id)
+          .filter((id): id is string => Boolean(id)),
       }),
     onSuccess: (result) => {
       setBillingBatch(result);
-      queryClient.invalidateQueries({ queryKey: ["billing-drafts", selectedEntityId] });
+      queryClient.invalidateQueries({
+        queryKey: ["billing-drafts", selectedEntityId],
+      });
     },
   });
 
@@ -1589,11 +1796,18 @@ function PortfolioQaWorkspace() {
     return tenantDrafts[tenant.id]?.[field] ?? tenant[field] ?? "";
   }
 
-  function propertyDraftValue(property: PropertyRecord, field: keyof PropertyBillingDraft) {
+  function propertyDraftValue(
+    property: PropertyRecord,
+    field: keyof PropertyBillingDraft,
+  ) {
     return propertyDrafts[property.id]?.[field] ?? property[field] ?? "";
   }
 
-  function updateTenantDraft(tenantId: string, field: keyof TenantContactDraft, value: string) {
+  function updateTenantDraft(
+    tenantId: string,
+    field: keyof TenantContactDraft,
+    value: string,
+  ) {
     setTenantDrafts((current) => ({
       ...current,
       [tenantId]: {
@@ -1603,7 +1817,11 @@ function PortfolioQaWorkspace() {
     }));
   }
 
-  function updatePropertyDraft(propertyId: string, field: keyof PropertyBillingDraft, value: string) {
+  function updatePropertyDraft(
+    propertyId: string,
+    field: keyof PropertyBillingDraft,
+    value: string,
+  ) {
     setPropertyDrafts((current) => ({
       ...current,
       [propertyId]: {
@@ -1649,7 +1867,10 @@ function PortfolioQaWorkspace() {
         if (!property.invoice_issuer_name && !suggestion.invoice_issuer_name) {
           suggestion.invoice_issuer_name = ownerLabel;
         }
-        if (!property.billing_contact_name && !suggestion.billing_contact_name) {
+        if (
+          !property.billing_contact_name &&
+          !suggestion.billing_contact_name
+        ) {
           suggestion.billing_contact_name =
             property.trustee_name ?? property.owner_legal_name ?? undefined;
         }
@@ -1659,7 +1880,9 @@ function PortfolioQaWorkspace() {
       }
       return next;
     });
-    setPropertyFixResult("Review staged owner billing suggestions before saving.");
+    setPropertyFixResult(
+      "Review staged owner billing suggestions before saving.",
+    );
   }
 
   function openTenantContactFix(tenantId: string) {
@@ -1669,7 +1892,9 @@ function PortfolioQaWorkspace() {
 
   function toggleLease(leaseId: string, checked: boolean) {
     setSelectedLeaseIds((current) =>
-      checked ? Array.from(new Set([...current, leaseId])) : current.filter((id) => id !== leaseId),
+      checked
+        ? Array.from(new Set([...current, leaseId]))
+        : current.filter((id) => id !== leaseId),
     );
   }
 
@@ -1695,7 +1920,11 @@ function PortfolioQaWorkspace() {
           title="Portfolio QA"
           description="Post-import cleanup for missing data, source trails, onboarding readiness, and billing draft prep."
           actions={
-            <SecondaryButton type="button" onClick={refreshAll} disabled={!selectedEntityId || loading}>
+            <SecondaryButton
+              type="button"
+              onClick={refreshAll}
+              disabled={!selectedEntityId || loading}
+            >
               <RefreshCw size={15} />
               Refresh
             </SecondaryButton>
@@ -1755,7 +1984,8 @@ function PortfolioQaWorkspace() {
               onClick={() => setActiveTab(tab.id)}
               className={cn(
                 "rounded-xl px-3 py-3 text-left transition hover:bg-muted",
-                activeTab === tab.id && "bg-primary text-primary-foreground shadow-leasiumXs hover:bg-primary",
+                activeTab === tab.id &&
+                  "bg-primary text-primary-foreground shadow-leasiumXs hover:bg-primary",
               )}
             >
               <div className="text-sm font-semibold">{tab.label}</div>
@@ -1785,196 +2015,233 @@ function PortfolioQaWorkspace() {
             description="Pulling together properties, tenants, tasks, billing, onboarding, and sources."
             icon={<Loader2 size={17} className="animate-spin text-primary" />}
           >
-            <div className="p-4 text-sm text-muted-foreground">Loading QA workspace.</div>
+            <div className="p-4 text-sm text-muted-foreground">
+              Loading QA workspace.
+            </div>
           </SectionPanel>
         ) : null}
 
         {!loading && !error && activeTab === "issues" ? (
           <>
-          <SectionPanel
-            title="Portfolio data QA"
-            description="The highest-friction cleanup items from the live register."
-            icon={<Search size={17} className="text-primary" />}
-            actions={
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search QA issues"
-                className="w-64"
-              />
-            }
-          >
-            {searchableIssues.length ? (
-              <div className="divide-y divide-border">
-                {searchableIssues.map((issue) => (
-                  <Link
-                    key={issue.id}
-                    href={issue.href}
-                    className="grid gap-3 px-4 py-4 transition hover:bg-muted/60 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge tone={severityTone(issue)}>{issue.area}</StatusBadge>
-                        <div className="font-semibold">{issue.title}</div>
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">{issue.detail}</p>
-                    </div>
-                    <div className="text-sm font-semibold text-primary">{issue.action}</div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <EmptyState icon={<CheckCircle2 size={18} />} title="No QA issues found" description="The imported register is clean for the current checks." />
-            )}
-          </SectionPanel>
-          <SectionPanel
-            title="Owner and billing guided fixes"
-            description="Patch the billing identity fields that block invoice approval, owner snapshots, and accounting readiness."
-            icon={<Building2 size={17} className="text-primary" />}
-            actions={
-              <div className="flex flex-wrap items-center gap-2">
-                <SecondaryButton
-                  type="button"
-                  onClick={stagePropertySuggestions}
-                  disabled={!propertiesNeedingBillingFix.length}
-                >
-                  <Sparkles size={15} />
-                  Stage suggestions
-                </SecondaryButton>
-                <Button
-                  type="button"
-                  onClick={() =>
-                    updatePropertyBatchMutation.mutate(
-                      stagedPropertyRows.map((property) => ({
-                        property,
-                        draft: propertyDrafts[property.id] ?? {},
-                      })),
-                    )
-                  }
-                  disabled={
-                    !stagedPropertyRows.length ||
-                    updatePropertyBatchMutation.isPending
-                  }
-                >
-                  {updatePropertyBatchMutation.isPending ? (
-                    <Loader2 size={15} className="animate-spin" />
-                  ) : (
-                    <Save size={15} />
-                  )}
-                  Save staged fixes
-                </Button>
-              </div>
-            }
-          >
-            {propertyFixResult ? (
-              <div className="border-b border-border bg-primary/5 px-4 py-3 text-sm font-medium text-primary">
-                {propertyFixResult}
-              </div>
-            ) : null}
-            {propertiesNeedingBillingFix.length ? (
-              <div className="divide-y divide-border">
-                {propertiesNeedingBillingFix.map((property) => {
-                  const missingFields = propertyMissingBillingFields(property);
-                  return (
-                    <div
-                      key={property.id}
-                      className="grid gap-3 px-4 py-4 xl:grid-cols-[minmax(180px,0.9fr)_minmax(0,2fr)_auto] xl:items-end"
+            <SectionPanel
+              title="Portfolio data QA"
+              description="The highest-friction cleanup items from the live register."
+              icon={<Search size={17} className="text-primary" />}
+              actions={
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search QA issues"
+                  className="w-64"
+                />
+              }
+            >
+              {searchableIssues.length ? (
+                <div className="divide-y divide-border">
+                  {searchableIssues.map((issue) => (
+                    <Link
+                      key={issue.id}
+                      href={issue.href}
+                      className="grid gap-3 px-4 py-4 transition hover:bg-muted/60 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            href={`/properties?entity_id=${property.entity_id}&property_id=${property.id}`}
-                            className="font-semibold text-primary"
-                          >
-                            {property.name}
-                          </Link>
-                          <StatusBadge tone="warning">
-                            {missingFields.length} missing
+                          <StatusBadge tone={severityTone(issue)}>
+                            {issue.area}
                           </StatusBadge>
+                          <div className="font-semibold">{issue.title}</div>
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {missingFields.join(", ")}
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {issue.detail}
                         </p>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                        <Field label="Legal owner">
-                          <Input
-                            value={propertyDraftValue(property, "owner_legal_name")}
-                            onChange={(event) =>
-                              updatePropertyDraft(
-                                property.id,
-                                "owner_legal_name",
-                                event.target.value,
-                              )
-                            }
-                          />
-                        </Field>
-                        <Field label="Owner ABN">
-                          <Input
-                            value={propertyDraftValue(property, "owner_abn")}
-                            onChange={(event) =>
-                              updatePropertyDraft(property.id, "owner_abn", event.target.value)
-                            }
-                          />
-                        </Field>
-                        <Field label="Invoice issuer">
-                          <Input
-                            value={propertyDraftValue(property, "invoice_issuer_name")}
-                            onChange={(event) =>
-                              updatePropertyDraft(
-                                property.id,
-                                "invoice_issuer_name",
-                                event.target.value,
-                              )
-                            }
-                          />
-                        </Field>
-                        <Field label="Billing contact">
-                          <Input
-                            value={propertyDraftValue(property, "billing_contact_name")}
-                            onChange={(event) =>
-                              updatePropertyDraft(
-                                property.id,
-                                "billing_contact_name",
-                                event.target.value,
-                              )
-                            }
-                          />
-                        </Field>
-                        <Field label="Billing email">
-                          <Input
-                            value={propertyDraftValue(property, "billing_email")}
-                            onChange={(event) =>
-                              updatePropertyDraft(property.id, "billing_email", event.target.value)
-                            }
-                          />
-                        </Field>
+                      <div className="text-sm font-semibold text-primary">
+                        {issue.action}
                       </div>
-                      <Button
-                        type="button"
-                        onClick={() =>
-                          updatePropertyMutation.mutate({
-                            property,
-                            draft: propertyDrafts[property.id] ?? {},
-                          })
-                        }
-                        disabled={updatePropertyMutation.isPending}
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<CheckCircle2 size={18} />}
+                  title="No QA issues found"
+                  description="The imported register is clean for the current checks."
+                />
+              )}
+            </SectionPanel>
+            <SectionPanel
+              title="Owner and billing guided fixes"
+              description="Patch the billing identity fields that block invoice approval, owner snapshots, and accounting readiness."
+              icon={<Building2 size={17} className="text-primary" />}
+              actions={
+                <div className="flex flex-wrap items-center gap-2">
+                  <SecondaryButton
+                    type="button"
+                    onClick={stagePropertySuggestions}
+                    disabled={!propertiesNeedingBillingFix.length}
+                  >
+                    <Sparkles size={15} />
+                    Stage suggestions
+                  </SecondaryButton>
+                  <Button
+                    type="button"
+                    onClick={() =>
+                      updatePropertyBatchMutation.mutate(
+                        stagedPropertyRows.map((property) => ({
+                          property,
+                          draft: propertyDrafts[property.id] ?? {},
+                        })),
+                      )
+                    }
+                    disabled={
+                      !stagedPropertyRows.length ||
+                      updatePropertyBatchMutation.isPending
+                    }
+                  >
+                    {updatePropertyBatchMutation.isPending ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Save size={15} />
+                    )}
+                    Save staged fixes
+                  </Button>
+                </div>
+              }
+            >
+              {propertyFixResult ? (
+                <div className="border-b border-border bg-primary/5 px-4 py-3 text-sm font-medium text-primary">
+                  {propertyFixResult}
+                </div>
+              ) : null}
+              {propertiesNeedingBillingFix.length ? (
+                <div className="divide-y divide-border">
+                  {propertiesNeedingBillingFix.map((property) => {
+                    const missingFields =
+                      propertyMissingBillingFields(property);
+                    return (
+                      <div
+                        key={property.id}
+                        className="grid gap-3 px-4 py-4 xl:grid-cols-[minmax(180px,0.9fr)_minmax(0,2fr)_auto] xl:items-end"
                       >
-                        {updatePropertyMutation.isPending ? (
-                          <Loader2 size={15} className="animate-spin" />
-                        ) : (
-                          <Save size={15} />
-                        )}
-                        Save fix
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <EmptyState icon={<CheckCircle2 size={18} />} title="Owner billing data is complete" description="No property owner or billing identity blockers are visible for this entity." />
-            )}
-          </SectionPanel>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Link
+                              href={`/properties?entity_id=${property.entity_id}&property_id=${property.id}`}
+                              className="font-semibold text-primary"
+                            >
+                              {property.name}
+                            </Link>
+                            <StatusBadge tone="warning">
+                              {missingFields.length} missing
+                            </StatusBadge>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {missingFields.join(", ")}
+                          </p>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                          <Field label="Legal owner">
+                            <Input
+                              value={propertyDraftValue(
+                                property,
+                                "owner_legal_name",
+                              )}
+                              onChange={(event) =>
+                                updatePropertyDraft(
+                                  property.id,
+                                  "owner_legal_name",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </Field>
+                          <Field label="Owner ABN">
+                            <Input
+                              value={propertyDraftValue(property, "owner_abn")}
+                              onChange={(event) =>
+                                updatePropertyDraft(
+                                  property.id,
+                                  "owner_abn",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </Field>
+                          <Field label="Invoice issuer">
+                            <Input
+                              value={propertyDraftValue(
+                                property,
+                                "invoice_issuer_name",
+                              )}
+                              onChange={(event) =>
+                                updatePropertyDraft(
+                                  property.id,
+                                  "invoice_issuer_name",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </Field>
+                          <Field label="Billing contact">
+                            <Input
+                              value={propertyDraftValue(
+                                property,
+                                "billing_contact_name",
+                              )}
+                              onChange={(event) =>
+                                updatePropertyDraft(
+                                  property.id,
+                                  "billing_contact_name",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </Field>
+                          <Field label="Billing email">
+                            <Input
+                              value={propertyDraftValue(
+                                property,
+                                "billing_email",
+                              )}
+                              onChange={(event) =>
+                                updatePropertyDraft(
+                                  property.id,
+                                  "billing_email",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </Field>
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={() =>
+                            updatePropertyMutation.mutate({
+                              property,
+                              draft: propertyDrafts[property.id] ?? {},
+                            })
+                          }
+                          disabled={updatePropertyMutation.isPending}
+                        >
+                          {updatePropertyMutation.isPending ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <Save size={15} />
+                          )}
+                          Save fix
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<CheckCircle2 size={18} />}
+                  title="Owner billing data is complete"
+                  description="No property owner or billing identity blockers are visible for this entity."
+                />
+              )}
+            </SectionPanel>
           </>
         ) : null}
 
@@ -2004,7 +2271,8 @@ function PortfolioQaWorkspace() {
                     )
                   }
                   disabled={
-                    !stagedTenantRows.length || updateTenantBatchMutation.isPending
+                    !stagedTenantRows.length ||
+                    updateTenantBatchMutation.isPending
                   }
                 >
                   {updateTenantBatchMutation.isPending ? (
@@ -2032,15 +2300,25 @@ function PortfolioQaWorkspace() {
                       id={`tenant-contact-${tenant.id}`}
                       className={cn(
                         "grid gap-3 px-4 py-4 xl:grid-cols-[minmax(180px,1.1fr)_repeat(4,minmax(120px,1fr))_auto] xl:items-end",
-                        focusedTenantId === tenant.id && "bg-primary/5 ring-1 ring-inset ring-primary/20",
+                        focusedTenantId === tenant.id &&
+                          "bg-primary/5 ring-1 ring-inset ring-primary/20",
                       )}
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Link href={`/tenants/${tenant.id}`} className="font-semibold text-primary">
+                          <Link
+                            href={`/tenants/${tenant.id}`}
+                            className="font-semibold text-primary"
+                          >
                             {tenantName(tenant)}
                           </Link>
-                          <StatusBadge tone={missingFields.includes("contact email") ? "danger" : "warning"}>
+                          <StatusBadge
+                            tone={
+                              missingFields.includes("contact email")
+                                ? "danger"
+                                : "warning"
+                            }
+                          >
                             {missingFields.length} missing
                           </StatusBadge>
                         </div>
@@ -2048,7 +2326,10 @@ function PortfolioQaWorkspace() {
                           {missingFields.join(", ")}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {[metadataText(tenant.metadata, "insurance_status"), metadataText(tenant.metadata, "arrears")]
+                          {[
+                            metadataText(tenant.metadata, "insurance_status"),
+                            metadataText(tenant.metadata, "arrears"),
+                          ]
                             .filter(Boolean)
                             .join(" / ") || "Imported tenant"}
                         </p>
@@ -2057,7 +2338,11 @@ function PortfolioQaWorkspace() {
                         <Input
                           value={draftValue(tenant, "contact_name")}
                           onChange={(event) =>
-                            updateTenantDraft(tenant.id, "contact_name", event.target.value)
+                            updateTenantDraft(
+                              tenant.id,
+                              "contact_name",
+                              event.target.value,
+                            )
                           }
                         />
                       </Field>
@@ -2065,7 +2350,11 @@ function PortfolioQaWorkspace() {
                         <Input
                           value={draftValue(tenant, "contact_email")}
                           onChange={(event) =>
-                            updateTenantDraft(tenant.id, "contact_email", event.target.value)
+                            updateTenantDraft(
+                              tenant.id,
+                              "contact_email",
+                              event.target.value,
+                            )
                           }
                         />
                       </Field>
@@ -2073,14 +2362,24 @@ function PortfolioQaWorkspace() {
                         <Input
                           value={draftValue(tenant, "billing_email")}
                           onChange={(event) =>
-                            updateTenantDraft(tenant.id, "billing_email", event.target.value)
+                            updateTenantDraft(
+                              tenant.id,
+                              "billing_email",
+                              event.target.value,
+                            )
                           }
                         />
                       </Field>
                       <Field label="ABN">
                         <Input
                           value={draftValue(tenant, "abn")}
-                          onChange={(event) => updateTenantDraft(tenant.id, "abn", event.target.value)}
+                          onChange={(event) =>
+                            updateTenantDraft(
+                              tenant.id,
+                              "abn",
+                              event.target.value,
+                            )
+                          }
                         />
                       </Field>
                       <Button
@@ -2105,7 +2404,11 @@ function PortfolioQaWorkspace() {
                 })}
               </div>
             ) : (
-              <EmptyState icon={<CheckCircle2 size={18} />} title="Tenant contact data is complete" description="Every tenant has the current cleanup fields filled." />
+              <EmptyState
+                icon={<CheckCircle2 size={18} />}
+                title="Tenant contact data is complete"
+                description="Every tenant has the current cleanup fields filled."
+              />
             )}
           </SectionPanel>
         ) : null}
@@ -2132,20 +2435,31 @@ function PortfolioQaWorkspace() {
                       key={source.id}
                       className={cn(
                         "grid gap-3 px-4 py-4 transition md:grid-cols-[120px_minmax(0,1fr)_minmax(190px,auto)] md:items-center",
-                        selectedSource?.id === source.id ? "bg-primary/5" : "hover:bg-muted/60",
+                        selectedSource?.id === source.id
+                          ? "bg-primary/5"
+                          : "hover:bg-muted/60",
                       )}
                     >
-                      <StatusBadge tone={source.evidence ? "primary" : "neutral"}>
+                      <StatusBadge
+                        tone={source.evidence ? "primary" : "neutral"}
+                      >
                         {source.kind}
                       </StatusBadge>
                       <div className="min-w-0">
-                        <Link href={source.href} className="font-semibold text-primary">
+                        <Link
+                          href={source.href}
+                          className="font-semibold text-primary"
+                        >
                           {source.title}
                         </Link>
-                        <p className="mt-1 text-sm text-muted-foreground">{source.detail || "No row detail stored"}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {source.detail || "No row detail stored"}
+                        </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                        <span className="text-sm font-semibold text-muted-foreground">{source.source}</span>
+                        <span className="text-sm font-semibold text-muted-foreground">
+                          {source.source}
+                        </span>
                         {source.evidence ? (
                           <SecondaryButton
                             type="button"
@@ -2177,13 +2491,18 @@ function PortfolioQaWorkspace() {
                     />
                   ) : (
                     <div className="rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                      Select a row with a trail to inspect workbook rows, public enrichment, citations, and apply history.
+                      Select a row with a trail to inspect workbook rows, public
+                      enrichment, citations, and apply history.
                     </div>
                   )}
                 </div>
               </div>
             ) : (
-              <EmptyState icon={<History size={18} />} title="No source trails yet" description="Imported rows and document reviews will appear here as metadata is stored." />
+              <EmptyState
+                icon={<History size={18} />}
+                title="No source trails yet"
+                description="Imported rows and document reviews will appear here as metadata is stored."
+              />
             )}
           </SectionPanel>
         ) : null}
@@ -2197,7 +2516,13 @@ function PortfolioQaWorkspace() {
               <div className="flex flex-wrap items-center gap-2">
                 <SecondaryButton
                   type="button"
-                  onClick={() => setSelectedLeaseIds(readyPrepRows.map((row) => row.leaseId).filter((id): id is string => Boolean(id)))}
+                  onClick={() =>
+                    setSelectedLeaseIds(
+                      readyPrepRows
+                        .map((row) => row.leaseId)
+                        .filter((id): id is string => Boolean(id)),
+                    )
+                  }
                   disabled={!readyPrepRows.length}
                 >
                   <CheckCircle2 size={15} />
@@ -2207,10 +2532,15 @@ function PortfolioQaWorkspace() {
                   type="button"
                   onClick={() =>
                     batchOnboardingMutation.mutate(
-                      selectedReadyRows.map((row) => row.leaseId).filter((id): id is string => Boolean(id)),
+                      selectedReadyRows
+                        .map((row) => row.leaseId)
+                        .filter((id): id is string => Boolean(id)),
                     )
                   }
-                  disabled={!selectedReadyRows.length || batchOnboardingMutation.isPending}
+                  disabled={
+                    !selectedReadyRows.length ||
+                    batchOnboardingMutation.isPending
+                  }
                 >
                   {batchOnboardingMutation.isPending ? (
                     <Loader2 size={15} className="animate-spin" />
@@ -2229,13 +2559,21 @@ function PortfolioQaWorkspace() {
             ) : null}
             <div className="divide-y divide-border">
               {tenantPrep.map((row) => (
-                <div key={row.id} className="grid gap-3 px-4 py-4 md:grid-cols-[32px_minmax(0,1fr)_minmax(170px,auto)_minmax(170px,auto)_auto] md:items-center">
+                <div
+                  key={row.id}
+                  className="grid gap-3 px-4 py-4 md:grid-cols-[32px_minmax(0,1fr)_minmax(170px,auto)_minmax(170px,auto)_auto] md:items-center"
+                >
                   <input
                     type="checkbox"
                     className="h-4 w-4"
-                    checked={Boolean(row.leaseId && selectedLeaseIds.includes(row.leaseId))}
+                    checked={Boolean(
+                      row.leaseId && selectedLeaseIds.includes(row.leaseId),
+                    )}
                     disabled={!row.ready || !row.leaseId}
-                    onChange={(event) => row.leaseId && toggleLease(row.leaseId, event.target.checked)}
+                    onChange={(event) =>
+                      row.leaseId &&
+                      toggleLease(row.leaseId, event.target.checked)
+                    }
                     aria-label={`Select ${row.tenantName}`}
                   />
                   <div className="min-w-0">
@@ -2249,9 +2587,13 @@ function PortfolioQaWorkspace() {
                       {row.propertyName} / {row.unitLabel}
                     </p>
                   </div>
-                  <div className="text-sm text-muted-foreground">{row.email ?? "No email"}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {row.email ?? "No email"}
+                  </div>
                   <div className="text-sm font-medium text-muted-foreground">
-                    {row.blockers.length ? row.blockers.join(" / ") : "Ready for batch invite"}
+                    {row.blockers.length
+                      ? row.blockers.join(" / ")
+                      : "Ready for batch invite"}
                   </div>
                   <div className="flex flex-wrap justify-start gap-2 md:justify-end">
                     {row.ready && row.leaseId ? (
@@ -2272,10 +2614,15 @@ function PortfolioQaWorkspace() {
                         )}
                         Create invite
                       </Button>
-                    ) : row.tenantId && row.blockers.some((blocker) => blocker.includes("email")) ? (
+                    ) : row.tenantId &&
+                      row.blockers.some((blocker) =>
+                        blocker.includes("email"),
+                      ) ? (
                       <SecondaryButton
                         type="button"
-                        onClick={() => openTenantContactFix(row.tenantId as string)}
+                        onClick={() =>
+                          openTenantContactFix(row.tenantId as string)
+                        }
                         className="min-h-9 px-3"
                       >
                         <UserRound size={15} />
@@ -2290,7 +2637,9 @@ function PortfolioQaWorkspace() {
                         Recover link
                       </Link>
                     ) : (
-                      <span className="text-xs font-medium text-muted-foreground">Needs setup</span>
+                      <span className="text-xs font-medium text-muted-foreground">
+                        Needs setup
+                      </span>
                     )}
                   </div>
                 </div>
@@ -2321,7 +2670,8 @@ function PortfolioQaWorkspace() {
           >
             {billingBatch ? (
               <div className="border-b border-border bg-primary/5 px-4 py-3 text-sm text-primary">
-                Created {billingBatch.created}, reused {billingBatch.existing}, skipped {billingBatch.skipped}.
+                Created {billingBatch.created}, reused {billingBatch.existing},
+                skipped {billingBatch.skipped}.
               </div>
             ) : null}
             {billingBatchMutation.error ? (
@@ -2340,21 +2690,34 @@ function PortfolioQaWorkspace() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="font-semibold">{draft.title}</div>
-                        <StatusBadge tone={draft.status === "approved" ? "success" : "primary"}>
+                        <StatusBadge
+                          tone={
+                            draft.status === "approved" ? "success" : "primary"
+                          }
+                        >
                           {label(draft.status)}
                         </StatusBadge>
                       </div>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {sourceLabel(draft.metadata)} / Due {formatDate(draft.due_date)}
+                        {sourceLabel(draft.metadata)} / Due{" "}
+                        {formatDate(draft.due_date)}
                       </p>
                     </div>
-                    <div className="text-sm font-semibold">{formatMoney(draft.total_cents)}</div>
-                    <div className="text-sm font-semibold text-primary">Review</div>
+                    <div className="text-sm font-semibold">
+                      {formatMoney(draft.total_cents)}
+                    </div>
+                    <div className="text-sm font-semibold text-primary">
+                      Review
+                    </div>
                   </Link>
                 ))}
               </div>
             ) : (
-              <EmptyState icon={<FileText size={18} />} title="No billing drafts yet" description="Create internal drafts from imported charge rules when you are ready to review billing." />
+              <EmptyState
+                icon={<FileText size={18} />}
+                title="No billing drafts yet"
+                description="Create internal drafts from imported charge rules when you are ready to review billing."
+              />
             )}
           </SectionPanel>
         ) : null}

@@ -503,11 +503,9 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
     page.getByRole("heading", { name: "Portfolio QA" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Cleanup completion report" }),
+    page.getByRole("heading", { name: "Cleanup readiness report" }),
   ).toBeVisible();
-  await expect(
-    page.getByText("AI-assisted enrichment candidates"),
-  ).toBeVisible();
+  await expect(page.getByText("Public enrichment candidates")).toBeVisible();
 
   const ownerPanel = page.locator("section").filter({
     has: page.getByRole("heading", {
