@@ -18,9 +18,11 @@ import {
   CheckCircle2,
   ClipboardCheck,
   FileText,
+  MailCheck,
   Printer,
   ReceiptText,
   RefreshCw,
+  ShieldCheck,
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
@@ -485,6 +487,37 @@ function statementSummaryText({
   return lines.join("\n");
 }
 
+function statementDispatchDraft({
+  owner,
+  month,
+}: {
+  owner: OwnerStatementRecord;
+  month: string;
+}) {
+  const monthLabel = formatMonthLabel(month);
+  const outstandingLine =
+    owner.outstanding_cents > 0
+      ? `There is ${formatMoney(owner.outstanding_cents)} still showing as outstanding. Please review the payment notes before the statement is sent.`
+      : "The statement is showing as fully paid in Leasium.";
+  return {
+    subject: `Owner statement for ${monthLabel} - ${owner.owner_identity}`,
+    body: [
+      `Hi ${owner.billing_contact_name || owner.owner_identity},`,
+      "",
+      `Your owner statement for ${monthLabel} is ready for review.`,
+      "",
+      `Invoiced: ${formatMoney(owner.invoiced_cents)}`,
+      `Paid: ${formatMoney(owner.paid_cents)}`,
+      `Outstanding: ${formatMoney(owner.outstanding_cents)}`,
+      "",
+      outstandingLine,
+      "",
+      "Kind regards,",
+      "Leasium",
+    ].join("\n"),
+  };
+}
+
 function StatementPreviewPanel({
   owner,
   owners,
@@ -501,7 +534,10 @@ function StatementPreviewPanel({
   onSelectOwner: (value: string) => void;
 }) {
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const [dispatchReceipt, setDispatchReceipt] = useState<string | null>(null);
   const canPrint = owner.invoice_count > 0;
+  const dispatchDraft = statementDispatchDraft({ owner, month });
+  const recipientReady = Boolean(owner.billing_email);
 
   const copySummary = async () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) {
@@ -510,6 +546,21 @@ function StatementPreviewPanel({
     }
     await navigator.clipboard.writeText(statementSummaryText({ owner, month }));
     setCopyReceipt("Review summary copied.");
+  };
+  const copyDispatchDraft = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setDispatchReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(
+      [
+        `To: ${owner.billing_email ?? "No owner billing email recorded"}`,
+        `Subject: ${dispatchDraft.subject}`,
+        "",
+        dispatchDraft.body,
+      ].join("\n"),
+    );
+    setDispatchReceipt("Dispatch draft copied. No email sent.");
   };
 
   return (
@@ -631,6 +682,67 @@ function StatementPreviewPanel({
 
           <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
             Review state: {owner.outstanding_cents > 0 ? "payment review remains open" : "ready for owner dispatch"}. Dispatch is still explicit and separate from this preview.
+          </div>
+        </div>
+
+        <div className="grid gap-4 rounded-md border border-border bg-white p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <MailCheck size={17} />
+              </span>
+              <div>
+                <h3 className="text-base font-semibold text-foreground">
+                  Dispatch review
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Check the recipient and owner-facing copy before a later send
+                  step.
+                </p>
+              </div>
+            </div>
+            <StatusBadge tone={recipientReady ? "success" : "warning"}>
+              {recipientReady ? "Recipient ready" : "Needs owner email"}
+            </StatusBadge>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="grid gap-2 text-sm">
+              <div>
+                <div className="text-xs font-semibold uppercase text-muted-foreground">
+                  To
+                </div>
+                <div className="mt-1 font-medium">
+                  {owner.billing_email ?? "No owner billing email recorded"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase text-muted-foreground">
+                  Subject
+                </div>
+                <div className="mt-1 font-medium">{dispatchDraft.subject}</div>
+              </div>
+            </div>
+            <div className="flex items-start lg:justify-end">
+              <SecondaryButton type="button" onClick={copyDispatchDraft}>
+                <ClipboardCheck size={15} />
+                Copy dispatch draft
+              </SecondaryButton>
+            </div>
+          </div>
+
+          <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted p-3 text-sm leading-6 text-foreground">
+            {dispatchDraft.body}
+          </pre>
+
+          {dispatchReceipt ? (
+            <p className="text-sm font-medium text-success">{dispatchReceipt}</p>
+          ) : null}
+
+          <div className="flex items-start gap-2 rounded-md bg-muted p-3 text-xs text-muted-foreground">
+            <ShieldCheck size={14} className="mt-0.5 shrink-0 text-primary" />
+            Review only. This does not send owner email, attach a PDF, or update
+            provider delivery history.
           </div>
         </div>
       </div>

@@ -136,6 +136,13 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     page.getByRole("button", { name: "Print / save PDF" }),
   ).toBeVisible();
   await expect(page.getByText("Owner statement", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Dispatch review" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Copy dispatch draft" }),
+  ).toBeVisible();
+  await expect(page.getByText("Review only. This does not send")).toBeVisible();
 });
 
 test("dashboard Leasium AI panel answers with cited record", async ({

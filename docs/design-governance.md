@@ -140,6 +140,10 @@ Progress notes:
   preview with owner selection, owner contact context, monthly totals,
   property lines, a copied review summary, and print/save-PDF action. Owner
   dispatch remains separate and explicit. This remains pending Remba review.
+- 2026-05-25 follow-up 7: Owner statement preview now includes dispatch review:
+  recipient readiness, owner-facing subject/body preview, copy-to-clipboard,
+  and a no-send guardrail. This remains pending Remba review before provider
+  delivery is wired.
 
 Remba decision:
 
