@@ -105,6 +105,12 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByText("2 approved invoices are still unpaid locally."),
   ).toBeVisible();
+  await expect(
+    page.getByText("Owner statements", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("ready for preview and dispatch review"),
+  ).toBeVisible();
   await expect(page.getByText("Needs Xero approval").first()).toBeVisible();
   const primaryDispatchRow = page.getByRole("row").filter({
     hasText: "INV-1001",

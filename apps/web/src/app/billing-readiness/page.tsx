@@ -35,6 +35,7 @@ import {
   createInvoiceDraftFromBillingDraft,
   dispatchXeroInvoiceProviders,
   documentDownloadUrl,
+  getOwnerStatements,
   getXeroStatus,
   invoiceDraftPreviewUrl,
   listBillingDrafts,
@@ -53,6 +54,7 @@ import {
   type BillingDraftStatus,
   type InvoiceDraftRecord,
   type InvoiceDraftStatus,
+  type OwnerStatementsRecord,
   type RentRollRow,
   type XeroAccountingFreshnessRecord,
 } from "@/lib/api";
@@ -555,11 +557,15 @@ function ownerStatementsHref({
 function buildMonthEndChecklist({
   invoiceDrafts,
   freshness,
+  ownerStatements,
+  statementsLoading,
   entityId,
   statementMonth,
 }: {
   invoiceDrafts: InvoiceDraftRecord[];
   freshness: XeroAccountingFreshnessRecord | null;
+  ownerStatements: OwnerStatementsRecord | undefined;
+  statementsLoading: boolean;
   entityId: string;
   statementMonth: string;
 }): MonthEndChecklistItem[] {
@@ -620,6 +626,45 @@ function buildMonthEndChecklist({
       : unpaidCount > 0 || paymentReviewCount > 0
         ? "unpaid"
         : "incomplete";
+  const statementOwners = ownerStatements?.owners ?? [];
+  const statementInvoiceCount = statementOwners.reduce(
+    (total, owner) => total + owner.invoice_count,
+    0,
+  );
+  const missingOwnerEmailCount = statementOwners.filter(
+    (owner) => !owner.billing_email,
+  ).length;
+  const statementReviewStatus: MonthEndChecklistStatus =
+    statementsLoading ||
+    approvedCount === 0 ||
+    statementInvoiceCount === 0 ||
+    missingOwnerEmailCount > 0
+      ? "review"
+      : "clear";
+  const statementReviewDetail = statementsLoading
+    ? `Checking owner statement roll-up for ${statementMonth}.`
+    : approvedCount === 0 || statementInvoiceCount === 0
+      ? `No owner statement invoices found for ${statementMonth}.`
+      : missingOwnerEmailCount > 0
+        ? `${countLabel(
+            statementOwners.length,
+            "owner",
+          )} in the statement pack; ${countLabel(
+            missingOwnerEmailCount,
+            "owner",
+          )} need billing email before dispatch.`
+        : `${countLabel(
+            statementOwners.length,
+            "owner",
+          )} and ${countLabel(
+            statementInvoiceCount,
+            "statement invoice",
+          )} ready for preview and dispatch review.`;
+  const statementsHref = ownerStatementsHref({
+    entityId,
+    month: statementMonth,
+    closeStatus,
+  });
 
   return [
     {
@@ -715,19 +760,30 @@ function buildMonthEndChecklist({
       href: paymentReviewCount > 0 ? xeroHref : undefined,
     },
     {
+      id: "owner-statements",
+      title: "Owner statements",
+      detail: statementReviewDetail,
+      status: statementReviewStatus,
+      actionLabel: "Review statements",
+      href: statementsHref,
+    },
+    {
       id: "pack",
       title: "Month-end pack",
-      detail: closeReady
-        ? "Ready to use in owner and accounting reporting."
-        : "Close the open checklist items before relying on owner or accounting reporting.",
+      detail:
+        closeReady && statementReviewStatus === "clear"
+          ? "Ready to use in owner and accounting reporting."
+          : closeReady && statementReviewStatus !== "clear"
+            ? "Review owner statement previews and dispatch copy before relying on the pack."
+            : "Close the open checklist items before relying on owner or accounting reporting.",
       status:
-        closeStatus === "blocked" ? "blocked" : closeReady ? "clear" : "review",
+        closeStatus === "blocked"
+          ? "blocked"
+          : closeReady && statementReviewStatus === "clear"
+            ? "clear"
+            : "review",
       actionLabel: "Open statements",
-      href: ownerStatementsHref({
-        entityId,
-        month: statementMonth,
-        closeStatus,
-      }),
+      href: statementsHref,
     },
   ];
 }
@@ -1397,6 +1453,15 @@ function BillingReadinessWorkspace() {
     () => statementMonthForDrafts(approvedInvoiceDrafts, asOf),
     [approvedInvoiceDrafts, asOf],
   );
+  const ownerStatementsQuery = useQuery({
+    queryKey: [
+      "billing-readiness-owner-statements",
+      selectedEntityId,
+      statementMonth,
+    ],
+    queryFn: () => getOwnerStatements(selectedEntityId, statementMonth),
+    enabled: Boolean(selectedEntityId && statementMonth),
+  });
   const filteredApprovedInvoiceDrafts = useMemo(
     () =>
       approvedInvoiceDrafts.filter((draft) =>
@@ -1421,10 +1486,19 @@ function BillingReadinessWorkspace() {
       buildMonthEndChecklist({
         invoiceDrafts,
         freshness: xeroAccountingFreshness,
+        ownerStatements: ownerStatementsQuery.data,
+        statementsLoading: ownerStatementsQuery.isLoading,
         entityId: selectedEntityId,
         statementMonth,
       }),
-    [invoiceDrafts, selectedEntityId, statementMonth, xeroAccountingFreshness],
+    [
+      invoiceDrafts,
+      ownerStatementsQuery.data,
+      ownerStatementsQuery.isLoading,
+      selectedEntityId,
+      statementMonth,
+      xeroAccountingFreshness,
+    ],
   );
   const invoiceDraftByBillingDraftId = useMemo(() => {
     const drafts = new Map<string, InvoiceDraftRecord>();
