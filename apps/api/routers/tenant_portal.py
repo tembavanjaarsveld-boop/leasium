@@ -23,7 +23,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from stewart.core.audit import audit_log
-from stewart.core.auth import _clerk_provider_id
+from stewart.core.auth import ClerkIdentity, _clerk_identity, _normalise_email
 from stewart.core.db import utcnow
 from stewart.core.ids import uuid7
 from stewart.core.models import (
@@ -454,6 +454,13 @@ def _tenant_portal_provider_id(
     authorization: str | None,
     settings: Settings,
 ) -> str:
+    return _tenant_portal_identity(authorization, settings).provider_id
+
+
+def _tenant_portal_identity(
+    authorization: str | None,
+    settings: Settings,
+) -> ClerkIdentity:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -465,7 +472,35 @@ def _tenant_portal_provider_id(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Tenant portal account bearer token required.",
         )
-    return _clerk_provider_id(token, settings)
+    return _clerk_identity(token, settings)
+
+
+def _tenant_invite_email(tenant: Tenant) -> str | None:
+    return tenant.contact_email or tenant.billing_email
+
+
+def _assert_claim_email_matches_invite(
+    identity: ClerkIdentity,
+    tenant: Tenant,
+    settings: Settings,
+) -> None:
+    expected_email = _tenant_invite_email(tenant)
+    if expected_email is None:
+        return
+
+    if identity.verified_email is None:
+        if settings.clerk_allow_legacy_token_mapping:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant portal login email must match this invite.",
+        )
+
+    if _normalise_email(identity.verified_email) != _normalise_email(expected_email):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant portal login email must match this invite.",
+        )
 
 
 def _active_tenant_portal_account(
@@ -1212,6 +1247,7 @@ def preview_tenant_portal_invite(
         property_name=property_label,
         property_address=address,
         tenant_display_name=tenant.trading_name or tenant.legal_name,
+        tenant_email=_tenant_invite_email(tenant),
         expires_at=onboarding.expires_at,
         claimable=onboarding.token_consumed_at is None,
     )
@@ -1225,7 +1261,8 @@ def claim_tenant_portal_account(
     settings: Annotated[Settings, Depends(get_settings)],
     authorization: Annotated[str | None, Header()] = None,
 ) -> TenantPortalRead:
-    provider_id = _tenant_portal_provider_id(authorization, settings)
+    identity = _tenant_portal_identity(authorization, settings)
+    provider_id = identity.provider_id
     token_scope = _portal_scope(
         request,
         session,
@@ -1253,6 +1290,7 @@ def claim_tenant_portal_account(
                     " tenant portal account it was claimed by."
                 ),
             )
+    _assert_claim_email_matches_invite(identity, token_scope.tenant, settings)
     revoked_account = session.scalar(
         select(TenantPortalAccount).where(
             TenantPortalAccount.auth_provider == "clerk",
@@ -1705,6 +1743,7 @@ def ask_tenant_portal_lease_question(
         TenantOnboardingStatus.sent,
         TenantOnboardingStatus.submitted,
         TenantOnboardingStatus.reviewed,
+        TenantOnboardingStatus.applied,
     }:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1759,7 +1798,10 @@ def sign_tenant_portal_lease_agreement(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Acceptance is required.",
         )
-    if scope.onboarding.status != TenantOnboardingStatus.reviewed:
+    if scope.onboarding.status not in {
+        TenantOnboardingStatus.reviewed,
+        TenantOnboardingStatus.applied,
+    }:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Property team review must be completed before signing.",

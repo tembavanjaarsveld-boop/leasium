@@ -543,8 +543,7 @@ const maintenanceWorkOrders = [
           recipient_email: "service@coolair.example",
           recipient_phone: null,
           subject: "Attendance window request",
-          body_text:
-            "Please confirm your first available attendance window.",
+          body_text: "Please confirm your first available attendance window.",
           template_key: "maintenance_contractor_update",
           template_version: "v1",
           action_label: null,
@@ -1076,7 +1075,12 @@ const leases = [
 
 const tenantPortalSession = (
   authMode: "token" | "account" = "token",
-  options: { tenantId?: string; tradingName?: string } = {},
+  options: {
+    tenantId?: string;
+    tradingName?: string;
+    leaseReady?: boolean;
+    leaseSigned?: boolean;
+  } = {},
 ) => ({
   auth:
     authMode === "account"
@@ -1119,14 +1123,40 @@ const tenantPortalSession = (
   },
   onboarding: {
     id: "onboarding-1",
-    status: "sent",
+    status: options.leaseReady || options.leaseSigned ? "applied" : "sent",
     due_date: "2026-05-29",
     expires_at: "2026-06-12T00:00:00.000Z",
-    submitted_at: null,
+    submitted_at:
+      options.leaseReady || options.leaseSigned
+        ? "2026-05-21T01:00:00.000Z"
+        : null,
     last_sent_at: "2026-05-18T09:30:00.000Z",
     document_count: 1,
-    submitted_data: null,
+    submitted_data:
+      options.leaseReady || options.leaseSigned
+        ? {
+            legal_name: "Bright Cafe Pty Ltd",
+            contact_name: "Mia Hart",
+            contact_email: "mia@example.com",
+            accepted: true,
+          }
+        : null,
     portal_invite_sent_at: null,
+  },
+  lease_agreement: {
+    status: options.leaseSigned
+      ? "signed"
+      : options.leaseReady
+        ? "ready_to_sign"
+        : "not_ready",
+    open_question_count: 0,
+    questions: [],
+    signed_at: options.leaseSigned ? "2026-05-21T02:00:00.000Z" : null,
+    signed_by_actor: options.leaseSigned ? "tenant" : null,
+    signing_locked_reason:
+      options.leaseReady || options.leaseSigned
+        ? null
+        : "Property team review must be completed before signing.",
   },
   compliance: {
     uploads_enabled: true,
@@ -1671,6 +1701,7 @@ function multipartFilename(body: string) {
 type MockLeasiumApiOptions = {
   tenantAccountLinked?: boolean;
   tenantAccountLinkedToDifferentTenant?: boolean;
+  tenantPortalLeaseReady?: boolean;
 };
 
 export async function mockLeasiumApi(
@@ -1688,6 +1719,8 @@ export async function mockLeasiumApi(
   let localInvoiceDrafts = jsonClone(invoiceDrafts);
   let tenantAccountLinked = options.tenantAccountLinked ?? false;
   let tenantPortalOnboardingSubmitted = false;
+  const tenantPortalLeaseReady = options.tenantPortalLeaseReady ?? false;
+  let tenantPortalLeaseSigned = false;
   let notificationCenterReadAt: string | null = null;
   let digestReceiptSent = false;
   let assignmentNoticeRetried = false;
@@ -1873,8 +1906,8 @@ export async function mockLeasiumApi(
         summary: !xeroDraftCreated
           ? "1 Xero readiness issue needs review; 1 approved invoice still need Xero draft creation."
           : xeroPaymentApplied
-          ? "Payment reconciliation is fresh for open Xero-linked invoices."
-          : "1 open Xero-linked invoice needs a payment reconciliation preview.",
+            ? "Payment reconciliation is fresh for open Xero-linked invoices."
+            : "1 open Xero-linked invoice needs a payment reconciliation preview.",
         stale_after_days: 7,
         stale_reconciliation: xeroDraftCreated && !xeroPaymentApplied,
         readiness_issue_count: issues.length,
@@ -1960,23 +1993,21 @@ export async function mockLeasiumApi(
         property.owner_legal_name ??
         property.invoice_issuer_name ??
         "Unattributed";
-      const owner =
-        owners.get(ownerIdentity) ??
-        {
-          owner_identity: ownerIdentity,
-          owner_legal_name: property.owner_legal_name,
-          trustee_name: property.trustee_name,
-          trust_name: property.trust_name,
-          invoice_issuer_name: property.invoice_issuer_name,
-          billing_contact_name: property.billing_contact_name,
-          billing_email: property.billing_email,
-          property_count: 0,
-          properties: [],
-          invoiced_cents: 0,
-          paid_cents: 0,
-          outstanding_cents: 0,
-          invoice_count: 0,
-        };
+      const owner = owners.get(ownerIdentity) ?? {
+        owner_identity: ownerIdentity,
+        owner_legal_name: property.owner_legal_name,
+        trustee_name: property.trustee_name,
+        trust_name: property.trust_name,
+        invoice_issuer_name: property.invoice_issuer_name,
+        billing_contact_name: property.billing_contact_name,
+        billing_email: property.billing_email,
+        property_count: 0,
+        properties: [],
+        invoiced_cents: 0,
+        paid_cents: 0,
+        outstanding_cents: 0,
+        invoice_count: 0,
+      };
       const metadata = jsonRecord(draft.metadata as JsonBody | undefined);
       const paymentStatus = jsonRecord(metadata.payment_status);
       const paidCents =
@@ -2601,16 +2632,18 @@ export async function mockLeasiumApi(
 
   const insightsOverview = () => {
     const xero = xeroStatus();
-  const accountingReadiness = {
-    generated_at: xero.accounting_freshness.generated_at,
-    source: xero.accounting_freshness.source,
-    status: xero.accounting_freshness.status,
-    summary: xero.accounting_freshness.summary,
-    readiness_issue_count: xero.accounting_freshness.readiness_issue_count,
-    readiness_blocker_count: xero.accounting_freshness.readiness_blocker_count,
-    readiness_warning_count: xero.accounting_freshness.readiness_warning_count,
-    stale_after_days: xero.accounting_freshness.stale_after_days,
-    contact_ready: xero.contact_mapping.ready,
+    const accountingReadiness = {
+      generated_at: xero.accounting_freshness.generated_at,
+      source: xero.accounting_freshness.source,
+      status: xero.accounting_freshness.status,
+      summary: xero.accounting_freshness.summary,
+      readiness_issue_count: xero.accounting_freshness.readiness_issue_count,
+      readiness_blocker_count:
+        xero.accounting_freshness.readiness_blocker_count,
+      readiness_warning_count:
+        xero.accounting_freshness.readiness_warning_count,
+      stale_after_days: xero.accounting_freshness.stale_after_days,
+      contact_ready: xero.contact_mapping.ready,
       contact_missing: xero.contact_mapping.missing,
       chart_ready: xero.chart_mapping.ready,
       chart_missing: xero.chart_mapping.missing,
@@ -3988,6 +4021,43 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (
+      method === "POST" &&
+      path === "/tenant-onboarding/onboarding-1/send-lease-pack"
+    ) {
+      const sentAt = "2026-05-21T00:20:00.000Z";
+      tenantOnboardings = tenantOnboardings.map((onboarding) =>
+        onboarding.id === "onboarding-1"
+          ? {
+              ...onboarding,
+              delivery_data: {
+                ...onboarding.delivery_data,
+                lease_pack: {
+                  sent_at: sentAt,
+                  sent_by_user_id: "user-temba",
+                  template_key: "tenant_lease_pack",
+                  template_version: "v1",
+                  receipts: [
+                    {
+                      channel: "email",
+                      status: "queued",
+                      provider: "sendgrid",
+                      recipient: "mi***@example.com",
+                      provider_message_id: "lease-pack-msg-1",
+                      error: null,
+                      metadata: { template_key: "tenant_lease_pack" },
+                    },
+                  ],
+                },
+              },
+              updated_at: sentAt,
+            }
+          : onboarding,
+      );
+      await fulfillJson(route, tenantOnboardings[0]);
+      return;
+    }
+
     if (method === "POST" && path === "/tenant-portal/onboarding/submit") {
       tenantPortalOnboardingSubmitted = true;
       const submittedAt = "2026-05-21T01:00:00.000Z";
@@ -4042,6 +4112,7 @@ export async function mockLeasiumApi(
         property_address: baseSession.lease.property_address,
         tenant_display_name:
           baseSession.tenant.trading_name ?? baseSession.tenant.legal_name,
+        tenant_email: baseSession.tenant.contact_email,
         expires_at: baseSession.onboarding.expires_at,
         claimable: !tenantAccountLinked,
       });
@@ -4127,8 +4198,13 @@ export async function mockLeasiumApi(
             ? {
                 tenantId: "tenant-linked-elsewhere",
                 tradingName: "Riverfront Books",
+                leaseReady: tenantPortalLeaseReady,
+                leaseSigned: tenantPortalLeaseSigned,
               }
-            : {},
+            : {
+                leaseReady: tenantPortalLeaseReady,
+                leaseSigned: tenantPortalLeaseSigned,
+              },
         ),
       );
       return;
@@ -4136,7 +4212,63 @@ export async function mockLeasiumApi(
 
     if (method === "POST" && path === "/tenant-portal/account/claim") {
       tenantAccountLinked = true;
-      await fulfillJson(route, tenantPortalSession("account"));
+      await fulfillJson(
+        route,
+        tenantPortalSession("account", {
+          leaseReady: tenantPortalLeaseReady,
+          leaseSigned: tenantPortalLeaseSigned,
+        }),
+      );
+      return;
+    }
+
+    if (method === "POST" && path === "/tenant-portal/lease-questions") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const baseSession = tenantPortalSession("account", {
+        leaseReady: tenantPortalLeaseReady,
+        leaseSigned: tenantPortalLeaseSigned,
+      });
+      await fulfillJson(route, {
+        ...baseSession,
+        lease_agreement: {
+          ...baseSession.lease_agreement,
+          status: "questions_open",
+          open_question_count: 1,
+          questions: [
+            {
+              id: "lease-question-1",
+              question:
+                typeof payload.question === "string"
+                  ? payload.question
+                  : "Can you confirm the option period?",
+              clause_reference:
+                typeof payload.clause_reference === "string"
+                  ? payload.clause_reference
+                  : null,
+              status: "open",
+              answer: null,
+              asked_at: "2026-05-21T01:40:00.000Z",
+              asked_by_actor: "tenant",
+              answered_at: null,
+              answered_by_actor: null,
+              answered_by_user_id: null,
+              resolved_at: null,
+            },
+          ],
+        },
+      });
+      return;
+    }
+
+    if (method === "POST" && path === "/tenant-portal/lease-agreement/sign") {
+      tenantPortalLeaseSigned = true;
+      await fulfillJson(
+        route,
+        tenantPortalSession("account", {
+          leaseReady: true,
+          leaseSigned: tenantPortalLeaseSigned,
+        }),
+      );
       return;
     }
 
@@ -5191,8 +5323,7 @@ export async function mockLeasiumApi(
                         template_key: "work_assignment_digest",
                         template_version: "v1",
                         delivery_trigger: "recovery",
-                        recovery_of_generated_at:
-                          "2026-05-21T09:00:00.000Z",
+                        recovery_of_generated_at: "2026-05-21T09:00:00.000Z",
                         delivery_attempt_count: 1,
                       },
                     ]

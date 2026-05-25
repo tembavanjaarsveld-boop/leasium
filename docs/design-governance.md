@@ -1143,6 +1143,39 @@ Remba should review: animation feel (too long? too snappy?),
 direction (right-slide for drawers is correct for the workspace
 layout), and modal scale magnitude (0.97 → 1 — barely perceptible).
 
+### Finance and Portfolio QA polish (2026-05-26) — Remba pending
+
+- [~] Owner statement PDF export v1 adds an authenticated Download PDF
+  action to `/statements`, a full-pack ZIP export, and a
+  backend-generated review pack. Review the PDF hierarchy, property
+  table density, owner identity copy, and whether the print/download
+  affordances should collapse into a single statement export menu before
+  owner email dispatch is wired.
+- [~] Portfolio QA completion report + bulk staging v1 adds readiness
+  scoring across data QA, tenant contacts, owner billing identity,
+  onboarding prep, billing drafts, and source trails, plus a compact
+  AI-assisted enrichment candidate queue. Tenant contact and owner
+  billing sections now also have "Stage suggestions" and "Save staged
+  fixes" actions. Review whether the percentage model feels
+  operationally honest, whether the staging language is clear enough,
+  and whether the enrichment queue belongs above or inside the Data QA
+  tab.
+
+### Tenant onboarding simplification (2026-05-26) — Remba pending
+
+- [~] Tenant onboarding now keeps the account-first guardrail but makes
+  first touch lighter: email-code Clerk gate with invite-email prefill,
+  4 required confirmation fields, optional disclosure for extra details,
+  a 3-step tenant checklist, and no tenant-facing `reviewed` state.
+  Review the account gate copy, optional-details wording, checklist
+  sequencing, and whether the focused lease-signing route feels distinct
+  enough from initial onboarding.
+- [~] Operator onboarding review now exposes **Approve & apply** as the
+  routine primary action and a post-approval **Send lease pack** action
+  from the tenant detail page. Review whether the combined approval copy
+  still makes the review-first guardrail obvious and whether the lease
+  pack CTA belongs in the onboarding panel or a broader lease panel.
+
 ### Deferred from Motion polish v2 — pending decision
 
 - Mobile nav drawer (`app-shell.tsx:497`) slides in from the LEFT;

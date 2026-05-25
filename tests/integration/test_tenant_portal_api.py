@@ -5,9 +5,11 @@ from uuid import UUID
 
 from apps.api.main import app
 from apps.api.routers import tenant_onboarding as tenant_onboarding_router
+from apps.api.routers import tenant_portal as tenant_portal_router
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from stewart.core.auth import ClerkIdentity
 from stewart.core.models import (
     BillingDraft,
     BillingDraftStatus,
@@ -355,6 +357,87 @@ def test_tenant_portal_query_token_is_labelled_dev_fallback(
         headers={"x-tenant-portal-token": "not-a-real-token"},
     )
     assert invalid_response.status_code == 404
+
+
+def test_tenant_portal_invite_preview_prefills_sign_in_email(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+
+    response = client.get(f"/api/v1/tenant-portal/invites/{scope['token']}/preview")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tenant_display_name"] == "Portal One"
+    assert body["tenant_email"] == "avery@portal-one.example"
+    assert body["property_name"] == "Portal Plaza — Shop 1"
+    assert body["claimable"] is True
+
+
+def test_tenant_portal_account_claim_requires_matching_clerk_email(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+
+    def fake_identity(authorization, settings):  # noqa: ANN001, ARG001
+        return ClerkIdentity(
+            provider_id="tenant-subject-one",
+            verified_email="wrong-tenant@example.test",
+        )
+
+    monkeypatch.setattr(tenant_portal_router, "_tenant_portal_identity", fake_identity)
+
+    response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == (
+        "Tenant portal login email must match this invite."
+    )
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    assert onboarding.token_consumed_at is None
+    account = session.scalar(
+        select(TenantPortalAccount).where(
+            TenantPortalAccount.auth_provider_id == "tenant-subject-one"
+        )
+    )
+    assert account is None
+
+
+def test_tenant_portal_account_claim_accepts_matching_clerk_email(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+
+    def fake_identity(authorization, settings):  # noqa: ANN001, ARG001
+        return ClerkIdentity(
+            provider_id="tenant-subject-one",
+            verified_email="AVERY@PORTAL-ONE.EXAMPLE",
+        )
+
+    monkeypatch.setattr(tenant_portal_router, "_tenant_portal_identity", fake_identity)
+
+    response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["tenant"]["id"] == scope["tenant_id"]
+    account = _account_by_provider(session, "tenant-subject-one")
+    assert account.tenant_id == UUID(scope["tenant_id"])
 
 
 def test_tenant_portal_account_claim_and_bearer_session_are_scoped(
@@ -1430,13 +1513,15 @@ def test_tenant_portal_lease_questions_gate_signing_and_apply(
     answered_questions = answer_response.json()["delivery_data"]["lease_agreement"]["questions"]
     assert answered_questions[0]["status"] == "answered"
 
-    unsigned_apply_response = client.post(
+    apply_response = client.post(
         f"/api/v1/tenant-onboarding/{scope['onboarding_id']}/apply"
     )
-    assert unsigned_apply_response.status_code == 409
-    assert unsigned_apply_response.json()["detail"] == (
-        "Lease agreement must be signed before applying onboarding."
-    )
+    assert apply_response.status_code == 200
+    assert apply_response.json()["status"] == "applied"
+
+    portal_response = client.get("/api/v1/tenant-portal/session", headers=bearer_headers)
+    assert portal_response.status_code == 200
+    assert portal_response.json()["lease_agreement"]["status"] == "ready_to_sign"
 
     sign_response = client.post(
         "/api/v1/tenant-portal/lease-agreement/sign",
@@ -1447,10 +1532,6 @@ def test_tenant_portal_lease_questions_gate_signing_and_apply(
     signed_agreement = sign_response.json()["lease_agreement"]
     assert signed_agreement["status"] == "signed"
     assert signed_agreement["signed_at"] is not None
-
-    apply_response = client.post(f"/api/v1/tenant-onboarding/{scope['onboarding_id']}/apply")
-    assert apply_response.status_code == 200
-    assert apply_response.json()["status"] == "applied"
 
 
 def test_tenant_portal_onboarding_submit_rejects_non_sent_status(

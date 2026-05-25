@@ -77,6 +77,7 @@ import {
   resendTenantOnboarding,
   reviewTenantOnboarding,
   respondTenantLeaseQuestion,
+  sendTenantOnboardingLeasePack,
   sendTenantOnboardingPortalInvite,
   restoreTenantPortalAccount,
   revokeTenantPortalAccount,
@@ -232,7 +233,7 @@ function leaseAgreementBlocksApply(
   if (!agreement) {
     return false;
   }
-  return agreement.open_question_count > 0 || agreement.status !== "signed";
+  return agreement.open_question_count > 0;
 }
 
 function leaseAgreementApplyReason(
@@ -243,9 +244,6 @@ function leaseAgreementApplyReason(
   }
   if (agreement.open_question_count > 0) {
     return "Answer lease questions before applying.";
-  }
-  if (agreement.status !== "signed") {
-    return "Lease agreement needs signing before applying.";
   }
   return null;
 }
@@ -960,6 +958,7 @@ function TenantDetail() {
   const [portalInviteNotice, setPortalInviteNotice] = useState<string | null>(
     null,
   );
+  const [leasePackNotice, setLeasePackNotice] = useState<string | null>(null);
 
   const tenantQuery = useQuery({
     queryKey: ["tenant", tenantId],
@@ -1201,6 +1200,16 @@ function TenantDetail() {
       setPortalInviteNotice(
         `Portal invite sent. Link expires ${formatDate(updated.expires_at)}.`,
       );
+    },
+  });
+
+  const sendLeasePackMutation = useMutation({
+    mutationFn: sendTenantOnboardingLeasePack,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
+      setLeasePackNotice("Lease pack sent to tenant.");
     },
   });
 
@@ -1539,7 +1548,9 @@ function TenantDetail() {
                   <Field label="ABN">
                     <Input
                       value={form.abn}
-                      onChange={(event) => updateField("abn", event.target.value)}
+                      onChange={(event) =>
+                        updateField("abn", event.target.value)
+                      }
                     />
                   </Field>
                 </>
@@ -1613,7 +1624,9 @@ function TenantDetail() {
                 {tenantIsResidential ? null : (
                   <>
                     <div>
-                      <dt className="text-xs text-muted-foreground">Trading as</dt>
+                      <dt className="text-xs text-muted-foreground">
+                        Trading as
+                      </dt>
                       <dd>{tenant.trading_name ?? "-"}</dd>
                     </div>
                     <div>
@@ -2214,6 +2227,11 @@ function TenantDetail() {
               title="Onboarding workflow"
               icon={<ShieldCheck size={17} />}
             >
+              {leasePackNotice ? (
+                <div className="mb-3 rounded-md border border-success/20 bg-success/5 px-3 py-2 text-xs font-medium text-success">
+                  {leasePackNotice}
+                </div>
+              ) : null}
               <div className="divide-y divide-border">
                 {tenantOnboardings.map((item) => {
                   const onboardingDocuments = (
@@ -2245,11 +2263,13 @@ function TenantDetail() {
                   const onboardingActionPending =
                     reviewOnboardingMutation.isPending ||
                     approveAndApplyOnboardingMutation.isPending ||
-                    applyOnboardingMutation.isPending;
+                    applyOnboardingMutation.isPending ||
+                    sendLeasePackMutation.isPending;
                   const onboardingActionError =
                     reviewOnboardingMutation.error ??
                     approveAndApplyOnboardingMutation.error ??
-                    applyOnboardingMutation.error;
+                    applyOnboardingMutation.error ??
+                    sendLeasePackMutation.error;
                   const providerDetail = (
                     <>
                       <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
@@ -2616,6 +2636,38 @@ function TenantDetail() {
                               )}
                             </div>
                           ) : null}
+                        </div>
+                      ) : null}
+                      {item.status === "applied" &&
+                      leaseAgreement &&
+                      leaseAgreement.status !== "signed" ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
+                          <div>
+                            <div className="font-semibold">Lease pack next</div>
+                            <div className="text-muted-foreground">
+                              Onboarding details are applied. Send the tenant a
+                              signing link when the lease pack is ready.
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              onClick={() =>
+                                sendLeasePackMutation.mutate(item.id)
+                              }
+                              disabled={onboardingActionPending}
+                            >
+                              <Send size={16} />
+                              Send lease pack
+                            </Button>
+                            <Link
+                              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition hover:bg-muted"
+                              href={`/tenants/${tenantId}/portal-preview/${item.id}`}
+                            >
+                              <ShieldCheck size={15} />
+                              Preview
+                            </Link>
+                          </div>
                         </div>
                       ) : null}
                       {item.status === "submitted" ? (

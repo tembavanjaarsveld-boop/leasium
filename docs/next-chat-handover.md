@@ -1,6 +1,6 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-05-25
+Last updated: 2026-05-26
 
 ## Current State
 
@@ -30,6 +30,27 @@ Last updated: 2026-05-25
 - UX audit (2026-05-22): `docs/ux-review-2026-05-22.md` — the tiered roadmap is now fully shipped except dark mode.
 - Nav-pattern research (2026-05-23): `docs/nav-pattern-research-2026-05-23.md` — captures the evidence behind the sidebar choice so Remba sign-off has the same reasoning the original review used.
 - Design-facing changes still require Remba review before being treated as complete.
+- 2026-05-26 continuation: owner statements now have an authenticated
+  review-only per-owner PDF endpoint/download action plus a full-pack ZIP
+  export, and Portfolio QA has a cleanup completion report, AI-assisted
+  enrichment candidate queue, and reviewed bulk staging/saving for
+  tenant-contact and owner-billing fixes. Both are review-first and do
+  not run Xero, email, payment, or provider mutations.
+- 2026-05-26 tenant onboarding simplification: onboarding remains
+  account-first, but the invite gate now uses prefilled Clerk email-code
+  sign-in/sign-up, the confirmation form is trimmed to 4 required fields
+  plus optional details, the tenant checklist is now confirm/docs →
+  review → sign, operator review/apply is combined into **Approve &
+  apply**, and lease signing has focused `/tenant-portal/lease` and
+  `/tenant-portal/[token]/lease` routes plus an operator-triggered
+  **Send lease pack** action.
+- Hosted sanity on 2026-05-26: `https://api.leasium.ai/health` returned
+  200 with `{"status":"ok","app":"Leasium"}`. The public tenant invite
+  preview route executed and returned a clean 404 for `tenant-token-1`
+  rather than a schema error, which confirms the deployed API can read
+  the `tenant_onboarding.token_consumed_at` column. Exact Render deploy
+  log grepping for `20260524_0025` / `20260524_0026` still needs Render
+  dashboard or MCP access.
 
 ## Takeover Priority
 
@@ -37,7 +58,7 @@ Last updated: 2026-05-25
 2. Run `git status --short` and `git log --oneline -10` to confirm the tree is clean and the tip includes the latest Codex continuation slices.
 3. **Render needs to apply migrations `20260524_0025` (residential property_type) and `20260524_0026` (tenant_onboarding.token_consumed_at)** if it hasn't already on its last deploy. Render start command runs `alembic upgrade head` so this should be automatic — verify by checking the deploy log for those revision IDs.
 4. **Outstanding from this session:** verify the tenant portal claim gate end-to-end on live at `https://leasium.ai` after Clerk is anchored to the Leasium domain. Temba was hitting a 409 "already linked to another tenant" because his Clerk login had a prior portal account on an older Tenant row; the fix is to unlink the old account from `/tenants/{id}` → "Portal access" → "Unlink" (not delete tenant — Unlink is the right surgical fix). Re-sending an invite from `/tenants` should now show the new email copy ("Set up your tenant portal for X" / "Sign in to continue").
-5. Pick the next ticket from `docs/product-roadmap.md` "Next Build Order" or the Recommended Next Tickets list below. The AI inbox v2.x trilogy is complete; v2.3 (tenant_contact promote) is the natural next step in that thread, or pivot to Operations polish / Xero deepening / Portfolio QA cleanup.
+5. Pick the next ticket from `docs/product-roadmap.md` "Next Build Order" or the Recommended Next Tickets list below. After the 2026-05-26 continuation, the natural next slices are Clerk-enabled tenant onboarding smoke verification, owner statement dispatch/PDF formatting review, richer Portfolio QA bulk review for blocked billing/onboarding rows, or the remaining Operations mobile live-review follow-ups.
 6. Keep all provider actions review-first: no Xero mutation, SendGrid email, Twilio SMS, tenant email, or payment reconciliation should happen without explicit operator approval.
 
 ## Project Map

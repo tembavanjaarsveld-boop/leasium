@@ -102,6 +102,8 @@ class Settings(BaseSettings):
     tenant_onboarding_template_version: str = "v1"
     tenant_portal_invite_template_key: str = "tenant_portal_invite"
     tenant_portal_invite_template_version: str = "v1"
+    tenant_lease_pack_template_key: str = "tenant_lease_pack"
+    tenant_lease_pack_template_version: str = "v1"
     # DocuSign integration. Empty by default — operators populate when the
     # DocuSign developer account is provisioned. send_lease_for_signature in
     # stewart.integrations.docusign soft-fails with a clear "DocuSign is not

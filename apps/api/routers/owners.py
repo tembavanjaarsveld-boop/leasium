@@ -13,11 +13,14 @@ Read-only — never mutates, never sends.
 from __future__ import annotations
 
 import calendar
+import re
+import zipfile
 from datetime import date
+from io import BytesIO
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.db import utcnow
@@ -62,11 +65,11 @@ def _parse_month(value: str) -> tuple[date, date, str]:
         last = date(year, month, last_day)
         canonical = f"{year:04d}-{month:02d}"
         return first, last, canonical
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="month must be in YYYY-MM format.",
-        )
+        ) from exc
 
 
 def _owner_identity_tuple(
@@ -134,29 +137,11 @@ def _invoice_paid_cents(invoice: InvoiceDraft) -> int:
         return 0
 
 
-@router.get("/statements", response_model=OwnerStatementsRead)
-def get_owner_statements(
+def _build_owner_statements(
     entity_id: UUID,
-    user: Annotated[CurrentUser, Depends(get_current_user)],
-    session: Annotated[Session, Depends(get_session)],
-    month: Annotated[
-        str,
-        Query(
-            description="Month in YYYY-MM format. Defaults to the previous calendar month.",
-        ),
-    ] = "",
+    session: Session,
+    month: str,
 ) -> OwnerStatementsRead:
-    """Return per-owner monthly statements for `entity_id`.
-
-    Groups properties by owner identity tuple, then for each owner sums
-    the InvoiceDraft totals whose `issue_date` falls in the target month.
-    Paid totals come from `invoice_metadata.paid_cents` (written by Xero
-    reconciliation). Outstanding = invoiced - paid, floored at zero so a
-    payment overshoot doesn't show negative.
-    """
-
-    assert_entity_role(session, user, entity_id, READ_ROLES)
-
     # Default to previous calendar month when month is not supplied.
     if not month:
         today = date.today()
@@ -223,7 +208,7 @@ def get_owner_statements(
         bucket["properties"].append(prop)
 
     statements: list[OwnerStatementRead] = []
-    for identity, bucket in owners_by_identity.items():
+    for bucket in owners_by_identity.values():
         sample: Property = bucket["sample"]
         props: list[Property] = bucket["properties"]
 
@@ -285,4 +270,231 @@ def get_owner_statements(
         month_end=month_end,
         owners=statements,
         generated_at=utcnow(),
+    )
+
+
+def _format_money(cents: int) -> str:
+    dollars = cents / 100
+    return f"${dollars:,.0f}"
+
+
+def _pdf_text(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace("(", "\\(")
+        .replace(")", "\\)")
+        .encode("latin-1", "replace")
+        .decode("latin-1")
+    )
+
+
+def _statement_pdf_bytes(statement: OwnerStatementRead, month: str) -> bytes:
+    """Render a compact text PDF without introducing a new provider dependency."""
+
+    lines = [
+        f"Owner statement - {statement.owner_identity}",
+        f"Month: {month}",
+        "",
+        f"Billing contact: {statement.billing_contact_name or 'Not recorded'}",
+        f"Billing email: {statement.billing_email or 'Not recorded'}",
+        "",
+        f"Invoiced: {_format_money(statement.invoiced_cents)}",
+        f"Paid: {_format_money(statement.paid_cents)}",
+        f"Outstanding: {_format_money(statement.outstanding_cents)}",
+        f"Properties: {statement.property_count}",
+        f"Invoices: {statement.invoice_count}",
+        "",
+        "Property breakdown",
+    ]
+    for prop in statement.properties:
+        lines.extend(
+            [
+                f"- {prop.property_name}",
+                f"  Invoiced {_format_money(prop.invoiced_cents)} | "
+                f"Paid {_format_money(prop.paid_cents)} | "
+                f"Outstanding {_format_money(prop.outstanding_cents)} | "
+                f"Invoices {prop.invoice_count}",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "Review only. This PDF does not send owner email, post to Xero, "
+            "or update provider history.",
+        ]
+    )
+
+    page_chunks = [lines[index : index + 42] for index in range(0, len(lines), 42)] or [[]]
+    objects: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"",  # Filled after pages are known.
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    page_refs: list[str] = []
+    for chunk in page_chunks:
+        content_lines = ["BT", "/F1 11 Tf", "14 TL", "50 790 Td"]
+        for line in chunk:
+            content_lines.append(f"({_pdf_text(line)}) Tj")
+            content_lines.append("T*")
+        content_lines.append("ET")
+        stream = "\n".join(content_lines).encode("latin-1")
+        content_obj = (
+            f"<< /Length {len(stream)} >>\nstream\n".encode("latin-1")
+            + stream
+            + b"\nendstream"
+        )
+        page_number = len(objects) + 1
+        content_number = len(objects) + 2
+        page_refs.append(f"{page_number} 0 R")
+        objects.append(
+            (
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+                f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_number} 0 R >>"
+            ).encode("latin-1")
+        )
+        objects.append(content_obj)
+    objects[1] = (
+        f"<< /Type /Pages /Kids [{' '.join(page_refs)}] /Count {len(page_refs)} >>"
+    ).encode("latin-1")
+
+    output = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for index, obj in enumerate(objects, start=1):
+        offsets.append(len(output))
+        output.extend(f"{index} 0 obj\n".encode("latin-1"))
+        output.extend(obj)
+        output.extend(b"\nendobj\n")
+    xref_offset = len(output)
+    output.extend(f"xref\n0 {len(objects) + 1}\n".encode("latin-1"))
+    output.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode("latin-1"))
+    output.extend(
+        (
+            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{xref_offset}\n%%EOF\n"
+        ).encode("latin-1")
+    )
+    return bytes(output)
+
+
+def _statement_filename(owner_identity: str, month: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", owner_identity).strip("-").lower()
+    return f"owner-statement-{month}-{slug or 'owner'}.pdf"
+
+
+def _statement_pack_filename(month: str) -> str:
+    return f"owner-statement-pack-{month}.zip"
+
+
+def _statement_pack_zip_bytes(statements: OwnerStatementsRead) -> bytes:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for statement in statements.owners:
+            if statement.invoice_count <= 0:
+                continue
+            archive.writestr(
+                _statement_filename(statement.owner_identity, statements.month),
+                _statement_pdf_bytes(statement, statements.month),
+            )
+        archive.writestr(
+            f"README-{statements.month}.txt",
+            (
+                "Review-only owner statement pack generated by Leasium.\n"
+                "No owner email, Xero posting, payment reconciliation, or provider "
+                "delivery history mutation was performed.\n"
+            ),
+        )
+    return buffer.getvalue()
+
+
+@router.get("/statements", response_model=OwnerStatementsRead)
+def get_owner_statements(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    month: Annotated[
+        str,
+        Query(
+            description="Month in YYYY-MM format. Defaults to the previous calendar month.",
+        ),
+    ] = "",
+) -> OwnerStatementsRead:
+    """Return per-owner monthly statements for `entity_id`.
+
+    Groups properties by owner identity tuple, then for each owner sums
+    the InvoiceDraft totals whose `issue_date` falls in the target month.
+    Paid totals come from `invoice_metadata.paid_cents` (written by Xero
+    reconciliation). Outstanding = invoiced - paid, floored at zero so a
+    payment overshoot doesn't show negative.
+    """
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    return _build_owner_statements(entity_id, session, month)
+
+
+@router.get("/statements/pdf")
+def get_owner_statement_pdf(
+    entity_id: UUID,
+    owner_identity: str,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    month: Annotated[
+        str,
+        Query(
+            description="Month in YYYY-MM format. Defaults to the previous calendar month.",
+        ),
+    ] = "",
+) -> Response:
+    """Return a review-only PDF for one owner statement."""
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    statements = _build_owner_statements(entity_id, session, month)
+    statement = next(
+        (
+            item
+            for item in statements.owners
+            if item.owner_identity.casefold() == owner_identity.casefold()
+        ),
+        None,
+    )
+    if statement is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner statement not found for this month.",
+        )
+    filename = _statement_filename(statement.owner_identity, statements.month)
+    return Response(
+        content=_statement_pdf_bytes(statement, statements.month),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/statements/pdf-pack")
+def get_owner_statement_pdf_pack(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    month: Annotated[
+        str,
+        Query(
+            description="Month in YYYY-MM format. Defaults to the previous calendar month.",
+        ),
+    ] = "",
+) -> Response:
+    """Return a review-only ZIP of every owner statement PDF for a month."""
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    statements = _build_owner_statements(entity_id, session, month)
+    if not any(statement.invoice_count > 0 for statement in statements.owners):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No owner statements found for this month.",
+        )
+    filename = _statement_pack_filename(statements.month)
+    return Response(
+        content=_statement_pack_zip_bytes(statements),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

@@ -38,6 +38,7 @@ from stewart.core.settings import get_settings
 from stewart.integrations.communications import (
     DeliveryResult,
     TenantOnboardingInvite,
+    send_tenant_lease_pack_invite,
     send_tenant_onboarding_invite,
     send_tenant_portal_invite,
 )
@@ -65,7 +66,6 @@ from apps.api.tenant_lease_agreement import (
     blocking_lease_question_count,
     lease_agreement_exists,
     lease_agreement_read,
-    lease_agreement_signed,
     respond_to_lease_question,
 )
 
@@ -91,6 +91,10 @@ def _onboarding_url(token: str) -> str:
 
 def _portal_url(token: str) -> str:
     return f"{get_settings().frontend_url.rstrip('/')}/tenant-portal/{token}"
+
+
+def _lease_signing_url(token: str) -> str:
+    return f"{_portal_url(token)}/lease"
 
 
 def _read(row: TenantOnboarding) -> TenantOnboardingRead:
@@ -865,6 +869,91 @@ def _deliver_portal_invite(
     return results
 
 
+def _deliver_lease_pack(
+    onboarding: TenantOnboarding,
+    lease: Lease,
+    prop: Property,
+    tenant: Tenant,
+    user: CurrentUser,
+    session: Session,
+) -> list[DeliveryResult]:
+    unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+    if unit is None or unit.deleted_at is not None:
+        return []
+    settings = get_settings()
+    invite = TenantOnboardingInvite(
+        onboarding_id=onboarding.id,
+        entity_id=onboarding.entity_id,
+        tenant_name=tenant.trading_name or tenant.legal_name,
+        contact_name=tenant.contact_name,
+        contact_email=tenant.contact_email or tenant.billing_email,
+        contact_phone=tenant.contact_phone,
+        property_name=prop.name,
+        property_address=_property_address(prop),
+        unit_label=unit.unit_label,
+        onboarding_url=_lease_signing_url(onboarding.token),
+        due_date=onboarding.due_date,
+        expires_at=onboarding.expires_at,
+        brand_name=settings.tenant_onboarding_brand_name,
+        template_key=settings.tenant_lease_pack_template_key,
+        template_version=settings.tenant_lease_pack_template_version,
+    )
+    results = send_tenant_lease_pack_invite(invite, settings)
+    now = utcnow()
+    delivery = dict(onboarding.delivery_data or {})
+    receipts = []
+    for result in results:
+        receipts.append(
+            {
+                "channel": result.channel,
+                "status": result.status,
+                "provider": result.provider,
+                "recipient": _masked_recipient(result.recipient),
+                "provider_message_id": result.provider_message_id,
+                "error": result.error,
+                "metadata": result.metadata,
+            }
+        )
+    delivery["lease_pack"] = {
+        "sent_at": now.isoformat(),
+        "sent_by_user_id": str(user.id),
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "receipts": receipts,
+    }
+    history_raw = delivery.get("lease_pack_history")
+    history = (
+        [item for item in history_raw if isinstance(item, dict)]
+        if isinstance(history_raw, list)
+        else []
+    )
+    history.append(delivery["lease_pack"])
+    delivery["lease_pack_history"] = history[-5:]
+    onboarding.delivery_data = delivery
+    for result in results:
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=onboarding.entity_id,
+            action="send_lease_pack",
+            target_table="tenant_onboarding",
+            target_id=onboarding.id,
+            tool_name=f"twilio.{result.provider}"
+            if result.channel == "sms"
+            else f"sendgrid.{result.provider}",
+            tool_input={
+                "channel": result.channel,
+                "recipient": _masked_recipient(result.recipient),
+            },
+            tool_output_summary=f"lease_pack {result.channel} {result.status}",
+            outcome=(AuditOutcome.error if result.status == "failed" else AuditOutcome.success),
+            error_message=result.error if result.status == "failed" else None,
+            data_classification="confidential",
+        )
+    return results
+
+
 def _is_expired(row: TenantOnboarding) -> bool:
     if row.expires_at is None:
         return False
@@ -1354,6 +1443,41 @@ def send_tenant_onboarding_portal_invite(
     return _read(onboarding)
 
 
+@router.post("/{onboarding_id}/send-lease-pack", response_model=TenantOnboardingRead)
+def send_tenant_onboarding_lease_pack(
+    onboarding_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantOnboardingRead:
+    onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)
+    if onboarding.status != TenantOnboardingStatus.applied:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only applied onboarding rows can receive a lease pack.",
+        )
+    if _is_expired(onboarding):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Expired onboarding links cannot send lease packs.",
+        )
+    if blocking_lease_question_count(onboarding):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Resolve lease agreement questions before sending the lease pack.",
+        )
+    lease_agreement = lease_agreement_read(onboarding)
+    if lease_agreement.get("status") == "signed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Lease agreement is already signed.",
+        )
+    lease, prop, tenant = _lease_scope(onboarding.lease_id, session)
+    _deliver_lease_pack(onboarding, lease, prop, tenant, user, session)
+    session.commit()
+    session.refresh(onboarding)
+    return _read(onboarding)
+
+
 @router.post("/{onboarding_id}/fresh-link", response_model=TenantOnboardingRead)
 def refresh_tenant_onboarding_link(
     onboarding_id: UUID,
@@ -1550,12 +1674,6 @@ def apply_tenant_onboarding(
             status_code=status.HTTP_409_CONFLICT,
             detail="Resolve lease agreement questions before applying onboarding.",
         )
-    if lease_agreement_exists(onboarding) and not lease_agreement_signed(onboarding):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Lease agreement must be signed before applying onboarding.",
-        )
-
     changes = []
     if isinstance(onboarding.review_data, dict) and isinstance(
         onboarding.review_data.get("changes"), list

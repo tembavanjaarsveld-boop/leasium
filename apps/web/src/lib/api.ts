@@ -2401,6 +2401,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return requestWithAuthOption<T>(path, init, true);
 }
 
+async function requestBlob(path: string): Promise<Blob> {
+  const headers = new Headers(await authHeaders());
+  const response = await fetch(`${API_BASE}${path}`, { headers });
+  if (!response.ok) {
+    await parseResponse<never>(response);
+  }
+  return response.blob();
+}
+
 async function publicRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return requestWithAuthOption<T>(path, init, false);
 }
@@ -3182,6 +3191,15 @@ export function sendTenantOnboardingPortalInvite(onboardingId: string) {
   );
 }
 
+export function sendTenantOnboardingLeasePack(onboardingId: string) {
+  return request<TenantOnboardingRecord>(
+    `/tenant-onboarding/${onboardingId}/send-lease-pack`,
+    {
+      method: "POST",
+    },
+  );
+}
+
 export function refreshTenantOnboardingLink(
   onboardingId: string,
   payload: { reason?: string | null; expires_in_days?: number } = {},
@@ -3739,6 +3757,7 @@ export type TenantPortalInvitePreviewRecord = {
   property_name: string;
   property_address: string | null;
   tenant_display_name: string;
+  tenant_email: string | null;
   expires_at: string | null;
   claimable: boolean;
 };
@@ -4602,6 +4621,37 @@ export function getOwnerStatements(entityId: string, month?: string) {
   return request<OwnerStatementsRecord>(
     `/owners/statements?${params.toString()}`,
   );
+}
+
+export function downloadOwnerStatementPdf({
+  entityId,
+  month,
+  ownerIdentity,
+}: {
+  entityId: string;
+  month: string;
+  ownerIdentity: string;
+}) {
+  const params = new URLSearchParams({
+    entity_id: entityId,
+    month,
+    owner_identity: ownerIdentity,
+  });
+  return requestBlob(`/owners/statements/pdf?${params.toString()}`);
+}
+
+export function downloadOwnerStatementPdfPack({
+  entityId,
+  month,
+}: {
+  entityId: string;
+  month: string;
+}) {
+  const params = new URLSearchParams({
+    entity_id: entityId,
+    month,
+  });
+  return requestBlob(`/owners/statements/pdf-pack?${params.toString()}`);
 }
 
 // ---- Contractor directory -------------------------------------------------

@@ -81,6 +81,23 @@ type QaIssue = {
   href: string;
 };
 
+type QaCompletionItem = {
+  id: string;
+  label: string;
+  ready: number;
+  total: number;
+  detail: string;
+  tab: QaTab;
+};
+
+type EnrichmentCandidate = {
+  id: string;
+  title: string;
+  detail: string;
+  href: string;
+  fields: string[];
+};
+
 type SourceRow = {
   id: string;
   kind: string;
@@ -902,6 +919,186 @@ function propertyMissingBillingFields(property: PropertyRecord) {
   ].filter((item): item is string => Boolean(item));
 }
 
+function tenantContactPayload(
+  tenant: TenantRecord,
+  draft: TenantContactDraft,
+): Partial<TenantPayload> {
+  return {
+    contact_name: cleanText(draft.contact_name ?? tenant.contact_name ?? ""),
+    contact_email: cleanText(draft.contact_email ?? tenant.contact_email ?? ""),
+    billing_email: cleanText(draft.billing_email ?? tenant.billing_email ?? ""),
+    abn: cleanText(draft.abn ?? tenant.abn ?? ""),
+  };
+}
+
+function propertyBillingPayload(
+  property: PropertyRecord,
+  draft: PropertyBillingDraft,
+) {
+  return {
+    owner_legal_name: cleanText(
+      draft.owner_legal_name ?? property.owner_legal_name ?? "",
+    ),
+    owner_abn: cleanText(draft.owner_abn ?? property.owner_abn ?? ""),
+    trustee_name: cleanText(draft.trustee_name ?? property.trustee_name ?? ""),
+    trust_name: cleanText(draft.trust_name ?? property.trust_name ?? ""),
+    invoice_issuer_name: cleanText(
+      draft.invoice_issuer_name ?? property.invoice_issuer_name ?? "",
+    ),
+    billing_contact_name: cleanText(
+      draft.billing_contact_name ?? property.billing_contact_name ?? "",
+    ),
+    billing_email: cleanText(draft.billing_email ?? property.billing_email ?? ""),
+    ownership_split: cleanText(
+      draft.ownership_split ?? property.ownership_split ?? "",
+    ),
+  };
+}
+
+function buildEnrichmentCandidates({
+  properties,
+  tenants,
+}: {
+  properties: PropertyRecord[];
+  tenants: TenantRecord[];
+}) {
+  const propertyFields = [
+    "suburb",
+    "state",
+    "postcode",
+    "owner_legal_name",
+    "owner_abn",
+    "trustee_name",
+    "trust_name",
+    "invoice_issuer_name",
+  ] as const;
+  const tenantFields = ["legal_name", "trading_name", "abn", "registered_address"] as const;
+  const candidates: EnrichmentCandidate[] = [];
+
+  for (const property of properties) {
+    const fields = propertyFields.filter((field) => {
+      return !property[field];
+    });
+    if (fields.length) {
+      candidates.push({
+        id: `property-enrichment-${property.id}`,
+        title: property.name,
+        detail: "Property public enrichment can propose address and ownership fields.",
+        href: `/properties?entity_id=${property.entity_id}&property_id=${property.id}`,
+        fields: fields.map(fieldLabel),
+      });
+    }
+  }
+
+  for (const tenant of tenants) {
+    const metadata = isRecord(tenant.metadata.public_enrichment)
+      ? tenant.metadata.public_enrichment
+      : {};
+    const fields = tenantFields.filter((field) => {
+      if (field === "registered_address") {
+        return !tenant.metadata.registered_address && !metadata.registered_address;
+      }
+      return !tenant[field];
+    });
+    if (fields.length) {
+      candidates.push({
+        id: `tenant-enrichment-${tenant.id}`,
+        title: tenantName(tenant),
+        detail: "Tenant public enrichment can propose ABN, trading name, and registered address.",
+        href: `/tenants/${tenant.id}`,
+        fields: fields.map(fieldLabel),
+      });
+    }
+  }
+
+  return candidates
+    .sort((a, b) => b.fields.length - a.fields.length || a.title.localeCompare(b.title))
+    .slice(0, 8);
+}
+
+function buildCompletionItems({
+  issues,
+  tenantsNeedingContact,
+  propertiesNeedingBillingFix,
+  tenantPrep,
+  billingDrafts,
+  sources,
+}: {
+  issues: QaIssue[];
+  tenantsNeedingContact: TenantRecord[];
+  propertiesNeedingBillingFix: PropertyRecord[];
+  tenantPrep: TenantPrepRow[];
+  billingDrafts: BillingDraftRecord[];
+  sources: SourceRow[];
+}): QaCompletionItem[] {
+  const readyPrep = tenantPrep.filter((row) => row.ready).length;
+  const activeBillingDrafts = billingDrafts.filter(
+    (draft) => !["void", "superseded"].includes(draft.status),
+  ).length;
+  return [
+    {
+      id: "data-qa",
+      label: "Data QA",
+      ready: Math.max(0, issues.length - issues.filter((issue) => issue.severity === "danger").length),
+      total: issues.length,
+      detail: issues.length
+        ? `${issues.filter((issue) => issue.severity === "danger").length} urgent blockers`
+        : "No open QA issues",
+      tab: "issues",
+    },
+    {
+      id: "tenant-contacts",
+      label: "Tenant contacts",
+      ready: Math.max(0, tenantPrep.length - tenantsNeedingContact.length),
+      total: tenantPrep.length,
+      detail: tenantsNeedingContact.length
+        ? `${tenantsNeedingContact.length} tenants need contact fields`
+        : "Invite contacts look complete",
+      tab: "contacts",
+    },
+    {
+      id: "owner-billing",
+      label: "Owner billing",
+      ready: Math.max(0, propertiesNeedingBillingFix.length === 0 ? 1 : 0),
+      total: 1,
+      detail: propertiesNeedingBillingFix.length
+        ? `${propertiesNeedingBillingFix.length} properties need billing identity`
+        : "Owner billing fields are complete",
+      tab: "issues",
+    },
+    {
+      id: "onboarding",
+      label: "Onboarding",
+      ready: readyPrep,
+      total: tenantPrep.length,
+      detail: readyPrep
+        ? `${readyPrep} leases ready for invite creation`
+        : "No leases ready for batch invite",
+      tab: "onboarding",
+    },
+    {
+      id: "billing-drafts",
+      label: "Billing drafts",
+      ready: activeBillingDrafts,
+      total: Math.max(activeBillingDrafts, 1),
+      detail: activeBillingDrafts
+        ? `${activeBillingDrafts} internal drafts available`
+        : "Create drafts from charge rules when ready",
+      tab: "billing",
+    },
+    {
+      id: "source-trails",
+      label: "Source trails",
+      ready: sources.length,
+      total: Math.max(sources.length, 1),
+      detail: sources.length
+        ? `${sources.length} provenance rows visible`
+        : "No source history visible yet",
+      tab: "sources",
+    },
+  ];
+}
+
 function MetricCard({
   label: metricLabel,
   value,
@@ -936,6 +1133,113 @@ function MetricCard({
   );
 }
 
+function PortfolioCompletionPanel({
+  items,
+  enrichmentCandidates,
+  onOpenTab,
+}: {
+  items: QaCompletionItem[];
+  enrichmentCandidates: EnrichmentCandidate[];
+  onOpenTab: (tab: QaTab) => void;
+}) {
+  const total = items.reduce((sum, item) => sum + item.total, 0);
+  const ready = items.reduce((sum, item) => sum + Math.min(item.ready, item.total), 0);
+  const completion = total > 0 ? Math.round((ready / total) * 100) : 100;
+  return (
+    <SectionPanel
+      title="Cleanup completion report"
+      description="One scan for the import shakeout: what is ready, what needs review, and where AI enrichment can help."
+      icon={<ClipboardList size={17} className="text-primary" />}
+      actions={
+        <StatusBadge tone={completion >= 90 ? "success" : completion >= 60 ? "warning" : "danger"}>
+          {completion}% ready
+        </StatusBadge>
+      }
+    >
+      <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {items.map((item) => {
+            const percent = item.total > 0 ? Math.round((Math.min(item.ready, item.total) / item.total) * 100) : 100;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onOpenTab(item.tab)}
+                aria-label={`Open cleanup report ${item.id}`}
+                className="rounded-xl border border-border bg-white p-4 text-left shadow-leasiumXs transition hover:bg-muted/60"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-foreground">{item.label}</div>
+                  <StatusBadge tone={percent >= 90 ? "success" : percent >= 60 ? "warning" : "danger"}>
+                    {percent}%
+                  </StatusBadge>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn(
+                      "h-full rounded-full",
+                      percent >= 90
+                        ? "bg-success"
+                        : percent >= 60
+                          ? "bg-warning"
+                          : "bg-danger",
+                    )}
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+                <p className="mt-3 text-sm text-muted-foreground">{item.detail}</p>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="rounded-xl border border-border bg-muted/40 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-foreground">
+                AI-assisted enrichment candidates
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Review public suggestions from the record detail before applying fields.
+              </p>
+            </div>
+            <StatusBadge tone={enrichmentCandidates.length ? "primary" : "success"}>
+              {enrichmentCandidates.length} queued
+            </StatusBadge>
+          </div>
+          <div className="mt-3 divide-y divide-border">
+            {enrichmentCandidates.length ? (
+              enrichmentCandidates.map((candidate) => (
+                <Link
+                  key={candidate.id}
+                  href={candidate.href}
+                  className="grid gap-2 py-3 transition hover:text-primary"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">{candidate.title}</span>
+                    <StatusBadge tone="neutral">
+                      {candidate.fields.length} fields
+                    </StatusBadge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{candidate.detail}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {candidate.fields.slice(0, 4).join(", ")}
+                    {candidate.fields.length > 4 ? "..." : ""}
+                  </p>
+                </Link>
+              ))
+            ) : (
+              <div className="py-4 text-sm text-muted-foreground">
+                No obvious enrichment candidates remain for this entity.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </SectionPanel>
+  );
+}
+
 function PortfolioQaWorkspace() {
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
@@ -949,6 +1253,7 @@ function PortfolioQaWorkspace() {
   const [billingBatch, setBillingBatch] = useState<BillingDraftBatchRecord | null>(null);
   const [onboardingResult, setOnboardingResult] = useState("");
   const [propertyFixResult, setPropertyFixResult] = useState("");
+  const [tenantFixResult, setTenantFixResult] = useState("");
 
   const entitiesQuery = useQuery({ queryKey: ["entities"], queryFn: listEntities });
   const entities = useMemo(() => entitiesQuery.data ?? [], [entitiesQuery.data]);
@@ -1060,7 +1365,30 @@ function PortfolioQaWorkspace() {
   const propertiesNeedingBillingFix = properties.filter(
     (property) => propertyMissingBillingFields(property).length > 0,
   );
+  const enrichmentCandidates = useMemo(
+    () => buildEnrichmentCandidates({ properties, tenants }),
+    [properties, tenants],
+  );
   const readyPrepRows = tenantPrep.filter((row) => row.ready);
+  const completionItems = useMemo(
+    () =>
+      buildCompletionItems({
+        issues,
+        tenantsNeedingContact,
+        propertiesNeedingBillingFix,
+        tenantPrep,
+        billingDrafts,
+        sources,
+      }),
+    [
+      billingDrafts,
+      issues,
+      propertiesNeedingBillingFix,
+      sources,
+      tenantPrep,
+      tenantsNeedingContact,
+    ],
+  );
   const selectedReadyRows = tenantPrep.filter(
     (row) => row.ready && row.leaseId && selectedLeaseIds.includes(row.leaseId),
   );
@@ -1077,6 +1405,10 @@ function PortfolioQaWorkspace() {
     searchableSources.find((source) => source.id === selectedSourceId) ??
     searchableSources.find((source) => source.evidence) ??
     null;
+  const stagedTenantRows = tenants.filter((tenant) => tenantDrafts[tenant.id]);
+  const stagedPropertyRows = properties.filter(
+    (property) => propertyDrafts[property.id],
+  );
 
   const loading =
     entitiesQuery.isLoading ||
@@ -1099,13 +1431,7 @@ function PortfolioQaWorkspace() {
 
   const updateTenantMutation = useMutation({
     mutationFn: ({ tenant, draft }: { tenant: TenantRecord; draft: TenantContactDraft }) => {
-      const payload: Partial<TenantPayload> = {
-        contact_name: cleanText(draft.contact_name ?? tenant.contact_name ?? ""),
-        contact_email: cleanText(draft.contact_email ?? tenant.contact_email ?? ""),
-        billing_email: cleanText(draft.billing_email ?? tenant.billing_email ?? ""),
-        abn: cleanText(draft.abn ?? tenant.abn ?? ""),
-      };
-      return updateTenant(tenant.id, payload);
+      return updateTenant(tenant.id, tenantContactPayload(tenant, draft));
     },
     onSuccess: (_tenant, variables) => {
       setTenantDrafts((current) => {
@@ -1113,6 +1439,41 @@ function PortfolioQaWorkspace() {
         delete next[variables.tenant.id];
         return next;
       });
+      setTenantFixResult(`${tenantName(variables.tenant)} contact details saved.`);
+      queryClient.invalidateQueries({ queryKey: ["tenants", selectedEntityId] });
+      queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
+    },
+  });
+
+  const updateTenantBatchMutation = useMutation({
+    mutationFn: async (items: Array<{ tenant: TenantRecord; draft: TenantContactDraft }>) => {
+      const results = await Promise.allSettled(
+        items.map(({ tenant, draft }) =>
+          updateTenant(tenant.id, tenantContactPayload(tenant, draft)),
+        ),
+      );
+      return { items, results };
+    },
+    onSuccess: ({ items, results }) => {
+      const savedIds = new Set(
+        items
+          .filter((_item, index) => results[index]?.status === "fulfilled")
+          .map((item) => item.tenant.id),
+      );
+      const saved = savedIds.size;
+      const failed = results.length - saved;
+      setTenantDrafts((current) => {
+        const next = { ...current };
+        for (const id of savedIds) {
+          delete next[id];
+        }
+        return next;
+      });
+      setTenantFixResult(
+        failed
+          ? `${saved} tenant contact fixes saved; ${failed} need review.`
+          : `${saved} tenant contact fixes saved.`,
+      );
       queryClient.invalidateQueries({ queryKey: ["tenants", selectedEntityId] });
       queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
     },
@@ -1125,21 +1486,7 @@ function PortfolioQaWorkspace() {
     }: {
       property: PropertyRecord;
       draft: PropertyBillingDraft;
-    }) =>
-      updateProperty(property.id, {
-        owner_legal_name: cleanText(draft.owner_legal_name ?? property.owner_legal_name ?? ""),
-        owner_abn: cleanText(draft.owner_abn ?? property.owner_abn ?? ""),
-        trustee_name: cleanText(draft.trustee_name ?? property.trustee_name ?? ""),
-        trust_name: cleanText(draft.trust_name ?? property.trust_name ?? ""),
-        invoice_issuer_name: cleanText(
-          draft.invoice_issuer_name ?? property.invoice_issuer_name ?? "",
-        ),
-        billing_contact_name: cleanText(
-          draft.billing_contact_name ?? property.billing_contact_name ?? "",
-        ),
-        billing_email: cleanText(draft.billing_email ?? property.billing_email ?? ""),
-        ownership_split: cleanText(draft.ownership_split ?? property.ownership_split ?? ""),
-      }),
+    }) => updateProperty(property.id, propertyBillingPayload(property, draft)),
     onSuccess: (_property, variables) => {
       setPropertyDrafts((current) => {
         const next = { ...current };
@@ -1147,6 +1494,43 @@ function PortfolioQaWorkspace() {
         return next;
       });
       setPropertyFixResult(`${variables.property.name} billing identity saved.`);
+      queryClient.invalidateQueries({ queryKey: ["properties", selectedEntityId] });
+      queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
+      queryClient.invalidateQueries({ queryKey: ["billing-drafts", selectedEntityId] });
+    },
+  });
+
+  const updatePropertyBatchMutation = useMutation({
+    mutationFn: async (
+      items: Array<{ property: PropertyRecord; draft: PropertyBillingDraft }>,
+    ) => {
+      const results = await Promise.allSettled(
+        items.map(({ property, draft }) =>
+          updateProperty(property.id, propertyBillingPayload(property, draft)),
+        ),
+      );
+      return { items, results };
+    },
+    onSuccess: ({ items, results }) => {
+      const savedIds = new Set(
+        items
+          .filter((_item, index) => results[index]?.status === "fulfilled")
+          .map((item) => item.property.id),
+      );
+      const saved = savedIds.size;
+      const failed = results.length - saved;
+      setPropertyDrafts((current) => {
+        const next = { ...current };
+        for (const id of savedIds) {
+          delete next[id];
+        }
+        return next;
+      });
+      setPropertyFixResult(
+        failed
+          ? `${saved} owner billing fixes saved; ${failed} need review.`
+          : `${saved} owner billing fixes saved.`,
+      );
       queryClient.invalidateQueries({ queryKey: ["properties", selectedEntityId] });
       queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
       queryClient.invalidateQueries({ queryKey: ["billing-drafts", selectedEntityId] });
@@ -1227,6 +1611,55 @@ function PortfolioQaWorkspace() {
         [field]: value,
       },
     }));
+  }
+
+  function stageTenantSuggestions() {
+    setTenantDrafts((current) => {
+      const next = { ...current };
+      for (const tenant of tenantsNeedingContact) {
+        const suggestion: TenantContactDraft = { ...next[tenant.id] };
+        if (!tenant.contact_name && !suggestion.contact_name) {
+          suggestion.contact_name = tenant.trading_name ?? tenant.legal_name;
+        }
+        if (!tenant.billing_email && !suggestion.billing_email) {
+          suggestion.billing_email = tenant.contact_email ?? undefined;
+        }
+        if (!tenant.contact_email && !suggestion.contact_email) {
+          suggestion.contact_email = tenant.billing_email ?? undefined;
+        }
+        if (Object.values(suggestion).some(Boolean)) {
+          next[tenant.id] = suggestion;
+        }
+      }
+      return next;
+    });
+    setTenantFixResult("Review staged tenant suggestions before saving.");
+  }
+
+  function stagePropertySuggestions() {
+    setPropertyDrafts((current) => {
+      const next = { ...current };
+      for (const property of propertiesNeedingBillingFix) {
+        const suggestion: PropertyBillingDraft = { ...next[property.id] };
+        const ownerLabel =
+          property.trust_name ??
+          property.trustee_name ??
+          property.owner_legal_name ??
+          undefined;
+        if (!property.invoice_issuer_name && !suggestion.invoice_issuer_name) {
+          suggestion.invoice_issuer_name = ownerLabel;
+        }
+        if (!property.billing_contact_name && !suggestion.billing_contact_name) {
+          suggestion.billing_contact_name =
+            property.trustee_name ?? property.owner_legal_name ?? undefined;
+        }
+        if (Object.values(suggestion).some(Boolean)) {
+          next[property.id] = suggestion;
+        }
+      }
+      return next;
+    });
+    setPropertyFixResult("Review staged owner billing suggestions before saving.");
   }
 
   function openTenantContactFix(tenantId: string) {
@@ -1338,6 +1771,14 @@ function PortfolioQaWorkspace() {
           ))}
         </section>
 
+        {!loading && !error ? (
+          <PortfolioCompletionPanel
+            items={completionItems}
+            enrichmentCandidates={enrichmentCandidates}
+            onOpenTab={setActiveTab}
+          />
+        ) : null}
+
         {loading && !error ? (
           <SectionPanel
             title="Checking the imported portfolio"
@@ -1390,6 +1831,40 @@ function PortfolioQaWorkspace() {
             title="Owner and billing guided fixes"
             description="Patch the billing identity fields that block invoice approval, owner snapshots, and accounting readiness."
             icon={<Building2 size={17} className="text-primary" />}
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                <SecondaryButton
+                  type="button"
+                  onClick={stagePropertySuggestions}
+                  disabled={!propertiesNeedingBillingFix.length}
+                >
+                  <Sparkles size={15} />
+                  Stage suggestions
+                </SecondaryButton>
+                <Button
+                  type="button"
+                  onClick={() =>
+                    updatePropertyBatchMutation.mutate(
+                      stagedPropertyRows.map((property) => ({
+                        property,
+                        draft: propertyDrafts[property.id] ?? {},
+                      })),
+                    )
+                  }
+                  disabled={
+                    !stagedPropertyRows.length ||
+                    updatePropertyBatchMutation.isPending
+                  }
+                >
+                  {updatePropertyBatchMutation.isPending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <Save size={15} />
+                  )}
+                  Save staged fixes
+                </Button>
+              </div>
+            }
           >
             {propertyFixResult ? (
               <div className="border-b border-border bg-primary/5 px-4 py-3 text-sm font-medium text-primary">
@@ -1508,7 +1983,45 @@ function PortfolioQaWorkspace() {
             title="Tenant contact enrichment"
             description="Fill the details needed before sending onboarding links or invoices."
             icon={<UserRound size={17} className="text-primary" />}
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                <SecondaryButton
+                  type="button"
+                  onClick={stageTenantSuggestions}
+                  disabled={!tenantsNeedingContact.length}
+                >
+                  <Sparkles size={15} />
+                  Stage suggestions
+                </SecondaryButton>
+                <Button
+                  type="button"
+                  onClick={() =>
+                    updateTenantBatchMutation.mutate(
+                      stagedTenantRows.map((tenant) => ({
+                        tenant,
+                        draft: tenantDrafts[tenant.id] ?? {},
+                      })),
+                    )
+                  }
+                  disabled={
+                    !stagedTenantRows.length || updateTenantBatchMutation.isPending
+                  }
+                >
+                  {updateTenantBatchMutation.isPending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <Save size={15} />
+                  )}
+                  Save staged fixes
+                </Button>
+              </div>
+            }
           >
+            {tenantFixResult ? (
+              <div className="border-b border-border bg-primary/5 px-4 py-3 text-sm font-medium text-primary">
+                {tenantFixResult}
+              </div>
+            ) : null}
             {tenantsNeedingContact.length ? (
               <div className="divide-y divide-border">
                 {tenantsNeedingContact.map((tenant) => {

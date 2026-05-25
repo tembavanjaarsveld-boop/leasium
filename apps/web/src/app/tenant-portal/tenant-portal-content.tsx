@@ -6,6 +6,8 @@ import {
   SignUpButton,
   UserButton,
   useAuth,
+  useSignIn,
+  useSignUp,
   useUser,
 } from "@clerk/nextjs";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -30,7 +32,13 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   ClerkSessionUnavailableNotice,
@@ -77,7 +85,13 @@ import {
   uploadTenantPortalDocument,
 } from "@/lib/api";
 
-export function TenantPortalPage({ token = null }: { token?: string | null }) {
+export function TenantPortalPage({
+  token = null,
+  view = "portal",
+}: {
+  token?: string | null;
+  view?: "portal" | "lease";
+}) {
   const tenantAccountAuthEnabled = Boolean(
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   );
@@ -85,9 +99,9 @@ export function TenantPortalPage({ token = null }: { token?: string | null }) {
   return (
     <QueryProvider>
       {tenantAccountAuthEnabled ? (
-        <TenantPortalContent token={token} />
+        <TenantPortalContent token={token} view={view} />
       ) : (
-        <TenantPortalContentWithoutAuth token={token} />
+        <TenantPortalContentWithoutAuth token={token} view={view} />
       )}
     </QueryProvider>
   );
@@ -357,19 +371,21 @@ function buildTenantPortalActivity(portal: TenantPortalRecord) {
           ? {
               key: `contact-change-dismissed-${request.id}`,
               title: "Contact request closed",
-              detail: "The property team reviewed your contact detail request and left your saved details unchanged.",
+              detail:
+                "The property team reviewed your contact detail request and left your saved details unchanged.",
               timestamp: request.dismissed_at,
               tone: "neutral",
             }
           : request.submitted_at
-          ? {
-              key: `contact-change-submitted-${request.id}`,
-              title: "Contact request sent",
-              detail: "Your requested contact detail changes are with the property team.",
-              timestamp: request.submitted_at,
-              tone: "warning",
-            }
-          : null,
+            ? {
+                key: `contact-change-submitted-${request.id}`,
+                title: "Contact request sent",
+                detail:
+                  "Your requested contact detail changes are with the property team.",
+                timestamp: request.submitted_at,
+                tone: "warning",
+              }
+            : null,
     );
   });
 
@@ -388,7 +404,8 @@ function buildTenantPortalActivity(portal: TenantPortalRecord) {
   return items
     .sort(
       (left, right) =>
-        new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
+        new Date(right.timestamp).getTime() -
+        new Date(left.timestamp).getTime(),
     )
     .slice(0, 6);
 }
@@ -424,10 +441,6 @@ function onboardingSubmitted(portal: TenantPortalRecord) {
   );
 }
 
-function onboardingReviewed(portal: TenantPortalRecord) {
-  return ["reviewed", "applied"].includes(portal.onboarding.status);
-}
-
 function onboardingApplied(portal: TenantPortalRecord) {
   return portal.onboarding.status === "applied";
 }
@@ -435,7 +448,7 @@ function onboardingApplied(portal: TenantPortalRecord) {
 function tenantOnboardingStatusLabel(
   status: TenantPortalRecord["onboarding"]["status"],
 ) {
-  if (status === "reviewed") {
+  if (status === "submitted" || status === "reviewed") {
     return "In review";
   }
   return label(status);
@@ -516,7 +529,329 @@ function tenantPortalClaimErrorMessage(error: unknown) {
 function tenantPortalClaimNeedsDifferentLogin(error: unknown) {
   return (
     error instanceof Error &&
-    error.message.toLowerCase().includes("already linked to another tenant")
+    (error.message.toLowerCase().includes("already linked to another tenant") ||
+      error.message.toLowerCase().includes("login email must match"))
+  );
+}
+
+function clerkFlowErrorMessage(error: unknown) {
+  if (error && typeof error === "object" && "errors" in error) {
+    const errors = (
+      error as { errors?: Array<{ longMessage?: string; message?: string }> }
+    ).errors;
+    const firstError = errors?.[0];
+    if (firstError?.longMessage) return firstError.longMessage;
+    if (firstError?.message) return firstError.message;
+  }
+  if (error instanceof Error) return error.message;
+  return "Could not complete tenant sign-in.";
+}
+
+function clerkErrorCode(error: unknown) {
+  if (error && typeof error === "object" && "errors" in error) {
+    return (error as { errors?: Array<{ code?: string }> }).errors?.[0]?.code;
+  }
+  return null;
+}
+
+function TenantInviteEmailCodeGate({
+  claimable,
+  initialEmail,
+}: {
+  claimable: boolean;
+  initialEmail: string | null;
+}) {
+  const { signIn, fetchStatus: signInFetchStatus } = useSignIn();
+  const { signUp, fetchStatus: signUpFetchStatus } = useSignUp();
+  const [email, setEmail] = useState(initialEmail ?? "");
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState<"email" | "code" | "requirements">("email");
+  const [legalAccepted, setLegalAccepted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fetching =
+    busy ||
+    signInFetchStatus === "fetching" ||
+    signUpFetchStatus === "fetching";
+
+  useEffect(() => {
+    if (step === "email") setEmail(initialEmail ?? "");
+  }, [initialEmail, step]);
+
+  const finaliseSignIn = useCallback(async () => {
+    if (!signIn) return;
+    const { error: finaliseError } = await signIn.finalize();
+    if (finaliseError) setError(clerkFlowErrorMessage(finaliseError));
+  }, [signIn]);
+
+  const finaliseSignUp = useCallback(async () => {
+    if (!signUp) return;
+    const { error: finaliseError } = await signUp.finalize();
+    if (finaliseError) setError(clerkFlowErrorMessage(finaliseError));
+  }, [signUp]);
+
+  const transferToSignUp = useCallback(async () => {
+    if (!signUp) {
+      setError("Tenant sign-up is still loading.");
+      return;
+    }
+    const { error: transferError } = await signUp.create({ transfer: true });
+    if (transferError) {
+      setError(clerkFlowErrorMessage(transferError));
+      return;
+    }
+    if (signUp.status === "complete") {
+      await finaliseSignUp();
+      return;
+    }
+    if (signUp.status === "missing_requirements") {
+      setStep("requirements");
+      return;
+    }
+    setError(
+      "Tenant account needs additional Clerk setup before it can continue.",
+    );
+  }, [finaliseSignUp, signUp]);
+
+  const sendCode = useCallback(
+    async (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+      if (!signIn) {
+        setError("Tenant sign-in is still loading.");
+        return;
+      }
+      const nextEmail = email.trim();
+      if (!nextEmail) {
+        setError("Enter the tenant email before sending a code.");
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        const { error: createError } = await signIn.create({
+          identifier: nextEmail,
+          signUpIfMissing: claimable ? true : undefined,
+        });
+        if (createError) {
+          setError(clerkFlowErrorMessage(createError));
+          return;
+        }
+        const { error: sendError } = await signIn.emailCode.sendCode();
+        if (sendError) {
+          setError(clerkFlowErrorMessage(sendError));
+          return;
+        }
+        setEmail(nextEmail);
+        setCode("");
+        setStep("code");
+      } catch (caught) {
+        setError(clerkFlowErrorMessage(caught));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [claimable, email, signIn],
+  );
+
+  const verifyCode = useCallback(
+    async (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+      if (!signIn) {
+        setError("Tenant sign-in is still loading.");
+        return;
+      }
+      const nextCode = code.trim();
+      if (!nextCode) {
+        setError("Enter the code from your email.");
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        const { error: verifyError } = await signIn.emailCode.verifyCode({
+          code: nextCode,
+        });
+        if (verifyError) {
+          if (clerkErrorCode(verifyError) === "sign_up_if_missing_transfer") {
+            await transferToSignUp();
+            return;
+          }
+          setError(clerkFlowErrorMessage(verifyError));
+          return;
+        }
+        if (signIn.status === "complete") {
+          await finaliseSignIn();
+          return;
+        }
+        if (signIn.status === "needs_second_factor") {
+          setError(
+            "This login needs another verification step before continuing.",
+          );
+          return;
+        }
+        if (signIn.status === "needs_client_trust") {
+          setError(
+            "This browser needs another verification step before continuing.",
+          );
+          return;
+        }
+        setError("Tenant sign-in is not complete yet.");
+      } catch (caught) {
+        setError(clerkFlowErrorMessage(caught));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [code, finaliseSignIn, signIn, transferToSignUp],
+  );
+
+  const completeRequirements = useCallback(
+    async (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+      if (!signUp) {
+        setError("Tenant sign-up is still loading.");
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        const updatePayload: { legalAccepted?: boolean } = {};
+        if (signUp.missingFields.includes("legal_accepted")) {
+          updatePayload.legalAccepted = legalAccepted;
+        }
+        const { error: updateError } = await signUp.update(updatePayload);
+        if (updateError) {
+          setError(clerkFlowErrorMessage(updateError));
+          return;
+        }
+        if (signUp.status === "complete") {
+          await finaliseSignUp();
+          return;
+        }
+        setError(
+          "Tenant account still needs Clerk-required fields before it can continue.",
+        );
+      } catch (caught) {
+        setError(clerkFlowErrorMessage(caught));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [finaliseSignUp, legalAccepted, signUp],
+  );
+
+  if (step === "requirements") {
+    const needsLegal =
+      signUp?.missingFields.includes("legal_accepted") ?? false;
+    return (
+      <form className="grid gap-3 text-sm" onSubmit={completeRequirements}>
+        <p className="text-foreground">
+          Your email is verified. Finish the account step to continue.
+        </p>
+        {needsLegal ? (
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4"
+              checked={legalAccepted}
+              onChange={(event) => setLegalAccepted(event.target.checked)}
+            />
+            <span>I accept the tenant account terms.</span>
+          </label>
+        ) : null}
+        {error ? <div className="text-danger">{error}</div> : null}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="submit"
+            disabled={fetching || (needsLegal && !legalAccepted)}
+          >
+            {fetching ? <Loader2 size={16} className="animate-spin" /> : null}
+            Continue
+          </Button>
+          <SecondaryButton
+            type="button"
+            disabled={fetching}
+            onClick={() => {
+              signIn?.reset();
+              signUp?.reset();
+              setStep("email");
+              setCode("");
+              setError(null);
+            }}
+          >
+            Use another email
+          </SecondaryButton>
+        </div>
+      </form>
+    );
+  }
+
+  if (step === "code") {
+    return (
+      <form className="grid gap-3 text-sm" onSubmit={verifyCode}>
+        <p className="text-foreground">
+          We sent a one-time code to{" "}
+          <span className="font-medium">{email}</span>.
+        </p>
+        <Field label="Email code">
+          <Input
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+          />
+        </Field>
+        {error ? <div className="text-danger">{error}</div> : null}
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" disabled={fetching || !code.trim()}>
+            {fetching ? <Loader2 size={16} className="animate-spin" /> : null}
+            Verify code
+          </Button>
+          <SecondaryButton
+            type="button"
+            disabled={fetching}
+            onClick={() => sendCode()}
+          >
+            Resend code
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            disabled={fetching}
+            onClick={() => {
+              signIn?.reset();
+              signUp?.reset();
+              setStep("email");
+              setCode("");
+              setError(null);
+            }}
+          >
+            Use another email
+          </SecondaryButton>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <form className="grid gap-3 text-sm" onSubmit={sendCode}>
+      <p className="text-foreground">
+        Sign in with a one-time code. We&apos;ll use this login for your tenant
+        portal.
+      </p>
+      <Field label="Email">
+        <Input
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+      </Field>
+      {error ? <div className="text-danger">{error}</div> : null}
+      <Button type="submit" disabled={fetching || !email.trim()}>
+        {fetching ? <Loader2 size={16} className="animate-spin" /> : null}
+        Send code
+      </Button>
+    </form>
   );
 }
 
@@ -613,11 +948,14 @@ function TenantDocumentSummary({
           <span className="truncate font-medium">{document.filename}</span>
         </span>
         <span className="text-xs text-muted-foreground">
-          {categoryLabels[document.category]} - {formatBytes(document.byte_size)} -{" "}
-          {label(document.source)} - {formatDateTime(document.created_at)}
+          {categoryLabels[document.category]} -{" "}
+          {formatBytes(document.byte_size)} - {label(document.source)} -{" "}
+          {formatDateTime(document.created_at)}
         </span>
         {document.notes ? (
-          <span className="text-xs text-muted-foreground">{document.notes}</span>
+          <span className="text-xs text-muted-foreground">
+            {document.notes}
+          </span>
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-2 justify-self-start text-xs font-semibold text-muted-foreground md:justify-self-end">
@@ -718,10 +1056,9 @@ function ContactDetailsPanel({
     },
   });
 
-  function setChangeField<K extends keyof TenantPortalContactChangeRequestPayload>(
-    field: K,
-    value: TenantPortalContactChangeRequestPayload[K],
-  ) {
+  function setChangeField<
+    K extends keyof TenantPortalContactChangeRequestPayload,
+  >(field: K, value: TenantPortalContactChangeRequestPayload[K]) {
     setChangeForm((current) => ({ ...current, [field]: value }));
   }
 
@@ -1019,12 +1356,14 @@ function TenantAccountPanel({
   tokenTenantId,
   tokenTenantName,
   tokenExpiresAt,
+  returnToPath = "/tenant-portal",
   onAccountPortal,
 }: {
   token: string | null;
   tokenTenantId: string | null;
   tokenTenantName: string | null;
   tokenExpiresAt: string | null;
+  returnToPath?: string;
   onAccountPortal: (
     portal: TenantPortalRecord | null,
     authToken: string | null,
@@ -1035,7 +1374,7 @@ function TenantAccountPanel({
   const authTimedOut = useAuthLoadTimeout(isLoaded);
   const returnTo = token
     ? `/tenant-portal/${encodeURIComponent(token)}`
-    : "/tenant-portal";
+    : returnToPath;
   const accountQuery = useQuery({
     queryKey: ["tenant-portal-account-session", tokenTenantId],
     queryFn: async () => {
@@ -1178,9 +1517,7 @@ function TenantAccountPanel({
               </span>
             ) : null}
           </div>
-          <p className="text-muted-foreground">
-            {accountStatus.recovery_hint}
-          </p>
+          <p className="text-muted-foreground">{accountStatus.recovery_hint}</p>
           {accountStatus.revoked_at ? (
             <p className="text-xs text-muted-foreground">
               Revoked {formatDateTime(accountStatus.revoked_at)}
@@ -1209,8 +1546,9 @@ function TenantAccountPanel({
             This login is already connected to another tenant portal.
           </p>
           <p className="text-muted-foreground">
-            Sign out and choose the login for {tokenTenantName ?? "this tenant"},
-            or ask the property team to update this account&apos;s portal access.
+            Sign out and choose the login for {tokenTenantName ?? "this tenant"}
+            , or ask the property team to update this account&apos;s portal
+            access.
           </p>
           <p className="text-xs text-muted-foreground">{tokenExpiryCopy}</p>
         </div>
@@ -1394,7 +1732,10 @@ function OnboardingPanel({
     insurance_confirmed: readSubmittedBool(prior, "insurance_confirmed"),
     insurance_expiry_date:
       readSubmittedString(prior, "insurance_expiry_date") || null,
-    emergency_contact_name: readSubmittedString(prior, "emergency_contact_name"),
+    emergency_contact_name: readSubmittedString(
+      prior,
+      "emergency_contact_name",
+    ),
     emergency_contact_phone: readSubmittedString(
       prior,
       "emergency_contact_phone",
@@ -1430,13 +1771,12 @@ function OnboardingPanel({
           ? "primary"
           : "neutral";
     const statusDetail =
-      portal.onboarding.status === "submitted"
+      portal.onboarding.status === "submitted" ||
+      portal.onboarding.status === "reviewed"
         ? `Submitted ${formatDateTime(portal.onboarding.submitted_at)}. Your property manager will review and confirm shortly.`
-        : portal.onboarding.status === "reviewed"
-          ? "Your submission is with the property team. The lease pack is next."
-          : portal.onboarding.status === "applied"
-            ? "Applied. Your contact details are now confirmed in Leasium."
-            : `Onboarding is ${tenantOnboardingStatusLabel(portal.onboarding.status)}.`;
+        : portal.onboarding.status === "applied"
+          ? "Applied. Your contact details are now confirmed in Leasium."
+          : `Onboarding is ${tenantOnboardingStatusLabel(portal.onboarding.status)}.`;
     return (
       <Panel
         title="Onboarding"
@@ -1498,18 +1838,14 @@ function OnboardingPanel({
             <Input
               required
               value={form.legal_name}
-              onChange={(event) =>
-                setField("legal_name", event.target.value)
-              }
+              onChange={(event) => setField("legal_name", event.target.value)}
             />
           </Field>
           <Field label="Contact name">
             <Input
               required
               value={form.contact_name}
-              onChange={(event) =>
-                setField("contact_name", event.target.value)
-              }
+              onChange={(event) => setField("contact_name", event.target.value)}
             />
           </Field>
           <Field label="Contact email">
@@ -1662,7 +1998,9 @@ function LeaseAgreementPanel({
   const signed = agreement.status === "signed";
   const canAskQuestion =
     !signed &&
-    ["sent", "submitted", "reviewed"].includes(portal.onboarding.status);
+    ["sent", "submitted", "reviewed", "applied"].includes(
+      portal.onboarding.status,
+    );
   const canSign = agreement.status === "ready_to_sign" && acceptedForSigning;
   const blockingCount = questions.filter(blockingLeaseQuestion).length;
 
@@ -1860,6 +2198,133 @@ function LeaseAgreementPanel({
   );
 }
 
+function TenantLeaseSigningView({
+  portal,
+  token,
+  accountAuthToken,
+  onSaved,
+}: {
+  portal: TenantPortalRecord;
+  token: string | null;
+  accountAuthToken: string | null;
+  onSaved: () => void;
+}) {
+  const agreement = portal.lease_agreement;
+  const applied = onboardingApplied(portal);
+  const signed = agreement.status === "signed";
+  const portalHref =
+    portal.auth.mode === "tenant_portal_account"
+      ? "/tenant-portal"
+      : token
+        ? `/tenant-portal/${encodeURIComponent(token)}`
+        : "/tenant-portal";
+
+  return (
+    <PortalShell>
+      <div className="mx-auto grid max-w-6xl gap-5 px-5 py-6">
+        <section className="rounded-md border border-border bg-white p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="text-sm font-medium text-primary">Lease signing</p>
+              <h2 className="mt-1 text-2xl font-semibold">
+                Review and sign your lease
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {portal.lease.property_name} - {portal.lease.unit_label}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge tone={applied ? "success" : "warning"}>
+                {applied ? "Approved" : "In review"}
+              </StatusBadge>
+              <StatusBadge tone={leaseAgreementTone(agreement.status)}>
+                {leaseAgreementLabel(agreement.status)}
+              </StatusBadge>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid gap-5">
+            {!applied ? (
+              <Panel title="Waiting for approval" icon={<Clock3 size={18} />}>
+                <div className="grid gap-2 p-4 text-sm text-muted-foreground">
+                  <p>
+                    The property team is still reviewing your details and
+                    documents. We&apos;ll email you when the lease pack is ready
+                    to sign.
+                  </p>
+                </div>
+              </Panel>
+            ) : null}
+            <LeaseAgreementPanel
+              portal={portal}
+              token={token}
+              accountAuthToken={accountAuthToken}
+              onSaved={onSaved}
+            />
+          </div>
+
+          <aside className="grid content-start gap-5">
+            <Panel title="Lease Snapshot" icon={<Building2 size={18} />}>
+              <dl className="grid gap-3 p-4 text-sm">
+                <div>
+                  <dt className="text-muted-foreground">Tenant</dt>
+                  <dd className="font-medium">
+                    {portal.tenant.trading_name || portal.tenant.legal_name}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Property</dt>
+                  <dd className="font-medium">{portal.lease.property_name}</dd>
+                  {portal.lease.property_address ? (
+                    <dd className="text-muted-foreground">
+                      {portal.lease.property_address}
+                    </dd>
+                  ) : null}
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Unit</dt>
+                  <dd className="font-medium">{portal.lease.unit_label}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Lease dates</dt>
+                  <dd className="font-medium">
+                    {formatDate(portal.lease.commencement_date)} to{" "}
+                    {formatDate(portal.lease.expiry_date)}
+                  </dd>
+                </div>
+              </dl>
+            </Panel>
+
+            <Panel title="What Happens Next" icon={<FileText size={18} />}>
+              <div className="grid gap-2 p-4 text-sm text-muted-foreground">
+                {signed ? (
+                  <p>
+                    Your signed lease is recorded. The full portal has payments,
+                    maintenance, and documents when you need them.
+                  </p>
+                ) : (
+                  <p>
+                    Once signing is complete, your full tenant portal stays open
+                    for payments, maintenance, and ongoing documents.
+                  </p>
+                )}
+                <a
+                  className="font-medium text-primary hover:text-primary-hover"
+                  href={portalHref}
+                >
+                  Open full portal
+                </a>
+              </div>
+            </Panel>
+          </aside>
+        </div>
+      </div>
+    </PortalShell>
+  );
+}
+
 function TenantLoginNotConfiguredNotice() {
   return (
     <div className="grid gap-2 rounded-md border border-primary/30 bg-primary/5 p-4 text-sm">
@@ -1883,7 +2348,13 @@ function TenantLoginNotConfiguredPanel() {
   );
 }
 
-function TenantPortalContentWithoutAuth({ token }: { token: string | null }) {
+function TenantPortalContentWithoutAuth({
+  token,
+  view,
+}: {
+  token: string | null;
+  view: "portal" | "lease";
+}) {
   const invitePreviewQuery = useQuery({
     queryKey: ["tenant-portal-invite-preview", token],
     queryFn: () => getTenantPortalInvitePreview(token as string),
@@ -1897,9 +2368,13 @@ function TenantPortalContentWithoutAuth({ token }: { token: string | null }) {
         <div className="mx-auto grid max-w-xl gap-5 px-5 py-8">
           <section className="rounded-md border border-border bg-white p-5">
             <p className="text-sm font-medium text-primary">Tenant Portal</p>
-            <h2 className="mt-1 text-2xl font-semibold">Open your portal</h2>
+            <h2 className="mt-1 text-2xl font-semibold">
+              {view === "lease" ? "Open your lease pack" : "Open your portal"}
+            </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Sign in with your Leasium tenant account.
+              {view === "lease"
+                ? "Sign in with your Leasium tenant account to review and sign."
+                : "Sign in with your Leasium tenant account."}
             </p>
           </section>
           <TenantLoginNotConfiguredPanel />
@@ -1962,6 +2437,14 @@ function TenantPortalContentWithoutAuth({ token }: { token: string | null }) {
                 </dd>
               ) : null}
             </div>
+            {preview.tenant_email ? (
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Sign-in email
+                </dt>
+                <dd>{preview.tenant_email}</dd>
+              </div>
+            ) : null}
             {preview.expires_at ? (
               <div>
                 <dt className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -1980,15 +2463,24 @@ function TenantPortalContentWithoutAuth({ token }: { token: string | null }) {
   );
 }
 
-function TenantPortalContent({ token }: { token: string | null }) {
+function TenantPortalContent({
+  token,
+  view,
+}: {
+  token: string | null;
+  view: "portal" | "lease";
+}) {
   // Soft-switch claim gate — the token URL never exposes data without
   // a Clerk session. The token is now solely a one-time claim entry-
   // point that creates the TenantPortalAccount boundary and is then consumed.
   // The token-scoped `getTenantPortal` call is disabled entirely;
   // post-claim, every data read flows through the account-scoped
   // endpoints below.
-  const { getToken: getClerkToken, isLoaded: clerkLoaded, isSignedIn: clerkSignedIn } =
-    useAuth();
+  const {
+    getToken: getClerkToken,
+    isLoaded: clerkLoaded,
+    isSignedIn: clerkSignedIn,
+  } = useAuth();
   const clerkLoadTimedOut = useAuthLoadTimeout(clerkLoaded);
   const portalQuery = useQuery({
     queryKey: ["tenant-portal", token],
@@ -2166,9 +2658,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
                 })
               : null;
         if (!document) {
-          throw new Error(
-            "Sign in to your tenant account before submitting.",
-          );
+          throw new Error("Sign in to your tenant account before submitting.");
         }
         payload.photo_document_ids = [document.id];
       }
@@ -2180,9 +2670,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
         );
       }
       if (!token) {
-        throw new Error(
-          "Sign in to your tenant account before submitting.",
-        );
+        throw new Error("Sign in to your tenant account before submitting.");
       }
       return createTenantPortalMaintenanceRequest(token, payload);
     },
@@ -2254,6 +2742,9 @@ function TenantPortalContent({ token }: { token: string | null }) {
             tokenTenantId={null}
             tokenTenantName={null}
             tokenExpiresAt={null}
+            returnToPath={
+              view === "lease" ? "/tenant-portal/lease" : "/tenant-portal"
+            }
             onAccountPortal={handleAccountPortal}
           />
         </div>
@@ -2284,8 +2775,8 @@ function TenantPortalContent({ token }: { token: string | null }) {
               <LeasiumMark className="mx-auto mb-4" />
               <h2 className="text-lg font-semibold">Invite not found</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                This invite link is no longer valid. Ask the property team
-                for a fresh tenant portal link.
+                This invite link is no longer valid. Ask the property team for a
+                fresh tenant portal link.
               </p>
             </div>
           </div>
@@ -2293,7 +2784,10 @@ function TenantPortalContent({ token }: { token: string | null }) {
       );
     }
     const preview = invitePreviewQuery.data;
-    const returnTo = `/tenant-portal/${encodeURIComponent(token)}`;
+    const returnTo =
+      view === "lease"
+        ? `/tenant-portal/${encodeURIComponent(token)}/lease`
+        : `/tenant-portal/${encodeURIComponent(token)}`;
     return (
       <PortalShell>
         <div className="mx-auto grid max-w-2xl gap-5 px-5 py-10">
@@ -2321,6 +2815,14 @@ function TenantPortalContent({ token }: { token: string | null }) {
                   </dd>
                 ) : null}
               </div>
+              {preview.tenant_email ? (
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Sign-in email
+                  </dt>
+                  <dd>{preview.tenant_email}</dd>
+                </div>
+              ) : null}
               {preview.expires_at ? (
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -2344,46 +2846,20 @@ function TenantPortalContent({ token }: { token: string | null }) {
                 <div className="grid gap-2 text-sm">
                   {!preview.claimable ? (
                     <>
-                      <StatusBadge tone="warning">Invite already used</StatusBadge>
+                      <StatusBadge tone="warning">
+                        Invite already used
+                      </StatusBadge>
                       <p className="text-muted-foreground">
                         This invite link has already been claimed. Sign in with
                         the tenant account you set up earlier, or ask the
                         property team for a fresh link.
                       </p>
                     </>
-                  ) : (
-                    <p className="text-foreground">
-                      Create or sign in to your tenant account first. Then you
-                      can complete onboarding and use your portal without this
-                      invite link.
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    {preview.claimable ? (
-                      <SignUpButton
-                        mode="redirect"
-                        fallbackRedirectUrl={returnTo}
-                      >
-                        <Button type="button">
-                          <LogIn size={16} />
-                          Create account
-                        </Button>
-                      </SignUpButton>
-                    ) : null}
-                    <SignInButton
-                      mode="redirect"
-                      fallbackRedirectUrl={returnTo}
-                    >
-                      {preview.claimable ? (
-                        <SecondaryButton type="button">Sign in</SecondaryButton>
-                      ) : (
-                        <Button type="button">
-                          <LogIn size={16} />
-                          Sign in
-                        </Button>
-                      )}
-                    </SignInButton>
-                  </div>
+                  ) : null}
+                  <TenantInviteEmailCodeGate
+                    claimable={preview.claimable}
+                    initialEmail={preview.tenant_email}
+                  />
                 </div>
               ) : gateClaimMutation.isError ? (
                 <div className="grid gap-3 text-sm">
@@ -2450,7 +2926,6 @@ function TenantPortalContent({ token }: { token: string | null }) {
   }
 
   const detailsSubmitted = onboardingSubmitted(portal);
-  const detailsReviewed = onboardingReviewed(portal);
   const leaseAgreement = portal.lease_agreement;
   const leaseAgreementSigned = leaseAgreement.status === "signed";
   const requiredDocuments = portal.compliance.items;
@@ -2458,6 +2933,20 @@ function TenantPortalContent({ token }: { token: string | null }) {
   const documentsComplete =
     !documentsRequired ||
     requiredDocuments.every((item) => item.status === "received");
+  const onboardingReviewReady = detailsSubmitted && documentsComplete;
+
+  if (view === "lease") {
+    return (
+      <TenantLeaseSigningView
+        portal={portal}
+        token={token}
+        accountAuthToken={accountAuthToken}
+        onSaved={() => {
+          refreshPortal();
+        }}
+      />
+    );
+  }
 
   if (!onboardingApplied(portal)) {
     return (
@@ -2473,9 +2962,9 @@ function TenantPortalContent({ token }: { token: string | null }) {
                   Let&apos;s get your tenancy ready.
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Create your account, confirm your details, upload requested
-                  documents, ask any lease questions, then sign once the
-                  lease pack is ready.
+                  Confirm your details and upload requested documents. The
+                  property team will email you when the lease pack is ready to
+                  sign.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -2707,74 +3196,35 @@ function TenantPortalContent({ token }: { token: string | null }) {
               <Panel title="Checklist" icon={<CheckCircle2 size={18} />}>
                 <div className="grid gap-3 p-4">
                   <OnboardingStep
-                    title="Tenant account"
-                    detail="Your secure tenant account has been created or confirmed."
-                    state="complete"
-                  />
-                  <OnboardingStep
-                    title="Confirm details"
+                    title="Confirm details + upload docs"
                     detail={
-                      detailsSubmitted
-                        ? "Your submitted details are with the property team."
-                        : "Confirm your core contact details."
-                    }
-                    state={detailsSubmitted ? "complete" : "current"}
-                  />
-                  <OnboardingStep
-                    title="Required documents"
-                    detail={
-                      !documentsRequired
-                        ? "No documents are required right now."
-                        : documentsComplete
-                        ? "Requested onboarding files have been received."
-                        : "Upload the requested files for property team review."
-                    }
-                    state={
-                      documentsComplete
-                        ? "complete"
+                      onboardingReviewReady
+                        ? "Your details and requested documents are with the property team."
                         : detailsSubmitted
-                          ? "current"
-                          : "waiting"
+                          ? "Upload the requested files so the property team can finish review."
+                          : documentsRequired
+                            ? "Confirm your core details, then upload requested files."
+                            : "Confirm your core details for property team review."
                     }
+                    state={onboardingReviewReady ? "complete" : "current"}
                   />
                   <OnboardingStep
                     title="Property team review"
                     detail={
-                      detailsReviewed
-                        ? "Your submission has moved to the lease pack step."
-                        : detailsSubmitted
-                          ? "The property team checks your details and documents."
-                          : "Review starts after your details are submitted."
+                      onboardingReviewReady
+                        ? "The property team checks your details and documents. We'll email you when the lease pack is ready."
+                        : "Review starts after your details and requested documents are submitted."
                     }
-                    state={
-                      detailsReviewed
-                        ? "complete"
-                        : detailsSubmitted
-                          ? "current"
-                          : "waiting"
-                    }
+                    state={onboardingReviewReady ? "current" : "waiting"}
                   />
                   <OnboardingStep
-                    title="Lease pack and signing"
+                    title="Sign lease"
                     detail={
                       leaseAgreementSigned
                         ? "Lease agreement signing is complete."
-                        : leaseAgreement.open_question_count
-                          ? "Lease questions need answers before signing."
-                          : detailsReviewed
-                            ? "The lease pack is ready. Confirm signing when ready."
-                            : "The lease pack and signature request come after review."
+                        : "The lease pack and signature request come after property team approval."
                     }
-                    state={
-                      leaseAgreementSigned
-                        ? "complete"
-                        : detailsReviewed &&
-                            leaseAgreement.open_question_count === 0
-                          ? "current"
-                          : detailsReviewed
-                            ? "waiting"
-                            : "locked"
-                    }
+                    state={leaseAgreementSigned ? "complete" : "locked"}
                   />
                 </div>
               </Panel>
@@ -2900,6 +3350,16 @@ function TenantPortalContent({ token }: { token: string | null }) {
                 refreshPortal();
               }}
             />
+            {portal.lease_agreement.status !== "signed" ? (
+              <LeaseAgreementPanel
+                portal={portal}
+                token={token}
+                accountAuthToken={accountAuthToken}
+                onSaved={() => {
+                  refreshPortal();
+                }}
+              />
+            ) : null}
             <Panel
               title="Payments"
               icon={<ReceiptText size={18} />}
@@ -3426,6 +3886,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
                 tokenPortal ? tenantDisplayName(tokenPortal.tenant) : null
               }
               tokenExpiresAt={tokenPortal?.onboarding.expires_at ?? null}
+              returnToPath="/tenant-portal"
               onAccountPortal={handleAccountPortal}
             />
 

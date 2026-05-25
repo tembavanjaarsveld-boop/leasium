@@ -290,6 +290,8 @@ def _date_label(value: date | datetime | None) -> str:
 
 
 def _email_subject(invite: TenantOnboardingInvite) -> str:
+    if invite.template_key == "tenant_lease_pack":
+        return f"Your lease pack is ready for {invite.property_name}"
     return f"Set up your tenant portal for {invite.property_name}"
 
 
@@ -309,6 +311,30 @@ def _work_assignment_digest_subject(invite: WorkAssignmentDigestEmail) -> str:
 def _email_text(invite: TenantOnboardingInvite) -> str:
     greeting = f"Hi {invite.contact_name}," if invite.contact_name else "Hi,"
     due = _date_label(invite.due_date)
+    if invite.template_key == "tenant_lease_pack":
+        return "\n".join(
+            [
+                greeting,
+                "",
+                (
+                    "Your property team has approved your onboarding details."
+                    " Your lease pack is ready to review and sign in the"
+                    " Leasium tenant portal."
+                ),
+                "",
+                f"Property: {invite.property_name}",
+                f"Area: {invite.unit_label}",
+                "",
+                invite.onboarding_url,
+                "",
+                (
+                    "Sign in with your tenant account, review the lease pack,"
+                    " ask any final questions, and confirm signing when ready."
+                ),
+                "",
+                invite.brand_name,
+            ]
+        )
     return "\n".join(
         [
             greeting,
@@ -375,6 +401,35 @@ def _email_html(invite: TenantOnboardingInvite) -> str:
         if invite.property_address
         else ""
     )
+    if invite.template_key == "tenant_lease_pack":
+        return f"""
+        <div style="{shell_style}">
+          <div style="{card_style}">
+            <div style="font-weight:700;font-size:20px;margin-bottom:18px;">
+              {escape(invite.brand_name)}
+            </div>
+            <p style="margin:0 0 14px;">{greeting}</p>
+            <p style="margin:0 0 18px;color:#475467;line-height:1.55;">
+              Your property team has approved your onboarding details.
+              Your lease pack is ready to review and sign in the Leasium
+              tenant portal.
+            </p>
+            <div style="border:1px solid #E4E7EC;border-radius:12px;
+                        padding:16px;margin-bottom:20px;">
+              <p style="margin:0 0 4px;font-weight:700;">{escape(invite.property_name)}</p>
+              {address}
+              <p style="margin:12px 0 0;color:#475467;">Area: {escape(invite.unit_label)}</p>
+            </div>
+            <a href="{escape(invite.onboarding_url)}" style="{button_style}">
+              Review and sign lease
+            </a>
+            <p style="margin:20px 0 0;color:#667085;font-size:13px;line-height:1.45;">
+              Sign in with your tenant account, review the lease pack, ask
+              any final questions, and confirm signing when ready.
+            </p>
+          </div>
+        </div>
+        """
     return f"""
     <div style="{shell_style}">
       <div style="{card_style}">
@@ -660,6 +715,11 @@ def render_work_assignment_digest_email_preview(
 
 
 def _sms_body(invite: TenantOnboardingInvite) -> str:
+    if invite.template_key == "tenant_lease_pack":
+        return (
+            f"{invite.brand_name}: your lease pack for {invite.property_name} "
+            f"({invite.unit_label}) is ready to review and sign: {invite.onboarding_url}"
+        )
     due = _date_label(invite.due_date)
     return (
         f"{invite.brand_name}: please complete tenant onboarding for {invite.property_name} "
@@ -1839,6 +1899,18 @@ def send_tenant_portal_invite(
     callers are expected to set ``template_key``/``template_version`` to the portal
     invite template and ``onboarding_url`` to the portal claim URL.
     """
+
+    return [
+        _send_email(invite, settings),
+        _send_sms(invite, settings),
+    ]
+
+
+def send_tenant_lease_pack_invite(
+    invite: TenantOnboardingInvite,
+    settings: Settings,
+) -> list[DeliveryResult]:
+    """Send a post-approval lease pack signing prompt by email + SMS."""
 
     return [
         _send_email(invite, settings),
