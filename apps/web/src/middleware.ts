@@ -63,6 +63,10 @@ async function enforceAccessGate(request: NextRequest) {
 
 const clerkProtectedMiddleware = clerkMiddleware(
   async (auth, request) => {
+    if (isClerkProxyPath(request.nextUrl.pathname)) {
+      return NextResponse.next();
+    }
+
     const authState = await auth();
     if (!authState.userId) {
       if (request.nextUrl.pathname === "/") {
