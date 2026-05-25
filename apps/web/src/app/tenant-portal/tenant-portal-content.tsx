@@ -994,7 +994,7 @@ function OnboardingPanel({
       portal.onboarding.status === "submitted"
         ? `Submitted ${formatDateTime(portal.onboarding.submitted_at)}. Your property manager will review and confirm shortly.`
         : portal.onboarding.status === "reviewed"
-          ? "Your property manager has reviewed your submission. The lease pack is next."
+          ? "Your submission is with the property team. The lease pack is next."
           : portal.onboarding.status === "applied"
             ? "Applied. Your contact details are now confirmed in Leasium."
             : `Onboarding is ${tenantOnboardingStatusLabel(portal.onboarding.status)}.`;
@@ -1257,7 +1257,7 @@ function LeaseAgreementPanel({
   const signingDetail = signed
     ? `Signed ${formatDateTime(agreement.signed_at)}.`
     : agreement.signing_locked_reason ||
-      "Review is complete and the lease agreement can be signed.";
+      "The lease agreement is ready to confirm.";
 
   return (
     <Panel
@@ -2035,7 +2035,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
                   Create your account, confirm your details, upload requested
                   documents, ask any lease questions, then sign once the
-                  property team review is complete.
+                  lease pack is ready.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -2294,7 +2294,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
                     title="Property team review"
                     detail={
                       detailsReviewed
-                        ? "Review is complete. Final setup is being applied."
+                        ? "Your submission has moved to the lease pack step."
                         : detailsSubmitted
                           ? "The property team checks your details and documents."
                           : "Review starts after your details are submitted."
@@ -2315,7 +2315,7 @@ function TenantPortalContent({ token }: { token: string | null }) {
                         : leaseAgreement.open_question_count
                           ? "Lease questions need answers before signing."
                           : detailsReviewed
-                            ? "Review is complete. Confirm signing when ready."
+                            ? "The lease pack is ready. Confirm signing when ready."
                             : "The lease pack and signature request come after review."
                     }
                     state={
@@ -2362,8 +2362,8 @@ function TenantPortalContent({ token }: { token: string | null }) {
               <Panel title="What Happens Next" icon={<FileText size={18} />}>
                 <div className="grid gap-2 p-4 text-sm text-muted-foreground">
                   <p>
-                    After review, your property team sends the lease pack for
-                    signing and confirms when the tenancy is move-in ready.
+                    Your property team sends the lease pack for signing and
+                    confirms when the tenancy is move-in ready.
                   </p>
                   <p>
                     The full portal opens after onboarding is applied, with
