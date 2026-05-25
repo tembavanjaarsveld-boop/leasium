@@ -126,7 +126,16 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   ).toBeVisible();
   await expect(page.getByText("Statement pack blocked")).toBeVisible();
   await expect(page.getByText("2 statement invoices")).toBeVisible();
-  await expect(page.getByText("Queen Street Property Trust").first()).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Queen Street Property Trust" }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Statement preview" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Print / save PDF" }),
+  ).toBeVisible();
+  await expect(page.getByText("Owner statement", { exact: true })).toBeVisible();
 });
 
 test("dashboard Leasium AI panel answers with cited record", async ({

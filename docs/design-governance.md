@@ -136,6 +136,10 @@ Progress notes:
   change request status so property teams can see the same in-review/applied/
   dismissed state without opening the live tenant portal. This remains pending
   Remba review.
+- 2026-05-25 follow-up 6: Owner statements now include a finance review
+  preview with owner selection, owner contact context, monthly totals,
+  property lines, a copied review summary, and print/save-PDF action. Owner
+  dispatch remains separate and explicit. This remains pending Remba review.
 
 Remba decision:
 

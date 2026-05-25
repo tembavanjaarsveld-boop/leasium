@@ -16,7 +16,9 @@ import {
   ArrowUpRight,
   Building2,
   CheckCircle2,
+  ClipboardCheck,
   FileText,
+  Printer,
   ReceiptText,
   RefreshCw,
   Wallet,
@@ -33,6 +35,7 @@ import {
   PageHeader,
   SectionPanel,
   Select,
+  SecondaryButton,
   SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
@@ -82,6 +85,25 @@ function formatMoney(cents: number, currency = "AUD"): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(cents / 100);
+}
+
+function formatMonthLabel(month: string): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) return month;
+  return new Intl.DateTimeFormat("en-AU", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, monthNumber - 1, 1));
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function friendlyError(error: unknown): string {
@@ -218,6 +240,7 @@ function StatementsContent() {
   const [handoffSource, setHandoffSource] = useState<string | null>(null);
   const [handoffStatus, setHandoffStatus] =
     useState<StatementPackStatus | null>(null);
+  const [selectedOwnerIdentity, setSelectedOwnerIdentity] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -270,6 +293,22 @@ function StatementsContent() {
   const owners = useMemo(
     () => statementsQuery.data?.owners ?? [],
     [statementsQuery.data?.owners],
+  );
+  useEffect(() => {
+    if (owners.length === 0) {
+      setSelectedOwnerIdentity("");
+      return;
+    }
+    if (!owners.some((owner) => owner.owner_identity === selectedOwnerIdentity)) {
+      setSelectedOwnerIdentity(owners[0].owner_identity);
+    }
+  }, [owners, selectedOwnerIdentity]);
+  const selectedOwner = useMemo(
+    () =>
+      owners.find((owner) => owner.owner_identity === selectedOwnerIdentity) ??
+      owners[0] ??
+      null,
+    [owners, selectedOwnerIdentity],
   );
   const portfolioTotals = useMemo(() => {
     return owners.reduce(
@@ -385,6 +424,17 @@ function StatementsContent() {
           />
         </section>
 
+        {selectedOwner ? (
+          <StatementPreviewPanel
+            owner={selectedOwner}
+            owners={owners}
+            month={month}
+            generatedAt={statementsQuery.data?.generated_at ?? null}
+            selectedOwnerIdentity={selectedOwnerIdentity}
+            onSelectOwner={setSelectedOwnerIdentity}
+          />
+        ) : null}
+
         {statementsQuery.isLoading ? (
           <SectionPanel>
             <SkeletonRows rows={3} />
@@ -410,6 +460,181 @@ function StatementsContent() {
         ))}
       </div>
     </main>
+  );
+}
+
+function statementSummaryText({
+  owner,
+  month,
+}: {
+  owner: OwnerStatementRecord;
+  month: string;
+}) {
+  const lines = [
+    `Owner statement review: ${owner.owner_identity}`,
+    `Month: ${formatMonthLabel(month)}`,
+    `Properties: ${owner.property_count}`,
+    `Invoices: ${owner.invoice_count}`,
+    `Invoiced: ${formatMoney(owner.invoiced_cents)}`,
+    `Paid: ${formatMoney(owner.paid_cents)}`,
+    `Outstanding: ${formatMoney(owner.outstanding_cents)}`,
+  ];
+  if (owner.billing_email) {
+    lines.push(`Billing email: ${owner.billing_email}`);
+  }
+  return lines.join("\n");
+}
+
+function StatementPreviewPanel({
+  owner,
+  owners,
+  month,
+  generatedAt,
+  selectedOwnerIdentity,
+  onSelectOwner,
+}: {
+  owner: OwnerStatementRecord;
+  owners: OwnerStatementRecord[];
+  month: string;
+  generatedAt: string | null;
+  selectedOwnerIdentity: string;
+  onSelectOwner: (value: string) => void;
+}) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const canPrint = owner.invoice_count > 0;
+
+  const copySummary = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(statementSummaryText({ owner, month }));
+    setCopyReceipt("Review summary copied.");
+  };
+
+  return (
+    <SectionPanel
+      title="Statement preview"
+      description="Finance review pack before PDF export or owner dispatch."
+      icon={<ReceiptText size={17} className="text-primary" />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone={owner.outstanding_cents > 0 ? "warning" : "success"}>
+            {owner.outstanding_cents > 0 ? "Payment review" : "Ready to print"}
+          </StatusBadge>
+        </div>
+      }
+    >
+      <div className="grid gap-4 p-4">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <Field label="Owner">
+            <Select
+              value={selectedOwnerIdentity}
+              onChange={(event) => onSelectOwner(event.target.value)}
+              aria-label="Select statement owner"
+            >
+              {owners.map((item) => (
+                <option key={item.owner_identity} value={item.owner_identity}>
+                  {item.owner_identity}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div className="flex flex-wrap items-end gap-2 lg:justify-end">
+            <SecondaryButton type="button" onClick={copySummary}>
+              <ClipboardCheck size={15} />
+              Copy summary
+            </SecondaryButton>
+            <SecondaryButton
+              type="button"
+              onClick={() => window.print()}
+              disabled={!canPrint}
+            >
+              <Printer size={15} />
+              Print / save PDF
+            </SecondaryButton>
+          </div>
+        </div>
+
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        ) : null}
+
+        <div className="grid gap-4 rounded-md border border-border bg-white p-5 text-sm shadow-leasiumXs">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
+            <div>
+              <div className="text-xs font-semibold uppercase text-muted-foreground">
+                Owner statement
+              </div>
+              <h2 className="mt-1 text-2xl font-semibold text-foreground">
+                {owner.owner_identity}
+              </h2>
+              <p className="mt-1 text-muted-foreground">
+                {formatMonthLabel(month)}
+              </p>
+            </div>
+            <div className="text-right text-xs text-muted-foreground">
+              {generatedAt ? (
+                <div>Generated {formatDateTime(generatedAt)}</div>
+              ) : null}
+              {owner.billing_contact_name ? (
+                <div>{owner.billing_contact_name}</div>
+              ) : null}
+              {owner.billing_email ? <div>{owner.billing_email}</div> : null}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Metric label="Invoiced" value={formatMoney(owner.invoiced_cents)} />
+            <Metric label="Paid" value={formatMoney(owner.paid_cents)} />
+            <Metric
+              label="Outstanding"
+              value={formatMoney(owner.outstanding_cents)}
+              tone={owner.outstanding_cents > 0 ? "warning" : undefined}
+            />
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-left text-sm tabular-nums">
+              <thead className="border-b border-border text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="py-2 pr-3 font-semibold">Property</th>
+                  <th className="px-3 py-2 text-right font-semibold">
+                    Invoiced
+                  </th>
+                  <th className="px-3 py-2 text-right font-semibold">Paid</th>
+                  <th className="py-2 pl-3 text-right font-semibold">
+                    Outstanding
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {owner.properties.map((line) => (
+                  <tr key={line.property_id} className="border-b border-border">
+                    <td className="py-2 pr-3 font-medium">
+                      {line.property_name}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {formatMoney(line.invoiced_cents)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {formatMoney(line.paid_cents)}
+                    </td>
+                    <td className="py-2 pl-3 text-right font-semibold">
+                      {formatMoney(line.outstanding_cents)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+            Review state: {owner.outstanding_cents > 0 ? "payment review remains open" : "ready for owner dispatch"}. Dispatch is still explicit and separate from this preview.
+          </div>
+        </div>
+      </div>
+    </SectionPanel>
   );
 }
 
