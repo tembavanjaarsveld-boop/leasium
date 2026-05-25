@@ -1030,13 +1030,14 @@ function hasReviewedLeaseBasics(
     "base rent",
     "rent",
   ]);
+  const rentAmount = rent?.amount;
   return Boolean(
     (target.propertyId || fieldText(property?.name ?? property?.address)) &&
     (target.tenancyUnitId || fieldText(property?.unit_label)) &&
     (target.tenantId || reviewedTenantName(data)) &&
     fieldText(start?.date ?? start?.due_date) &&
     fieldText(expiry?.date ?? expiry?.due_date) &&
-    fieldText(rent?.amount),
+    (fieldText(rentAmount) !== null || fieldNumber(rentAmount) !== null),
   );
 }
 
