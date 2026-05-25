@@ -255,6 +255,23 @@ class TenantPortalContactChangeRequestCreate(BaseModel):
         return cleaned or None
 
 
+class TenantPortalContactChangeFieldRead(BaseModel):
+    field: str
+    label: str
+    before: Any = None
+    after: Any = None
+
+
+class TenantPortalContactChangeRequestRead(BaseModel):
+    id: str
+    status: str
+    submitted_at: datetime | None = None
+    applied_at: datetime | None = None
+    dismissed_at: datetime | None = None
+    notes: str | None = None
+    changes: list[TenantPortalContactChangeFieldRead] = Field(default_factory=list)
+
+
 class TenantPortalMaintenanceRequestCreate(BaseModel):
     title: str
     description: str
@@ -318,4 +335,7 @@ class TenantPortalRead(BaseModel):
     payment_summary: TenantPortalPaymentSummaryRead
     maintenance_requests: list[TenantPortalMaintenanceRequestRead]
     notification_preferences: TenantPortalNotificationPreferencesRead
+    contact_change_requests: list[TenantPortalContactChangeRequestRead] = Field(
+        default_factory=list
+    )
     guardrails: list[str]

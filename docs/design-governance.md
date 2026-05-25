@@ -123,6 +123,7 @@ Progress notes:
   review.
 - 2026-05-25 follow-up 2: Tenant portal Contact Details now includes a
   reviewed change-request flow for contact name/email/phone/billing email.
+  The tenant portal shows persistent in-review/applied status after submission.
   Operators review and apply the request from tenant detail; legal/trading
   identity remains operator-controlled. This remains pending Remba review.
 

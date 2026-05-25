@@ -1288,6 +1288,9 @@ def test_tenant_portal_contact_change_request_waits_for_operator_apply(
     )
 
     assert response.status_code == 200
+    body = response.json()
+    assert body["contact_change_requests"][0]["status"] == "submitted"
+    assert body["contact_change_requests"][0]["changes"][0]["after"] == "Avery Updated"
     tenant = session.get(Tenant, UUID(scope["tenant_id"]))
     assert tenant is not None
     assert tenant.contact_email == "avery@portal-one.example"

@@ -54,7 +54,9 @@ from apps.api.schemas.tenant_portal import (
     TenantPortalAuthRead,
     TenantPortalComplianceItemRead,
     TenantPortalComplianceRead,
+    TenantPortalContactChangeFieldRead,
     TenantPortalContactChangeRequestCreate,
+    TenantPortalContactChangeRequestRead,
     TenantPortalDocumentRead,
     TenantPortalInvitePreviewRead,
     TenantPortalInvoiceLineRead,
@@ -967,6 +969,55 @@ def _contact_change_rows(
     return rows
 
 
+def _contact_change_request_reads(tenant: Tenant) -> list[TenantPortalContactChangeRequestRead]:
+    raw_requests = (tenant.tenant_metadata or {}).get(PORTAL_CONTACT_REQUESTS_KEY)
+    if not isinstance(raw_requests, list):
+        return []
+
+    rows: list[TenantPortalContactChangeRequestRead] = []
+    for entry in raw_requests:
+        if not isinstance(entry, dict):
+            continue
+        request_id = entry.get("id")
+        if not isinstance(request_id, str) or not request_id:
+            continue
+        changes = []
+        raw_changes = entry.get("changes")
+        if isinstance(raw_changes, list):
+            for change in raw_changes:
+                if not isinstance(change, dict):
+                    continue
+                field = change.get("field")
+                label = change.get("label")
+                if not isinstance(field, str) or not field:
+                    continue
+                changes.append(
+                    TenantPortalContactChangeFieldRead(
+                        field=field,
+                        label=label if isinstance(label, str) and label else field,
+                        before=change.get("before"),
+                        after=change.get("after"),
+                    )
+                )
+        notes = entry.get("notes")
+        rows.append(
+            TenantPortalContactChangeRequestRead(
+                id=request_id,
+                status=str(entry.get("status") or "submitted"),
+                submitted_at=_parse_iso_datetime(entry.get("submitted_at")),
+                applied_at=_parse_iso_datetime(entry.get("applied_at")),
+                dismissed_at=_parse_iso_datetime(entry.get("dismissed_at")),
+                notes=notes if isinstance(notes, str) else None,
+                changes=changes,
+            )
+        )
+    return sorted(
+        rows,
+        key=lambda row: row.applied_at or row.submitted_at or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )[:10]
+
+
 def _portal_invite_sent_at(delivery_data: dict[str, object] | None) -> datetime | None:
     """Return the timestamp of the last portal-invite delivery, if any.
 
@@ -1052,6 +1103,7 @@ def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
             _maintenance_request_read(work_order) for work_order in maintenance_requests
         ],
         notification_preferences=_notification_preferences(scope.tenant),
+        contact_change_requests=_contact_change_request_reads(scope.tenant),
         guardrails=guardrails,
     )
 

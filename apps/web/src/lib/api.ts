@@ -986,6 +986,23 @@ export type TenantPortalContactChangeRequestPayload = {
   notes?: string | null;
 };
 
+export type TenantPortalContactChangeFieldRecord = {
+  field: string;
+  label: string;
+  before: unknown;
+  after: unknown;
+};
+
+export type TenantPortalContactChangeRequestRecord = {
+  id: string;
+  status: string;
+  submitted_at: string | null;
+  applied_at: string | null;
+  dismissed_at: string | null;
+  notes: string | null;
+  changes: TenantPortalContactChangeFieldRecord[];
+};
+
 export type TenantPortalMaintenanceRequestRecord = {
   id: string;
   title: string;
@@ -1029,6 +1046,7 @@ export type TenantPortalRecord = {
   payment_summary: TenantPortalPaymentSummaryRecord;
   maintenance_requests: TenantPortalMaintenanceRequestRecord[];
   notification_preferences: TenantPortalNotificationPreferencesRecord;
+  contact_change_requests: TenantPortalContactChangeRequestRecord[];
   guardrails: string[];
 };
 

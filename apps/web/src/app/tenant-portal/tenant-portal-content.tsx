@@ -343,6 +343,28 @@ function buildTenantPortalActivity(portal: TenantPortalRecord) {
     });
   });
 
+  portal.contact_change_requests.forEach((request) => {
+    addActivity(
+      request.applied_at
+        ? {
+            key: `contact-change-applied-${request.id}`,
+            title: "Contact request applied",
+            detail: "The property team applied your contact detail change.",
+            timestamp: request.applied_at,
+            tone: "success",
+          }
+        : request.submitted_at
+          ? {
+              key: `contact-change-submitted-${request.id}`,
+              title: "Contact request sent",
+              detail: "Your requested contact detail changes are with the property team.",
+              timestamp: request.submitted_at,
+              tone: "warning",
+            }
+          : null,
+    );
+  });
+
   addActivity(
     portal.notification_preferences.updated_at
       ? {
@@ -671,6 +693,10 @@ function ContactDetailsPanel({
     ["Phone", portal.tenant.contact_phone],
     ["Billing email", portal.tenant.billing_email],
   ].filter(([, value]) => Boolean(value));
+  const pendingContactRequests = portal.contact_change_requests.filter(
+    (request) => request.status === "submitted",
+  );
+  const latestContactRequest = portal.contact_change_requests[0] ?? null;
 
   const contactChangeMutation = useMutation({
     mutationFn: () =>
@@ -715,6 +741,31 @@ function ContactDetailsPanel({
           If something looks wrong, send a note to the property team before
           signing or paying anything that depends on these details.
         </p>
+        {pendingContactRequests.length ? (
+          <div className="grid gap-2 rounded-md border border-warning/30 bg-warning/5 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-medium">Change request in review</div>
+              <StatusBadge tone="warning">Submitted</StatusBadge>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">
+              The property team has your latest contact change request. Your
+              saved details will update here once they apply it.
+            </p>
+            <div className="grid gap-1 text-xs">
+              {pendingContactRequests[0].changes.map((change) => (
+                <div key={change.field}>
+                  <span className="font-medium">{change.label}</span>:{" "}
+                  {String(change.after ?? "-")}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : latestContactRequest?.status === "applied" ? (
+          <div className="rounded-md border border-success/30 bg-success/5 p-3 text-xs text-muted-foreground">
+            Last contact change applied{" "}
+            {formatDateTime(latestContactRequest.applied_at)}.
+          </div>
+        ) : null}
         {changeOpen ? (
           <form
             className="grid gap-3 rounded-md border border-border bg-muted/30 p-3"
