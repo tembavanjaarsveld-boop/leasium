@@ -991,6 +991,81 @@ def apply_contact_change_request(
     return tenant
 
 
+@router.post(
+    "/{tenant_id}/contact-change-requests/{request_id}/dismiss",
+    response_model=TenantRead,
+)
+def dismiss_contact_change_request(
+    tenant_id: UUID,
+    request_id: UUID,
+    payload: TenantContactChangeRequestAction,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Tenant:
+    tenant = _get_tenant_for_user(tenant_id, user, session, WRITE_ROLES)
+    metadata = dict(tenant.tenant_metadata or {})
+    portal_requests = metadata.get(PORTAL_CONTACT_REQUESTS_KEY)
+    if not isinstance(portal_requests, list):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact change request not found.",
+        )
+
+    request_index = next(
+        (
+            index
+            for index, entry in enumerate(portal_requests)
+            if isinstance(entry, dict) and entry.get("id") == str(request_id)
+        ),
+        None,
+    )
+    if request_index is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact change request not found.",
+        )
+    entry = portal_requests[request_index]
+    if not isinstance(entry, dict):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact change request not found.",
+        )
+    if entry.get("status") != "submitted":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only submitted contact change requests can be dismissed.",
+        )
+
+    now = utcnow()
+    entry = {
+        **entry,
+        "status": "dismissed",
+        "dismissed_at": now.isoformat(),
+        "dismissed_by_user_id": str(user.id),
+        "dismiss_notes": payload.notes,
+    }
+    portal_requests[request_index] = entry
+    metadata[PORTAL_CONTACT_REQUESTS_KEY] = portal_requests
+    tenant.tenant_metadata = metadata
+    flag_modified(tenant, "tenant_metadata")
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=tenant.entity_id,
+        action="dismiss_contact_change_request",
+        target_table="tenant",
+        target_id=tenant.id,
+        tool_name="tenants.contact_change_request_dismiss",
+        tool_input={"request_id": str(request_id)},
+        tool_output_summary="Dismissed tenant portal contact-change request.",
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(tenant)
+    return tenant
+
+
 @router.delete("/{tenant_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_tenant(
     tenant_id: UUID,

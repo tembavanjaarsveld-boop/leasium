@@ -3081,6 +3081,20 @@ export function applyTenantContactChangeRequest(
   );
 }
 
+export function dismissTenantContactChangeRequest(
+  tenantId: string,
+  requestId: string,
+  payload: { notes?: string | null } = {},
+) {
+  return request<TenantRecord>(
+    `/tenants/${tenantId}/contact-change-requests/${requestId}/dismiss`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export function deleteTenant(tenantId: string) {
   return request<void>(`/tenants/${tenantId}`, {
     method: "DELETE",

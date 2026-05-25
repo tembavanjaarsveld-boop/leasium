@@ -60,6 +60,7 @@ import {
   createTenantOnboarding,
   deleteDocument,
   deleteTenant,
+  dismissTenantContactChangeRequest,
   documentDownloadUrl,
   DocumentCategory,
   DocumentIntakeRecord,
@@ -1110,6 +1111,15 @@ function TenantDetail() {
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
     },
   });
+  const dismissContactRequestMutation = useMutation({
+    mutationFn: (requestId: string) =>
+      dismissTenantContactChangeRequest(tenantId, requestId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenant", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenants"] });
+    },
+  });
 
   const revokePortalAccountMutation = useMutation({
     mutationFn: (accountId: string) =>
@@ -1683,11 +1693,39 @@ function TenantDetail() {
                             {friendlyError(applyContactRequestMutation.error)}
                           </span>
                         ) : null}
+                        {dismissContactRequestMutation.error ? (
+                          <span className="text-sm text-danger">
+                            {friendlyError(dismissContactRequestMutation.error)}
+                          </span>
+                        ) : null}
+                        <SecondaryButton
+                          type="button"
+                          disabled={
+                            !request.source_id ||
+                            dismissContactRequestMutation.isPending ||
+                            applyContactRequestMutation.isPending
+                          }
+                          onClick={() => {
+                            if (request.source_id) {
+                              dismissContactRequestMutation.mutate(
+                                request.source_id,
+                              );
+                            }
+                          }}
+                        >
+                          {dismissContactRequestMutation.isPending ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <X size={15} />
+                          )}
+                          Dismiss
+                        </SecondaryButton>
                         <Button
                           type="button"
                           disabled={
                             !request.source_id ||
-                            applyContactRequestMutation.isPending
+                            applyContactRequestMutation.isPending ||
+                            dismissContactRequestMutation.isPending
                           }
                           onClick={() => {
                             if (request.source_id) {

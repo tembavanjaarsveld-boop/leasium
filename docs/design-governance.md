@@ -126,6 +126,9 @@ Progress notes:
   The tenant portal shows persistent in-review/applied status after submission.
   Operators review and apply the request from tenant detail; legal/trading
   identity remains operator-controlled. This remains pending Remba review.
+- 2026-05-25 follow-up 3: Operators can now dismiss tenant contact-change
+  requests without mutating the tenant record, and the tenant portal shows the
+  request as reviewed/closed. This remains pending Remba review.
 
 Remba decision:
 

@@ -353,7 +353,15 @@ function buildTenantPortalActivity(portal: TenantPortalRecord) {
             timestamp: request.applied_at,
             tone: "success",
           }
-        : request.submitted_at
+        : request.dismissed_at
+          ? {
+              key: `contact-change-dismissed-${request.id}`,
+              title: "Contact request closed",
+              detail: "The property team reviewed your contact detail request and left your saved details unchanged.",
+              timestamp: request.dismissed_at,
+              tone: "neutral",
+            }
+          : request.submitted_at
           ? {
               key: `contact-change-submitted-${request.id}`,
               title: "Contact request sent",
@@ -764,6 +772,12 @@ function ContactDetailsPanel({
           <div className="rounded-md border border-success/30 bg-success/5 p-3 text-xs text-muted-foreground">
             Last contact change applied{" "}
             {formatDateTime(latestContactRequest.applied_at)}.
+          </div>
+        ) : latestContactRequest?.status === "dismissed" ? (
+          <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+            Last contact change request was reviewed{" "}
+            {formatDateTime(latestContactRequest.dismissed_at)} with no saved
+            detail changes.
           </div>
         ) : null}
         {changeOpen ? (

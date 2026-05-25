@@ -1317,6 +1317,40 @@ def test_tenant_portal_contact_change_request_waits_for_operator_apply(
     assert tenant.tenant_metadata["portal_contact_change_requests"][0]["status"] == "applied"
 
 
+def test_operator_can_dismiss_tenant_portal_contact_change_request(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    onboarding.status = TenantOnboardingStatus.applied
+    session.commit()
+
+    response = client.post(
+        "/api/v1/tenant-portal/contact-change-requests",
+        headers={"x-tenant-portal-token": scope["token"]},
+        json={"contact_email": "wrong-person@example.com"},
+    )
+    assert response.status_code == 200
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    request_id = tenant.tenant_metadata["portal_contact_change_requests"][0]["id"]
+
+    dismiss_response = client.post(
+        f"/api/v1/tenants/{scope['tenant_id']}/contact-change-requests/{request_id}/dismiss",
+        json={"notes": "Duplicate request."},
+    )
+
+    assert dismiss_response.status_code == 200
+    assert dismiss_response.json()["contact_email"] == "avery@portal-one.example"
+    session.refresh(tenant)
+    assert tenant.contact_email == "avery@portal-one.example"
+    contact_request = tenant.tenant_metadata["portal_contact_change_requests"][0]
+    assert contact_request["status"] == "dismissed"
+    assert contact_request["dismiss_notes"] == "Duplicate request."
+
+
 def test_tenant_portal_lease_questions_gate_signing_and_apply(
     client: TestClient,
     session: Session,
