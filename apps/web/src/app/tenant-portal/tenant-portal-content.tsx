@@ -542,6 +542,7 @@ type ClerkTenantProfilePayload = {
   firstName?: string;
   lastName?: string;
   legalAccepted?: boolean;
+  password?: string;
 };
 
 function splitTenantDisplayNameForClerk(value: string | null | undefined) {
@@ -575,10 +576,23 @@ function tenantProfilePayloadForMissingFields({
   if (missingFields.includes("legal_accepted")) {
     payload.legalAccepted = legalAccepted;
   }
+  if (missingFields.includes("password")) {
+    payload.password = generateTenantClerkPassword();
+  }
   return payload;
 }
 
-function canAutofillClerkNameFields({
+function generateTenantClerkPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  const random = Array.from(bytes, (byte) => alphabet[byte % alphabet.length])
+    .join("")
+    .slice(0, 24);
+  return `Ls!9-${random}-Aa7`;
+}
+
+function canAutofillClerkAccountFields({
   missingFields,
   firstName,
   lastName,
@@ -592,6 +606,7 @@ function canAutofillClerkNameFields({
     missingFields.every((field) => {
       if (field === "first_name") return Boolean(firstName.trim());
       if (field === "last_name") return Boolean(lastName.trim());
+      if (field === "password") return true;
       return false;
     })
   );
@@ -599,7 +614,10 @@ function canAutofillClerkNameFields({
 
 function unsupportedClerkRequirementFields(missingFields: readonly string[]) {
   return missingFields.filter(
-    (field) => !["first_name", "last_name", "legal_accepted"].includes(field),
+    (field) =>
+      !["first_name", "last_name", "legal_accepted", "password"].includes(
+        field,
+      ),
   );
 }
 
@@ -704,7 +722,7 @@ function TenantInviteEmailCodeGate({
     }
     if (signUp.status === "missing_requirements") {
       if (
-        canAutofillClerkNameFields({
+        canAutofillClerkAccountFields({
           missingFields: signUp.missingFields,
           firstName,
           lastName,
