@@ -476,6 +476,51 @@ def test_tenant_portal_account_claim_accepts_verified_secondary_email(
     assert account.tenant_id == UUID(scope["tenant_id"])
 
 
+def test_tenant_portal_account_claim_ignores_client_claimed_email_without_clerk_match(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"clerk_allow_legacy_token_mapping": False}
+    )
+    scope = _seed_portal_scope(session)
+
+    def fake_identity(authorization, settings):  # noqa: ANN001, ARG001
+        return ClerkIdentity(
+            provider_id="tenant-subject-client-claimed-email",
+            verified_email=None,
+        )
+
+    monkeypatch.setattr(tenant_portal_router, "_tenant_portal_identity", fake_identity)
+    monkeypatch.setattr(
+        tenant_portal_router,
+        "_verified_emails_from_clerk_user",
+        lambda provider_id, settings: set(),
+    )
+
+    response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-client-claimed-email"},
+        json={
+            "portal_token": scope["token"],
+            "claimed_email": "avery@portal-one.example",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == (
+        "Tenant portal login email must match this invite."
+    )
+    account = session.scalar(
+        select(TenantPortalAccount).where(
+            TenantPortalAccount.auth_provider_id
+            == "tenant-subject-client-claimed-email"
+        )
+    )
+    assert account is None
+
+
 def test_tenant_portal_account_claim_and_bearer_session_are_scoped(
     client: TestClient,
     session: Session,
