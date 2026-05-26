@@ -2251,8 +2251,9 @@ function LeaseAgreementPanel({
   const leaseDocuments = portal.compliance.uploaded_documents.filter(
     (document) =>
       document.category === "lease" &&
-      document.tenant_onboarding_id === portal.onboarding.id &&
-      document.lease_id === portal.lease.lease_id,
+      (!document.tenant_onboarding_id ||
+        document.tenant_onboarding_id === portal.onboarding.id) &&
+      (!document.lease_id || document.lease_id === portal.lease.lease_id),
   );
   const canAskQuestion =
     !signed &&
