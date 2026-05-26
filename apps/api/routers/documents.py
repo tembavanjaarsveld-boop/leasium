@@ -163,10 +163,28 @@ async def upload_document(
         _unit_for_entity(tenancy_unit_id, entity_id, session)
     if tenant_id is not None:
         _tenant_for_entity(tenant_id, entity_id, session)
-    if lease_id is not None:
-        _lease_for_entity(lease_id, entity_id, session)
-    if tenant_onboarding_id is not None:
+    lease = _lease_for_entity(lease_id, entity_id, session) if lease_id is not None else None
+    onboarding = (
         _onboarding_for_entity(tenant_onboarding_id, entity_id, session)
+        if tenant_onboarding_id is not None
+        else None
+    )
+    if onboarding is not None:
+        if tenant_id is not None and onboarding.tenant_id != tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Document tenant must match the onboarding tenant.",
+            )
+        if lease_id is not None and onboarding.lease_id != lease_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Document lease must match the onboarding lease.",
+            )
+    if lease is not None and tenant_id is not None and lease.tenant_id != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document lease must match the tenant.",
+        )
 
     data = await file.read()
     max_bytes = get_settings().document_max_bytes

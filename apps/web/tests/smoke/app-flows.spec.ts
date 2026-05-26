@@ -1543,6 +1543,19 @@ test("tenant detail sends lease pack after onboarding approval", async ({
   expect(reviewed).toBe(true);
   expect(applied).toBe(true);
   await expect(page.getByText("Lease pack next")).toBeVisible();
+  await expect(
+    page.getByText("Upload a custom lease before sending the tenant a signing link."),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send lease pack" })).toBeDisabled();
+
+  await page.getByLabel("Custom lease file").setInputFiles({
+    name: "custom-lease.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("custom lease bytes"),
+  });
+  await page.getByRole("button", { name: "Attach lease" }).click();
+  await expect(page.getByText("custom-lease.pdf").first()).toBeVisible();
+
   await page.getByRole("button", { name: "Send lease pack" }).click();
   await expect(page.getByText("Lease pack sent to tenant.")).toBeVisible();
 });
@@ -1679,6 +1692,8 @@ test("tenant lease page focuses signing without portal dashboard", async ({
   await expect(
     page.getByRole("heading", { name: "Lease questions and signing" }),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Lease document" })).toBeVisible();
+  await expect(page.getByText("Attached")).toBeVisible();
   await expect(page.getByText("Ready to sign")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Open full portal" }),

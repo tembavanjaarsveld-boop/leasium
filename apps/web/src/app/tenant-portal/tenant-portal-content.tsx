@@ -2248,6 +2248,12 @@ function LeaseAgreementPanel({
   const agreement = portal.lease_agreement;
   const questions = agreement.questions;
   const signed = agreement.status === "signed";
+  const leaseDocuments = portal.compliance.uploaded_documents.filter(
+    (document) =>
+      document.category === "lease" &&
+      document.tenant_onboarding_id === portal.onboarding.id &&
+      document.lease_id === portal.lease.lease_id,
+  );
   const canAskQuestion =
     !signed &&
     ["sent", "submitted", "reviewed", "applied"].includes(
@@ -2277,6 +2283,36 @@ function LeaseAgreementPanel({
       setQuestion("");
       setClauseReference("");
       void onSaved(nextPortal);
+    },
+  });
+
+  const leaseDocumentDownloadMutation = useMutation({
+    mutationFn: async ({
+      documentId,
+      filename,
+    }: {
+      documentId: string;
+      filename: string;
+    }) => {
+      const authToken =
+        portal.auth.mode === "tenant_portal_account"
+          ? await getAccountAuthToken()
+          : accountAuthToken;
+      if (!authToken) {
+        throw new Error("Sign in again before downloading the lease.");
+      }
+      const blob = await downloadTenantPortalAccountDocument(
+        documentId,
+        authToken,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
     },
   });
 
@@ -2324,6 +2360,65 @@ function LeaseAgreementPanel({
             <p className="font-medium text-warning-strong">
               {blockingCount} question{blockingCount === 1 ? "" : "s"} need
               attention before signing.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="font-semibold">Lease document</div>
+              <div className="text-muted-foreground">
+                {leaseDocuments.length
+                  ? "Review the lease before confirming it is signed."
+                  : "The property team has not attached a lease document yet."}
+              </div>
+            </div>
+            <StatusBadge tone={leaseDocuments.length ? "success" : "warning"}>
+              {leaseDocuments.length ? "Attached" : "Waiting"}
+            </StatusBadge>
+          </div>
+          {leaseDocuments.map((document) => (
+            <div
+              key={document.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/30 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="truncate font-medium">{document.filename}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {formatBytes(document.byte_size)} - uploaded{" "}
+                  {formatDate(document.created_at)}
+                </div>
+              </div>
+              {token ? (
+                <a
+                  className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                  href={tenantPortalDocumentDownloadUrl(token, document.id)}
+                >
+                  <Download size={15} />
+                  Download
+                </a>
+              ) : (
+                <SecondaryButton
+                  type="button"
+                  className="h-8"
+                  disabled={leaseDocumentDownloadMutation.isPending}
+                  onClick={() =>
+                    leaseDocumentDownloadMutation.mutate({
+                      documentId: document.id,
+                      filename: document.filename,
+                    })
+                  }
+                >
+                  <Download size={15} />
+                  Download
+                </SecondaryButton>
+              )}
+            </div>
+          ))}
+          {leaseDocumentDownloadMutation.error ? (
+            <p className="text-sm text-danger">
+              {leaseDocumentDownloadMutation.error.message}
             </p>
           ) : null}
         </div>

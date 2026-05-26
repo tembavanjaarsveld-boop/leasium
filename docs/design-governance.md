@@ -1178,6 +1178,15 @@ layout), and modal scale magnitude (0.97 → 1 — barely perceptible).
   before signing. Review whether the combined approval copy still makes
   the review-first guardrail obvious and whether the lease pack CTA
   belongs in the onboarding panel or a broader lease panel.
+- [~] Tenant detail now shows onboarding progress as invite → tenant
+  details → approval → lease file → send pack → sign, and adds a
+  custom lease bypass upload scoped to the exact onboarding/lease before
+  **Send lease pack** is enabled. The tenant lease-signing panel now
+  surfaces attached lease documents for download before the tenant
+  confirms signing. Review whether the custom-lease bypass wording is
+  clear enough until property lease templates/generation land, and
+  whether the send button should remain disabled until a lease file is
+  attached.
 
 ### Deferred from Motion polish v2 — pending decision
 

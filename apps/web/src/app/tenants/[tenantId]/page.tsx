@@ -81,6 +81,7 @@ import {
   sendTenantOnboardingPortalInvite,
   restoreTenantPortalAccount,
   revokeTenantPortalAccount,
+  TenantOnboardingRecord,
   TenantPortalAccountRecord,
   TenantLeaseAgreementRecord,
   TenantLeaseQuestionRecord,
@@ -353,10 +354,123 @@ function reminderStepLabel(statusValue: string | null | undefined) {
   return statusValue?.replaceAll("_", " ") ?? "scheduled";
 }
 
+type WorkflowStepStatus = "done" | "current" | "waiting" | "blocked";
+
+function workflowStepTone(status: WorkflowStepStatus) {
+  if (status === "done") {
+    return "success" as const;
+  }
+  if (status === "current") {
+    return "primary" as const;
+  }
+  if (status === "blocked") {
+    return "warning" as const;
+  }
+  return "neutral" as const;
+}
+
+function workflowStepLabel(status: WorkflowStepStatus) {
+  if (status === "done") {
+    return "Done";
+  }
+  if (status === "current") {
+    return "Now";
+  }
+  if (status === "blocked") {
+    return "Needs action";
+  }
+  return "Waiting";
+}
+
+function leasePackSentAt(item: TenantOnboardingRecord) {
+  return item.delivery_data.lease_pack?.sent_at ?? null;
+}
+
+function onboardingProgressSteps({
+  item,
+  leaseAgreement,
+  hasLeaseDocument,
+}: {
+  item: TenantOnboardingRecord;
+  leaseAgreement: TenantLeaseAgreementRecord | null;
+  hasLeaseDocument: boolean;
+}) {
+  const submitted = ["submitted", "reviewed", "applied"].includes(item.status);
+  const approved = item.status === "applied";
+  const sentAt = leasePackSentAt(item);
+  const signed = leaseAgreement?.status === "signed";
+
+  return [
+    {
+      key: "invite",
+      title: "Invite",
+      detail: item.last_sent_at
+        ? `Sent ${formatDateTime(item.last_sent_at)}`
+        : "Not sent yet",
+      status: item.last_sent_at ? "done" : "current",
+    },
+    {
+      key: "tenant",
+      title: "Tenant details",
+      detail: item.submitted_at
+        ? `Submitted ${formatDateTime(item.submitted_at)}`
+        : "Waiting for tenant",
+      status: submitted ? "done" : item.status === "sent" ? "current" : "waiting",
+    },
+    {
+      key: "approval",
+      title: "Approve",
+      detail: item.applied_at
+        ? `Applied ${formatDateTime(item.applied_at)}`
+        : submitted
+          ? "Review and apply"
+          : "Starts after submission",
+      status: approved ? "done" : submitted ? "current" : "waiting",
+    },
+    {
+      key: "lease",
+      title: "Lease file",
+      detail: hasLeaseDocument
+        ? "Custom lease attached"
+        : approved
+          ? "Upload custom lease"
+          : "Attach after approval",
+      status: hasLeaseDocument ? "done" : approved ? "current" : "waiting",
+    },
+    {
+      key: "send",
+      title: "Send pack",
+      detail: sentAt ? `Sent ${formatDateTime(sentAt)}` : "Email signing link",
+      status: sentAt
+        ? "done"
+        : approved && hasLeaseDocument
+          ? "current"
+          : approved
+            ? "blocked"
+            : "waiting",
+    },
+    {
+      key: "sign",
+      title: "Sign",
+      detail: signed
+        ? `Signed ${formatDateTime(leaseAgreement?.signed_at)}`
+        : sentAt
+          ? "Waiting for tenant"
+          : "After lease pack",
+      status: signed ? "done" : sentAt ? "current" : "waiting",
+    },
+  ] satisfies Array<{
+    key: string;
+    title: string;
+    detail: string;
+    status: WorkflowStepStatus;
+  }>;
+}
+
 const documentCategories: Array<{ value: DocumentCategory; label: string }> = [
   { value: "insurance", label: "Insurance" },
   { value: "bank_guarantee", label: "Bank guarantee" },
-  { value: "lease", label: "Signed lease" },
+  { value: "lease", label: "Lease / lease pack" },
   { value: "onboarding", label: "Onboarding" },
   { value: "invoice", label: "Invoice" },
   { value: "other", label: "Other" },
@@ -945,6 +1059,10 @@ function TenantDetail() {
   const [documentCategory, setDocumentCategory] =
     useState<DocumentCategory>("insurance");
   const [documentNotes, setDocumentNotes] = useState("");
+  const [customLeaseFilesByOnboardingId, setCustomLeaseFilesByOnboardingId] =
+    useState<Record<string, File | null>>({});
+  const [customLeaseNotesByOnboardingId, setCustomLeaseNotesByOnboardingId] =
+    useState<Record<string, string>>({});
   const [reviewNotesById, setReviewNotesById] = useState<
     Record<string, string>
   >({});
@@ -1323,6 +1441,48 @@ function TenantDetail() {
     onSuccess: () => {
       setDocumentFile(null);
       setDocumentNotes("");
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-documents", tenant?.entity_id, tenantId],
+      });
+    },
+  });
+
+  const uploadCustomLeaseMutation = useMutation({
+    mutationFn: ({
+      onboardingId,
+      leaseId,
+      file,
+      notes,
+    }: {
+      onboardingId: string;
+      leaseId: string;
+      file: File | null;
+      notes: string;
+    }) => {
+      if (!tenant || !file) {
+        throw new Error("Choose a lease file first.");
+      }
+      return uploadDocument({
+        entityId: tenant.entity_id,
+        tenantId,
+        leaseId,
+        tenantOnboardingId: onboardingId,
+        category: "lease",
+        notes:
+          cleanText(notes) ??
+          "Custom lease uploaded as the onboarding lease pack.",
+        file,
+      });
+    },
+    onSuccess: (_document, variables) => {
+      setCustomLeaseFilesByOnboardingId((current) => ({
+        ...current,
+        [variables.onboardingId]: null,
+      }));
+      setCustomLeaseNotesByOnboardingId((current) => ({
+        ...current,
+        [variables.onboardingId]: "",
+      }));
       queryClient.invalidateQueries({
         queryKey: ["tenant-documents", tenant?.entity_id, tenantId],
       });
@@ -2239,11 +2399,25 @@ function TenantDetail() {
                   ).filter(
                     (document) => document.tenant_onboarding_id === item.id,
                   );
+                  const leaseDocuments = onboardingDocuments.filter(
+                    (document) => document.category === "lease",
+                  );
+                  const latestLeaseDocument = leaseDocuments[0] ?? null;
+                  const customLeaseFile =
+                    customLeaseFilesByOnboardingId[item.id] ?? null;
+                  const customLeaseNotes =
+                    customLeaseNotesByOnboardingId[item.id] ?? "";
                   const submittedData = item.submitted_data ?? {};
                   const linkExpired = isExpiredDateTime(item.expires_at);
                   const leaseAgreement = leaseAgreementFromDelivery(
                     item.delivery_data,
                   );
+                  const leasePackSent = leasePackSentAt(item);
+                  const progressSteps = onboardingProgressSteps({
+                    item,
+                    leaseAgreement,
+                    hasLeaseDocument: leaseDocuments.length > 0,
+                  });
                   const applyBlocked =
                     leaseAgreementBlocksApply(leaseAgreement);
                   const applyBlockReason =
@@ -2496,6 +2670,44 @@ function TenantDetail() {
                           ) : null}
                         </div>
                       </div>
+                      <div className="grid gap-2 rounded-md border border-border bg-white p-3 sm:grid-cols-3 xl:grid-cols-6">
+                        {progressSteps.map((step, index) => (
+                          <div key={step.key} className="grid gap-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span
+                                className={cn(
+                                  "grid h-7 w-7 place-items-center rounded-full border text-xs font-semibold",
+                                  step.status === "done" &&
+                                    "border-success/30 bg-success/10 text-success",
+                                  step.status === "current" &&
+                                    "border-primary/30 bg-primary/10 text-primary",
+                                  step.status === "blocked" &&
+                                    "border-warning/30 bg-warning/10 text-warning",
+                                  step.status === "waiting" &&
+                                    "border-border bg-muted text-muted-foreground",
+                                )}
+                              >
+                                {step.status === "done" ? (
+                                  <Check size={14} />
+                                ) : (
+                                  index + 1
+                                )}
+                              </span>
+                              <StatusBadge tone={workflowStepTone(step.status)}>
+                                {workflowStepLabel(step.status)}
+                              </StatusBadge>
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold">
+                                {step.title}
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {step.detail}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                       <details className="group md:hidden">
                         <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
                           Provider detail
@@ -2638,15 +2850,151 @@ function TenantDetail() {
                           ) : null}
                         </div>
                       ) : null}
+                      {item.status !== "cancelled" ? (
+                        <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="font-semibold">
+                                Custom lease bypass
+                              </div>
+                              <div className="text-muted-foreground">
+                                Attach a one-off lease to this onboarding when
+                                the standard property template is not the right
+                                fit.
+                              </div>
+                            </div>
+                            {latestLeaseDocument ? (
+                              <StatusBadge tone="success">
+                                Lease attached
+                              </StatusBadge>
+                            ) : (
+                              <StatusBadge tone="warning">
+                                Lease needed
+                              </StatusBadge>
+                            )}
+                          </div>
+                          {latestLeaseDocument ? (
+                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-white px-3 py-2">
+                              <div className="min-w-0">
+                                <div className="truncate font-medium">
+                                  {latestLeaseDocument.filename}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {formatBytes(latestLeaseDocument.byte_size)} -
+                                  uploaded{" "}
+                                  {formatDate(latestLeaseDocument.created_at)}
+                                  {leaseDocuments.length > 1
+                                    ? ` - ${leaseDocuments.length} lease versions`
+                                    : ""}
+                                </div>
+                              </div>
+                              <a
+                                href={documentDownloadUrl(
+                                  latestLeaseDocument.id,
+                                )}
+                                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                              >
+                                <Download size={15} />
+                                Download
+                              </a>
+                            </div>
+                          ) : null}
+                          <div className="grid gap-3 rounded-md border border-dashed border-border bg-white p-3">
+                            <label className="grid cursor-pointer place-items-center rounded-md bg-muted/40 px-4 py-4 text-center transition hover:bg-primary/5">
+                              <input
+                                type="file"
+                                aria-label="Custom lease file"
+                                className="sr-only"
+                                onChange={(event) =>
+                                  setCustomLeaseFilesByOnboardingId(
+                                    (current) => ({
+                                      ...current,
+                                      [item.id]:
+                                        event.target.files?.[0] ?? null,
+                                    }),
+                                  )
+                                }
+                              />
+                              <span className="grid justify-items-center gap-2">
+                                <UploadCloud
+                                  size={20}
+                                  className="text-primary"
+                                />
+                                <span className="text-sm font-semibold">
+                                  {customLeaseFile
+                                    ? customLeaseFile.name
+                                    : latestLeaseDocument
+                                      ? "Upload a replacement lease"
+                                      : "Upload custom lease"}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  Stored against this tenant, lease, and
+                                  onboarding.
+                                </span>
+                              </span>
+                            </label>
+                            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                              <Field label="Lease note">
+                                <Input
+                                  value={customLeaseNotes}
+                                  placeholder="Optional"
+                                  onChange={(event) =>
+                                    setCustomLeaseNotesByOnboardingId(
+                                      (current) => ({
+                                        ...current,
+                                        [item.id]: event.target.value,
+                                      }),
+                                    )
+                                  }
+                                />
+                              </Field>
+                              <Button
+                                type="button"
+                                disabled={
+                                  !customLeaseFile ||
+                                  uploadCustomLeaseMutation.isPending
+                                }
+                                onClick={() =>
+                                  uploadCustomLeaseMutation.mutate({
+                                    onboardingId: item.id,
+                                    leaseId: item.lease_id,
+                                    file: customLeaseFile,
+                                    notes: customLeaseNotes,
+                                  })
+                                }
+                              >
+                                {uploadCustomLeaseMutation.isPending ? (
+                                  <Loader2
+                                    size={16}
+                                    className="animate-spin"
+                                  />
+                                ) : (
+                                  <UploadCloud size={16} />
+                                )}
+                                Attach lease
+                              </Button>
+                            </div>
+                            {uploadCustomLeaseMutation.error ? (
+                              <p className="text-sm text-danger">
+                                {friendlyError(uploadCustomLeaseMutation.error)}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
                       {item.status === "applied" &&
-                      leaseAgreement &&
-                      leaseAgreement.status !== "signed" ? (
+                      leaseAgreement?.status !== "signed" ? (
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
                           <div>
                             <div className="font-semibold">Lease pack next</div>
                             <div className="text-muted-foreground">
-                              Onboarding details are applied. Send the tenant a
-                              signing link when the lease pack is ready.
+                              {latestLeaseDocument
+                                ? leasePackSent
+                                  ? `Signing link sent ${formatDateTime(
+                                      leasePackSent,
+                                    )}.`
+                                  : "Custom lease is attached. Send the tenant the signing link when ready."
+                                : "Upload a custom lease before sending the tenant a signing link."}
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
@@ -2655,10 +3003,14 @@ function TenantDetail() {
                               onClick={() =>
                                 sendLeasePackMutation.mutate(item.id)
                               }
-                              disabled={onboardingActionPending}
+                              disabled={
+                                onboardingActionPending ||
+                                !latestLeaseDocument ||
+                                Boolean(leasePackSent)
+                              }
                             >
                               <Send size={16} />
-                              Send lease pack
+                              {leasePackSent ? "Lease pack sent" : "Send lease pack"}
                             </Button>
                             <Link
                               className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition hover:bg-muted"

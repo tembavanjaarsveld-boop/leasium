@@ -154,6 +154,8 @@ class TenantPortalLeaseAgreementRead(BaseModel):
 
 class TenantPortalDocumentRead(BaseModel):
     id: UUID
+    lease_id: UUID | None = None
+    tenant_onboarding_id: UUID | None = None
     filename: str
     content_type: str | None
     byte_size: int

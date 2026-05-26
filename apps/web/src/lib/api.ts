@@ -709,6 +709,14 @@ export type OnboardingReminderData = {
   completed_reason?: string | null;
 };
 
+export type LeasePackDeliveryData = {
+  sent_at?: string | null;
+  sent_by_user_id?: string | null;
+  template_key?: string | null;
+  template_version?: string | null;
+  receipts?: Array<Record<string, unknown>>;
+};
+
 export type OnboardingDeliveryData = {
   last_attempted_at?: string | null;
   last_reason?: string | null;
@@ -720,6 +728,8 @@ export type OnboardingDeliveryData = {
   receipts?: Array<Record<string, unknown>>;
   reminders?: OnboardingReminderData;
   lease_agreement?: TenantLeaseAgreementRecord;
+  lease_pack?: LeasePackDeliveryData;
+  lease_pack_history?: LeasePackDeliveryData[];
 };
 
 export type TenantOnboardingPublicRecord = {
@@ -900,6 +910,8 @@ export type TenantPortalOnboardingSubmitPayload = {
 
 export type TenantPortalDocumentRecord = {
   id: string;
+  lease_id: string | null;
+  tenant_onboarding_id: string | null;
   filename: string;
   content_type: string | null;
   byte_size: number;

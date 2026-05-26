@@ -622,6 +622,8 @@ def _document_source(document: StoredDocument) -> str:
 def _document_read(document: StoredDocument) -> TenantPortalDocumentRead:
     return TenantPortalDocumentRead(
         id=document.id,
+        lease_id=document.lease_id,
+        tenant_onboarding_id=document.tenant_onboarding_id,
         filename=document.filename,
         content_type=document.content_type,
         byte_size=document.byte_size,

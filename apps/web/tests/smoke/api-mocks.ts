@@ -557,6 +557,8 @@ const maintenanceWorkOrders = [
 const initialTenantPortalDocuments = [
   {
     id: "portal-document-1",
+    lease_id: leaseId,
+    tenant_onboarding_id: "onboarding-1",
     filename: "bright-cafe-insurance.pdf",
     content_type: "application/pdf",
     byte_size: 45000,
@@ -567,6 +569,8 @@ const initialTenantPortalDocuments = [
   },
   {
     id: "portal-photo-1",
+    lease_id: leaseId,
+    tenant_onboarding_id: "onboarding-1",
     filename: "shopfront-ac-photo.jpg",
     content_type: "image/jpeg",
     byte_size: 128000,
@@ -1744,6 +1748,20 @@ export async function mockLeasiumApi(
   tenantPortalDocuments = initialTenantPortalDocuments.map((document) => ({
     ...document,
   }));
+  if (tenantPortalLeaseReady) {
+    tenantPortalDocuments.unshift({
+      id: "portal-lease-document-1",
+      lease_id: leaseId,
+      tenant_onboarding_id: "onboarding-1",
+      filename: "custom-lease.pdf",
+      content_type: "application/pdf",
+      byte_size: 76000,
+      category: "lease",
+      notes: "Custom lease uploaded by the property team.",
+      source: "operator_upload",
+      created_at: "2026-05-20T03:30:00.000Z",
+    });
+  }
   tenantPortalNotificationPreferences = {
     ...initialTenantPortalNotificationPreferences,
   };
@@ -4311,6 +4329,8 @@ export async function mockLeasiumApi(
       const body = request.postDataBuffer()?.toString("utf8") ?? "";
       const uploaded = {
         id: `portal-document-upload-${++tenantPortalDocumentCount}`,
+        lease_id: leaseId,
+        tenant_onboarding_id: "onboarding-1",
         filename: multipartFilename(body),
         content_type: request
           .headers()
@@ -5819,6 +5839,8 @@ export async function mockLeasiumApi(
       const body = request.postDataBuffer()?.toString("utf8") ?? "";
       const uploaded = {
         id: `operator-document-upload-${++tenantPortalDocumentCount}`,
+        lease_id: multipartField(body, "lease_id"),
+        tenant_onboarding_id: multipartField(body, "tenant_onboarding_id"),
         filename: multipartFilename(body),
         content_type: request
           .headers()
