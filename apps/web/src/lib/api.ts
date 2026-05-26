@@ -3156,6 +3156,7 @@ export function createTenantOnboarding(payload: {
   lease_id: string;
   due_date?: string | null;
   expires_at?: string | null;
+  send_initial_invite?: boolean;
 }) {
   return request<TenantOnboardingRecord>("/tenant-onboarding", {
     method: "POST",

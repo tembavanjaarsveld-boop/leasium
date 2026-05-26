@@ -816,6 +816,7 @@ def _deliver_portal_invite(
     results = send_tenant_portal_invite(invite, settings)
     now = utcnow()
     delivery = dict(onboarding.delivery_data or {})
+    previous_sent_at = onboarding.last_sent_at
     receipts = []
     for result in results:
         receipts.append(
@@ -836,6 +837,7 @@ def _deliver_portal_invite(
         "template_version": invite.template_version,
         "receipts": receipts,
     }
+    delivery = _reset_reminders(delivery, now, results, onboarding.expires_at)
     history_raw = delivery.get("portal_invite_history")
     history = (
         [item for item in history_raw if isinstance(item, dict)]
@@ -844,6 +846,9 @@ def _deliver_portal_invite(
     )
     history.append(delivery["portal_invite"])
     delivery["portal_invite_history"] = history[-5:]
+    onboarding.last_sent_at = now
+    if previous_sent_at is not None:
+        onboarding.resent_at = now
     onboarding.delivery_data = delivery
     for result in results:
         audit_log(
@@ -1115,6 +1120,7 @@ def create_tenant_onboarding(
     if existing is not None:
         return _read(existing)
 
+    sent_at = utcnow() if payload.send_initial_invite else None
     onboarding = TenantOnboarding(
         entity_id=prop.entity_id,
         lease_id=lease.id,
@@ -1123,7 +1129,7 @@ def create_tenant_onboarding(
         status=TenantOnboardingStatus.sent,
         due_date=payload.due_date,
         expires_at=payload.expires_at,
-        last_sent_at=utcnow(),
+        last_sent_at=sent_at,
         submitted_data={},
         review_data={},
         delivery_data={},
@@ -1141,9 +1147,10 @@ def create_tenant_onboarding(
     )
     session.commit()
     session.refresh(onboarding)
-    _deliver_onboarding_link(onboarding, lease, prop, tenant, user, session, "send")
-    session.commit()
-    session.refresh(onboarding)
+    if payload.send_initial_invite:
+        _deliver_onboarding_link(onboarding, lease, prop, tenant, user, session, "send")
+        session.commit()
+        session.refresh(onboarding)
     return _read(onboarding)
 
 

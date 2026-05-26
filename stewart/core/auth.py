@@ -153,24 +153,7 @@ def _verified_email_from_claims(decoded: dict[str, Any]) -> str | None:
 
 
 def _verified_email_from_clerk_user(provider_id: str, settings: Settings) -> str | None:
-    secret = settings.clerk_secret_key.strip()
-    if not secret:
-        return None
-
-    try:
-        response = httpx.get(
-            f"https://api.clerk.com/v1/users/{provider_id}",
-            headers={"Authorization": f"Bearer {secret}"},
-            timeout=5.0,
-        )
-        response.raise_for_status()
-    except httpx.HTTPError:
-        return None
-
-    try:
-        payload = response.json()
-    except ValueError:
-        return None
+    payload = _clerk_user_payload(provider_id, settings)
     if not isinstance(payload, dict):
         return None
 
@@ -192,6 +175,50 @@ def _verified_email_from_clerk_user(provider_id: str, settings: Settings) -> str
         if isinstance(email, str) and email.strip():
             return _normalise_email(email)
     return None
+
+
+def _verified_emails_from_clerk_user(provider_id: str, settings: Settings) -> set[str]:
+    payload = _clerk_user_payload(provider_id, settings)
+    if not isinstance(payload, dict):
+        return set()
+
+    email_addresses = payload.get("email_addresses")
+    if not isinstance(email_addresses, list):
+        return set()
+
+    verified_emails: set[str] = set()
+    for email_address in email_addresses:
+        if not isinstance(email_address, dict):
+            continue
+        verification = email_address.get("verification")
+        if not isinstance(verification, dict) or verification.get("status") != "verified":
+            continue
+        email = email_address.get("email_address")
+        if isinstance(email, str) and email.strip():
+            verified_emails.add(_normalise_email(email))
+    return verified_emails
+
+
+def _clerk_user_payload(provider_id: str, settings: Settings) -> dict[str, Any] | None:
+    secret = settings.clerk_secret_key.strip()
+    if not secret:
+        return None
+
+    try:
+        response = httpx.get(
+            f"https://api.clerk.com/v1/users/{provider_id}",
+            headers={"Authorization": f"Bearer {secret}"},
+            timeout=5.0,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError:
+        return None
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _link_operator_by_verified_email(

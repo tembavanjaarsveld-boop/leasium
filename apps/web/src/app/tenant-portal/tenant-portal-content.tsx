@@ -534,6 +534,10 @@ function tenantPortalClaimNeedsDifferentLogin(error: unknown) {
   );
 }
 
+function normaliseEmail(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
 function clerkFlowErrorMessage(error: unknown) {
   if (error && typeof error === "object" && "errors" in error) {
     const errors = (
@@ -2483,6 +2487,7 @@ function TenantPortalContent({
     isLoaded: clerkLoaded,
     isSignedIn: clerkSignedIn,
   } = useAuth();
+  const { user, isLoaded: clerkUserLoaded } = useUser();
   const clerkLoadTimedOut = useAuthLoadTimeout(clerkLoaded);
   const portalQuery = useQuery({
     queryKey: ["tenant-portal", token],
@@ -2536,9 +2541,20 @@ function TenantPortalContent({
       handleAccountPortal(result.portal, result.authToken);
     },
   });
+  const signedInEmail = user?.primaryEmailAddress?.emailAddress ?? null;
+  const inviteEmail = invitePreviewQuery.data?.tenant_email ?? null;
+  const signedInEmailMismatchesInvite =
+    clerkLoaded &&
+    clerkSignedIn &&
+    clerkUserLoaded &&
+    Boolean(signedInEmail) &&
+    Boolean(inviteEmail) &&
+    normaliseEmail(signedInEmail) !== normaliseEmail(inviteEmail);
   useEffect(() => {
     if (!token) return;
     if (!clerkLoaded || !clerkSignedIn) return;
+    if (!clerkUserLoaded) return;
+    if (signedInEmailMismatchesInvite) return;
     if (accountPortal) return;
     if (gateClaimMutation.isPending) return;
     if (gateClaimMutation.isError) return;
@@ -2549,6 +2565,8 @@ function TenantPortalContent({
     token,
     clerkLoaded,
     clerkSignedIn,
+    clerkUserLoaded,
+    signedInEmailMismatchesInvite,
     accountPortal,
     gateClaimMutation,
     invitePreviewQuery.data,
@@ -2862,6 +2880,32 @@ function TenantPortalContent({
                     claimable={preview.claimable}
                     initialEmail={preview.tenant_email}
                   />
+                </div>
+              ) : !clerkUserLoaded ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 size={16} className="animate-spin text-primary" />
+                  Checking signed-in account…
+                </div>
+              ) : signedInEmailMismatchesInvite ? (
+                <div className="grid gap-3 text-sm">
+                  <StatusBadge tone="warning">Use the invite email</StatusBadge>
+                  <p className="text-muted-foreground">
+                    You&apos;re signed in as{" "}
+                    <span className="font-medium text-foreground">
+                      {signedInEmail}
+                    </span>
+                    , but this invite is for{" "}
+                    <span className="font-medium text-foreground">
+                      {preview.tenant_email}
+                    </span>
+                    .
+                  </p>
+                  <SignOutButton redirectUrl={returnTo}>
+                    <SecondaryButton type="button">
+                      <LogIn size={15} />
+                      Use another login
+                    </SecondaryButton>
+                  </SignOutButton>
                 </div>
               ) : gateClaimMutation.isError ? (
                 <div className="grid gap-3 text-sm">
