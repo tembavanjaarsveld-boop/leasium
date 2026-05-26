@@ -1565,7 +1565,7 @@ function TenantAccountPanel({
   const accountQuery = useQuery({
     queryKey: ["tenant-portal-account-session", tokenTenantId],
     queryFn: async () => {
-      const authToken = await getToken();
+      const authToken = await getToken({ skipCache: true });
       if (!authToken) {
         throw new Error("Sign in before opening the tenant account.");
       }
@@ -2703,6 +2703,32 @@ function TenantPortalContent({
     },
     [],
   );
+  const inviteEmail = invitePreviewQuery.data?.tenant_email ?? null;
+  const verifiedSignedInEmails = useMemo(() => {
+    const addresses = new Set<string>();
+    for (const email of user?.emailAddresses ?? []) {
+      if (email.verification?.status === "verified" && email.emailAddress) {
+        addresses.add(email.emailAddress);
+      }
+    }
+    return Array.from(addresses);
+  }, [user]);
+  const signedInEmail =
+    user?.primaryEmailAddress?.emailAddress ??
+    verifiedSignedInEmails[0] ??
+    null;
+  const matchingSignedInEmail = inviteEmail
+    ? (verifiedSignedInEmails.find(
+        (email) => normaliseEmail(email) === normaliseEmail(inviteEmail),
+      ) ?? null)
+    : null;
+  const signedInEmailMismatchesInvite =
+    clerkLoaded &&
+    clerkSignedIn &&
+    clerkUserLoaded &&
+    Boolean(inviteEmail) &&
+    verifiedSignedInEmails.length > 0 &&
+    !matchingSignedInEmail;
 
   // Claim gate state — when the visitor lands on /tenant-portal/{token}
   // with a Clerk session, this fires once to create the TenantPortalAccount
@@ -2713,7 +2739,7 @@ function TenantPortalContent({
       if (!token) {
         throw new Error("Tenant portal token is required.");
       }
-      const authToken = await getClerkToken();
+      const authToken = await getClerkToken({ skipCache: true });
       if (!authToken) {
         throw new Error("Sign in before claiming the invite.");
       }
@@ -2724,15 +2750,6 @@ function TenantPortalContent({
       handleAccountPortal(result.portal, result.authToken);
     },
   });
-  const signedInEmail = user?.primaryEmailAddress?.emailAddress ?? null;
-  const inviteEmail = invitePreviewQuery.data?.tenant_email ?? null;
-  const signedInEmailMismatchesInvite =
-    clerkLoaded &&
-    clerkSignedIn &&
-    clerkUserLoaded &&
-    Boolean(signedInEmail) &&
-    Boolean(inviteEmail) &&
-    normaliseEmail(signedInEmail) !== normaliseEmail(inviteEmail);
   useEffect(() => {
     if (!token) return;
     if (!clerkLoaded || !clerkSignedIn) return;
@@ -3102,7 +3119,16 @@ function TenantPortalContent({
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
-                      onClick={() => gateClaimMutation.mutate()}
+                      onClick={() => {
+                        gateClaimMutation.reset();
+                        if (!user) {
+                          gateClaimMutation.mutate();
+                          return;
+                        }
+                        void user.reload().finally(() => {
+                          gateClaimMutation.mutate();
+                        });
+                      }}
                     >
                       Try again
                     </Button>

@@ -177,11 +177,7 @@ def _verified_email_from_clerk_user(provider_id: str, settings: Settings) -> str
     return None
 
 
-def _verified_emails_from_clerk_user(provider_id: str, settings: Settings) -> set[str]:
-    payload = _clerk_user_payload(provider_id, settings)
-    if not isinstance(payload, dict):
-        return set()
-
+def _verified_emails_from_clerk_payload(payload: dict[str, Any]) -> set[str]:
     email_addresses = payload.get("email_addresses")
     if not isinstance(email_addresses, list):
         return set()
@@ -197,6 +193,13 @@ def _verified_emails_from_clerk_user(provider_id: str, settings: Settings) -> se
         if isinstance(email, str) and email.strip():
             verified_emails.add(_normalise_email(email))
     return verified_emails
+
+
+def _verified_emails_from_clerk_user(provider_id: str, settings: Settings) -> set[str]:
+    payload = _clerk_user_payload(provider_id, settings)
+    if not isinstance(payload, dict):
+        return set()
+    return _verified_emails_from_clerk_payload(payload)
 
 
 def _clerk_user_payload(provider_id: str, settings: Settings) -> dict[str, Any] | None:

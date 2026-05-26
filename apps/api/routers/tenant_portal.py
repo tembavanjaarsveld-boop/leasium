@@ -27,7 +27,6 @@ from stewart.core.auth import (
     ClerkIdentity,
     _clerk_identity,
     _normalise_email,
-    _verified_email_from_clerk_user,
     _verified_emails_from_clerk_user,
 )
 from stewart.core.db import utcnow
@@ -502,11 +501,7 @@ def _assert_claim_email_matches_invite(
     if expected in verified_emails:
         return
 
-    verified_email = identity.verified_email or _verified_email_from_clerk_user(
-        identity.provider_id,
-        settings,
-    )
-    if verified_email is None and not verified_emails:
+    if identity.verified_email is None and not verified_emails:
         if settings.clerk_allow_legacy_token_mapping:
             return
         raise HTTPException(
