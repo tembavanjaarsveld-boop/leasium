@@ -529,6 +529,9 @@ function tenantPortalClaimErrorMessage(
   }
   if (lower.includes("login email must match")) {
     if (signedInEmail && inviteEmail) {
+      if (normaliseEmail(signedInEmail) === normaliseEmail(inviteEmail)) {
+        return `The browser is signed in as ${signedInEmail}, but Leasium could not verify that email on the server yet. Try again; if it repeats, the property team needs to check tenant sign-up settings.`;
+      }
       return `Leasium could not verify that ${signedInEmail} owns this invite for ${inviteEmail}. Sign out, then sign in directly with ${inviteEmail}.`;
     }
     if (inviteEmail) {
@@ -2764,6 +2767,7 @@ function TenantPortalContent({
       if (!token) {
         throw new Error("Tenant portal token is required.");
       }
+      await user?.reload();
       const authToken = await getClerkToken({ skipCache: true });
       if (!authToken) {
         throw new Error("Sign in before claiming the invite.");
