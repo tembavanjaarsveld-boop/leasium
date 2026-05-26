@@ -95,11 +95,9 @@ import {
 import {
   onboardingDeliveryDetail,
   onboardingDeliveryLabel,
-  onboardingDeliveryTone,
   onboardingNeedsContactFix,
   onboardingReminderLabel,
   onboardingReminderSteps,
-  onboardingReminderTone,
 } from "@/lib/delivery";
 import { cn } from "@/lib/utils";
 
@@ -315,6 +313,11 @@ function portalAccountLabel(status: TenantPortalAccountRecord["status"]) {
   return status.replaceAll("_", " ");
 }
 
+function sentenceStatus(value: string) {
+  const label = value.replaceAll("_", " ");
+  return label ? `${label[0].toUpperCase()}${label.slice(1)}` : label;
+}
+
 function portalAccountDetail(account: TenantPortalAccountRecord) {
   if (account.status === "revoked") {
     return `Revoked ${formatDateTime(account.revoked_at)}`;
@@ -355,19 +358,12 @@ function reminderStepLabel(statusValue: string | null | undefined) {
 }
 
 type WorkflowStepStatus = "done" | "current" | "waiting" | "blocked";
-
-function workflowStepTone(status: WorkflowStepStatus) {
-  if (status === "done") {
-    return "success" as const;
-  }
-  if (status === "current") {
-    return "primary" as const;
-  }
-  if (status === "blocked") {
-    return "warning" as const;
-  }
-  return "neutral" as const;
-}
+type WorkflowStep = {
+  key: string;
+  title: string;
+  detail: string;
+  status: WorkflowStepStatus;
+};
 
 function workflowStepLabel(status: WorkflowStepStatus) {
   if (status === "done") {
@@ -382,6 +378,26 @@ function workflowStepLabel(status: WorkflowStepStatus) {
   return "Waiting";
 }
 
+function workflowStepIconClass(status: WorkflowStepStatus) {
+  return cn(
+    "grid h-8 w-8 shrink-0 place-items-center rounded-full border text-xs font-semibold",
+    status === "done" && "border-success/25 bg-success/10 text-success",
+    status === "current" && "border-primary/25 bg-primary/10 text-primary",
+    status === "blocked" && "border-warning/30 bg-warning/10 text-warning",
+    status === "waiting" && "border-border bg-muted text-muted-foreground",
+  );
+}
+
+function workflowStepStateClass(status: WorkflowStepStatus) {
+  return cn(
+    "text-xs font-semibold",
+    status === "done" && "text-success",
+    status === "current" && "text-primary",
+    status === "blocked" && "text-warning",
+    status === "waiting" && "text-muted-foreground",
+  );
+}
+
 function leasePackSentAt(item: TenantOnboardingRecord) {
   return item.delivery_data.lease_pack?.sent_at ?? null;
 }
@@ -394,7 +410,7 @@ function onboardingProgressSteps({
   item: TenantOnboardingRecord;
   leaseAgreement: TenantLeaseAgreementRecord | null;
   hasLeaseDocument: boolean;
-}) {
+}): WorkflowStep[] {
   const submitted = ["submitted", "reviewed", "applied"].includes(item.status);
   const approved = item.status === "applied";
   const sentAt = leasePackSentAt(item);
@@ -415,7 +431,11 @@ function onboardingProgressSteps({
       detail: item.submitted_at
         ? `Submitted ${formatDateTime(item.submitted_at)}`
         : "Waiting for tenant",
-      status: submitted ? "done" : item.status === "sent" ? "current" : "waiting",
+      status: submitted
+        ? "done"
+        : item.status === "sent"
+          ? "current"
+          : "waiting",
     },
     {
       key: "approval",
@@ -440,14 +460,16 @@ function onboardingProgressSteps({
     {
       key: "send",
       title: "Send pack",
-      detail: sentAt ? `Sent ${formatDateTime(sentAt)}` : "Email signing link",
+      detail: sentAt
+        ? `Sent ${formatDateTime(sentAt)}`
+        : hasLeaseDocument
+          ? "Email signing link"
+          : "After lease file",
       status: sentAt
         ? "done"
         : approved && hasLeaseDocument
           ? "current"
-          : approved
-            ? "blocked"
-            : "waiting",
+          : "waiting",
     },
     {
       key: "sign",
@@ -459,12 +481,7 @@ function onboardingProgressSteps({
           : "After lease pack",
       status: signed ? "done" : sentAt ? "current" : "waiting",
     },
-  ] satisfies Array<{
-    key: string;
-    title: string;
-    detail: string;
-    status: WorkflowStepStatus;
-  }>;
+  ];
 }
 
 const documentCategories: Array<{ value: DocumentCategory; label: string }> = [
@@ -2418,6 +2435,16 @@ function TenantDetail() {
                     leaseAgreement,
                     hasLeaseDocument: leaseDocuments.length > 0,
                   });
+                  const activeProgressStep =
+                    progressSteps.find(
+                      (step) =>
+                        step.status === "blocked" || step.status === "current",
+                    ) ?? progressSteps.at(-1);
+                  const reminderSteps = onboardingReminderSteps(
+                    item.delivery_data,
+                  );
+                  const showReminderSchedule =
+                    item.status === "sent" && reminderSteps.length > 0;
                   const applyBlocked =
                     leaseAgreementBlocksApply(leaseAgreement);
                   const applyBlockReason =
@@ -2446,62 +2473,75 @@ function TenantDetail() {
                     sendLeasePackMutation.error;
                   const providerDetail = (
                     <>
-                      <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-                        <div>Last sent {formatDate(item.last_sent_at)}</div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span>Delivery</span>
-                          <StatusBadge
-                            tone={onboardingDeliveryTone(item.delivery_data)}
-                          >
+                      <dl className="grid gap-x-4 gap-y-3 border-t border-border pt-3 text-xs sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+                        <div className="min-w-0">
+                          <dt className="text-muted-foreground">Last sent</dt>
+                          <dd className="mt-1 font-medium">
+                            {formatDate(item.last_sent_at)}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-muted-foreground">Delivery</dt>
+                          <dd className="mt-1 font-medium">
                             {onboardingDeliveryLabel(item.delivery_data)}
-                          </StatusBadge>
+                          </dd>
                         </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span>Reminders</span>
-                          <StatusBadge
-                            tone={onboardingReminderTone(item.delivery_data)}
-                          >
+                        <div className="min-w-0">
+                          <dt className="text-muted-foreground">Reminders</dt>
+                          <dd className="mt-1 font-medium">
                             {onboardingReminderLabel(item.delivery_data)}
-                          </StatusBadge>
+                          </dd>
                         </div>
-                        <div>Expires {formatDate(item.expires_at)}</div>
-                        <div>Applied {formatDate(item.applied_at)}</div>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
+                        <div className="min-w-0">
+                          <dt className="text-muted-foreground">Expires</dt>
+                          <dd className="mt-1 font-medium">
+                            {formatDate(item.expires_at)}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-muted-foreground">Applied</dt>
+                          <dd className="mt-1 font-medium">
+                            {formatDate(item.applied_at)}
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className="text-xs leading-5 text-muted-foreground">
                         {onboardingDeliveryDetail(item.delivery_data)}
                       </div>
-                      {onboardingReminderSteps(item.delivery_data).length ? (
-                        <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-xs">
+                      {showReminderSchedule ? (
+                        <div className="grid gap-3 border-t border-border pt-3 text-xs">
                           <div className="flex items-center gap-2 font-semibold">
                             <Clock3 size={14} />
                             Reminder schedule
                           </div>
-                          <div className="grid gap-2 sm:grid-cols-3">
-                            {onboardingReminderSteps(item.delivery_data).map(
-                              (step) => (
-                                <div
-                                  key={step.key ?? step.label}
-                                  className="rounded border border-border bg-white px-3 py-2"
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="font-medium">
-                                      {step.label ?? "Reminder"}
-                                    </span>
-                                    <StatusBadge
-                                      tone={reminderStepTone(step.status)}
-                                    >
-                                      {reminderStepLabel(step.status)}
-                                    </StatusBadge>
-                                  </div>
-                                  <div className="mt-1 text-muted-foreground">
+                          <ol className="grid gap-2 sm:grid-cols-3">
+                            {reminderSteps.map((step) => (
+                              <li
+                                key={step.key ?? step.label}
+                                className="grid grid-cols-[0.75rem_minmax(0,1fr)] gap-2"
+                              >
+                                <span
+                                  className={cn(
+                                    "mt-1.5 h-2 w-2 rounded-full bg-muted-foreground/40",
+                                    reminderStepTone(step.status) ===
+                                      "success" && "bg-success",
+                                    reminderStepTone(step.status) ===
+                                      "warning" && "bg-warning",
+                                  )}
+                                />
+                                <span className="min-w-0">
+                                  <span className="block font-medium">
+                                    {step.label ?? "Reminder"}
+                                  </span>
+                                  <span className="mt-0.5 block text-muted-foreground">
                                     {step.sent_at
                                       ? `Sent ${formatDateTime(step.sent_at)}`
-                                      : `If incomplete after ${step.after_days ?? "-"} days`}
-                                  </div>
-                                </div>
-                              ),
-                            )}
-                          </div>
+                                      : `After ${step.after_days ?? "-"} days`}
+                                  </span>
+                                </span>
+                              </li>
+                            ))}
+                          </ol>
                           {item.delivery_data.reminders?.paused ? (
                             <div className="text-muted-foreground">
                               Reminder paused until contact is fixed.
@@ -2510,7 +2550,7 @@ function TenantDetail() {
                         </div>
                       ) : null}
                       {(item.delivery_data.receipts ?? []).length ? (
-                        <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-xs">
+                        <div className="grid gap-2 border-t border-border pt-3 text-xs">
                           <div className="font-semibold">Delivery timeline</div>
                           {(item.delivery_data.receipts ?? [])
                             .slice(0, 3)
@@ -2538,27 +2578,37 @@ function TenantDetail() {
                   );
                   return (
                     <div key={item.id} className="grid gap-3 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <StatusBadge
-                            tone={statusTone(item.status, item.due_date)}
-                          >
-                            {item.status.replaceAll("_", " ")}
-                          </StatusBadge>
-                          {linkExpired && item.status === "sent" ? (
-                            <StatusBadge tone="warning">
-                              Link expired
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="grid min-w-0 gap-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge
+                              tone={statusTone(item.status, item.due_date)}
+                            >
+                              {sentenceStatus(item.status)}
                             </StatusBadge>
+                            {linkExpired && item.status === "sent" ? (
+                              <StatusBadge tone="warning">
+                                Link expired
+                              </StatusBadge>
+                            ) : null}
+                            <span
+                              className={cn(
+                                "text-sm text-muted-foreground",
+                                dueRank(item.due_date) < 0 &&
+                                  "font-medium text-danger",
+                              )}
+                            >
+                              Due {formatDate(item.due_date)}
+                            </span>
+                          </div>
+                          {activeProgressStep ? (
+                            <div className="text-sm text-muted-foreground">
+                              Current step:{" "}
+                              <span className="font-medium text-foreground">
+                                {activeProgressStep.title}
+                              </span>
+                            </div>
                           ) : null}
-                          <span
-                            className={cn(
-                              "text-sm text-muted-foreground",
-                              dueRank(item.due_date) < 0 &&
-                                "font-medium text-danger",
-                            )}
-                          >
-                            Due {formatDate(item.due_date)}
-                          </span>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {item.status === "sent" && !linkExpired ? (
@@ -2670,47 +2720,63 @@ function TenantDetail() {
                           ) : null}
                         </div>
                       </div>
-                      <div className="grid gap-2 rounded-md border border-border bg-white p-3 sm:grid-cols-3 xl:grid-cols-6">
+                      <ol className="divide-y divide-border border-y border-border">
                         {progressSteps.map((step, index) => (
-                          <div key={step.key} className="grid gap-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <span
-                                className={cn(
-                                  "grid h-7 w-7 place-items-center rounded-full border text-xs font-semibold",
-                                  step.status === "done" &&
-                                    "border-success/30 bg-success/10 text-success",
-                                  step.status === "current" &&
-                                    "border-primary/30 bg-primary/10 text-primary",
-                                  step.status === "blocked" &&
-                                    "border-warning/30 bg-warning/10 text-warning",
-                                  step.status === "waiting" &&
-                                    "border-border bg-muted text-muted-foreground",
-                                )}
-                              >
-                                {step.status === "done" ? (
-                                  <Check size={14} />
-                                ) : (
-                                  index + 1
+                          <li
+                            key={step.key}
+                            className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3 py-3 sm:grid-cols-[2rem_minmax(0,1fr)_7rem]"
+                          >
+                            <span
+                              className={workflowStepIconClass(step.status)}
+                              aria-label={workflowStepLabel(step.status)}
+                            >
+                              {step.status === "done" ? (
+                                <Check size={15} />
+                              ) : step.status === "blocked" ? (
+                                <AlertTriangle size={15} />
+                              ) : step.status === "current" ? (
+                                <Clock3 size={15} />
+                              ) : (
+                                index + 1
+                              )}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                <span className="text-sm font-semibold">
+                                  {step.title}
+                                </span>
+                                {(step.status === "current" ||
+                                  step.status === "blocked") && (
+                                  <span
+                                    className={workflowStepStateClass(
+                                      step.status,
+                                    )}
+                                  >
+                                    {workflowStepLabel(step.status)}
+                                  </span>
                                 )}
                               </span>
-                              <StatusBadge tone={workflowStepTone(step.status)}>
-                                {workflowStepLabel(step.status)}
-                              </StatusBadge>
-                            </div>
-                            <div>
-                              <div className="text-sm font-semibold">
-                                {step.title}
-                              </div>
-                              <div className="mt-1 text-xs text-muted-foreground">
+                              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
                                 {step.detail}
-                              </div>
-                            </div>
-                          </div>
+                              </span>
+                            </span>
+                            {step.status === "current" ||
+                            step.status === "blocked" ? null : (
+                              <span
+                                className={cn(
+                                  "hidden self-center text-right sm:block",
+                                  workflowStepStateClass(step.status),
+                                )}
+                              >
+                                {workflowStepLabel(step.status)}
+                              </span>
+                            )}
+                          </li>
                         ))}
-                      </div>
-                      <details className="group md:hidden">
+                      </ol>
+                      <details className="group">
                         <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
-                          Provider detail
+                          Delivery detail
                           <ChevronDown
                             size={12}
                             className="transition group-open:rotate-180"
@@ -2718,11 +2784,8 @@ function TenantDetail() {
                         </summary>
                         <div className="mt-3 grid gap-3">{providerDetail}</div>
                       </details>
-                      <div className="hidden gap-3 md:grid">
-                        {providerDetail}
-                      </div>
                       {leaseAgreement ? (
-                        <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs">
+                        <div className="grid gap-3 border-t border-border pt-4 text-xs">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex items-center gap-2 font-semibold">
                               <MessageSquare size={14} />
@@ -2836,7 +2899,7 @@ function TenantDetail() {
                               );
                             })}
                             {!leaseAgreement.questions.length ? (
-                              <div className="rounded border border-border bg-white px-3 py-2 text-muted-foreground">
+                              <div className="text-muted-foreground">
                                 No lease agreement questions yet.
                               </div>
                             ) : null}
@@ -2851,30 +2914,29 @@ function TenantDetail() {
                         </div>
                       ) : null}
                       {item.status !== "cancelled" ? (
-                        <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm">
+                        <div className="grid gap-3 border-t border-border pt-4 text-sm">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <div className="font-semibold">
-                                Custom lease bypass
-                              </div>
+                              <div className="font-semibold">Custom lease</div>
                               <div className="text-muted-foreground">
-                                Attach a one-off lease to this onboarding when
-                                the standard property template is not the right
-                                fit.
+                                One-off lease for this onboarding.
                               </div>
                             </div>
-                            {latestLeaseDocument ? (
-                              <StatusBadge tone="success">
-                                Lease attached
-                              </StatusBadge>
-                            ) : (
-                              <StatusBadge tone="warning">
-                                Lease needed
-                              </StatusBadge>
-                            )}
+                            <span
+                              className={cn(
+                                "text-xs font-semibold",
+                                latestLeaseDocument
+                                  ? "text-success"
+                                  : "text-warning",
+                              )}
+                            >
+                              {latestLeaseDocument
+                                ? "Lease attached"
+                                : "Lease needed"}
+                            </span>
                           </div>
                           {latestLeaseDocument ? (
-                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-white px-3 py-2">
+                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2">
                               <div className="min-w-0">
                                 <div className="truncate font-medium">
                                   {latestLeaseDocument.filename}
@@ -2899,8 +2961,8 @@ function TenantDetail() {
                               </a>
                             </div>
                           ) : null}
-                          <div className="grid gap-3 rounded-md border border-dashed border-border bg-white p-3">
-                            <label className="grid cursor-pointer place-items-center rounded-md bg-muted/40 px-4 py-4 text-center transition hover:bg-primary/5">
+                          <div className="grid gap-3 rounded-md border border-dashed border-border p-3">
+                            <label className="grid cursor-pointer place-items-center rounded-md bg-muted/30 px-4 py-4 text-center transition hover:bg-primary/5">
                               <input
                                 type="file"
                                 aria-label="Custom lease file"
@@ -2928,8 +2990,7 @@ function TenantDetail() {
                                       : "Upload custom lease"}
                                 </span>
                                 <span className="text-xs text-muted-foreground">
-                                  Stored against this tenant, lease, and
-                                  onboarding.
+                                  Stored against this tenant onboarding.
                                 </span>
                               </span>
                             </label>
@@ -2964,10 +3025,7 @@ function TenantDetail() {
                                 }
                               >
                                 {uploadCustomLeaseMutation.isPending ? (
-                                  <Loader2
-                                    size={16}
-                                    className="animate-spin"
-                                  />
+                                  <Loader2 size={16} className="animate-spin" />
                                 ) : (
                                   <UploadCloud size={16} />
                                 )}
@@ -3010,7 +3068,9 @@ function TenantDetail() {
                               }
                             >
                               <Send size={16} />
-                              {leasePackSent ? "Lease pack sent" : "Send lease pack"}
+                              {leasePackSent
+                                ? "Lease pack sent"
+                                : "Send lease pack"}
                             </Button>
                             <Link
                               className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition hover:bg-muted"
