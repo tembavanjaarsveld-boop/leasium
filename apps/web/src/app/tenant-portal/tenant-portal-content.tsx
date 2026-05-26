@@ -1211,16 +1211,23 @@ function RecentActivityPanel({
   );
 }
 
+type TenantPortalAccountAuthTokenGetter = () => Promise<string | null>;
+type TenantPortalSavedHandler = (
+  portal?: TenantPortalRecord,
+) => void | Promise<void>;
+
 function ContactDetailsPanel({
   portal,
   token,
   accountAuthToken,
+  getAccountAuthToken,
   onSaved,
 }: {
   portal: TenantPortalRecord;
   token: string | null;
   accountAuthToken: string | null;
-  onSaved: () => void;
+  getAccountAuthToken: TenantPortalAccountAuthTokenGetter;
+  onSaved: TenantPortalSavedHandler;
 }) {
   const [changeOpen, setChangeOpen] = useState(false);
   const [changeForm, setChangeForm] =
@@ -1261,14 +1268,24 @@ function ContactDetailsPanel({
   const latestContactRequest = portal.contact_change_requests[0] ?? null;
 
   const contactChangeMutation = useMutation({
-    mutationFn: () =>
-      submitTenantPortalContactChangeRequest(changeForm, {
+    mutationFn: async () => {
+      if (portal.auth.mode === "tenant_portal_account") {
+        const authToken = await getAccountAuthToken();
+        if (!authToken) {
+          throw new Error("Sign in again before submitting.");
+        }
+        return submitTenantPortalContactChangeRequest(changeForm, {
+          authToken,
+        });
+      }
+      return submitTenantPortalContactChangeRequest(changeForm, {
         token,
         authToken: accountAuthToken,
-      }),
-    onSuccess: () => {
+      });
+    },
+    onSuccess: (nextPortal) => {
       setChangeOpen(false);
-      onSaved();
+      void onSaved(nextPortal);
     },
   });
 
@@ -1449,13 +1466,13 @@ function Panel({
 function PreferencesForm({
   token,
   portal,
-  accountAuthToken,
+  getAccountAuthToken,
   onSaved,
 }: {
   token: string | null;
   portal: TenantPortalRecord;
-  accountAuthToken?: string | null;
-  onSaved: () => void;
+  getAccountAuthToken: TenantPortalAccountAuthTokenGetter;
+  onSaved: TenantPortalSavedHandler;
 }) {
   const [preferences, setPreferences] =
     useState<TenantPortalNotificationPreferencesPayload>(
@@ -1467,18 +1484,25 @@ function PreferencesForm({
   }, [portal.notification_preferences]);
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      accountAuthToken
-        ? updateTenantPortalAccountNotificationPreferences(
-            preferences,
-            accountAuthToken,
-          )
-        : token
-          ? updateTenantPortalNotificationPreferences(token, preferences)
-          : Promise.reject(
-              new Error("Sign in to your tenant account before saving."),
-            ),
-    onSuccess: onSaved,
+    mutationFn: async () => {
+      if (portal.auth.mode === "tenant_portal_account") {
+        const authToken = await getAccountAuthToken();
+        if (!authToken) {
+          throw new Error("Sign in again before saving.");
+        }
+        return updateTenantPortalAccountNotificationPreferences(
+          preferences,
+          authToken,
+        );
+      }
+      if (token) {
+        return updateTenantPortalNotificationPreferences(token, preferences);
+      }
+      throw new Error("Sign in to your tenant account before saving.");
+    },
+    onSuccess: () => {
+      void onSaved();
+    },
   });
 
   function setField<K extends keyof TenantPortalNotificationPreferencesPayload>(
@@ -1912,12 +1936,14 @@ function OnboardingPanel({
   portal,
   token,
   accountAuthToken,
+  getAccountAuthToken,
   onSaved,
 }: {
   portal: TenantPortalRecord;
   token: string | null;
   accountAuthToken: string | null;
-  onSaved: () => void;
+  getAccountAuthToken: TenantPortalAccountAuthTokenGetter;
+  onSaved: TenantPortalSavedHandler;
 }) {
   const editable = portal.onboarding.status === "sent";
   const prior = portal.onboarding.submitted_data;
@@ -1961,13 +1987,21 @@ function OnboardingPanel({
   }));
 
   const submitMutation = useMutation({
-    mutationFn: () =>
-      submitTenantPortalOnboarding(form, {
+    mutationFn: async () => {
+      if (portal.auth.mode === "tenant_portal_account") {
+        const authToken = await getAccountAuthToken();
+        if (!authToken) {
+          throw new Error("Sign in again before submitting.");
+        }
+        return submitTenantPortalOnboarding(form, { authToken });
+      }
+      return submitTenantPortalOnboarding(form, {
         token,
         authToken: accountAuthToken,
-      }),
-    onSuccess: () => {
-      onSaved();
+      });
+    },
+    onSuccess: (nextPortal) => {
+      void onSaved(nextPortal);
     },
   });
 
@@ -2199,12 +2233,14 @@ function LeaseAgreementPanel({
   portal,
   token,
   accountAuthToken,
+  getAccountAuthToken,
   onSaved,
 }: {
   portal: TenantPortalRecord;
   token: string | null;
   accountAuthToken: string | null;
-  onSaved: () => void;
+  getAccountAuthToken: TenantPortalAccountAuthTokenGetter;
+  onSaved: TenantPortalSavedHandler;
 }) {
   const [clauseReference, setClauseReference] = useState("");
   const [question, setQuestion] = useState("");
@@ -2221,27 +2257,43 @@ function LeaseAgreementPanel({
   const blockingCount = questions.filter(blockingLeaseQuestion).length;
 
   const askMutation = useMutation({
-    mutationFn: () =>
-      askTenantPortalLeaseQuestion(
+    mutationFn: async () => {
+      const authToken =
+        portal.auth.mode === "tenant_portal_account"
+          ? await getAccountAuthToken()
+          : accountAuthToken;
+      if (portal.auth.mode === "tenant_portal_account" && !authToken) {
+        throw new Error("Sign in again before sending your question.");
+      }
+      return askTenantPortalLeaseQuestion(
         {
           question,
           clause_reference: clauseReference.trim() || null,
         },
-        { token, authToken: accountAuthToken },
-      ),
-    onSuccess: () => {
+        { token, authToken },
+      );
+    },
+    onSuccess: (nextPortal) => {
       setQuestion("");
       setClauseReference("");
-      onSaved();
+      void onSaved(nextPortal);
     },
   });
 
   const signMutation = useMutation({
-    mutationFn: () =>
-      signTenantPortalLeaseAgreement({ token, authToken: accountAuthToken }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const authToken =
+        portal.auth.mode === "tenant_portal_account"
+          ? await getAccountAuthToken()
+          : accountAuthToken;
+      if (portal.auth.mode === "tenant_portal_account" && !authToken) {
+        throw new Error("Sign in again before signing.");
+      }
+      return signTenantPortalLeaseAgreement({ token, authToken });
+    },
+    onSuccess: (nextPortal) => {
       setAcceptedForSigning(false);
-      onSaved();
+      void onSaved(nextPortal);
     },
   });
 
@@ -2418,12 +2470,14 @@ function TenantLeaseSigningView({
   portal,
   token,
   accountAuthToken,
+  getAccountAuthToken,
   onSaved,
 }: {
   portal: TenantPortalRecord;
   token: string | null;
   accountAuthToken: string | null;
-  onSaved: () => void;
+  getAccountAuthToken: TenantPortalAccountAuthTokenGetter;
+  onSaved: TenantPortalSavedHandler;
 }) {
   const agreement = portal.lease_agreement;
   const applied = onboardingApplied(portal);
@@ -2477,6 +2531,7 @@ function TenantLeaseSigningView({
               portal={portal}
               token={token}
               accountAuthToken={accountAuthToken}
+              getAccountAuthToken={getAccountAuthToken}
               onSaved={onSaved}
             />
           </div>
@@ -2834,21 +2889,45 @@ function TenantPortalContent({
   const [maintenancePhotoInputKey, setMaintenancePhotoInputKey] = useState(0);
   const accountScoped = portal?.auth.mode === "tenant_portal_account";
 
+  const getFreshAccountAuthToken = useCallback(async () => {
+    if (!clerkLoaded || !clerkSignedIn) {
+      return null;
+    }
+    const authToken = await getClerkToken({ skipCache: true });
+    if (authToken) {
+      setAccountAuthToken(authToken);
+    }
+    return authToken;
+  }, [clerkLoaded, clerkSignedIn, getClerkToken]);
+
   useEffect(() => {
     handleAccountPortal(null, null);
   }, [handleAccountPortal, token]);
 
-  const refreshPortal = useCallback(() => {
-    if (
-      accountAuthToken &&
-      accountPortal?.auth.mode === "tenant_portal_account"
-    ) {
-      return getTenantPortalAccountSession(accountAuthToken)
-        .then((nextPortal) => setAccountPortal(nextPortal))
-        .catch(() => portalQuery.refetch());
-    }
-    return portalQuery.refetch();
-  }, [accountAuthToken, accountPortal?.auth.mode, portalQuery]);
+  const refreshPortal = useCallback(
+    async (nextPortal?: TenantPortalRecord) => {
+      if (nextPortal) {
+        setAccountPortal(nextPortal);
+        return;
+      }
+      if (accountPortal?.auth.mode === "tenant_portal_account") {
+        const authToken = await getFreshAccountAuthToken();
+        if (authToken) {
+          try {
+            const refreshedPortal =
+              await getTenantPortalAccountSession(authToken);
+            setAccountPortal(refreshedPortal);
+            return;
+          } catch {
+            await portalQuery.refetch();
+            return;
+          }
+        }
+      }
+      await portalQuery.refetch();
+    },
+    [accountPortal?.auth.mode, getFreshAccountAuthToken, portalQuery],
+  );
 
   useEffect(() => {
     if (
@@ -2861,16 +2940,20 @@ function TenantPortalContent({
   }, [portal, uploadCategory]);
 
   const uploadMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!uploadFile) {
         throw new Error("Choose a file first.");
       }
-      if (accountAuthToken && accountScoped) {
+      if (accountScoped) {
+        const authToken = await getFreshAccountAuthToken();
+        if (!authToken) {
+          throw new Error("Sign in again before uploading.");
+        }
         return uploadTenantPortalAccountDocument({
           category: uploadCategory,
           notes: uploadNotes,
           file: uploadFile,
-          authToken: accountAuthToken,
+          authToken,
         });
       }
       if (!token) {
@@ -2886,7 +2969,7 @@ function TenantPortalContent({
     onSuccess: () => {
       setUploadFile(null);
       setUploadNotes("");
-      refreshPortal();
+      void refreshPortal();
     },
   });
 
@@ -2903,16 +2986,22 @@ function TenantPortalContent({
       if (!payload.title || !payload.description) {
         throw new Error("Add a title and details before submitting.");
       }
+      const accountActionAuthToken = accountScoped
+        ? await getFreshAccountAuthToken()
+        : null;
+      if (accountScoped && !accountActionAuthToken) {
+        throw new Error("Sign in again before submitting.");
+      }
 
       if (maintenancePhotoFile) {
         const notes = `Maintenance photo: ${title}`;
         const document =
-          accountAuthToken && accountScoped
+          accountScoped && accountActionAuthToken
             ? await uploadTenantPortalAccountDocument({
                 category: "other",
                 notes,
                 file: maintenancePhotoFile,
-                authToken: accountAuthToken,
+                authToken: accountActionAuthToken,
               })
             : token
               ? await uploadTenantPortalDocument({
@@ -2928,10 +3017,10 @@ function TenantPortalContent({
         payload.photo_document_ids = [document.id];
       }
 
-      if (accountAuthToken && accountScoped) {
+      if (accountScoped && accountActionAuthToken) {
         return createTenantPortalAccountMaintenanceRequest(
           payload,
-          accountAuthToken,
+          accountActionAuthToken,
         );
       }
       if (!token) {
@@ -2946,7 +3035,7 @@ function TenantPortalContent({
       setMaintenanceSourceReference("");
       setMaintenancePhotoFile(null);
       setMaintenancePhotoInputKey((current) => current + 1);
-      refreshPortal();
+      void refreshPortal();
     },
   });
 
@@ -2973,12 +3062,13 @@ function TenantPortalContent({
       documentId: string;
       filename: string;
     }) => {
-      if (!accountAuthToken) {
+      const authToken = await getFreshAccountAuthToken();
+      if (!authToken) {
         throw new Error("Sign in to download this document.");
       }
       const blob = await downloadTenantPortalAccountDocument(
         documentId,
-        accountAuthToken,
+        authToken,
       );
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -3288,9 +3378,8 @@ function TenantPortalContent({
         portal={portal}
         token={token}
         accountAuthToken={accountAuthToken}
-        onSaved={() => {
-          refreshPortal();
-        }}
+        getAccountAuthToken={getFreshAccountAuthToken}
+        onSaved={refreshPortal}
       />
     );
   }
@@ -3377,9 +3466,8 @@ function TenantPortalContent({
                 portal={portal}
                 token={token}
                 accountAuthToken={accountAuthToken}
-                onSaved={() => {
-                  refreshPortal();
-                }}
+                getAccountAuthToken={getFreshAccountAuthToken}
+                onSaved={refreshPortal}
               />
 
               <Panel
@@ -3537,9 +3625,8 @@ function TenantPortalContent({
                 portal={portal}
                 token={token}
                 accountAuthToken={accountAuthToken}
-                onSaved={() => {
-                  refreshPortal();
-                }}
+                getAccountAuthToken={getFreshAccountAuthToken}
+                onSaved={refreshPortal}
               />
             </div>
 
@@ -3719,18 +3806,16 @@ function TenantPortalContent({
               portal={portal}
               token={token}
               accountAuthToken={accountAuthToken}
-              onSaved={() => {
-                refreshPortal();
-              }}
+              getAccountAuthToken={getFreshAccountAuthToken}
+              onSaved={refreshPortal}
             />
             {portal.lease_agreement.status !== "signed" ? (
               <LeaseAgreementPanel
                 portal={portal}
                 token={token}
                 accountAuthToken={accountAuthToken}
-                onSaved={() => {
-                  refreshPortal();
-                }}
+                getAccountAuthToken={getFreshAccountAuthToken}
+                onSaved={refreshPortal}
               />
             ) : null}
             <Panel
@@ -4218,6 +4303,7 @@ function TenantPortalContent({
                   ? accountAuthToken
                   : null
               }
+              getAccountAuthToken={getFreshAccountAuthToken}
               onSaved={refreshPortal}
             />
 
@@ -4266,11 +4352,7 @@ function TenantPortalContent({
             <PreferencesForm
               token={token}
               portal={portal}
-              accountAuthToken={
-                portal.auth.mode === "tenant_portal_account"
-                  ? accountAuthToken
-                  : null
-              }
+              getAccountAuthToken={getFreshAccountAuthToken}
               onSaved={refreshPortal}
             />
 
