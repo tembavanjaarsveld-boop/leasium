@@ -159,6 +159,8 @@ def test_verified_email_from_clerk_user_uses_verified_primary_email(
     assert email == "ash@skjcapital.com"
     assert requests[0].url == "https://api.clerk.com/v1/users/user_clerk_subject"
     assert requests[0].headers["authorization"] == "Bearer sk_test_clerk"
+    assert requests[0].headers["accept"] == "application/json"
+    assert requests[0].headers["user-agent"] == "Leasium/1.0 (+https://leasium.ai)"
 
 
 def test_verified_email_from_clerk_user_rejects_unverified_primary_email(

@@ -210,7 +210,11 @@ def _clerk_user_payload(provider_id: str, settings: Settings) -> dict[str, Any] 
     try:
         response = httpx.get(
             f"https://api.clerk.com/v1/users/{provider_id}",
-            headers={"Authorization": f"Bearer {secret}"},
+            headers={
+                "Authorization": f"Bearer {secret}",
+                "Accept": "application/json",
+                "User-Agent": "Leasium/1.0 (+https://leasium.ai)",
+            },
             timeout=5.0,
         )
         response.raise_for_status()
