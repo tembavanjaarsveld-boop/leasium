@@ -1201,6 +1201,9 @@ function TenantDetail() {
   const hasActivePortalAccount = portalAccounts.some(
     (account) => account.status === "active",
   );
+  const activePortalAccountCount = portalAccounts.filter(
+    (account) => account.status === "active",
+  ).length;
   const linkedLeases = tenantLeaseContexts.length
     ? tenantLeaseContexts
     : (leasesQuery.data ?? []).map((lease) => ({
@@ -1213,6 +1216,44 @@ function TenantDetail() {
         expiry_date: lease.expiry_date,
         annual_rent_cents: lease.annual_rent_cents,
       }));
+  const primaryOnboarding =
+    tenantOnboardings.find((item) => item.status !== "cancelled") ??
+    tenantOnboardings[0] ??
+    null;
+  const primaryOnboardingLeaseDocuments = primaryOnboarding
+    ? tenantDocuments.filter(
+        (document) =>
+          document.tenant_onboarding_id === primaryOnboarding.id &&
+          document.category === "lease",
+      )
+    : [];
+  const primaryProgressSteps = primaryOnboarding
+    ? onboardingProgressSteps({
+        item: primaryOnboarding,
+        leaseAgreement: leaseAgreementFromDelivery(
+          primaryOnboarding.delivery_data,
+        ),
+        hasLeaseDocument: primaryOnboardingLeaseDocuments.length > 0,
+      })
+    : [];
+  const primaryProgressStep =
+    primaryProgressSteps.find(
+      (step) => step.status === "blocked" || step.status === "current",
+    ) ??
+    primaryProgressSteps.at(-1) ??
+    null;
+  const activeLeaseCount = linkedLeases.filter(
+    (lease) => lease.status === "active" || lease.status === "holding_over",
+  ).length;
+  const activeLeaseRentCents = linkedLeases
+    .filter(
+      (lease) => lease.status === "active" || lease.status === "holding_over",
+    )
+    .reduce((total, lease) => total + (lease.annual_rent_cents ?? 0), 0);
+  const documentsAwaitingReview = tenantDocuments.filter((document) => {
+    const intake = intakeByDocumentId.get(document.id);
+    return intake && !["applied", "dismissed"].includes(intake.status);
+  }).length;
 
   const updateMutation = useMutation({
     mutationFn: (values: TenantForm) => {
@@ -1635,7 +1676,7 @@ function TenantDetail() {
             </Link>
             <h2 className="text-xl font-semibold">{tenantName(tenant)}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Contact, billing, onboarding, documents, and lease history.
+              Onboarding, leases, access, documents, and source history.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1684,6 +1725,93 @@ function TenantDetail() {
             {friendlyError(deleteTenantMutation.error)}
           </p>
         ) : null}
+
+        <section className="grid gap-4 border-y border-border bg-white/60 py-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-1 px-1">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+              <ShieldCheck size={14} />
+              Onboarding
+            </div>
+            <div className="text-sm font-semibold">
+              {primaryProgressStep?.title ?? "Not started"}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {primaryOnboarding
+                ? sentenceStatus(primaryOnboarding.status)
+                : "No invite sent"}
+            </div>
+          </div>
+          <div className="grid gap-1 px-1">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+              <Send size={14} />
+              Lease pack
+            </div>
+            <div className="text-sm font-semibold">
+              {primaryOnboardingLeaseDocuments.length
+                ? "Lease attached"
+                : primaryOnboarding?.status === "applied"
+                  ? "Needs lease file"
+                  : "Pending approval"}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {primaryOnboarding
+                ? primaryProgressStep?.detail
+                : "Starts after onboarding"}
+            </div>
+          </div>
+          <div className="grid gap-1 px-1">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+              <KeyRound size={14} />
+              Portal
+            </div>
+            <div className="text-sm font-semibold">
+              {hasActivePortalAccount
+                ? `${activePortalAccountCount} active login${
+                    activePortalAccountCount === 1 ? "" : "s"
+                  }`
+                : "No active login"}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {portalAccounts.length
+                ? `${portalAccounts.length} linked record${
+                    portalAccounts.length === 1 ? "" : "s"
+                  }`
+                : "Account-first onboarding"}
+            </div>
+          </div>
+          <div className="grid gap-1 px-1">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+              <Link2 size={14} />
+              Lease
+            </div>
+            <div className="text-sm font-semibold">
+              {activeLeaseCount
+                ? `${activeLeaseCount} active`
+                : linkedLeases.length
+                  ? "No active lease"
+                  : "No lease linked"}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {activeLeaseCount ? formatMoney(activeLeaseRentCents) : "-"}
+            </div>
+          </div>
+          <div className="grid gap-1 px-1">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+              <FileText size={14} />
+              Documents
+            </div>
+            <div className="text-sm font-semibold">
+              {tenantDocuments.length
+                ? `${tenantDocuments.length} on file`
+                : "No documents"}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {documentsAwaitingReview
+                ? `${documentsAwaitingReview} awaiting review`
+                : "Review clear"}
+            </div>
+          </div>
+        </section>
 
         {editing && form ? (
           <SectionPanel
@@ -1790,10 +1918,10 @@ function TenantDetail() {
           </SectionPanel>
         ) : null}
 
-        <section className="grid gap-5 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-          <div className="grid gap-5">
+        <section className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.85fr)]">
+          <div className="order-2 grid gap-5 lg:order-2">
             <SectionPanel title="Profile" icon={<UserRound size={17} />}>
-              <dl className="grid gap-3 p-4 text-sm">
+              <dl className="grid gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <div>
                   <dt className="text-xs text-muted-foreground">Legal name</dt>
                   <dd className="font-medium">{tenant.legal_name}</dd>
@@ -2399,7 +2527,7 @@ function TenantDetail() {
             </SectionPanel>
           </div>
 
-          <div className="grid gap-5">
+          <div className="order-1 grid gap-5 lg:order-1">
             <SectionPanel
               title="Onboarding workflow"
               icon={<ShieldCheck size={17} />}
