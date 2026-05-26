@@ -504,6 +504,14 @@ def _assert_claim_email_matches_invite(
     if identity.verified_email is None and not verified_emails:
         if settings.clerk_allow_legacy_token_mapping:
             return
+        if not settings.clerk_secret_key.strip():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Tenant account email verification is not fully configured."
+                    " Ask the property team to check tenant sign-up settings."
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tenant portal login email must match this invite.",
