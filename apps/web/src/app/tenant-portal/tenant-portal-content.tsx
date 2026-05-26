@@ -3308,7 +3308,7 @@ function TenantPortalContent({
                 <h2 className="mt-1 text-2xl font-semibold">
                   {onboardingAppliedComplete
                     ? "Sign your lease to finish."
-                    : "Let&apos;s get your tenancy ready."}
+                    : "Let's get your tenancy ready."}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
                   {onboardingAppliedComplete
