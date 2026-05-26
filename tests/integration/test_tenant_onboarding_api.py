@@ -559,6 +559,77 @@ def test_tenant_onboarding_send_portal_invite_records_delivery_and_audits(
     assert len(history) == 1
 
 
+def test_tenant_onboarding_can_skip_initial_link_for_portal_invite_flow(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    onboarding_sends: list[str] = []
+    portal_sends: list[str] = []
+
+    def fake_onboarding_send(invite, settings):  # noqa: ANN001, ARG001
+        onboarding_sends.append(invite.template_key)
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+            )
+        ]
+
+    def fake_portal_send(invite, settings):  # noqa: ANN001, ARG001
+        portal_sends.append(invite.template_key)
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+                provider_message_id="portal-invite-only",
+            )
+        ]
+
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "send_tenant_onboarding_invite",
+        fake_onboarding_send,
+    )
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "send_tenant_portal_invite",
+        fake_portal_send,
+    )
+
+    lease_id = _lease_id(client, session)
+    create_response = client.post(
+        "/api/v1/tenant-onboarding",
+        json={"lease_id": lease_id, "send_initial_invite": False},
+    )
+
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["status"] == "sent"
+    assert created["last_sent_at"] is None
+    assert created["delivery_data"] == {}
+    assert onboarding_sends == []
+
+    invite_response = client.post(
+        f"/api/v1/tenant-onboarding/{created['id']}/send-portal-invite",
+    )
+
+    assert invite_response.status_code == 200
+    body = invite_response.json()
+    assert body["last_sent_at"] is not None
+    assert body["resent_at"] is None
+    assert body["delivery_data"]["portal_invite"]["template_key"] == (
+        "tenant_portal_invite"
+    )
+    assert body["delivery_data"]["reminders"]["enabled"] is True
+    assert portal_sends == ["tenant_portal_invite"]
+    assert onboarding_sends == []
+
+
 def test_tenant_onboarding_send_portal_invite_rejects_submitted_or_expired(
     client: TestClient,
     session: Session,

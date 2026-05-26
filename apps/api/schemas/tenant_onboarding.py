@@ -14,6 +14,7 @@ class TenantOnboardingCreate(BaseModel):
     lease_id: UUID
     due_date: date | None = None
     expires_at: datetime | None = None
+    send_initial_invite: bool = True
 
 
 class TenantOnboardingCancel(BaseModel):

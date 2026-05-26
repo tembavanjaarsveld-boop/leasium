@@ -12,6 +12,7 @@ from stewart.core.auth import (
     _clerk_user,
     _dev_user,
     _verified_email_from_clerk_user,
+    _verified_emails_from_clerk_user,
     assert_entity_role,
 )
 from stewart.core.models import AppUser, Entity, OperatorInviteStatus, UserRole
@@ -189,6 +190,50 @@ def test_verified_email_from_clerk_user_rejects_unverified_primary_email(
     monkeypatch.setattr(auth_module.httpx, "get", fake_get)
 
     assert _verified_email_from_clerk_user("user_clerk_subject", settings) is None
+
+
+def test_verified_emails_from_clerk_user_returns_all_verified_emails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(_env_file=None, clerk_secret_key="sk_test_clerk")
+
+    def fake_get(
+        url: str,
+        headers: dict[str, str],  # noqa: ARG001
+        timeout: float,  # noqa: ARG001
+    ) -> httpx.Response:
+        request = httpx.Request("GET", url)
+        return httpx.Response(
+            200,
+            json={
+                "primary_email_address_id": "email_old",
+                "email_addresses": [
+                    {
+                        "id": "email_old",
+                        "email_address": "old@example.com",
+                        "verification": {"status": "verified"},
+                    },
+                    {
+                        "id": "email_new",
+                        "email_address": " Tenant@Example.com ",
+                        "verification": {"status": "verified"},
+                    },
+                    {
+                        "id": "email_unverified",
+                        "email_address": "unverified@example.com",
+                        "verification": {"status": "unverified"},
+                    },
+                ],
+            },
+            request=request,
+        )
+
+    monkeypatch.setattr(auth_module.httpx, "get", fake_get)
+
+    assert _verified_emails_from_clerk_user("user_clerk_subject", settings) == {
+        "old@example.com",
+        "tenant@example.com",
+    }
 
 
 def test_assert_entity_role_allows_matching_role(session: Session) -> None:

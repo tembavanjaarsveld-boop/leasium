@@ -443,6 +443,9 @@ function TenantWorkspace() {
       const onboarding = await createTenantOnboarding({
         lease_id: lease.id,
         due_date: values.due_date || null,
+        // The next call sends the account-first portal invite. Suppress the
+        // legacy token email so tenants do not receive two setup emails.
+        send_initial_invite: false,
       });
       const sent = await sendTenantOnboardingPortalInvite(onboarding.id);
       return { tenant, lease, onboarding: sent };

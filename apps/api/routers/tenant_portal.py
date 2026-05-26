@@ -28,6 +28,7 @@ from stewart.core.auth import (
     _clerk_identity,
     _normalise_email,
     _verified_email_from_clerk_user,
+    _verified_emails_from_clerk_user,
 )
 from stewart.core.db import utcnow
 from stewart.core.ids import uuid7
@@ -493,11 +494,19 @@ def _assert_claim_email_matches_invite(
     if expected_email is None:
         return
 
+    expected = _normalise_email(expected_email)
+    if identity.verified_email and _normalise_email(identity.verified_email) == expected:
+        return
+
+    verified_emails = _verified_emails_from_clerk_user(identity.provider_id, settings)
+    if expected in verified_emails:
+        return
+
     verified_email = identity.verified_email or _verified_email_from_clerk_user(
         identity.provider_id,
         settings,
     )
-    if verified_email is None:
+    if verified_email is None and not verified_emails:
         if settings.clerk_allow_legacy_token_mapping:
             return
         raise HTTPException(
@@ -505,11 +514,10 @@ def _assert_claim_email_matches_invite(
             detail="Tenant portal login email must match this invite.",
         )
 
-    if _normalise_email(verified_email) != _normalise_email(expected_email):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tenant portal login email must match this invite.",
-        )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Tenant portal login email must match this invite.",
+    )
 
 
 def _active_tenant_portal_account(
