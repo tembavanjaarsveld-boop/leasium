@@ -93,8 +93,8 @@ def _portal_url(token: str) -> str:
     return f"{get_settings().frontend_url.rstrip('/')}/tenant-portal/{token}"
 
 
-def _lease_signing_url(token: str) -> str:
-    return f"{_portal_url(token)}/lease"
+def _account_lease_signing_url() -> str:
+    return f"{get_settings().frontend_url.rstrip('/')}/tenant-portal/lease"
 
 
 def _read(row: TenantOnboarding) -> TenantOnboardingRead:
@@ -891,9 +891,9 @@ def _deliver_lease_pack(
         property_name=prop.name,
         property_address=_property_address(prop),
         unit_label=unit.unit_label,
-        onboarding_url=_lease_signing_url(onboarding.token),
+        onboarding_url=_account_lease_signing_url(),
         due_date=onboarding.due_date,
-        expires_at=onboarding.expires_at,
+        expires_at=None,
         brand_name=settings.tenant_onboarding_brand_name,
         template_key=settings.tenant_lease_pack_template_key,
         template_version=settings.tenant_lease_pack_template_version,
@@ -1455,11 +1455,6 @@ def send_tenant_onboarding_lease_pack(
             status_code=status.HTTP_409_CONFLICT,
             detail="Only applied onboarding rows can receive a lease pack.",
         )
-    if _is_expired(onboarding):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Expired onboarding links cannot send lease packs.",
-        )
     if blocking_lease_question_count(onboarding):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1609,10 +1604,11 @@ def respond_tenant_onboarding_lease_question(
         TenantOnboardingStatus.sent,
         TenantOnboardingStatus.submitted,
         TenantOnboardingStatus.reviewed,
+        TenantOnboardingStatus.applied,
     }:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Lease agreement questions can only be answered during onboarding.",
+            detail="Lease agreement questions can only be answered before signing.",
         )
     if payload.status in {"answered", "resolved"} and not payload.answer:
         raise HTTPException(

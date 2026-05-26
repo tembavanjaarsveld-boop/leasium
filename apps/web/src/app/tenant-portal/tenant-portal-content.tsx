@@ -2310,12 +2310,14 @@ function TenantLeaseSigningView({
                     for payments, maintenance, and ongoing documents.
                   </p>
                 )}
-                <a
-                  className="font-medium text-primary hover:text-primary-hover"
-                  href={portalHref}
-                >
-                  Open full portal
-                </a>
+                {signed ? (
+                  <a
+                    className="font-medium text-primary hover:text-primary-hover"
+                    href={portalHref}
+                  >
+                    Open full portal
+                  </a>
+                ) : null}
               </div>
             </Panel>
           </aside>
@@ -2928,6 +2930,8 @@ function TenantPortalContent({
   const detailsSubmitted = onboardingSubmitted(portal);
   const leaseAgreement = portal.lease_agreement;
   const leaseAgreementSigned = leaseAgreement.status === "signed";
+  const onboardingAppliedComplete = onboardingApplied(portal);
+  const fullPortalUnlocked = onboardingAppliedComplete && leaseAgreementSigned;
   const requiredDocuments = portal.compliance.items;
   const documentsRequired = requiredDocuments.length > 0;
   const documentsComplete =
@@ -2948,7 +2952,7 @@ function TenantPortalContent({
     );
   }
 
-  if (!onboardingApplied(portal)) {
+  if (!fullPortalUnlocked) {
     return (
       <PortalShell>
         <div className="mx-auto grid max-w-6xl gap-5 px-5 py-6">
@@ -2959,12 +2963,14 @@ function TenantPortalContent({
                   Tenant onboarding
                 </p>
                 <h2 className="mt-1 text-2xl font-semibold">
-                  Let&apos;s get your tenancy ready.
+                  {onboardingAppliedComplete
+                    ? "Sign your lease to finish."
+                    : "Let&apos;s get your tenancy ready."}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Confirm your details and upload requested documents. The
-                  property team will email you when the lease pack is ready to
-                  sign.
+                  {onboardingAppliedComplete
+                    ? "Your details are approved. Review the lease pack and sign before the full portal opens."
+                    : "Confirm your details and upload requested documents. The property team will email you when the lease pack is ready to sign."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -2973,9 +2979,11 @@ function TenantPortalContent({
                   tone={
                     portal.onboarding.status === "cancelled"
                       ? "danger"
-                      : detailsSubmitted
-                        ? "warning"
-                        : "primary"
+                      : onboardingAppliedComplete
+                        ? "success"
+                        : detailsSubmitted
+                          ? "warning"
+                          : "primary"
                   }
                 >
                   {tenantOnboardingStatusLabel(portal.onboarding.status)}
@@ -3198,33 +3206,55 @@ function TenantPortalContent({
                   <OnboardingStep
                     title="Confirm details + upload docs"
                     detail={
-                      onboardingReviewReady
-                        ? "Your details and requested documents are with the property team."
-                        : detailsSubmitted
-                          ? "Upload the requested files so the property team can finish review."
-                          : documentsRequired
-                            ? "Confirm your core details, then upload requested files."
-                            : "Confirm your core details for property team review."
+                      onboardingAppliedComplete
+                        ? "Your details and requested documents are approved."
+                        : onboardingReviewReady
+                          ? "Your details and requested documents are with the property team."
+                          : detailsSubmitted
+                            ? "Upload the requested files so the property team can finish review."
+                            : documentsRequired
+                              ? "Confirm your core details, then upload requested files."
+                              : "Confirm your core details for property team review."
                     }
-                    state={onboardingReviewReady ? "complete" : "current"}
+                    state={
+                      onboardingReviewReady || onboardingAppliedComplete
+                        ? "complete"
+                        : "current"
+                    }
                   />
                   <OnboardingStep
                     title="Property team review"
                     detail={
-                      onboardingReviewReady
-                        ? "The property team checks your details and documents. We'll email you when the lease pack is ready."
-                        : "Review starts after your details and requested documents are submitted."
+                      onboardingAppliedComplete
+                        ? "Approved. Your lease pack is ready to sign."
+                        : onboardingReviewReady
+                          ? "The property team checks your details and documents. We'll email you when the lease pack is ready."
+                          : "Review starts after your details and requested documents are submitted."
                     }
-                    state={onboardingReviewReady ? "current" : "waiting"}
+                    state={
+                      onboardingAppliedComplete
+                        ? "complete"
+                        : onboardingReviewReady
+                          ? "current"
+                          : "waiting"
+                    }
                   />
                   <OnboardingStep
                     title="Sign lease"
                     detail={
                       leaseAgreementSigned
                         ? "Lease agreement signing is complete."
-                        : "The lease pack and signature request come after property team approval."
+                        : onboardingAppliedComplete
+                          ? "Review and sign the lease pack to open the full portal."
+                          : "The lease pack and signature request come after property team approval."
                     }
-                    state={leaseAgreementSigned ? "complete" : "locked"}
+                    state={
+                      leaseAgreementSigned
+                        ? "complete"
+                        : onboardingAppliedComplete
+                          ? "current"
+                          : "locked"
+                    }
                   />
                 </div>
               </Panel>
@@ -3263,7 +3293,7 @@ function TenantPortalContent({
                     confirms when the tenancy is move-in ready.
                   </p>
                   <p>
-                    The full portal opens after onboarding is applied, with
+                    The full portal opens after lease signing is complete, with
                     payments, maintenance, and ongoing documents in one place.
                   </p>
                 </div>

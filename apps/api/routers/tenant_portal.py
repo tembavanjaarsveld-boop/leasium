@@ -23,7 +23,12 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from stewart.core.audit import audit_log
-from stewart.core.auth import ClerkIdentity, _clerk_identity, _normalise_email
+from stewart.core.auth import (
+    ClerkIdentity,
+    _clerk_identity,
+    _normalise_email,
+    _verified_email_from_clerk_user,
+)
 from stewart.core.db import utcnow
 from stewart.core.ids import uuid7
 from stewart.core.models import (
@@ -488,7 +493,11 @@ def _assert_claim_email_matches_invite(
     if expected_email is None:
         return
 
-    if identity.verified_email is None:
+    verified_email = identity.verified_email or _verified_email_from_clerk_user(
+        identity.provider_id,
+        settings,
+    )
+    if verified_email is None:
         if settings.clerk_allow_legacy_token_mapping:
             return
         raise HTTPException(
@@ -496,7 +505,7 @@ def _assert_claim_email_matches_invite(
             detail="Tenant portal login email must match this invite.",
         )
 
-    if _normalise_email(identity.verified_email) != _normalise_email(expected_email):
+    if _normalise_email(verified_email) != _normalise_email(expected_email):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tenant portal login email must match this invite.",

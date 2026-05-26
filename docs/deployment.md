@@ -109,6 +109,12 @@ NEXT_PUBLIC_API_BASE_URL=https://api.leasium.ai/api/v1
 XERO_REDIRECT_URI=https://api.leasium.ai/api/v1/xero/oauth/callback
 ```
 
+Tenant portal account claims compare the signed-in Clerk email with the invite
+email before linking the account. The Clerk session JWT should include `email`
+and `email_verified` claims. If those claims are absent, the API falls back to
+`CLERK_SECRET_KEY` and Clerk's user API to read the verified primary email; keep
+that key configured anywhere tenant portal account creation is enabled.
+
 Provider webhook URLs should also use `https://api.leasium.ai`.
 
 ## Clerk Domains

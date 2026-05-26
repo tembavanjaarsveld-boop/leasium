@@ -591,10 +591,10 @@ def test_tenant_onboarding_send_lease_pack_after_apply_records_delivery(
     session: Session,
     monkeypatch,
 ) -> None:
-    sends: list[tuple[str, str]] = []
+    sends: list[tuple[str, str, object]] = []
 
     def fake_lease_pack_send(invite, settings):  # noqa: ANN001, ARG001
-        sends.append((invite.template_key, invite.onboarding_url))
+        sends.append((invite.template_key, invite.onboarding_url, invite.expires_at))
         return [
             DeliveryResult(
                 channel="email",
@@ -645,7 +645,9 @@ def test_tenant_onboarding_send_lease_pack_after_apply_records_delivery(
     assert lease_pack["template_key"] == "tenant_lease_pack"
     assert {receipt["channel"] for receipt in lease_pack["receipts"]} == {"email", "sms"}
     assert sends[0][0] == "tenant_lease_pack"
-    assert sends[0][1].endswith(f"/tenant-portal/{token}/lease")
+    assert sends[0][1].endswith("/tenant-portal/lease")
+    assert f"/tenant-portal/{token}/lease" not in sends[0][1]
+    assert sends[0][2] is None
     history = body["delivery_data"].get("lease_pack_history") or []
     assert len(history) == 1
 
@@ -664,10 +666,31 @@ def test_tenant_onboarding_send_lease_pack_rejects_before_apply(
     assert response.json()["detail"] == ("Only applied onboarding rows can receive a lease pack.")
 
 
-def test_tenant_onboarding_send_lease_pack_rejects_expired_link(
+def test_tenant_onboarding_send_lease_pack_uses_account_route_after_invite_expiry(
     client: TestClient,
     session: Session,
+    monkeypatch,
 ) -> None:
+    sends: list[str] = []
+
+    def fake_lease_pack_send(invite, settings):  # noqa: ANN001, ARG001
+        sends.append(invite.onboarding_url)
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+                provider_message_id="lease-pack-expired-invite",
+                metadata={"template_key": invite.template_key},
+            )
+        ]
+
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "send_tenant_lease_pack_invite",
+        fake_lease_pack_send,
+    )
     body = _create_applied_onboarding(client, session)
     onboarding = session.get(TenantOnboarding, UUID(body["id"]))
     assert onboarding is not None
@@ -678,8 +701,8 @@ def test_tenant_onboarding_send_lease_pack_rejects_expired_link(
         f"/api/v1/tenant-onboarding/{body['id']}/send-lease-pack",
     )
 
-    assert response.status_code == 409
-    assert response.json()["detail"] == "Expired onboarding links cannot send lease packs."
+    assert response.status_code == 200
+    assert sends[0].endswith("/tenant-portal/lease")
 
 
 def test_tenant_onboarding_send_lease_pack_rejects_open_lease_questions(

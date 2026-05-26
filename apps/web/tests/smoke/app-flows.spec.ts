@@ -201,6 +201,8 @@ test("Properties multi-view toggles between table and board", async ({
   // Switching to board hides the table headers; columns rendered by
   // occupancy bucket appear instead.
   await expect(page.locator("table")).toHaveCount(0);
+  await expect(page.getByText("Queen Street Retail Centre")).toBeVisible();
+  await expect(page.getByText("No units").first()).toBeVisible();
   await expect(page).toHaveURL(/[?&]view=board/);
 
   await page.getByRole("tab", { name: "Table" }).click();
@@ -442,8 +444,13 @@ test("tenants table inline-edits contact email", async ({ page }) => {
   await input.fill("inline.edit@example.com");
   await input.press("Enter");
 
-  // After save, the read-only button reappears with the new value.
-  await expect(page.getByText("inline.edit@example.com").first()).toBeVisible();
+  // After save, the read-only inline-edit button reappears with the new value.
+  await expect(
+    page
+      .getByRole("button", { name: /^Edit Contact email for / })
+      .filter({ hasText: "inline.edit@example.com" })
+      .first(),
+  ).toBeVisible();
 });
 
 test("keyboard cheatsheet lists global and Go-to shortcuts", async ({
@@ -1379,65 +1386,162 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
 test("tenant detail sends lease pack after onboarding approval", async ({
   page,
 }) => {
-  await page.route(/\/api\/v1\/tenant-onboarding(\?.*)?$/, async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify([
-        {
-          id: "onboarding-1",
-          entity_id: "entity-1",
-          lease_id: "lease-1",
-          tenant_id: "tenant-1",
-          token: "tenant-token-1",
-          status: "applied",
-          due_date: "2026-05-29",
-          expires_at: "2026-06-12T00:00:00.000Z",
-          last_sent_at: "2026-05-18T09:30:00.000Z",
-          resent_at: null,
-          cancel_reason: null,
-          onboarding_url: "http://127.0.0.1:3000/onboarding/tenant-token-1",
-          portal_url: "http://127.0.0.1:3000/tenant-portal/tenant-token-1",
-          submitted_data: {},
-          submitted_at: "2026-05-19T09:10:00.000Z",
-          review_data: {},
-          delivery_data: {
-            channels: {
-              email: {
-                channel: "email",
-                status: "sent",
-                provider: "mock",
-                attempted_at: "2026-05-18T09:30:00.000Z",
-                recipient: "mia@example.com",
-              },
-            },
-            lease_agreement: {
-              status: "ready_to_sign",
-              open_question_count: 0,
-              questions: [],
-              signed_at: null,
-              signed_by_actor: null,
-              signing_locked_reason: null,
-            },
-          },
+  type SmokeOnboardingRow = Record<string, unknown> & {
+    delivery_data: Record<string, unknown>;
+    review_data: Record<string, unknown>;
+    status: string;
+  };
+  const submittedAt = "2026-05-19T09:10:00.000Z";
+  let onboardingRow: SmokeOnboardingRow = {
+    id: "onboarding-1",
+    entity_id: "entity-1",
+    lease_id: "lease-1",
+    tenant_id: "tenant-1",
+    token: "tenant-token-1",
+    status: "submitted",
+    due_date: "2026-05-29",
+    expires_at: "2026-06-12T00:00:00.000Z",
+    last_sent_at: "2026-05-18T09:30:00.000Z",
+    resent_at: null,
+    cancel_reason: null,
+    onboarding_url: "http://127.0.0.1:3000/onboarding/tenant-token-1",
+    portal_url: "http://127.0.0.1:3000/tenant-portal/tenant-token-1",
+    submitted_data: {
+      legal_name: "Bright Cafe Pty Ltd",
+      contact_name: "Mia Hart",
+      contact_email: "mia@example.com",
+      contact_phone: "0400 111 222",
+      accepted: true,
+    },
+    submitted_at: submittedAt,
+    review_data: {},
+    delivery_data: {
+      channels: {
+        email: {
+          channel: "email",
+          status: "sent",
+          provider: "mock",
+          attempted_at: "2026-05-18T09:30:00.000Z",
+          recipient: "mia@example.com",
+        },
+      },
+      lease_agreement: {
+        status: "ready_to_sign",
+        open_question_count: 0,
+        questions: [],
+        signed_at: null,
+        signed_by_actor: null,
+        signing_locked_reason: null,
+      },
+    },
+    reviewed_at: null,
+    reviewed_by_user_id: null,
+    applied_at: null,
+    applied_by_user_id: null,
+    created_at: "2026-05-18T09:30:00.000Z",
+    updated_at: submittedAt,
+    deleted_at: null,
+  };
+  let reviewed = false;
+  let applied = false;
+
+  await page.route(
+    /\/api\/v1\/tenant-onboarding(\/.*)?(\?.*)?$/,
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname.replace(/^\/api\/v1/, "");
+      if (request.method() === "GET" && path === "/tenant-onboarding") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([onboardingRow]),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/tenant-onboarding/onboarding-1/review"
+      ) {
+        reviewed = true;
+        onboardingRow = {
+          ...onboardingRow,
+          status: "reviewed",
+          review_data: { approved: true, notes: null },
           reviewed_at: "2026-05-19T09:25:00.000Z",
           reviewed_by_user_id: "user-temba",
+          updated_at: "2026-05-19T09:25:00.000Z",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/tenant-onboarding/onboarding-1/apply"
+      ) {
+        applied = true;
+        onboardingRow = {
+          ...onboardingRow,
+          status: "applied",
           applied_at: "2026-05-19T09:30:00.000Z",
           applied_by_user_id: "user-temba",
-          created_at: "2026-05-18T09:30:00.000Z",
           updated_at: "2026-05-19T09:30:00.000Z",
-          deleted_at: null,
-        },
-      ]),
-    });
-  });
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/tenant-onboarding/onboarding-1/send-lease-pack"
+      ) {
+        onboardingRow = {
+          ...onboardingRow,
+          delivery_data: {
+            ...onboardingRow.delivery_data,
+            lease_pack: {
+              sent_at: "2026-05-21T00:20:00.000Z",
+              sent_by_user_id: "user-temba",
+              template_key: "tenant_lease_pack",
+              template_version: "v1",
+              receipts: [
+                {
+                  channel: "email",
+                  status: "queued",
+                  provider: "sendgrid",
+                  recipient: "mi***@example.com",
+                  provider_message_id: "lease-pack-msg-1",
+                  error: null,
+                  metadata: { template_key: "tenant_lease_pack" },
+                },
+              ],
+            },
+          },
+          updated_at: "2026-05-21T00:20:00.000Z",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
 
   await page.goto("/tenants/tenant-1");
 
+  await page.getByRole("button", { name: "Approve & apply" }).click();
+  expect(reviewed).toBe(true);
+  expect(applied).toBe(true);
   await expect(page.getByText("Lease pack next")).toBeVisible();
   await page.getByRole("button", { name: "Send lease pack" }).click();
   await expect(page.getByText("Lease pack sent to tenant.")).toBeVisible();
@@ -1578,7 +1682,7 @@ test("tenant lease page focuses signing without portal dashboard", async ({
   await expect(page.getByText("Ready to sign")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Open full portal" }),
-  ).toHaveAttribute("href", "/tenant-portal");
+  ).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Payments" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Maintenance" })).toHaveCount(
     0,
@@ -1606,6 +1710,9 @@ test("tenant lease page confirms signing", async ({ page }) => {
 
   await expect(page.getByText("Complete")).toBeVisible();
   await expect(page.getByText(/Signed 21 May 2026/)).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open full portal" }),
+  ).toHaveAttribute("href", "/tenant-portal");
 });
 
 test("tenant portal entry shows signed-out account access when Clerk is configured", async ({

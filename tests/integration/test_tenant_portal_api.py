@@ -1523,6 +1523,32 @@ def test_tenant_portal_lease_questions_gate_signing_and_apply(
     assert portal_response.status_code == 200
     assert portal_response.json()["lease_agreement"]["status"] == "ready_to_sign"
 
+    follow_up_response = client.post(
+        "/api/v1/tenant-portal/lease-questions",
+        headers=bearer_headers,
+        json={
+            "clause_reference": "Clause 18",
+            "question": "Can you confirm the signing deadline?",
+        },
+    )
+    assert follow_up_response.status_code == 200
+    follow_up = follow_up_response.json()["lease_agreement"]["questions"][-1]
+    assert follow_up["status"] == "open"
+
+    follow_up_answer_response = client.post(
+        f"/api/v1/tenant-onboarding/{scope['onboarding_id']}"
+        f"/lease-questions/{follow_up['id']}/respond",
+        json={
+            "answer": "Please sign by Friday so we can countersign next week.",
+            "status": "answered",
+        },
+    )
+    assert follow_up_answer_response.status_code == 200
+    follow_up_questions = follow_up_answer_response.json()["delivery_data"][
+        "lease_agreement"
+    ]["questions"]
+    assert follow_up_questions[-1]["status"] == "answered"
+
     sign_response = client.post(
         "/api/v1/tenant-portal/lease-agreement/sign",
         headers=bearer_headers,
