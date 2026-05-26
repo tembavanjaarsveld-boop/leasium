@@ -538,6 +538,83 @@ function normaliseEmail(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
 }
 
+type ClerkTenantProfilePayload = {
+  firstName?: string;
+  lastName?: string;
+  legalAccepted?: boolean;
+};
+
+function splitTenantDisplayNameForClerk(value: string | null | undefined) {
+  const name = (value ?? "").trim().replace(/\s+/g, " ");
+  if (!name) return {};
+  const [firstName, ...lastNameParts] = name.split(" ");
+  return {
+    firstName,
+    lastName: lastNameParts.length ? lastNameParts.join(" ") : name,
+  };
+}
+
+function tenantProfilePayloadForMissingFields({
+  missingFields,
+  firstName,
+  lastName,
+  legalAccepted,
+}: {
+  missingFields: readonly string[];
+  firstName: string;
+  lastName: string;
+  legalAccepted: boolean;
+}) {
+  const payload: ClerkTenantProfilePayload = {};
+  if (missingFields.includes("first_name") && firstName.trim()) {
+    payload.firstName = firstName.trim();
+  }
+  if (missingFields.includes("last_name") && lastName.trim()) {
+    payload.lastName = lastName.trim();
+  }
+  if (missingFields.includes("legal_accepted")) {
+    payload.legalAccepted = legalAccepted;
+  }
+  return payload;
+}
+
+function canAutofillClerkNameFields({
+  missingFields,
+  firstName,
+  lastName,
+}: {
+  missingFields: readonly string[];
+  firstName: string;
+  lastName: string;
+}) {
+  return (
+    missingFields.length > 0 &&
+    missingFields.every((field) => {
+      if (field === "first_name") return Boolean(firstName.trim());
+      if (field === "last_name") return Boolean(lastName.trim());
+      return false;
+    })
+  );
+}
+
+function unsupportedClerkRequirementFields(missingFields: readonly string[]) {
+  return missingFields.filter(
+    (field) => !["first_name", "last_name", "legal_accepted"].includes(field),
+  );
+}
+
+function clerkRequirementLabel(field: string) {
+  if (field === "password") return "a password";
+  if (field === "username") return "a username";
+  if (field === "phone_number") return "a phone number";
+  return field.replaceAll("_", " ");
+}
+
+function unsupportedClerkRequirementsMessage(fields: readonly string[]) {
+  const fieldNames = fields.map(clerkRequirementLabel).join(", ");
+  return `This tenant account needs ${fieldNames} before it can continue. Ask the property team to update the tenant sign-up settings, then try again.`;
+}
+
 function clerkFlowErrorMessage(error: unknown) {
   if (error && typeof error === "object" && "errors" in error) {
     const errors = (
@@ -561,16 +638,24 @@ function clerkErrorCode(error: unknown) {
 function TenantInviteEmailCodeGate({
   claimable,
   initialEmail,
+  tenantDisplayName,
 }: {
   claimable: boolean;
   initialEmail: string | null;
+  tenantDisplayName: string | null;
 }) {
   const { signIn, fetchStatus: signInFetchStatus } = useSignIn();
   const { signUp, fetchStatus: signUpFetchStatus } = useSignUp();
+  const inviteNameFields = useMemo(
+    () => splitTenantDisplayNameForClerk(tenantDisplayName),
+    [tenantDisplayName],
+  );
   const [email, setEmail] = useState(initialEmail ?? "");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"email" | "code" | "requirements">("email");
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [firstName, setFirstName] = useState(inviteNameFields.firstName ?? "");
+  const [lastName, setLastName] = useState(inviteNameFields.lastName ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fetching =
@@ -579,8 +664,17 @@ function TenantInviteEmailCodeGate({
     signUpFetchStatus === "fetching";
 
   useEffect(() => {
-    if (step === "email") setEmail(initialEmail ?? "");
-  }, [initialEmail, step]);
+    if (step === "email") {
+      setEmail(initialEmail ?? "");
+      setFirstName(inviteNameFields.firstName ?? "");
+      setLastName(inviteNameFields.lastName ?? "");
+    }
+  }, [
+    initialEmail,
+    inviteNameFields.firstName,
+    inviteNameFields.lastName,
+    step,
+  ]);
 
   const finaliseSignIn = useCallback(async () => {
     if (!signIn) return;
@@ -609,13 +703,38 @@ function TenantInviteEmailCodeGate({
       return;
     }
     if (signUp.status === "missing_requirements") {
+      if (
+        canAutofillClerkNameFields({
+          missingFields: signUp.missingFields,
+          firstName,
+          lastName,
+        })
+      ) {
+        const { error: updateError } = await signUp.update(
+          tenantProfilePayloadForMissingFields({
+            missingFields: signUp.missingFields,
+            firstName,
+            lastName,
+            legalAccepted,
+          }),
+        );
+        if (updateError) {
+          setError(clerkFlowErrorMessage(updateError));
+          return;
+        }
+        const updatedStatus: string | null = signUp.status;
+        if (updatedStatus === "complete") {
+          await finaliseSignUp();
+          return;
+        }
+      }
       setStep("requirements");
       return;
     }
     setError(
       "Tenant account needs additional Clerk setup before it can continue.",
     );
-  }, [finaliseSignUp, signUp]);
+  }, [finaliseSignUp, firstName, lastName, legalAccepted, signUp]);
 
   const sendCode = useCallback(
     async (event?: FormEvent<HTMLFormElement>) => {
@@ -709,6 +828,15 @@ function TenantInviteEmailCodeGate({
     [code, finaliseSignIn, signIn, transferToSignUp],
   );
 
+  const resetToEmailStep = useCallback(() => {
+    signIn?.reset();
+    signUp?.reset();
+    setStep("email");
+    setCode("");
+    setLegalAccepted(false);
+    setError(null);
+  }, [signIn, signUp]);
+
   const completeRequirements = useCallback(
     async (event?: FormEvent<HTMLFormElement>) => {
       event?.preventDefault();
@@ -719,10 +847,27 @@ function TenantInviteEmailCodeGate({
       setBusy(true);
       setError(null);
       try {
-        const updatePayload: { legalAccepted?: boolean } = {};
-        if (signUp.missingFields.includes("legal_accepted")) {
-          updatePayload.legalAccepted = legalAccepted;
+        const missingFields = signUp.missingFields;
+        const unsupportedFields =
+          unsupportedClerkRequirementFields(missingFields);
+        if (unsupportedFields.length) {
+          setError(unsupportedClerkRequirementsMessage(unsupportedFields));
+          return;
         }
+        if (missingFields.includes("first_name") && !firstName.trim()) {
+          setError("Enter the tenant's first name to finish account setup.");
+          return;
+        }
+        if (missingFields.includes("last_name") && !lastName.trim()) {
+          setError("Enter the tenant's last name to finish account setup.");
+          return;
+        }
+        const updatePayload = tenantProfilePayloadForMissingFields({
+          missingFields,
+          firstName,
+          lastName,
+          legalAccepted,
+        });
         const { error: updateError } = await signUp.update(updatePayload);
         if (updateError) {
           setError(clerkFlowErrorMessage(updateError));
@@ -741,17 +886,38 @@ function TenantInviteEmailCodeGate({
         setBusy(false);
       }
     },
-    [finaliseSignUp, legalAccepted, signUp],
+    [finaliseSignUp, firstName, lastName, legalAccepted, signUp],
   );
 
   if (step === "requirements") {
-    const needsLegal =
-      signUp?.missingFields.includes("legal_accepted") ?? false;
+    const missingFields = signUp?.missingFields ?? [];
+    const needsFirstName = missingFields.includes("first_name");
+    const needsLastName = missingFields.includes("last_name");
+    const needsLegal = missingFields.includes("legal_accepted");
+    const unsupportedFields = unsupportedClerkRequirementFields(missingFields);
     return (
       <form className="grid gap-3 text-sm" onSubmit={completeRequirements}>
         <p className="text-foreground">
           Your email is verified. Finish the account step to continue.
         </p>
+        {needsFirstName ? (
+          <Field label="First name">
+            <Input
+              autoComplete="given-name"
+              value={firstName}
+              onChange={(event) => setFirstName(event.target.value)}
+            />
+          </Field>
+        ) : null}
+        {needsLastName ? (
+          <Field label="Last name">
+            <Input
+              autoComplete="family-name"
+              value={lastName}
+              onChange={(event) => setLastName(event.target.value)}
+            />
+          </Field>
+        ) : null}
         {needsLegal ? (
           <label className="flex items-start gap-2 text-sm">
             <input
@@ -763,11 +929,22 @@ function TenantInviteEmailCodeGate({
             <span>I accept the tenant account terms.</span>
           </label>
         ) : null}
+        {unsupportedFields.length ? (
+          <div className="text-danger">
+            {unsupportedClerkRequirementsMessage(unsupportedFields)}
+          </div>
+        ) : null}
         {error ? <div className="text-danger">{error}</div> : null}
         <div className="flex flex-wrap gap-2">
           <Button
             type="submit"
-            disabled={fetching || (needsLegal && !legalAccepted)}
+            disabled={
+              fetching ||
+              (needsFirstName && !firstName.trim()) ||
+              (needsLastName && !lastName.trim()) ||
+              (needsLegal && !legalAccepted) ||
+              unsupportedFields.length > 0
+            }
           >
             {fetching ? <Loader2 size={16} className="animate-spin" /> : null}
             Continue
@@ -775,13 +952,7 @@ function TenantInviteEmailCodeGate({
           <SecondaryButton
             type="button"
             disabled={fetching}
-            onClick={() => {
-              signIn?.reset();
-              signUp?.reset();
-              setStep("email");
-              setCode("");
-              setError(null);
-            }}
+            onClick={resetToEmailStep}
           >
             Use another email
           </SecondaryButton>
@@ -821,13 +992,7 @@ function TenantInviteEmailCodeGate({
           <SecondaryButton
             type="button"
             disabled={fetching}
-            onClick={() => {
-              signIn?.reset();
-              signUp?.reset();
-              setStep("email");
-              setCode("");
-              setError(null);
-            }}
+            onClick={resetToEmailStep}
           >
             Use another email
           </SecondaryButton>
@@ -2879,6 +3044,7 @@ function TenantPortalContent({
                   <TenantInviteEmailCodeGate
                     claimable={preview.claimable}
                     initialEmail={preview.tenant_email}
+                    tenantDisplayName={preview.tenant_display_name}
                   />
                 </div>
               ) : !clerkUserLoaded ? (
