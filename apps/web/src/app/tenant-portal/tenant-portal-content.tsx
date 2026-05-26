@@ -508,7 +508,11 @@ function leaseQuestionTone(status: TenantLeaseQuestionRecord["status"]) {
   return "primary" as const;
 }
 
-function tenantPortalClaimErrorMessage(error: unknown) {
+function tenantPortalClaimErrorMessage(
+  error: unknown,
+  signedInEmail?: string | null,
+  inviteEmail?: string | null,
+) {
   const message =
     error instanceof Error
       ? error.message
@@ -522,6 +526,14 @@ function tenantPortalClaimErrorMessage(error: unknown) {
   }
   if (lower.includes("revoked")) {
     return "This tenant login has been revoked by the property team. Ask them to restore access or send a fresh invite.";
+  }
+  if (lower.includes("login email must match")) {
+    if (signedInEmail && inviteEmail) {
+      return `Leasium could not verify that ${signedInEmail} owns this invite for ${inviteEmail}. Sign out, then sign in directly with ${inviteEmail}.`;
+    }
+    if (inviteEmail) {
+      return `Leasium could not verify that this account owns the invite for ${inviteEmail}. Sign out, then sign in directly with ${inviteEmail}.`;
+    }
   }
   return message;
 }
@@ -2629,7 +2641,7 @@ function TenantPortalContentWithoutAuth({
             {preview.tenant_email ? (
               <div>
                 <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Sign-in email
+                  Invite email
                 </dt>
                 <dd>{preview.tenant_email}</dd>
               </div>
@@ -2717,18 +2729,31 @@ function TenantPortalContent({
     user?.primaryEmailAddress?.emailAddress ??
     verifiedSignedInEmails[0] ??
     null;
+  const primarySignedInEmail = user?.primaryEmailAddress?.emailAddress ?? null;
   const matchingSignedInEmail = inviteEmail
     ? (verifiedSignedInEmails.find(
         (email) => normaliseEmail(email) === normaliseEmail(inviteEmail),
       ) ?? null)
     : null;
+  const primarySignedInEmailMatchesInvite =
+    Boolean(primarySignedInEmail) &&
+    Boolean(inviteEmail) &&
+    normaliseEmail(primarySignedInEmail) === normaliseEmail(inviteEmail);
+  const signedInEmailMatchesInvite =
+    primarySignedInEmailMatchesInvite || Boolean(matchingSignedInEmail);
   const signedInEmailMismatchesInvite =
     clerkLoaded &&
     clerkSignedIn &&
     clerkUserLoaded &&
     Boolean(inviteEmail) &&
-    verifiedSignedInEmails.length > 0 &&
-    !matchingSignedInEmail;
+    Boolean(signedInEmail) &&
+    !signedInEmailMatchesInvite;
+  const signedInEmailUnknown =
+    clerkLoaded &&
+    clerkSignedIn &&
+    clerkUserLoaded &&
+    Boolean(inviteEmail) &&
+    !signedInEmail;
 
   // Claim gate state — when the visitor lands on /tenant-portal/{token}
   // with a Clerk session, this fires once to create the TenantPortalAccount
@@ -2755,6 +2780,7 @@ function TenantPortalContent({
     if (!clerkLoaded || !clerkSignedIn) return;
     if (!clerkUserLoaded) return;
     if (signedInEmailMismatchesInvite) return;
+    if (signedInEmailUnknown) return;
     if (accountPortal) return;
     if (gateClaimMutation.isPending) return;
     if (gateClaimMutation.isError) return;
@@ -2767,6 +2793,7 @@ function TenantPortalContent({
     clerkSignedIn,
     clerkUserLoaded,
     signedInEmailMismatchesInvite,
+    signedInEmailUnknown,
     accountPortal,
     gateClaimMutation,
     invitePreviewQuery.data,
@@ -3038,7 +3065,7 @@ function TenantPortalContent({
               {preview.tenant_email ? (
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Sign-in email
+                    Invite email
                   </dt>
                   <dd>{preview.tenant_email}</dd>
                 </div>
@@ -3087,6 +3114,26 @@ function TenantPortalContent({
                   <Loader2 size={16} className="animate-spin text-primary" />
                   Checking signed-in account…
                 </div>
+              ) : signedInEmailUnknown ? (
+                <div className="grid gap-3 text-sm">
+                  <StatusBadge tone="warning">
+                    Couldn&apos;t read this login
+                  </StatusBadge>
+                  <p className="text-muted-foreground">
+                    Leasium could not read the email on this signed-in account.
+                    Sign out, then sign in directly with{" "}
+                    <span className="font-medium text-foreground">
+                      {preview.tenant_email}
+                    </span>
+                    .
+                  </p>
+                  <SignOutButton redirectUrl={returnTo}>
+                    <SecondaryButton type="button">
+                      <LogIn size={15} />
+                      Use another login
+                    </SecondaryButton>
+                  </SignOutButton>
+                </div>
               ) : signedInEmailMismatchesInvite ? (
                 <div className="grid gap-3 text-sm">
                   <StatusBadge tone="warning">Use the invite email</StatusBadge>
@@ -3114,7 +3161,11 @@ function TenantPortalContent({
                     Couldn&apos;t link this login
                   </StatusBadge>
                   <p className="text-muted-foreground">
-                    {tenantPortalClaimErrorMessage(gateClaimMutation.error)}
+                    {tenantPortalClaimErrorMessage(
+                      gateClaimMutation.error,
+                      signedInEmail,
+                      preview.tenant_email,
+                    )}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button

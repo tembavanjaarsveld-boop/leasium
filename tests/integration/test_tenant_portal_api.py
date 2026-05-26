@@ -482,7 +482,10 @@ def test_tenant_portal_account_claim_ignores_client_claimed_email_without_clerk_
     monkeypatch,
 ) -> None:
     app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
-        update={"clerk_allow_legacy_token_mapping": False}
+        update={
+            "clerk_allow_legacy_token_mapping": False,
+            "clerk_secret_key": "sk_test_present",
+        }
     )
     scope = _seed_portal_scope(session)
 
@@ -516,6 +519,48 @@ def test_tenant_portal_account_claim_ignores_client_claimed_email_without_clerk_
         select(TenantPortalAccount).where(
             TenantPortalAccount.auth_provider_id
             == "tenant-subject-client-claimed-email"
+        )
+    )
+    assert account is None
+
+
+def test_tenant_portal_account_claim_reports_missing_clerk_email_verification_config(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"clerk_allow_legacy_token_mapping": False, "clerk_secret_key": ""}
+    )
+    scope = _seed_portal_scope(session)
+
+    def fake_identity(authorization, settings):  # noqa: ANN001, ARG001
+        return ClerkIdentity(
+            provider_id="tenant-subject-no-email-claims",
+            verified_email=None,
+        )
+
+    monkeypatch.setattr(tenant_portal_router, "_tenant_portal_identity", fake_identity)
+    monkeypatch.setattr(
+        tenant_portal_router,
+        "_verified_emails_from_clerk_user",
+        lambda provider_id, settings: set(),
+    )
+
+    response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-no-email-claims"},
+        json={"portal_token": scope["token"]},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Tenant account email verification is not fully configured. "
+        "Ask the property team to check tenant sign-up settings."
+    )
+    account = session.scalar(
+        select(TenantPortalAccount).where(
+            TenantPortalAccount.auth_provider_id == "tenant-subject-no-email-claims"
         )
     )
     assert account is None
