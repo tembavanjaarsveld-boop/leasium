@@ -89,7 +89,10 @@ def lease_agreement_read(onboarding: TenantOnboarding) -> dict[str, object]:
     elif open_question_count:
         status = "questions_open"
         locked_reason = "Resolve lease agreement questions before signing."
-    elif onboarding.status == TenantOnboardingStatus.reviewed:
+    elif onboarding.status in {
+        TenantOnboardingStatus.reviewed,
+        TenantOnboardingStatus.applied,
+    }:
         status = "ready_to_sign"
         locked_reason = None
     else:

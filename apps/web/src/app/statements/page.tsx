@@ -6,8 +6,8 @@
  * Reads the per-owner JSON from /api/v1/owners/statements and renders
  * one card per owner with a per-property breakdown of invoiced + paid +
  * outstanding totals. Month selector defaults to the previous calendar
- * month (mirrors backend default). Read-only — v3 adds PDF export,
- * v4 dispatch through the comms loop.
+ * month (mirrors backend default). PDF export is review-only; owner
+ * dispatch still lands through a later explicit approval flow.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import {
   Building2,
   CheckCircle2,
   ClipboardCheck,
+  Download,
   FileText,
   MailCheck,
   Printer,
@@ -44,6 +45,8 @@ import {
 import {
   getXeroStatus,
   listInvoiceDrafts,
+  downloadOwnerStatementPdf,
+  downloadOwnerStatementPdfPack,
   getOwnerStatements,
   listEntities,
   type InvoiceDraftRecord,
@@ -388,6 +391,7 @@ function StatementsContent() {
         <StatementReadinessPanel
           readiness={statementReadiness}
           month={month}
+          entityId={selectedEntityId}
           openedFromBilling={openedFromBilling}
           loading={
             statementsQuery.isLoading ||
@@ -431,6 +435,7 @@ function StatementsContent() {
             owner={selectedOwner}
             owners={owners}
             month={month}
+            entityId={selectedEntityId}
             generatedAt={statementsQuery.data?.generated_at ?? null}
             selectedOwnerIdentity={selectedOwnerIdentity}
             onSelectOwner={setSelectedOwnerIdentity}
@@ -522,6 +527,7 @@ function StatementPreviewPanel({
   owner,
   owners,
   month,
+  entityId,
   generatedAt,
   selectedOwnerIdentity,
   onSelectOwner,
@@ -529,12 +535,15 @@ function StatementPreviewPanel({
   owner: OwnerStatementRecord;
   owners: OwnerStatementRecord[];
   month: string;
+  entityId: string;
   generatedAt: string | null;
   selectedOwnerIdentity: string;
   onSelectOwner: (value: string) => void;
 }) {
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
   const [dispatchReceipt, setDispatchReceipt] = useState<string | null>(null);
+  const [pdfReceipt, setPdfReceipt] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const canPrint = owner.invoice_count > 0;
   const dispatchDraft = statementDispatchDraft({ owner, month });
   const recipientReady = Boolean(owner.billing_email);
@@ -561,6 +570,33 @@ function StatementPreviewPanel({
       ].join("\n"),
     );
     setDispatchReceipt("Dispatch draft copied. No email sent.");
+  };
+  const downloadPdf = async () => {
+    setPdfLoading(true);
+    setPdfReceipt(null);
+    try {
+      const blob = await downloadOwnerStatementPdf({
+        entityId,
+        month,
+        ownerIdentity: owner.owner_identity,
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `owner-statement-${month}-${owner.owner_identity
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "owner"}.pdf`;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setPdfReceipt("PDF prepared. No email sent.");
+    } catch (error) {
+      setPdfReceipt(friendlyError(error));
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
   return (
@@ -604,11 +640,25 @@ function StatementPreviewPanel({
               <Printer size={15} />
               Print / save PDF
             </SecondaryButton>
+            <SecondaryButton
+              type="button"
+              onClick={downloadPdf}
+              disabled={!canPrint || pdfLoading || !entityId}
+            >
+              {pdfLoading ? (
+                <RefreshCw size={15} className="animate-spin" />
+              ) : (
+                <Download size={15} />
+              )}
+              Download PDF
+            </SecondaryButton>
           </div>
         </div>
 
-        {copyReceipt ? (
-          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        {copyReceipt || pdfReceipt ? (
+          <p className="text-sm font-medium text-success">
+            {[copyReceipt, pdfReceipt].filter(Boolean).join(" ")}
+          </p>
         ) : null}
 
         <div className="grid gap-4 rounded-md border border-border bg-white p-5 text-sm shadow-leasiumXs">
@@ -783,16 +833,20 @@ function Metric({
 function StatementReadinessPanel({
   readiness,
   month,
+  entityId,
   openedFromBilling,
   loading,
   billingHref,
 }: {
   readiness: StatementPackReadiness;
   month: string;
+  entityId: string;
   openedFromBilling: boolean;
   loading: boolean;
   billingHref: string;
 }) {
+  const [packLoading, setPackLoading] = useState(false);
+  const [packReceipt, setPackReceipt] = useState<string | null>(null);
   const tone = statementPackTone(readiness.status);
   const icon =
     readiness.status === "ready" ? (
@@ -802,6 +856,26 @@ function StatementReadinessPanel({
     ) : (
       <ReceiptText size={17} />
     );
+  const downloadPack = async () => {
+    setPackLoading(true);
+    setPackReceipt(null);
+    try {
+      const blob = await downloadOwnerStatementPdfPack({ entityId, month });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `owner-statement-pack-${month}.zip`;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setPackReceipt("Statement pack prepared. No owner email sent.");
+    } catch (error) {
+      setPackReceipt(friendlyError(error));
+    } finally {
+      setPackLoading(false);
+    }
+  };
   return (
     <SectionPanel
       title="Statement pack readiness"
@@ -849,6 +923,23 @@ function StatementReadinessPanel({
           </div>
         </div>
         <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+          <SecondaryButton
+            type="button"
+            onClick={downloadPack}
+            disabled={
+              loading ||
+              packLoading ||
+              !entityId ||
+              readiness.statementInvoiceCount === 0
+            }
+          >
+            {packLoading ? (
+              <RefreshCw size={15} className="animate-spin" />
+            ) : (
+              <Download size={15} />
+            )}
+            Download pack
+          </SecondaryButton>
           <Link
             href={billingHref}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
@@ -857,6 +948,11 @@ function StatementReadinessPanel({
             Open Billing Readiness
           </Link>
         </div>
+        {packReceipt ? (
+          <p className="text-sm font-medium text-success lg:col-span-2">
+            {packReceipt}
+          </p>
+        ) : null}
       </div>
     </SectionPanel>
   );

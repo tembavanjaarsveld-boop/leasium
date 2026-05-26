@@ -13,13 +13,15 @@ class TenantPortalInvitePreviewRead(BaseModel):
 
     Returned by GET /api/v1/tenant-portal/invites/{token}/preview. Holds
     only the fields a tenant needs to confirm they're in the right place
-    before authenticating: which property and what the link's expiry is.
-    Never includes tenant contact details, financial data, or documents.
+    before authenticating: who the invite is for, which property, the
+    sign-in email the property manager already entered, and the link expiry.
+    Never includes financial data or documents.
     """
 
     property_name: str
     property_address: str | None = None
     tenant_display_name: str
+    tenant_email: str | None = None
     expires_at: datetime | None = None
     claimable: bool
 

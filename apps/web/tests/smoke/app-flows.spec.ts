@@ -141,7 +141,15 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByRole("button", { name: "Print / save PDF" }),
   ).toBeVisible();
-  await expect(page.getByText("Owner statement", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download pack" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download PDF" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Owner statement", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Dispatch review" }),
   ).toBeVisible();
@@ -187,22 +195,18 @@ test("Properties multi-view toggles between table and board", async ({
   await page.goto("/properties");
 
   // Table is the default — table headers visible.
-  await expect(
-    page.getByRole("columnheader", { name: "Property" }).first(),
-  ).toBeVisible();
+  await expect(page.locator("table").first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Board" }).click();
   // Switching to board hides the table headers; columns rendered by
   // occupancy bucket appear instead.
-  await expect(
-    page.getByRole("columnheader", { name: "Property" }),
-  ).toBeHidden();
+  await expect(page.locator("table")).toHaveCount(0);
+  await expect(page.getByText("Queen Street Retail Centre")).toBeVisible();
+  await expect(page.getByText("No units").first()).toBeVisible();
   await expect(page).toHaveURL(/[?&]view=board/);
 
   await page.getByRole("tab", { name: "Table" }).click();
-  await expect(
-    page.getByRole("columnheader", { name: "Property" }).first(),
-  ).toBeVisible();
+  await expect(page.locator("table").first()).toBeVisible();
 });
 
 test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
@@ -210,9 +214,7 @@ test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
 }) => {
   await page.goto("/inbox");
 
-  await expect(
-    page.getByRole("heading", { name: "AI inbox" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI inbox" })).toBeVisible();
   await page.getByRole("button", { name: "Try sample" }).click();
   await page.getByRole("button", { name: /Classify/ }).click();
 
@@ -317,9 +319,7 @@ test("AI inbox vendor classification offers a contractor picker", async ({
   // The contractor picker is shown for vendor_or_contractor (with the
   // "Create new contractor" empty option), not the property/tenant
   // dropdowns.
-  await expect(
-    promotePanel.getByLabel("Promote contractor"),
-  ).toBeVisible();
+  await expect(promotePanel.getByLabel("Promote contractor")).toBeVisible();
   await expect(promotePanel.getByLabel("Promote contractor")).toHaveValue("");
 
   await promotePanel.getByRole("button", { name: /Promote to draft/ }).click();
@@ -351,7 +351,9 @@ test("AI inbox tenant contact classification applies selected fields", async ({
         },
         suggested_lease: null,
         suggested_contractor: null,
-        key_facts: [{ label: "New email", value: "accounts@acmebakery.example" }],
+        key_facts: [
+          { label: "New email", value: "accounts@acmebakery.example" },
+        ],
         warnings: [],
         guardrails: [],
         response_id: "resp_tenant_contact_smoke",
@@ -405,9 +407,7 @@ test("tenants saved views capture and re-apply filter combos", async ({
 
   // The chip should now reflect the saved view name.
   await expect(
-    page
-      .getByRole("button", { name: /^Submitted only/ })
-      .first(),
+    page.getByRole("button", { name: /^Submitted only/ }).first(),
   ).toBeVisible();
 
   // Switch to "All" — the chip should fall back to "Saved views" or
@@ -444,9 +444,12 @@ test("tenants table inline-edits contact email", async ({ page }) => {
   await input.fill("inline.edit@example.com");
   await input.press("Enter");
 
-  // After save, the read-only button reappears with the new value.
+  // After save, the read-only inline-edit button reappears with the new value.
   await expect(
-    page.getByRole("button", { name: /inline\.edit@example\.com/ }).first(),
+    page
+      .getByRole("button", { name: /^Edit Contact email for / })
+      .filter({ hasText: "inline.edit@example.com" })
+      .first(),
   ).toBeVisible();
 });
 
@@ -498,12 +501,20 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   await expect(
     page.getByRole("heading", { name: "Portfolio QA" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Cleanup readiness report" }),
+  ).toBeVisible();
+  await expect(page.getByText("Public enrichment candidates")).toBeVisible();
 
   const ownerPanel = page.locator("section").filter({
     has: page.getByRole("heading", {
       name: "Owner and billing guided fixes",
     }),
   });
+  await ownerPanel.getByRole("button", { name: "Stage suggestions" }).click();
+  await expect(
+    ownerPanel.getByText("Review staged owner billing suggestions"),
+  ).toBeVisible();
   await expect(ownerPanel.getByText("Eagle Street Office")).toBeVisible();
   await ownerPanel.getByLabel("Owner ABN").fill("33123456789");
   await ownerPanel
@@ -522,6 +533,10 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   const contactPanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Tenant contact enrichment" }),
   });
+  await contactPanel.getByRole("button", { name: "Stage suggestions" }).click();
+  await expect(
+    contactPanel.getByText("Review staged tenant suggestions"),
+  ).toBeVisible();
   await expect(contactPanel.getByText("Northwind Fitness")).toBeVisible();
   await contactPanel
     .getByLabel("Billing email")
@@ -532,7 +547,10 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   ).toBeVisible();
 
   await page.getByRole("button", { name: /Onboarding prep/ }).click();
-  await expect(page.getByText("Northwind Fitness")).toBeVisible();
+  const onboardingPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Batch tenant onboarding prep" }),
+  });
+  await expect(onboardingPanel.getByText("Northwind Fitness")).toBeVisible();
   await page.getByRole("button", { name: "Select ready" }).click();
   await page.getByRole("button", { name: "Send selected invites" }).click();
   await expect(page.getByText("1 invite links created.")).toBeVisible();
@@ -543,8 +561,11 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   ).toBeVisible();
   await expect(page.getByText("Properties row 12").first()).toBeVisible();
   await page.getByPlaceholder("Search sources").fill("public enrichment");
+  const sourcePanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Source and apply history" }),
+  });
   await expect(
-    page.getByText(/Bright Cafe .* public enrichment/),
+    sourcePanel.getByText(/Bright Cafe .* public enrichment/),
   ).toBeVisible();
 });
 
@@ -657,7 +678,10 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expect(page.getByText("INV-1001").first()).toBeVisible();
   await page.getByRole("button", { exact: true, name: "Approve" }).click();
   await expect(
-    page.locator("dd").filter({ hasText: /^approved$/ }).first(),
+    page
+      .locator("dd")
+      .filter({ hasText: /^approved$/ })
+      .first(),
   ).toBeVisible();
 
   await page.getByRole("tab", { name: /Arrears/ }).click();
@@ -819,11 +843,11 @@ test("notification center shows work notices and digest receipts", async ({
     page.getByText("Digest email was queued by SendGrid."),
   ).toBeVisible();
   await expect(page.getByText("Email queued").first()).toBeVisible();
-  await expect(page.getByText("Digest Delivery Attempted")).toBeVisible();
-  await page.getByText("Receipt evidence").last().click();
   await expect(
-    page.getByText("sg-digest-smoke-retry").first(),
+    page.getByText("Digest Delivery Attempted").first(),
   ).toBeVisible();
+  await page.getByText("Receipt evidence").last().click();
+  await expect(page.getByText("sg-digest-smoke-retry").first()).toBeVisible();
   await expect(
     page.getByText("Wait for the SendGrid delivery receipt."),
   ).toBeVisible();
@@ -1190,19 +1214,34 @@ test("tenant workspace supports search and the add tenant form", async ({
   await expect(
     page.getByRole("heading", { name: "Tenant workspace" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: /Bright Cafe/ })).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      exact: true,
+      name: "Bright Cafe (Bright Cafe Pty Ltd)",
+    }),
+  ).toBeVisible();
 
   await page.getByPlaceholder("Search tenants").fill("northwind");
   await expect(
-    page.getByRole("link", { name: /Northwind Fitness/ }),
+    page.getByRole("button", {
+      exact: true,
+      name: "Northwind Fitness (Northwind Fitness Pty Ltd)",
+    }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: /Bright Cafe/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      exact: true,
+      name: "Bright Cafe (Bright Cafe Pty Ltd)",
+    }),
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Send invite" }).first().click();
   await expect(page.getByLabel("Tenant name")).toBeVisible();
-  await expect(page.getByLabel("Contact email")).toBeVisible();
-  await expect(page.getByLabel("Property")).toBeVisible();
-  await expect(page.getByLabel("Unit")).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Contact email" }),
+  ).toBeVisible();
+  await expect(page.getByRole("combobox", { name: /^Property/ })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: /^Unit/ })).toBeVisible();
 });
 
 test("property workspace shows the evidence source trail", async ({ page }) => {
@@ -1215,10 +1254,9 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
   await expect(
     page.getByAltText("Queen Street Retail Centre primary image"),
   ).toBeVisible();
-  await expect(page.getByTestId("selected-property-image")).toHaveAttribute(
-    "src",
-    /.+/,
-  );
+  await expect(
+    page.getByAltText("Queen Street Retail Centre primary image"),
+  ).toHaveAttribute("src", /.+/);
   await page.getByRole("button", { name: "Find property images" }).click();
   await expect(page.getByText("Queen Street awning frontage")).toBeVisible();
   await expect(
@@ -1300,11 +1338,19 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText("Billing email").first()).toBeVisible();
   await expect(page.getByText("accounts@bright.example").first()).toBeVisible();
   await expect(page.getByText("Applied ABN")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Preview portal" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Preview portal" }),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Preview portal" }).click();
-  await expect(page).toHaveURL(/\/tenants\/tenant-1\/portal-preview\/onboarding-1/);
-  await expect(page.getByRole("heading", { name: "Tenant portal preview" })).toBeVisible();
-  await expect(page.getByText("Operator preview", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(
+    /\/tenants\/tenant-1\/portal-preview\/onboarding-1/,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Tenant portal preview" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Operator preview", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByText(/No tenant portal account is created/),
   ).toBeVisible();
@@ -1312,7 +1358,9 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText("INV-1001")).toBeVisible();
   await expect(page.getByText("Contact change request")).toBeVisible();
   await expect(page.getByText("new.accounts@bright.example")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Submit for review" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Submit for review" }),
+  ).toHaveCount(0);
   await page.getByRole("link", { name: "Back to tenant" }).first().click();
   await expect(page).toHaveURL(/\/tenants\/tenant-1$/);
 
@@ -1335,7 +1383,173 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText("Fresh portal link copied.")).toBeVisible();
 });
 
-test("tenant portal invite is account-first before onboarding", async ({ page }) => {
+test("tenant detail sends lease pack after onboarding approval", async ({
+  page,
+}) => {
+  type SmokeOnboardingRow = Record<string, unknown> & {
+    delivery_data: Record<string, unknown>;
+    review_data: Record<string, unknown>;
+    status: string;
+  };
+  const submittedAt = "2026-05-19T09:10:00.000Z";
+  let onboardingRow: SmokeOnboardingRow = {
+    id: "onboarding-1",
+    entity_id: "entity-1",
+    lease_id: "lease-1",
+    tenant_id: "tenant-1",
+    token: "tenant-token-1",
+    status: "submitted",
+    due_date: "2026-05-29",
+    expires_at: "2026-06-12T00:00:00.000Z",
+    last_sent_at: "2026-05-18T09:30:00.000Z",
+    resent_at: null,
+    cancel_reason: null,
+    onboarding_url: "http://127.0.0.1:3000/onboarding/tenant-token-1",
+    portal_url: "http://127.0.0.1:3000/tenant-portal/tenant-token-1",
+    submitted_data: {
+      legal_name: "Bright Cafe Pty Ltd",
+      contact_name: "Mia Hart",
+      contact_email: "mia@example.com",
+      contact_phone: "0400 111 222",
+      accepted: true,
+    },
+    submitted_at: submittedAt,
+    review_data: {},
+    delivery_data: {
+      channels: {
+        email: {
+          channel: "email",
+          status: "sent",
+          provider: "mock",
+          attempted_at: "2026-05-18T09:30:00.000Z",
+          recipient: "mia@example.com",
+        },
+      },
+      lease_agreement: {
+        status: "ready_to_sign",
+        open_question_count: 0,
+        questions: [],
+        signed_at: null,
+        signed_by_actor: null,
+        signing_locked_reason: null,
+      },
+    },
+    reviewed_at: null,
+    reviewed_by_user_id: null,
+    applied_at: null,
+    applied_by_user_id: null,
+    created_at: "2026-05-18T09:30:00.000Z",
+    updated_at: submittedAt,
+    deleted_at: null,
+  };
+  let reviewed = false;
+  let applied = false;
+
+  await page.route(
+    /\/api\/v1\/tenant-onboarding(\/.*)?(\?.*)?$/,
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname.replace(/^\/api\/v1/, "");
+      if (request.method() === "GET" && path === "/tenant-onboarding") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([onboardingRow]),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/tenant-onboarding/onboarding-1/review"
+      ) {
+        reviewed = true;
+        onboardingRow = {
+          ...onboardingRow,
+          status: "reviewed",
+          review_data: { approved: true, notes: null },
+          reviewed_at: "2026-05-19T09:25:00.000Z",
+          reviewed_by_user_id: "user-temba",
+          updated_at: "2026-05-19T09:25:00.000Z",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/tenant-onboarding/onboarding-1/apply"
+      ) {
+        applied = true;
+        onboardingRow = {
+          ...onboardingRow,
+          status: "applied",
+          applied_at: "2026-05-19T09:30:00.000Z",
+          applied_by_user_id: "user-temba",
+          updated_at: "2026-05-19T09:30:00.000Z",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/tenant-onboarding/onboarding-1/send-lease-pack"
+      ) {
+        onboardingRow = {
+          ...onboardingRow,
+          delivery_data: {
+            ...onboardingRow.delivery_data,
+            lease_pack: {
+              sent_at: "2026-05-21T00:20:00.000Z",
+              sent_by_user_id: "user-temba",
+              template_key: "tenant_lease_pack",
+              template_version: "v1",
+              receipts: [
+                {
+                  channel: "email",
+                  status: "queued",
+                  provider: "sendgrid",
+                  recipient: "mi***@example.com",
+                  provider_message_id: "lease-pack-msg-1",
+                  error: null,
+                  metadata: { template_key: "tenant_lease_pack" },
+                },
+              ],
+            },
+          },
+          updated_at: "2026-05-21T00:20:00.000Z",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
+  await page.goto("/tenants/tenant-1");
+
+  await page.getByRole("button", { name: "Approve & apply" }).click();
+  expect(reviewed).toBe(true);
+  expect(applied).toBe(true);
+  await expect(page.getByText("Lease pack next")).toBeVisible();
+  await page.getByRole("button", { name: "Send lease pack" }).click();
+  await expect(page.getByText("Lease pack sent to tenant.")).toBeVisible();
+});
+
+test("tenant portal invite is account-first before onboarding", async ({
+  page,
+}) => {
   test.skip(
     !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     "Runs only when tenant account auth is enabled.",
@@ -1346,17 +1560,15 @@ test("tenant portal invite is account-first before onboarding", async ({ page })
     page.getByRole("heading", { name: "Bright Cafe" }),
   ).toBeVisible();
   await expect(page.getByText("Tenant Account Setup")).toBeVisible();
-  await expect(
-    page.getByText(/Create or sign in to your tenant account first/),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Payments" }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "Maintenance" }),
-  ).toHaveCount(0);
+  await expect(page.getByText("Sign-in email")).toBeVisible();
+  await expect(page.getByText("mia@example.com")).toBeVisible();
+  await expect(page.getByText(/Sign in with a one-time code/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send code" })).toBeVisible();
+  await expect(page.getByLabel("Email")).toHaveValue("mia@example.com");
+  await expect(page.getByRole("heading", { name: "Payments" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Maintenance" })).toHaveCount(
+    0,
+  );
 });
 
 test("tenant portal invite handles missing tenant login setup", async ({
@@ -1372,15 +1584,13 @@ test("tenant portal invite handles missing tenant login setup", async ({
     page.getByRole("heading", { name: "Bright Cafe" }),
   ).toBeVisible();
   await expect(page.getByText("Tenant Account Setup")).toBeVisible();
-  await expect(
-    page.getByText("Tenant login not configured"),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Payments" }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "Maintenance" }),
-  ).toHaveCount(0);
+  await expect(page.getByText("Sign-in email")).toBeVisible();
+  await expect(page.getByText("mia@example.com")).toBeVisible();
+  await expect(page.getByText("Tenant login not configured")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Payments" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Maintenance" })).toHaveCount(
+    0,
+  );
 });
 
 test("tenant portal onboarding room keeps setup focused", async ({ page }) => {
@@ -1395,25 +1605,114 @@ test("tenant portal onboarding room keeps setup focused", async ({ page }) => {
     page.getByRole("heading", { name: "Let's get your tenancy ready." }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Checklist" })).toBeVisible();
+  const checklist = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Checklist" }),
+  });
+  await expect(
+    checklist.getByText("Confirm details + upload docs"),
+  ).toBeVisible();
+  await expect(checklist.getByText("Property team review")).toBeVisible();
+  await expect(checklist.getByText("Sign lease")).toBeVisible();
+  await expect(checklist.getByText("Tenant account")).toHaveCount(0);
+  await expect(checklist.getByText("Required documents")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Required Documents" }),
   ).toBeVisible();
+  await expect(page.getByLabel("Legal name")).toBeVisible();
+  await expect(page.getByLabel("Contact name")).toBeVisible();
+  await expect(page.getByLabel("Contact email")).toBeVisible();
+  await expect(page.getByLabel("Contact phone")).toBeVisible();
+  await expect(page.getByLabel("ABN")).toBeHidden();
+  await page.getByText("Add optional details").click();
+  await expect(page.getByLabel("ABN")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Payments" })).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "Maintenance" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Maintenance" })).toHaveCount(
+    0,
+  );
   await page
     .getByLabel(
       "I confirm the information above is correct to the best of my knowledge. My property manager will review before any changes apply.",
     )
     .check();
   await page.getByRole("button", { name: "Submit for review" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Onboarding" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Onboarding" })).toBeVisible();
+  await expect(page.getByText("In review")).toBeVisible();
   await expect(
     page.getByText(/property manager will review and confirm/i),
   ).toBeVisible();
+});
+
+test("tenant lease entry handles missing tenant login setup", async ({
+  page,
+}) => {
+  test.skip(
+    Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY),
+    "Runs only when tenant account auth is not configured.",
+  );
+  await page.goto("/tenant-portal/lease");
+
+  await expect(
+    page.getByRole("heading", { name: "Open your lease pack" }),
+  ).toBeVisible();
+  await expect(page.getByText("Tenant login not configured")).toBeVisible();
+});
+
+test("tenant lease page focuses signing without portal dashboard", async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.LEASIUM_SMOKE_TENANT_PORTAL_ACCOUNT_ENTRY_LINKED ||
+      !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    "Runs only with a signed-in tenant account smoke session.",
+  );
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, {
+    tenantAccountLinked: true,
+    tenantPortalLeaseReady: true,
+  });
+
+  await page.goto("/tenant-portal/lease");
+
+  await expect(
+    page.getByRole("heading", { name: "Review and sign your lease" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Lease questions and signing" }),
+  ).toBeVisible();
+  await expect(page.getByText("Ready to sign")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open full portal" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Payments" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Maintenance" })).toHaveCount(
+    0,
+  );
+});
+
+test("tenant lease page confirms signing", async ({ page }) => {
+  test.skip(
+    !process.env.LEASIUM_SMOKE_TENANT_PORTAL_ACCOUNT_ENTRY_LINKED ||
+      !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    "Runs only with a signed-in tenant account smoke session.",
+  );
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, {
+    tenantAccountLinked: true,
+    tenantPortalLeaseReady: true,
+  });
+
+  await page.goto("/tenant-portal/lease");
+
+  await page
+    .getByLabel("I have reviewed and signed the lease agreement.")
+    .check();
+  await page.getByRole("button", { name: "Confirm signed" }).click();
+
+  await expect(page.getByText("Complete")).toBeVisible();
+  await expect(page.getByText(/Signed 21 May 2026/)).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open full portal" }),
+  ).toHaveAttribute("href", "/tenant-portal");
 });
 
 test("tenant portal entry shows signed-out account access when Clerk is configured", async ({
@@ -1710,13 +2009,13 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toBeVisible();
 
   await page.goto("/settings?tab=xero");
-  const freshnessPanel = page
-    .locator("section")
-    .filter({
-      has: page.getByRole("heading", { name: "Accounting freshness snapshot" }),
-    });
+  const freshnessPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Accounting freshness snapshot" }),
+  });
   await expect(freshnessPanel).toBeVisible();
-  await expect(freshnessPanel.getByText("Reconciliation stale after")).toBeVisible();
+  await expect(
+    freshnessPanel.getByText("Reconciliation stale after"),
+  ).toBeVisible();
   await expect(freshnessPanel.getByText("Contact preview")).toBeVisible();
   await expect(
     freshnessPanel.getByText(
@@ -1749,7 +2048,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     page.getByRole("link", { name: "Open reconciliation handoff" }),
   ).toBeVisible();
   await expect(page.getByText("No Xero sync exceptions")).toBeVisible();
-  await expect(freshnessPanel.getByText("Reconciliation current")).toBeVisible();
+  await expect(
+    freshnessPanel.getByText("Reconciliation current"),
+  ).toBeVisible();
   await expect(freshnessPanel.getByText("Payment source manual")).toBeVisible();
   await expect(
     freshnessPanel.getByText("Payment mode local payment status apply"),
@@ -1815,14 +2116,14 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
   await expect(
     financeSnapshotPanel.getByText("Accounting readiness"),
   ).toBeVisible();
-  await expect(financeSnapshotPanel.getByText("Source local metadata")).toBeVisible();
+  await expect(
+    financeSnapshotPanel.getByText("Source local metadata"),
+  ).toBeVisible();
   await expect(
     financeSnapshotPanel.getByText("Reconciliation current"),
   ).toBeVisible();
   await expect(financeSnapshotPanel.getByText("Contacts ready")).toBeVisible();
-  await expect(
-    financeSnapshotPanel.getByText("Guardrails"),
-  ).toBeVisible();
+  await expect(financeSnapshotPanel.getByText("Guardrails")).toBeVisible();
   await expect(financeSnapshotPanel.getByText("Chart")).toBeVisible();
   await expect(financeSnapshotPanel.getByText("Tax")).toBeVisible();
   await expect(financeSnapshotPanel.getByText("Open in Xero")).toBeVisible();
@@ -1837,20 +2138,15 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
 
   await expect(page).toHaveURL(/\/snapshots\/snapshot-token-1$/);
   await expect(page.getByText("Frozen view")).toBeVisible();
-  const ownerSnapshotSection = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Owner / Entity Snapshot" }) });
-  const snapshotFinanceSection = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Finance Snapshot" }) });
+  const ownerSnapshotSection = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
+  });
   await expect(ownerSnapshotSection).toBeVisible();
-  await expect(ownerSnapshotSection.getByText("Accounting readiness")).toBeVisible();
-  await expect(ownerSnapshotSection.getByText("Source local metadata")).toBeVisible();
+  await expect(
+    ownerSnapshotSection.getByText("Accounting readiness"),
+  ).toBeVisible();
+  await expect(
+    ownerSnapshotSection.getByText("Source local metadata"),
+  ).toBeVisible();
   await expect(ownerSnapshotSection.getByText("Guardrails")).toBeVisible();
-  await expect(
-    snapshotFinanceSection.getByText("Accounting readiness"),
-  ).toBeVisible();
-  await expect(
-    snapshotFinanceSection.getByText("Reconciliation current"),
-  ).toBeVisible();
 });

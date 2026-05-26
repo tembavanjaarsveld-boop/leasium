@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from apps.api.routers import tenant_onboarding as tenant_onboarding_router
+from apps.api.tenant_lease_agreement import set_lease_agreement_section
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -55,6 +56,31 @@ def _lease_id(client: TestClient, session: Session) -> str:
     )
     assert lease_response.status_code == 201
     return str(lease_response.json()["id"])
+
+
+def _create_submitted_onboarding(client: TestClient, session: Session) -> dict[str, str]:
+    lease_id = _lease_id(client, session)
+    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    assert create_response.status_code == 201
+    body = create_response.json()
+    submit_response = client.post(
+        f"/api/v1/tenant-onboarding/public/{body['token']}/submit",
+        json={
+            "legal_name": "Lease Pack Tenant Pty Ltd",
+            "contact_name": "Lee Signer",
+            "contact_email": "lee@example.com",
+            "accepted": True,
+        },
+    )
+    assert submit_response.status_code == 200
+    return body
+
+
+def _create_applied_onboarding(client: TestClient, session: Session) -> dict[str, str]:
+    body = _create_submitted_onboarding(client, session)
+    apply_response = client.post(f"/api/v1/tenant-onboarding/{body['id']}/apply")
+    assert apply_response.status_code == 200
+    return body
 
 
 def test_tenant_onboarding_link_public_submit_waits_for_review_before_apply(
@@ -558,3 +584,179 @@ def test_tenant_onboarding_send_portal_invite_rejects_submitted_or_expired(
         f"/api/v1/tenant-onboarding/{onboarding_id}/send-portal-invite",
     )
     assert reject_response.status_code == 409
+
+
+def test_tenant_onboarding_send_lease_pack_after_apply_records_delivery(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    sends: list[tuple[str, str, object]] = []
+
+    def fake_lease_pack_send(invite, settings):  # noqa: ANN001, ARG001
+        sends.append((invite.template_key, invite.onboarding_url, invite.expires_at))
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+                provider_message_id="lease-pack-1",
+                metadata={"template_key": invite.template_key},
+            ),
+            DeliveryResult(
+                channel="sms",
+                status="skipped",
+                provider="twilio",
+                error="No SMS recipient.",
+            ),
+        ]
+
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "send_tenant_lease_pack_invite",
+        fake_lease_pack_send,
+    )
+    lease_id = _lease_id(client, session)
+    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    assert create_response.status_code == 201
+    onboarding_id = create_response.json()["id"]
+    token = create_response.json()["token"]
+
+    submit_response = client.post(
+        f"/api/v1/tenant-onboarding/public/{token}/submit",
+        json={
+            "legal_name": "Lease Pack Tenant Pty Ltd",
+            "contact_name": "Lee Signer",
+            "contact_email": "lee@example.com",
+            "accepted": True,
+        },
+    )
+    assert submit_response.status_code == 200
+    apply_response = client.post(f"/api/v1/tenant-onboarding/{onboarding_id}/apply")
+    assert apply_response.status_code == 200
+
+    lease_pack_response = client.post(
+        f"/api/v1/tenant-onboarding/{onboarding_id}/send-lease-pack",
+    )
+    assert lease_pack_response.status_code == 200
+    body = lease_pack_response.json()
+    lease_pack = body["delivery_data"]["lease_pack"]
+    assert lease_pack["template_key"] == "tenant_lease_pack"
+    assert {receipt["channel"] for receipt in lease_pack["receipts"]} == {"email", "sms"}
+    assert sends[0][0] == "tenant_lease_pack"
+    assert sends[0][1].endswith("/tenant-portal/lease")
+    assert f"/tenant-portal/{token}/lease" not in sends[0][1]
+    assert sends[0][2] is None
+    history = body["delivery_data"].get("lease_pack_history") or []
+    assert len(history) == 1
+
+
+def test_tenant_onboarding_send_lease_pack_rejects_before_apply(
+    client: TestClient,
+    session: Session,
+) -> None:
+    body = _create_submitted_onboarding(client, session)
+
+    response = client.post(
+        f"/api/v1/tenant-onboarding/{body['id']}/send-lease-pack",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == ("Only applied onboarding rows can receive a lease pack.")
+
+
+def test_tenant_onboarding_send_lease_pack_uses_account_route_after_invite_expiry(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    sends: list[str] = []
+
+    def fake_lease_pack_send(invite, settings):  # noqa: ANN001, ARG001
+        sends.append(invite.onboarding_url)
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+                provider_message_id="lease-pack-expired-invite",
+                metadata={"template_key": invite.template_key},
+            )
+        ]
+
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "send_tenant_lease_pack_invite",
+        fake_lease_pack_send,
+    )
+    body = _create_applied_onboarding(client, session)
+    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
+    assert onboarding is not None
+    onboarding.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/tenant-onboarding/{body['id']}/send-lease-pack",
+    )
+
+    assert response.status_code == 200
+    assert sends[0].endswith("/tenant-portal/lease")
+
+
+def test_tenant_onboarding_send_lease_pack_rejects_open_lease_questions(
+    client: TestClient,
+    session: Session,
+) -> None:
+    body = _create_applied_onboarding(client, session)
+    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
+    assert onboarding is not None
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "questions": [
+                {
+                    "id": "question-1",
+                    "question": "Can we confirm the outgoings clause?",
+                    "status": "open",
+                }
+            ],
+        },
+    )
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/tenant-onboarding/{body['id']}/send-lease-pack",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Resolve lease agreement questions before sending the lease pack."
+    )
+
+
+def test_tenant_onboarding_send_lease_pack_rejects_signed_lease(
+    client: TestClient,
+    session: Session,
+) -> None:
+    body = _create_applied_onboarding(client, session)
+    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
+    assert onboarding is not None
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "signing": {
+                "signed_at": utcnow().isoformat(),
+                "signed_by_actor": "tenant-portal-account:test",
+            },
+        },
+    )
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/tenant-onboarding/{body['id']}/send-lease-pack",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Lease agreement is already signed."

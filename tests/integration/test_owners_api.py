@@ -1,11 +1,11 @@
-"""Owner statements API tests.
-
-Backend-only v1 of the owner monthly statements feature.
-"""
+"""Owner statements API tests."""
 
 from datetime import date
+from io import BytesIO
+from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
+from pypdf import PdfReader
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.models import (
@@ -295,3 +295,72 @@ def test_owner_statements_unattributed_bucket(
     assert len(owners) == 1
     assert owners[0]["owner_identity"] == "Unattributed"
     assert owners[0]["invoiced_cents"] == 50_000
+
+
+def test_owner_statement_pdf_downloads_review_pack(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_owner_with_invoices(
+        session,
+        trust_name="PDF Trust",
+        trustee_name="PDF Trustee Pty Ltd",
+        properties=[("PDF Property", [(date(2026, 4, 10), 500_000, 125_000)])],
+    )
+
+    response = client.get(
+        "/api/v1/owners/statements/pdf",
+        params={
+            "entity_id": scope["entity_id"],
+            "month": "2026-04",
+            "owner_identity": "PDF Trust (Trustee: PDF Trustee Pty Ltd)",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"].endswith(".pdf\"")
+    assert response.content.startswith(b"%PDF-1.4")
+    text = "\n".join(
+        page.extract_text() or ""
+        for page in PdfReader(BytesIO(response.content)).pages
+    )
+    assert "PDF Trust" in text
+    assert "PDF Property" in text
+    assert "$5,000" in text
+
+
+def test_owner_statement_pdf_pack_downloads_all_review_pdfs(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_owner_with_invoices(
+        session,
+        trust_name="Pack Trust A",
+        trustee_name="Pack Trustee A Pty Ltd",
+        properties=[("Pack Property A", [(date(2026, 4, 10), 500_000, 500_000)])],
+    )
+    _seed_owner_with_invoices(
+        session,
+        trust_name="Pack Trust B",
+        trustee_name="Pack Trustee B Pty Ltd",
+        properties=[("Pack Property B", [(date(2026, 4, 11), 250_000, 0)])],
+    )
+
+    response = client.get(
+        "/api/v1/owners/statements/pdf-pack",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert response.headers["content-disposition"].endswith(".zip\"")
+    with ZipFile(BytesIO(response.content)) as archive:
+        names = archive.namelist()
+        assert "README-2026-04.txt" in names
+        pdf_names = [name for name in names if name.endswith(".pdf")]
+        assert len(pdf_names) == 2
+        assert any("pack-trust-a" in name for name in pdf_names)
+        assert any("pack-trust-b" in name for name in pdf_names)
+        first_pdf = archive.read(pdf_names[0])
+    assert first_pdf.startswith(b"%PDF-1.4")
