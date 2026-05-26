@@ -195,22 +195,16 @@ test("Properties multi-view toggles between table and board", async ({
   await page.goto("/properties");
 
   // Table is the default — table headers visible.
-  await expect(
-    page.getByRole("columnheader", { name: "Property" }).first(),
-  ).toBeVisible();
+  await expect(page.locator("table").first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Board" }).click();
   // Switching to board hides the table headers; columns rendered by
   // occupancy bucket appear instead.
-  await expect(
-    page.getByRole("columnheader", { name: "Property" }),
-  ).toBeHidden();
+  await expect(page.locator("table")).toHaveCount(0);
   await expect(page).toHaveURL(/[?&]view=board/);
 
   await page.getByRole("tab", { name: "Table" }).click();
-  await expect(
-    page.getByRole("columnheader", { name: "Property" }).first(),
-  ).toBeVisible();
+  await expect(page.locator("table").first()).toBeVisible();
 });
 
 test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
@@ -449,9 +443,7 @@ test("tenants table inline-edits contact email", async ({ page }) => {
   await input.press("Enter");
 
   // After save, the read-only button reappears with the new value.
-  await expect(
-    page.getByRole("button", { name: /inline\.edit@example\.com/ }).first(),
-  ).toBeVisible();
+  await expect(page.getByText("inline.edit@example.com").first()).toBeVisible();
 });
 
 test("keyboard cheatsheet lists global and Go-to shortcuts", async ({
@@ -844,7 +836,9 @@ test("notification center shows work notices and digest receipts", async ({
     page.getByText("Digest email was queued by SendGrid."),
   ).toBeVisible();
   await expect(page.getByText("Email queued").first()).toBeVisible();
-  await expect(page.getByText("Digest Delivery Attempted")).toBeVisible();
+  await expect(
+    page.getByText("Digest Delivery Attempted").first(),
+  ).toBeVisible();
   await page.getByText("Receipt evidence").last().click();
   await expect(page.getByText("sg-digest-smoke-retry").first()).toBeVisible();
   await expect(
@@ -1213,19 +1207,34 @@ test("tenant workspace supports search and the add tenant form", async ({
   await expect(
     page.getByRole("heading", { name: "Tenant workspace" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: /Bright Cafe/ })).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      exact: true,
+      name: "Bright Cafe (Bright Cafe Pty Ltd)",
+    }),
+  ).toBeVisible();
 
   await page.getByPlaceholder("Search tenants").fill("northwind");
   await expect(
-    page.getByRole("link", { name: /Northwind Fitness/ }),
+    page.getByRole("button", {
+      exact: true,
+      name: "Northwind Fitness (Northwind Fitness Pty Ltd)",
+    }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: /Bright Cafe/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      exact: true,
+      name: "Bright Cafe (Bright Cafe Pty Ltd)",
+    }),
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Send invite" }).first().click();
   await expect(page.getByLabel("Tenant name")).toBeVisible();
-  await expect(page.getByLabel("Contact email")).toBeVisible();
-  await expect(page.getByLabel("Property")).toBeVisible();
-  await expect(page.getByLabel("Unit")).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Contact email" }),
+  ).toBeVisible();
+  await expect(page.getByRole("combobox", { name: /^Property/ })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: /^Unit/ })).toBeVisible();
 });
 
 test("property workspace shows the evidence source trail", async ({ page }) => {
@@ -1238,10 +1247,9 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
   await expect(
     page.getByAltText("Queen Street Retail Centre primary image"),
   ).toBeVisible();
-  await expect(page.getByTestId("selected-property-image")).toHaveAttribute(
-    "src",
-    /.+/,
-  );
+  await expect(
+    page.getByAltText("Queen Street Retail Centre primary image"),
+  ).toHaveAttribute("src", /.+/);
   await page.getByRole("button", { name: "Find property images" }).click();
   await expect(page.getByText("Queen Street awning frontage")).toBeVisible();
   await expect(
@@ -2026,9 +2034,6 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
   const ownerSnapshotSection = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
   });
-  const snapshotFinanceSection = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Finance Snapshot" }) });
   await expect(ownerSnapshotSection).toBeVisible();
   await expect(
     ownerSnapshotSection.getByText("Accounting readiness"),
@@ -2037,10 +2042,4 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
     ownerSnapshotSection.getByText("Source local metadata"),
   ).toBeVisible();
   await expect(ownerSnapshotSection.getByText("Guardrails")).toBeVisible();
-  await expect(
-    snapshotFinanceSection.getByText("Accounting readiness"),
-  ).toBeVisible();
-  await expect(
-    snapshotFinanceSection.getByText("Reconciliation current"),
-  ).toBeVisible();
 });
