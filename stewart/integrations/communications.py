@@ -385,6 +385,7 @@ def _operator_invite_text(invite: OperatorInviteEmail) -> str:
 
 def _email_html(invite: TenantOnboardingInvite) -> str:
     greeting = f"Hi {escape(invite.contact_name)}," if invite.contact_name else "Hi,"
+    onboarding_url = escape(invite.onboarding_url)
     shell_style = (
         "background:#F6F8FB;padding:28px;font-family:Inter,Arial,sans-serif;color:#101828;"
     )
@@ -420,9 +421,15 @@ def _email_html(invite: TenantOnboardingInvite) -> str:
               {address}
               <p style="margin:12px 0 0;color:#475467;">Area: {escape(invite.unit_label)}</p>
             </div>
-            <a href="{escape(invite.onboarding_url)}" style="{button_style}">
+            <a href="{onboarding_url}" style="{button_style}">
               Review and sign lease
             </a>
+            <p style="margin:16px 0 0;color:#667085;font-size:13px;line-height:1.45;">
+              If the button does not open, copy and paste this link:<br>
+              <a href="{onboarding_url}" style="color:#245BFF;word-break:break-all;">
+                {onboarding_url}
+              </a>
+            </p>
             <p style="margin:20px 0 0;color:#667085;font-size:13px;line-height:1.45;">
               Sign in with your tenant account, review the lease pack, ask
               any final questions, and confirm signing when ready.
@@ -451,9 +458,15 @@ def _email_html(invite: TenantOnboardingInvite) -> str:
             Onboarding due: {escape(_date_label(invite.due_date))}
           </p>
         </div>
-        <a href="{escape(invite.onboarding_url)}" style="{button_style}">
+        <a href="{onboarding_url}" style="{button_style}">
           Sign in to continue
         </a>
+        <p style="margin:16px 0 0;color:#667085;font-size:13px;line-height:1.45;">
+          If the button does not open, copy and paste this link:<br>
+          <a href="{onboarding_url}" style="color:#245BFF;word-break:break-all;">
+            {onboarding_url}
+          </a>
+        </p>
         <p style="margin:20px 0 0;color:#667085;font-size:13px;line-height:1.45;">
           After you sign in once your account stays linked &mdash; the
           invite link is no longer needed. Nothing you submit is applied
@@ -819,6 +832,9 @@ def _send_email(invite: TenantOnboardingInvite, settings: Settings) -> DeliveryR
             {"type": "text/plain", "value": _email_text(invite)},
             {"type": "text/html", "value": _email_html(invite)},
         ],
+        "tracking_settings": {
+            "click_tracking": {"enable": False, "enable_text": False},
+        },
         "categories": _categories("tenant_onboarding", invite.template_key),
     }
     try:

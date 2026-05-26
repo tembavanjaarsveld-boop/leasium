@@ -150,6 +150,16 @@ def test_tenant_onboarding_sendgrid_categories_are_deduplicated(
 
     assert result.status == "queued"
     assert payloads[0]["categories"] == ["tenant_onboarding"]
+    assert payloads[0]["tracking_settings"] == {
+        "click_tracking": {"enable": False, "enable_text": False},
+    }
+    html_content = next(
+        part["value"]
+        for part in payloads[0]["content"]
+        if part["type"] == "text/html"
+    )
+    assert 'href="https://leasium.ai/onboarding/test"' in html_content
+    assert "If the button does not open" in html_content
 
 
 def test_contractor_work_order_sendgrid_categories_are_deduplicated(
