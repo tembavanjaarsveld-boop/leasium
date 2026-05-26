@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
@@ -66,6 +66,91 @@ def _invite_token_hash(token: str) -> str:
 
 def _invite_accept_url(token: str, settings: Settings) -> str:
     return f"{settings.frontend_url.rstrip('/')}/accept-invite?token={token}"
+
+
+def _assert_webhook_secret(request: Request) -> None:
+    secret = get_settings().communications_webhook_secret
+    if not secret:
+        return
+    provided = request.headers.get("x-leasium-webhook-secret") or request.query_params.get("token")
+    if not provided or not secrets.compare_digest(provided, secret):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook token.",
+        )
+
+
+def _operator_invite_receipt_detail(raw_status: str, event: dict[str, object]) -> str:
+    value = raw_status.strip().lower()
+    if value == "processed":
+        return "SendGrid processed the operator invite."
+    if value == "delivered":
+        return "Operator invite delivered by SendGrid."
+    if value == "open":
+        return "Operator invite opened by the recipient."
+    if value == "click":
+        return "Operator invite link clicked by the recipient."
+    if value == "deferred":
+        return "SendGrid is still trying to deliver the operator invite."
+    if value in {"bounce", "dropped", "spamreport", "unsubscribe", "group_unsubscribe"}:
+        reason = event.get("reason") or event.get("response") or event.get("type") or value
+        return f"SendGrid reported {reason}."
+    return f"SendGrid reported {raw_status}."
+
+
+def _operator_invite_receipt_status(raw_status: str) -> OperatorInviteStatus:
+    value = raw_status.strip().lower()
+    if value in {"bounce", "dropped", "spamreport", "unsubscribe", "group_unsubscribe"}:
+        return OperatorInviteStatus.failed
+    return OperatorInviteStatus.sent
+
+
+def _sendgrid_message_matches(stored: str | None, incoming: str | None) -> bool:
+    if not stored or not incoming:
+        return False
+    return incoming == stored or incoming.startswith(f"{stored}.")
+
+
+def _operator_from_sendgrid_event(
+    session: Session,
+    event: dict[str, object],
+) -> AppUser | None:
+    raw_user_id = event.get("operator_user_id")
+    if isinstance(raw_user_id, str):
+        try:
+            member = session.get(AppUser, UUID(raw_user_id))
+        except ValueError:
+            member = None
+        if member is not None:
+            return member
+
+    message_id = event.get("sg_message_id") or event.get("sg-message-id")
+    if isinstance(message_id, str):
+        members = session.scalars(
+            select(AppUser).where(AppUser.invite_provider_message_id.is_not(None))
+        ).all()
+        for member in members:
+            if _sendgrid_message_matches(member.invite_provider_message_id, message_id):
+                return member
+
+    email = event.get("email")
+    if isinstance(email, str):
+        return session.scalar(select(AppUser).where(AppUser.email == _normalise_email(email)))
+    return None
+
+
+def _apply_operator_invite_receipt(
+    member: AppUser,
+    raw_status: str,
+    provider_message_id: str | None,
+    event: dict[str, object],
+) -> None:
+    if provider_message_id and not member.invite_provider_message_id:
+        member.invite_provider_message_id = provider_message_id.split(".", 1)[0]
+    if member.auth_provider_id or member.invite_status == OperatorInviteStatus.accepted:
+        return
+    member.invite_last_error = _operator_invite_receipt_detail(raw_status, event)
+    member.invite_status = _operator_invite_receipt_status(raw_status)
 
 
 def _role_rows(
@@ -190,7 +275,7 @@ def _invite_detail(member: AppUser) -> str:
     if member.auth_provider_id or member.invite_status == OperatorInviteStatus.accepted:
         return "Provider login is linked for this operator."
     if member.invite_status == OperatorInviteStatus.sent:
-        return "Operator invite email has been queued for delivery."
+        return member.invite_last_error or "Operator invite email has been queued for delivery."
     if member.invite_status == OperatorInviteStatus.failed:
         return member.invite_last_error or "Operator invite email failed to send."
     if member.invite_status == OperatorInviteStatus.skipped:
@@ -704,6 +789,44 @@ def resend_security_member_invite(
         delivery_status=result.status,
         delivery_detail=result.error,
     )
+
+
+@router.post("/webhooks/sendgrid-events", status_code=status.HTTP_204_NO_CONTENT)
+async def record_operator_invite_sendgrid_events(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    _assert_webhook_secret(request)
+    payload = await request.json()
+    events = payload if isinstance(payload, list) else [payload]
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        raw_status = str(event.get("event") or "")
+        if not raw_status:
+            continue
+        member = _operator_from_sendgrid_event(session, event)
+        if member is None:
+            continue
+        message_id = event.get("sg_message_id") or event.get("sg-message-id")
+        provider_message_id = str(message_id) if message_id else None
+        _apply_operator_invite_receipt(member, raw_status, provider_message_id, event)
+        audit_log(
+            session,
+            actor="provider:sendgrid",
+            action="receipt",
+            target_table="app_user",
+            target_id=member.id,
+            tool_name="sendgrid.operator_invite_event_webhook",
+            tool_input={
+                "status": raw_status,
+                "provider_message_id": provider_message_id,
+            },
+            tool_output_summary=_operator_invite_receipt_detail(raw_status, event),
+            data_classification="confidential",
+        )
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/members/{member_id}/unlink-login", response_model=SecurityMemberRead)

@@ -367,6 +367,114 @@ def test_owner_can_invite_and_update_operator_roles(
     assert audit_actions == ["invite", "update"]
 
 
+def test_operator_invite_sendgrid_receipt_updates_member_status(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+
+    def fake_send(invite, settings):  # noqa: ANN001, ARG001
+        return DeliveryResult(
+            channel="email",
+            status="queued",
+            provider="sendgrid",
+            recipient=invite.email,
+            provider_message_id="operator-message-1",
+        )
+
+    monkeypatch.setattr(security_router, "send_operator_invite_email", fake_send)
+    create_response = client.post(
+        "/api/v1/security/members",
+        json={
+            "email": "ops.delivery@example.com",
+            "display_name": "Ops Delivery",
+            "roles": [{"entity_id": str(entity.id), "role": "admin"}],
+        },
+    )
+    assert create_response.status_code == 201
+    member_id = create_response.json()["id"]
+
+    delivered_response = client.post(
+        "/api/v1/security/webhooks/sendgrid-events",
+        json=[
+            {
+                "operator_user_id": member_id,
+                "sg_message_id": "operator-message-1.filterdrecv-123",
+                "event": "delivered",
+                "email": "ops.delivery@example.com",
+            }
+        ],
+    )
+
+    assert delivered_response.status_code == 204
+    member = session.get(AppUser, UUID(member_id))
+    assert member is not None
+    assert member.invite_status == "sent"
+    assert member.invite_last_error == "Operator invite delivered by SendGrid."
+
+    workspace_response = client.get("/api/v1/security/workspace")
+    assert workspace_response.status_code == 200
+    workspace_member = next(
+        item for item in workspace_response.json()["members"] if item["id"] == member_id
+    )
+    assert workspace_member["invite_email_detail"] == "Operator invite delivered by SendGrid."
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "app_user",
+            AuditAction.target_id == UUID(member_id),
+            AuditAction.tool_name == "sendgrid.operator_invite_event_webhook",
+        )
+    )
+    assert audit is not None
+    assert audit.tool_output_summary == "Operator invite delivered by SendGrid."
+
+
+def test_operator_invite_sendgrid_bounce_matches_message_id_prefix(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+
+    def fake_send(invite, settings):  # noqa: ANN001, ARG001
+        return DeliveryResult(
+            channel="email",
+            status="queued",
+            provider="sendgrid",
+            recipient=invite.email,
+            provider_message_id="operator-message-2",
+        )
+
+    monkeypatch.setattr(security_router, "send_operator_invite_email", fake_send)
+    create_response = client.post(
+        "/api/v1/security/members",
+        json={
+            "email": "ops.bounce@example.com",
+            "display_name": "Ops Bounce",
+            "roles": [{"entity_id": str(entity.id), "role": "admin"}],
+        },
+    )
+    assert create_response.status_code == 201
+    member_id = create_response.json()["id"]
+
+    bounce_response = client.post(
+        "/api/v1/security/webhooks/sendgrid-events",
+        json={
+            "sg_message_id": "operator-message-2.filterdrecv-456",
+            "event": "bounce",
+            "email": "ops.bounce@example.com",
+            "reason": "mailbox unavailable",
+        },
+    )
+
+    assert bounce_response.status_code == 204
+    member = session.get(AppUser, UUID(member_id))
+    assert member is not None
+    assert member.invite_status == "failed"
+    assert member.invite_last_error == "SendGrid reported mailbox unavailable."
+
+
 def test_operator_invite_accept_links_clerk_identity(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

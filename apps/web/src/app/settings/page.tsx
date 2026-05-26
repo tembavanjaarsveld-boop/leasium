@@ -384,6 +384,17 @@ function inviteTone(member: SecurityMemberRecord): StatusTone {
   if (member.login_linked || member.invite_email_status === "accepted") {
     return "success";
   }
+  const detail = member.invite_email_detail.toLowerCase();
+  if (
+    detail.includes("delivered") ||
+    detail.includes("opened") ||
+    detail.includes("clicked")
+  ) {
+    return "success";
+  }
+  if (detail.includes("trying to deliver")) {
+    return "warning";
+  }
   if (
     member.invite_email_status === "failed" ||
     member.invite_email_status === "expired"
@@ -401,6 +412,22 @@ function inviteLabel(member: SecurityMemberRecord) {
     return "Login linked";
   }
   if (member.invite_email_status === "sent") {
+    const detail = member.invite_email_detail.toLowerCase();
+    if (detail.includes("clicked")) {
+      return "Invite clicked";
+    }
+    if (detail.includes("opened")) {
+      return "Invite opened";
+    }
+    if (detail.includes("delivered")) {
+      return "Delivered";
+    }
+    if (detail.includes("processed")) {
+      return "Processed";
+    }
+    if (detail.includes("trying to deliver")) {
+      return "Delayed";
+    }
     return "Invite sent";
   }
   if (member.invite_email_status === "failed") {
@@ -506,9 +533,7 @@ function customNotificationTemplate(
     channel: "email",
     provider: "sendgrid",
     subject_preview:
-      kind === "digest"
-        ? "Leasium Work digest"
-        : "New Leasium work assigned",
+      kind === "digest" ? "Leasium Work digest" : "New Leasium work assigned",
     content_summary:
       "Custom template key stored on this operator; provider sends still require explicit approval.",
     recovery_summary: null,
@@ -604,7 +629,8 @@ function communicationTemplateCatalog({
       subjectPreview: "Invoice INV-1001",
       bodyPreview:
         "Approved invoice email with issuer, due date, total, and the generated PDF attached.",
-      actionLabel: "Billing Readiness prepares the draft, then sends after explicit approval.",
+      actionLabel:
+        "Billing Readiness prepares the draft, then sends after explicit approval.",
       receiptLabel: "Invoice SendGrid events",
       receiptEndpoint: "/api/v1/invoice-drafts/webhooks/sendgrid-events",
       receiptDetail:
@@ -624,7 +650,8 @@ function communicationTemplateCatalog({
       subjectPreview: "Complete tenant onboarding",
       bodyPreview:
         "Invitation with property, unit, due date, expiry guidance, and review-first guardrails.",
-      actionLabel: "Tenant detail and Portfolio QA create reviewed invite links.",
+      actionLabel:
+        "Tenant detail and Portfolio QA create reviewed invite links.",
       receiptLabel: "Onboarding SendGrid events",
       receiptEndpoint: "/api/v1/tenant-onboarding/webhooks/sendgrid-events",
       receiptDetail:
@@ -644,13 +671,35 @@ function communicationTemplateCatalog({
       subjectPreview: "SMS invite link",
       bodyPreview:
         "Short tenant onboarding reminder with a scoped link and expiry context.",
-      actionLabel: "Only sent when SMS delivery is explicitly reviewed and approved.",
+      actionLabel:
+        "Only sent when SMS delivery is explicitly reviewed and approved.",
       receiptLabel: "Onboarding Twilio callbacks",
       receiptEndpoint: "/api/v1/tenant-onboarding/webhooks/twilio-status",
       receiptDetail:
         "Callbacks record queued, delivered, failed, and recovery states on the onboarding row.",
       sourceLabel: "Runtime setting",
       tone: "neutral",
+    },
+    {
+      id: "operator-invite",
+      title: "Operator invite",
+      audience: "Operators",
+      channel: "email",
+      provider: "SendGrid",
+      templateKey: "operator_invite",
+      templateVersion: "v1",
+      brand: brandName,
+      subjectPreview: "Join SKJ Capital on Leasium",
+      bodyPreview:
+        "Owner/admin invite with organisation context, Clerk sign-in handoff, and expiry copy.",
+      actionLabel:
+        "Security settings sends or resends invites after explicit admin action.",
+      receiptLabel: "Operator SendGrid events",
+      receiptEndpoint: "/api/v1/security/webhooks/sendgrid-events",
+      receiptDetail:
+        "Receipts update the operator row so Settings can show queued, delivered, opened, clicked, or failed.",
+      sourceLabel: "Runtime setting",
+      tone: "success",
     },
     {
       id: "work-assignment",
@@ -666,7 +715,8 @@ function communicationTemplateCatalog({
       bodyPreview:
         workNotice?.content_summary ??
         "Includes the work title, due date, source workspace, and a link back to Leasium.",
-      actionLabel: "Work rows and Notifications send notices only after operator action.",
+      actionLabel:
+        "Work rows and Notifications send notices only after operator action.",
       receiptLabel: "Work SendGrid events",
       receiptEndpoint: "/api/v1/work-assignments/webhooks/sendgrid-events",
       receiptDetail:
@@ -684,12 +734,12 @@ function communicationTemplateCatalog({
       templateVersion: workDigest?.default_version ?? "v1",
       brand: "Leasium",
       subjectPreview:
-        workDigest?.subject_preview ??
-        "Leasium daily or weekly Work digest",
+        workDigest?.subject_preview ?? "Leasium daily or weekly Work digest",
       bodyPreview:
         workDigest?.content_summary ??
         "Groups assigned work by urgency, follow-up status, and source workspace.",
-      actionLabel: "Digest previews stay review-only until send approval is explicit.",
+      actionLabel:
+        "Digest previews stay review-only until send approval is explicit.",
       receiptLabel: "Work digest SendGrid events",
       receiptEndpoint: "/api/v1/work-assignments/webhooks/sendgrid-events",
       receiptDetail:
@@ -709,7 +759,8 @@ function communicationTemplateCatalog({
       subjectPreview: "Maintenance update request",
       bodyPreview:
         "Reviewed contractor email with attendance, quote, completion evidence, or billing-document copy.",
-      actionLabel: "Maintenance detail pre-fills a template, then sends after review.",
+      actionLabel:
+        "Maintenance detail pre-fills a template, then sends after review.",
       receiptLabel: "Maintenance SendGrid events",
       receiptEndpoint: "/api/v1/maintenance/webhooks/sendgrid-events",
       receiptDetail:
@@ -729,7 +780,8 @@ function communicationTemplateCatalog({
       subjectPreview: "SMS contractor update",
       bodyPreview:
         "Short reviewed SMS for attendance windows, quote follow-up, or completion evidence.",
-      actionLabel: "Maintenance detail sends SMS separately from contractor email.",
+      actionLabel:
+        "Maintenance detail sends SMS separately from contractor email.",
       receiptLabel: "Maintenance Twilio callbacks",
       receiptEndpoint: "/api/v1/maintenance/webhooks/twilio-status",
       receiptDetail:
@@ -749,7 +801,8 @@ function communicationTemplateCatalog({
       subjectPreview: "Portal preference receipt",
       bodyPreview:
         "Tenant-facing saved receipt for billing email, compliance reminders, email, and SMS preferences.",
-      actionLabel: "Tenant portal stores preferences immediately inside the tenant boundary.",
+      actionLabel:
+        "Tenant portal stores preferences immediately inside the tenant boundary.",
       receiptLabel: "Portal audit receipt",
       receiptEndpoint: null,
       receiptDetail:
@@ -841,7 +894,10 @@ function IntegrationsHealthCard({
   integrations: IntegrationStatusRecord | undefined;
   isLoading: boolean;
 }) {
-  const rows: Array<{ key: keyof IntegrationStatusRecord; data: ProviderStatusRecord }> = integrations
+  const rows: Array<{
+    key: keyof IntegrationStatusRecord;
+    data: ProviderStatusRecord;
+  }> = integrations
     ? [
         { key: "serpapi", data: integrations.serpapi },
         { key: "openai", data: integrations.openai },
@@ -1328,7 +1384,8 @@ function SettingsWorkspace() {
     workAssignmentEmailEnabled,
   ).length;
   const workSmsReadyCount = selectedEntityRoleMembers.filter(
-    (member) => workAssignmentSmsEnabled(member) && workAssignmentSmsPhone(member),
+    (member) =>
+      workAssignmentSmsEnabled(member) && workAssignmentSmsPhone(member),
   ).length;
   const workDigestEnabledCount = selectedEntityRoleMembers.filter(
     (member) => workAssignmentDigestCadence(member) !== "off",
@@ -2201,9 +2258,7 @@ function SettingsWorkspace() {
                           </StatusBadge>
                           <StatusBadge
                             tone={
-                              workSmsEnabled && smsPhone
-                                ? "primary"
-                                : "neutral"
+                              workSmsEnabled && smsPhone ? "primary" : "neutral"
                             }
                           >
                             {workSmsEnabled && smsPhone
@@ -2287,7 +2342,8 @@ function SettingsWorkspace() {
                                 Assignment SMS
                               </span>
                               <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                                Stores a reviewed operator phone for future SMS recovery.
+                                Stores a reviewed operator phone for future SMS
+                                recovery.
                               </span>
                             </span>
                           </label>
@@ -2730,7 +2786,9 @@ function SettingsWorkspace() {
               icon={<Tags size={17} className="text-primary" />}
               actions={
                 selectedEntityId ? (
-                  <StatusBadge tone={ownershipTags.length ? "primary" : "neutral"}>
+                  <StatusBadge
+                    tone={ownershipTags.length ? "primary" : "neutral"}
+                  >
                     {ownershipTags.length}{" "}
                     {ownershipTags.length === 1 ? "tag" : "tags"}
                   </StatusBadge>
@@ -2750,69 +2808,71 @@ function SettingsWorkspace() {
                       : "Could not load ownership tags."}
                   </div>
                 ) : null}
-                {!propertiesQuery.isLoading && ownershipTags.length ? (
-                  ownershipTags.map((tag) => (
-                    <div
-                      key={tag.key}
-                      className="grid gap-3 px-4 py-3 text-sm md:grid-cols-[minmax(0,1fr)_140px_minmax(260px,1.5fr)]"
-                    >
-                      <div className="min-w-0">
-                        <span
-                          className={`inline-flex max-w-full items-center truncate rounded-full border px-2.5 py-1 text-xs font-semibold leading-4 ${ownershipChipClassName(tag.palette)}`}
-                          title={tag.label}
-                        >
-                          {tag.label}
-                        </span>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {tag.sources.map((source) => (
-                            <span
-                              key={`${tag.key}-${source}`}
-                              className="rounded-md bg-muted px-2 py-0.5 text-leasium-micro font-medium text-muted-foreground"
+                {!propertiesQuery.isLoading && ownershipTags.length
+                  ? ownershipTags.map((tag) => (
+                      <div
+                        key={tag.key}
+                        className="grid gap-3 px-4 py-3 text-sm md:grid-cols-[minmax(0,1fr)_140px_minmax(260px,1.5fr)]"
+                      >
+                        <div className="min-w-0">
+                          <span
+                            className={`inline-flex max-w-full items-center truncate rounded-full border px-2.5 py-1 text-xs font-semibold leading-4 ${ownershipChipClassName(tag.palette)}`}
+                            title={tag.label}
+                          >
+                            {tag.label}
+                          </span>
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {tag.sources.map((source) => (
+                              <span
+                                key={`${tag.key}-${source}`}
+                                className="rounded-md bg-muted px-2 py-0.5 text-leasium-micro font-medium text-muted-foreground"
+                              >
+                                {source}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 md:block">
+                          <StatusBadge tone="neutral">
+                            {tag.propertyCount}{" "}
+                            {tag.propertyCount === 1
+                              ? "property"
+                              : "properties"}
+                          </StatusBadge>
+                          <Link
+                            href={`/properties?entity_id=${selectedEntityId}&owner_tag=${encodeURIComponent(tag.key)}`}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover md:mt-2"
+                          >
+                            <ExternalLink size={13} />
+                            Open tagged properties
+                          </Link>
+                        </div>
+                        <div className="grid gap-1">
+                          {tag.properties.slice(0, 3).map((property) => (
+                            <Link
+                              key={property.id}
+                              href={`/properties?entity_id=${selectedEntityId}&property_id=${property.id}`}
+                              className="min-w-0 text-sm font-medium text-primary hover:text-primary-hover"
                             >
-                              {source}
-                            </span>
+                              <span className="block truncate">
+                                {property.name}
+                              </span>
+                              <span className="block truncate text-xs font-normal text-muted-foreground">
+                                {property.streetAddress}
+                                {property.suburb ? `, ${property.suburb}` : ""}
+                                {property.state ? ` ${property.state}` : ""}
+                              </span>
+                            </Link>
                           ))}
+                          {tag.properties.length > 3 ? (
+                            <div className="text-xs text-muted-foreground">
+                              +{tag.properties.length - 3} more properties
+                            </div>
+                          ) : null}
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 md:block">
-                        <StatusBadge tone="neutral">
-                          {tag.propertyCount}{" "}
-                          {tag.propertyCount === 1 ? "property" : "properties"}
-                        </StatusBadge>
-                        <Link
-                          href={`/properties?entity_id=${selectedEntityId}&owner_tag=${encodeURIComponent(tag.key)}`}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover md:mt-2"
-                        >
-                          <ExternalLink size={13} />
-                          Open tagged properties
-                        </Link>
-                      </div>
-                      <div className="grid gap-1">
-                        {tag.properties.slice(0, 3).map((property) => (
-                          <Link
-                            key={property.id}
-                            href={`/properties?entity_id=${selectedEntityId}&property_id=${property.id}`}
-                            className="min-w-0 text-sm font-medium text-primary hover:text-primary-hover"
-                          >
-                            <span className="block truncate">
-                              {property.name}
-                            </span>
-                            <span className="block truncate text-xs font-normal text-muted-foreground">
-                              {property.streetAddress}
-                              {property.suburb ? `, ${property.suburb}` : ""}
-                              {property.state ? ` ${property.state}` : ""}
-                            </span>
-                          </Link>
-                        ))}
-                        {tag.properties.length > 3 ? (
-                          <div className="text-xs text-muted-foreground">
-                            +{tag.properties.length - 3} more properties
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))
-                ) : null}
+                    ))
+                  : null}
                 {!propertiesQuery.isLoading &&
                 !propertiesQuery.error &&
                 selectedEntityId &&
@@ -2961,9 +3021,7 @@ function SettingsWorkspace() {
                   >
                     {statusLabel(status.accounting_freshness.status)}
                   </StatusBadge>
-                  <span
-                    title="Operator-configurable via XERO_RECONCILIATION_STALE_AFTER_DAYS"
-                  >
+                  <span title="Operator-configurable via XERO_RECONCILIATION_STALE_AFTER_DAYS">
                     <StatusBadge
                       tone={
                         status.accounting_freshness.stale_reconciliation
@@ -3009,7 +3067,8 @@ function SettingsWorkspace() {
                           .xero_linked_open_invoice_count
                       }
                     </span>
-                    {status.accounting_freshness.last_payment_reconciliation_source ? (
+                    {status.accounting_freshness
+                      .last_payment_reconciliation_source ? (
                       <span>
                         Payment source{" "}
                         {statusLabel(
@@ -3018,7 +3077,8 @@ function SettingsWorkspace() {
                         )}
                       </span>
                     ) : null}
-                    {status.accounting_freshness.last_payment_reconciliation_mode ? (
+                    {status.accounting_freshness
+                      .last_payment_reconciliation_mode ? (
                       <span>
                         Payment mode{" "}
                         {statusLabel(
