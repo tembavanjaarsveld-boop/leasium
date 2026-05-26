@@ -530,7 +530,7 @@ function tenantPortalClaimErrorMessage(
   if (lower.includes("login email must match")) {
     if (signedInEmail && inviteEmail) {
       if (normaliseEmail(signedInEmail) === normaliseEmail(inviteEmail)) {
-        return `The browser is signed in as ${signedInEmail}, but Leasium could not verify that email on the server yet. Try again; if it repeats, the property team needs to check tenant sign-up settings.`;
+        return `The browser is signed in as ${signedInEmail}, but Leasium could not verify that session on the server. Reset sign-in, then enter the code for ${inviteEmail} again.`;
       }
       return `Leasium could not verify that ${signedInEmail} owns this invite for ${inviteEmail}. Sign out, then sign in directly with ${inviteEmail}.`;
     }
@@ -546,6 +546,20 @@ function tenantPortalClaimNeedsDifferentLogin(error: unknown) {
     error instanceof Error &&
     (error.message.toLowerCase().includes("already linked to another tenant") ||
       error.message.toLowerCase().includes("login email must match"))
+  );
+}
+
+function tenantPortalClaimNeedsSessionReset(
+  error: unknown,
+  signedInEmail?: string | null,
+  inviteEmail?: string | null,
+) {
+  return (
+    error instanceof Error &&
+    error.message.toLowerCase().includes("login email must match") &&
+    Boolean(signedInEmail) &&
+    Boolean(inviteEmail) &&
+    normaliseEmail(signedInEmail) === normaliseEmail(inviteEmail)
   );
 }
 
@@ -3160,45 +3174,65 @@ function TenantPortalContent({
                   </SignOutButton>
                 </div>
               ) : gateClaimMutation.isError ? (
-                <div className="grid gap-3 text-sm">
-                  <StatusBadge tone="danger">
-                    Couldn&apos;t link this login
-                  </StatusBadge>
-                  <p className="text-muted-foreground">
-                    {tenantPortalClaimErrorMessage(
-                      gateClaimMutation.error,
-                      signedInEmail,
-                      preview.tenant_email,
-                    )}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        gateClaimMutation.reset();
-                        if (!user) {
-                          gateClaimMutation.mutate();
-                          return;
-                        }
-                        void user.reload().finally(() => {
-                          gateClaimMutation.mutate();
-                        });
-                      }}
-                    >
-                      Try again
-                    </Button>
-                    {tenantPortalClaimNeedsDifferentLogin(
-                      gateClaimMutation.error,
-                    ) ? (
-                      <SignOutButton redirectUrl={returnTo}>
-                        <SecondaryButton type="button">
-                          <LogIn size={15} />
-                          Use another login
-                        </SecondaryButton>
-                      </SignOutButton>
-                    ) : null}
-                  </div>
-                </div>
+                (() => {
+                  const needsSessionReset = tenantPortalClaimNeedsSessionReset(
+                    gateClaimMutation.error,
+                    signedInEmail,
+                    preview.tenant_email,
+                  );
+                  return (
+                    <div className="grid gap-3 text-sm">
+                      <StatusBadge tone="danger">
+                        Couldn&apos;t link this login
+                      </StatusBadge>
+                      <p className="text-muted-foreground">
+                        {tenantPortalClaimErrorMessage(
+                          gateClaimMutation.error,
+                          signedInEmail,
+                          preview.tenant_email,
+                        )}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {needsSessionReset ? (
+                          <SignOutButton redirectUrl={returnTo}>
+                            <Button type="button">
+                              <LogIn size={15} />
+                              Reset sign-in
+                            </Button>
+                          </SignOutButton>
+                        ) : (
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              gateClaimMutation.reset();
+                              if (!user) {
+                                gateClaimMutation.mutate();
+                                return;
+                              }
+                              void user.reload().finally(() => {
+                                gateClaimMutation.mutate();
+                              });
+                            }}
+                          >
+                            Try again
+                          </Button>
+                        )}
+                        {tenantPortalClaimNeedsDifferentLogin(
+                          gateClaimMutation.error,
+                        ) ? (
+                          <SignOutButton redirectUrl={returnTo}>
+                            <SecondaryButton type="button">
+                              <LogIn size={15} />
+                              {needsSessionReset
+                                ? "Use another email"
+                                : "Use another login"}
+                            </SecondaryButton>
+                          </SignOutButton>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 size={16} className="animate-spin text-primary" />
