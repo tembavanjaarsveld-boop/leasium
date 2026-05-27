@@ -275,6 +275,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     page.getByRole("tab", { name: "All drafts 2" }),
   ).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText("Showing all 2 drafts.")).toBeVisible();
+  await expect(
+    page.getByText("2 drafts remaining this session."),
+  ).toBeVisible();
 
   const smsCard = page.locator("section").filter({ hasText: "Inbound SMS" });
   await expect(smsCard).toBeVisible();
@@ -294,6 +297,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   );
   await expect(page.getByRole("group", { name: "Remaining now: 1" })).toBeVisible();
   await expect(page.getByRole("group", { name: "Settled now: 1" })).toBeVisible();
+  await expect(
+    page.getByText("1 draft remaining, 1 settled this session."),
+  ).toBeVisible();
   await expect(rentReviewCard.getByText("Deferred", { exact: true })).toBeVisible();
   await expect(rentReviewCard.getByLabel("Subject")).toBeDisabled();
   await expect(
@@ -375,6 +381,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   ).toBeVisible();
   await expect(page.getByRole("group", { name: "Remaining now: 0" })).toBeVisible();
   await expect(page.getByRole("group", { name: "Settled now: 2" })).toBeVisible();
+  await expect(
+    page.getByText("0 drafts remaining, 2 settled this session."),
+  ).toBeVisible();
   await expect(
     smsCard.getByText(
       "This draft is locked because a dispatch or dismiss receipt has been recorded.",

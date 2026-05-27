@@ -204,6 +204,10 @@ function CommsContent() {
   );
   const settledCount = settledCandidateIds.size;
   const remainingCount = Math.max(candidates.length - settledCount, 0);
+  const progressSummaryLabel =
+    settledCount === 0
+      ? `${remainingCount} ${remainingCount === 1 ? "draft" : "drafts"} remaining this session.`
+      : `${remainingCount} ${remainingCount === 1 ? "draft" : "drafts"} remaining, ${settledCount} settled this session.`;
   const queueGeneratedLabel = formatDateTime(queueQuery.data?.generated_at);
   const queueRefreshDisabled = !selectedEntityId || queueQuery.isFetching;
 
@@ -287,6 +291,9 @@ function CommsContent() {
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               {filterSummaryLabel}.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {progressSummaryLabel}
             </p>
           </div>
         ) : null}
