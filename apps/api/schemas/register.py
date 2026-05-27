@@ -451,6 +451,7 @@ class RentRollRowRead(BaseModel):
     lease_status: LeaseStatus | None
     commencement_date: date | None
     expiry_date: date | None
+    next_review_date: date | None
     tenant_billing_email: str | None
     annual_rent_cents: int | None
     rent_frequency: RentFrequency | None

@@ -19,6 +19,8 @@ import {
   ClipboardCheck,
   Download,
   FileText,
+  ListChecks,
+  LockKeyhole,
   MailCheck,
   Printer,
   ReceiptText,
@@ -53,6 +55,7 @@ import {
   type OwnerStatementRecord,
   type OwnerStatementsRecord,
   type XeroAccountingFreshnessRecord,
+  type XeroStatusRecord,
 } from "@/lib/api";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -68,6 +71,27 @@ type StatementPackReadiness = {
   unpaidLocalCount: number;
   ownerCount: number;
   outstandingCents: number;
+};
+
+type FinanceChecklistItemStatus = "complete" | "review" | "blocked" | "locked";
+
+type FinanceChecklistItem = {
+  id: string;
+  title: string;
+  detail: string;
+  status: FinanceChecklistItemStatus;
+  metric: string;
+};
+
+type FinanceChecklist = {
+  status: "ready" | "review" | "blocked";
+  title: string;
+  detail: string;
+  completedCount: number;
+  reviewCount: number;
+  blockedCount: number;
+  lockedCount: number;
+  items: FinanceChecklistItem[];
 };
 
 function defaultMonth(): string {
@@ -155,6 +179,41 @@ function statementPackLabel(status: StatementPackStatus) {
   return "Incomplete";
 }
 
+function checklistStatusLabel(status: FinanceChecklistItemStatus) {
+  if (status === "complete") return "Done";
+  if (status === "blocked") return "Blocked";
+  if (status === "locked") return "Locked";
+  return "Review";
+}
+
+function checklistStatusTone(status: FinanceChecklistItemStatus) {
+  if (status === "complete") return "success" as const;
+  if (status === "blocked") return "danger" as const;
+  if (status === "locked") return "neutral" as const;
+  return "warning" as const;
+}
+
+function checklistOverallTone(status: FinanceChecklist["status"]) {
+  if (status === "ready") return "success" as const;
+  if (status === "blocked") return "danger" as const;
+  return "warning" as const;
+}
+
+function financeChecklistText(checklist: FinanceChecklist) {
+  return [
+    "Owner statements finance checklist",
+    `${checklist.title}: ${checklist.detail}`,
+    `${checklist.completedCount} complete / ${checklist.reviewCount} review / ${checklist.blockedCount} blocked / ${checklist.lockedCount} locked`,
+    "",
+    ...checklist.items.map(
+      (item) =>
+        `- ${item.title}: ${checklistStatusLabel(item.status)} (${item.metric}) - ${item.detail}`,
+    ),
+    "",
+    "Review-only: owner dispatch remains locked until the explicit approval workflow is wired.",
+  ].join("\n");
+}
+
 function buildStatementPackReadiness({
   statements,
   invoiceDrafts,
@@ -169,7 +228,8 @@ function buildStatementPackReadiness({
   handoffStatus: StatementPackStatus | null;
 }): StatementPackReadiness {
   const monthlyApproved = invoiceDrafts.filter(
-    (draft) => draft.status === "approved" && draft.issue_date?.startsWith(month),
+    (draft) =>
+      draft.status === "approved" && draft.issue_date?.startsWith(month),
   );
   const localApprovedCount = monthlyApproved.length;
   const unpaidLocalCount = monthlyApproved.filter(
@@ -223,6 +283,173 @@ function buildStatementPackReadiness({
     unpaidLocalCount,
     ownerCount: owners.length,
     outstandingCents,
+  };
+}
+
+function buildFinanceChecklist({
+  readiness,
+  owners,
+  xeroStatus,
+}: {
+  readiness: StatementPackReadiness;
+  owners: OwnerStatementRecord[];
+  xeroStatus: XeroStatusRecord | undefined;
+}): FinanceChecklist {
+  const ownersWithInvoices = owners.filter((owner) => owner.invoice_count > 0);
+  const missingRecipientCount = ownersWithInvoices.filter(
+    (owner) => !owner.billing_email,
+  ).length;
+  const paymentReviewCount = ownersWithInvoices.filter(
+    (owner) => owner.outstanding_cents > 0,
+  ).length;
+  const accountingFreshness = xeroStatus?.accounting_freshness;
+  const issueBlockers =
+    xeroStatus?.issues.filter((issue) => issue.severity === "blocker").length ??
+    0;
+  const issueWarnings =
+    xeroStatus?.issues.filter((issue) => issue.severity === "warning").length ??
+    0;
+  const accountingBlockers = Math.max(
+    accountingFreshness?.readiness_blocker_count ?? 0,
+    issueBlockers,
+  );
+  const accountingWarnings = Math.max(
+    accountingFreshness?.readiness_warning_count ?? 0,
+    issueWarnings,
+  );
+  const approvedUnsynced =
+    accountingFreshness?.approved_unsynced_invoice_count ?? 0;
+  const accountingStatus = accountingFreshness?.status ?? "missing";
+  const accountingIssueCount =
+    accountingBlockers + accountingWarnings + approvedUnsynced;
+
+  const items: FinanceChecklistItem[] = [
+    {
+      id: "billing-close",
+      title: "Billing close",
+      detail:
+        readiness.statementInvoiceCount > 0
+          ? "Approved invoices are present for this statement month."
+          : "Approve this month's invoices before finance can close statements.",
+      status: readiness.statementInvoiceCount > 0 ? "complete" : "blocked",
+      metric: `${readiness.statementInvoiceCount} statement invoices`,
+    },
+    {
+      id: "accounting-readiness",
+      title: "Accounting readiness",
+      detail:
+        accountingBlockers > 0 || accountingStatus === "attention"
+          ? "Xero readiness has blockers that should be cleared before relying on this pack."
+          : accountingIssueCount > 0 || accountingStatus !== "ready"
+            ? "Xero readiness needs a finance review before dispatch approval."
+            : "Xero readiness is clear for this statement cycle.",
+      status:
+        accountingBlockers > 0 || accountingStatus === "attention"
+          ? "blocked"
+          : accountingIssueCount > 0 || accountingStatus !== "ready"
+            ? "review"
+            : "complete",
+      metric:
+        accountingIssueCount > 0
+          ? `${accountingIssueCount} accounting checks`
+          : "No accounting issues",
+    },
+    {
+      id: "recipient-review",
+      title: "Recipient review",
+      detail:
+        ownersWithInvoices.length === 0
+          ? "Recipient review unlocks once owner statements have invoices."
+          : missingRecipientCount > 0
+            ? "Add owner billing emails before statements can move to send approval."
+            : "Every invoiced owner has a billing recipient recorded.",
+      status:
+        ownersWithInvoices.length === 0
+          ? "locked"
+          : missingRecipientCount > 0
+            ? "blocked"
+            : "complete",
+      metric:
+        missingRecipientCount > 0
+          ? `${missingRecipientCount} missing`
+          : `${ownersWithInvoices.length} reviewed`,
+    },
+    {
+      id: "payment-review",
+      title: "Payment review",
+      detail:
+        ownersWithInvoices.length === 0
+          ? "Payment review unlocks once this month has approved invoices."
+          : paymentReviewCount > 0 || readiness.unpaidLocalCount > 0
+            ? "Outstanding or unreconciled payments remain; statements can be exported for review only."
+            : "No outstanding owner balances are showing for this statement cycle.",
+      status:
+        ownersWithInvoices.length === 0
+          ? "locked"
+          : paymentReviewCount > 0 || readiness.unpaidLocalCount > 0
+            ? "review"
+            : "complete",
+      metric:
+        readiness.outstandingCents > 0
+          ? formatMoney(readiness.outstandingCents)
+          : "Fully paid",
+    },
+    {
+      id: "pdf-pack",
+      title: "PDF pack",
+      detail:
+        readiness.statementInvoiceCount > 0
+          ? "The accountant PDF pack and manifest are available for download."
+          : "The PDF pack is held until statement invoices exist.",
+      status: readiness.statementInvoiceCount > 0 ? "complete" : "locked",
+      metric:
+        readiness.statementInvoiceCount > 0
+          ? "Export available"
+          : "Awaiting invoices",
+    },
+    {
+      id: "dispatch-lock",
+      title: "Owner dispatch",
+      detail:
+        readiness.status === "ready" && missingRecipientCount === 0
+          ? "Send approval is ready for the next workflow slice; this page still cannot send owner emails."
+          : "Owner email dispatch remains locked while finance review is incomplete.",
+      status: "locked",
+      metric: "No email sent",
+    },
+  ];
+
+  const actionableItems = items.filter((item) => item.status !== "locked");
+  const completedCount = actionableItems.filter(
+    (item) => item.status === "complete",
+  ).length;
+  const reviewCount = items.filter((item) => item.status === "review").length;
+  const blockedCount = items.filter((item) => item.status === "blocked").length;
+  const lockedCount = items.filter((item) => item.status === "locked").length;
+  const status =
+    blockedCount > 0 ? "blocked" : reviewCount > 0 ? "review" : "ready";
+  const title =
+    status === "ready"
+      ? "Finance checklist ready"
+      : status === "blocked"
+        ? "Finance checklist blocked"
+        : "Finance checklist needs review";
+  const detail =
+    status === "ready"
+      ? "The review pack is ready for finance sign-off. Owner send still requires a separate approval workflow."
+      : status === "blocked"
+        ? "Clear the blocked checks before finance signs off the month-end statement pack."
+        : "The pack can be reviewed, but finance should resolve the highlighted checks before dispatch approval.";
+
+  return {
+    status,
+    title,
+    detail,
+    completedCount,
+    reviewCount,
+    blockedCount,
+    lockedCount,
+    items,
   };
 }
 
@@ -304,7 +531,9 @@ function StatementsContent() {
       setSelectedOwnerIdentity("");
       return;
     }
-    if (!owners.some((owner) => owner.owner_identity === selectedOwnerIdentity)) {
+    if (
+      !owners.some((owner) => owner.owner_identity === selectedOwnerIdentity)
+    ) {
       setSelectedOwnerIdentity(owners[0].owner_identity);
     }
   }, [owners, selectedOwnerIdentity]);
@@ -324,7 +553,13 @@ function StatementsContent() {
         invoiceCount: acc.invoiceCount + owner.invoice_count,
         propertyCount: acc.propertyCount + owner.property_count,
       }),
-      { invoiced: 0, paid: 0, outstanding: 0, invoiceCount: 0, propertyCount: 0 },
+      {
+        invoiced: 0,
+        paid: 0,
+        outstanding: 0,
+        invoiceCount: 0,
+        propertyCount: 0,
+      },
     );
   }, [owners]);
   const statementReadiness = useMemo(
@@ -343,6 +578,15 @@ function StatementsContent() {
       statementsQuery.data,
       xeroStatusQuery.data?.accounting_freshness,
     ],
+  );
+  const financeChecklist = useMemo(
+    () =>
+      buildFinanceChecklist({
+        readiness: statementReadiness,
+        owners,
+        xeroStatus: xeroStatusQuery.data,
+      }),
+    [owners, statementReadiness, xeroStatusQuery.data],
   );
   const openedFromBilling = handoffSource === "billing-readiness";
 
@@ -368,7 +612,7 @@ function StatementsContent() {
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
         <PageHeader
           title="Owner statements"
-          description="Per-owner monthly roll-up of invoiced, paid, and outstanding totals across the portfolio. Read-only — PDF export and email dispatch land in follow-up slices."
+          description="Per-owner monthly roll-up of invoiced, paid, and outstanding totals across the portfolio. PDF exports are review-only; owner email dispatch stays locked until an explicit approval flow is wired."
         />
 
         <section className="grid gap-3 sm:grid-cols-2">
@@ -404,6 +648,15 @@ function StatementsContent() {
           }).toString()}`}
         />
 
+        <FinanceChecklistPanel
+          checklist={financeChecklist}
+          loading={
+            statementsQuery.isLoading ||
+            invoiceDraftsQuery.isLoading ||
+            xeroStatusQuery.isLoading
+          }
+        />
+
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric
             label="Owners"
@@ -419,10 +672,7 @@ function StatementsContent() {
               portfolioTotals.invoiceCount === 1 ? "invoice" : "invoices"
             }`}
           />
-          <Metric
-            label="Paid"
-            value={formatMoney(portfolioTotals.paid)}
-          />
+          <Metric label="Paid" value={formatMoney(portfolioTotals.paid)} />
           <Metric
             label="Outstanding"
             value={formatMoney(portfolioTotals.outstanding)}
@@ -454,7 +704,9 @@ function StatementsContent() {
           </p>
         ) : null}
 
-        {!statementsQuery.isLoading && owners.length === 0 && !statementsQuery.error ? (
+        {!statementsQuery.isLoading &&
+        owners.length === 0 &&
+        !statementsQuery.error ? (
           <EmptyState
             icon={<Wallet size={18} />}
             title="No invoiced amounts for this month."
@@ -583,10 +835,12 @@ function StatementPreviewPanel({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `owner-statement-${month}-${owner.owner_identity
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "") || "owner"}.pdf`;
+      anchor.download = `owner-statement-${month}-${
+        owner.owner_identity
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "") || "owner"
+      }.pdf`;
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
@@ -606,7 +860,9 @@ function StatementPreviewPanel({
       icon={<ReceiptText size={17} className="text-primary" />}
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge tone={owner.outstanding_cents > 0 ? "warning" : "success"}>
+          <StatusBadge
+            tone={owner.outstanding_cents > 0 ? "warning" : "success"}
+          >
             {owner.outstanding_cents > 0 ? "Payment review" : "Ready to print"}
           </StatusBadge>
         </div>
@@ -686,7 +942,10 @@ function StatementPreviewPanel({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="Invoiced" value={formatMoney(owner.invoiced_cents)} />
+            <Metric
+              label="Invoiced"
+              value={formatMoney(owner.invoiced_cents)}
+            />
             <Metric label="Paid" value={formatMoney(owner.paid_cents)} />
             <Metric
               label="Outstanding"
@@ -731,7 +990,11 @@ function StatementPreviewPanel({
           </div>
 
           <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
-            Review state: {owner.outstanding_cents > 0 ? "payment review remains open" : "ready for owner dispatch"}. Dispatch is still explicit and separate from this preview.
+            Review state:{" "}
+            {owner.outstanding_cents > 0
+              ? "payment review remains open"
+              : "ready for owner dispatch"}
+            . Dispatch is still explicit and separate from this preview.
           </div>
         </div>
 
@@ -786,7 +1049,9 @@ function StatementPreviewPanel({
           </pre>
 
           {dispatchReceipt ? (
-            <p className="text-sm font-medium text-success">{dispatchReceipt}</p>
+            <p className="text-sm font-medium text-success">
+              {dispatchReceipt}
+            </p>
           ) : null}
 
           <div className="flex items-start gap-2 rounded-md bg-muted p-3 text-xs text-muted-foreground">
@@ -960,14 +1225,133 @@ function StatementReadinessPanel({
   );
 }
 
+function FinanceChecklistPanel({
+  checklist,
+  loading,
+}: {
+  checklist: FinanceChecklist;
+  loading: boolean;
+}) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const actionableTotal = checklist.items.length - checklist.lockedCount;
+  const copyChecklist = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(financeChecklistText(checklist));
+    setCopyReceipt("Finance checklist copied.");
+  };
+
+  return (
+    <SectionPanel
+      title="Finance checklist"
+      description="Automated month-end checks for the owner statement pack."
+      icon={<ListChecks size={17} className="text-primary" />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton type="button" onClick={copyChecklist}>
+            <ClipboardCheck size={15} />
+            Copy checklist
+          </SecondaryButton>
+          <StatusBadge
+            tone={loading ? "neutral" : checklistOverallTone(checklist.status)}
+          >
+            {loading
+              ? "Checking"
+              : checklist.status === "ready"
+                ? "Ready"
+                : checklist.status === "blocked"
+                  ? "Blocked"
+                  : "Review"}
+          </StatusBadge>
+        </div>
+      }
+    >
+      <div className="grid gap-4 p-4">
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        ) : null}
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div>
+            <div className="text-sm font-semibold text-foreground">
+              {checklist.title}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {checklist.detail}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+            <StatusBadge tone="success">
+              {checklist.completedCount}/{actionableTotal} done
+            </StatusBadge>
+            <StatusBadge
+              tone={checklist.blockedCount > 0 ? "danger" : "neutral"}
+            >
+              {checklist.blockedCount} blocked
+            </StatusBadge>
+            <StatusBadge
+              tone={checklist.reviewCount > 0 ? "warning" : "neutral"}
+            >
+              {checklist.reviewCount} review
+            </StatusBadge>
+            <StatusBadge tone="neutral">
+              {checklist.lockedCount} locked
+            </StatusBadge>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          {checklist.items.map((item) => {
+            const tone = checklistStatusTone(item.status);
+            const icon =
+              item.status === "complete" ? (
+                <CheckCircle2 size={16} />
+              ) : item.status === "locked" ? (
+                <LockKeyhole size={16} />
+              ) : (
+                <AlertTriangle size={16} />
+              );
+            return (
+              <div
+                key={item.id}
+                className="grid gap-2 rounded-md border border-border bg-white p-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <span className="mt-0.5 text-primary">{icon}</span>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-foreground">
+                        {item.title}
+                      </div>
+                      <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                        {item.detail}
+                      </p>
+                    </div>
+                  </div>
+                  <StatusBadge tone={tone}>
+                    {checklistStatusLabel(item.status)}
+                  </StatusBadge>
+                </div>
+                <div className="text-xs font-medium text-muted-foreground">
+                  {item.metric}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </SectionPanel>
+  );
+}
+
 function OwnerCard({ owner }: { owner: OwnerStatementRecord }) {
   const trusteeBadge = owner.trustee_name
     ? `Trustee: ${owner.trustee_name}`
     : owner.owner_legal_name
       ? `Owner: ${owner.owner_legal_name}`
       : "Unattributed";
-  const outstandingTone =
-    owner.outstanding_cents > 0 ? "warning" : "success";
+  const outstandingTone = owner.outstanding_cents > 0 ? "warning" : "success";
   return (
     <SectionPanel
       title={owner.owner_identity}
@@ -1009,7 +1393,9 @@ function OwnerCard({ owner }: { owner: OwnerStatementRecord }) {
                 <th className="px-3 py-2 font-semibold">Property</th>
                 <th className="px-3 py-2 text-right font-semibold">Invoiced</th>
                 <th className="px-3 py-2 text-right font-semibold">Paid</th>
-                <th className="px-3 py-2 text-right font-semibold">Outstanding</th>
+                <th className="px-3 py-2 text-right font-semibold">
+                  Outstanding
+                </th>
                 <th className="px-3 py-2 text-right font-semibold">Invoices</th>
               </tr>
             </thead>
@@ -1018,10 +1404,7 @@ function OwnerCard({ owner }: { owner: OwnerStatementRecord }) {
                 <tr key={line.property_id} className="border-t border-border">
                   <td className="px-3 py-2 font-medium">
                     <span className="inline-flex items-center gap-2">
-                      <FileText
-                        size={14}
-                        className="text-muted-foreground"
-                      />
+                      <FileText size={14} className="text-muted-foreground" />
                       {line.property_name}
                     </span>
                   </td>
@@ -1059,9 +1442,8 @@ function OwnerCard({ owner }: { owner: OwnerStatementRecord }) {
         <p className="flex items-start gap-2 text-xs text-muted-foreground">
           <Wallet size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
           Paid totals are sourced from Xero reconciliation receipts on the
-          invoice metadata. Outgoings and management fees roll up in a
-          future slice; today this view shows invoiced / paid / outstanding
-          only.
+          invoice metadata. Outgoings and management fees roll up in a future
+          slice; today this view shows invoiced / paid / outstanding only.
         </p>
       </div>
     </SectionPanel>

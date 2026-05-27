@@ -435,6 +435,7 @@ def test_charge_rules_and_rent_roll_surface_billing_readiness(
             "status": "active",
             "commencement_date": "2026-01-01",
             "expiry_date": "2028-12-31",
+            "next_review_date": "2027-01-01",
             "annual_rent_cents": 13200000,
             "rent_frequency": "annual",
         },
@@ -472,6 +473,8 @@ def test_charge_rules_and_rent_roll_surface_billing_readiness(
     rent_roll_body = rent_roll_response.json()
     assert len(rent_roll_body) == 1
     assert rent_roll_body[0]["tenant_name"] == "Billing Coffee"
+    assert rent_roll_body[0]["expiry_date"] == "2028-12-31"
+    assert rent_roll_body[0]["next_review_date"] == "2027-01-01"
     assert rent_roll_body[0]["charge_rules_total_cents"] == 1100000
     assert rent_roll_body[0]["next_due_date"] == "2026-06-01"
     assert rent_roll_body[0]["invoice_readiness_blockers"] == []

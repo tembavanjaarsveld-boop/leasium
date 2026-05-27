@@ -2375,6 +2375,7 @@ def rent_roll(
                 lease_status=lease.status if lease is not None else None,
                 commencement_date=lease.commencement_date if lease is not None else None,
                 expiry_date=lease.expiry_date if lease is not None else None,
+                next_review_date=lease.next_review_date if lease is not None else None,
                 tenant_billing_email=(
                     tenant.billing_email or tenant.contact_email if tenant is not None else None
                 ),

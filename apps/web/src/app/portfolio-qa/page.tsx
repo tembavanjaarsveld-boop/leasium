@@ -7,6 +7,7 @@ import {
   Building2,
   CheckCircle2,
   ClipboardList,
+  Copy,
   FileText,
   History,
   Loader2,
@@ -96,6 +97,8 @@ type EnrichmentCandidate = {
   detail: string;
   href: string;
   fields: string[];
+  priority: "high" | "medium";
+  reason: string;
 };
 
 type BlockedFollowup = {
@@ -116,6 +119,20 @@ type ReviewSummaryRow = {
   tab?: QaTab;
   href?: string;
 };
+
+type BulkReviewGroup = {
+  id: string;
+  title: string;
+  detail: string;
+  count: number;
+  tone: Tone;
+  tab?: QaTab;
+  href?: string;
+  actionLabel: string;
+  examples: string[];
+};
+
+type CompletionReportStatus = "complete" | "review" | "blocked";
 
 type ReadinessVerdict = {
   title: string;
@@ -648,6 +665,17 @@ function issueSortRank(issue: QaIssue) {
   return ranks[issue.severity];
 }
 
+function toneRank(tone: Tone) {
+  const ranks: Record<Tone, number> = {
+    danger: 5,
+    warning: 4,
+    primary: 3,
+    neutral: 2,
+    success: 1,
+  };
+  return ranks[tone];
+}
+
 function latestOnboarding(
   leaseId: string | null | undefined,
   tenantId: string | null | undefined,
@@ -1083,6 +1111,15 @@ function buildEnrichmentCandidates({
       return !property[field];
     });
     if (fields.length) {
+      const ownerFields = fields.filter((field) =>
+        [
+          "owner_legal_name",
+          "owner_abn",
+          "trustee_name",
+          "trust_name",
+          "invoice_issuer_name",
+        ].includes(field),
+      );
       candidates.push({
         id: `property-enrichment-${property.id}`,
         title: property.name,
@@ -1090,6 +1127,10 @@ function buildEnrichmentCandidates({
           "Property public enrichment can propose address and ownership fields.",
         href: `/properties?entity_id=${property.entity_id}&property_id=${property.id}`,
         fields: fields.map(fieldLabel),
+        priority: ownerFields.length ? "high" : "medium",
+        reason: ownerFields.length
+          ? "May unblock owner billing identity and statement readiness."
+          : "Can tidy address fields before the next register pass.",
       });
     }
   }
@@ -1107,6 +1148,9 @@ function buildEnrichmentCandidates({
       return !tenant[field];
     });
     if (fields.length) {
+      const identityFields = fields.filter((field) =>
+        ["legal_name", "trading_name", "abn"].includes(field),
+      );
       candidates.push({
         id: `tenant-enrichment-${tenant.id}`,
         title: tenantName(tenant),
@@ -1114,6 +1158,10 @@ function buildEnrichmentCandidates({
           "Tenant public enrichment can propose ABN, trading name, and registered address.",
         href: `/tenants/${tenant.id}`,
         fields: fields.map(fieldLabel),
+        priority: identityFields.length ? "high" : "medium",
+        reason: identityFields.length
+          ? "May improve tenant identity, invoice setup, and onboarding review."
+          : "Can add context to the tenant record after core fields are clear.",
       });
     }
   }
@@ -1121,7 +1169,9 @@ function buildEnrichmentCandidates({
   return candidates
     .sort(
       (a, b) =>
-        b.fields.length - a.fields.length || a.title.localeCompare(b.title),
+        (b.priority === "high" ? 1 : 0) - (a.priority === "high" ? 1 : 0) ||
+        b.fields.length - a.fields.length ||
+        a.title.localeCompare(b.title),
     )
     .slice(0, 8);
 }
@@ -1223,7 +1273,9 @@ function buildBlockedFollowups({
   tenantPrep: TenantPrepRow[];
 }): BlockedFollowup[] {
   const issueFollowups = issues
-    .filter((issue) => issue.severity === "danger" || issue.severity === "warning")
+    .filter(
+      (issue) => issue.severity === "danger" || issue.severity === "warning",
+    )
     .sort((a, b) => issueSortRank(a) - issueSortRank(b))
     .map((issue) => ({
       id: `issue-${issue.id}`,
@@ -1343,7 +1395,8 @@ function buildBillingReviewRows({
       id: "owner-billing-fixes",
       label: "Owner billing fixes",
       count: ownerBillingIssues.length,
-      detail: ownerBillingIssues[0]?.title ?? "Owner billing identity is clear.",
+      detail:
+        ownerBillingIssues[0]?.title ?? "Owner billing identity is clear.",
       tone: ownerBillingIssues.length ? "warning" : "success",
       actionLabel: ownerBillingIssues.length ? "Open Data QA" : undefined,
       tab: ownerBillingIssues.length ? "issues" : undefined,
@@ -1373,6 +1426,118 @@ function buildBillingReviewRows({
       href: activeDrafts.length ? "/billing-readiness" : undefined,
     },
   ];
+}
+
+function buildBulkReviewGroups({
+  tenantPrep,
+  issues,
+  billingDrafts,
+}: {
+  tenantPrep: TenantPrepRow[];
+  issues: QaIssue[];
+  billingDrafts: BillingDraftRecord[];
+}): BulkReviewGroup[] {
+  const onboardingBlocked = tenantPrep.filter(
+    (row) => !row.ready && row.blockers.length > 0,
+  );
+  const contactBlocked = onboardingBlocked.filter((row) =>
+    row.blockers.some((blocker) => blocker.includes("email")),
+  );
+  const setupBlocked = onboardingBlocked.filter((row) =>
+    row.blockers.some(
+      (blocker) =>
+        blocker.includes("No active lease") ||
+        blocker.includes("Tenant record missing"),
+    ),
+  );
+  const existingInviteBlocked = onboardingBlocked.filter((row) =>
+    row.blockers.some((blocker) => blocker.includes("Existing onboarding")),
+  );
+  const ownerBillingIssues = issues.filter(
+    (issue) => issue.area === "Billing identity",
+  );
+  const billingReadinessIssues = issues.filter(
+    (issue) => issue.area === "Billing",
+  );
+  const reviewDrafts = billingDrafts.filter(
+    (draft) => !["approved", "void", "superseded"].includes(draft.status),
+  );
+
+  const groups: BulkReviewGroup[] = [
+    {
+      id: "onboarding-contact",
+      title: "Onboarding contact fixes",
+      detail: "Rows blocked because tenant email details are incomplete.",
+      count: contactBlocked.length,
+      tone: contactBlocked.length ? "warning" : "success",
+      tab: contactBlocked.length ? "contacts" : undefined,
+      actionLabel: contactBlocked.length ? "Fix contacts" : "Clear",
+      examples: contactBlocked
+        .slice(0, 3)
+        .map((row) => `${row.tenantName} / ${row.propertyName}`),
+    },
+    {
+      id: "onboarding-setup",
+      title: "Onboarding setup blockers",
+      detail: "Rows that need a lease or tenant link before invites can run.",
+      count: setupBlocked.length,
+      tone: setupBlocked.length ? "danger" : "success",
+      tab: setupBlocked.length ? "onboarding" : undefined,
+      actionLabel: setupBlocked.length ? "Review setup" : "Clear",
+      examples: setupBlocked
+        .slice(0, 3)
+        .map((row) => `${row.tenantName} / ${row.propertyName}`),
+    },
+    {
+      id: "onboarding-existing",
+      title: "Existing invite workflows",
+      detail: "Rows already in an onboarding workflow or needing recovery.",
+      count: existingInviteBlocked.length,
+      tone: existingInviteBlocked.length ? "primary" : "success",
+      tab: existingInviteBlocked.length ? "onboarding" : undefined,
+      actionLabel: existingInviteBlocked.length ? "Review invites" : "Clear",
+      examples: existingInviteBlocked
+        .slice(0, 3)
+        .map((row) => `${row.tenantName} / ${row.propertyName}`),
+    },
+    {
+      id: "billing-owner",
+      title: "Owner billing identity",
+      detail: "Properties missing owner, trust, ABN, or billing contact data.",
+      count: ownerBillingIssues.length,
+      tone: ownerBillingIssues.length ? "warning" : "success",
+      tab: ownerBillingIssues.length ? "issues" : undefined,
+      actionLabel: ownerBillingIssues.length ? "Open fixes" : "Clear",
+      examples: ownerBillingIssues.slice(0, 3).map((issue) => issue.title),
+    },
+    {
+      id: "billing-readiness",
+      title: "Rent-roll billing blockers",
+      detail: "Rows blocked by invoice, GST, or Xero readiness checks.",
+      count: billingReadinessIssues.length,
+      tone: billingReadinessIssues.length ? "warning" : "success",
+      href: billingReadinessIssues.length ? "/billing-readiness" : undefined,
+      actionLabel: billingReadinessIssues.length ? "Open billing" : "Clear",
+      examples: billingReadinessIssues.slice(0, 3).map((issue) => issue.title),
+    },
+    {
+      id: "billing-review-drafts",
+      title: "Drafts still in review",
+      detail: "Internal billing drafts that exist but are not approved yet.",
+      count: reviewDrafts.length,
+      tone: reviewDrafts.length ? "primary" : "success",
+      href: reviewDrafts.length ? "/billing-readiness" : undefined,
+      actionLabel: reviewDrafts.length ? "Review drafts" : "Clear",
+      examples: reviewDrafts.slice(0, 3).map((draft) => draft.title),
+    },
+  ];
+
+  return groups.sort(
+    (a, b) =>
+      toneRank(b.tone) - toneRank(a.tone) ||
+      b.count - a.count ||
+      a.title.localeCompare(b.title),
+  );
 }
 
 function MetricCard({
@@ -1429,9 +1594,7 @@ function ReviewSummaryStrip({
         </div>
         <StatusBadge
           tone={
-            rows.some(
-              (row) => row.tone === "danger" || row.tone === "warning",
-            )
+            rows.some((row) => row.tone === "danger" || row.tone === "warning")
               ? "warning"
               : "success"
           }
@@ -1524,17 +1687,82 @@ function cleanupReadinessVerdict({
   };
 }
 
+function cleanupReportText({
+  completion,
+  verdict,
+  itemStatuses,
+  activeBulkGroups,
+  enrichmentCandidates,
+  blockedFollowups,
+}: {
+  completion: number;
+  verdict: ReadinessVerdict;
+  itemStatuses: Array<{
+    item: QaCompletionItem;
+    percent: number;
+    status: CompletionReportStatus;
+  }>;
+  activeBulkGroups: BulkReviewGroup[];
+  enrichmentCandidates: EnrichmentCandidate[];
+  blockedFollowups: BlockedFollowup[];
+}) {
+  const lines = [
+    "Portfolio QA cleanup report",
+    `${completion}% checks ready - ${verdict.title}`,
+    verdict.detail,
+    "",
+    "Completion states:",
+    ...itemStatuses.map(
+      ({ item, percent, status }) =>
+        `- ${item.label}: ${percent}% ready (${status}) - ${item.detail}`,
+    ),
+    "",
+    "Bulk review queue:",
+    ...(activeBulkGroups.length
+      ? activeBulkGroups.map(
+          (group) =>
+            `- ${group.title}: ${group.count} rows - ${group.detail}${
+              group.examples.length
+                ? ` Examples: ${group.examples.join(" / ")}`
+                : ""
+            }`,
+        )
+      : ["- Clear: no onboarding or billing bulk-review groups need action."]),
+    "",
+    "AI-assisted enrichment candidates:",
+    ...(enrichmentCandidates.length
+      ? enrichmentCandidates
+          .slice(0, 8)
+          .map(
+            (candidate) =>
+              `- ${candidate.title}: ${candidate.priority} priority, ${candidate.fields.length} fields - ${candidate.reason}`,
+          )
+      : ["- Clear: no obvious enrichment candidates remain."]),
+    "",
+    "Blocked follow-ups:",
+    ...(blockedFollowups.length
+      ? blockedFollowups
+          .slice(0, 8)
+          .map((followup) => `- ${followup.title}: ${followup.detail}`)
+      : ["- Clear: no blocked cleanup rows remain in the current scan."]),
+  ];
+  return lines.join("\n");
+}
+
 function PortfolioCompletionPanel({
   items,
   enrichmentCandidates,
   blockedFollowups,
+  bulkReviewGroups,
   onOpenTab,
 }: {
   items: QaCompletionItem[];
   enrichmentCandidates: EnrichmentCandidate[];
   blockedFollowups: BlockedFollowup[];
+  bulkReviewGroups: BulkReviewGroup[];
   onOpenTab: (tab: QaTab) => void;
 }) {
+  const [reportReceipt, setReportReceipt] = useState<string | null>(null);
   const total = items.reduce((sum, item) => sum + item.total, 0);
   const ready = items.reduce(
     (sum, item) => sum + Math.min(item.ready, item.total),
@@ -1546,23 +1774,70 @@ function PortfolioCompletionPanel({
     blockedCount: blockedFollowups.length,
     enrichmentCount: enrichmentCandidates.length,
   });
+  const itemStatuses = items.map((item) => {
+    const percent =
+      item.total > 0
+        ? Math.round((Math.min(item.ready, item.total) / item.total) * 100)
+        : 100;
+    const status: CompletionReportStatus =
+      percent >= 90 ? "complete" : percent >= 60 ? "review" : "blocked";
+    return {
+      item,
+      percent,
+      status,
+    };
+  });
+  const completeCount = itemStatuses.filter(
+    (item) => item.status === "complete",
+  ).length;
+  const reviewCount = itemStatuses.filter(
+    (item) => item.status === "review",
+  ).length;
+  const blockedSectionCount = itemStatuses.filter(
+    (item) => item.status === "blocked",
+  ).length;
+  const activeBulkGroups = bulkReviewGroups.filter((group) => group.count > 0);
+  const copyReport = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setReportReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(
+      cleanupReportText({
+        completion,
+        verdict,
+        itemStatuses,
+        activeBulkGroups,
+        enrichmentCandidates,
+        blockedFollowups,
+      }),
+    );
+    setReportReceipt("Cleanup report copied.");
+  };
+
   return (
     <SectionPanel
       title="Cleanup readiness report"
       description="A practical scan of what can move now, what needs review, and where public enrichment may help."
       icon={<ClipboardList size={17} className="text-primary" />}
       actions={
-        <StatusBadge
-          tone={
-            completion >= 90
-              ? "success"
-              : completion >= 60
-                ? "warning"
-                : "danger"
-          }
-        >
-          {completion}% checks ready
-        </StatusBadge>
+        <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton type="button" onClick={copyReport}>
+            <Copy size={15} />
+            Copy report
+          </SecondaryButton>
+          <StatusBadge
+            tone={
+              completion >= 90
+                ? "success"
+                : completion >= 60
+                  ? "warning"
+                  : "danger"
+            }
+          >
+            {completion}% checks ready
+          </StatusBadge>
+        </div>
       }
     >
       <div className="border-b border-border bg-muted/30 p-4">
@@ -1575,18 +1850,26 @@ function PortfolioCompletionPanel({
               {verdict.detail}
             </p>
           </div>
-          <StatusBadge tone={verdict.tone}>Final report</StatusBadge>
+          <div className="flex flex-wrap gap-2">
+            <StatusBadge tone={verdict.tone}>Final report</StatusBadge>
+            <StatusBadge tone="success">{completeCount} complete</StatusBadge>
+            <StatusBadge tone={reviewCount ? "warning" : "neutral"}>
+              {reviewCount} review
+            </StatusBadge>
+            <StatusBadge tone={blockedSectionCount ? "danger" : "neutral"}>
+              {blockedSectionCount} blocked
+            </StatusBadge>
+          </div>
         </div>
+        {reportReceipt ? (
+          <p className="mt-3 text-sm font-medium text-success">
+            {reportReceipt}
+          </p>
+        ) : null}
       </div>
       <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((item) => {
-            const percent =
-              item.total > 0
-                ? Math.round(
-                    (Math.min(item.ready, item.total) / item.total) * 100,
-                  )
-                : 100;
+          {itemStatuses.map(({ item, percent, status }) => {
             return (
               <button
                 key={item.id}
@@ -1601,14 +1884,18 @@ function PortfolioCompletionPanel({
                   </div>
                   <StatusBadge
                     tone={
-                      percent >= 90
+                      status === "complete"
                         ? "success"
-                        : percent >= 60
+                        : status === "review"
                           ? "warning"
                           : "danger"
                     }
                   >
-                    {percent}%
+                    {status === "complete"
+                      ? "Complete"
+                      : status === "review"
+                        ? "Review"
+                        : "Blocked"}
                   </StatusBadge>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
@@ -1624,6 +1911,9 @@ function PortfolioCompletionPanel({
                     style={{ width: `${percent}%` }}
                   />
                 </div>
+                <div className="mt-2 text-xs font-medium text-muted-foreground">
+                  {percent}% ready
+                </div>
                 <p className="mt-3 text-sm text-muted-foreground">
                   {item.detail}
                 </p>
@@ -1633,50 +1923,136 @@ function PortfolioCompletionPanel({
         </div>
 
         <div className="rounded-xl border border-border bg-muted/40 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold text-foreground">
-                Public enrichment candidates
+          <div>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  Bulk review queue
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Grouped onboarding and billing rows for the next cleanup pass.
+                </p>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Open each record to review sourced suggestions before applying
-                fields.
-              </p>
+              <StatusBadge
+                tone={activeBulkGroups.length ? "warning" : "success"}
+              >
+                {activeBulkGroups.length} groups
+              </StatusBadge>
             </div>
-            <StatusBadge
-              tone={enrichmentCandidates.length ? "primary" : "success"}
-            >
-              {enrichmentCandidates.length} queued
-            </StatusBadge>
+            <div className="mt-3 divide-y divide-border">
+              {activeBulkGroups.length ? (
+                activeBulkGroups.map((group) => {
+                  const body = (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge tone={group.tone}>
+                          {group.count}
+                        </StatusBadge>
+                        <span className="font-semibold">{group.title}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {group.detail}
+                      </p>
+                      {group.examples.length ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {group.examples.join(" / ")}
+                        </p>
+                      ) : null}
+                      <span className="mt-2 inline-flex text-xs font-semibold text-primary">
+                        {group.actionLabel}
+                      </span>
+                    </>
+                  );
+                  const className =
+                    "grid w-full gap-1 py-3 text-left transition hover:text-primary";
+                  if (group.href) {
+                    return (
+                      <Link
+                        key={group.id}
+                        href={group.href}
+                        className={className}
+                      >
+                        {body}
+                      </Link>
+                    );
+                  }
+                  return (
+                    <button
+                      key={group.id}
+                      type="button"
+                      onClick={() => group.tab && onOpenTab(group.tab)}
+                      className={className}
+                    >
+                      {body}
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="py-4 text-sm text-muted-foreground">
+                  No onboarding or billing bulk-review groups need action.
+                </div>
+              )}
+            </div>
           </div>
-          <div className="mt-3 divide-y divide-border">
-            {enrichmentCandidates.length ? (
-              enrichmentCandidates.map((candidate) => (
-                <Link
-                  key={candidate.id}
-                  href={candidate.href}
-                  className="grid gap-2 py-3 transition hover:text-primary"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold">{candidate.title}</span>
-                    <StatusBadge tone="neutral">
-                      {candidate.fields.length} fields
-                    </StatusBadge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {candidate.detail}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {candidate.fields.slice(0, 4).join(", ")}
-                    {candidate.fields.length > 4 ? "..." : ""}
-                  </p>
-                </Link>
-              ))
-            ) : (
-              <div className="py-4 text-sm text-muted-foreground">
-                No obvious enrichment candidates remain for this entity.
+
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  AI-assisted enrichment candidates
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Prioritized records where sourced suggestions may fill safe
+                  public fields.
+                </p>
               </div>
-            )}
+              <StatusBadge
+                tone={enrichmentCandidates.length ? "primary" : "success"}
+              >
+                {enrichmentCandidates.length} queued
+              </StatusBadge>
+            </div>
+            <div className="mt-3 divide-y divide-border">
+              {enrichmentCandidates.length ? (
+                enrichmentCandidates.map((candidate) => (
+                  <Link
+                    key={candidate.id}
+                    href={candidate.href}
+                    className="grid gap-2 py-3 transition hover:text-primary"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">{candidate.title}</span>
+                      <StatusBadge tone="neutral">
+                        {candidate.fields.length} fields
+                      </StatusBadge>
+                      <StatusBadge
+                        tone={
+                          candidate.priority === "high" ? "warning" : "primary"
+                        }
+                      >
+                        {candidate.priority === "high"
+                          ? "High-impact"
+                          : "Helpful"}
+                      </StatusBadge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {candidate.detail}
+                    </p>
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {candidate.reason}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {candidate.fields.slice(0, 4).join(", ")}
+                      {candidate.fields.length > 4 ? "..." : ""}
+                    </p>
+                  </Link>
+                ))
+              ) : (
+                <div className="py-4 text-sm text-muted-foreground">
+                  No obvious enrichment candidates remain for this entity.
+                </div>
+              )}
+            </div>
           </div>
           <div className="mt-4 border-t border-border pt-4">
             <div className="flex items-start justify-between gap-3">
@@ -1688,7 +2064,9 @@ function PortfolioCompletionPanel({
                   The next review rows to clear before the register is ready.
                 </p>
               </div>
-              <StatusBadge tone={blockedFollowups.length ? "warning" : "success"}>
+              <StatusBadge
+                tone={blockedFollowups.length ? "warning" : "success"}
+              >
                 {blockedFollowups.length} open
               </StatusBadge>
             </div>
@@ -1919,6 +2297,10 @@ function PortfolioQaWorkspace() {
   const billingReviewRows = useMemo(
     () => buildBillingReviewRows({ issues, billingDrafts }),
     [billingDrafts, issues],
+  );
+  const bulkReviewGroups = useMemo(
+    () => buildBulkReviewGroups({ tenantPrep, issues, billingDrafts }),
+    [billingDrafts, issues, tenantPrep],
   );
   const selectedReadyRows = tenantPrep.filter(
     (row) => row.ready && row.leaseId && selectedLeaseIds.includes(row.leaseId),
@@ -2380,6 +2762,7 @@ function PortfolioQaWorkspace() {
             items={completionItems}
             enrichmentCandidates={enrichmentCandidates}
             blockedFollowups={blockedFollowups}
+            bulkReviewGroups={bulkReviewGroups}
             onOpenTab={setActiveTab}
           />
         ) : null}

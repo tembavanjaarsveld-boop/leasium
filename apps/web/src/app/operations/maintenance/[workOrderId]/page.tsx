@@ -8,6 +8,7 @@ import {
   ArrowUpRight,
   Ban,
   CheckCircle2,
+  ClipboardCheck,
   Download,
   Eye,
   FileText,
@@ -16,6 +17,7 @@ import {
   Link2,
   Loader2,
   Mail,
+  PhoneCall,
   ReceiptText,
   RefreshCw,
   Send,
@@ -26,7 +28,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
@@ -132,6 +134,15 @@ type CompletionReviewRow = {
   buttonLabel: string;
   textareaLabel: string;
   placeholder: string;
+};
+
+type LiveReviewCard = {
+  id: string;
+  title: string;
+  statusLabel: string;
+  detail: string;
+  tone: Tone;
+  icon: ReactNode;
 };
 
 const emptyCompletionReviewNotes: Record<CompletionReviewAudience, string> = {
@@ -734,10 +745,9 @@ function contractorSmsTemplates(
     {
       key: "status_update",
       label: "Status update",
-      body: [
-        "Hi, can you send a quick status update on this job?",
-        ref,
-      ].join(" "),
+      body: ["Hi, can you send a quick status update on this job?", ref].join(
+        " ",
+      ),
     },
     {
       key: "completion_check",
@@ -1269,6 +1279,133 @@ function buildActivityAuditCards({
   ];
 }
 
+function phoneReviewDetail(phone: string | null | undefined) {
+  if (!phone) {
+    return "No contractor phone recorded.";
+  }
+  const cleaned = phone.replace(/[^\d+]/g, "");
+  if (cleaned.startsWith("+") && cleaned.replace(/\D/g, "").length >= 9) {
+    return `${phone} looks ready for SMS review.`;
+  }
+  return `${phone} should be checked on a real phone before relying on SMS.`;
+}
+
+function buildLiveReviewCards({
+  workOrder,
+  timeline,
+  completionReviewRows,
+  contractorSendStatus,
+  contractorSmsStatus,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  timeline: ActivityTimelineEntry[];
+  completionReviewRows: CompletionReviewRow[];
+  contractorSendStatus: string;
+  contractorSmsStatus: string;
+}): LiveReviewCard[] {
+  const hasContractor = Boolean(workOrder.contractor_name);
+  const hasEmail = Boolean(workOrder.contractor_email);
+  const hasPhone = Boolean(workOrder.contractor_phone);
+  const phoneLooksInternational = Boolean(
+    workOrder.contractor_phone?.replace(/[^\d+]/g, "").startsWith("+"),
+  );
+  const reviewedRecipients = completionReviewRows.filter(
+    (row) => row.reviewedAt,
+  ).length;
+  const latestActivity = timeline[0] ?? null;
+  const externalActivityCount = timeline.filter((entry) =>
+    ["tenant", "contractor", "provider"].includes(entry.audience),
+  ).length;
+
+  return [
+    {
+      id: "contractor-recipient",
+      title: "Contractor recipient",
+      statusLabel: hasContractor
+        ? hasEmail || hasPhone
+          ? "Contact ready"
+          : "Contact missing"
+        : "No contractor",
+      detail: hasContractor
+        ? [
+            workOrder.contractor_name,
+            workOrder.contractor_email,
+            workOrder.contractor_phone,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "Add email or phone before contractor updates."
+        : "Assign the contractor before live review.",
+      tone: hasContractor && (hasEmail || hasPhone) ? "success" : "warning",
+      icon: <UserRound size={16} />,
+    },
+    {
+      id: "phone-review",
+      title: "Real-phone review",
+      statusLabel: hasPhone
+        ? phoneLooksInternational
+          ? "SMS ready"
+          : "Check format"
+        : "No phone",
+      detail: phoneReviewDetail(workOrder.contractor_phone),
+      tone: hasPhone
+        ? phoneLooksInternational
+          ? "success"
+          : "warning"
+        : "neutral",
+      icon: <PhoneCall size={16} />,
+    },
+    {
+      id: "provider-actions",
+      title: "Work-order actions",
+      statusLabel:
+        contractorSendStatus === "not_sent" &&
+        contractorSmsStatus === "not_sent"
+          ? "Not sent"
+          : `Email ${label(contractorSendStatus)} · SMS ${label(contractorSmsStatus)}`,
+      detail:
+        "Email and SMS buttons remain explicit actions; this panel only reviews readiness.",
+      tone:
+        contractorEmailNeedsRecovery(contractorSendStatus) ||
+        contractorEmailNeedsRecovery(contractorSmsStatus)
+          ? "danger"
+          : contractorSendStatus !== "not_sent" ||
+              contractorSmsStatus !== "not_sent"
+            ? "primary"
+            : "neutral",
+      icon: <Send size={16} />,
+    },
+    {
+      id: "completion-recipients",
+      title: "Completion recipients",
+      statusLabel: completionReviewRows.length
+        ? `${reviewedRecipients}/${completionReviewRows.length} reviewed`
+        : workOrder.status === "completed"
+          ? "No copy ready"
+          : "Locked",
+      detail: completionReviewRows.length
+        ? "Owner, tenant, and contractor closeout copy can be reviewed below."
+        : "Complete the job before recipient-review cards unlock.",
+      tone:
+        completionReviewRows.length === 0
+          ? "neutral"
+          : reviewedRecipients === completionReviewRows.length
+            ? "success"
+            : "warning",
+      icon: <CheckCircle2 size={16} />,
+    },
+    {
+      id: "activity-audit",
+      title: "Activity audit",
+      statusLabel: latestActivity ? latestActivity.label : "No activity",
+      detail: latestActivity
+        ? `${formatDateTime(latestActivity.at)} · ${externalActivityCount} external/provider rows`
+        : "Comments, provider receipts, and closeout events will appear below.",
+      tone: latestActivity?.tone ?? "neutral",
+      icon: <Activity size={16} />,
+    },
+  ];
+}
+
 function linkedDocuments(
   workOrder: MaintenanceWorkOrderRecord,
   documents: DocumentRecord[],
@@ -1403,6 +1540,68 @@ function activityTone(status: string | null, audience: ActivityAudience): Tone {
   return activityAudienceTone(audience);
 }
 
+function liveReviewChecklistText(cards: LiveReviewCard[]) {
+  return [
+    "Operations live review checklist",
+    ...cards.map(
+      (card) => `- ${card.title}: ${card.statusLabel} - ${card.detail}`,
+    ),
+    "",
+    "Review-only: sending email, SMS, billing handoff, and closeout remain explicit actions.",
+  ].join("\n");
+}
+
+function LiveReviewStrip({ cards }: { cards: LiveReviewCard[] }) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const copyChecklist = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(liveReviewChecklistText(cards));
+    setCopyReceipt("Live review checklist copied.");
+  };
+
+  return (
+    <SectionPanel
+      title="Live review"
+      description="Phone, recipient, action, completion, and activity checks before touching live work controls."
+      icon={<Activity size={17} className="text-primary" />}
+      actions={
+        <SecondaryButton type="button" onClick={copyChecklist}>
+          <ClipboardCheck size={15} />
+          Copy checklist
+        </SecondaryButton>
+      }
+    >
+      <div className="grid gap-3 p-4">
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        ) : null}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {cards.map((card) => (
+            <div
+              key={card.id}
+              className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary-soft text-primary">
+                  {card.icon}
+                </span>
+                <StatusBadge tone={card.tone}>{card.statusLabel}</StatusBadge>
+              </div>
+              <div className="font-semibold text-foreground">{card.title}</div>
+              <p className="text-sm leading-5 text-muted-foreground">
+                {card.detail}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </SectionPanel>
+  );
+}
+
 function MaintenanceDetailRoute() {
   const params = useParams<{ workOrderId: string }>();
   const workOrderId = params.workOrderId;
@@ -1483,7 +1682,8 @@ function MaintenanceDetailRoute() {
     metadataText(ownerCommunicationReview.reviewed_at) ??
     metadataText(ownerReview.reviewed_at);
   const ownerReviewNoteSaved =
-    metadataText(ownerCommunicationReview.note) ?? metadataText(ownerReview.note);
+    metadataText(ownerCommunicationReview.note) ??
+    metadataText(ownerReview.note);
   const tenantReviewAt = metadataText(tenantCommunicationReview.reviewed_at);
   const tenantReviewNoteSaved = metadataText(tenantCommunicationReview.note);
   const contractorReviewAt = metadataText(
@@ -1690,6 +1890,15 @@ function MaintenanceDetailRoute() {
       ? contractorSmsStoredBody
       : contractorSmsDefaultBody(workOrder)
     : "";
+  const liveReviewCards = workOrder
+    ? buildLiveReviewCards({
+        workOrder,
+        timeline,
+        completionReviewRows,
+        contractorSendStatus,
+        contractorSmsStatus,
+      })
+    : [];
   const contractorTemplateOptions = useMemo(
     () => (workOrder ? contractorEmailTemplates(workOrder) : []),
     [workOrder],
@@ -2226,6 +2435,8 @@ function MaintenanceDetailRoute() {
 
         {workOrder ? (
           <>
+            <LiveReviewStrip cards={liveReviewCards} />
+
             <div className="grid gap-3 md:grid-cols-4">
               <SectionPanel title="Status" icon={<Wrench size={17} />}>
                 <div className="grid gap-3 p-4 text-sm">
@@ -3538,9 +3749,7 @@ function ContractorChannelEvidence({
             className="grid gap-1 rounded-md bg-muted/40 px-3 py-2 text-xs"
           >
             <div className="flex flex-wrap items-center gap-2 text-foreground">
-              <StatusBadge
-                tone={receipt.message_sent ? "success" : "warning"}
-              >
+              <StatusBadge tone={receipt.message_sent ? "success" : "warning"}>
                 {receipt.label}
               </StatusBadge>
               {receipt.provider ? (
@@ -3557,7 +3766,8 @@ function ContractorChannelEvidence({
               ) : null}
               {receipt.template_key ? (
                 <span>
-                  Template {receipt.template_key} {receipt.template_version ?? ""}
+                  Template {receipt.template_key}{" "}
+                  {receipt.template_version ?? ""}
                 </span>
               ) : null}
               {receipt.delivery_attempt_count ? (

@@ -252,6 +252,25 @@ type TenantPortalActivityItem = {
   tone: "primary" | "success" | "warning" | "neutral";
 };
 
+type TenantPortalActionItem = {
+  key: string;
+  title: string;
+  detail: string;
+  tone: "primary" | "success" | "warning" | "danger" | "neutral";
+};
+
+type MaintenanceSummary = {
+  openCount: number;
+  inProgressCount: number;
+  awaitingReviewCount: number;
+  completedCount: number;
+  nextDueDate: string | null;
+  latestOpenRequest: TenantPortalRecord["maintenance_requests"][number] | null;
+  latestCompletedRequest:
+    | TenantPortalRecord["maintenance_requests"][number]
+    | null;
+};
+
 function buildTenantPortalActivity(portal: TenantPortalRecord) {
   const items: TenantPortalActivityItem[] = [];
 
@@ -408,6 +427,137 @@ function buildTenantPortalActivity(portal: TenantPortalRecord) {
         new Date(left.timestamp).getTime(),
     )
     .slice(0, 6);
+}
+
+function buildTenantPortalActionItems(
+  portal: TenantPortalRecord,
+  openMaintenanceCount: number,
+) {
+  const items: TenantPortalActionItem[] = [];
+  const blockedDocuments = portal.compliance.items.filter((item) =>
+    ["missing", "expired"].includes(item.status),
+  );
+  const pendingContactRequests = portal.contact_change_requests.filter(
+    (request) => request.status === "submitted",
+  );
+
+  if (portal.payment_summary.status === "overdue") {
+    items.push({
+      key: "overdue-payment",
+      title: "Payment overdue",
+      detail: `${portal.payment_summary.overdue_count} overdue invoice${
+        portal.payment_summary.overdue_count === 1 ? "" : "s"
+      } need review.`,
+      tone: "danger",
+    });
+  } else if (portal.payment_summary.status === "unpaid") {
+    items.push({
+      key: "unpaid-payment",
+      title: "Payment due",
+      detail: `${formatMoney(
+        portal.payment_summary.outstanding_cents,
+      )} outstanding across approved invoices.`,
+      tone: "warning",
+    });
+  }
+
+  if (blockedDocuments.length) {
+    items.push({
+      key: "documents-needed",
+      title: "Documents needed",
+      detail: `${blockedDocuments.length} compliance item${
+        blockedDocuments.length === 1 ? "" : "s"
+      } need updated files.`,
+      tone: "warning",
+    });
+  }
+
+  if (portal.lease_agreement.status !== "signed") {
+    items.push({
+      key: "lease-signing",
+      title: "Lease pack pending",
+      detail:
+        "Review and sign the lease pack when the property team releases it.",
+      tone: "primary",
+    });
+  }
+
+  if (pendingContactRequests.length) {
+    items.push({
+      key: "contact-review",
+      title: "Contact change in review",
+      detail:
+        "The property team is reviewing your requested contact detail update.",
+      tone: "primary",
+    });
+  }
+
+  if (openMaintenanceCount) {
+    items.push({
+      key: "maintenance-open",
+      title: "Maintenance active",
+      detail: `${openMaintenanceCount} request${
+        openMaintenanceCount === 1 ? "" : "s"
+      } still open with the property team.`,
+      tone: "primary",
+    });
+  }
+
+  if (!items.length) {
+    items.push({
+      key: "all-clear",
+      title: "Nothing needs attention",
+      detail:
+        "Your portal is up to date across payments, documents, lease, and maintenance.",
+      tone: "success",
+    });
+  }
+
+  return items.slice(0, 4);
+}
+
+function buildMaintenanceSummary(
+  requests: TenantPortalRecord["maintenance_requests"],
+): MaintenanceSummary {
+  const openRequests = requests.filter(
+    (request) => !["completed", "cancelled"].includes(request.status),
+  );
+  const sortedOpenRequests = [...openRequests].sort(
+    (left, right) =>
+      new Date(right.requested_at).getTime() -
+      new Date(left.requested_at).getTime(),
+  );
+  const completedRequests = requests
+    .filter((request) => request.status === "completed")
+    .sort(
+      (left, right) =>
+        new Date(right.completed_at ?? right.requested_at).getTime() -
+        new Date(left.completed_at ?? left.requested_at).getTime(),
+    );
+  const dueDates = openRequests
+    .map((request) => request.due_date)
+    .filter((dueDate): dueDate is string => Boolean(dueDate))
+    .sort(
+      (left, right) =>
+        new Date(`${left}T00:00:00`).getTime() -
+        new Date(`${right}T00:00:00`).getTime(),
+    );
+
+  return {
+    openCount: openRequests.length,
+    inProgressCount: openRequests.filter((request) =>
+      ["assigned", "in_progress"].includes(request.status),
+    ).length,
+    awaitingReviewCount: openRequests.filter((request) =>
+      ["requested", "triaged", "awaiting_approval", "approved"].includes(
+        request.status,
+      ),
+    ).length,
+    completedCount: completedRequests.length,
+    nextDueDate: dueDates[0] ?? null,
+    latestOpenRequest: sortedOpenRequests[0] ?? null,
+    latestCompletedRequest: completedRequests[0] ?? null,
+  };
 }
 
 function priorityTone(priority: MaintenancePriority) {
@@ -1147,6 +1297,158 @@ function Metric({
       {detail ? (
         <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
       ) : null}
+    </div>
+  );
+}
+
+function TenantPortalOverviewPanel({
+  actionItems,
+  recentActivity,
+  maintenanceSummary,
+}: {
+  actionItems: TenantPortalActionItem[];
+  recentActivity: TenantPortalActivityItem[];
+  maintenanceSummary: MaintenanceSummary;
+}) {
+  const latestActivity = recentActivity[0] ?? null;
+
+  return (
+    <section className="grid gap-3 rounded-md border border-border bg-white p-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Needs Attention</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Current tenant-side items before you scan the full portal.
+            </p>
+          </div>
+          <StatusBadge tone={actionItems[0]?.tone ?? "neutral"}>
+            {actionItems.length} item{actionItems.length === 1 ? "" : "s"}
+          </StatusBadge>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          {actionItems.map((item) => (
+            <div
+              key={item.key}
+              className="rounded-md border border-border bg-muted/30 p-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-medium">{item.title}</div>
+                <StatusBadge tone={item.tone}>{label(item.tone)}</StatusBadge>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {item.detail}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm">
+        <div>
+          <div className="text-xs font-semibold uppercase text-muted-foreground">
+            Latest update
+          </div>
+          {latestActivity ? (
+            <div className="mt-2 grid gap-1">
+              <div className="font-medium">{latestActivity.title}</div>
+              <div className="text-muted-foreground">
+                {latestActivity.detail}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {formatDateTime(latestActivity.timestamp)}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-2 text-muted-foreground">
+              Activity will appear here as your portal updates.
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
+          <div>
+            <div className="text-lg font-semibold">
+              {maintenanceSummary.openCount}
+            </div>
+            <div className="text-xs text-muted-foreground">Open</div>
+          </div>
+          <div>
+            <div className="text-lg font-semibold">
+              {maintenanceSummary.inProgressCount}
+            </div>
+            <div className="text-xs text-muted-foreground">Working</div>
+          </div>
+          <div>
+            <div className="text-lg font-semibold">
+              {maintenanceSummary.completedCount}
+            </div>
+            <div className="text-xs text-muted-foreground">Done</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MaintenanceSummaryPanel({ summary }: { summary: MaintenanceSummary }) {
+  const nextOpenRequest = summary.latestOpenRequest;
+  const latestCompletedRequest = summary.latestCompletedRequest;
+
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      <div className="rounded-md border border-border bg-muted/30 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Open requests</div>
+          <StatusBadge tone={summary.openCount ? "primary" : "success"}>
+            {summary.openCount}
+          </StatusBadge>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {nextOpenRequest
+            ? `${nextOpenRequest.title} - ${maintenanceStatusDetail(
+                nextOpenRequest.status,
+                nextOpenRequest.due_date,
+                nextOpenRequest.completed_at,
+              )}`
+            : "No active maintenance requests."}
+        </p>
+      </div>
+      <div className="rounded-md border border-border bg-muted/30 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Status visibility</div>
+          <StatusBadge
+            tone={summary.awaitingReviewCount ? "warning" : "primary"}
+          >
+            {summary.awaitingReviewCount} review
+          </StatusBadge>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {summary.inProgressCount
+            ? `${summary.inProgressCount} request${
+                summary.inProgressCount === 1 ? "" : "s"
+              } assigned or in progress.`
+            : summary.nextDueDate
+              ? `Next target date ${formatDate(summary.nextDueDate)}.`
+              : "Every request shows the latest team update below."}
+        </p>
+      </div>
+      <div className="rounded-md border border-border bg-muted/30 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Recently completed</div>
+          <StatusBadge tone={latestCompletedRequest ? "success" : "neutral"}>
+            {summary.completedCount}
+          </StatusBadge>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {latestCompletedRequest
+            ? `${latestCompletedRequest.title} - ${maintenanceStatusDetail(
+                latestCompletedRequest.status,
+                latestCompletedRequest.due_date,
+                latestCompletedRequest.completed_at,
+              )}`
+            : "Completed requests will stay visible here for audit history."}
+        </p>
+      </div>
     </div>
   );
 }
@@ -3832,6 +4134,13 @@ function TenantPortalContent({
   }
 
   const recentActivity = buildTenantPortalActivity(portal);
+  const maintenanceSummary = buildMaintenanceSummary(
+    portal.maintenance_requests,
+  );
+  const actionItems = buildTenantPortalActionItems(
+    portal,
+    maintenanceSummary.openCount,
+  );
 
   return (
     <PortalShell>
@@ -3895,6 +4204,12 @@ function TenantPortalContent({
             detail="Submitted requests"
           />
         </section>
+
+        <TenantPortalOverviewPanel
+          actionItems={actionItems}
+          recentActivity={recentActivity}
+          maintenanceSummary={maintenanceSummary}
+        />
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="grid gap-5">
@@ -4030,6 +4345,8 @@ function TenantPortalContent({
               }
             >
               <div className="grid gap-4 p-4">
+                <MaintenanceSummaryPanel summary={maintenanceSummary} />
+
                 <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3">
                   <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
                     <Field label="Request title">

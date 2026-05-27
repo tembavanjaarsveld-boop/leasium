@@ -23,8 +23,22 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const themeScript = `
+    (function () {
+      try {
+        var mode = window.localStorage.getItem("leasium.appearance") || "system";
+        var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var theme = mode === "dark" || (mode === "system" && prefersDark) ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.dataset.appearance = mode;
+      } catch (_) {}
+    })();
+  `;
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="font-sans antialiased">
         <OperatorAuthProvider>{children}</OperatorAuthProvider>
       </body>

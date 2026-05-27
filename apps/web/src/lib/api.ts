@@ -1464,6 +1464,7 @@ export type RentRollRow = {
   lease_status: string | null;
   commencement_date?: string | null;
   expiry_date?: string | null;
+  next_review_date?: string | null;
   tenant_billing_email?: string | null;
   annual_rent_cents: number | null;
   rent_frequency?: string | null;

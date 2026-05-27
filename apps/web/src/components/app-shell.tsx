@@ -10,9 +10,12 @@ import {
   Home,
   Keyboard,
   Menu,
+  Monitor,
+  Moon,
   Search,
   Settings as SettingsIcon,
   Sparkles,
+  Sun,
   Users,
   Wallet,
   Wrench,
@@ -30,6 +33,8 @@ import { cn } from "@/lib/utils";
 
 const COMMS_BADGE_ENTITY_KEY = "leasium.entity_id";
 const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
+const APPEARANCE_STORAGE_KEY = "leasium.appearance";
+type AppearanceMode = "system" | "light" | "dark";
 
 function useCommsBadge(): { urgent: number; total: number } | null {
   const [entityId, setEntityId] = useState<string | null>(null);
@@ -288,6 +293,65 @@ function OperatorUserControl() {
     >
       Sign in
     </Link>
+  );
+}
+
+function applyAppearance(mode: AppearanceMode) {
+  if (typeof window === "undefined") return;
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const theme =
+    mode === "dark" || (mode === "system" && prefersDark) ? "dark" : "light";
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.appearance = mode;
+}
+
+function AppearanceToggle() {
+  const [mode, setMode] = useState<AppearanceMode>("system");
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
+    const initial: AppearanceMode =
+      stored === "light" || stored === "dark" || stored === "system"
+        ? stored
+        : "system";
+    setMode(initial);
+    applyAppearance(initial);
+
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    function syncSystemPreference() {
+      const current = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
+      if (!current || current === "system") {
+        applyAppearance("system");
+      }
+    }
+    media.addEventListener("change", syncSystemPreference);
+    return () => media.removeEventListener("change", syncSystemPreference);
+  }, []);
+
+  const nextMode: AppearanceMode =
+    mode === "system" ? "light" : mode === "light" ? "dark" : "system";
+  const Icon = mode === "dark" ? Moon : mode === "light" ? Sun : Monitor;
+  const label =
+    mode === "system"
+      ? "Appearance: system"
+      : mode === "light"
+        ? "Appearance: light"
+        : "Appearance: dark";
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        window.localStorage.setItem(APPEARANCE_STORAGE_KEY, nextMode);
+        setMode(nextMode);
+        applyAppearance(nextMode);
+      }}
+      aria-label={label}
+      title={`${label}. Click for ${nextMode}.`}
+      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+    >
+      <Icon size={15} />
+    </button>
   );
 }
 
@@ -636,185 +700,188 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             >
               <Bell size={15} />
             </Link>
+            <AppearanceToggle />
             {clerkConfigured ? (
               <div className="flex h-11 shrink-0 items-center">
                 <OperatorUserControl />
               </div>
             ) : null}
+          </div>
         </div>
-      </div>
-      {shortcutPending ? (
-        <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-border bg-white px-4 py-1.5 text-xs font-medium text-muted-foreground shadow-leasiumSm">
-          G… press a letter to jump ({SHORTCUT_LEGEND})
-        </div>
-      ) : null}
-      {cheatsheetRender.shouldRender ? (
-        <div
-          onPointerDown={() => setCheatsheetOpen(false)}
-          className={cn(
-            "fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm",
-            cheatsheetRender.isClosing
-              ? "animate-leasium-backdrop-out"
-              : "animate-leasium-backdrop-in",
-          )}
-        >
+        {shortcutPending ? (
+          <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-border bg-white px-4 py-1.5 text-xs font-medium text-muted-foreground shadow-leasiumSm">
+            G… press a letter to jump ({SHORTCUT_LEGEND})
+          </div>
+        ) : null}
+        {cheatsheetRender.shouldRender ? (
           <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="keyboard-shortcuts-title"
-            onPointerDown={(event) => event.stopPropagation()}
+            onPointerDown={() => setCheatsheetOpen(false)}
             className={cn(
-              "mx-auto max-w-lg overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg",
+              "fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm",
               cheatsheetRender.isClosing
-                ? "animate-leasium-modal-out"
-                : "animate-leasium-modal-in",
+                ? "animate-leasium-backdrop-out"
+                : "animate-leasium-backdrop-in",
             )}
           >
-            <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-              <Keyboard size={17} className="text-primary" />
-              <h2
-                id="keyboard-shortcuts-title"
-                className="flex-1 text-sm font-semibold text-foreground"
-              >
-                Keyboard shortcuts
-              </h2>
-              <button
-                type="button"
-                onClick={() => setCheatsheetOpen(false)}
-                className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                aria-label="Close shortcuts"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="grid gap-4 p-4">
-              <div className="grid gap-2">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Global
-                </div>
-                <div className="grid gap-1.5">
-                  {GLOBAL_SHORTCUTS.map((shortcut) => (
-                    <div
-                      key={shortcut.combo}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-sm"
-                    >
-                      <span className="text-foreground">{shortcut.label}</span>
-                      <kbd className="rounded-md border border-border bg-white px-1.5 py-0.5 text-leasium-micro font-medium text-muted-foreground">
-                        {shortcut.combo}
-                      </kbd>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Go to (press G, then…)
-                </div>
-                <div className="grid gap-1.5">
-                  {SHORTCUT_NAV.map((entry) => (
-                    <div
-                      key={entry.key}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-sm"
-                    >
-                      <span className="text-foreground">{entry.label}</span>
-                      <kbd className="rounded-md border border-border bg-white px-1.5 py-0.5 text-leasium-micro font-medium text-muted-foreground">
-                        G {entry.key.toUpperCase()}
-                      </kbd>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Shortcuts ignore input fields, so typing in any text box is
-                safe.
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {commandRender.shouldRender ? (
-        <div
-          onPointerDown={() => setCommandOpen(false)}
-          className={cn(
-            "fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm",
-            commandRender.isClosing
-              ? "animate-leasium-backdrop-out"
-              : "animate-leasium-backdrop-in",
-          )}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="command-search-title"
-            onPointerDown={(event) => event.stopPropagation()}
-            className={cn(
-              "mx-auto max-w-xl overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg",
-              commandRender.isClosing
-                ? "animate-leasium-modal-out"
-                : "animate-leasium-modal-in",
-            )}
-          >
-            <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-              <Command size={17} className="text-primary" />
-              <h2 id="command-search-title" className="sr-only">
-                Command search
-              </h2>
-              <input
-                autoFocus
-                aria-label="Command search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search tenants, leases, actions..."
-                className="min-h-10 flex-1 bg-transparent text-sm outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setCommandOpen(false)}
-                className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                aria-label="Close search"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="max-h-96 overflow-y-auto p-2">
-              {filteredActions.length > 0 ? (
-                <ul aria-label="Command actions" className="grid gap-0">
-                  {filteredActions.map((action) => (
-                    <li key={`${action.meta}-${action.label}`}>
-                      <Link
-                        href={action.href}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          setCommandOpen(false);
-                          router.push(action.href);
-                        }}
-                        className="flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-sm transition hover:bg-muted"
-                      >
-                        <span className="font-semibold text-foreground">
-                          {action.label}
-                        </span>
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {action.meta}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {filteredActions.length === 0 ? (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="px-3 py-8 text-center text-sm text-muted-foreground"
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="keyboard-shortcuts-title"
+              onPointerDown={(event) => event.stopPropagation()}
+              className={cn(
+                "mx-auto max-w-lg overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg",
+                cheatsheetRender.isClosing
+                  ? "animate-leasium-modal-out"
+                  : "animate-leasium-modal-in",
+              )}
+            >
+              <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+                <Keyboard size={17} className="text-primary" />
+                <h2
+                  id="keyboard-shortcuts-title"
+                  className="flex-1 text-sm font-semibold text-foreground"
                 >
-                  No matching action.
+                  Keyboard shortcuts
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setCheatsheetOpen(false)}
+                  className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  aria-label="Close shortcuts"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="grid gap-4 p-4">
+                <div className="grid gap-2">
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Global
+                  </div>
+                  <div className="grid gap-1.5">
+                    {GLOBAL_SHORTCUTS.map((shortcut) => (
+                      <div
+                        key={shortcut.combo}
+                        className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-sm"
+                      >
+                        <span className="text-foreground">
+                          {shortcut.label}
+                        </span>
+                        <kbd className="rounded-md border border-border bg-white px-1.5 py-0.5 text-leasium-micro font-medium text-muted-foreground">
+                          {shortcut.combo}
+                        </kbd>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ) : null}
+                <div className="grid gap-2">
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Go to (press G, then…)
+                  </div>
+                  <div className="grid gap-1.5">
+                    {SHORTCUT_NAV.map((entry) => (
+                      <div
+                        key={entry.key}
+                        className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-sm"
+                      >
+                        <span className="text-foreground">{entry.label}</span>
+                        <kbd className="rounded-md border border-border bg-white px-1.5 py-0.5 text-leasium-micro font-medium text-muted-foreground">
+                          G {entry.key.toUpperCase()}
+                        </kbd>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Shortcuts ignore input fields, so typing in any text box is
+                  safe.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      ) : null}
-    </header>
+        ) : null}
+        {commandRender.shouldRender ? (
+          <div
+            onPointerDown={() => setCommandOpen(false)}
+            className={cn(
+              "fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm",
+              commandRender.isClosing
+                ? "animate-leasium-backdrop-out"
+                : "animate-leasium-backdrop-in",
+            )}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="command-search-title"
+              onPointerDown={(event) => event.stopPropagation()}
+              className={cn(
+                "mx-auto max-w-xl overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg",
+                commandRender.isClosing
+                  ? "animate-leasium-modal-out"
+                  : "animate-leasium-modal-in",
+              )}
+            >
+              <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+                <Command size={17} className="text-primary" />
+                <h2 id="command-search-title" className="sr-only">
+                  Command search
+                </h2>
+                <input
+                  autoFocus
+                  aria-label="Command search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search tenants, leases, actions..."
+                  className="min-h-10 flex-1 bg-transparent text-sm outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setCommandOpen(false)}
+                  className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  aria-label="Close search"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="max-h-96 overflow-y-auto p-2">
+                {filteredActions.length > 0 ? (
+                  <ul aria-label="Command actions" className="grid gap-0">
+                    {filteredActions.map((action) => (
+                      <li key={`${action.meta}-${action.label}`}>
+                        <Link
+                          href={action.href}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setCommandOpen(false);
+                            router.push(action.href);
+                          }}
+                          className="flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-sm transition hover:bg-muted"
+                        >
+                          <span className="font-semibold text-foreground">
+                            {action.label}
+                          </span>
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {action.meta}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {filteredActions.length === 0 ? (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="px-3 py-8 text-center text-sm text-muted-foreground"
+                  >
+                    No matching action.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </header>
     </>
   );
 }
