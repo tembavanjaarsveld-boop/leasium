@@ -67,7 +67,15 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByRole("link", { name: /Open comms queue/ }),
   ).toBeVisible();
-  await commandSearch.fill("billing");
+  await page.mouse.click(300, 100);
+  await expect(
+    page.getByRole("dialog", { name: "Command search" }),
+  ).toBeHidden();
+  await page.getByRole("button", { name: "Open search" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Command search" }),
+  ).toBeVisible();
+  await page.getByRole("textbox", { name: "Command search" }).fill("billing");
   await page.getByText("Review billing blockers").click();
 
   await expect(page).toHaveURL(/\/billing-readiness$/);
@@ -623,6 +631,10 @@ test("keyboard cheatsheet lists global and Go-to shortcuts", async ({
   await expect(page.getByText("Owner statements")).toBeVisible();
   // The Go-to legend itself appears in the cheatsheet.
   await expect(page.getByText("Go to (press G, then…)")).toBeVisible();
+  await page.mouse.click(300, 100);
+  await expect(
+    page.getByRole("dialog", { name: "Keyboard shortcuts" }),
+  ).toBeHidden();
 });
 
 test("dashboard activity feed groups recent audit rows", async ({ page }) => {

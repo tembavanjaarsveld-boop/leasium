@@ -642,6 +642,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       ) : null}
       {cheatsheetRender.shouldRender ? (
         <div
+          onPointerDown={() => setCheatsheetOpen(false)}
           className={cn(
             "fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm",
             cheatsheetRender.isClosing
@@ -653,6 +654,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             role="dialog"
             aria-modal="true"
             aria-labelledby="keyboard-shortcuts-title"
+            onPointerDown={(event) => event.stopPropagation()}
             className={cn(
               "mx-auto max-w-lg overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg",
               cheatsheetRender.isClosing
@@ -724,6 +726,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       ) : null}
       {commandRender.shouldRender ? (
         <div
+          onPointerDown={() => setCommandOpen(false)}
           className={cn(
             "fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm",
             commandRender.isClosing
@@ -735,6 +738,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             role="dialog"
             aria-modal="true"
             aria-labelledby="command-search-title"
+            onPointerDown={(event) => event.stopPropagation()}
             className={cn(
               "mx-auto max-w-xl overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg",
               commandRender.isClosing
