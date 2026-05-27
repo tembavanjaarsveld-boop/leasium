@@ -1147,10 +1147,12 @@ layout), and modal scale magnitude (0.97 → 1 — barely perceptible).
 
 - [~] Owner statement PDF export v1 adds an authenticated Download PDF
   action to `/statements`, a full-pack ZIP export, and a
-  backend-generated review pack. Review the PDF hierarchy, property
-  table density, owner identity copy, and whether the print/download
-  affordances should collapse into a single statement export menu before
-  owner email dispatch is wired.
+  backend-generated review pack. The ZIP now includes an accountant
+  manifest CSV with owner totals, recipient readiness, outstanding
+  amounts, and review status. Review the PDF hierarchy, property table
+  density, owner identity copy, manifest fields, and whether the
+  print/download affordances should collapse into a single statement
+  export menu before owner email dispatch is wired.
 - [~] Portfolio QA completion report + bulk staging v1 adds readiness
   scoring across data QA, tenant contacts, owner billing identity,
   onboarding prep, billing drafts, and source trails, plus a compact

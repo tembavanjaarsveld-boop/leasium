@@ -869,7 +869,9 @@ function StatementReadinessPanel({
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
-      setPackReceipt("Statement pack prepared. No owner email sent.");
+      setPackReceipt(
+        "Accountant review pack prepared with PDFs and manifest. No owner email sent.",
+      );
     } catch (error) {
       setPackReceipt(friendlyError(error));
     } finally {
@@ -938,7 +940,7 @@ function StatementReadinessPanel({
             ) : (
               <Download size={15} />
             )}
-            Download pack
+            Download accountant pack
           </SecondaryButton>
           <Link
             href={billingHref}

@@ -358,9 +358,18 @@ def test_owner_statement_pdf_pack_downloads_all_review_pdfs(
     with ZipFile(BytesIO(response.content)) as archive:
         names = archive.namelist()
         assert "README-2026-04.txt" in names
+        assert "MANIFEST-2026-04.csv" in names
         pdf_names = [name for name in names if name.endswith(".pdf")]
         assert len(pdf_names) == 2
         assert any("pack-trust-a" in name for name in pdf_names)
         assert any("pack-trust-b" in name for name in pdf_names)
+        manifest = archive.read("MANIFEST-2026-04.csv").decode()
+        readme = archive.read("README-2026-04.txt").decode()
         first_pdf = archive.read(pdf_names[0])
+    assert "owner_identity" in manifest
+    assert "Pack Trust A" in manifest
+    assert "Pack Trust B" in manifest
+    assert "payment_review" in manifest
+    assert "Owners included: 2" in readme
+    assert "Missing owner billing emails: 2" in readme
     assert first_pdf.startswith(b"%PDF-1.4")

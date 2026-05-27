@@ -142,7 +142,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     page.getByRole("button", { name: "Print / save PDF" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Download pack" }),
+    page.getByRole("button", { name: "Download accountant pack" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Download PDF" }),
