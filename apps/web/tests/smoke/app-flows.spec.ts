@@ -1573,7 +1573,7 @@ test("tenant portal invite is account-first before onboarding", async ({
     page.getByRole("heading", { name: "Bright Cafe" }),
   ).toBeVisible();
   await expect(page.getByText("Tenant Account Setup")).toBeVisible();
-  await expect(page.getByText("Sign-in email")).toBeVisible();
+  await expect(page.getByText("Invite email")).toBeVisible();
   await expect(page.getByText("mia@example.com")).toBeVisible();
   await expect(page.getByText(/Sign in with a one-time code/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Send code" })).toBeVisible();
@@ -1597,7 +1597,7 @@ test("tenant portal invite handles missing tenant login setup", async ({
     page.getByRole("heading", { name: "Bright Cafe" }),
   ).toBeVisible();
   await expect(page.getByText("Tenant Account Setup")).toBeVisible();
-  await expect(page.getByText("Sign-in email")).toBeVisible();
+  await expect(page.getByText("Invite email")).toBeVisible();
   await expect(page.getByText("mia@example.com")).toBeVisible();
   await expect(page.getByText("Tenant login not configured")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Payments" })).toHaveCount(0);
