@@ -288,6 +288,11 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     "Draft deferred until 3 June 2026",
   );
   await expect(rentReviewCard.getByLabel("Subject")).toBeDisabled();
+  await expect(
+    rentReviewCard.getByText(
+      "This draft is locked because a dispatch or dismiss receipt has been recorded.",
+    ),
+  ).toBeVisible();
 
   await page.getByRole("tab", { name: "Inbound SMS 1" }).click();
   await expect(
@@ -358,6 +363,11 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   ).toBeVisible();
   await expect(
     smsCard.getByText("Twilio Messaging is not configured yet"),
+  ).toBeVisible();
+  await expect(
+    smsCard.getByText(
+      "This draft is locked because a dispatch or dismiss receipt has been recorded.",
+    ),
   ).toBeVisible();
   await expect(smsCard.getByLabel("Phone recipient")).toBeDisabled();
   await expect(smsCard.getByLabel("Body")).toBeDisabled();

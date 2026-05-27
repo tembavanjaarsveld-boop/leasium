@@ -460,6 +460,13 @@ function CandidateCard({
       ? `${isSms ? "SMS" : "Email"} send skipped`
       : `${isSms ? "SMS" : "Email"} dispatch recorded`;
   const dispatchReceiptDetail = `${providerName} ${isSms ? "SMS" : "email"} to ${currentRecipient.trim()}`;
+  const actionGuidance = draftSettled
+    ? "This draft is locked because a dispatch or dismiss receipt has been recorded."
+    : `Approve sends the ${isSms ? "SMS" : "email"} through ${providerName}.${
+        isSms
+          ? " Edit body or recipient before approving."
+          : " Edit subject, body, or recipient before approving."
+      }`;
 
   // Evidence-attach lives on compliance obligations only. Smart Intake is
   // the recommended path (AI extracts metadata + attributes the document);
@@ -707,10 +714,7 @@ function CandidateCard({
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            Approve sends the {isSms ? "SMS" : "email"} through {providerName}.
-            {isSms
-              ? " Edit body or recipient before approving."
-              : " Edit subject, body, or recipient before approving."}
+            {actionGuidance}
           </p>
           <div className="flex flex-wrap gap-2">
             {draftEdited && !draftSettled ? (
