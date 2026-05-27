@@ -295,6 +295,15 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(smsCard.getByLabel("Phone recipient")).toHaveValue(
     "+61400111222",
   );
+  await smsCard.getByLabel("Phone recipient").fill("");
+  await expect(smsCard.getByText("Approval needs review")).toBeVisible();
+  await expect(
+    smsCard.getByText("Add a phone recipient before approving."),
+  ).toBeVisible();
+  await expect(
+    smsCard.getByRole("button", { name: "Approve & send" }),
+  ).toBeDisabled();
+  await smsCard.getByLabel("Phone recipient").fill("+61400111222");
   await expect(smsCard.getByText("SMS body review")).toBeVisible();
   await expect(
     smsCard.getByText("Under the 160-character single SMS guide."),

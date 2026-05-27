@@ -418,6 +418,13 @@ function CandidateCard({
   const recipientReady = isSms
     ? Boolean(recipientPhone.trim())
     : Boolean(recipientEmail.trim());
+  const dispatchBlockers = [
+    !recipientReady
+      ? `Add a ${isSms ? "phone" : "email"} recipient before approving.`
+      : null,
+    !body.trim() ? "Add a message body before approving." : null,
+    !isSms && !subject.trim() ? "Add a subject before approving." : null,
+  ].filter((blocker): blocker is string => Boolean(blocker));
   const smsBodyLength = body.length;
   const smsBodyOverGuide = smsBodyLength > SMS_SINGLE_SEGMENT_GUIDE;
   const dueLabel = formatDateTime(candidate.due_at);
@@ -632,6 +639,19 @@ function CandidateCard({
             <AlertTriangle size={16} />
             {friendlyError(dismissError)}
           </p>
+        ) : null}
+        {dispatchBlockers.length > 0 && !dispatchedStatus ? (
+          <div className="grid gap-1 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
+            <div className="flex items-center gap-2 font-medium">
+              <AlertTriangle size={16} />
+              Approval needs review
+            </div>
+            {dispatchBlockers.map((blocker) => (
+              <p key={blocker} className="text-xs">
+                {blocker}
+              </p>
+            ))}
+          </div>
         ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
