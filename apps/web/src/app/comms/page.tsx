@@ -22,6 +22,7 @@ import {
   Inbox,
   Loader2,
   Paperclip,
+  RotateCcw,
   Send,
   Sparkles,
   X,
@@ -424,6 +425,15 @@ function CandidateCard({
     body !== candidate.body ||
     currentRecipient !== originalRecipient ||
     (!isSms && subject !== candidate.subject);
+  const resetDraft = () => {
+    setSubject(candidate.subject);
+    setBody(candidate.body);
+    if (isSms) {
+      setRecipientPhone(candidate.recipient_phone ?? "");
+    } else {
+      setRecipientEmail(candidate.recipient_email ?? "");
+    }
+  };
   const recipientReady = isSms
     ? Boolean(recipientPhone.trim())
     : Boolean(recipientEmail.trim());
@@ -678,6 +688,12 @@ function CandidateCard({
               : " Edit subject, body, or recipient before approving."}
           </p>
           <div className="flex flex-wrap gap-2">
+            {draftEdited && !dispatchedStatus ? (
+              <SecondaryButton type="button" onClick={resetDraft}>
+                <RotateCcw size={15} />
+                Reset draft
+              </SecondaryButton>
+            ) : null}
             <SecondaryButton
               type="button"
               onClick={() => dismissMutation.mutate()}

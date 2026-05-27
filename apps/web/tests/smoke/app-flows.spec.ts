@@ -316,6 +316,17 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     "Thanks for the heads up. We have logged this and will follow up shortly.",
   );
   await expect(smsCard.getByText("Edited draft")).toBeVisible();
+  await expect(
+    smsCard.getByRole("button", { name: "Reset draft" }),
+  ).toBeVisible();
+  await smsCard.getByRole("button", { name: "Reset draft" }).click();
+  await expect(smsCard.getByText("Edited draft")).toHaveCount(0);
+  await expect(smsCard.getByLabel("Body")).toHaveValue(
+    "Thanks for the update. We have logged this and will follow up shortly.",
+  );
+  await expect(
+    smsCard.getByRole("button", { name: "Reset draft" }),
+  ).toHaveCount(0);
   await expect(smsCard.getByText("SMS body review")).toBeVisible();
   await expect(
     smsCard.getByText("Under the 160-character single SMS guide."),
