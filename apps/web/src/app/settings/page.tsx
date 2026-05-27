@@ -53,6 +53,7 @@ import {
   type IntegrationStatusRecord,
   type ProviderStatusRecord,
   getXeroStatus,
+  listBrandedCommunicationTemplates,
   listEntities,
   listProperties,
   previewXeroChartTaxValidation,
@@ -79,6 +80,7 @@ import {
   type XeroPaymentReconciliationRecord,
   type XeroPaymentReconciliationResultRecord,
   type XeroAccountingFreshnessRecord,
+  type BrandedCommunicationTemplateRecord,
   type SecurityMemberRecord,
   type SecurityMemberUpdatePayload,
   type SecurityNotificationPreferences,
@@ -888,6 +890,12 @@ function communicationTemplateCatalog({
   ];
 }
 
+function brandedTemplateChannelLabel(
+  channel: BrandedCommunicationTemplateRecord["channel"],
+) {
+  return channel === "in_app" ? "In-app" : channel.toUpperCase();
+}
+
 function digestCadenceLabel(value: SecurityWorkAssignmentDigestCadence) {
   if (value === "off") {
     return "Digest off";
@@ -1199,6 +1207,12 @@ function SettingsWorkspace() {
     queryFn: getWorkAssignmentNotificationTemplates,
     enabled: activeTab === "security" || activeTab === "organisation",
   });
+  const brandedTemplatesQuery = useQuery({
+    queryKey: ["branded-communication-templates", selectedEntityId],
+    queryFn: () =>
+      listBrandedCommunicationTemplates({ entityId: selectedEntityId }),
+    enabled: Boolean(selectedEntityId) && activeTab === "organisation",
+  });
 
   const communicationTemplates = useMemo(
     () =>
@@ -1215,6 +1229,7 @@ function SettingsWorkspace() {
       selectedEntity?.name,
     ],
   );
+  const brandedTemplates = brandedTemplatesQuery.data ?? [];
 
   const refreshXeroViews = () => {
     queryClient.invalidateQueries({ queryKey: ["entities"] });
@@ -2860,6 +2875,97 @@ function SettingsWorkspace() {
                     </div>
                   </div>
                 ))}
+              </div>
+              <div className="border-t border-border p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">
+                      Stored template overrides
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Database-backed branded templates are visible here for
+                      review. Editing and send-time wiring remain paused for
+                      internal-first use.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge
+                      tone={brandedTemplates.length ? "primary" : "neutral"}
+                    >
+                      {brandedTemplates.length} stored
+                    </StatusBadge>
+                    <StatusBadge tone="neutral">Read-only</StatusBadge>
+                  </div>
+                </div>
+                {brandedTemplatesQuery.isLoading ? (
+                  <div className="mt-3 rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
+                    Loading stored template overrides.
+                  </div>
+                ) : brandedTemplatesQuery.error ? (
+                  <div className="mt-3 rounded-md border border-danger/20 bg-danger-soft p-3 text-sm text-danger">
+                    {brandedTemplatesQuery.error instanceof Error
+                      ? brandedTemplatesQuery.error.message
+                      : "Stored template overrides could not load."}
+                  </div>
+                ) : brandedTemplates.length ? (
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    {brandedTemplates.map((template) => (
+                      <div
+                        key={template.id}
+                        className="grid gap-3 rounded-md border border-border bg-white p-3 text-sm shadow-leasiumXs"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold">
+                                {template.name}
+                              </span>
+                              <StatusBadge tone="primary">
+                                {brandedTemplateChannelLabel(template.channel)}
+                              </StatusBadge>
+                              <StatusBadge
+                                tone={template.is_active ? "success" : "neutral"}
+                              >
+                                {template.is_active ? "Active" : "Inactive"}
+                              </StatusBadge>
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {template.key} / {template.version} /{" "}
+                              {template.provider}
+                            </div>
+                          </div>
+                          <StatusBadge
+                            tone={template.is_system ? "neutral" : "warning"}
+                          >
+                            {template.is_system ? "System" : "Override"}
+                          </StatusBadge>
+                        </div>
+                        <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-3">
+                          {template.subject_template ? (
+                            <div className="font-medium">
+                              {template.subject_template}
+                            </div>
+                          ) : null}
+                          <div className="line-clamp-3 text-xs leading-5 text-muted-foreground">
+                            {template.body_template}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          {template.action_label ? (
+                            <span>Action: {template.action_label}</span>
+                          ) : null}
+                          {template.notes ? <span>{template.notes}</span> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={<FileText size={18} />}
+                    title="No stored template overrides"
+                    description="Runtime templates are still the source of truth until editable branded templates are enabled."
+                  />
+                )}
               </div>
             </SectionPanel>
 

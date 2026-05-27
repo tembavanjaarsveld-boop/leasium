@@ -1930,6 +1930,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.getByRole("tab", { name: "Organisation" }).click();
   await expect(page.getByText("Communication templates")).toBeVisible();
   await expect(page.getByText("Invoice delivery").first()).toBeVisible();
+  await expect(page.getByText("Stored template overrides")).toBeVisible();
+  await expect(page.getByText("SKJ invoice delivery")).toBeVisible();
+  await expect(page.getByText("Read-only")).toBeVisible();
   await expect(
     page.getByText("tenant_onboarding_invite").first(),
   ).toBeVisible();

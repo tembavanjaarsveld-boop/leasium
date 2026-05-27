@@ -612,6 +612,53 @@ let tenantPortalNotificationPreferences = {
   ...initialTenantPortalNotificationPreferences,
 };
 
+const brandedCommunicationTemplates = [
+  {
+    id: "branded-template-1",
+    entity_id: entityId,
+    key: "invoice_delivery",
+    version: "v1",
+    channel: "email",
+    provider: "sendgrid",
+    name: "SKJ invoice delivery",
+    subject_template: "Invoice {{invoice_number}} from SKJ Capital",
+    body_template:
+      "Hi {{tenant_name}}, your reviewed invoice is attached. Please contact SKJ Capital if any detail needs attention.",
+    action_label: "View invoice",
+    action_url_template: "{{invoice_url}}",
+    notes: "Stored override is visible only; runtime sends still use approved templates.",
+    is_active: true,
+    is_system: false,
+    created_by_user_id: operatorId,
+    created_at: "2026-05-22T00:00:00.000Z",
+    updated_at: "2026-05-22T00:00:00.000Z",
+    deleted_at: null,
+    metadata: { brand: "SKJ Capital" },
+  },
+  {
+    id: "branded-template-2",
+    entity_id: entityId,
+    key: "maintenance_contractor_update",
+    version: "v1",
+    channel: "email",
+    provider: "sendgrid",
+    name: "Contractor update default",
+    subject_template: "Maintenance update requested",
+    body_template:
+      "Please confirm the attendance window, quote status, or completion evidence for this work order.",
+    action_label: null,
+    action_url_template: null,
+    notes: null,
+    is_active: true,
+    is_system: true,
+    created_by_user_id: null,
+    created_at: "2026-05-22T00:10:00.000Z",
+    updated_at: "2026-05-22T00:10:00.000Z",
+    deleted_at: null,
+    metadata: {},
+  },
+];
+
 function tenantPortalDocumentsByCategory(category: string) {
   return tenantPortalDocuments.filter(
     (document) => document.category === category,
@@ -5427,6 +5474,14 @@ export async function mockLeasiumApi(
           },
         ],
       });
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === "/branded-communication-templates"
+    ) {
+      await fulfillJson(route, brandedCommunicationTemplates);
       return;
     }
 

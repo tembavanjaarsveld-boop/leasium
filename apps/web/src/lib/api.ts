@@ -102,6 +102,28 @@ export type WorkAssignmentNotificationTemplateCatalogRecord = {
   digest_templates: WorkAssignmentNotificationTemplateRecord[];
 };
 
+export type BrandedCommunicationTemplateRecord = {
+  id: string;
+  entity_id: string;
+  key: string;
+  version: string;
+  channel: "email" | "sms" | "in_app";
+  provider: string;
+  name: string;
+  subject_template: string | null;
+  body_template: string;
+  action_label: string | null;
+  action_url_template: string | null;
+  notes: string | null;
+  is_active: boolean;
+  is_system: boolean;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  metadata: Record<string, unknown>;
+};
+
 export type WorkAssignmentDigestItemRecord = {
   target_id: string;
   target_type: WorkAssignmentTargetType;
@@ -3552,6 +3574,22 @@ export function sendArrearsAssignmentNotification(arrearsCaseId: string) {
 export function getWorkAssignmentNotificationTemplates() {
   return request<WorkAssignmentNotificationTemplateCatalogRecord>(
     "/work-assignments/notification-templates",
+  );
+}
+
+export function listBrandedCommunicationTemplates({
+  entityId,
+  includeInactive = false,
+}: {
+  entityId: string;
+  includeInactive?: boolean;
+}) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  if (includeInactive) {
+    params.set("include_inactive", "true");
+  }
+  return request<BrandedCommunicationTemplateRecord[]>(
+    `/branded-communication-templates?${params.toString()}`,
   );
 }
 
