@@ -67,6 +67,8 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByRole("link", { name: /Open comms queue/ }),
   ).toBeVisible();
+  await commandSearch.fill("zzzz-no-match");
+  await expect(page.getByRole("status")).toContainText("No matching action.");
   await page.mouse.click(300, 100);
   await expect(
     page.getByRole("dialog", { name: "Command search" }),

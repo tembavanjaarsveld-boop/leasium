@@ -797,7 +797,11 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                 </Link>
               ))}
               {filteredActions.length === 0 ? (
-                <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="px-3 py-8 text-center text-sm text-muted-foreground"
+                >
                   No matching action.
                 </div>
               ) : null}
