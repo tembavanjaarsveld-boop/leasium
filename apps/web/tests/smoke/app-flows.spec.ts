@@ -1931,6 +1931,11 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("Communication templates")).toBeVisible();
   await expect(page.getByText("Invoice delivery").first()).toBeVisible();
   await expect(page.getByText("Stored template overrides")).toBeVisible();
+  await expect(page.getByText("Override coverage")).toBeVisible();
+  await expect(
+    page.getByText("2/2 active overrides match runtime keys."),
+  ).toBeVisible();
+  await expect(page.getByText("invoice_delivery covered")).toBeVisible();
   await expect(page.getByText("SKJ invoice delivery")).toBeVisible();
   await expect(page.getByText("Read-only")).toBeVisible();
   await expect(

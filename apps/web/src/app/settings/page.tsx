@@ -100,6 +100,7 @@ import {
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_XERO_ISSUES: XeroMappingIssueRecord[] = [];
+const EMPTY_BRANDED_TEMPLATES: BrandedCommunicationTemplateRecord[] = [];
 
 type SettingsTab = "security" | "organisation" | "xero";
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
@@ -127,6 +128,11 @@ type CommunicationTemplateCard = {
   receiptDetail: string;
   sourceLabel: string;
   tone: StatusTone;
+};
+type TemplateOverrideCoverage = {
+  active: number;
+  covered: string[];
+  unmatched: string[];
 };
 type AccountingNextStep = {
   title: string;
@@ -896,6 +902,33 @@ function brandedTemplateChannelLabel(
   return channel === "in_app" ? "In-app" : channel.toUpperCase();
 }
 
+function templateOverrideCoverage({
+  runtimeTemplates,
+  brandedTemplates,
+}: {
+  runtimeTemplates: CommunicationTemplateCard[];
+  brandedTemplates: BrandedCommunicationTemplateRecord[];
+}): TemplateOverrideCoverage {
+  const runtimeTemplateKeys = new Set(
+    runtimeTemplates.map((template) => template.templateKey),
+  );
+  const activeOverrides = brandedTemplates.filter(
+    (template) => template.is_active,
+  );
+
+  return activeOverrides.reduce<TemplateOverrideCoverage>(
+    (coverage, template) => {
+      if (runtimeTemplateKeys.has(template.key)) {
+        coverage.covered.push(template.key);
+      } else {
+        coverage.unmatched.push(template.key);
+      }
+      return coverage;
+    },
+    { active: activeOverrides.length, covered: [], unmatched: [] },
+  );
+}
+
 function digestCadenceLabel(value: SecurityWorkAssignmentDigestCadence) {
   if (value === "off") {
     return "Digest off";
@@ -1229,7 +1262,16 @@ function SettingsWorkspace() {
       selectedEntity?.name,
     ],
   );
-  const brandedTemplates = brandedTemplatesQuery.data ?? [];
+  const brandedTemplates =
+    brandedTemplatesQuery.data ?? EMPTY_BRANDED_TEMPLATES;
+  const brandedTemplateCoverage = useMemo(
+    () =>
+      templateOverrideCoverage({
+        runtimeTemplates: communicationTemplates,
+        brandedTemplates,
+      }),
+    [brandedTemplates, communicationTemplates],
+  );
 
   const refreshXeroViews = () => {
     queryClient.invalidateQueries({ queryKey: ["entities"] });
@@ -2896,6 +2938,53 @@ function SettingsWorkspace() {
                     </StatusBadge>
                     <StatusBadge tone="neutral">Read-only</StatusBadge>
                   </div>
+                </div>
+                <div className="mt-3 grid gap-3 rounded-md border border-border bg-muted/20 p-3 text-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">Override coverage</div>
+                      <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {brandedTemplateCoverage.active
+                          ? brandedTemplateCoverage.unmatched.length
+                            ? `${brandedTemplateCoverage.covered.length}/${brandedTemplateCoverage.active} active overrides match runtime keys; ${brandedTemplateCoverage.unmatched.length} need send-time wiring review.`
+                            : `${brandedTemplateCoverage.covered.length}/${brandedTemplateCoverage.active} active overrides match runtime keys.`
+                          : "No active stored overrides yet."}
+                      </div>
+                      <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                        Coverage only; sends still use runtime templates until
+                        editing and wiring land.
+                      </div>
+                    </div>
+                    <StatusBadge
+                      tone={
+                        brandedTemplateCoverage.unmatched.length
+                          ? "warning"
+                          : brandedTemplateCoverage.active
+                            ? "success"
+                            : "neutral"
+                      }
+                    >
+                      {brandedTemplateCoverage.unmatched.length
+                        ? "Review wiring"
+                        : brandedTemplateCoverage.active
+                          ? "Runtime-aligned"
+                          : "No active"}
+                    </StatusBadge>
+                  </div>
+                  {brandedTemplateCoverage.active ? (
+                    <div className="flex flex-wrap gap-2">
+                      {brandedTemplateCoverage.covered.map((key) => (
+                        <StatusBadge key={key} tone="success">
+                          {key} covered
+                        </StatusBadge>
+                      ))}
+                      {brandedTemplateCoverage.unmatched.map((key) => (
+                        <StatusBadge key={key} tone="warning">
+                          {key} needs wiring
+                        </StatusBadge>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
                 {brandedTemplatesQuery.isLoading ? (
                   <div className="mt-3 rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
