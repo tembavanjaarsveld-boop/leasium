@@ -244,6 +244,38 @@ function maintenanceStatusDetail(
   return "Submitted to the property team.";
 }
 
+function maintenanceStageIndex(status: string) {
+  if (["completed", "cancelled"].includes(status)) {
+    return 4;
+  }
+  if (status === "in_progress") {
+    return 3;
+  }
+  if (["assigned", "approved"].includes(status)) {
+    return 2;
+  }
+  if (["triaged", "awaiting_approval"].includes(status)) {
+    return 1;
+  }
+  return 0;
+}
+
+function maintenanceLatestUpdate(
+  request: TenantPortalRecord["maintenance_requests"][number],
+) {
+  if (request.history.length) {
+    const [latest] = [...request.history].sort(
+      (left, right) =>
+        new Date(right.timestamp).getTime() -
+        new Date(left.timestamp).getTime(),
+    );
+    return `${maintenanceEventLabel(latest.event)} ${formatDateTime(
+      latest.timestamp,
+    )}: ${latest.summary}`;
+  }
+  return `Submitted ${formatDateTime(request.requested_at)}.`;
+}
+
 type TenantPortalActivityItem = {
   key: string;
   title: string;
@@ -381,8 +413,8 @@ function buildTenantPortalActivity(portal: TenantPortalRecord) {
       request.applied_at
         ? {
             key: `contact-change-applied-${request.id}`,
-            title: "Contact request applied",
-            detail: "The property team applied your contact detail change.",
+            title: "Contact details updated",
+            detail: "Your saved contact details were updated.",
             timestamp: request.applied_at,
             tone: "success",
           }
@@ -1453,6 +1485,54 @@ function MaintenanceSummaryPanel({ summary }: { summary: MaintenanceSummary }) {
   );
 }
 
+function MaintenanceStatusTimeline({
+  request,
+}: {
+  request: TenantPortalRecord["maintenance_requests"][number];
+}) {
+  const stages = [
+    "Submitted",
+    "Reviewed",
+    "Scheduled",
+    "Working",
+    request.status === "cancelled" ? "Closed" : "Complete",
+  ];
+  const activeStage = maintenanceStageIndex(request.status);
+
+  return (
+    <div className="grid gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className="font-semibold text-foreground">Status path</span>
+        <span className="text-muted-foreground">
+          {maintenanceLatestUpdate(request)}
+        </span>
+      </div>
+      <div className="grid grid-cols-5 gap-1">
+        {stages.map((stage, index) => {
+          const isActive = index <= activeStage;
+          return (
+            <div key={stage} className="grid min-w-0 gap-1">
+              <div
+                className={`h-1.5 rounded-full ${
+                  isActive ? "bg-primary" : "bg-border"
+                }`}
+              />
+              <div
+                className={`truncate text-leasium-micro font-semibold ${
+                  isActive ? "text-foreground" : "text-muted-foreground"
+                }`}
+                title={stage}
+              >
+                {stage}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function TenantDocumentSummary({
   document,
 }: {
@@ -1568,6 +1648,10 @@ function ContactDetailsPanel({
     (request) => request.status === "submitted",
   );
   const latestContactRequest = portal.contact_change_requests[0] ?? null;
+  const contactSelfEdit = portal.auth.mode === "tenant_portal_account";
+  const reviewPendingContactRequests = contactSelfEdit
+    ? []
+    : pendingContactRequests;
 
   const contactChangeMutation = useMutation({
     mutationFn: async () => {
@@ -1618,10 +1702,11 @@ function ContactDetailsPanel({
           </div>
         ) : null}
         <p className="text-xs leading-5 text-muted-foreground">
-          If something looks wrong, send a note to the property team before
-          signing or paying anything that depends on these details.
+          {contactSelfEdit
+            ? "These details are used for portal updates and property team follow-up."
+            : "If something looks wrong, send a note to the property team before signing or paying anything that depends on these details."}
         </p>
-        {pendingContactRequests.length ? (
+        {reviewPendingContactRequests.length ? (
           <div className="grid gap-2 rounded-md border border-warning/30 bg-warning/5 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="font-medium">Change request in review</div>
@@ -1632,7 +1717,7 @@ function ContactDetailsPanel({
               saved details will update here once they apply it.
             </p>
             <div className="grid gap-1 text-xs">
-              {pendingContactRequests[0].changes.map((change) => (
+              {reviewPendingContactRequests[0].changes.map((change) => (
                 <div key={change.field}>
                   <span className="font-medium">{change.label}</span>:{" "}
                   {String(change.after ?? "-")}
@@ -1652,7 +1737,7 @@ function ContactDetailsPanel({
             detail changes.
           </div>
         ) : null}
-        {pendingContactRequests.length ? null : changeOpen ? (
+        {reviewPendingContactRequests.length ? null : changeOpen ? (
           <form
             className="grid gap-3 rounded-md border border-border bg-muted/30 p-3"
             onSubmit={(event) => {
@@ -1660,7 +1745,9 @@ function ContactDetailsPanel({
               contactChangeMutation.mutate();
             }}
           >
-            <div className="text-sm font-semibold">Request a change</div>
+            <div className="text-sm font-semibold">
+              {contactSelfEdit ? "Edit contact details" : "Request a change"}
+            </div>
             <div className="grid gap-3">
               <Field label="Contact name">
                 <Input
@@ -1696,14 +1783,16 @@ function ContactDetailsPanel({
                   }
                 />
               </Field>
-              <Field label="Note for the property team">
-                <Input
-                  value={changeForm.notes ?? ""}
-                  onChange={(event) =>
-                    setChangeField("notes", event.target.value)
-                  }
-                />
-              </Field>
+              {contactSelfEdit ? null : (
+                <Field label="Note for the property team">
+                  <Input
+                    value={changeForm.notes ?? ""}
+                    onChange={(event) =>
+                      setChangeField("notes", event.target.value)
+                    }
+                  />
+                </Field>
+              )}
             </div>
             {contactChangeMutation.error ? (
               <p className="text-sm text-danger">
@@ -1723,7 +1812,7 @@ function ContactDetailsPanel({
                 ) : (
                   <Send size={16} />
                 )}
-                Send request
+                {contactSelfEdit ? "Save details" : "Send request"}
               </Button>
             </div>
           </form>
@@ -1731,7 +1820,7 @@ function ContactDetailsPanel({
           <div className="justify-self-start">
             <SecondaryButton type="button" onClick={() => setChangeOpen(true)}>
               <PenLine size={15} />
-              Request change
+              {contactSelfEdit ? "Edit details" : "Request change"}
             </SecondaryButton>
           </div>
         )}
@@ -4482,6 +4571,9 @@ function TenantPortalContent({
                             request.due_date,
                             request.completed_at,
                           )}
+                        </div>
+                        <div className="mt-2">
+                          <MaintenanceStatusTimeline request={request} />
                         </div>
                         {request.source_reference ? (
                           <div className="mt-2 text-sm">

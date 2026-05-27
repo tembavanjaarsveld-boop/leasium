@@ -1075,6 +1075,36 @@ def _contact_change_request_reads(tenant: Tenant) -> list[TenantPortalContactCha
     )[:10]
 
 
+def _append_contact_change_request(
+    tenant: Tenant,
+    *,
+    changes: list[dict[str, object]],
+    actor: str,
+    status_value: Literal["submitted", "applied"],
+    notes: str | None,
+    now: datetime,
+) -> None:
+    metadata = dict(tenant.tenant_metadata or {})
+    requests = metadata.get(PORTAL_CONTACT_REQUESTS_KEY)
+    if not isinstance(requests, list):
+        requests = []
+    request_entry = {
+        "id": str(uuid7()),
+        "status": status_value,
+        "submitted_at": now.isoformat(),
+        "submitted_by": actor,
+        "notes": notes,
+        "changes": changes,
+    }
+    if status_value == "applied":
+        request_entry["applied_at"] = now.isoformat()
+        request_entry["applied_by"] = actor
+    requests.append(request_entry)
+    metadata[PORTAL_CONTACT_REQUESTS_KEY] = requests[-20:]
+    tenant.tenant_metadata = metadata
+    flag_modified(tenant, "tenant_metadata")
+
+
 def _portal_invite_sent_at(delivery_data: dict[str, object] | None) -> datetime | None:
     """Return the timestamp of the last portal-invite delivery, if any.
 
@@ -1921,11 +1951,43 @@ def create_contact_change_request(
         )
 
     now = utcnow()
-    metadata = dict(scope.tenant.tenant_metadata or {})
-    requests = metadata.get(PORTAL_CONTACT_REQUESTS_KEY)
-    if not isinstance(requests, list):
-        requests = []
-    if any(isinstance(item, dict) and item.get("status") == "submitted" for item in requests):
+    if scope.auth.mode == "tenant_portal_account":
+        for change in changes:
+            field = change.get("field")
+            if isinstance(field, str):
+                setattr(scope.tenant, field, change.get("after"))
+        _append_contact_change_request(
+            scope.tenant,
+            changes=changes,
+            actor=scope.auth.actor,
+            status_value="applied",
+            notes=payload.notes,
+            now=now,
+        )
+        audit_log(
+            session,
+            actor=scope.auth.actor,
+            entity_id=scope.onboarding.entity_id,
+            action="update",
+            target_table="tenant",
+            target_id=scope.tenant.id,
+            tool_name="tenant_portal.contact_self_edit",
+            tool_input={"fields": [change["field"] for change in changes]},
+            tool_output_summary="Tenant portal account applied contact detail edits.",
+            data_classification="confidential",
+        )
+        session.commit()
+        session.refresh(scope.tenant)
+        return _portal_read(scope, session)
+
+    raw_existing_requests = (scope.tenant.tenant_metadata or {}).get(
+        PORTAL_CONTACT_REQUESTS_KEY
+    )
+    existing_requests = raw_existing_requests if isinstance(raw_existing_requests, list) else []
+    if any(
+        isinstance(item, dict) and item.get("status") == "submitted"
+        for item in existing_requests
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -1933,18 +1995,14 @@ def create_contact_change_request(
                 "property team to apply or close it before sending another."
             ),
         )
-    request_entry = {
-        "id": str(uuid7()),
-        "status": "submitted",
-        "submitted_at": now.isoformat(),
-        "submitted_by": scope.auth.actor,
-        "notes": payload.notes,
-        "changes": changes,
-    }
-    requests.append(request_entry)
-    metadata[PORTAL_CONTACT_REQUESTS_KEY] = requests[-20:]
-    scope.tenant.tenant_metadata = metadata
-    flag_modified(scope.tenant, "tenant_metadata")
+    _append_contact_change_request(
+        scope.tenant,
+        changes=changes,
+        actor=scope.auth.actor,
+        status_value="submitted",
+        notes=payload.notes,
+        now=now,
+    )
     audit_log(
         session,
         actor=scope.auth.actor,

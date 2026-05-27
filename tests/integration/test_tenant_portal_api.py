@@ -696,6 +696,52 @@ def test_tenant_portal_account_claim_and_bearer_session_are_scoped(
     assert work_order.work_order_metadata["auth_mode"] == "tenant_portal_account"
 
 
+def test_tenant_portal_account_self_edits_contact_details(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    onboarding.status = TenantOnboardingStatus.applied
+    session.commit()
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+
+    update_response = client.post(
+        "/api/v1/tenant-portal/contact-change-requests",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={
+            "contact_name": "Avery Updated",
+            "contact_email": "avery.updated@example.test",
+            "contact_phone": "+61 400 333 444",
+            "billing_email": "billing.updated@example.test",
+        },
+    )
+
+    assert update_response.status_code == 200
+    body = update_response.json()
+    assert body["tenant"]["contact_name"] == "Avery Updated"
+    assert body["tenant"]["contact_email"] == "avery.updated@example.test"
+    assert body["tenant"]["contact_phone"] == "+61 400 333 444"
+    assert body["tenant"]["billing_email"] == "billing.updated@example.test"
+    assert body["contact_change_requests"][0]["status"] == "applied"
+    assert body["contact_change_requests"][0]["applied_at"] is not None
+
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    assert tenant.contact_name == "Avery Updated"
+    assert tenant.contact_email == "avery.updated@example.test"
+    assert tenant.contact_phone == "+61 400 333 444"
+    assert tenant.billing_email == "billing.updated@example.test"
+
+
 def test_tenant_portal_account_blocks_conflicting_and_revoked_logins(
     client: TestClient,
     session: Session,
