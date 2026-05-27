@@ -75,7 +75,11 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByRole("dialog", { name: "Command search" }),
   ).toBeVisible();
-  await page.getByRole("textbox", { name: "Command search" }).fill("billing");
+  const reopenedCommandSearch = page.getByRole("textbox", {
+    name: "Command search",
+  });
+  await expect(reopenedCommandSearch).toHaveValue("");
+  await reopenedCommandSearch.fill("billing");
   await page.getByText("Review billing blockers").click();
 
   await expect(page).toHaveURL(/\/billing-readiness$/);

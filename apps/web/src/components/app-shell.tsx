@@ -349,7 +349,12 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         clearShortcutWindow();
-        setCommandOpen((open) => !open);
+        if (commandOpen) {
+          setCommandOpen(false);
+        } else {
+          setQuery("");
+          setCommandOpen(true);
+        }
         return;
       }
 
@@ -409,7 +414,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       window.removeEventListener("keydown", onKeyDown);
       clearShortcutWindow();
     };
-  }, [router, shortcutPending]);
+  }, [commandOpen, router, shortcutPending]);
 
   function isNavActive(item: NavItem): boolean {
     if (item.href === "/") {
@@ -600,7 +605,10 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:ml-0">
             <button
               type="button"
-              onClick={() => setCommandOpen(true)}
+              onClick={() => {
+                setQuery("");
+                setCommandOpen(true);
+              }}
               aria-label="Open search"
               title="Search (Cmd K)"
               className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
