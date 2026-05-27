@@ -269,16 +269,23 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     page.getByRole("tab", { name: "All drafts 2" }),
   ).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("Showing all 2 drafts.")).toBeVisible();
 
   const smsCard = page.locator("section").filter({ hasText: "Inbound SMS" });
   await expect(smsCard).toBeVisible();
   await page.getByRole("tab", { name: "Rent review 1" }).click();
+  await expect(
+    page.getByText("Showing 1 of 2 drafts in Rent review."),
+  ).toBeVisible();
   await expect(smsCard).not.toBeVisible();
   await expect(
     page.locator("section").filter({ hasText: "Rent review" }),
   ).toBeVisible();
 
   await page.getByRole("tab", { name: "Inbound SMS 1" }).click();
+  await expect(
+    page.getByText("Showing 1 of 2 drafts in Inbound SMS."),
+  ).toBeVisible();
   await expect(smsCard).toBeVisible();
   await expect(smsCard.getByText("AI: maintenance request (82%)")).toBeVisible();
   await expect(smsCard.getByText(/Due 27 May 2026/)).toBeVisible();

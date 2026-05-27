@@ -173,6 +173,12 @@ function CommsContent() {
         : candidates.filter((candidate) => candidate.kind === selectedFilter),
     [candidates, selectedFilter],
   );
+  const selectedFilterLabel =
+    selectedFilter === "all" ? "all drafts" : KIND_LABEL[selectedFilter];
+  const filterSummaryLabel =
+    selectedFilter === "all"
+      ? `Showing all ${candidates.length} ${candidates.length === 1 ? "draft" : "drafts"}`
+      : `Showing ${filteredCandidates.length} of ${candidates.length} drafts in ${selectedFilterLabel}`;
   const urgentCount = useMemo(
     () => candidates.filter((c) => c.severity === "danger").length,
     [candidates],
@@ -219,26 +225,31 @@ function CommsContent() {
           />
         </section>
         {candidates.length ? (
-          <div
-            className="flex flex-wrap gap-2 rounded-md border border-border bg-white p-2"
-            role="tablist"
-            aria-label="Filter comms drafts"
-          >
-            <CommsFilterButton
-              active={selectedFilter === "all"}
-              label="All drafts"
-              count={candidates.length}
-              onClick={() => setSelectedFilter("all")}
-            />
-            {visibleFilterKinds.map((kind) => (
+          <div className="rounded-md border border-border bg-white p-2">
+            <div
+              className="flex flex-wrap gap-2"
+              role="tablist"
+              aria-label="Filter comms drafts"
+            >
               <CommsFilterButton
-                key={kind}
-                active={selectedFilter === kind}
-                label={KIND_LABEL[kind]}
-                count={counts[kind]}
-                onClick={() => setSelectedFilter(kind)}
+                active={selectedFilter === "all"}
+                label="All drafts"
+                count={candidates.length}
+                onClick={() => setSelectedFilter("all")}
               />
-            ))}
+              {visibleFilterKinds.map((kind) => (
+                <CommsFilterButton
+                  key={kind}
+                  active={selectedFilter === kind}
+                  label={KIND_LABEL[kind]}
+                  count={counts[kind]}
+                  onClick={() => setSelectedFilter(kind)}
+                />
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {filterSummaryLabel}.
+            </p>
           </div>
         ) : null}
 
