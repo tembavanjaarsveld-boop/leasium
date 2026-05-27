@@ -1,6 +1,6 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-05-26
+Last updated: 2026-05-27
 
 ## Current State
 
@@ -11,7 +11,7 @@ Last updated: 2026-05-26
 - Production API: `https://api.leasium.ai/api/v1` (Render custom domain). `https://leasium-api.onrender.com` is a provider fallback only.
 - Domain cutover note: `api.leasium.ai` now resolves and serves the Render API certificate. Production frontend/API/env/provider links should use `leasium.ai` and `api.leasium.ai`.
 - Clerk cutover note: live Vercel was previously serving a publishable key that decoded to `clerk.leasium.vercel.app`. That creates split-domain sessions. The canonical target is a Clerk setup anchored to `leasium.ai` (prefer `clerk.leasium.ai` via Clerk DNS/CNAME, or exact `https://leasium.ai/__clerk` proxy if enabled in Clerk Dashboard and Vercel env).
-- **Latest pushed commit:** run `git log --oneline -12` to confirm before editing. The 2026-05-25 domain cleanup removes Vercel-host fallbacks from account/tenant auth paths and documents the canonical `leasium.ai` / `api.leasium.ai` setup.
+- **Latest pushed commit:** run `git log --oneline -12` to confirm before editing. As of 2026-05-27, `a0759fd Update tenant invite smoke copy` is pushed to `main`; it only aligns smoke expectations with the current `Invite email` claim-gate label.
 - **Working tree:** expected clean after each pushed slice. If not, inspect with `git status --short` before editing.
 - **Mac tooling change (2026-05-24):** Node v26 installed via Homebrew; Desktop Commander MCP server (`@wonderwhy-er/desktop-commander`) is configured in Claude Desktop. Future Claude sessions in this workspace have `mcp__Desktop_Commander__*` tools available — they execute commands directly on the Mac (pytest, ruff, alembic, git, next dev, playwright). Sandbox-can't-write-git and no-local-Node constraints from prior sessions no longer apply.
 - The 2026-05-22 UX-review backlog is fully landed except Tier 2 (g) dark mode (deliberately deprioritised under the SKJ internal-first-6-months direction). All shipped items are marked `[x]` or `[~]` in `docs/product-roadmap.md`.
@@ -54,14 +54,30 @@ Last updated: 2026-05-26
   the `tenant_onboarding.token_consumed_at` column. Exact Render deploy
   log grepping for `20260524_0025` / `20260524_0026` still needs Render
   dashboard or MCP access.
+- 2026-05-27 live verification: Neon production is at Alembic
+  `20260524_0026`; `tenant_onboarding.token_consumed_at` exists; the
+  `property_type` enum includes `residential`; `tenant-token-1` correctly
+  shows the public "Invite not found" state. The prior stale-link 409
+  concern appears resolved: production has one active tenant portal
+  account linked to a non-deleted tenant. Temba's current live onboarding
+  row is already claimed, submitted, reviewed, and applied; the remaining
+  live blocker is attaching a custom lease file and explicitly clicking
+  **Send lease pack** from the tenant detail page. Do not trigger this
+  provider email without operator approval and the correct lease file.
 
 ## Takeover Priority
 
 1. Read `CLAUDE.md` at the repo root before starting. It encodes the behavioural baseline (state assumptions, simplest possible change, surgical edits, verifiable success criteria) plus the Leasium-specific guardrails.
 2. Run `git status --short` and `git log --oneline -10` to confirm the tree is clean and the tip includes the latest Codex continuation slices.
-3. **Render needs to apply migrations `20260524_0025` (residential property_type) and `20260524_0026` (tenant_onboarding.token_consumed_at)** if it hasn't already on its last deploy. Render start command runs `alembic upgrade head` so this should be automatic — verify by checking the deploy log for those revision IDs.
-4. **Outstanding from this session:** verify the tenant portal claim gate end-to-end on live at `https://leasium.ai` after Clerk is anchored to the Leasium domain. Temba was hitting a 409 "already linked to another tenant" because his Clerk login had a prior portal account on an older Tenant row; the fix is to unlink the old account from `/tenants/{id}` → "Portal access" → "Unlink" (not delete tenant — Unlink is the right surgical fix). Re-sending an invite from `/tenants` should now show the new email copy ("Set up your tenant portal for X" / "Sign in to continue").
-5. Pick the next ticket from `docs/product-roadmap.md` "Next Build Order" or the Recommended Next Tickets list below. After the 2026-05-26 continuation, the natural next slices are Clerk-enabled tenant onboarding smoke verification, owner statement dispatch/PDF formatting review, richer Portfolio QA bulk review for blocked billing/onboarding rows, or the remaining Operations mobile live-review follow-ups.
+3. Production schema verification is complete as of 2026-05-27:
+   `alembic_version` is `20260524_0026`, `token_consumed_at` exists, and
+   `residential` is present in `property_type`.
+4. **Outstanding live tenant step:** Temba's active onboarding is already
+   claimed/submitted/reviewed/applied. Open tenant
+   `019e6272-9879-786a-aa88-abfd1aa9fa48`, attach the intended custom
+   lease file, then explicitly send the lease pack. This is a real
+   provider email, so it requires operator approval.
+5. Pick the next ticket from `docs/product-roadmap.md` "Next Build Order" or the Recommended Next Tickets list below. After the 2026-05-27 verification, the natural next slices are owner statement dispatch/PDF formatting review, richer Portfolio QA bulk review for blocked billing/onboarding rows, or the remaining Operations mobile live-review follow-ups.
 6. Keep all provider actions review-first: no Xero mutation, SendGrid email, Twilio SMS, tenant email, or payment reconciliation should happen without explicit operator approval.
 
 ## Project Map
