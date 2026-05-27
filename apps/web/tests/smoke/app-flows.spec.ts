@@ -506,6 +506,8 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   ).toBeVisible();
   await expect(page.getByText("Public enrichment candidates")).toBeVisible();
   await expect(page.getByText("Blocked follow-ups")).toBeVisible();
+  await expect(page.getByText("Register cleanup still blocked")).toBeVisible();
+  await expect(page.getByText("Final report")).toBeVisible();
   const readinessPanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Cleanup readiness report" }),
   });

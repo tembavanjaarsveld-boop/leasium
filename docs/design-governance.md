@@ -1165,11 +1165,15 @@ layout), and modal scale magnitude (0.97 → 1 — barely perceptible).
   Billing drafts now opens with a billing cleanup blocker review for
   owner identity fixes, rent-roll readiness blockers, and existing
   internal drafts before new draft generation.
+  Second follow-up: the completion report now carries a final-readiness
+  verdict so the operator sees whether the register is still blocked,
+  ready after enrichment review, or ready for live SKJ tuning.
   Review whether the percentage model feels operationally honest,
   whether the staging language is clear enough, whether the blocked
   followups are prioritised correctly, whether the blocker summaries
-  feel useful or too dense, and whether the enrichment queue belongs
-  above or inside the Data QA tab.
+  feel useful or too dense, whether the final-report wording feels
+  decisive enough, and whether the enrichment queue belongs above or
+  inside the Data QA tab.
 
 ### Tenant onboarding simplification (2026-05-26) — Remba pending
 

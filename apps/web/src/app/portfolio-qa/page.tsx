@@ -117,6 +117,12 @@ type ReviewSummaryRow = {
   href?: string;
 };
 
+type ReadinessVerdict = {
+  title: string;
+  detail: string;
+  tone: Tone;
+};
+
 type SourceRow = {
   id: string;
   kind: string;
@@ -1483,6 +1489,41 @@ function ReviewSummaryStrip({
   );
 }
 
+function cleanupReadinessVerdict({
+  completion,
+  blockedCount,
+  enrichmentCount,
+}: {
+  completion: number;
+  blockedCount: number;
+  enrichmentCount: number;
+}): ReadinessVerdict {
+  if (blockedCount > 0) {
+    return {
+      title: "Register cleanup still blocked",
+      detail: `${blockedCount} follow-up${blockedCount === 1 ? "" : "s"} need review before this register is ready for SKJ tuning.${
+        enrichmentCount
+          ? ` ${enrichmentCount} enrichment candidate${enrichmentCount === 1 ? "" : "s"} may help fill public-safe fields.`
+          : ""
+      }`,
+      tone: completion >= 60 ? "warning" : "danger",
+    };
+  }
+  if (enrichmentCount > 0) {
+    return {
+      title: "Ready after enrichment review",
+      detail: `${enrichmentCount} enrichment candidate${enrichmentCount === 1 ? "" : "s"} remain. Review or dismiss them before treating the cleanup report as final.`,
+      tone: "primary",
+    };
+  }
+  return {
+    title: "Ready for SKJ tuning",
+    detail:
+      "No blocked cleanup rows remain in this scan. The next step is live portfolio tuning and Remba review, not another batch action.",
+    tone: completion >= 90 ? "success" : "primary",
+  };
+}
+
 function PortfolioCompletionPanel({
   items,
   enrichmentCandidates,
@@ -1500,6 +1541,11 @@ function PortfolioCompletionPanel({
     0,
   );
   const completion = total > 0 ? Math.round((ready / total) * 100) : 100;
+  const verdict = cleanupReadinessVerdict({
+    completion,
+    blockedCount: blockedFollowups.length,
+    enrichmentCount: enrichmentCandidates.length,
+  });
   return (
     <SectionPanel
       title="Cleanup readiness report"
@@ -1519,6 +1565,19 @@ function PortfolioCompletionPanel({
         </StatusBadge>
       }
     >
+      <div className="border-b border-border bg-muted/30 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-foreground">
+              {verdict.title}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {verdict.detail}
+            </p>
+          </div>
+          <StatusBadge tone={verdict.tone}>Final report</StatusBadge>
+        </div>
+      </div>
       <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => {
