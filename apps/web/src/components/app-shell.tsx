@@ -195,8 +195,33 @@ const moduleJumpActions: CommandAction[] = [
     meta: "Module",
   })),
   {
+    href: "/inbox",
+    label: "Open AI Inbox",
+    meta: "Smart Intake",
+  },
+  {
+    href: "/contractors",
+    label: "Open contractor directory",
+    meta: "Work",
+  },
+  {
+    href: "/comms",
+    label: "Open comms queue",
+    meta: "Work",
+  },
+  {
+    href: "/statements",
+    label: "Open owner statements",
+    meta: "Billing",
+  },
+  {
     href: "/tenants",
     label: "Open tenant directory",
+    meta: "Portfolio",
+  },
+  {
+    href: "/portfolio-qa",
+    label: "Open Portfolio QA",
     meta: "Portfolio",
   },
 ];

@@ -62,6 +62,10 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByRole("link", { name: /Data cleanup \/ Portfolio QA/ }),
   ).toBeVisible();
+  await commandSearch.fill("comms");
+  await expect(
+    page.getByRole("link", { name: /Open comms queue/ }),
+  ).toBeVisible();
   await commandSearch.fill("billing");
   await page.getByText("Review billing blockers").click();
 
