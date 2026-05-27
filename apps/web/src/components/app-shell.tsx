@@ -442,7 +442,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               className={cn(
                 // Hover state uses a subtle white tint so the row reads
                 // as "row under cursor" against the navy-900 sidebar.
-                "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-leasium-slate-300 transition hover:bg-white/[0.06] hover:text-white md:justify-center md:gap-0 md:px-0 lg:justify-start lg:gap-3 lg:px-3",
+                "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-leasium-slate-300 transition hover:bg-white/[0.06] hover:text-white md:justify-center md:gap-0 md:px-0 lg:justify-start lg:gap-3 lg:px-3",
                 // Active state — was bg-primary-soft/10 (EAF0FF at
                 // 10% opacity, effectively invisible on navy-900). Now
                 // bg-white/[0.12] gives a real surface tone so operators
@@ -461,7 +461,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                 <span
                   aria-label={`${commsBadge!.total} drafts in the comms queue, ${commsBadge!.urgent} urgent`}
                   className={cn(
-                    "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-leasium-micro font-semibold leading-none md:hidden lg:inline-flex",
+                    "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-leasium-micro font-semibold leading-none md:absolute md:right-0.5 md:top-1 md:h-4 md:min-w-4 md:px-1 md:text-[9px] lg:static lg:h-5 lg:min-w-5 lg:px-1.5 lg:text-leasium-micro",
                     commsBadge!.urgent > 0
                       ? "bg-danger text-white"
                       : "bg-white/15 text-white",

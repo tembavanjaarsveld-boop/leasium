@@ -259,6 +259,7 @@ test("AI inbox promotes a classified message into a maintenance draft", async ({
 test("comms queue approves inbound SMS with a phone recipient", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 900, height: 900 });
   await page.goto("/comms");
 
   await expect(page.getByRole("heading", { name: "Comms queue" })).toBeVisible();

@@ -1017,10 +1017,11 @@ The fixed sidebar has three states by viewport:
 - **sub-md (<768px)**: sidebar hidden, hamburger button in the header
   opens a full-width drawer overlay. Drawer carries the full sidebar
   content (mark + wordmark + labels).
-- **md (768–1023px)**: fixed sidebar at 64px, icon-only. No labels,
-  no comms count, no shortcuts text. `title` attributes on each nav
-  link provide native hover tooltips so the label is still
-  discoverable. Body padding-left is 64px.
+- **md (768–1023px)**: fixed sidebar at 64px, icon-only. No labels
+  or shortcuts text; the Work nav may carry a compact comms-count
+  badge when the queue has drafts. `title` attributes on each nav link
+  provide native hover tooltips so the label is still discoverable.
+  Body padding-left is 64px.
 - **lg+ (≥1024px)**: fixed sidebar at 240px, full content. Body
   padding-left is 240px.
 
