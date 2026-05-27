@@ -255,6 +255,9 @@ const SHORTCUT_NAV: ShortcutNav[] = [
   { key: "q", href: "/portfolio-qa", label: "Portfolio QA" },
   { key: "s", href: "/settings", label: "Settings" },
 ];
+const SHORTCUT_LEGEND = SHORTCUT_NAV.map((entry) =>
+  entry.key.toUpperCase(),
+).join("/");
 
 const GLOBAL_SHORTCUTS = [
   { combo: "Cmd / Ctrl + K", label: "Open command search" },
@@ -634,7 +637,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       </div>
       {shortcutPending ? (
         <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-border bg-white px-4 py-1.5 text-xs font-medium text-muted-foreground shadow-leasiumSm">
-          G… press a letter to jump (D/P/T/O/I/B/N/Q/S)
+          G… press a letter to jump ({SHORTCUT_LEGEND})
         </div>
       ) : null}
       {cheatsheetRender.shouldRender ? (

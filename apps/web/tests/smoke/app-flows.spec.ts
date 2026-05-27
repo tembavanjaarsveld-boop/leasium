@@ -615,6 +615,8 @@ test("keyboard cheatsheet lists global and Go-to shortcuts", async ({
   await expect(page.getByText("Dashboard").last()).toBeVisible();
   await expect(page.getByText("Properties").last()).toBeVisible();
   await expect(page.getByText("Tenants").last()).toBeVisible();
+  await expect(page.getByText("Comms queue")).toBeVisible();
+  await expect(page.getByText("Owner statements")).toBeVisible();
   // The Go-to legend itself appears in the cheatsheet.
   await expect(page.getByText("Go to (press G, then…)")).toBeVisible();
 });
