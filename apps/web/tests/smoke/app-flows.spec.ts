@@ -65,6 +65,9 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   ).toBeVisible();
   await commandSearch.fill("comms");
   await expect(
+    page.getByRole("list", { name: "Command actions" }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("link", { name: /Open comms queue/ }),
   ).toBeVisible();
   await commandSearch.fill("zzzz-no-match");

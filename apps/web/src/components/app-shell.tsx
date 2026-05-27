@@ -777,25 +777,30 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               </button>
             </div>
             <div className="max-h-96 overflow-y-auto p-2">
-              {filteredActions.map((action) => (
-                <Link
-                  key={`${action.meta}-${action.label}`}
-                  href={action.href}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    setCommandOpen(false);
-                    router.push(action.href);
-                  }}
-                  className="flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-sm transition hover:bg-muted"
-                >
-                  <span className="font-semibold text-foreground">
-                    {action.label}
-                  </span>
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {action.meta}
-                  </span>
-                </Link>
-              ))}
+              {filteredActions.length > 0 ? (
+                <ul aria-label="Command actions" className="grid gap-0">
+                  {filteredActions.map((action) => (
+                    <li key={`${action.meta}-${action.label}`}>
+                      <Link
+                        href={action.href}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          setCommandOpen(false);
+                          router.push(action.href);
+                        }}
+                        className="flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-sm transition hover:bg-muted"
+                      >
+                        <span className="font-semibold text-foreground">
+                          {action.label}
+                        </span>
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {action.meta}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               {filteredActions.length === 0 ? (
                 <div
                   role="status"
