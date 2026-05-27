@@ -2073,6 +2073,11 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
       "1 open Xero-linked invoice needs a payment reconciliation preview.",
     ),
   ).toBeVisible();
+  await expect(freshnessPanel.getByText("Next accounting step")).toBeVisible();
+  await expect(
+    freshnessPanel.getByText("Review Xero-linked payments"),
+  ).toBeVisible();
+  await expect(freshnessPanel.getByText("Open payment review")).toBeVisible();
 
   await expect(
     page.getByRole("button", { exact: true, name: "Review payments" }),
@@ -2105,6 +2110,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(freshnessPanel.getByText("Payment source manual")).toBeVisible();
   await expect(
     freshnessPanel.getByText("Payment mode local payment status apply"),
+  ).toBeVisible();
+  await expect(
+    freshnessPanel.getByText("Ready for month-end review"),
   ).toBeVisible();
 
   await page.goto("/billing-readiness");

@@ -126,6 +126,13 @@ type CommunicationTemplateCard = {
   sourceLabel: string;
   tone: StatusTone;
 };
+type AccountingNextStep = {
+  title: string;
+  detail: string;
+  tone: StatusTone;
+  action: "exceptions" | "payments" | "billing" | null;
+  actionLabel: string | null;
+};
 type XeroChargeRuleMappingInput = Pick<
   XeroMappingIssueRecord,
   | "id"
@@ -267,6 +274,74 @@ function accountingCheckpointRows(freshness: XeroAccountingFreshnessRecord) {
     ["Payment preview", freshness.last_payment_reconciliation_preview_at],
     ["Payment apply", freshness.last_payment_reconciliation_apply_at],
   ] as const;
+}
+
+function accountingNextStep({
+  freshness,
+  exceptionBlockers,
+  exceptionWarnings,
+}: {
+  freshness: XeroAccountingFreshnessRecord;
+  exceptionBlockers: number;
+  exceptionWarnings: number;
+}): AccountingNextStep {
+  if (freshness.readiness_blocker_count > 0 || exceptionBlockers > 0) {
+    return {
+      title: "Resolve accounting blockers",
+      detail: `${freshness.readiness_blocker_count + exceptionBlockers} blocker${
+        freshness.readiness_blocker_count + exceptionBlockers === 1 ? "" : "s"
+      } need review before Xero-linked billing can be treated as ready.`,
+      tone: "danger",
+      action: "exceptions",
+      actionLabel: "Review exception queue",
+    };
+  }
+  if (freshness.approved_unsynced_invoice_count > 0) {
+    return {
+      title: "Create approved Xero drafts",
+      detail: `${freshness.approved_unsynced_invoice_count} approved invoice${
+        freshness.approved_unsynced_invoice_count === 1 ? "" : "s"
+      } still need explicit Xero draft creation.`,
+      tone: "warning",
+      action: "exceptions",
+      actionLabel: "Review Xero approvals",
+    };
+  }
+  if (
+    freshness.xero_linked_open_invoice_count > 0 &&
+    (freshness.stale_reconciliation ||
+      freshness.last_payment_reconciliation_at === null ||
+      freshness.status === "missing")
+  ) {
+    return {
+      title: "Review Xero-linked payments",
+      detail: `${freshness.xero_linked_open_invoice_count} open Xero-linked invoice${
+        freshness.xero_linked_open_invoice_count === 1 ? "" : "s"
+      } need a payment reconciliation preview before month-end reporting.`,
+      tone: "warning",
+      action: "payments",
+      actionLabel: "Open payment review",
+    };
+  }
+  if (freshness.readiness_warning_count > 0 || exceptionWarnings > 0) {
+    return {
+      title: "Review accounting warnings",
+      detail: `${freshness.readiness_warning_count + exceptionWarnings} warning${
+        freshness.readiness_warning_count + exceptionWarnings === 1 ? "" : "s"
+      } remain. They may not block the run, but should be checked before sharing reports.`,
+      tone: "warning",
+      action: "exceptions",
+      actionLabel: "Review warnings",
+    };
+  }
+  return {
+    title: "Ready for month-end review",
+    detail:
+      "Accounting checkpoints are current. Continue from Billing Readiness or Statements when the invoice run is ready to close.",
+    tone: "success",
+    action: "billing",
+    actionLabel: "Open Billing Readiness",
+  };
 }
 
 function summaryLabel(summary: XeroReadinessSummaryRecord) {
@@ -1034,6 +1109,7 @@ function SettingsWorkspace() {
   const xeroInvoicePostingPanelRef = useRef<HTMLDivElement>(null);
   const xeroPaymentPanelRef = useRef<HTMLDivElement>(null);
   const xeroChartMappingPanelRef = useRef<HTMLDivElement>(null);
+  const xeroExceptionQueuePanelRef = useRef<HTMLDivElement>(null);
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -1426,6 +1502,13 @@ function SettingsWorkspace() {
     xeroPaymentApplyResult ?? xeroPaymentPreview;
   const exceptionQueue = xeroExceptionQueueQuery.data;
   const exceptionItems = exceptionQueue?.items ?? [];
+  const accountingStep = status
+    ? accountingNextStep({
+        freshness: status.accounting_freshness,
+        exceptionBlockers: exceptionQueue?.summary.blockers ?? 0,
+        exceptionWarnings: exceptionQueue?.summary.warnings ?? 0,
+      })
+    : null;
   const scrollToPanel = (target: PanelRef) => {
     window.setTimeout(() => {
       target.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -3089,40 +3172,104 @@ function SettingsWorkspace() {
                     ) : null}
                   </div>
                 </div>
-                <ul className="grid content-start gap-2 text-sm text-muted-foreground">
-                  {status.accounting_freshness.guardrails.map((guardrail) => (
-                    <li key={guardrail} className="flex gap-2">
-                      <span className="mt-2 h-1.5 w-1.5 rounded-full bg-primary" />
-                      <span>{guardrail}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="grid content-start gap-3">
+                  {accountingStep ? (
+                    <div className="rounded-md border border-border bg-muted/25 p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-semibold text-foreground">
+                          Next accounting step
+                        </div>
+                        <StatusBadge tone={accountingStep.tone}>
+                          {accountingStep.title}
+                        </StatusBadge>
+                      </div>
+                      <p className="mt-2 text-muted-foreground">
+                        {accountingStep.detail}
+                      </p>
+                      {accountingStep.action === "billing" ? (
+                        <Link
+                          href={billingReadinessHandoffHref({
+                            entityId: selectedEntityId,
+                            invoiceDraftId: null,
+                          })}
+                          className="mt-3 inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition hover:bg-muted"
+                        >
+                          {accountingStep.actionLabel}
+                        </Link>
+                      ) : accountingStep.action === "payments" ? (
+                        <SecondaryButton
+                          type="button"
+                          className="mt-3 min-h-10 px-3"
+                          disabled={
+                            !selectedEntityId ||
+                            status.connection.connection_source !==
+                              "provider" ||
+                            xeroPaymentPreviewMutation.isPending
+                          }
+                          onClick={() =>
+                            xeroPaymentPreviewMutation.mutate(undefined, {
+                              onSuccess: () =>
+                                scrollToPanel(xeroPaymentPanelRef),
+                            })
+                          }
+                        >
+                          {xeroPaymentPreviewMutation.isPending ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <SearchCheck size={15} />
+                          )}
+                          {accountingStep.actionLabel}
+                        </SecondaryButton>
+                      ) : accountingStep.action === "exceptions" ? (
+                        <SecondaryButton
+                          type="button"
+                          className="mt-3 min-h-10 px-3"
+                          onClick={() =>
+                            scrollToPanel(xeroExceptionQueuePanelRef)
+                          }
+                        >
+                          <AlertTriangle size={15} />
+                          {accountingStep.actionLabel}
+                        </SecondaryButton>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <ul className="grid gap-2 text-sm text-muted-foreground">
+                    {status.accounting_freshness.guardrails.map((guardrail) => (
+                      <li key={guardrail} className="flex gap-2">
+                        <span className="mt-2 h-1.5 w-1.5 rounded-full bg-primary" />
+                        <span>{guardrail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             </SectionPanel>
 
-            <SectionPanel
-              title="Xero sync exception queue"
-              description="Local accounting exceptions for mappings, approved drafts, provider receipts, and payment review."
-              icon={<AlertTriangle size={17} className="text-primary" />}
-              actions={
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge
-                    tone={
-                      exceptionQueue?.summary.blockers
-                        ? "danger"
-                        : exceptionItems.length
-                          ? "warning"
-                          : "success"
-                    }
-                  >
-                    {exceptionQueue?.summary.total ?? 0} open
-                  </StatusBadge>
-                  {xeroExceptionQueueQuery.isFetching ? (
-                    <StatusBadge tone="neutral">Refreshing</StatusBadge>
-                  ) : null}
-                </div>
-              }
-            >
+            <div ref={xeroExceptionQueuePanelRef}>
+              <SectionPanel
+                title="Xero sync exception queue"
+                description="Local accounting exceptions for mappings, approved drafts, provider receipts, and payment review."
+                icon={<AlertTriangle size={17} className="text-primary" />}
+                actions={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      tone={
+                        exceptionQueue?.summary.blockers
+                          ? "danger"
+                          : exceptionItems.length
+                            ? "warning"
+                            : "success"
+                      }
+                    >
+                      {exceptionQueue?.summary.total ?? 0} open
+                    </StatusBadge>
+                    {xeroExceptionQueueQuery.isFetching ? (
+                      <StatusBadge tone="neutral">Refreshing</StatusBadge>
+                    ) : null}
+                  </div>
+                }
+              >
               {xeroExceptionQueueQuery.isLoading && !exceptionQueue ? (
                 <div className="p-4 text-sm text-muted-foreground">
                   Loading Xero sync exceptions.
@@ -3298,7 +3445,8 @@ function SettingsWorkspace() {
                   </div>
                 </>
               )}
-            </SectionPanel>
+              </SectionPanel>
+            </div>
 
             <div ref={xeroConnectionPanelRef}>
               <SectionPanel
