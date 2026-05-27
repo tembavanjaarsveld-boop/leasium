@@ -344,6 +344,8 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await smsCard.getByRole("button", { name: "Approve & send" }).click();
 
   await expect(smsCard.getByText("SMS send skipped")).toBeVisible();
+  const dispatchReceipt = smsCard.getByRole("status");
+  await expect(dispatchReceipt).toContainText("SMS send skipped");
   await expect(
     smsCard.getByText("Twilio SMS to +61400111222."),
   ).toBeVisible();
