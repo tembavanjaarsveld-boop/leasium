@@ -145,6 +145,12 @@ function CommsContent() {
   });
 
   const [selectedFilter, setSelectedFilter] = useState<CommsFilter>("all");
+  const [settledCandidateIds, setSettledCandidateIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  useEffect(() => {
+    setSettledCandidateIds(new Set());
+  }, [selectedEntityId]);
   const candidates = useMemo(
     () => queueQuery.data?.candidates ?? [],
     [queueQuery.data?.candidates],
@@ -185,6 +191,7 @@ function CommsContent() {
     () => candidates.filter((c) => c.severity === "danger").length,
     [candidates],
   );
+  const settledCount = settledCandidateIds.size;
   const queueGeneratedLabel = formatDateTime(queueQuery.data?.generated_at);
   const queueRefreshDisabled = !selectedEntityId || queueQuery.isFetching;
 
@@ -232,9 +239,10 @@ function CommsContent() {
             </div>
           }
         />
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Metric label="Total drafts" value={candidates.length} />
           <Metric label="Urgent" value={urgentCount} tone="danger" />
+          <Metric label="Settled now" value={settledCount} />
           <Metric label="Arrears" value={counts.arrears_reminder} />
           <Metric
             label="Insurance + lease"
@@ -306,7 +314,12 @@ function CommsContent() {
             key={candidate.id}
             candidate={candidate}
             entityId={selectedEntityId}
-            onSettled={() => {
+            onSettled={(candidateId) => {
+              setSettledCandidateIds((previous) => {
+                const next = new Set(previous);
+                next.add(candidateId);
+                return next;
+              });
               queryClient.invalidateQueries({
                 queryKey: ["comms-queue", selectedEntityId],
               });
@@ -328,7 +341,11 @@ function Metric({
   tone?: "danger";
 }) {
   return (
-    <div className="rounded-md border border-border bg-white p-4">
+    <div
+      className="rounded-md border border-border bg-white p-4"
+      role="group"
+      aria-label={`${label}: ${value}`}
+    >
       <div
         className={
           tone === "danger" && value > 0
@@ -385,7 +402,7 @@ function CandidateCard({
 }: {
   candidate: CommsCandidateRecord;
   entityId: string;
-  onSettled: () => void;
+  onSettled: (candidateId: string) => void;
 }) {
   const channel = candidate.kind === "inbound_sms" ? "sms" : "email";
   const isSms = channel === "sms";
@@ -414,7 +431,7 @@ function CandidateCard({
       }),
     onSuccess: (result) => {
       setDispatchedStatus(result.status);
-      onSettled();
+      onSettled(candidate.id);
     },
   });
 
@@ -427,7 +444,7 @@ function CandidateCard({
       }),
     onSuccess: (result) => {
       setDismissedUntil(result.deferred_until);
-      onSettled();
+      onSettled(candidate.id);
     },
   });
 

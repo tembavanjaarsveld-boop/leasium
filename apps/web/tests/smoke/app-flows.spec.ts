@@ -269,6 +269,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     page.getByRole("button", { name: "Refresh queue" }),
   ).toBeEnabled();
+  await expect(page.getByRole("group", { name: "Settled now: 0" })).toBeVisible();
   await expect(
     page.getByRole("tab", { name: "All drafts 2" }),
   ).toHaveAttribute("aria-selected", "true");
@@ -290,6 +291,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(rentReviewCard.getByRole("status")).toContainText(
     "Draft deferred until 3 June 2026",
   );
+  await expect(page.getByRole("group", { name: "Settled now: 1" })).toBeVisible();
   await expect(rentReviewCard.getByText("Deferred", { exact: true })).toBeVisible();
   await expect(rentReviewCard.getByLabel("Subject")).toBeDisabled();
   await expect(
@@ -369,6 +371,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     smsCard.getByText("Twilio Messaging is not configured yet"),
   ).toBeVisible();
+  await expect(page.getByRole("group", { name: "Settled now: 2" })).toBeVisible();
   await expect(
     smsCard.getByText(
       "This draft is locked because a dispatch or dismiss receipt has been recorded.",
