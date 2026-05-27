@@ -395,7 +395,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   // Sidebar content is shared between the fixed desktop sidebar (`md` and
   // `lg+`) and the mobile drawer (sub-`md`). At `md` the fixed sidebar
   // collapses to a 64px icon-only rail, so brand text + nav labels +
-  // comms count + shortcuts label all hide at `md` and reappear at `lg`.
+  // shortcuts label hide at `md` and reappear at `lg`; the Work comms
+  // badge stays visible as a compact corner count.
   // The mobile drawer is sub-`md` only (the hamburger is hidden at `md+`),
   // so when the drawer opens it never hits the `md` media query and
   // labels stay visible inside it. Pending Remba review (2026-05-23
@@ -430,6 +431,13 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             item.href === "/operations" &&
             commsBadge !== null &&
             commsBadge.total > 0;
+          const commsBadgeLabel =
+            showCommsBadge && commsBadge
+              ? `${commsBadge.total} drafts in the comms queue, ${commsBadge.urgent} urgent`
+              : null;
+          const navLabel = commsBadgeLabel
+            ? `${item.label}, ${commsBadgeLabel}`
+            : item.label;
           return (
             <Link
               key={item.href}
@@ -438,7 +446,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               // `title` provides a hover tooltip when the sidebar is
               // collapsed to icon-only at `md`. Labels still render at
               // sub-`md` (drawer) and `lg+` (full sidebar).
-              title={item.label}
+              title={navLabel}
+              aria-label={navLabel}
               className={cn(
                 // Hover state uses a subtle white tint so the row reads
                 // as "row under cursor" against the navy-900 sidebar.
@@ -459,7 +468,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               </span>
               {showCommsBadge ? (
                 <span
-                  aria-label={`${commsBadge!.total} drafts in the comms queue, ${commsBadge!.urgent} urgent`}
+                  aria-hidden="true"
                   className={cn(
                     "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-leasium-micro font-semibold leading-none md:absolute md:right-0.5 md:top-1 md:h-4 md:min-w-4 md:px-1 md:text-[9px] lg:static lg:h-5 lg:min-w-5 lg:px-1.5 lg:text-leasium-micro",
                     commsBadge!.urgent > 0

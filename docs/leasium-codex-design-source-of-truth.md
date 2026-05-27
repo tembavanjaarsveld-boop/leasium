@@ -1019,8 +1019,9 @@ The fixed sidebar has three states by viewport:
   content (mark + wordmark + labels).
 - **md (768–1023px)**: fixed sidebar at 64px, icon-only. No labels
   or shortcuts text; the Work nav may carry a compact comms-count
-  badge when the queue has drafts. `title` attributes on each nav link
-  provide native hover tooltips so the label is still discoverable.
+  badge when the queue has drafts. `title` / accessible labels on each
+  nav link provide the module name, and Work includes the comms count
+  when present, so the compact rail stays discoverable.
   Body padding-left is 64px.
 - **lg+ (≥1024px)**: fixed sidebar at 240px, full content. Body
   padding-left is 240px.

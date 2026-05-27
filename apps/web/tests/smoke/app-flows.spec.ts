@@ -264,7 +264,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
 
   await expect(page.getByRole("heading", { name: "Comms queue" })).toBeVisible();
   await expect(
-    page.getByLabel("2 drafts in the comms queue, 0 urgent"),
+    page.getByRole("link", {
+      name: "Work, 2 drafts in the comms queue, 0 urgent",
+    }),
   ).toBeVisible();
   await expect(
     page.getByText("Approve to send the email or SMS"),
