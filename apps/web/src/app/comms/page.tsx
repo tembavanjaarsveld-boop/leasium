@@ -361,7 +361,7 @@ function CandidateCard({
         kind: candidate.kind,
         target_kind: candidate.target_kind,
         target_id: candidate.target_id,
-        subject,
+        subject: isSms ? candidate.subject : subject,
         body,
         recipient_email: isSms ? null : recipientEmail || null,
         recipient_phone: isSms ? recipientPhone || null : null,
@@ -454,13 +454,19 @@ function CandidateCard({
           </div>
         ) : null}
 
-        <div className="grid gap-3 md:grid-cols-[1fr_220px]">
-          <Field label="Subject">
-            <Input
-              value={subject}
-              onChange={(event) => setSubject(event.target.value)}
-            />
-          </Field>
+        <div
+          className={
+            isSms ? "grid gap-3 md:grid-cols-[220px]" : "grid gap-3 md:grid-cols-[1fr_220px]"
+          }
+        >
+          {!isSms ? (
+            <Field label="Subject">
+              <Input
+                value={subject}
+                onChange={(event) => setSubject(event.target.value)}
+              />
+            </Field>
+          ) : null}
           <Field label="Recipient">
             <Input
               type={isSms ? "tel" : "email"}
@@ -581,7 +587,9 @@ function CandidateCard({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
             Approve sends the {isSms ? "SMS" : "email"} through {providerName}.
-            Edit subject, body, or recipient before approving.
+            {isSms
+              ? " Edit body or recipient before approving."
+              : " Edit subject, body, or recipient before approving."}
           </p>
           <div className="flex flex-wrap gap-2">
             <SecondaryButton
@@ -601,7 +609,7 @@ function CandidateCard({
               disabled={
                 dispatchMutation.isPending ||
                 Boolean(dispatchedStatus) ||
-                !subject.trim() ||
+                (!isSms && !subject.trim()) ||
                 !body.trim() ||
                 !recipientReady
               }

@@ -280,6 +280,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await page.getByRole("tab", { name: "Inbound SMS 1" }).click();
   await expect(smsCard).toBeVisible();
   await expect(smsCard.getByText("AI: maintenance request (82%)")).toBeVisible();
+  await expect(smsCard.getByLabel("Subject")).toHaveCount(0);
   await expect(smsCard.getByLabel("Recipient")).toHaveValue("+61400111222");
   await expect(smsCard.getByText("SMS body review")).toBeVisible();
   await expect(
@@ -287,6 +288,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   ).toBeVisible();
   await expect(
     smsCard.getByText("Approve sends the SMS through Twilio."),
+  ).toBeVisible();
+  await expect(
+    smsCard.getByText("Edit body or recipient before approving."),
   ).toBeVisible();
 
   await smsCard.getByRole("button", { name: "Approve & send" }).click();
