@@ -411,6 +411,10 @@ function CandidateCard({
   const smsBodyOverGuide = smsBodyLength > SMS_SINGLE_SEGMENT_GUIDE;
   const dueLabel = formatDateTime(candidate.due_at);
   const generatedLabel = formatDateTime(candidate.generated_at);
+  const dispatchReceiptLabel =
+    dispatchedStatus === "skipped"
+      ? `${isSms ? "SMS" : "Email"} send skipped`
+      : `${isSms ? "SMS" : "Email"} dispatch recorded`;
 
   // Evidence-attach lives on compliance obligations only. Smart Intake is
   // the recommended path (AI extracts metadata + attributes the document);
@@ -473,7 +477,8 @@ function CandidateCard({
         {dispatchedStatus ? (
           <div className="flex items-center gap-2 rounded-md border border-success-strong/30 bg-success-soft px-3 py-2 text-sm text-success-strong">
             <CheckCircle2 size={16} />
-            Sent — status <strong>{dispatchedStatus}</strong>.
+            {dispatchReceiptLabel} — status{" "}
+            <strong>{dispatchedStatus}</strong>.
             {dispatchedStatus === "skipped" ? (
               <span className="text-xs">
                 {" "}
