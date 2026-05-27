@@ -382,6 +382,7 @@ function CandidateCard({
     candidate.recipient_phone ?? "",
   );
   const [dispatchedStatus, setDispatchedStatus] = useState<string | null>(null);
+  const [dismissedUntil, setDismissedUntil] = useState<string | null>(null);
   const approvalBlockerId = useId();
 
   const dispatchMutation = useMutation({
@@ -408,7 +409,8 @@ function CandidateCard({
         target_kind: candidate.target_kind,
         target_id: candidate.target_id,
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      setDismissedUntil(result.deferred_until);
       onSettled();
     },
   });
@@ -416,7 +418,8 @@ function CandidateCard({
   const dispatchError = dispatchMutation.error as Error | null;
   const dismissError = dismissMutation.error as Error | null;
   const actionPending = dispatchMutation.isPending || dismissMutation.isPending;
-  const draftInputsDisabled = actionPending || Boolean(dispatchedStatus);
+  const draftSettled = Boolean(dispatchedStatus) || Boolean(dismissedUntil);
+  const draftInputsDisabled = actionPending || draftSettled;
   const tone = SEVERITY_TONE[candidate.severity];
   const providerName = isSms ? "Twilio" : "SendGrid";
   const originalRecipient = isSms
@@ -451,6 +454,7 @@ function CandidateCard({
   const smsBodyOverGuide = smsBodyLength > SMS_SINGLE_SEGMENT_GUIDE;
   const dueLabel = formatDateTime(candidate.due_at);
   const generatedLabel = formatDateTime(candidate.generated_at);
+  const dismissedUntilLabel = formatDateTime(dismissedUntil);
   const dispatchReceiptLabel =
     dispatchedStatus === "skipped"
       ? `${isSms ? "SMS" : "Email"} send skipped`
@@ -539,6 +543,16 @@ function CandidateCard({
                   : "SendGrid is not configured yet, so the email was skipped. Wire SENDGRID_API_KEY to enable."}
               </span>
             ) : null}
+          </div>
+        ) : null}
+        {dismissedUntilLabel ? (
+          <div
+            className="flex items-center gap-2 rounded-md border border-success-strong/30 bg-success-soft px-3 py-2 text-sm text-success-strong"
+            role="status"
+            aria-live="polite"
+          >
+            <CheckCircle2 size={16} />
+            Draft deferred until <strong>{dismissedUntilLabel}</strong>.
           </div>
         ) : null}
 
@@ -674,7 +688,7 @@ function CandidateCard({
             {friendlyError(dismissError)}
           </p>
         ) : null}
-        {dispatchBlocked && !dispatchedStatus ? (
+        {dispatchBlocked && !draftSettled ? (
           <div
             id={approvalBlockerId}
             className="grid gap-1 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-foreground"
@@ -699,7 +713,7 @@ function CandidateCard({
               : " Edit subject, body, or recipient before approving."}
           </p>
           <div className="flex flex-wrap gap-2">
-            {draftEdited && !dispatchedStatus ? (
+            {draftEdited && !draftSettled ? (
               <SecondaryButton
                 type="button"
                 onClick={resetDraft}
@@ -714,7 +728,7 @@ function CandidateCard({
               onClick={() => dismissMutation.mutate()}
               disabled={
                 actionPending ||
-                Boolean(dispatchedStatus)
+                draftSettled
               }
             >
               <X size={15} />
@@ -724,13 +738,13 @@ function CandidateCard({
               type="button"
               onClick={() => dispatchMutation.mutate()}
               aria-describedby={
-                dispatchBlocked && !dispatchedStatus
+                dispatchBlocked && !draftSettled
                   ? approvalBlockerId
                   : undefined
               }
               disabled={
                 actionPending ||
-                Boolean(dispatchedStatus) ||
+                draftSettled ||
                 dispatchBlocked
               }
             >

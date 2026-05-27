@@ -278,9 +278,16 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     page.getByText("Showing 1 of 2 drafts in Rent review."),
   ).toBeVisible();
   await expect(smsCard).not.toBeVisible();
-  await expect(
-    page.locator("section").filter({ hasText: "Rent review" }),
-  ).toBeVisible();
+  const rentReviewCard = page
+    .locator("section")
+    .filter({ hasText: "Rent review" })
+    .first();
+  await expect(rentReviewCard).toBeVisible();
+  await rentReviewCard.getByRole("button", { name: "Dismiss" }).click();
+  await expect(rentReviewCard.getByRole("status")).toContainText(
+    "Draft deferred until 3 June 2026",
+  );
+  await expect(rentReviewCard.getByLabel("Subject")).toBeDisabled();
 
   await page.getByRole("tab", { name: "Inbound SMS 1" }).click();
   await expect(
