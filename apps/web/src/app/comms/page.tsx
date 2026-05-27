@@ -96,6 +96,14 @@ function friendlyError(error: unknown): string {
   return "Something went wrong.";
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return null;
+  return new Intl.DateTimeFormat("en-AU", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
 export default function CommsPage() {
   return (
     <QueryProvider>
@@ -393,6 +401,8 @@ function CandidateCard({
     : Boolean(recipientEmail.trim());
   const smsBodyLength = body.length;
   const smsBodyOverGuide = smsBodyLength > SMS_SINGLE_SEGMENT_GUIDE;
+  const dueLabel = formatDateTime(candidate.due_at);
+  const generatedLabel = formatDateTime(candidate.generated_at);
 
   // Evidence-attach lives on compliance obligations only. Smart Intake is
   // the recommended path (AI extracts metadata + attributes the document);
@@ -439,6 +449,19 @@ function CandidateCard({
       }
     >
       <div className="grid gap-3 p-4">
+        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+          {dueLabel ? (
+            <span className="rounded-full border border-border bg-muted/30 px-2.5 py-1">
+              Due {dueLabel}
+            </span>
+          ) : null}
+          {generatedLabel ? (
+            <span className="rounded-full border border-border bg-muted/30 px-2.5 py-1">
+              Drafted {generatedLabel}
+            </span>
+          ) : null}
+        </div>
+
         {dispatchedStatus ? (
           <div className="flex items-center gap-2 rounded-md border border-success-strong/30 bg-success-soft px-3 py-2 text-sm text-success-strong">
             <CheckCircle2 size={16} />
