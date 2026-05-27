@@ -106,6 +106,17 @@ type BlockedFollowup = {
   tone: Tone;
 };
 
+type ReviewSummaryRow = {
+  id: string;
+  label: string;
+  count: number;
+  detail: string;
+  tone: Tone;
+  actionLabel?: string;
+  tab?: QaTab;
+  href?: string;
+};
+
 type SourceRow = {
   id: string;
   kind: string;
@@ -1227,6 +1238,137 @@ function buildBlockedFollowups({
   return [...issueFollowups, ...onboardingFollowups].slice(0, 5);
 }
 
+function buildOnboardingReviewRows(
+  tenantPrep: TenantPrepRow[],
+): ReviewSummaryRow[] {
+  const readyRows = tenantPrep.filter((row) => row.ready);
+  const missingEmailRows = tenantPrep.filter((row) =>
+    row.blockers.some((blocker) => blocker.includes("email")),
+  );
+  const expiredRows = tenantPrep.filter((row) =>
+    row.blockers.some((blocker) => blocker.includes("expired")),
+  );
+  const existingInviteRows = tenantPrep.filter((row) =>
+    row.blockers.some((blocker) => blocker.includes("Existing onboarding")),
+  );
+  const setupRows = tenantPrep.filter((row) =>
+    row.blockers.some(
+      (blocker) =>
+        blocker.includes("No active lease") ||
+        blocker.includes("Tenant record missing"),
+    ),
+  );
+  return [
+    {
+      id: "ready-invites",
+      label: "Ready invites",
+      count: readyRows.length,
+      detail: readyRows.length
+        ? "Can be selected for reviewed invite creation."
+        : "No tenant rows are ready for batch invite creation yet.",
+      tone: readyRows.length ? "success" : "neutral",
+    },
+    {
+      id: "missing-contact",
+      label: "Contact blockers",
+      count: missingEmailRows.length,
+      detail: missingEmailRows.length
+        ? "Tenant email is missing before an invite can be created."
+        : "Invite contact emails are present.",
+      tone: missingEmailRows.length ? "warning" : "success",
+      actionLabel: missingEmailRows.length ? "Fix contacts" : undefined,
+      tab: missingEmailRows.length ? "contacts" : undefined,
+    },
+    {
+      id: "expired-links",
+      label: "Expired links",
+      count: expiredRows.length,
+      detail: expiredRows.length
+        ? "Use the row recovery action before sending another link."
+        : "No expired onboarding links in this scan.",
+      tone: expiredRows.length ? "warning" : "success",
+      actionLabel: expiredRows.length ? "Review rows" : undefined,
+      tab: expiredRows.length ? "onboarding" : undefined,
+    },
+    {
+      id: "existing-invites",
+      label: "Existing invites",
+      count: existingInviteRows.length,
+      detail: existingInviteRows.length
+        ? "These rows already have an active onboarding workflow."
+        : "No existing invite workflows are blocking batch creation.",
+      tone: existingInviteRows.length ? "primary" : "success",
+      actionLabel: existingInviteRows.length ? "Review rows" : undefined,
+      tab: existingInviteRows.length ? "onboarding" : undefined,
+    },
+    {
+      id: "setup-blockers",
+      label: "Setup blockers",
+      count: setupRows.length,
+      detail: setupRows.length
+        ? "Lease or tenant records need setup before onboarding."
+        : "Lease and tenant links are present.",
+      tone: setupRows.length ? "danger" : "success",
+    },
+  ];
+}
+
+function buildBillingReviewRows({
+  issues,
+  billingDrafts,
+}: {
+  issues: QaIssue[];
+  billingDrafts: BillingDraftRecord[];
+}): ReviewSummaryRow[] {
+  const ownerBillingIssues = issues.filter(
+    (issue) => issue.area === "Billing identity",
+  );
+  const billingReadinessIssues = issues.filter(
+    (issue) => issue.area === "Billing",
+  );
+  const activeDrafts = billingDrafts.filter(
+    (draft) => !["void", "superseded"].includes(draft.status),
+  );
+  const approvedDrafts = activeDrafts.filter(
+    (draft) => draft.status === "approved",
+  );
+  return [
+    {
+      id: "owner-billing-fixes",
+      label: "Owner billing fixes",
+      count: ownerBillingIssues.length,
+      detail: ownerBillingIssues[0]?.title ?? "Owner billing identity is clear.",
+      tone: ownerBillingIssues.length ? "warning" : "success",
+      actionLabel: ownerBillingIssues.length ? "Open Data QA" : undefined,
+      tab: ownerBillingIssues.length ? "issues" : undefined,
+    },
+    {
+      id: "billing-readiness-blockers",
+      label: "Billing readiness blockers",
+      count: billingReadinessIssues.length,
+      detail:
+        billingReadinessIssues[0]?.detail ??
+        "No rent-roll billing blockers are visible in Portfolio QA.",
+      tone: billingReadinessIssues.length ? "warning" : "success",
+      actionLabel: billingReadinessIssues.length
+        ? "Open Billing Readiness"
+        : undefined,
+      href: billingReadinessIssues.length ? "/billing-readiness" : undefined,
+    },
+    {
+      id: "internal-drafts",
+      label: "Internal drafts",
+      count: activeDrafts.length,
+      detail: activeDrafts.length
+        ? `${approvedDrafts.length} approved, ${activeDrafts.length - approvedDrafts.length} still in review.`
+        : "Create drafts from reviewed charge rules when ready.",
+      tone: activeDrafts.length ? "primary" : "neutral",
+      actionLabel: activeDrafts.length ? "Review drafts" : undefined,
+      href: activeDrafts.length ? "/billing-readiness" : undefined,
+    },
+  ];
+}
+
 function MetricCard({
   label: metricLabel,
   value,
@@ -1257,6 +1399,86 @@ function MetricCard({
         <div className={cn("rounded-xl p-2", tones[tone])}>{icon}</div>
       </div>
       <p className="mt-3 text-sm text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function ReviewSummaryStrip({
+  title,
+  description,
+  rows,
+  onOpenTab,
+}: {
+  title: string;
+  description: string;
+  rows: ReviewSummaryRow[];
+  onOpenTab: (tab: QaTab) => void;
+}) {
+  return (
+    <div className="border-b border-border bg-muted/30 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-foreground">{title}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        </div>
+        <StatusBadge
+          tone={
+            rows.some(
+              (row) => row.tone === "danger" || row.tone === "warning",
+            )
+              ? "warning"
+              : "success"
+          }
+        >
+          {rows.reduce((sum, row) => sum + row.count, 0)} tracked
+        </StatusBadge>
+      </div>
+      <div className="mt-3 grid gap-3 lg:grid-cols-3">
+        {rows.map((row) => {
+          const body = (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-foreground">
+                  {row.label}
+                </span>
+                <StatusBadge tone={row.tone}>{row.count}</StatusBadge>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">{row.detail}</p>
+              {row.actionLabel ? (
+                <span className="mt-3 inline-flex text-xs font-semibold text-primary">
+                  {row.actionLabel}
+                </span>
+              ) : null}
+            </>
+          );
+          const className =
+            "rounded-xl border border-border bg-white p-3 text-left shadow-leasiumXs transition hover:bg-muted/60";
+          if (row.href) {
+            return (
+              <Link key={row.id} href={row.href} className={className}>
+                {body}
+              </Link>
+            );
+          }
+          if (row.tab) {
+            return (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => onOpenTab(row.tab as QaTab)}
+                className={className}
+              >
+                {body}
+              </button>
+            );
+          }
+          return (
+            <div key={row.id} className={className}>
+              {body}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1630,6 +1852,14 @@ function PortfolioQaWorkspace() {
   const blockedFollowups = useMemo(
     () => buildBlockedFollowups({ issues, tenantPrep }),
     [issues, tenantPrep],
+  );
+  const onboardingReviewRows = useMemo(
+    () => buildOnboardingReviewRows(tenantPrep),
+    [tenantPrep],
+  );
+  const billingReviewRows = useMemo(
+    () => buildBillingReviewRows({ issues, billingDrafts }),
+    [billingDrafts, issues],
   );
   const selectedReadyRows = tenantPrep.filter(
     (row) => row.ready && row.leaseId && selectedLeaseIds.includes(row.leaseId),
@@ -2643,6 +2873,12 @@ function PortfolioQaWorkspace() {
                 {onboardingResult}
               </div>
             ) : null}
+            <ReviewSummaryStrip
+              title="Invite blocker review"
+              description="A quick scan of which tenant rows are safe to batch and which need contact, recovery, or setup first."
+              rows={onboardingReviewRows}
+              onOpenTab={setActiveTab}
+            />
             <div className="divide-y divide-border">
               {tenantPrep.map((row) => (
                 <div
@@ -2765,6 +3001,12 @@ function PortfolioQaWorkspace() {
                 {friendlyError(billingBatchMutation.error)}
               </div>
             ) : null}
+            <ReviewSummaryStrip
+              title="Billing cleanup blockers"
+              description="Review owner identity, rent-roll blockers, and existing internal drafts before generating more billing work."
+              rows={billingReviewRows}
+              onOpenTab={setActiveTab}
+            />
             {billingDrafts.length ? (
               <div className="divide-y divide-border">
                 {billingDrafts.slice(0, 40).map((draft) => (

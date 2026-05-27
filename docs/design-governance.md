@@ -1159,10 +1159,17 @@ layout), and modal scale magnitude (0.97 → 1 — barely perceptible).
   AI-assisted enrichment candidate queue and a blocked-followups queue
   for the next cleanup rows. Tenant contact and owner billing sections
   now also have "Stage suggestions" and "Save staged fixes" actions.
+  Follow-up: Onboarding prep now opens with an invite blocker review
+  that separates ready invites, contact blockers, expired links,
+  existing invite workflows, and setup blockers before batch creation.
+  Billing drafts now opens with a billing cleanup blocker review for
+  owner identity fixes, rent-roll readiness blockers, and existing
+  internal drafts before new draft generation.
   Review whether the percentage model feels operationally honest,
   whether the staging language is clear enough, whether the blocked
-  followups are prioritised correctly, and whether the enrichment queue
-  belongs above or inside the Data QA tab.
+  followups are prioritised correctly, whether the blocker summaries
+  feel useful or too dense, and whether the enrichment queue belongs
+  above or inside the Data QA tab.
 
 ### Tenant onboarding simplification (2026-05-26) — Remba pending
 

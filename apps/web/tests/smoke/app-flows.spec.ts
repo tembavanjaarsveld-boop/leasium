@@ -561,10 +561,25 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   const onboardingPanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Batch tenant onboarding prep" }),
   });
+  await expect(onboardingPanel.getByText("Invite blocker review")).toBeVisible();
+  await expect(onboardingPanel.getByText("Ready invites")).toBeVisible();
+  await expect(onboardingPanel.getByText("Existing invites")).toBeVisible();
   await expect(onboardingPanel.getByText("Northwind Fitness")).toBeVisible();
   await page.getByRole("button", { name: "Select ready" }).click();
   await page.getByRole("button", { name: "Send selected invites" }).click();
   await expect(page.getByText("1 invite links created.")).toBeVisible();
+
+  await page
+    .getByRole("button", { name: /Billing drafts Prepare internal drafts/ })
+    .click();
+  const billingPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Billing draft generation" }),
+  });
+  await expect(billingPanel.getByText("Billing cleanup blockers")).toBeVisible();
+  await expect(
+    billingPanel.getByText("Billing readiness blockers"),
+  ).toBeVisible();
+  await expect(billingPanel.getByText("Missing Xero tax type")).toBeVisible();
 
   await page
     .getByRole("button", { name: /Source history Spreadsheet and intake trails/ })
