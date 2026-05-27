@@ -98,6 +98,14 @@ type EnrichmentCandidate = {
   fields: string[];
 };
 
+type BlockedFollowup = {
+  id: string;
+  title: string;
+  detail: string;
+  tab: QaTab;
+  tone: Tone;
+};
+
 type SourceRow = {
   id: string;
   kind: string;
@@ -1190,6 +1198,35 @@ function buildCompletionItems({
   ];
 }
 
+function buildBlockedFollowups({
+  issues,
+  tenantPrep,
+}: {
+  issues: QaIssue[];
+  tenantPrep: TenantPrepRow[];
+}): BlockedFollowup[] {
+  const issueFollowups = issues
+    .filter((issue) => issue.severity === "danger" || issue.severity === "warning")
+    .sort((a, b) => issueSortRank(a) - issueSortRank(b))
+    .map((issue) => ({
+      id: `issue-${issue.id}`,
+      title: issue.title,
+      detail: issue.detail,
+      tab: (issue.area === "Tenant" ? "contacts" : "issues") as QaTab,
+      tone: issue.severity,
+    }));
+  const onboardingFollowups = tenantPrep
+    .filter((row) => !row.ready && row.blockers.length)
+    .map((row) => ({
+      id: `onboarding-${row.id}`,
+      title: `${row.tenantName} invite blocked`,
+      detail: row.blockers.join(" / "),
+      tab: "onboarding" as const,
+      tone: "warning" as const,
+    }));
+  return [...issueFollowups, ...onboardingFollowups].slice(0, 5);
+}
+
 function MetricCard({
   label: metricLabel,
   value,
@@ -1227,10 +1264,12 @@ function MetricCard({
 function PortfolioCompletionPanel({
   items,
   enrichmentCandidates,
+  blockedFollowups,
   onOpenTab,
 }: {
   items: QaCompletionItem[];
   enrichmentCandidates: EnrichmentCandidate[];
+  blockedFollowups: BlockedFollowup[];
   onOpenTab: (tab: QaTab) => void;
 }) {
   const total = items.reduce((sum, item) => sum + item.total, 0);
@@ -1357,6 +1396,48 @@ function PortfolioCompletionPanel({
                 No obvious enrichment candidates remain for this entity.
               </div>
             )}
+          </div>
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  Blocked follow-ups
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  The next review rows to clear before the register is ready.
+                </p>
+              </div>
+              <StatusBadge tone={blockedFollowups.length ? "warning" : "success"}>
+                {blockedFollowups.length} open
+              </StatusBadge>
+            </div>
+            <div className="mt-3 divide-y divide-border">
+              {blockedFollowups.length ? (
+                blockedFollowups.map((followup) => (
+                  <button
+                    key={followup.id}
+                    type="button"
+                    onClick={() => onOpenTab(followup.tab)}
+                    className="grid w-full gap-2 py-3 text-left transition hover:text-primary"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone={followup.tone}>
+                        {tabs.find((tab) => tab.id === followup.tab)?.label ??
+                          "Review"}
+                      </StatusBadge>
+                      <span className="font-semibold">{followup.title}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {followup.detail}
+                    </p>
+                  </button>
+                ))
+              ) : (
+                <div className="py-4 text-sm text-muted-foreground">
+                  No blocked cleanup rows remain in the current scan.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1545,6 +1626,10 @@ function PortfolioQaWorkspace() {
       tenantPrep,
       tenantsNeedingContact,
     ],
+  );
+  const blockedFollowups = useMemo(
+    () => buildBlockedFollowups({ issues, tenantPrep }),
+    [issues, tenantPrep],
   );
   const selectedReadyRows = tenantPrep.filter(
     (row) => row.ready && row.leaseId && selectedLeaseIds.includes(row.leaseId),
@@ -2005,6 +2090,7 @@ function PortfolioQaWorkspace() {
           <PortfolioCompletionPanel
             items={completionItems}
             enrichmentCandidates={enrichmentCandidates}
+            blockedFollowups={blockedFollowups}
             onOpenTab={setActiveTab}
           />
         ) : null}

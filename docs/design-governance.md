@@ -1156,12 +1156,13 @@ layout), and modal scale magnitude (0.97 → 1 — barely perceptible).
 - [~] Portfolio QA completion report + bulk staging v1 adds readiness
   scoring across data QA, tenant contacts, owner billing identity,
   onboarding prep, billing drafts, and source trails, plus a compact
-  AI-assisted enrichment candidate queue. Tenant contact and owner
-  billing sections now also have "Stage suggestions" and "Save staged
-  fixes" actions. Review whether the percentage model feels
-  operationally honest, whether the staging language is clear enough,
-  and whether the enrichment queue belongs above or inside the Data QA
-  tab.
+  AI-assisted enrichment candidate queue and a blocked-followups queue
+  for the next cleanup rows. Tenant contact and owner billing sections
+  now also have "Stage suggestions" and "Save staged fixes" actions.
+  Review whether the percentage model feels operationally honest,
+  whether the staging language is clear enough, whether the blocked
+  followups are prioritised correctly, and whether the enrichment queue
+  belongs above or inside the Data QA tab.
 
 ### Tenant onboarding simplification (2026-05-26) — Remba pending
 

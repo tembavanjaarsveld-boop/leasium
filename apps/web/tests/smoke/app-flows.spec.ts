@@ -505,6 +505,13 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
     page.getByRole("heading", { name: "Cleanup readiness report" }),
   ).toBeVisible();
   await expect(page.getByText("Public enrichment candidates")).toBeVisible();
+  await expect(page.getByText("Blocked follow-ups")).toBeVisible();
+  const readinessPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Cleanup readiness report" }),
+  });
+  await expect(
+    readinessPanel.getByText("Eagle Street Office is missing owner ABN"),
+  ).toBeVisible();
 
   const ownerPanel = page.locator("section").filter({
     has: page.getByRole("heading", {
@@ -529,7 +536,9 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
     page.getByText("Eagle Street Office billing identity saved."),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: /Tenant contacts/ }).click();
+  await page
+    .getByRole("button", { name: /Tenant contacts Clean invite details/ })
+    .click();
   const contactPanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Tenant contact enrichment" }),
   });
@@ -546,7 +555,9 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
     contactPanel.getByText("Tenant contact data is complete"),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: /Onboarding prep/ }).click();
+  await page
+    .getByRole("button", { name: /Onboarding prep Ready or blocked/ })
+    .click();
   const onboardingPanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Batch tenant onboarding prep" }),
   });
@@ -555,7 +566,9 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   await page.getByRole("button", { name: "Send selected invites" }).click();
   await expect(page.getByText("1 invite links created.")).toBeVisible();
 
-  await page.getByRole("button", { name: /Source history/ }).click();
+  await page
+    .getByRole("button", { name: /Source history Spreadsheet and intake trails/ })
+    .click();
   await expect(
     page.getByText("Acme portfolio register.xlsx").first(),
   ).toBeVisible();
