@@ -57,6 +57,7 @@ import {
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
+type CommsFilter = "all" | CommsKind;
 
 const KIND_LABEL: Record<CommsKind, string> = {
   arrears_reminder: "Arrears reminder",
@@ -67,6 +68,15 @@ const KIND_LABEL: Record<CommsKind, string> = {
   compliance_obligation: "Compliance reminder",
   rent_review: "Rent review",
 };
+const COMMS_KIND_ORDER: CommsKind[] = [
+  "arrears_reminder",
+  "insurance_expiry",
+  "lease_renewal",
+  "inbound_email",
+  "inbound_sms",
+  "compliance_obligation",
+  "rent_review",
+];
 
 const SEVERITY_TONE: Record<CommsSeverity, StatusTone> = {
   info: "neutral",
@@ -124,6 +134,7 @@ function CommsContent() {
     enabled: Boolean(selectedEntityId),
   });
 
+  const [selectedFilter, setSelectedFilter] = useState<CommsFilter>("all");
   const candidates = useMemo(
     () => queueQuery.data?.candidates ?? [],
     [queueQuery.data?.candidates],
@@ -143,6 +154,17 @@ function CommsContent() {
     }
     return tally;
   }, [candidates]);
+  const visibleFilterKinds = useMemo(
+    () => COMMS_KIND_ORDER.filter((kind) => counts[kind] > 0),
+    [counts],
+  );
+  const filteredCandidates = useMemo(
+    () =>
+      selectedFilter === "all"
+        ? candidates
+        : candidates.filter((candidate) => candidate.kind === selectedFilter),
+    [candidates, selectedFilter],
+  );
   const urgentCount = useMemo(
     () => candidates.filter((c) => c.severity === "danger").length,
     [candidates],
@@ -180,6 +202,29 @@ function CommsContent() {
             value={counts.insurance_expiry + counts.lease_renewal}
           />
         </section>
+        {candidates.length ? (
+          <div
+            className="flex flex-wrap gap-2 rounded-md border border-border bg-white p-2"
+            role="tablist"
+            aria-label="Filter comms drafts"
+          >
+            <CommsFilterButton
+              active={selectedFilter === "all"}
+              label="All drafts"
+              count={candidates.length}
+              onClick={() => setSelectedFilter("all")}
+            />
+            {visibleFilterKinds.map((kind) => (
+              <CommsFilterButton
+                key={kind}
+                active={selectedFilter === kind}
+                label={KIND_LABEL[kind]}
+                count={counts[kind]}
+                onClick={() => setSelectedFilter(kind)}
+              />
+            ))}
+          </div>
+        ) : null}
 
         {queueQuery.isLoading ? (
           <SectionPanel>
@@ -201,7 +246,18 @@ function CommsContent() {
           />
         ) : null}
 
-        {candidates.map((candidate) => (
+        {!queueQuery.isLoading &&
+        candidates.length > 0 &&
+        filteredCandidates.length === 0 &&
+        !queueQuery.error ? (
+          <EmptyState
+            icon={<Inbox size={18} />}
+            title="No drafts in this filter."
+            description="Switch back to All drafts to continue reviewing the queue."
+          />
+        ) : null}
+
+        {filteredCandidates.map((candidate) => (
           <CandidateCard
             key={candidate.id}
             candidate={candidate}
@@ -240,6 +296,41 @@ function Metric({
       </div>
       <div className="mt-1 text-sm text-muted-foreground">{label}</div>
     </div>
+  );
+}
+
+function CommsFilterButton({
+  active,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`inline-flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium transition ${
+        active
+          ? "border-primary bg-primary text-primary-foreground shadow-leasiumXs"
+          : "border-border bg-muted/20 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+      }`}
+    >
+      <span>{label}</span>
+      <span
+        className={`rounded-full px-2 py-0.5 text-leasium-micro font-semibold ${
+          active ? "bg-white/20 text-primary-foreground" : "bg-white text-muted-foreground"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
 

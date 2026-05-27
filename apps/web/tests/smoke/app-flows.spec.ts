@@ -265,8 +265,19 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     page.getByText("Approve to send the email or SMS"),
   ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: "All drafts 2" }),
+  ).toHaveAttribute("aria-selected", "true");
 
   const smsCard = page.locator("section").filter({ hasText: "Inbound SMS" });
+  await expect(smsCard).toBeVisible();
+  await page.getByRole("tab", { name: "Rent review 1" }).click();
+  await expect(smsCard).not.toBeVisible();
+  await expect(
+    page.locator("section").filter({ hasText: "Rent review" }),
+  ).toBeVisible();
+
+  await page.getByRole("tab", { name: "Inbound SMS 1" }).click();
   await expect(smsCard).toBeVisible();
   await expect(smsCard.getByText("AI: maintenance request (82%)")).toBeVisible();
   await expect(smsCard.getByLabel("Recipient")).toHaveValue("+61400111222");
