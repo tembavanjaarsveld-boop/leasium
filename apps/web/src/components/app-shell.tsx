@@ -650,6 +650,9 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           )}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="keyboard-shortcuts-title"
             className={cn(
               "mx-auto max-w-lg overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg",
               cheatsheetRender.isClosing
@@ -659,7 +662,10 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           >
             <div className="flex items-center gap-3 border-b border-border px-4 py-3">
               <Keyboard size={17} className="text-primary" />
-              <h2 className="flex-1 text-sm font-semibold text-foreground">
+              <h2
+                id="keyboard-shortcuts-title"
+                className="flex-1 text-sm font-semibold text-foreground"
+              >
                 Keyboard shortcuts
               </h2>
               <button
@@ -726,6 +732,9 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           )}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="command-search-title"
             className={cn(
               "mx-auto max-w-xl overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg",
               commandRender.isClosing
@@ -735,8 +744,12 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           >
             <div className="flex items-center gap-3 border-b border-border px-4 py-3">
               <Command size={17} className="text-primary" />
+              <h2 id="command-search-title" className="sr-only">
+                Command search
+              </h2>
               <input
                 autoFocus
+                aria-label="Command search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search tenants, leases, actions..."

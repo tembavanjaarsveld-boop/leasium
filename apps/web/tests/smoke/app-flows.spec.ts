@@ -55,9 +55,10 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Open search" }).click();
-  const commandSearch = page.getByPlaceholder(
-    "Search tenants, leases, actions...",
-  );
+  await expect(
+    page.getByRole("dialog", { name: "Command search" }),
+  ).toBeVisible();
+  const commandSearch = page.getByRole("textbox", { name: "Command search" });
   await commandSearch.fill("portfolio qa");
   await expect(
     page.getByRole("link", { name: /Data cleanup \/ Portfolio QA/ }),
@@ -607,6 +608,9 @@ test("keyboard cheatsheet lists global and Go-to shortcuts", async ({
 
   await page.getByRole("button", { name: "Show keyboard shortcuts" }).click();
 
+  await expect(
+    page.getByRole("dialog", { name: "Keyboard shortcuts" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Keyboard shortcuts" }),
   ).toBeVisible();
