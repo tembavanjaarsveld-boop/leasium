@@ -265,6 +265,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     page.getByText("Approve to send the email or SMS"),
   ).toBeVisible();
+  await expect(page.getByText(/Queue generated 27 May 2026/)).toBeVisible();
   await expect(
     page.getByRole("tab", { name: "All drafts 2" }),
   ).toHaveAttribute("aria-selected", "true");

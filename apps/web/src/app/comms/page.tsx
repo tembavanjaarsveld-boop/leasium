@@ -177,6 +177,7 @@ function CommsContent() {
     () => candidates.filter((c) => c.severity === "danger").length,
     [candidates],
   );
+  const queueGeneratedLabel = formatDateTime(queueQuery.data?.generated_at);
 
   return (
     <main className="min-h-screen">
@@ -200,6 +201,13 @@ function CommsContent() {
         <PageHeader
           title="Comms queue"
           description="Drafts the platform has staged for your review. Approve to send the email or SMS; dismiss to defer the candidate by seven days."
+          actions={
+            queueGeneratedLabel ? (
+              <StatusBadge tone="neutral">
+                Queue generated {queueGeneratedLabel}
+              </StatusBadge>
+            ) : null
+          }
         />
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric label="Total drafts" value={candidates.length} />
