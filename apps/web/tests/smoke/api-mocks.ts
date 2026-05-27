@@ -3007,6 +3007,125 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/comms/queue") {
+      await fulfillJson(route, {
+        entity_id: entityId,
+        generated_at: "2026-05-27T02:00:00.000Z",
+        candidates: [
+          {
+            id: "comms-inbound-sms-1",
+            kind: "inbound_sms",
+            target_kind: "inbound_message",
+            target_id: "inbound-sms-1",
+            tenant_id: tenantId,
+            tenant_name: "Bright Cafe Pty Ltd",
+            property_name: "Queen Street Retail Centre",
+            unit_label: "Shop 3",
+            recipient_email: null,
+            recipient_phone: "+61400111222",
+            subject: "SMS reply to Bright Cafe Pty Ltd",
+            body: "Thanks for the update. We have logged this and will follow up shortly.",
+            severity: "warning",
+            due_at: "2026-05-27T05:00:00.000Z",
+            detail: "AI: maintenance request (82%)",
+            generated_at: "2026-05-27T02:00:00.000Z",
+          },
+          {
+            id: "comms-rent-review-1",
+            kind: "rent_review",
+            target_kind: "lease",
+            target_id: leaseId,
+            tenant_id: tenantId,
+            tenant_name: "Bright Cafe Pty Ltd",
+            property_name: "Queen Street Retail Centre",
+            unit_label: "Shop 3",
+            recipient_email: "tenant@example.com",
+            recipient_phone: null,
+            subject: "Upcoming rent review",
+            body: "Your lease rent review is coming up. Please reply if you need anything clarified.",
+            severity: "info",
+            due_at: "2026-07-01T00:00:00.000Z",
+            detail: "+3% fixed increase",
+            generated_at: "2026-05-27T02:00:00.000Z",
+          },
+        ],
+      });
+      return;
+    }
+
+    if (method === "GET" && path === "/comms/queue/counts") {
+      await fulfillJson(route, {
+        entity_id: entityId,
+        total: 2,
+        urgent: 0,
+        by_kind: {
+          arrears_reminder: 0,
+          insurance_expiry: 0,
+          lease_renewal: 0,
+          inbound_email: 0,
+          inbound_sms: 1,
+          compliance_obligation: 0,
+          rent_review: 1,
+        },
+        generated_at: "2026-05-27T02:00:00.000Z",
+      });
+      return;
+    }
+
+    if (method === "POST" && path === "/comms/dispatch") {
+      const payload = request.postDataJSON() as {
+        kind?: string;
+        target_kind?: string;
+        target_id?: string;
+        recipient_email?: string | null;
+        recipient_phone?: string | null;
+      };
+      await fulfillJson(route, {
+        candidate_id:
+          payload.kind === "inbound_sms"
+            ? "comms-inbound-sms-1"
+            : "comms-rent-review-1",
+        kind: payload.kind ?? "rent_review",
+        target_kind: payload.target_kind ?? "lease",
+        target_id: payload.target_id ?? leaseId,
+        channel: payload.kind === "inbound_sms" ? "sms" : "email",
+        status: "skipped",
+        provider: payload.kind === "inbound_sms" ? "twilio" : "sendgrid",
+        recipient:
+          payload.kind === "inbound_sms"
+            ? (payload.recipient_phone ?? null)
+            : (payload.recipient_email ?? null),
+        provider_message_id: null,
+        error:
+          payload.kind === "inbound_sms"
+            ? "Twilio Messaging is not configured."
+            : "SendGrid is not configured.",
+        sent_at: "2026-05-27T02:05:00.000Z",
+      });
+      return;
+    }
+
+    if (method === "POST" && path === "/comms/dismiss") {
+      const payload = request.postDataJSON() as {
+        kind?: string;
+        target_kind?: string;
+        target_id?: string;
+      };
+      await fulfillJson(route, {
+        candidate_id:
+          payload.kind === "inbound_sms"
+            ? "comms-inbound-sms-1"
+            : "comms-rent-review-1",
+        kind: payload.kind ?? "rent_review",
+        target_kind: payload.target_kind ?? "lease",
+        target_id: payload.target_id ?? leaseId,
+        deferred_until: "2026-06-03T02:05:00.000Z",
+        reason: null,
+        dismissed_at: "2026-05-27T02:05:00.000Z",
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/xero/exception-queue") {
       await fulfillJson(route, xeroExceptionQueue());
       return;

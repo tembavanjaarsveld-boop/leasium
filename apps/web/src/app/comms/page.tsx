@@ -168,7 +168,7 @@ function CommsContent() {
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
         <PageHeader
           title="Comms queue"
-          description="Drafts the platform has staged for your review. Approve to send the email; dismiss to defer the candidate by seven days."
+          description="Drafts the platform has staged for your review. Approve to send the email or SMS; dismiss to defer the candidate by seven days."
         />
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric label="Total drafts" value={candidates.length} />
@@ -251,9 +251,16 @@ function CandidateCard({
   entityId: string;
   onSettled: () => void;
 }) {
+  const channel = candidate.kind === "inbound_sms" ? "sms" : "email";
+  const isSms = channel === "sms";
   const [subject, setSubject] = useState(candidate.subject);
   const [body, setBody] = useState(candidate.body);
-  const [recipient, setRecipient] = useState(candidate.recipient_email ?? "");
+  const [recipientEmail, setRecipientEmail] = useState(
+    candidate.recipient_email ?? "",
+  );
+  const [recipientPhone, setRecipientPhone] = useState(
+    candidate.recipient_phone ?? "",
+  );
   const [dispatchedStatus, setDispatchedStatus] = useState<string | null>(null);
 
   const dispatchMutation = useMutation({
@@ -264,7 +271,8 @@ function CandidateCard({
         target_id: candidate.target_id,
         subject,
         body,
-        recipient_email: recipient || null,
+        recipient_email: isSms ? null : recipientEmail || null,
+        recipient_phone: isSms ? recipientPhone || null : null,
       }),
     onSuccess: (result) => {
       setDispatchedStatus(result.status);
@@ -287,6 +295,10 @@ function CandidateCard({
   const dispatchError = dispatchMutation.error as Error | null;
   const dismissError = dismissMutation.error as Error | null;
   const tone = SEVERITY_TONE[candidate.severity];
+  const providerName = isSms ? "Twilio" : "SendGrid";
+  const recipientReady = isSms
+    ? Boolean(recipientPhone.trim())
+    : Boolean(recipientEmail.trim());
 
   // Evidence-attach lives on compliance obligations only. Smart Intake is
   // the recommended path (AI extracts metadata + attributes the document);
@@ -340,8 +352,9 @@ function CandidateCard({
             {dispatchedStatus === "skipped" ? (
               <span className="text-xs">
                 {" "}
-                SendGrid is not configured yet, so the send was skipped. Wire
-                SENDGRID_API_KEY to enable.
+                {isSms
+                  ? "Twilio Messaging is not configured yet, so the SMS was skipped. Wire the Twilio settings to enable."
+                  : "SendGrid is not configured yet, so the email was skipped. Wire SENDGRID_API_KEY to enable."}
               </span>
             ) : null}
           </div>
@@ -356,10 +369,16 @@ function CandidateCard({
           </Field>
           <Field label="Recipient">
             <Input
-              type="email"
-              value={recipient}
-              onChange={(event) => setRecipient(event.target.value)}
-              placeholder="tenant@example.com"
+              type={isSms ? "tel" : "email"}
+              value={isSms ? recipientPhone : recipientEmail}
+              onChange={(event) => {
+                if (isSms) {
+                  setRecipientPhone(event.target.value);
+                } else {
+                  setRecipientEmail(event.target.value);
+                }
+              }}
+              placeholder={isSms ? "+61400111222" : "tenant@example.com"}
             />
           </Field>
         </div>
@@ -452,8 +471,8 @@ function CandidateCard({
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            Approve sends the email through SendGrid. Edit subject, body, or
-            recipient before approving.
+            Approve sends the {isSms ? "SMS" : "email"} through {providerName}.
+            Edit subject, body, or recipient before approving.
           </p>
           <div className="flex flex-wrap gap-2">
             <SecondaryButton
@@ -475,7 +494,7 @@ function CandidateCard({
                 Boolean(dispatchedStatus) ||
                 !subject.trim() ||
                 !body.trim() ||
-                !recipient.trim()
+                !recipientReady
               }
             >
               {dispatchMutation.isPending ? (

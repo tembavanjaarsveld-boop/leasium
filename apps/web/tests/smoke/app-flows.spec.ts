@@ -256,6 +256,31 @@ test("AI inbox promotes a classified message into a maintenance draft", async ({
   );
 });
 
+test("comms queue approves inbound SMS with a phone recipient", async ({
+  page,
+}) => {
+  await page.goto("/comms");
+
+  await expect(page.getByRole("heading", { name: "Comms queue" })).toBeVisible();
+  await expect(
+    page.getByText("Approve to send the email or SMS"),
+  ).toBeVisible();
+
+  const smsCard = page.locator("section").filter({ hasText: "Inbound SMS" });
+  await expect(smsCard).toBeVisible();
+  await expect(smsCard.getByText("AI: maintenance request (82%)")).toBeVisible();
+  await expect(smsCard.getByLabel("Recipient")).toHaveValue("+61400111222");
+  await expect(
+    smsCard.getByText("Approve sends the SMS through Twilio."),
+  ).toBeVisible();
+
+  await smsCard.getByRole("button", { name: "Approve & send" }).click();
+
+  await expect(
+    smsCard.getByText("Twilio Messaging is not configured yet"),
+  ).toBeVisible();
+});
+
 test("AI inbox vendor classification offers a contractor picker", async ({
   page,
 }) => {
