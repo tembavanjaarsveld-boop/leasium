@@ -460,6 +460,13 @@ function CandidateCard({
       ? `${isSms ? "SMS" : "Email"} send skipped`
       : `${isSms ? "SMS" : "Email"} dispatch recorded`;
   const dispatchReceiptDetail = `${providerName} ${isSms ? "SMS" : "email"} to ${currentRecipient.trim()}`;
+  const settledBadge = dismissedUntil
+    ? { label: "Deferred", tone: "neutral" as const }
+    : dispatchedStatus === "skipped"
+      ? { label: "Send skipped", tone: "warning" as const }
+      : dispatchedStatus
+        ? { label: "Dispatch recorded", tone: "success" as const }
+        : null;
   const actionGuidance = draftSettled
     ? "This draft is locked because a dispatch or dismiss receipt has been recorded."
     : `Approve sends the ${isSms ? "SMS" : "email"} through ${providerName}.${
@@ -510,6 +517,9 @@ function CandidateCard({
           </StatusBadge>
           {draftEdited ? (
             <StatusBadge tone="warning">Edited draft</StatusBadge>
+          ) : null}
+          {settledBadge ? (
+            <StatusBadge tone={settledBadge.tone}>{settledBadge.label}</StatusBadge>
           ) : null}
           <StatusBadge tone={tone}>{SEVERITY_LABEL[candidate.severity]}</StatusBadge>
           {candidate.detail ? (

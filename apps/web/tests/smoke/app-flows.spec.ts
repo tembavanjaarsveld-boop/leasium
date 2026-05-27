@@ -287,6 +287,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(rentReviewCard.getByRole("status")).toContainText(
     "Draft deferred until 3 June 2026",
   );
+  await expect(rentReviewCard.getByText("Deferred", { exact: true })).toBeVisible();
   await expect(rentReviewCard.getByLabel("Subject")).toBeDisabled();
   await expect(
     rentReviewCard.getByText(
@@ -356,6 +357,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await smsCard.getByRole("button", { name: "Approve & send" }).click();
 
   await expect(smsCard.getByText("SMS send skipped")).toBeVisible();
+  await expect(smsCard.getByText("Send skipped", { exact: true })).toBeVisible();
   const dispatchReceipt = smsCard.getByRole("status");
   await expect(dispatchReceipt).toContainText("SMS send skipped");
   await expect(
