@@ -29,21 +29,29 @@ import { useUnmountDelay } from "@/lib/use-unmount-delay";
 import { cn } from "@/lib/utils";
 
 const COMMS_BADGE_ENTITY_KEY = "leasium.entity_id";
+const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
 
 function useCommsBadge(): { urgent: number; total: number } | null {
   const [entityId, setEntityId] = useState<string | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(COMMS_BADGE_ENTITY_KEY);
-    setEntityId(stored);
-    // Listen for entity changes from any page that writes the key.
+    function syncEntityId() {
+      setEntityId(window.localStorage.getItem(COMMS_BADGE_ENTITY_KEY));
+    }
+    syncEntityId();
+    // Storage events cover other tabs; the custom event covers pages that
+    // update the entity in this tab and notify the shell immediately.
     function onStorage(event: StorageEvent) {
       if (event.key === COMMS_BADGE_ENTITY_KEY) {
         setEntityId(event.newValue);
       }
     }
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener(ENTITY_CHANGED_EVENT, syncEntityId);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(ENTITY_CHANGED_EVENT, syncEntityId);
+    };
   }, []);
 
   const countsQuery = useQuery({
@@ -419,7 +427,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           const active = isNavActive(item);
           const Icon = item.icon;
           const showCommsBadge =
-            item.href === "/comms" &&
+            item.href === "/operations" &&
             commsBadge !== null &&
             commsBadge.total > 0;
           return (

@@ -57,6 +57,7 @@ import {
 } from "@/lib/api";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
+const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type CommsFilter = "all" | CommsKind;
@@ -131,6 +132,7 @@ function CommsContent() {
     if (!selectedEntityId) return;
     if (typeof window === "undefined") return;
     window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
+    window.dispatchEvent(new Event(ENTITY_CHANGED_EVENT));
   }, [selectedEntityId]);
   useEffect(() => {
     if (selectedEntityId) return;
@@ -242,7 +244,12 @@ function CommsContent() {
               ) : null}
               <SecondaryButton
                 type="button"
-                onClick={() => queueQuery.refetch()}
+                onClick={() => {
+                  void queueQuery.refetch();
+                  void queryClient.invalidateQueries({
+                    queryKey: ["comms-queue-counts", selectedEntityId],
+                  });
+                }}
                 disabled={queueRefreshDisabled}
               >
                 {queueQuery.isFetching ? (
@@ -340,8 +347,11 @@ function CommsContent() {
                 next.add(candidateId);
                 return next;
               });
-              queryClient.invalidateQueries({
+              void queryClient.invalidateQueries({
                 queryKey: ["comms-queue", selectedEntityId],
+              });
+              void queryClient.invalidateQueries({
+                queryKey: ["comms-queue-counts", selectedEntityId],
               });
             }}
           />

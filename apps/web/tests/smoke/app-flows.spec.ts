@@ -263,6 +263,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
 
   await expect(page.getByRole("heading", { name: "Comms queue" })).toBeVisible();
   await expect(
+    page.getByLabel("2 drafts in the comms queue, 0 urgent"),
+  ).toBeVisible();
+  await expect(
     page.getByText("Approve to send the email or SMS"),
   ).toBeVisible();
   await expect(page.getByText(/Queue generated 27 May 2026/)).toBeVisible();
