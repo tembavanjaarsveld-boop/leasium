@@ -157,7 +157,8 @@ function CommsContent() {
   );
   useEffect(() => {
     setSettledCandidateIds((previous) => {
-      if (previous.size === 0 || candidates.length === 0) return previous;
+      if (previous.size === 0) return previous;
+      if (candidates.length === 0) return new Set();
       const currentIds = new Set(candidates.map((candidate) => candidate.id));
       const next = new Set(
         [...previous].filter((candidateId) => currentIds.has(candidateId)),
