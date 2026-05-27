@@ -319,6 +319,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     smsCard.getByRole("button", { name: "Reset draft" }),
   ).toBeVisible();
+  await expect(
+    smsCard.getByRole("button", { name: "Reset draft" }),
+  ).toBeEnabled();
   await smsCard.getByRole("button", { name: "Reset draft" }).click();
   await expect(smsCard.getByText("Edited draft")).toHaveCount(0);
   await expect(smsCard.getByLabel("Body")).toHaveValue(

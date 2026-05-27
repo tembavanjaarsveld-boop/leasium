@@ -415,6 +415,7 @@ function CandidateCard({
 
   const dispatchError = dispatchMutation.error as Error | null;
   const dismissError = dismissMutation.error as Error | null;
+  const actionPending = dispatchMutation.isPending || dismissMutation.isPending;
   const tone = SEVERITY_TONE[candidate.severity];
   const providerName = isSms ? "Twilio" : "SendGrid";
   const originalRecipient = isSms
@@ -689,7 +690,11 @@ function CandidateCard({
           </p>
           <div className="flex flex-wrap gap-2">
             {draftEdited && !dispatchedStatus ? (
-              <SecondaryButton type="button" onClick={resetDraft}>
+              <SecondaryButton
+                type="button"
+                onClick={resetDraft}
+                disabled={actionPending}
+              >
                 <RotateCcw size={15} />
                 Reset draft
               </SecondaryButton>
@@ -698,7 +703,7 @@ function CandidateCard({
               type="button"
               onClick={() => dismissMutation.mutate()}
               disabled={
-                dismissMutation.isPending ||
+                actionPending ||
                 Boolean(dispatchedStatus)
               }
             >
@@ -714,7 +719,7 @@ function CandidateCard({
                   : undefined
               }
               disabled={
-                dispatchMutation.isPending ||
+                actionPending ||
                 Boolean(dispatchedStatus) ||
                 dispatchBlocked
               }
