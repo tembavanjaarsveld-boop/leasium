@@ -345,6 +345,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
 
   await expect(smsCard.getByText("SMS send skipped")).toBeVisible();
   await expect(
+    smsCard.getByText("Twilio SMS to +61400111222."),
+  ).toBeVisible();
+  await expect(
     smsCard.getByText("Twilio Messaging is not configured yet"),
   ).toBeVisible();
   await expect(smsCard.getByLabel("Phone recipient")).toBeDisabled();

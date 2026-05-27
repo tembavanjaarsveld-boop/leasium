@@ -455,6 +455,7 @@ function CandidateCard({
     dispatchedStatus === "skipped"
       ? `${isSms ? "SMS" : "Email"} send skipped`
       : `${isSms ? "SMS" : "Email"} dispatch recorded`;
+  const dispatchReceiptDetail = `${providerName} ${isSms ? "SMS" : "email"} to ${currentRecipient.trim()}`;
 
   // Evidence-attach lives on compliance obligations only. Smart Intake is
   // the recommended path (AI extracts metadata + attributes the document);
@@ -525,6 +526,7 @@ function CandidateCard({
             <CheckCircle2 size={16} />
             {dispatchReceiptLabel} — status{" "}
             <strong>{dispatchedStatus}</strong>.
+            <span className="text-xs"> {dispatchReceiptDetail}.</span>
             {dispatchedStatus === "skipped" ? (
               <span className="text-xs">
                 {" "}
