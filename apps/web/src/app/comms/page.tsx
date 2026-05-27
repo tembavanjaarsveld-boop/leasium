@@ -79,6 +79,7 @@ const SEVERITY_LABEL: Record<CommsSeverity, string> = {
   warning: "Due soon",
   danger: "Urgent",
 };
+const SMS_SINGLE_SEGMENT_GUIDE = 160;
 
 function friendlyError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -299,6 +300,8 @@ function CandidateCard({
   const recipientReady = isSms
     ? Boolean(recipientPhone.trim())
     : Boolean(recipientEmail.trim());
+  const smsBodyLength = body.length;
+  const smsBodyOverGuide = smsBodyLength > SMS_SINGLE_SEGMENT_GUIDE;
 
   // Evidence-attach lives on compliance obligations only. Smart Intake is
   // the recommended path (AI extracts metadata + attributes the document);
@@ -390,6 +393,21 @@ function CandidateCard({
             className="min-h-[180px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
           />
         </Field>
+        {isSms ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            <div>
+              <span className="font-medium text-foreground">
+                SMS body review
+              </span>{" "}
+              {smsBodyOverGuide
+                ? "May split into multiple SMS segments."
+                : "Under the 160-character single SMS guide."}
+            </div>
+            <StatusBadge tone={smsBodyOverGuide ? "warning" : "success"}>
+              {smsBodyLength}/{SMS_SINGLE_SEGMENT_GUIDE} chars
+            </StatusBadge>
+          </div>
+        ) : null}
 
         {showEvidencePanel ? (
           <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-sm">

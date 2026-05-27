@@ -270,6 +270,10 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(smsCard).toBeVisible();
   await expect(smsCard.getByText("AI: maintenance request (82%)")).toBeVisible();
   await expect(smsCard.getByLabel("Recipient")).toHaveValue("+61400111222");
+  await expect(smsCard.getByText("SMS body review")).toBeVisible();
+  await expect(
+    smsCard.getByText("Under the 160-character single SMS guide."),
+  ).toBeVisible();
   await expect(
     smsCard.getByText("Approve sends the SMS through Twilio."),
   ).toBeVisible();
