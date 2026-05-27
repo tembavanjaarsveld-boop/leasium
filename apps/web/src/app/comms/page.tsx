@@ -203,6 +203,7 @@ function CommsContent() {
     [candidates],
   );
   const settledCount = settledCandidateIds.size;
+  const remainingCount = Math.max(candidates.length - settledCount, 0);
   const queueGeneratedLabel = formatDateTime(queueQuery.data?.generated_at);
   const queueRefreshDisabled = !selectedEntityId || queueQuery.isFetching;
 
@@ -250,9 +251,10 @@ function CommsContent() {
             </div>
           }
         />
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <Metric label="Total drafts" value={candidates.length} />
           <Metric label="Urgent" value={urgentCount} tone="danger" />
+          <Metric label="Remaining now" value={remainingCount} />
           <Metric label="Settled now" value={settledCount} />
           <Metric label="Arrears" value={counts.arrears_reminder} />
           <Metric
