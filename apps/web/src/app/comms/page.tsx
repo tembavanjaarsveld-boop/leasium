@@ -453,6 +453,9 @@ function CandidateCard({
       icon={<Inbox size={17} />}
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone={isSms ? "primary" : "neutral"}>
+            {isSms ? "Twilio SMS" : "SendGrid email"}
+          </StatusBadge>
           <StatusBadge tone={tone}>{SEVERITY_LABEL[candidate.severity]}</StatusBadge>
           {candidate.detail ? (
             <span className="text-xs text-muted-foreground">{candidate.detail}</span>
@@ -503,7 +506,7 @@ function CandidateCard({
               />
             </Field>
           ) : null}
-          <Field label="Recipient">
+          <Field label={isSms ? "Phone recipient" : "Email recipient"}>
             <Input
               type={isSms ? "tel" : "email"}
               value={isSms ? recipientPhone : recipientEmail}

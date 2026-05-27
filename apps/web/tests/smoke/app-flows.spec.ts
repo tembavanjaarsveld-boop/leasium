@@ -283,8 +283,11 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(smsCard.getByText("AI: maintenance request (82%)")).toBeVisible();
   await expect(smsCard.getByText(/Due 27 May 2026/)).toBeVisible();
   await expect(smsCard.getByText(/Drafted 27 May 2026/)).toBeVisible();
+  await expect(smsCard.getByText("Twilio SMS")).toBeVisible();
   await expect(smsCard.getByLabel("Subject")).toHaveCount(0);
-  await expect(smsCard.getByLabel("Recipient")).toHaveValue("+61400111222");
+  await expect(smsCard.getByLabel("Phone recipient")).toHaveValue(
+    "+61400111222",
+  );
   await expect(smsCard.getByText("SMS body review")).toBeVisible();
   await expect(
     smsCard.getByText("Under the 160-character single SMS guide."),
