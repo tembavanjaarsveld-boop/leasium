@@ -416,6 +416,14 @@ function CandidateCard({
   const dismissError = dismissMutation.error as Error | null;
   const tone = SEVERITY_TONE[candidate.severity];
   const providerName = isSms ? "Twilio" : "SendGrid";
+  const originalRecipient = isSms
+    ? candidate.recipient_phone ?? ""
+    : candidate.recipient_email ?? "";
+  const currentRecipient = isSms ? recipientPhone : recipientEmail;
+  const draftEdited =
+    body !== candidate.body ||
+    currentRecipient !== originalRecipient ||
+    (!isSms && subject !== candidate.subject);
   const recipientReady = isSms
     ? Boolean(recipientPhone.trim())
     : Boolean(recipientEmail.trim());
@@ -476,6 +484,9 @@ function CandidateCard({
           <StatusBadge tone={isSms ? "primary" : "neutral"}>
             {isSms ? "Twilio SMS" : "SendGrid email"}
           </StatusBadge>
+          {draftEdited ? (
+            <StatusBadge tone="warning">Edited draft</StatusBadge>
+          ) : null}
           <StatusBadge tone={tone}>{SEVERITY_LABEL[candidate.severity]}</StatusBadge>
           {candidate.detail ? (
             <span className="text-xs text-muted-foreground">{candidate.detail}</span>

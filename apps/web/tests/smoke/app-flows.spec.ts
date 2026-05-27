@@ -306,10 +306,16 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     smsCard.getByRole("button", { name: "Approve & send" }),
   ).toHaveAttribute("aria-describedby", /.+/);
+  await expect(smsCard.getByText("Edited draft")).toBeVisible();
   await smsCard.getByLabel("Phone recipient").fill("+61400111222");
   await expect(
     smsCard.getByRole("button", { name: "Approve & send" }),
   ).not.toHaveAttribute("aria-describedby", /.+/);
+  await expect(smsCard.getByText("Edited draft")).toHaveCount(0);
+  await smsCard.getByLabel("Body").fill(
+    "Thanks for the heads up. We have logged this and will follow up shortly.",
+  );
+  await expect(smsCard.getByText("Edited draft")).toBeVisible();
   await expect(smsCard.getByText("SMS body review")).toBeVisible();
   await expect(
     smsCard.getByText("Under the 160-character single SMS guide."),
