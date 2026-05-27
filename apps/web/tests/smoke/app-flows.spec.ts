@@ -730,6 +730,9 @@ test("operations workspace keeps mobile rows compact", async ({ page }) => {
     .getByLabel("Work controls owner selector: Air conditioning fault")
     .first();
   await expect(queueControls).toBeVisible();
+  await expect(queueControls).toContainText(
+    "Unassigned - urgent / awaiting approval",
+  );
   await expect(airconAssignee).not.toBeVisible();
   await queueControls.click();
   await expect(airconAssignee).toBeVisible();
@@ -740,6 +743,9 @@ test("operations workspace keeps mobile rows compact", async ({ page }) => {
     .filter({ hasText: "Work-order actions" })
     .first();
   await expect(workOrderActions).toBeVisible();
+  await expect(workOrderActions).toContainText(
+    "Unassigned - urgent - awaiting approval",
+  );
   await expect(
     page.getByRole("link", { name: "Open completion review" }).first(),
   ).not.toBeVisible();

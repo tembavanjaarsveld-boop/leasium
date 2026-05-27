@@ -735,6 +735,29 @@ function queueAssignmentSummary(item: QueueItem) {
   );
 }
 
+function queueMobileActionSummary(item: QueueItem) {
+  if (!isAssignableQueueItem(item)) {
+    return "";
+  }
+  const assignment = workAssignment(item.record.metadata);
+  const notice = assignment?.notificationStatus
+    ? `notice ${label(assignment.notificationStatus)}`
+    : null;
+  return [queueAssignmentSummary(item), item.chip, notice]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function maintenanceMobileActionSummary(workOrder: MaintenanceWorkOrderRecord) {
+  return [
+    assignmentSummary(workOrder.metadata),
+    label(workOrder.priority),
+    label(workOrder.status),
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
 function memberAssigneeFilter(memberId: string): AssigneeFilter {
   return `member:${memberId}`;
 }
@@ -2906,7 +2929,7 @@ function OperationsWorkspace() {
                           </div>
                           <MobileRowDisclosure
                             title="Work controls"
-                            subtitle={queueAssignmentSummary(item)}
+                            subtitle={queueMobileActionSummary(item)}
                             icon={<UserRound size={15} />}
                           >
                             {renderQueueAssignmentControl(
@@ -3420,7 +3443,7 @@ function OperationsWorkspace() {
                         </div>
                         <MobileRowDisclosure
                           title="Work-order actions"
-                          subtitle={assignmentSummary(workOrder.metadata)}
+                          subtitle={maintenanceMobileActionSummary(workOrder)}
                           icon={<ClipboardList size={15} />}
                         >
                           {renderMaintenanceAssignmentControl(
