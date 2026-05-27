@@ -155,6 +155,16 @@ function CommsContent() {
     () => queueQuery.data?.candidates ?? [],
     [queueQuery.data?.candidates],
   );
+  useEffect(() => {
+    setSettledCandidateIds((previous) => {
+      if (previous.size === 0 || candidates.length === 0) return previous;
+      const currentIds = new Set(candidates.map((candidate) => candidate.id));
+      const next = new Set(
+        [...previous].filter((candidateId) => currentIds.has(candidateId)),
+      );
+      return next.size === previous.size ? previous : next;
+    });
+  }, [candidates]);
   const counts = useMemo(() => {
     const tally: Record<CommsKind, number> = {
       arrears_reminder: 0,
