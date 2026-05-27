@@ -267,6 +267,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   ).toBeVisible();
   await expect(page.getByText(/Queue generated 27 May 2026/)).toBeVisible();
   await expect(
+    page.getByRole("button", { name: "Refresh queue" }),
+  ).toBeEnabled();
+  await expect(
     page.getByRole("tab", { name: "All drafts 2" }),
   ).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText("Showing all 2 drafts.")).toBeVisible();
