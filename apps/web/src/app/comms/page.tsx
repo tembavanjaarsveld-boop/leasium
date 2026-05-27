@@ -27,7 +27,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
@@ -381,6 +381,7 @@ function CandidateCard({
     candidate.recipient_phone ?? "",
   );
   const [dispatchedStatus, setDispatchedStatus] = useState<string | null>(null);
+  const approvalBlockerId = useId();
 
   const dispatchMutation = useMutation({
     mutationFn: () =>
@@ -425,6 +426,7 @@ function CandidateCard({
     !body.trim() ? "Add a message body before approving." : null,
     !isSms && !subject.trim() ? "Add a subject before approving." : null,
   ].filter((blocker): blocker is string => Boolean(blocker));
+  const dispatchBlocked = dispatchBlockers.length > 0;
   const smsBodyLength = body.length;
   const smsBodyOverGuide = smsBodyLength > SMS_SINGLE_SEGMENT_GUIDE;
   const dueLabel = formatDateTime(candidate.due_at);
@@ -640,8 +642,11 @@ function CandidateCard({
             {friendlyError(dismissError)}
           </p>
         ) : null}
-        {dispatchBlockers.length > 0 && !dispatchedStatus ? (
-          <div className="grid gap-1 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
+        {dispatchBlocked && !dispatchedStatus ? (
+          <div
+            id={approvalBlockerId}
+            className="grid gap-1 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-foreground"
+          >
             <div className="flex items-center gap-2 font-medium">
               <AlertTriangle size={16} />
               Approval needs review
@@ -676,12 +681,15 @@ function CandidateCard({
             <Button
               type="button"
               onClick={() => dispatchMutation.mutate()}
+              aria-describedby={
+                dispatchBlocked && !dispatchedStatus
+                  ? approvalBlockerId
+                  : undefined
+              }
               disabled={
                 dispatchMutation.isPending ||
                 Boolean(dispatchedStatus) ||
-                (!isSms && !subject.trim()) ||
-                !body.trim() ||
-                !recipientReady
+                dispatchBlocked
               }
             >
               {dispatchMutation.isPending ? (
