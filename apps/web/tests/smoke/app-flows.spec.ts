@@ -347,6 +347,8 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     smsCard.getByText("Twilio Messaging is not configured yet"),
   ).toBeVisible();
+  await expect(smsCard.getByLabel("Phone recipient")).toBeDisabled();
+  await expect(smsCard.getByLabel("Body")).toBeDisabled();
 });
 
 test("AI inbox vendor classification offers a contractor picker", async ({

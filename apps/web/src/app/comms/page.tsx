@@ -416,6 +416,7 @@ function CandidateCard({
   const dispatchError = dispatchMutation.error as Error | null;
   const dismissError = dismissMutation.error as Error | null;
   const actionPending = dispatchMutation.isPending || dismissMutation.isPending;
+  const draftInputsDisabled = actionPending || Boolean(dispatchedStatus);
   const tone = SEVERITY_TONE[candidate.severity];
   const providerName = isSms ? "Twilio" : "SendGrid";
   const originalRecipient = isSms
@@ -545,6 +546,7 @@ function CandidateCard({
               <Input
                 value={subject}
                 onChange={(event) => setSubject(event.target.value)}
+                disabled={draftInputsDisabled}
               />
             </Field>
           ) : null}
@@ -552,6 +554,7 @@ function CandidateCard({
             <Input
               type={isSms ? "tel" : "email"}
               value={isSms ? recipientPhone : recipientEmail}
+              disabled={draftInputsDisabled}
               onChange={(event) => {
                 if (isSms) {
                   setRecipientPhone(event.target.value);
@@ -567,8 +570,9 @@ function CandidateCard({
         <Field label="Body">
           <textarea
             value={body}
+            disabled={draftInputsDisabled}
             onChange={(event) => setBody(event.target.value)}
-            className="min-h-[180px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+            className="min-h-[180px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
           />
         </Field>
         {isSms ? (
