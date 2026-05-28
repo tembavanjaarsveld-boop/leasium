@@ -144,6 +144,14 @@ type ReadinessVerdict = {
   tone: Tone;
 };
 
+type CleanupReportingGate = {
+  key: string;
+  label: string;
+  status: string;
+  detail: string;
+  tone: Tone;
+};
+
 type CleanupNextAction = {
   id: string;
   title: string;
@@ -1744,10 +1752,86 @@ function cleanupReadinessVerdict({
   };
 }
 
+function cleanupReportingGates({
+  completion,
+  activeBulkGroups,
+  enrichmentCandidates,
+  blockedFollowups,
+}: {
+  completion: number;
+  activeBulkGroups: BulkReviewGroup[];
+  enrichmentCandidates: EnrichmentCandidate[];
+  blockedFollowups: BlockedFollowup[];
+}): CleanupReportingGate[] {
+  const highImpactEnrichmentCount = enrichmentCandidates.filter(
+    (candidate) => candidate.priority === "high",
+  ).length;
+  const unresolvedCount =
+    activeBulkGroups.length +
+    enrichmentCandidates.length +
+    blockedFollowups.length;
+
+  return [
+    {
+      key: "blocked-followups",
+      label: "Blocked rows",
+      status: blockedFollowups.length ? "Needs review" : "Clear",
+      detail: blockedFollowups.length
+        ? `${blockedFollowups.length} row${blockedFollowups.length === 1 ? "" : "s"} still need manual cleanup.`
+        : "No blocked cleanup rows remain in this scan.",
+      tone: blockedFollowups.length ? "danger" : "success",
+    },
+    {
+      key: "bulk-review",
+      label: "Bulk review",
+      status: activeBulkGroups.length ? "Queued" : "Clear",
+      detail: activeBulkGroups.length
+        ? `${activeBulkGroups.length} grouped pass${activeBulkGroups.length === 1 ? "" : "es"} should be cleared before sign-off.`
+        : "No onboarding or billing bulk-review groups are active.",
+      tone: activeBulkGroups.length ? "warning" : "success",
+    },
+    {
+      key: "enrichment-review",
+      label: "Enrichment",
+      status: enrichmentCandidates.length
+        ? highImpactEnrichmentCount
+          ? "High-impact"
+          : "Review"
+        : "Clear",
+      detail: enrichmentCandidates.length
+        ? `${enrichmentCandidates.length} candidate${enrichmentCandidates.length === 1 ? "" : "s"} remain, including ${highImpactEnrichmentCount} high-impact.`
+        : "No obvious public enrichment candidates remain.",
+      tone: highImpactEnrichmentCount
+        ? "warning"
+        : enrichmentCandidates.length
+          ? "primary"
+          : "success",
+    },
+    {
+      key: "report-status",
+      label: "Report state",
+      status: unresolvedCount
+        ? completion >= 60
+          ? "Draft"
+          : "Blocked"
+        : "Ready",
+      detail: unresolvedCount
+        ? `${unresolvedCount} gate${unresolvedCount === 1 ? "" : "s"} still need attention before the report is final.`
+        : "Ready to hand to the SKJ tuning pass.",
+      tone: unresolvedCount
+        ? completion >= 60
+          ? "warning"
+          : "danger"
+        : "success",
+    },
+  ];
+}
+
 function cleanupReportText({
   completion,
   verdict,
   itemStatuses,
+  reportingGates,
   activeBulkGroups,
   nextActions,
   enrichmentCandidates,
@@ -1760,6 +1844,7 @@ function cleanupReportText({
     percent: number;
     status: CompletionReportStatus;
   }>;
+  reportingGates: CleanupReportingGate[];
   activeBulkGroups: BulkReviewGroup[];
   nextActions: CleanupNextAction[];
   enrichmentCandidates: EnrichmentCandidate[];
@@ -1774,6 +1859,11 @@ function cleanupReportText({
     ...itemStatuses.map(
       ({ item, percent, status }) =>
         `- ${item.label}: ${percent}% ready (${status}) - ${item.detail}`,
+    ),
+    "",
+    "Reporting gates:",
+    ...reportingGates.map(
+      (gate) => `- ${gate.label}: ${gate.status} - ${gate.detail}`,
     ),
     "",
     "Next cleanup actions:",
@@ -2202,6 +2292,12 @@ function PortfolioCompletionPanel({
     enrichmentCandidates,
     blockedFollowups,
   });
+  const reportingGates = cleanupReportingGates({
+    completion,
+    activeBulkGroups,
+    enrichmentCandidates,
+    blockedFollowups,
+  });
   const copyReport = async () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) {
       setReportReceipt("Copy unavailable in this browser.");
@@ -2212,6 +2308,7 @@ function PortfolioCompletionPanel({
         completion,
         verdict,
         itemStatuses,
+        reportingGates,
         activeBulkGroups,
         nextActions,
         enrichmentCandidates,
@@ -2282,6 +2379,22 @@ function PortfolioCompletionPanel({
             {reportReceipt}
           </p>
         ) : null}
+      </div>
+      <div className="grid gap-3 border-b border-border bg-white p-4 md:grid-cols-4">
+        {reportingGates.map((gate) => (
+          <div
+            key={gate.key}
+            className="grid gap-2 rounded-xl border border-border bg-muted/30 p-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-foreground">
+                {gate.label}
+              </span>
+              <StatusBadge tone={gate.tone}>{gate.status}</StatusBadge>
+            </div>
+            <p className="text-sm text-muted-foreground">{gate.detail}</p>
+          </div>
+        ))}
       </div>
       <div className="border-b border-border bg-white p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
