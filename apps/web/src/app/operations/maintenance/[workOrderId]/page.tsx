@@ -145,6 +145,19 @@ type LiveReviewCard = {
   icon: ReactNode;
 };
 
+type LiveActionReviewItem = {
+  id: string;
+  title: string;
+  statusLabel: string;
+  detail: string;
+  tone: Tone;
+  href: string | null;
+  actionLabel: string;
+  icon: ReactNode;
+  secondaryHref?: string | null;
+  secondaryLabel?: string;
+};
+
 const emptyCompletionReviewNotes: Record<CompletionReviewAudience, string> = {
   owner: "",
   tenant: "",
@@ -1290,6 +1303,14 @@ function phoneReviewDetail(phone: string | null | undefined) {
   return `${phone} should be checked on a real phone before relying on SMS.`;
 }
 
+function phoneActionHref(
+  phone: string | null | undefined,
+  scheme: "tel" | "sms",
+) {
+  const cleaned = phone?.replace(/[^\d+]/g, "");
+  return cleaned ? `${scheme}:${cleaned}` : null;
+}
+
 function buildLiveReviewCards({
   workOrder,
   timeline,
@@ -1402,6 +1423,123 @@ function buildLiveReviewCards({
         : "Comments, provider receipts, and closeout events will appear below.",
       tone: latestActivity?.tone ?? "neutral",
       icon: <Activity size={16} />,
+    },
+  ];
+}
+
+function buildLiveActionReviewItems({
+  workOrder,
+  completionReadiness,
+  linkedInvoiceHandoff,
+  completionReviewRows,
+  contractorSendStatus,
+  contractorSmsStatus,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  completionReadiness: ReturnType<typeof maintenanceCompletionReadiness>;
+  linkedInvoiceHandoff: ReturnType<typeof invoiceBillingHandoff> | null;
+  completionReviewRows: CompletionReviewRow[];
+  contractorSendStatus: string;
+  contractorSmsStatus: string;
+}): LiveActionReviewItem[] {
+  const phoneHref = phoneActionHref(workOrder.contractor_phone, "tel");
+  const smsHref = phoneActionHref(workOrder.contractor_phone, "sms");
+  const phoneLooksInternational = Boolean(
+    workOrder.contractor_phone?.replace(/[^\d+]/g, "").startsWith("+"),
+  );
+  const reviewedCount = completionReviewRows.filter(
+    (row) => row.reviewedAt,
+  ).length;
+  const completionCopyReady = completionReviewRows.length > 0;
+
+  return [
+    {
+      id: "phone",
+      title: "Real-phone check",
+      statusLabel: workOrder.contractor_phone
+        ? phoneLooksInternational
+          ? "Phone ready"
+          : "Check format"
+        : "No phone",
+      detail: phoneReviewDetail(workOrder.contractor_phone),
+      tone: workOrder.contractor_phone
+        ? phoneLooksInternational
+          ? "success"
+          : "warning"
+        : "neutral",
+      href: phoneHref,
+      actionLabel: "Call",
+      secondaryHref: smsHref,
+      secondaryLabel: "SMS app",
+      icon: <PhoneCall size={16} />,
+    },
+    {
+      id: "email",
+      title: "Contractor email",
+      statusLabel:
+        contractorSendStatus === "not_sent"
+          ? "Not sent"
+          : label(contractorSendStatus),
+      detail: workOrder.contractor_email
+        ? "Review the email copy and provider receipt history before sending."
+        : "Add a contractor email before sending an update.",
+      tone: contractorEmailNeedsRecovery(contractorSendStatus)
+        ? "danger"
+        : contractorSendStatus === "not_sent"
+          ? "neutral"
+          : "primary",
+      href: "#contractor-email-review",
+      actionLabel: "Review email",
+      icon: <Mail size={16} />,
+    },
+    {
+      id: "sms",
+      title: "Contractor SMS",
+      statusLabel:
+        contractorSmsStatus === "not_sent"
+          ? "Not sent"
+          : label(contractorSmsStatus),
+      detail: workOrder.contractor_phone
+        ? "Review the short SMS body and phone format before sending."
+        : "Add a contractor phone before sending an SMS.",
+      tone: contractorEmailNeedsRecovery(contractorSmsStatus)
+        ? "danger"
+        : contractorSmsStatus === "not_sent"
+          ? "neutral"
+          : "primary",
+      href: "#contractor-sms-review",
+      actionLabel: "Review SMS",
+      icon: <Send size={16} />,
+    },
+    {
+      id: "completion",
+      title: "Completion closeout",
+      statusLabel: completionCopyReady
+        ? `${reviewedCount}/${completionReviewRows.length} reviewed`
+        : completionReadiness.statusLabel,
+      detail: completionCopyReady
+        ? "Recipient closeout copy is generated; review each audience before external updates."
+        : completionReadiness.handoff,
+      tone: completionCopyReady
+        ? reviewedCount === completionReviewRows.length
+          ? "success"
+          : "warning"
+        : completionReadiness.tone,
+      href: "#job-completion-handoff",
+      actionLabel: completionCopyReady ? "Review copy" : "Review closeout",
+      icon: <CheckCircle2 size={16} />,
+    },
+    {
+      id: "billing",
+      title: "Billing handoff",
+      statusLabel: linkedInvoiceHandoff?.label ?? "No invoice link",
+      detail:
+        linkedInvoiceHandoff?.message ??
+        "Link an approved invoice draft when billing needs dispatch or reconciliation.",
+      tone: linkedInvoiceHandoff?.tone ?? "neutral",
+      href: linkedInvoiceHandoff?.href ?? "#job-completion-handoff",
+      actionLabel: linkedInvoiceHandoff?.action ?? "Review link",
+      icon: <ReceiptText size={16} />,
     },
   ];
 }
@@ -1714,9 +1852,7 @@ function CompletionReviewPacketPanel({
       ) : null}
       <div className="grid gap-2 sm:grid-cols-3">
         <div className="rounded-md border border-border bg-muted/30 px-2 py-2">
-          <div className="font-semibold text-foreground">
-            Recipient review
-          </div>
+          <div className="font-semibold text-foreground">Recipient review</div>
           <div className="text-muted-foreground">
             {packet.reviewedCount}/{rows.length} reviewed
           </div>
@@ -1804,6 +1940,59 @@ function LiveReviewStrip({ cards }: { cards: LiveReviewCard[] }) {
             </div>
           ))}
         </div>
+      </div>
+    </SectionPanel>
+  );
+}
+
+function LiveActionDock({ items }: { items: LiveActionReviewItem[] }) {
+  return (
+    <SectionPanel
+      title="Live action dock"
+      description="Quick review jumps for the actions operators touch on a phone or during a live work-order check."
+      icon={<PhoneCall size={17} className="text-primary" />}
+    >
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="grid min-w-0 gap-3 rounded-md border border-border bg-white p-3 text-sm shadow-leasiumXs"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary">
+                {item.icon}
+              </span>
+              <StatusBadge tone={item.tone}>{item.statusLabel}</StatusBadge>
+            </div>
+            <div className="grid gap-1">
+              <div className="font-semibold text-foreground">{item.title}</div>
+              <p className="text-sm leading-5 text-muted-foreground">
+                {item.detail}
+              </p>
+            </div>
+            <div className="mt-auto flex flex-wrap gap-2">
+              {item.href ? (
+                <a
+                  href={item.href}
+                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                >
+                  <ArrowUpRight size={13} />
+                  {item.actionLabel}
+                </a>
+              ) : (
+                <StatusBadge tone="neutral">{item.actionLabel}</StatusBadge>
+              )}
+              {item.secondaryHref && item.secondaryLabel ? (
+                <a
+                  href={item.secondaryHref}
+                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-3 text-xs font-semibold text-slate transition duration-200 ease-leasium hover:bg-muted"
+                >
+                  {item.secondaryLabel}
+                </a>
+              ) : null}
+            </div>
+          </div>
+        ))}
       </div>
     </SectionPanel>
   );
@@ -2106,6 +2295,17 @@ function MaintenanceDetailRoute() {
         contractorSmsStatus,
       })
     : [];
+  const liveActionReviewItems =
+    workOrder && completionReadiness
+      ? buildLiveActionReviewItems({
+          workOrder,
+          completionReadiness,
+          linkedInvoiceHandoff,
+          completionReviewRows,
+          contractorSendStatus,
+          contractorSmsStatus,
+        })
+      : [];
   const contractorTemplateOptions = useMemo(
     () => (workOrder ? contractorEmailTemplates(workOrder) : []),
     [workOrder],
@@ -2643,6 +2843,7 @@ function MaintenanceDetailRoute() {
         {workOrder ? (
           <>
             <LiveReviewStrip cards={liveReviewCards} />
+            <LiveActionDock items={liveActionReviewItems} />
 
             <div className="grid gap-3 md:grid-cols-4">
               <SectionPanel title="Status" icon={<Wrench size={17} />}>
@@ -2735,6 +2936,7 @@ function MaintenanceDetailRoute() {
                   </dl>
 
                   <form
+                    id="contractor-email-review"
                     className="grid gap-3 rounded-md border border-border bg-muted/30 p-3"
                     onSubmit={handleContractorEmailSubmit}
                   >
@@ -2891,6 +3093,7 @@ function MaintenanceDetailRoute() {
                   </form>
 
                   <form
+                    id="contractor-sms-review"
                     className="grid gap-3 rounded-md border border-border bg-white p-3"
                     onSubmit={handleContractorSmsSubmit}
                   >
@@ -3384,7 +3587,10 @@ function MaintenanceDetailRoute() {
                   </StatusBadge>
                 }
               >
-                <div className="grid gap-4 p-4 text-sm lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+                <div
+                  id="job-completion-handoff"
+                  className="grid scroll-mt-24 gap-4 p-4 text-sm lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]"
+                >
                   <div className="grid gap-3">
                     <div className="font-semibold text-foreground">
                       Operational readiness
