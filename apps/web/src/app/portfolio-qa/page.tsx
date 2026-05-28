@@ -93,12 +93,15 @@ type QaCompletionItem = {
 
 type EnrichmentCandidate = {
   id: string;
+  kind: "Property" | "Tenant";
   title: string;
   detail: string;
   href: string;
   fields: string[];
   priority: "high" | "medium";
   reason: string;
+  impact: string;
+  actionLabel: string;
 };
 
 type BlockedFollowup = {
@@ -1123,6 +1126,7 @@ function buildEnrichmentCandidates({
       );
       candidates.push({
         id: `property-enrichment-${property.id}`,
+        kind: "Property",
         title: property.name,
         detail:
           "Property public enrichment can propose address and ownership fields.",
@@ -1132,6 +1136,12 @@ function buildEnrichmentCandidates({
         reason: ownerFields.length
           ? "May unblock owner billing identity and statement readiness."
           : "Can tidy address fields before the next register pass.",
+        impact: ownerFields.length
+          ? "Owner statements and invoice approvals"
+          : "Register cleanup and map/search quality",
+        actionLabel: ownerFields.length
+          ? "Review billing identity"
+          : "Review property fields",
       });
     }
   }
@@ -1154,6 +1164,7 @@ function buildEnrichmentCandidates({
       );
       candidates.push({
         id: `tenant-enrichment-${tenant.id}`,
+        kind: "Tenant",
         title: tenantName(tenant),
         detail:
           "Tenant public enrichment can propose ABN, trading name, and registered address.",
@@ -1163,6 +1174,12 @@ function buildEnrichmentCandidates({
         reason: identityFields.length
           ? "May improve tenant identity, invoice setup, and onboarding review."
           : "Can add context to the tenant record after core fields are clear.",
+        impact: identityFields.length
+          ? "Tenant identity, billing, and onboarding review"
+          : "Tenant context and register completeness",
+        actionLabel: identityFields.length
+          ? "Review tenant identity"
+          : "Review tenant context",
       });
     }
   }
@@ -1772,7 +1789,7 @@ function cleanupReportText({
           .slice(0, 8)
           .map(
             (candidate) =>
-              `- ${candidate.title}: ${candidate.priority} priority, ${candidate.fields.length} fields - ${candidate.reason}`,
+              `- ${candidate.title}: ${candidate.priority} priority, ${candidate.fields.length} fields - ${candidate.impact} - ${candidate.reason}`,
           )
       : ["- Clear: no obvious enrichment candidates remain."]),
     "",
@@ -1784,6 +1801,63 @@ function cleanupReportText({
       : ["- Clear: no blocked cleanup rows remain in the current scan."]),
   ];
   return lines.join("\n");
+}
+
+function enrichmentFieldBreakdown(
+  candidates: EnrichmentCandidate[],
+  limit = 5,
+) {
+  const counts = new Map<string, number>();
+  for (const candidate of candidates) {
+    for (const field of candidate.fields) {
+      counts.set(field, (counts.get(field) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, limit);
+}
+
+function enrichmentQueueText(candidates: EnrichmentCandidate[]) {
+  const highImpact = candidates.filter(
+    (candidate) => candidate.priority === "high",
+  );
+  const propertyCount = candidates.filter(
+    (candidate) => candidate.kind === "Property",
+  ).length;
+  const tenantCount = candidates.filter(
+    (candidate) => candidate.kind === "Tenant",
+  ).length;
+  const topFields = enrichmentFieldBreakdown(candidates, 8);
+  if (!candidates.length) {
+    return [
+      "Portfolio QA enrichment queue",
+      "No obvious public-safe enrichment candidates remain in the current scan.",
+    ].join("\n");
+  }
+  return [
+    "Portfolio QA enrichment queue",
+    `${candidates.length} candidates: ${propertyCount} property / ${tenantCount} tenant / ${highImpact.length} high-impact`,
+    topFields.length
+      ? `Top missing fields: ${topFields.map((field) => `${field.label} (${field.count})`).join(", ")}`
+      : "Top missing fields: none",
+    "",
+    ...candidates
+      .slice(0, 8)
+      .map((candidate) =>
+        [
+          `${candidate.title} (${candidate.kind})`,
+          `Priority: ${candidate.priority}`,
+          `Impact: ${candidate.impact}`,
+          `Fields: ${candidate.fields.join(", ")}`,
+          `Reason: ${candidate.reason}`,
+          `Action: ${candidate.actionLabel}`,
+        ].join("\n"),
+      ),
+    "",
+    "Review-only: accept sourced suggestions only after checking citations and before treating the SKJ cleanup report as final.",
+  ].join("\n\n");
 }
 
 function blockerTriageText(groups: BulkReviewGroup[]) {
@@ -1973,6 +2047,9 @@ function PortfolioCompletionPanel({
   onOpenTab: (tab: QaTab) => void;
 }) {
   const [reportReceipt, setReportReceipt] = useState<string | null>(null);
+  const [enrichmentReceipt, setEnrichmentReceipt] = useState<string | null>(
+    null,
+  );
   const total = items.reduce((sum, item) => sum + item.total, 0);
   const ready = items.reduce(
     (sum, item) => sum + Math.min(item.ready, item.total),
@@ -2007,6 +2084,15 @@ function PortfolioCompletionPanel({
     (item) => item.status === "blocked",
   ).length;
   const activeBulkGroups = bulkReviewGroups.filter((group) => group.count > 0);
+  const highImpactEnrichmentCount = enrichmentCandidates.filter(
+    (candidate) => candidate.priority === "high",
+  ).length;
+  const propertyEnrichmentCount = enrichmentCandidates.filter(
+    (candidate) => candidate.kind === "Property",
+  ).length;
+  const tenantEnrichmentCount =
+    enrichmentCandidates.length - propertyEnrichmentCount;
+  const topEnrichmentFields = enrichmentFieldBreakdown(enrichmentCandidates);
   const copyReport = async () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) {
       setReportReceipt("Copy unavailable in this browser.");
@@ -2023,6 +2109,16 @@ function PortfolioCompletionPanel({
       }),
     );
     setReportReceipt("Cleanup report copied.");
+  };
+  const copyEnrichmentQueue = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setEnrichmentReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(
+      enrichmentQueueText(enrichmentCandidates),
+    );
+    setEnrichmentReceipt("Enrichment queue copied.");
   };
 
   return (
@@ -2232,12 +2328,59 @@ function PortfolioCompletionPanel({
                   public fields.
                 </p>
               </div>
-              <StatusBadge
-                tone={enrichmentCandidates.length ? "primary" : "success"}
-              >
-                {enrichmentCandidates.length} queued
-              </StatusBadge>
+              <div className="flex flex-wrap justify-end gap-2">
+                <SecondaryButton
+                  type="button"
+                  onClick={copyEnrichmentQueue}
+                  className="min-h-9 rounded-lg px-3"
+                >
+                  <Copy size={14} />
+                  Copy queue
+                </SecondaryButton>
+                <StatusBadge
+                  tone={enrichmentCandidates.length ? "primary" : "success"}
+                >
+                  {enrichmentCandidates.length} queued
+                </StatusBadge>
+              </div>
             </div>
+            {enrichmentReceipt ? (
+              <p className="mt-3 text-sm font-medium text-success">
+                {enrichmentReceipt}
+              </p>
+            ) : null}
+            {enrichmentCandidates.length ? (
+              <div className="mt-3 grid gap-2 rounded-lg border border-border bg-white p-3 text-sm">
+                <div className="flex flex-wrap gap-2">
+                  <StatusBadge
+                    tone={highImpactEnrichmentCount ? "warning" : "neutral"}
+                  >
+                    {highImpactEnrichmentCount} high-impact
+                  </StatusBadge>
+                  <StatusBadge tone="neutral">
+                    {propertyEnrichmentCount} property
+                  </StatusBadge>
+                  <StatusBadge tone="neutral">
+                    {tenantEnrichmentCount} tenant
+                  </StatusBadge>
+                </div>
+                {topEnrichmentFields.length ? (
+                  <div className="flex flex-wrap gap-1">
+                    {topEnrichmentFields.map((field) => (
+                      <span
+                        key={field.label}
+                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-leasium-micro font-semibold text-muted-foreground"
+                      >
+                        <span className="truncate">{field.label}</span>
+                        <span className="rounded-full bg-white px-1 text-[10px] text-foreground">
+                          {field.count}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <div className="mt-3 divide-y divide-border">
               {enrichmentCandidates.length ? (
                 enrichmentCandidates.map((candidate) => (
@@ -2248,6 +2391,7 @@ function PortfolioCompletionPanel({
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold">{candidate.title}</span>
+                      <StatusBadge tone="neutral">{candidate.kind}</StatusBadge>
                       <StatusBadge tone="neutral">
                         {candidate.fields.length} fields
                       </StatusBadge>
@@ -2264,6 +2408,9 @@ function PortfolioCompletionPanel({
                     <p className="text-sm text-muted-foreground">
                       {candidate.detail}
                     </p>
+                    <p className="text-xs font-semibold text-foreground">
+                      {candidate.impact}
+                    </p>
                     <p className="text-xs font-medium text-muted-foreground">
                       {candidate.reason}
                     </p>
@@ -2271,6 +2418,9 @@ function PortfolioCompletionPanel({
                       {candidate.fields.slice(0, 4).join(", ")}
                       {candidate.fields.length > 4 ? "..." : ""}
                     </p>
+                    <span className="text-xs font-semibold text-primary">
+                      {candidate.actionLabel}
+                    </span>
                   </Link>
                 ))
               ) : (
