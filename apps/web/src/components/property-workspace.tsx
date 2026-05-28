@@ -1515,6 +1515,16 @@ function calendarEventDaysUntil(event: LeaseEventRecord) {
 
 type CalendarHorizonFilter = "all" | "overdue" | "next_30" | "next_90";
 
+type CalendarReviewRow = {
+  id: string;
+  event: LeaseEventRecord;
+  label: string;
+  detail: string;
+  action: string;
+  tone: "neutral" | "primary" | "success" | "warning" | "danger";
+  daysUntil: number;
+};
+
 const calendarHorizonOptions: Array<{
   key: CalendarHorizonFilter;
   label: string;
@@ -1599,6 +1609,94 @@ function calendarPlanningBrief(events: LeaseEventRecord[]) {
   if (events.length > 20) {
     lines.push(
       `- ${events.length - 20} more event${events.length === 21 ? "" : "s"}`,
+    );
+  }
+  return lines.join("\n");
+}
+
+function calendarReviewRow(event: LeaseEventRecord): CalendarReviewRow {
+  const days = calendarEventDaysUntil(event);
+  const isExpiry = event.kind === "lease_expiry";
+  if (days < 0) {
+    return {
+      id: `review-${event.id}`,
+      event,
+      label: "Overdue",
+      detail:
+        "Confirm whether this date was handled, then close or correct the lease record.",
+      action: isExpiry ? "Check occupancy status" : "Check review outcome",
+      tone: "danger",
+      daysUntil: days,
+    };
+  }
+  if (days <= 30) {
+    return {
+      id: `review-${event.id}`,
+      event,
+      label: "Immediate",
+      detail: isExpiry
+        ? "Prepare renewal, holdover, or vacancy decision before the expiry window closes."
+        : "Confirm CPI/market basis and prepare the review notice pack.",
+      action: isExpiry ? "Prepare expiry decision" : "Prepare review notice",
+      tone: "warning",
+      daysUntil: days,
+    };
+  }
+  if (days <= 90) {
+    return {
+      id: `review-${event.id}`,
+      event,
+      label: "Plan",
+      detail: isExpiry
+        ? "Book the lease decision checkpoint and gather tenant context."
+        : "Schedule the rent review check and confirm evidence required.",
+      action: isExpiry ? "Schedule lease checkpoint" : "Schedule review check",
+      tone: "primary",
+      daysUntil: days,
+    };
+  }
+  return {
+    id: `review-${event.id}`,
+    event,
+    label: "Monitor",
+    detail:
+      "Keep this in the forward calendar and revisit once it enters the 90 day window.",
+    action: "Monitor date",
+    tone: "neutral",
+    daysUntil: days,
+  };
+}
+
+function calendarReviewRows(events: LeaseEventRecord[]) {
+  return events
+    .map((event) => calendarReviewRow(event))
+    .sort(
+      (left, right) =>
+        left.daysUntil - right.daysUntil ||
+        leaseEventSortValue(left.event) - leaseEventSortValue(right.event),
+    );
+}
+
+function calendarReviewBrief(rows: CalendarReviewRow[]) {
+  if (!rows.length) {
+    return "No rent review or lease expiry follow-ups match the current filters.";
+  }
+  const lines = ["Portfolio lease follow-up queue"];
+  for (const row of rows.slice(0, 20)) {
+    lines.push(
+      [
+        row.label,
+        formatDate(row.event.date),
+        leaseEventKindLabel(row.event.kind),
+        row.action,
+        row.event.title,
+        row.event.chip,
+      ].join(" | "),
+    );
+  }
+  if (rows.length > 20) {
+    lines.push(
+      `${rows.length - 20} more follow-up${rows.length === 21 ? "" : "s"}`,
     );
   }
   return lines.join("\n");
@@ -6881,6 +6979,7 @@ function PropertyCalendarView({
     (event) => event.kind === "lease_expiry",
   ).length;
   const workloadRows = calendarWorkloadRows(kindFilteredEvents);
+  const reviewRows = calendarReviewRows(filteredEvents);
   const groupedEvents = filteredEvents.reduce<
     Array<{ key: string; events: LeaseEventRecord[] }>
   >((groups, event) => {
@@ -6905,6 +7004,14 @@ function PropertyCalendarView({
     }
     await navigator.clipboard.writeText(calendarPlanningBrief(filteredEvents));
     setCopyReceipt("Calendar brief copied.");
+  };
+  const copyReviewBrief = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Clipboard is not available in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(calendarReviewBrief(reviewRows));
+    setCopyReceipt("Review queue copied.");
   };
 
   if (isLoading) {
@@ -7037,6 +7144,74 @@ function PropertyCalendarView({
           </button>
         ))}
       </div>
+
+      <section className="overflow-hidden rounded-md border border-border bg-white">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ClipboardList size={16} className="text-primary" />
+              <h3 className="text-sm font-semibold">Review queue</h3>
+              <StatusBadge tone={reviewRows.length ? "primary" : "neutral"}>
+                {reviewRows.length} follow-up
+                {reviewRows.length === 1 ? "" : "s"}
+              </StatusBadge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Converts lease dates into practical review actions for the current
+              filters.
+            </p>
+          </div>
+          <SecondaryButton
+            type="button"
+            onClick={copyReviewBrief}
+            disabled={!reviewRows.length}
+            className="min-h-9"
+          >
+            <Copy size={15} />
+            Copy follow-ups
+          </SecondaryButton>
+        </header>
+        {reviewRows.length ? (
+          <div className="grid gap-2 p-3 lg:grid-cols-3">
+            {reviewRows.slice(0, 6).map((row) => (
+              <Link
+                key={row.id}
+                href={row.event.href}
+                className="grid gap-2 rounded-md border border-border p-3 text-sm transition hover:bg-muted/50"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold">
+                      {row.event.title}
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {formatDate(row.event.date)} ·{" "}
+                      {leaseEventKindLabel(row.event.kind)}
+                    </div>
+                  </div>
+                  <StatusBadge tone={row.tone}>{row.label}</StatusBadge>
+                </div>
+                <div className="text-xs font-semibold text-foreground">
+                  {row.action}
+                </div>
+                <div className="line-clamp-2 text-xs text-muted-foreground">
+                  {row.detail}
+                </div>
+              </Link>
+            ))}
+            {reviewRows.length > 6 ? (
+              <div className="grid place-items-center rounded-md border border-dashed border-border bg-muted/25 p-3 text-center text-xs text-muted-foreground">
+                {reviewRows.length - 6} more follow-up
+                {reviewRows.length === 7 ? "" : "s"} in the filtered calendar.
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="p-6 text-center text-sm text-muted-foreground">
+            No follow-ups match this calendar filter.
+          </div>
+        )}
+      </section>
 
       {!filteredEvents.length ? (
         <div className="rounded-md border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
