@@ -342,13 +342,18 @@ Last updated: 2026-05-28
   to fail if touched and confirms diagnostics remains local/read-only with no
   token refresh, Xero API call, draft creation, provider dispatch, email/SMS,
   payment reconciliation, provider-history write, or audit mutation.
-- Sidecar recommendation for the next slice: frontend smoke guard for Settings
-  Xero when `/api/v1/xero/connection-diagnostics` is unavailable. Mock a 401,
-  403, or 500 response and assert the UI shows the diagnostics error while
-  keeping Connect with Xero, contact preview, chart/tax preview, invoice posting
-  preview, draft creation, provider dispatch, and payment reconciliation actions
-  disabled. Use the existing forbidden-provider-request watcher; keep this
-  mocked browser coverage only with no live provider calls.
+- 2026-05-28 Settings Xero continuation 15: frontend smoke coverage now mocks
+  `/api/v1/xero/connection-diagnostics` as unavailable and proves Settings Xero
+  fails closed. The diagnostics query does not retry in this operator flow; the
+  UI shows the API error plus "Provider actions stay disabled until Xero
+  diagnostics reload.", hides diagnostics/setup exports, keeps Connect with
+  Xero plus contact/chart-tax/invoice/payment provider previews disabled, and
+  asserts no OAuth, Xero preview/apply, draft creation, provider dispatch, or
+  payment reconciliation request fires.
+- Sidecar recommendation for the next slice: pick another mocked/read-only
+  Settings Xero safety rail, such as making the unavailable-diagnostics smoke
+  cover a 401 or 403 variant, or move to the next product-roadmap local export
+  item. Keep it mocked/local and preserve the no-provider-action guardrails.
 
 ## Takeover Priority
 

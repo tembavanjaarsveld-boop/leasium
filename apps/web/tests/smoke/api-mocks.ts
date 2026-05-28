@@ -1758,6 +1758,7 @@ type MockLeasiumApiOptions = {
   tenantAccountLinkedToDifferentTenant?: boolean;
   tenantPortalLeaseReady?: boolean;
   xeroDiagnosticsBlocked?: boolean;
+  xeroDiagnosticsUnavailable?: boolean;
   xeroDiagnosticsDraftReady?: boolean;
 };
 
@@ -3090,6 +3091,17 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/xero/connection-diagnostics") {
+      if (options.xeroDiagnosticsUnavailable) {
+        await fulfillJson(
+          route,
+          {
+            detail:
+              "Xero connection diagnostics are unavailable in this mocked response.",
+          },
+          500,
+        );
+        return;
+      }
       await fulfillJson(route, xeroConnectionDiagnostics());
       return;
     }

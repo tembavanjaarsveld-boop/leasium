@@ -2085,6 +2085,7 @@ function SettingsWorkspace() {
     queryKey: ["xero-connection-diagnostics", selectedEntityId],
     queryFn: () => getXeroConnectionDiagnostics(selectedEntityId),
     enabled: Boolean(selectedEntityId) && activeTab === "xero",
+    retry: false,
   });
 
   const integrationStatusQuery = useQuery({
@@ -2839,9 +2840,14 @@ function SettingsWorkspace() {
         ) : null}
         {activeTab === "xero" && xeroDiagnosticsQuery.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-            {xeroDiagnosticsQuery.error instanceof Error
-              ? xeroDiagnosticsQuery.error.message
-              : "Could not load Xero connection diagnostics."}
+            <div>
+              {xeroDiagnosticsQuery.error instanceof Error
+                ? xeroDiagnosticsQuery.error.message
+                : "Could not load Xero connection diagnostics."}
+            </div>
+            <div className="mt-1">
+              Provider actions stay disabled until Xero diagnostics reload.
+            </div>
           </div>
         ) : null}
         {activeTab === "xero" && xeroExceptionQueueQuery.error ? (

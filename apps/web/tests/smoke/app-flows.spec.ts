@@ -2867,6 +2867,55 @@ test("settings disables Xero provider actions when diagnostics block capabilitie
   ).toBeDisabled();
 });
 
+test("settings fails closed when Xero diagnostics are unavailable", async ({
+  page,
+}) => {
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, { xeroDiagnosticsUnavailable: true });
+  const forbiddenProviderRequests = watchForbiddenXeroProviderRequests(page);
+
+  await page.goto("/settings?tab=xero");
+
+  await expect(
+    page.getByText(
+      "Xero connection diagnostics are unavailable in this mocked response.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Provider actions stay disabled until Xero diagnostics reload.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download diagnostics CSV" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Copy diagnostics packet" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Download setup packet" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Connect with Xero" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Preview contacts" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Preview chart/tax" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Preview invoice posting" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Preview payments" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Create Xero drafts" }),
+  ).toHaveCount(0);
+  expect(forbiddenProviderRequests).toEqual([]);
+});
+
 test("settings shows Xero draft creation ready only from diagnostics", async ({
   page,
 }) => {
