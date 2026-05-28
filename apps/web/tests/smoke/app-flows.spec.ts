@@ -2835,6 +2835,47 @@ test("settings shows Xero draft creation ready only from diagnostics", async ({
   await expect(draftCreationCard).toContainText(
     "Provider connection and authorised scopes allow this reviewed action.",
   );
+  const diagnosticsCsvDownloadPromise = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download diagnostics CSV" })
+    .click();
+  const diagnosticsCsvDownload = await diagnosticsCsvDownloadPromise;
+  expect(diagnosticsCsvDownload.suggestedFilename()).toBe(
+    "xero-connection-diagnostics.csv",
+  );
+  const diagnosticsCsvPath = await diagnosticsCsvDownload.path();
+  expect(diagnosticsCsvPath).not.toBeNull();
+  const diagnosticsCsv = await readFile(diagnosticsCsvPath!, "utf8");
+  expect(diagnosticsCsv).toContain('"Connection diagnostics"');
+  expect(diagnosticsCsv).toContain('"provider"');
+  expect(diagnosticsCsv).toContain('"Draft creation","Ready"');
+  expect(diagnosticsCsv).toContain('"Payments","Blocked"');
+  expect(diagnosticsCsv).toContain(
+    "Provider connection and authorised scopes allow this reviewed action.",
+  );
+  expect(diagnosticsCsv).toContain(
+    "Review-only export: downloading this file does not start OAuth, call or refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices or providers, send email or SMS, refresh providers, or mutate provider history.",
+  );
+  const diagnosticsPacketDownloadPromise = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download diagnostics packet" })
+    .click();
+  const diagnosticsPacketDownload = await diagnosticsPacketDownloadPromise;
+  expect(diagnosticsPacketDownload.suggestedFilename()).toBe(
+    "xero-connection-diagnostics.txt",
+  );
+  const diagnosticsPacketPath = await diagnosticsPacketDownload.path();
+  expect(diagnosticsPacketPath).not.toBeNull();
+  const diagnosticsPacket = await readFile(diagnosticsPacketPath!, "utf8");
+  expect(diagnosticsPacket).toContain("Local readiness check");
+  expect(diagnosticsPacket).toContain("Provider setup:");
+  expect(diagnosticsPacket).toContain("Draft creation: Ready");
+  expect(diagnosticsPacket).toContain("Payments: Blocked");
+  expect(diagnosticsPacket).toContain(
+    "Provider connection and authorised scopes allow this reviewed action.",
+  );
+  expect(diagnosticsPacket).toContain("Next steps:");
+  expect(diagnosticsPacket).toContain("Guardrails:");
 });
 
 test("insights shows overview, exceptions, activity, and owner snapshot", async ({

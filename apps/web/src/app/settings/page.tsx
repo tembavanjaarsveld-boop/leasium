@@ -550,8 +550,9 @@ function xeroConnectionDiagnosticsPacket(
     }`,
     "",
     "Local readiness check:",
-    ...diagnosticsReadinessRows(diagnostics).map(
-      ([label, ready]) => `- ${label}: ${ready ? "Ready" : "Blocked"}`,
+    ...diagnosticsReadinessDetailRows(diagnostics).map(
+      ({ label, ready, detail }) =>
+        `- ${label}: ${ready ? "Ready" : "Blocked"} - ${detail}`,
     ),
     "",
     "Provider setup:",
@@ -766,14 +767,16 @@ function xeroConnectionDiagnosticsCsv(
       "",
       XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
     ],
-    ...diagnosticsReadinessRows(diagnostics).map(([label, ready]) => [
-      "Readiness gate",
-      label,
-      ready ? "Ready" : "Blocked",
-      ready ? "Available" : "Disabled",
-      "Local diagnostics only.",
-      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
-    ]),
+    ...diagnosticsReadinessDetailRows(diagnostics).map(
+      ({ label, ready, detail }) => [
+        "Readiness gate",
+        label,
+        ready ? "Ready" : "Blocked",
+        ready ? "Available" : "Disabled",
+        detail,
+        XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+      ],
+    ),
     ...preflight.required_env_vars.map((envVar) => [
       "Required env var",
       envVar,

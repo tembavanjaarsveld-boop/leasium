@@ -296,15 +296,20 @@ Last updated: 2026-05-28
   OAuth, refresh tokens, call Xero, create drafts, dispatch providers, send
   email/SMS, reconcile payments, write provider history, or change local
   approval state.
-- Sidecar recommendation for the next slice: add draft-ready diagnostics export
-  contract coverage using `mockLeasiumApi(page, { xeroDiagnosticsDraftReady:
-  true })`. Assert `xero-connection-diagnostics.csv` contains provider OAuth
-  source, `Draft creation,Ready`, `Payments,Blocked`, and the review-only export
-  guardrail; assert `xero-connection-diagnostics.txt` contains `Draft creation:
-  Ready`, `Payments: Blocked`, provider setup, next steps, and guardrails. Keep
-  it test/export coverage only: no OAuth start, token refresh, Xero API call,
-  draft creation, provider dispatch, email/SMS, payment reconciliation, or
-  provider-history write.
+- 2026-05-28 Settings Xero continuation 9: the same draft-ready diagnostics
+  smoke now downloads `xero-connection-diagnostics.csv` and
+  `xero-connection-diagnostics.txt`, asserting provider/source context, Draft
+  creation `Ready`, Payments `Blocked`, local readiness reasons, next steps, and
+  review-only guardrails. The CSV/TXT exports now reuse the readiness explainer
+  details. It remains test/export coverage only: no OAuth start, token refresh,
+  Xero API call, draft creation, provider dispatch, email/SMS, payment
+  reconciliation, or provider-history write.
+- Sidecar recommendation for the next slice: add clipboard parity coverage for
+  Settings Xero diagnostics in the same draft-ready mock state. Click
+  `Copy diagnostics packet` and assert the clipboard contains Draft creation
+  `Ready`, Payments `Blocked`, provider/source details, and the review-only
+  diagnostics guardrail. Add a forbidden-request trap around copy/export actions
+  if useful.
 
 ## Takeover Priority
 
