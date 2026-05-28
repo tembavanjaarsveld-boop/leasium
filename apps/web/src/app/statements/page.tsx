@@ -94,6 +94,22 @@ type FinanceChecklist = {
   items: FinanceChecklistItem[];
 };
 
+type StatementDispatchReviewStatus =
+  | "ready"
+  | "payment_review"
+  | "missing_recipient"
+  | "locked";
+
+type StatementDispatchReviewRow = {
+  ownerIdentity: string;
+  recipient: string | null;
+  subject: string;
+  status: StatementDispatchReviewStatus;
+  invoiceCount: number;
+  outstandingCents: number;
+  propertyCount: number;
+};
+
 function defaultMonth(): string {
   const now = new Date();
   // Previous calendar month, mirroring the backend default.
@@ -199,6 +215,20 @@ function checklistOverallTone(status: FinanceChecklist["status"]) {
   return "warning" as const;
 }
 
+function dispatchReviewStatusLabel(status: StatementDispatchReviewStatus) {
+  if (status === "ready") return "Ready";
+  if (status === "payment_review") return "Payment review";
+  if (status === "missing_recipient") return "Needs recipient";
+  return "No statement";
+}
+
+function dispatchReviewStatusTone(status: StatementDispatchReviewStatus) {
+  if (status === "ready") return "success" as const;
+  if (status === "missing_recipient") return "danger" as const;
+  if (status === "locked") return "neutral" as const;
+  return "warning" as const;
+}
+
 function financeChecklistText(checklist: FinanceChecklist) {
   return [
     "Owner statements finance checklist",
@@ -211,6 +241,59 @@ function financeChecklistText(checklist: FinanceChecklist) {
     ),
     "",
     "Review-only: owner dispatch remains locked until the explicit approval workflow is wired.",
+  ].join("\n");
+}
+
+function buildDispatchReviewRows(
+  owners: OwnerStatementRecord[],
+  month: string,
+): StatementDispatchReviewRow[] {
+  return owners.map((owner) => {
+    const dispatchDraft = statementDispatchDraft({ owner, month });
+    const status: StatementDispatchReviewStatus =
+      owner.invoice_count === 0
+        ? "locked"
+        : !owner.billing_email
+          ? "missing_recipient"
+          : owner.outstanding_cents > 0
+            ? "payment_review"
+            : "ready";
+    return {
+      ownerIdentity: owner.owner_identity,
+      recipient: owner.billing_email,
+      subject: dispatchDraft.subject,
+      status,
+      invoiceCount: owner.invoice_count,
+      outstandingCents: owner.outstanding_cents,
+      propertyCount: owner.property_count,
+    };
+  });
+}
+
+function dispatchApprovalPacketText(
+  rows: StatementDispatchReviewRow[],
+  month: string,
+) {
+  const readyCount = rows.filter((row) => row.status === "ready").length;
+  const reviewCount = rows.filter(
+    (row) => row.status === "payment_review",
+  ).length;
+  const blockedCount = rows.filter(
+    (row) => row.status === "missing_recipient",
+  ).length;
+  return [
+    "Owner statement dispatch approval queue",
+    `Month: ${formatMonthLabel(month)}`,
+    `${readyCount} ready / ${reviewCount} payment review / ${blockedCount} missing recipient`,
+    "",
+    ...rows.map(
+      (row) =>
+        `- ${row.ownerIdentity}: ${dispatchReviewStatusLabel(row.status)} | To: ${
+          row.recipient ?? "missing"
+        } | Outstanding: ${formatMoney(row.outstandingCents)} | ${row.subject}`,
+    ),
+    "",
+    "Review-only: this queue does not send owner email or update provider delivery history.",
   ].join("\n");
 }
 
@@ -588,6 +671,10 @@ function StatementsContent() {
       }),
     [owners, statementReadiness, xeroStatusQuery.data],
   );
+  const dispatchReviewRows = useMemo(
+    () => buildDispatchReviewRows(owners, month),
+    [month, owners],
+  );
   const openedFromBilling = handoffSource === "billing-readiness";
 
   return (
@@ -655,6 +742,14 @@ function StatementsContent() {
             invoiceDraftsQuery.isLoading ||
             xeroStatusQuery.isLoading
           }
+        />
+
+        <DispatchReviewPanel
+          rows={dispatchReviewRows}
+          month={month}
+          loading={statementsQuery.isLoading}
+          selectedOwnerIdentity={selectedOwnerIdentity}
+          onSelectOwner={setSelectedOwnerIdentity}
         />
 
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1340,6 +1435,180 @@ function FinanceChecklistPanel({
             );
           })}
         </div>
+      </div>
+    </SectionPanel>
+  );
+}
+
+function DispatchReviewPanel({
+  rows,
+  month,
+  loading,
+  selectedOwnerIdentity,
+  onSelectOwner,
+}: {
+  rows: StatementDispatchReviewRow[];
+  month: string;
+  loading: boolean;
+  selectedOwnerIdentity: string;
+  onSelectOwner: (value: string) => void;
+}) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const readyCount = rows.filter((row) => row.status === "ready").length;
+  const reviewCount = rows.filter(
+    (row) => row.status === "payment_review",
+  ).length;
+  const missingRecipientCount = rows.filter(
+    (row) => row.status === "missing_recipient",
+  ).length;
+  const overallTone =
+    missingRecipientCount > 0
+      ? "danger"
+      : reviewCount > 0
+        ? "warning"
+        : readyCount > 0
+          ? "success"
+          : "neutral";
+  const copyApprovalPacket = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(dispatchApprovalPacketText(rows, month));
+    setCopyReceipt("Dispatch approval packet copied.");
+  };
+
+  return (
+    <SectionPanel
+      title="Dispatch approval queue"
+      description="Pack-level recipient and owner-facing copy review. This is still review-only; no owner email is sent."
+      icon={<MailCheck size={17} className="text-primary" />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton
+            type="button"
+            onClick={copyApprovalPacket}
+            disabled={loading || rows.length === 0}
+          >
+            <ClipboardCheck size={15} />
+            Copy approval packet
+          </SecondaryButton>
+          <StatusBadge tone={loading ? "neutral" : overallTone}>
+            {loading
+              ? "Checking"
+              : missingRecipientCount > 0
+                ? "Blocked"
+                : reviewCount > 0
+                  ? "Review"
+                  : readyCount > 0
+                    ? "Ready"
+                    : "Locked"}
+          </StatusBadge>
+        </div>
+      }
+    >
+      <div className="grid gap-4 p-4">
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        ) : null}
+
+        {loading ? (
+          <SkeletonRows rows={3} />
+        ) : !rows.length ? (
+          <div className="rounded-md border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+            Dispatch review will appear once owner statements exist for this
+            month.
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge tone="success">{readyCount} ready</StatusBadge>
+              <StatusBadge tone={reviewCount ? "warning" : "neutral"}>
+                {reviewCount} payment review
+              </StatusBadge>
+              <StatusBadge
+                tone={missingRecipientCount ? "danger" : "neutral"}
+              >
+                {missingRecipientCount} missing recipient
+              </StatusBadge>
+              <StatusBadge tone="neutral">Month {month}</StatusBadge>
+            </div>
+
+            <div className="overflow-x-auto rounded-md border border-border bg-white">
+              <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Owner</th>
+                    <th className="px-3 py-2 font-semibold">Status</th>
+                    <th className="px-3 py-2 font-semibold">Recipient</th>
+                    <th className="px-3 py-2 font-semibold">Subject</th>
+                    <th className="px-3 py-2 text-right font-semibold">
+                      Outstanding
+                    </th>
+                    <th className="w-24 px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const isSelected =
+                      selectedOwnerIdentity === row.ownerIdentity;
+                    return (
+                      <tr
+                        key={row.ownerIdentity}
+                        className={`border-t border-border ${
+                          isSelected ? "bg-primary/5" : ""
+                        }`}
+                      >
+                        <td className="px-3 py-3">
+                          <div className="font-medium text-foreground">
+                            {row.ownerIdentity}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {row.propertyCount}{" "}
+                            {row.propertyCount === 1
+                              ? "property"
+                              : "properties"}{" "}
+                            · {row.invoiceCount}{" "}
+                            {row.invoiceCount === 1 ? "invoice" : "invoices"}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <StatusBadge
+                            tone={dispatchReviewStatusTone(row.status)}
+                          >
+                            {dispatchReviewStatusLabel(row.status)}
+                          </StatusBadge>
+                        </td>
+                        <td className="px-3 py-3">
+                          {row.recipient ?? (
+                            <span className="text-warning">
+                              Missing owner billing email
+                            </span>
+                          )}
+                        </td>
+                        <td className="max-w-[18rem] truncate px-3 py-3">
+                          {row.subject}
+                        </td>
+                        <td className="px-3 py-3 text-right font-semibold tabular-nums">
+                          {formatMoney(row.outstandingCents)}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <SecondaryButton
+                            type="button"
+                            onClick={() => onSelectOwner(row.ownerIdentity)}
+                            className="h-8 px-2.5 text-xs"
+                          >
+                            Review
+                          </SecondaryButton>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </SectionPanel>
   );
