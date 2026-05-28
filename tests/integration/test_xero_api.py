@@ -293,7 +293,11 @@ def _create_approved_invoice_fixture(
     return invoice_draft
 
 
-def _fake_xero_invoice_dependencies(monkeypatch, create_calls: list[dict[str, object]]) -> None:
+def _fake_xero_invoice_dependencies(
+    monkeypatch,
+    create_calls: list[dict[str, object]],
+    operation_events: list[str] | None = None,
+) -> None:
     def fake_refresh_xero_tokens(
         refresh_token: str,
         settings: Settings,  # noqa: ARG001
@@ -349,6 +353,8 @@ def _fake_xero_invoice_dependencies(monkeypatch, create_calls: list[dict[str, ob
     ) -> dict[str, object]:
         assert access_token == "raw-access-token-create"
         assert xero_tenant_id == "tenant-provider-123"
+        if operation_events is not None:
+            operation_events.append("xero")
         create_calls.append(
             {"payload": invoice_payload, "idempotency_key": idempotency_key}
         )
@@ -1540,6 +1546,42 @@ def test_xero_invoice_posting_preview_requires_provider_connection(
     )
 
 
+def test_xero_invoice_posting_preview_blocks_connected_invoice_with_missing_mapping(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    invoice_draft = _create_approved_invoice_fixture(client, session, entity_id)
+    tenant = invoice_draft.tenant
+    assert tenant is not None
+    tenant.tenant_metadata = {}
+    session.commit()
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    create_calls: list[dict[str, object]] = []
+    _fake_xero_invoice_dependencies(monkeypatch, create_calls)
+
+    response = client.post(f"/api/v1/xero/invoices/posting-preview/{entity_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["checked_invoices"] == 1
+    assert body["ready_count"] == 0
+    assert body["blocked_count"] == 1
+    assert body["results"][0]["status"] == "blocked"
+    assert any("Xero contact" in blocker for blocker in body["results"][0]["blockers"])
+    assert create_calls == []
+
+    session.refresh(invoice_draft)
+    assert "xero_sync" not in invoice_draft.invoice_metadata
+
+
 def test_xero_invoice_draft_create_requires_explicit_posting_approval_before_write(
     client: TestClient,
     session: Session,
@@ -1693,7 +1735,8 @@ def test_xero_provider_dispatch_creates_xero_then_sends_email_idempotently(
 
     create_calls: list[dict[str, object]] = []
     email_calls: list[dict[str, object]] = []
-    _fake_xero_invoice_dependencies(monkeypatch, create_calls)
+    operation_events: list[str] = []
+    _fake_xero_invoice_dependencies(monkeypatch, create_calls, operation_events)
 
     def fake_send_invoice_delivery_email(invite, settings: Settings) -> DeliveryResult:
         assert invite.recipient_email == "accounts@base-rent.example"
@@ -1701,6 +1744,7 @@ def test_xero_provider_dispatch_creates_xero_then_sends_email_idempotently(
         assert invite.pdf_content.startswith(b"%PDF")
         assert invite.template_key == "invoice_delivery_custom"
         assert invite.template_version == "v2"
+        operation_events.append("email")
         email_calls.append(
             {
                 "recipient": invite.recipient_email,
@@ -1737,6 +1781,7 @@ def test_xero_provider_dispatch_creates_xero_then_sends_email_idempotently(
     assert dispatch_body["results"][0]["next_action"] is None
     assert len(create_calls) == 1
     assert len(email_calls) == 1
+    assert operation_events == ["xero", "email"]
 
     session.refresh(invoice_draft)
     metadata = invoice_draft.invoice_metadata

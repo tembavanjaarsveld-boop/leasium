@@ -1,6 +1,6 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-05-27
+Last updated: 2026-05-28
 
 ## Current State
 
@@ -145,6 +145,45 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1 NEXT_TEST_WASM_DIR=$PWD/no
 NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build
 ./node_modules/.bin/playwright test
 ```
+
+## Xero Monday Verification
+
+Use this as the production rehearsal path after the environment variables and Xero app redirect URI are confirmed:
+
+1. Open Settings -> Xero for the production entity and confirm connection diagnostics show provider config, role/scope readiness, and no hidden Xero calls on load.
+2. Connect OAuth through Xero and return to Settings with the `Xero connected` callback feedback visible.
+3. Run contact preview and confirm contacts are previewed or safely return zero results without applying mappings automatically.
+4. Run chart/tax validation preview and confirm every charge rule has an account and tax mapping before invoice posting review.
+5. Run invoice posting preview and confirm payloads/blockers are visible without posting to Xero.
+6. Explicitly approve only the intended invoice drafts for Xero posting.
+7. Create Xero DRAFT invoices only after operator approval; verify retry/idempotency does not duplicate drafts.
+8. Run provider dispatch only when both Xero draft creation and tenant email delivery are explicitly approved.
+9. Run payment reconciliation preview/apply only as a reviewed local Leasium metadata update; do not create or edit Xero bank transactions.
+
+Local proof set:
+
+```bash
+.venv/bin/python -m pytest tests/integration/test_xero_api.py -q
+.venv/bin/python -m pytest \
+  tests/integration/test_xero_api.py::test_xero_connection_diagnostics_configured_without_connection_is_read_only \
+  tests/integration/test_xero_api.py::test_xero_connection_diagnostics_full_scopes_unlock_provider_actions \
+  tests/integration/test_xero_api.py::test_xero_connection_diagnostics_viewer_cannot_use_provider_actions \
+  tests/integration/test_xero_api.py::test_xero_oauth_callback_records_provider_connection \
+  tests/integration/test_xero_api.py::test_xero_contact_sync_preview_suggests_matches_without_applying \
+  tests/integration/test_xero_api.py::test_xero_chart_tax_validation_preview_checks_provider_accounts_and_tax_rates \
+  tests/integration/test_xero_api.py::test_xero_invoice_posting_preview_builds_payload_without_posting \
+  tests/integration/test_xero_api.py::test_xero_invoice_posting_preview_requires_provider_connection \
+  tests/integration/test_xero_api.py::test_xero_invoice_posting_preview_blocks_connected_invoice_with_missing_mapping \
+  tests/integration/test_xero_api.py::test_xero_invoice_draft_create_requires_explicit_posting_approval_before_write \
+  tests/integration/test_xero_api.py::test_xero_posting_approval_then_draft_create_is_idempotent \
+  tests/integration/test_xero_api.py::test_xero_provider_dispatch_creates_xero_then_sends_email_idempotently \
+  tests/integration/test_xero_api.py::test_xero_provider_dispatch_persists_failed_attempt_and_retries \
+  tests/integration/test_xero_api.py::test_xero_payment_reconciliation_preview_and_apply_are_idempotent \
+  tests/integration/test_xero_api.py::test_xero_provider_payment_reconciliation_fetches_xero_invoices \
+  -q
+```
+
+Hard guardrail: never run Xero draft creation, provider dispatch, tenant email, payment apply, or any payment reconciliation against production data without explicit operator approval at that moment.
 
 ## Active Local Tree
 
