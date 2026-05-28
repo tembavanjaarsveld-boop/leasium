@@ -151,11 +151,18 @@ Last updated: 2026-05-28
   review-only guardrail text. It does not send contractor email/SMS, update
   work-order status, write closeout or review metadata, touch Xero, tenant
   portal messaging, provider dispatch, billing, or provider history.
-- Sidecar recommendation for the next slice: add a Notifications
-  provider-readiness CSV packet from the already-loaded notification-center
-  response. Keep it local/export-only; do not exercise send, retry, SMS, digest
-  send, mark-read, provider dispatch, refresh-token, provider-history, or
-  read-state mutation paths.
+- 2026-05-28 Notifications continuation: Work notice center now has a local
+  `work-notification-provider-readiness.csv` download from the already-loaded
+  notification-center response. It exports Email/SendGrid, SMS/Twilio, and
+  In-app/Leasium readiness, setup-check statuses, next actions, center
+  guardrails, and no-send/no-mutation guardrail text. It does not exercise
+  send, retry, SMS, digest send, mark-read, provider dispatch, refresh-token,
+  provider-history, or read-state mutation paths.
+- Sidecar recommendation for the next slice: add a Comms queue review CSV
+  packet from `queueQuery.data?.candidates` before any approve/dismiss/send
+  interaction. Keep it local/export-only; do not call comms dispatch, dismiss,
+  evidence upload, SendGrid/Twilio sends, provider-history writes, candidate
+  settlement, or provider refresh paths.
 
 ## Takeover Priority
 

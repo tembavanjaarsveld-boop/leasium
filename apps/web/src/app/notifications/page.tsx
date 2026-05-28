@@ -6,6 +6,7 @@ import {
   Bell,
   CheckCircle2,
   Clock3,
+  Download,
   ExternalLink,
   MailCheck,
   MessageSquare,
@@ -40,6 +41,7 @@ import {
   type WorkAssignmentNoticeGroup,
   type WorkAssignmentRenderedMessagePreviewRecord,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -142,6 +144,11 @@ function label(value: string) {
   return value
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function csvCell(value: string | number | boolean | null | undefined) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
 }
 
 function channelLabel(value: string | null | undefined) {
@@ -709,6 +716,103 @@ function ProviderSetupChecks({
   );
 }
 
+function providerReadinessCsv({
+  channels,
+  guardrails,
+}: {
+  channels: WorkAssignmentNotificationChannelRecord[];
+  guardrails: string[];
+}) {
+  const exportGuardrail =
+    "Review-only export: downloading this file does not send email, send SMS, run digests, mark notifications read, dispatch providers, refresh provider tokens, or mutate provider history.";
+  const rows: Array<Array<string | number | boolean | null | undefined>> = [
+    [
+      "Category",
+      "Channel",
+      "Provider",
+      "Readiness",
+      "Configured",
+      "Action available",
+      "Reason code",
+      "Detail",
+      "Next action",
+      "Setup check",
+      "Setup status",
+      "Setup detail",
+      "Setup value",
+      "Guardrail",
+    ],
+    ...channels.flatMap((channel) => [
+      [
+        "Provider channel",
+        channel.label,
+        label(channel.provider),
+        channelReadinessLabel(channel.readiness),
+        channel.configured ? "Yes" : "No",
+        channel.action_available ? "Yes" : "No",
+        channel.reason_code ? label(channel.reason_code) : "",
+        channel.detail,
+        channel.next_action,
+        "",
+        "",
+        "",
+        "",
+        exportGuardrail,
+      ],
+      ...(channel.setup_checks ?? []).map((check) => [
+        "Setup check",
+        channel.label,
+        label(channel.provider),
+        channelReadinessLabel(channel.readiness),
+        channel.configured ? "Yes" : "No",
+        channel.action_available ? "Yes" : "No",
+        channel.reason_code ? label(channel.reason_code) : "",
+        channel.detail,
+        channel.next_action,
+        check.label,
+        setupCheckLabel(check.status),
+        check.detail,
+        check.value,
+        exportGuardrail,
+      ]),
+    ]),
+    ...guardrails.map((guardrail) => [
+      "Center guardrail",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      guardrail,
+      "",
+      "",
+      "",
+      "",
+      "",
+      exportGuardrail,
+    ]),
+    [
+      "Export guardrail",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      exportGuardrail,
+      "",
+      "",
+      "",
+      "",
+      "",
+      exportGuardrail,
+    ],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 function ReceiptEvidenceDisclosure({
   receipt,
 }: {
@@ -1113,6 +1217,23 @@ function NotificationsWorkspace() {
       ) ?? [],
     [center?.digest_receipts, digestChannelFilter, digestFilter],
   );
+  const downloadProviderReadinessCsv = () => {
+    if (!center) {
+      return;
+    }
+    saveBlob(
+      new Blob(
+        [
+          providerReadinessCsv({
+            channels: centerChannels,
+            guardrails: center.guardrails,
+          }),
+        ],
+        { type: "text/csv;charset=utf-8" },
+      ),
+      "work-notification-provider-readiness.csv",
+    );
+  };
   const countCards = useMemo(
     () => [
       {
@@ -1232,9 +1353,19 @@ function NotificationsWorkspace() {
           icon={<Bell size={17} className="text-primary" />}
           actions={
             center ? (
-              <StatusBadge tone="neutral">
-                {center.notice_count} notices
-              </StatusBadge>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge tone="neutral">
+                  {center.notice_count} notices
+                </StatusBadge>
+                <SecondaryButton
+                  type="button"
+                  className="min-h-9 rounded-lg px-3 text-xs"
+                  onClick={downloadProviderReadinessCsv}
+                >
+                  <Download size={14} />
+                  Download readiness CSV
+                </SecondaryButton>
+              </div>
             ) : null
           }
         >
