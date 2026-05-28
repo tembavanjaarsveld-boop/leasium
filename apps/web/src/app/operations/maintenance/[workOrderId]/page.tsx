@@ -1775,6 +1775,42 @@ function liveReviewHandoffText(steps: LiveReviewHandoffStep[]) {
   ].join("\n");
 }
 
+function activityAuditText({
+  workOrder,
+  cards,
+  timeline,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  cards: ActivityAuditCard[];
+  timeline: ActivityTimelineEntry[];
+}) {
+  return [
+    "Operations activity audit",
+    `Work order: ${workOrder.title}`,
+    `Status: ${label(workOrder.status)}`,
+    "",
+    "Audit strip:",
+    ...(cards.length
+      ? cards.map(
+          (card) =>
+            `- ${card.label}: ${card.value} (${card.badge}) - ${card.detail}`,
+        )
+      : ["- No activity audit cards are available."]),
+    "",
+    "Timeline:",
+    ...(timeline.length
+      ? timeline
+          .slice(0, 12)
+          .map(
+            (entry) =>
+              `- ${formatDateTime(entry.at)} | ${entry.audienceLabel} | ${entry.label} | ${entry.detail}`,
+          )
+      : ["- No activity has been recorded yet."]),
+    "",
+    "Review-only: this audit does not add comments, send updates, or change the work order.",
+  ].join("\n");
+}
+
 function completionReviewPacketSummary({
   workOrder,
   rows,
@@ -2199,6 +2235,9 @@ function MaintenanceDetailRoute() {
   const [commentVisibility, setCommentVisibility] = useState<
     "internal" | "contractor" | "tenant"
   >("internal");
+  const [activityAuditReceipt, setActivityAuditReceipt] = useState<
+    string | null
+  >(null);
 
   const workOrderQuery = useQuery({
     queryKey: ["maintenance-work-order", workOrderId],
@@ -2443,6 +2482,23 @@ function MaintenanceDetailRoute() {
         contractorSmsEvidenceCount: contractorSmsRows.length,
       })
     : [];
+  const copyActivityAudit = async () => {
+    if (!workOrder) {
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setActivityAuditReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(
+      activityAuditText({
+        workOrder,
+        cards: activityAuditCards,
+        timeline,
+      }),
+    );
+    setActivityAuditReceipt("Activity audit copied.");
+  };
   const latestContractorReceipt = contractorReceiptRows[0] ?? null;
   const latestContractorReceiptStatus =
     metadataText(latestContractorReceipt?.status) ?? null;
@@ -4215,8 +4271,26 @@ function MaintenanceDetailRoute() {
                 </div>
               </SectionPanel>
 
-              <SectionPanel title="Activity" icon={<History size={17} />}>
+              <SectionPanel
+                title="Activity"
+                icon={<History size={17} />}
+                actions={
+                  <SecondaryButton
+                    type="button"
+                    onClick={copyActivityAudit}
+                    disabled={!workOrder}
+                  >
+                    <ClipboardCheck size={15} />
+                    Copy audit
+                  </SecondaryButton>
+                }
+              >
                 <div className="grid gap-3 p-4">
+                  {activityAuditReceipt ? (
+                    <p className="text-sm font-medium text-success">
+                      {activityAuditReceipt}
+                    </p>
+                  ) : null}
                   {activityAuditCards.length ? (
                     <div className="grid gap-2 rounded-xl bg-muted/40 p-3 md:grid-cols-4">
                       {activityAuditCards.map((card) => (
