@@ -1753,6 +1753,7 @@ type MockLeasiumApiOptions = {
   tenantAccountLinked?: boolean;
   tenantAccountLinkedToDifferentTenant?: boolean;
   tenantPortalLeaseReady?: boolean;
+  xeroDiagnosticsBlocked?: boolean;
 };
 
 export async function mockLeasiumApi(
@@ -1772,6 +1773,7 @@ export async function mockLeasiumApi(
   let tenantPortalOnboardingSubmitted = false;
   const tenantPortalLeaseReady = options.tenantPortalLeaseReady ?? false;
   let tenantPortalLeaseSigned = false;
+  const xeroDiagnosticsBlocked = options.xeroDiagnosticsBlocked ?? false;
   let notificationCenterReadAt: string | null = null;
   let digestReceiptSent = false;
   let assignmentNoticeRetried = false;
@@ -2017,6 +2019,50 @@ export async function mockLeasiumApi(
         "Xero contact apply only saves reviewed local mappings; it does not mutate Xero.",
         "Invoice posting requires explicit local approval before Xero draft creation.",
         "Payment reconciliation is manual status tracking until bank/Xero feeds are connected.",
+      ],
+    };
+  };
+
+  const xeroConnectionDiagnostics = () => {
+    const connection = xeroConnection();
+    const providerConfigured = true;
+    const providerConnected = connection.connection_source === "provider";
+    const actionReady = !xeroDiagnosticsBlocked;
+    return {
+      entity_id: entityId,
+      entity_name: "Acme Holdings Pty Ltd",
+      provider_configured: providerConfigured,
+      missing_config: [],
+      redirect_uri: "http://localhost:8000/api/v1/xero/oauth/callback",
+      scopes: [
+        "offline_access",
+        "accounting.contacts.read",
+        "accounting.settings.read",
+        "accounting.transactions",
+      ],
+      connected: connection.connected,
+      connection_source: connection.connection_source,
+      xero_tenant_id: connection.xero_tenant_id,
+      tenant_name: connection.tenant_name,
+      token_expires_at: providerConnected
+        ? "2026-05-19T11:00:00.000Z"
+        : null,
+      can_start_oauth: providerConfigured && actionReady,
+      can_preview_contacts: providerConnected && actionReady,
+      can_validate_chart_tax: providerConnected && actionReady,
+      can_preview_invoice_posting: providerConnected && actionReady,
+      can_create_xero_drafts:
+        providerConnected && xeroDraftApproved && actionReady,
+      can_preview_payment_reconciliation:
+        providerConnected && xeroDraftCreated && actionReady,
+      next_steps: xeroDiagnosticsBlocked
+        ? ["Your role or authorised scopes do not allow provider actions."]
+        : providerConnected
+          ? ["Run contact preview next."]
+          : ["Connect Xero before provider previews are enabled."],
+      guardrails: [
+        "Diagnostics are local only; loading this panel does not call Xero.",
+        "No Xero write occurs until an explicit reviewed action is run.",
       ],
     };
   };
@@ -2959,6 +3005,11 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/xero/status") {
       await fulfillJson(route, xeroStatus());
+      return;
+    }
+
+    if (method === "GET" && path === "/xero/connection-diagnostics") {
+      await fulfillJson(route, xeroConnectionDiagnostics());
       return;
     }
 

@@ -1540,6 +1540,28 @@ export type XeroOAuthStartRecord = XeroProviderConfigRecord & {
   state_expires_at: string | null;
 };
 
+export type XeroConnectionDiagnosticsRecord = {
+  entity_id: string;
+  entity_name: string;
+  provider_configured: boolean;
+  missing_config: string[];
+  redirect_uri: string;
+  scopes: string[];
+  connected: boolean;
+  connection_source: "provider" | "manual" | "none";
+  xero_tenant_id: string | null;
+  tenant_name: string | null;
+  token_expires_at: string | null;
+  can_start_oauth: boolean;
+  can_preview_contacts: boolean;
+  can_validate_chart_tax: boolean;
+  can_preview_invoice_posting: boolean;
+  can_create_xero_drafts: boolean;
+  can_preview_payment_reconciliation: boolean;
+  next_steps: string[];
+  guardrails: string[];
+};
+
 export type XeroReadinessSummaryRecord = {
   total: number;
   ready: number;
@@ -2569,6 +2591,13 @@ export function createSecurityBootstrapWorkspace(
 export function getXeroStatus(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
   return request<XeroStatusRecord>(`/xero/status?${params.toString()}`);
+}
+
+export function getXeroConnectionDiagnostics(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<XeroConnectionDiagnosticsRecord>(
+    `/xero/connection-diagnostics?${params.toString()}`,
+  );
 }
 
 export type ProviderStatusRecord = {

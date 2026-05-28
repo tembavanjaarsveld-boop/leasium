@@ -52,6 +52,7 @@ import {
   createXeroInvoiceDrafts,
   getSecurityWorkspace,
   getWorkAssignmentNotificationTemplates,
+  getXeroConnectionDiagnostics,
   getXeroExceptionQueue,
   getIntegrationStatus,
   type IntegrationStatusRecord,
@@ -84,6 +85,7 @@ import {
   type XeroPaymentReconciliationRecord,
   type XeroPaymentReconciliationResultRecord,
   type XeroAccountingFreshnessRecord,
+  type XeroConnectionDiagnosticsRecord,
   type BrandedCommunicationTemplateRecord,
   type SecurityMemberRecord,
   type SecurityMemberUpdatePayload,
@@ -156,6 +158,9 @@ type XeroChargeRuleMappingInput = Pick<
   | "suggested_account_code"
   | "suggested_tax_type"
 >;
+type XeroCallbackFeedback =
+  | { tone: "success"; title: "Xero connected"; detail: string }
+  | { tone: "danger"; title: "Xero connection needs attention"; detail: string };
 
 const settingsTabs: Array<{
   id: SettingsTab;
@@ -396,6 +401,17 @@ function statusLabel(value: string) {
   return value.replaceAll("_", " ");
 }
 
+function cleanXeroCallbackError(value: string | null) {
+  if (!value) {
+    return "Xero did not return a detailed error.";
+  }
+  return value
+    .replaceAll("+", " ")
+    .replaceAll("_", " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function readyTone(summary: XeroReadinessSummaryRecord): StatusTone {
   if (summary.total === 0) {
     return "neutral";
@@ -424,6 +440,19 @@ function accountingCheckpointRows(freshness: XeroAccountingFreshnessRecord) {
     ["Provider dispatch", freshness.last_invoice_provider_dispatch_at],
     ["Payment preview", freshness.last_payment_reconciliation_preview_at],
     ["Payment apply", freshness.last_payment_reconciliation_apply_at],
+  ] as const;
+}
+
+function diagnosticsReadinessRows(
+  diagnostics: XeroConnectionDiagnosticsRecord,
+) {
+  return [
+    ["OAuth", diagnostics.can_start_oauth],
+    ["Contacts", diagnostics.can_preview_contacts],
+    ["Chart/tax", diagnostics.can_validate_chart_tax],
+    ["Invoice preview", diagnostics.can_preview_invoice_posting],
+    ["Draft creation", diagnostics.can_create_xero_drafts],
+    ["Payments", diagnostics.can_preview_payment_reconciliation],
   ] as const;
 }
 
@@ -1276,6 +1305,8 @@ function SettingsWorkspace() {
   const [selectedXeroContactMatches, setSelectedXeroContactMatches] = useState<
     Record<string, boolean>
   >({});
+  const [xeroCallbackFeedback, setXeroCallbackFeedback] =
+    useState<XeroCallbackFeedback | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteDisplayName, setInviteDisplayName] = useState("");
   const [inviteRole, setInviteRole] = useState<SecurityRole>("viewer");
@@ -1307,12 +1338,32 @@ function SettingsWorkspace() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("tab") === "xero") {
+    const hasXeroCallback =
+      params.get("xero_connected") === "1" || params.has("xero_error");
+    if (params.get("tab") === "xero" || hasXeroCallback) {
       setActiveTab("xero");
     }
     const entityId = params.get("entity_id");
     if (entityId) {
       setSelectedEntityId(entityId);
+    }
+    if (params.get("xero_connected") === "1") {
+      const tenantId = params.get("xero_tenant_id");
+      setXeroCallbackFeedback({
+        tone: "success",
+        title: "Xero connected",
+        detail: `Run contact preview next${
+          tenantId ? ` for tenant ${tenantId}` : ""
+        }. No Xero writes, invoice posting, emails, or payment reconciliation occurred from this callback.`,
+      });
+    } else if (params.has("xero_error")) {
+      setXeroCallbackFeedback({
+        tone: "danger",
+        title: "Xero connection needs attention",
+        detail: `${cleanXeroCallbackError(
+          params.get("xero_error"),
+        )}. No Xero writes, invoice posting, emails, or payment reconciliation occurred.`,
+      });
     }
   }, []);
 
@@ -1365,7 +1416,13 @@ function SettingsWorkspace() {
   const xeroStatusQuery = useQuery({
     queryKey: ["xero-status", selectedEntityId],
     queryFn: () => getXeroStatus(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    enabled: Boolean(selectedEntityId) && activeTab === "xero",
+  });
+
+  const xeroDiagnosticsQuery = useQuery({
+    queryKey: ["xero-connection-diagnostics", selectedEntityId],
+    queryFn: () => getXeroConnectionDiagnostics(selectedEntityId),
+    enabled: Boolean(selectedEntityId) && activeTab === "xero",
   });
 
   const integrationStatusQuery = useQuery({
@@ -1426,6 +1483,9 @@ function SettingsWorkspace() {
     queryClient.invalidateQueries({ queryKey: ["entities"] });
     queryClient.invalidateQueries({
       queryKey: ["xero-status", selectedEntityId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["xero-connection-diagnostics", selectedEntityId],
     });
     queryClient.invalidateQueries({
       queryKey: ["xero-exception-queue", selectedEntityId],
@@ -1730,6 +1790,18 @@ function SettingsWorkspace() {
     xeroPaymentApplyResult ?? xeroPaymentPreview;
   const exceptionQueue = xeroExceptionQueueQuery.data;
   const exceptionItems = exceptionQueue?.items ?? [];
+  const xeroDiagnostics = xeroDiagnosticsQuery.data;
+  const xeroDiagnosticsReady = Boolean(xeroDiagnostics);
+  const xeroCanStartOauth = xeroDiagnostics?.can_start_oauth ?? false;
+  const xeroCanPreviewContacts =
+    xeroDiagnostics?.can_preview_contacts ?? false;
+  const xeroCanValidateChartTax =
+    xeroDiagnostics?.can_validate_chart_tax ?? false;
+  const xeroCanPreviewInvoicePosting =
+    xeroDiagnostics?.can_preview_invoice_posting ?? false;
+  const xeroCanPreviewPayments =
+    xeroDiagnostics?.can_preview_payment_reconciliation ?? false;
+  const xeroCanCreateDrafts = xeroDiagnostics?.can_create_xero_drafts ?? false;
   const accountingStep = status
     ? accountingNextStep({
         freshness: status.accounting_freshness,
@@ -1747,12 +1819,10 @@ function SettingsWorkspace() {
       return null;
     }
     if (issue.next_action === "connect_xero") {
-      return status?.provider.configured ? "Connect Xero" : "Review connection";
+      return xeroCanStartOauth ? "Connect Xero" : "Review connection";
     }
     if (issue.next_action === "review_contact_mapping") {
-      return status?.connection.connection_source === "provider"
-        ? "Review contacts"
-        : "Connect Xero";
+      return xeroCanPreviewContacts ? "Review contacts" : "Connect Xero";
     }
     if (issue.next_action === "review_chart_tax_mapping") {
       return issue.charge_rule_id ? "Apply suggestion" : "Review mapping";
@@ -1805,11 +1875,17 @@ function SettingsWorkspace() {
     if (exceptionActionPending(issue)) {
       return true;
     }
+    if (issue.next_action === "connect_xero") {
+      return !xeroCanStartOauth;
+    }
+    if (issue.next_action === "review_contact_mapping") {
+      return !xeroCanPreviewContacts && !xeroCanStartOauth;
+    }
     if (issue.next_action === "review_invoice_posting") {
-      return status.connection.connection_source !== "provider";
+      return !xeroCanPreviewInvoicePosting;
     }
     if (issue.next_action === "preview_payment_reconciliation") {
-      return status.connection.connection_source !== "provider";
+      return !xeroCanPreviewPayments;
     }
     return false;
   };
@@ -1818,7 +1894,7 @@ function SettingsWorkspace() {
       return;
     }
     if (issue.next_action === "connect_xero") {
-      if (status.provider.configured) {
+      if (xeroCanStartOauth) {
         xeroOAuthMutation.mutate(undefined, {
           onSuccess: () => scrollToPanel(xeroConnectionPanelRef),
         });
@@ -1828,13 +1904,13 @@ function SettingsWorkspace() {
       return;
     }
     if (issue.next_action === "review_contact_mapping") {
-      if (status.connection.connection_source === "provider") {
+      if (xeroCanPreviewContacts) {
         xeroContactSyncMutation.mutate(undefined, {
           onSuccess: () => scrollToPanel(xeroContactPreviewPanelRef),
         });
         return;
       }
-      if (status.provider.configured) {
+      if (xeroCanStartOauth) {
         xeroOAuthMutation.mutate(undefined, {
           onSuccess: () => scrollToPanel(xeroConnectionPanelRef),
         });
@@ -1909,7 +1985,11 @@ function SettingsWorkspace() {
             <SecondaryButton
               type="button"
               onClick={() => xeroStatusQuery.refetch()}
-              disabled={!selectedEntityId || xeroStatusQuery.isFetching}
+              disabled={
+                activeTab !== "xero" ||
+                !selectedEntityId ||
+                xeroStatusQuery.isFetching
+              }
             >
               <RefreshCw size={15} />
               Refresh
@@ -1950,77 +2030,84 @@ function SettingsWorkspace() {
               : "Could not load entities."}
           </div>
         ) : null}
-        {xeroStatusQuery.error ? (
+        {activeTab === "xero" && xeroStatusQuery.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroStatusQuery.error instanceof Error
               ? xeroStatusQuery.error.message
               : "Could not load Xero readiness."}
           </div>
         ) : null}
-        {xeroExceptionQueueQuery.error ? (
+        {activeTab === "xero" && xeroDiagnosticsQuery.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {xeroDiagnosticsQuery.error instanceof Error
+              ? xeroDiagnosticsQuery.error.message
+              : "Could not load Xero connection diagnostics."}
+          </div>
+        ) : null}
+        {activeTab === "xero" && xeroExceptionQueueQuery.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroExceptionQueueQuery.error instanceof Error
               ? xeroExceptionQueueQuery.error.message
               : "Could not load Xero sync exceptions."}
           </div>
         ) : null}
-        {connectionMutation.error ? (
+        {activeTab === "xero" && connectionMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {connectionMutation.error instanceof Error
               ? connectionMutation.error.message
               : "Could not update Xero connection status."}
           </div>
         ) : null}
-        {xeroOAuthMutation.error ? (
+        {activeTab === "xero" && xeroOAuthMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroOAuthMutation.error instanceof Error
               ? xeroOAuthMutation.error.message
               : "Could not start the Xero connection."}
           </div>
         ) : null}
-        {xeroContactSyncMutation.error ? (
+        {activeTab === "xero" && xeroContactSyncMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroContactSyncMutation.error instanceof Error
               ? xeroContactSyncMutation.error.message
               : "Could not preview Xero contacts."}
           </div>
         ) : null}
-        {xeroContactApplyMutation.error ? (
+        {activeTab === "xero" && xeroContactApplyMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroContactApplyMutation.error instanceof Error
               ? xeroContactApplyMutation.error.message
               : "Could not apply the selected Xero contact mappings."}
           </div>
         ) : null}
-        {xeroChartTaxMutation.error ? (
+        {activeTab === "xero" && xeroChartTaxMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroChartTaxMutation.error instanceof Error
               ? xeroChartTaxMutation.error.message
               : "Could not preview Xero chart and tax validation."}
           </div>
         ) : null}
-        {xeroInvoicePostingMutation.error ? (
+        {activeTab === "xero" && xeroInvoicePostingMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroInvoicePostingMutation.error instanceof Error
               ? xeroInvoicePostingMutation.error.message
               : "Could not preview Xero invoice posting."}
           </div>
         ) : null}
-        {xeroInvoiceApprovalMutation.error ? (
+        {activeTab === "xero" && xeroInvoiceApprovalMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroInvoiceApprovalMutation.error instanceof Error
               ? xeroInvoiceApprovalMutation.error.message
               : "Could not record Xero posting approval."}
           </div>
         ) : null}
-        {xeroDraftCreateMutation.error ? (
+        {activeTab === "xero" && xeroDraftCreateMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroDraftCreateMutation.error instanceof Error
               ? xeroDraftCreateMutation.error.message
               : "Could not create Xero draft invoices."}
           </div>
         ) : null}
-        {mappingMutation.error ? (
+        {activeTab === "xero" && mappingMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {mappingMutation.error instanceof Error
               ? mappingMutation.error.message
@@ -3442,8 +3529,42 @@ function SettingsWorkspace() {
           </SectionPanel>
         ) : null}
 
+        {activeTab === "xero" &&
+        selectedEntityId &&
+        status &&
+        !xeroDiagnosticsReady ? (
+          <div className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
+            Xero provider actions stay disabled until local connection
+            diagnostics finish loading.
+          </div>
+        ) : null}
+
         {activeTab === "xero" && selectedEntityId && status ? (
           <>
+            {xeroCallbackFeedback ? (
+              <div
+                className={`rounded-xl border p-4 text-sm ${
+                  xeroCallbackFeedback.tone === "success"
+                    ? "border-success/30 bg-success/5 text-success"
+                    : "border-danger/30 bg-danger/5 text-danger"
+                }`}
+                role="status"
+              >
+                <div className="flex items-start gap-3">
+                  {xeroCallbackFeedback.tone === "success" ? (
+                    <CheckCircle2 className="mt-0.5 shrink-0" size={18} />
+                  ) : (
+                    <AlertTriangle className="mt-0.5 shrink-0" size={18} />
+                  )}
+                  <div>
+                    <div className="font-semibold">
+                      {xeroCallbackFeedback.title}
+                    </div>
+                    <p className="mt-1">{xeroCallbackFeedback.detail}</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
               <MetricCard
                 label="Connection"
@@ -3606,8 +3727,7 @@ function SettingsWorkspace() {
                           className="mt-3 min-h-10 px-3"
                           disabled={
                             !selectedEntityId ||
-                            status.connection.connection_source !==
-                              "provider" ||
+                            !xeroCanPreviewPayments ||
                             xeroPaymentPreviewMutation.isPending
                           }
                           onClick={() =>
@@ -3882,13 +4002,19 @@ function SettingsWorkspace() {
                           Provider setup
                         </div>
                         <div className="mt-1 font-medium">
-                          {status.provider.configured
+                          {(xeroDiagnostics?.provider_configured ??
+                          status.provider.configured)
                             ? "Configured"
                             : "Needs env vars"}
                         </div>
-                        {!status.provider.configured ? (
+                        {!(xeroDiagnostics?.provider_configured ??
+                        status.provider.configured) ? (
                           <p className="mt-1 text-xs text-muted-foreground">
-                            Missing {status.provider.missing_config.join(", ")}
+                            Missing{" "}
+                            {(
+                              xeroDiagnostics?.missing_config ??
+                              status.provider.missing_config
+                            ).join(", ")}
                           </p>
                         ) : null}
                       </div>
@@ -3928,6 +4054,60 @@ function SettingsWorkspace() {
                         </div>
                       </div>
                     </div>
+                    {xeroDiagnostics ? (
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-xs uppercase text-muted-foreground">
+                              Connection diagnostics
+                            </div>
+                            <div className="mt-1 font-medium">
+                              Local readiness check
+                            </div>
+                          </div>
+                          <StatusBadge
+                            tone={
+                              xeroDiagnostics.connected ? "success" : "warning"
+                            }
+                          >
+                            {xeroDiagnostics.connection_source === "provider"
+                              ? "OAuth ready"
+                              : xeroDiagnostics.connection_source === "manual"
+                                ? "Manual tenant"
+                                : "Needs connection"}
+                          </StatusBadge>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                          {diagnosticsReadinessRows(xeroDiagnostics).map(
+                            ([label, ready]) => (
+                              <div
+                                key={label}
+                                className="flex items-center justify-between gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs"
+                              >
+                                <span>{label}</span>
+                                <StatusBadge
+                                  tone={ready ? "success" : "warning"}
+                                >
+                                  {ready ? "Ready" : "Blocked"}
+                                </StatusBadge>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                        {xeroDiagnostics.next_steps.length ? (
+                          <ul className="mt-3 grid gap-1 text-xs text-muted-foreground">
+                            {xeroDiagnostics.next_steps.map((step) => (
+                              <li key={step}>{step}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        {xeroDiagnostics.guardrails.length ? (
+                          <p className="mt-3 text-xs text-muted-foreground">
+                            {xeroDiagnostics.guardrails.join(" ")}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <ul className="grid gap-2 text-sm text-muted-foreground">
                       {status.guardrails.map((guardrail) => (
                         <li key={guardrail} className="flex gap-2">
@@ -3960,7 +4140,7 @@ function SettingsWorkspace() {
                         type="button"
                         disabled={
                           xeroOAuthMutation.isPending ||
-                          !status.provider.configured ||
+                          !xeroCanStartOauth ||
                           !selectedEntityId
                         }
                         onClick={() => xeroOAuthMutation.mutate()}
@@ -3985,7 +4165,7 @@ function SettingsWorkspace() {
                         type="button"
                         disabled={
                           xeroContactSyncMutation.isPending ||
-                          status.connection.connection_source !== "provider"
+                          !xeroCanPreviewContacts
                         }
                         onClick={() => xeroContactSyncMutation.mutate()}
                       >
@@ -4009,7 +4189,7 @@ function SettingsWorkspace() {
                         type="button"
                         disabled={
                           xeroChartTaxMutation.isPending ||
-                          status.connection.connection_source !== "provider"
+                          !xeroCanValidateChartTax
                         }
                         onClick={() => xeroChartTaxMutation.mutate()}
                       >
@@ -4033,7 +4213,7 @@ function SettingsWorkspace() {
                         type="button"
                         disabled={
                           xeroInvoicePostingMutation.isPending ||
-                          status.connection.connection_source !== "provider"
+                          !xeroCanPreviewInvoicePosting
                         }
                         onClick={() => xeroInvoicePostingMutation.mutate()}
                       >
@@ -4058,7 +4238,7 @@ function SettingsWorkspace() {
                         type="button"
                         disabled={
                           xeroPaymentPreviewMutation.isPending ||
-                          status.connection.connection_source !== "provider"
+                          !xeroCanPreviewPayments
                         }
                         onClick={() => xeroPaymentPreviewMutation.mutate()}
                       >
@@ -4476,6 +4656,7 @@ function SettingsWorkspace() {
                         className="min-h-9 rounded-lg px-3"
                         disabled={
                           readyXeroInvoiceDraftIds.length === 0 ||
+                          !xeroCanCreateDrafts ||
                           xeroDraftCreateMutation.isPending
                         }
                         onClick={() => xeroDraftCreateMutation.mutate()}

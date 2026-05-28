@@ -2327,6 +2327,55 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toHaveCount(0);
 });
 
+test("settings shows Xero OAuth callback success feedback", async ({ page }) => {
+  await page.goto("/settings?xero_connected=1&xero_tenant_id=tenant-provider-123");
+
+  await expect(page.getByText("Xero connected")).toBeVisible();
+  await expect(page.getByText(/Run contact preview next/)).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Xero" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+});
+
+test("settings shows Xero OAuth callback error feedback without tab param", async ({
+  page,
+}) => {
+  await page.goto("/settings?xero_error=access_denied");
+
+  await expect(
+    page.getByText("Xero connection needs attention"),
+  ).toBeVisible();
+  await expect(page.getByText(/access denied/)).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Xero" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+});
+
+test("settings disables Xero provider actions when diagnostics block capabilities", async ({
+  page,
+}) => {
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, { xeroDiagnosticsBlocked: true });
+
+  await page.goto("/settings?tab=xero");
+
+  await expect(page.getByText("Connection diagnostics")).toBeVisible();
+  await expect(
+    page.getByText("Your role or authorised scopes do not allow provider actions."),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Xero" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "Connect with Xero" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Preview contacts" }),
+  ).toBeDisabled();
+});
+
 test("insights shows overview, exceptions, activity, and owner snapshot", async ({
   page,
 }) => {
