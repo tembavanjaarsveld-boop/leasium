@@ -137,10 +137,18 @@ Last updated: 2026-05-28
   `xero-exception-review.csv` download from already-loaded exception rows.
   The export does not start OAuth, preview/apply mappings, post invoices,
   dispatch providers, refresh Xero, send email, or reconcile payments.
-- Sidecar recommendation for the next slice: add a Portfolio QA enrichment
-  queue CSV/export packet beside the existing copy-only enrichment queue. Keep
-  it frontend/local-data only; do not run enrichment preview/apply, OpenAI,
-  SerpAPI, Xero, SendGrid, Twilio, onboarding, or billing draft mutations.
+- 2026-05-28 Portfolio QA enrichment continuation: the enrichment queue now has
+  a local `portfolio-qa-enrichment-queue.csv` download beside `Copy queue`,
+  exporting candidate type, record label, missing fields, priority, impact,
+  reason, action, and review guardrail text. It does not run enrichment
+  preview/apply, OpenAI, SerpAPI, Xero, SendGrid, Twilio, onboarding, or
+  billing draft mutations.
+- Sidecar recommendation for the next slice: add a local Operations
+  maintenance completion review CSV packet beside the existing completion
+  `Copy packet` action, generated from already-rendered work-order review data.
+  Do not send contractor email/SMS, update work-order status, write closeout or
+  review metadata, touch Xero, tenant portal messaging, provider dispatch, or
+  provider history.
 
 ## Takeover Priority
 

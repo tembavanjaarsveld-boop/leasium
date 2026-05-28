@@ -2262,6 +2262,48 @@ function enrichmentQueueText(candidates: EnrichmentCandidate[]) {
   ].join("\n\n");
 }
 
+function enrichmentQueueCsv(candidates: EnrichmentCandidate[]) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Category",
+      "Record",
+      "Type",
+      "Priority",
+      "Missing fields",
+      "Impact",
+      "Reason",
+      "Action",
+      "Guardrail",
+    ],
+    ...(candidates.length
+      ? candidates.map((candidate) => [
+          "Enrichment candidate",
+          candidate.title,
+          candidate.kind,
+          candidate.priority,
+          candidate.fields.join("; "),
+          candidate.impact,
+          candidate.reason,
+          candidate.actionLabel,
+          "Review-only: accept sourced suggestions only after checking citations.",
+        ])
+      : [
+          [
+            "Enrichment candidate",
+            "Clear",
+            "",
+            "success",
+            "",
+            "No obvious enrichment candidates remain.",
+            "",
+            "",
+            "Review-only: accept sourced suggestions only after checking citations.",
+          ],
+        ]),
+  ];
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 function blockerTriageText(groups: BulkReviewGroup[]) {
   const activeGroups = groups.filter((group) => group.count > 0);
   if (!activeGroups.length) {
@@ -2556,6 +2598,15 @@ function PortfolioCompletionPanel({
       enrichmentQueueText(enrichmentCandidates),
     );
     setEnrichmentReceipt("Enrichment queue copied.");
+  };
+  const downloadEnrichmentQueueCsv = () => {
+    saveBlob(
+      new Blob([enrichmentQueueCsv(enrichmentCandidates)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      "portfolio-qa-enrichment-queue.csv",
+    );
+    setEnrichmentReceipt("Enrichment queue CSV downloaded.");
   };
 
   return (
@@ -2930,6 +2981,14 @@ function PortfolioCompletionPanel({
                 >
                   <Copy size={14} />
                   Copy queue
+                </SecondaryButton>
+                <SecondaryButton
+                  type="button"
+                  onClick={downloadEnrichmentQueueCsv}
+                  className="min-h-9 rounded-lg px-3"
+                >
+                  <Download size={14} />
+                  Download queue CSV
                 </SecondaryButton>
                 <StatusBadge
                   tone={enrichmentCandidates.length ? "primary" : "success"}

@@ -691,6 +691,27 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   await expect(
     page.getByText("AI-assisted enrichment candidates"),
   ).toBeVisible();
+  const enrichmentPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Cleanup readiness report" }),
+  });
+  const enrichmentDownloadPromise = page.waitForEvent("download");
+  await enrichmentPanel
+    .getByRole("button", { name: "Download queue CSV" })
+    .click();
+  const enrichmentDownload = await enrichmentDownloadPromise;
+  expect(enrichmentDownload.suggestedFilename()).toBe(
+    "portfolio-qa-enrichment-queue.csv",
+  );
+  const enrichmentDownloadPath = await enrichmentDownload.path();
+  expect(enrichmentDownloadPath).not.toBeNull();
+  const enrichmentCsv = await readFile(enrichmentDownloadPath!, "utf8");
+  expect(enrichmentCsv).toContain("Eagle Street Office");
+  expect(enrichmentCsv).toContain("Property");
+  expect(enrichmentCsv).toContain("Owner Abn");
+  expect(enrichmentCsv).toContain("high");
+  expect(enrichmentCsv).toContain(
+    "Review-only: accept sourced suggestions only after checking citations.",
+  );
   await expect(page.getByText("Blocked follow-ups")).toBeVisible();
   await expect(page.getByText("Register cleanup still blocked")).toBeVisible();
   await expect(page.getByText("Final report")).toBeVisible();
