@@ -21,6 +21,7 @@ import { QueryProvider } from "@/components/query-provider";
 import {
   EmptyState,
   PageTitle,
+  SecondaryButton,
   SectionPanel,
   StatusBadge,
 } from "@/components/ui";
@@ -30,6 +31,7 @@ import {
   TenantPortalDocumentRecord,
   TenantPortalRecord,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
 const LINK_BUTTON_CLASSES =
@@ -69,6 +71,20 @@ function formatMoney(cents: number, currency = "AUD") {
 function label(value: string) {
   return value.replaceAll("_", " ");
 }
+
+function csvCell(value: string | number | null | undefined) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function slugifyFilename(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+const PORTAL_PREVIEW_EXPORT_GUARDRAIL =
+  "Review-only export: downloading this file does not create tenant portal accounts, send portal invites, submit tenant details, apply or dismiss contact changes, send email or SMS, upload or delete documents, fetch document bytes, write Xero data, dispatch providers, refresh providers, or mutate provider history.";
 
 function onboardingStatusLabel(status: TenantPortalRecord["onboarding"]["status"]) {
   if (status === "reviewed") {
@@ -123,6 +139,149 @@ function maintenanceStatusDetail(
   return "Submitted to the property team.";
 }
 
+function tenantPortalPreviewCsv(portal: TenantPortalRecord) {
+  const tenantName = portal.tenant.trading_name || portal.tenant.legal_name;
+  const rows: Array<Array<string | number | null | undefined>> = [
+    ["Category", "Item", "Status", "Count", "Amount", "Detail", "Guardrail"],
+    [
+      "Operator preview",
+      tenantName,
+      portal.auth.mode,
+      "",
+      "",
+      portal.auth.detail,
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+    ],
+    [
+      "Lease",
+      `${portal.lease.property_name} - ${portal.lease.unit_label}`,
+      portal.lease.status,
+      "",
+      "",
+      `${formatDate(portal.lease.commencement_date)} to ${formatDate(
+        portal.lease.expiry_date,
+      )}; next review ${formatDate(portal.lease.next_review_date)}.`,
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+    ],
+    [
+      "Onboarding",
+      portal.onboarding.id,
+      onboardingStatusLabel(portal.onboarding.status),
+      portal.onboarding.document_count,
+      "",
+      `Due ${formatDate(portal.onboarding.due_date)}; invite expires ${formatDateTime(
+        portal.onboarding.expires_at,
+      )}.`,
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+    ],
+    ...portal.compliance.items.map((item) => [
+      "Checklist",
+      item.label,
+      label(item.status),
+      item.document_count,
+      "",
+      item.due_date ? `Due ${formatDate(item.due_date)}.` : "No due date.",
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+    ]),
+    ...(portal.compliance.items.length
+      ? []
+      : [
+          [
+            "Checklist",
+            "Required documents",
+            "Not required",
+            0,
+            "",
+            "No required document checklist for this onboarding.",
+            PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+          ],
+        ]),
+    ...portal.compliance.uploaded_documents.map((document) => [
+      "Document",
+      document.filename,
+      label(document.category),
+      document.byte_size,
+      "",
+      `${label(document.source)}; uploaded ${formatDateTime(document.created_at)}.`,
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Payment summary",
+      "Visible tenant invoices",
+      label(portal.payment_summary.status),
+      portal.payment_summary.invoice_count,
+      formatMoney(portal.payment_summary.outstanding_cents),
+      `${portal.payment_summary.overdue_count} overdue; manual only ${portal.payment_summary.manual_only ? "yes" : "no"}.`,
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+    ],
+    ...portal.invoices.map((invoice) => [
+      "Invoice",
+      invoice.invoice_number ?? invoice.title,
+      label(invoice.payment_status),
+      invoice.lines.length,
+      formatMoney(invoice.outstanding_cents, invoice.currency),
+      `Due ${formatDate(invoice.due_date)}; total ${formatMoney(
+        invoice.total_cents,
+        invoice.currency,
+      )}; paid ${formatMoney(invoice.paid_cents, invoice.currency)}.`,
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+    ]),
+    ...portal.maintenance_requests.map((request) => [
+      "Maintenance",
+      request.title,
+      label(request.status),
+      request.document_ids.length + request.photo_document_ids.length,
+      "",
+      `${request.description ?? maintenanceStatusDetail(
+        request.status,
+        request.due_date,
+        request.completed_at,
+      )} Requested ${formatDateTime(request.requested_at)}.`,
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+    ]),
+    ...portal.contact_change_requests.flatMap((request) => [
+      [
+        "Contact change request",
+        request.id,
+        label(request.status),
+        request.changes.length,
+        "",
+        request.notes ?? `Submitted ${formatDateTime(request.submitted_at)}.`,
+        PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+      ],
+      ...request.changes.map((change) => [
+        "Contact change request",
+        change.label,
+        label(request.status),
+        "",
+        "",
+        String(change.after ?? "-"),
+        PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+      ]),
+    ]),
+    ...portal.guardrails.map((guardrail) => [
+      "Preview guardrail",
+      guardrail,
+      "Read-only",
+      "",
+      "",
+      guardrail,
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Export guardrail",
+      "",
+      "Review-only",
+      "",
+      "",
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+    ],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 function Metric({
   label: metricLabel,
   value,
@@ -175,6 +334,15 @@ function PreviewLoaded({
 }) {
   const tenantName = portal.tenant.trading_name || portal.tenant.legal_name;
   const latestContactRequest = portal.contact_change_requests[0] ?? null;
+  const downloadPreviewCsv = () => {
+    const filenameName = slugifyFilename(tenantName || "tenant");
+    saveBlob(
+      new Blob([tenantPortalPreviewCsv(portal)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      `tenant-portal-preview-${filenameName}.csv`,
+    );
+  };
   return (
     <main className="min-h-screen bg-background text-foreground">
       <AppHeader />
@@ -195,10 +363,20 @@ function PreviewLoaded({
               {portal.auth.detail}
             </p>
           </div>
-          <Link className={LINK_BUTTON_CLASSES} href={`/tenants/${tenantId}`}>
-            <ShieldCheck size={15} />
-            Tenant record
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <SecondaryButton
+              type="button"
+              onClick={downloadPreviewCsv}
+              className="min-h-10 rounded-xl px-3"
+            >
+              <Download size={15} />
+              Download preview CSV
+            </SecondaryButton>
+            <Link className={LINK_BUTTON_CLASSES} href={`/tenants/${tenantId}`}>
+              <ShieldCheck size={15} />
+              Tenant record
+            </Link>
+          </div>
         </div>
 
         <section className="grid gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-4">

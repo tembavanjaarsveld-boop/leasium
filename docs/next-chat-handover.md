@@ -197,15 +197,23 @@ Last updated: 2026-05-28
   status, overview guardrails, and review-only guardrail text. It does not add a
   backend export endpoint, create/revoke snapshots, refresh Xero/accounting,
   send providers, apply reconciliation, dispatch, or write provider history.
-- Sidecar recommendation for the next slice: add a Tenant portal operator
-  preview CSV on the existing read-only operator preview page. Generate it only
-  from `getTenantPortalOperatorPreview()` response data; include tenant, lease,
+- 2026-05-28 Tenant portal continuation: the read-only operator preview route
+  now has a local `tenant-portal-preview-{tenant}.csv` download generated from
+  `getTenantPortalOperatorPreview()` response data. It exports tenant, lease,
   onboarding status, checklist rows, uploaded document names/counts, visible
-  invoice/payment rows, maintenance rows, latest contact-change request, and
-  guardrails. Do not call resend/fresh-link/send-portal-invite/apply/review,
-  tenant portal claim/submit/contact-change apply/dismiss, SendGrid/Twilio,
-  Xero, document upload/delete, provider dispatch, provider refresh, or
-  provider-history writes.
+  invoice/payment rows, maintenance rows, contact-change requests, preview
+  guardrails, and no-mutation guardrail text. It does not call
+  resend/fresh-link/send-portal-invite/apply/review, tenant portal
+  claim/submit/contact-change apply/dismiss, SendGrid/Twilio, Xero, document
+  upload/delete, provider dispatch, provider refresh, or provider-history
+  writes.
+- Sidecar recommendation for the next slice: add an Operations work queue review
+  CSV from already-loaded queue data in `/operations`. Include item kind, title,
+  property/tenant detail, due date, urgency chip, completion state, assignee,
+  notification status, follow-up/escalation cues, and guardrails. Do not call
+  notification sends/digests, maintenance/arrears update mutations, backend
+  export endpoints, Xero, invoice dispatch, payment reconciliation, onboarding
+  send/resend, billing draft generation, provider refresh, or provider history.
 
 ## Takeover Priority
 

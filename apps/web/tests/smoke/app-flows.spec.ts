@@ -1765,6 +1765,26 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Submit for review" }),
   ).toHaveCount(0);
+  const previewDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download preview CSV" }).click();
+  const previewDownload = await previewDownloadPromise;
+  expect(previewDownload.suggestedFilename()).toBe(
+    "tenant-portal-preview-bright-cafe.csv",
+  );
+  const previewDownloadPath = await previewDownload.path();
+  expect(previewDownloadPath).not.toBeNull();
+  const previewCsv = await readFile(previewDownloadPath!, "utf8");
+  expect(previewCsv).toContain("Operator preview");
+  expect(previewCsv).toContain("No tenant portal account is created");
+  expect(previewCsv).toContain("INV-1001");
+  expect(previewCsv).toContain("Contact change request");
+  expect(previewCsv).toContain("new.accounts@bright.example");
+  expect(previewCsv).toContain(
+    "Review-only export: downloading this file does not create tenant portal accounts, send portal invites, submit tenant details, apply or dismiss contact changes, send email or SMS, upload or delete documents, fetch document bytes, write Xero data, dispatch providers, refresh providers, or mutate provider history.",
+  );
+  await expect(
+    page.getByRole("button", { name: "Submit for review" }),
+  ).toHaveCount(0);
   await page.getByRole("link", { name: "Back to tenant" }).first().click();
   await expect(page).toHaveURL(/\/tenants\/tenant-1$/);
 
