@@ -246,12 +246,21 @@ Last updated: 2026-05-28
   It also fixes the singular next-step copy to read `invoice needs`. It does not
   refresh Xero, preview/apply reconciliation, create Xero drafts, dispatch
   invoices, send email/SMS, refresh providers, or mutate provider history.
-- Sidecar recommendation for the next slice: add a local Settings Xero
-  `Copy freshness packet` action beside `Download freshness CSV`, reusing the
-  same `status.accounting_freshness` and `accountingStep` data. Do not add a
-  backend route, refetch status, invalidate queries, refresh Xero, preview/apply
+- 2026-05-28 Settings Xero continuation 3: the same Accounting freshness
+  snapshot now has `Copy freshness packet`, reusing the already-loaded
+  `status.accounting_freshness` and computed `accountingStep` data. The smoke
+  test reads clipboard text and verifies the packet contains status/stale
+  reconciliation/next-step/guardrail content. It does not add a backend route,
+  refetch status, invalidate queries, refresh Xero, preview/apply
   reconciliation, create Xero drafts, dispatch invoices, send email/SMS, refresh
   providers, or mutate provider history.
+- Sidecar recommendation for the next slice: add a local Settings Xero
+  diagnostics review CSV from the already-loaded `xeroDiagnostics` connection
+  diagnostics block. Include connection source, tenant/org label, token expiry,
+  readiness gates, missing config, redirect URI, required scopes, next steps,
+  diagnostics guardrails, and an export guardrail. Do not start OAuth, call or
+  refresh Xero, preview/apply reconciliation, create Xero drafts, dispatch
+  invoices/providers, send email/SMS, refresh providers, or mutate history.
 
 ## Takeover Priority
 

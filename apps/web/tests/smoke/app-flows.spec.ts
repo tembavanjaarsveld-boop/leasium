@@ -2602,6 +2602,25 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   expect(freshnessCsv).toContain(
     "Loading Xero status does not refresh tokens, call Xero, post invoices, or reconcile payments.",
   );
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await freshnessPanel
+    .getByRole("button", { name: "Copy freshness packet" })
+    .click();
+  await expect(
+    freshnessPanel.getByText("Xero freshness packet copied."),
+  ).toBeVisible();
+  const freshnessPacket = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(freshnessPacket).toContain("Xero accounting freshness packet");
+  expect(freshnessPacket).toContain("Reconciliation stale after 7 days");
+  expect(freshnessPacket).toContain("Review Xero-linked payments");
+  expect(freshnessPacket).toContain(
+    "1 open Xero-linked invoice needs a payment reconciliation preview before month-end reporting.",
+  );
+  expect(freshnessPacket).toContain(
+    "Loading Xero status does not refresh tokens, call Xero, post invoices, or reconcile payments.",
+  );
 
   await expect(
     page.getByRole("button", { exact: true, name: "Review payments" }),

@@ -713,6 +713,63 @@ function xeroAccountingFreshnessCsv({
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
+function xeroAccountingFreshnessPacket({
+  freshness,
+  nextStep,
+}: {
+  freshness: XeroAccountingFreshnessRecord;
+  nextStep: AccountingNextStep | null;
+}) {
+  return [
+    "Xero accounting freshness packet",
+    "",
+    `Status: ${statusLabel(freshness.status)}`,
+    `Summary: ${freshness.summary}`,
+    freshness.stale_reconciliation
+      ? `Reconciliation stale after ${freshness.stale_after_days} days`
+      : "Reconciliation current",
+    "",
+    "Readiness:",
+    `- ${freshness.readiness_issue_count} issues`,
+    `- ${freshness.readiness_blocker_count} blockers`,
+    `- ${freshness.readiness_warning_count} warnings`,
+    `- ${freshness.approved_unsynced_invoice_count} approved unsynced invoices`,
+    `- ${freshness.xero_linked_open_invoice_count} Xero-linked open invoices`,
+    "",
+    "Checkpoints:",
+    ...accountingCheckpointRows(freshness).map(
+      ([checkpoint, value]) =>
+        `- ${checkpoint}: ${value ? formatDateTime(value) : "No timestamp"}`,
+    ),
+    "",
+    "Payment reconciliation:",
+    `- Last reconciliation: ${
+      freshness.last_payment_reconciliation_at
+        ? formatDateTime(freshness.last_payment_reconciliation_at)
+        : "No payment reconciliation applied"
+    }`,
+    `- Source: ${
+      freshness.last_payment_reconciliation_source
+        ? statusLabel(freshness.last_payment_reconciliation_source)
+        : "Missing"
+    }`,
+    `- Mode: ${
+      freshness.last_payment_reconciliation_mode
+        ? statusLabel(freshness.last_payment_reconciliation_mode)
+        : "Missing"
+    }`,
+    "",
+    "Next accounting step:",
+    nextStep
+      ? `- ${nextStep.title}: ${nextStep.detail}`
+      : "- No next step available.",
+    "",
+    "Guardrails:",
+    ...freshness.guardrails.map((guardrail) => `- ${guardrail}`),
+    `- ${XERO_FRESHNESS_EXPORT_GUARDRAIL}`,
+  ].join("\n");
+}
+
 function communicationTemplateOverrideCsv({
   runtimeTemplates,
   brandedTemplates,
@@ -1678,6 +1735,9 @@ function SettingsWorkspace() {
   const [xeroExceptionExportReceipt, setXeroExceptionExportReceipt] = useState<
     string | null
   >(null);
+  const [xeroFreshnessPacketReceipt, setXeroFreshnessPacketReceipt] = useState<
+    string | null
+  >(null);
   const [templateOverrideExportReceipt, setTemplateOverrideExportReceipt] =
     useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -2266,6 +2326,22 @@ function SettingsWorkspace() {
         },
       ),
       "xero-accounting-freshness.csv",
+    );
+  };
+  const copyXeroFreshnessPacket = async () => {
+    if (!status) {
+      return;
+    }
+    const copied = await copyTextToClipboard(
+      xeroAccountingFreshnessPacket({
+        freshness: status.accounting_freshness,
+        nextStep: accountingStep,
+      }),
+    );
+    setXeroFreshnessPacketReceipt(
+      copied
+        ? "Xero freshness packet copied."
+        : "Copy unavailable in this browser.",
     );
   };
   const scrollToPanel = (target: PanelRef) => {
@@ -4122,10 +4198,23 @@ function SettingsWorkspace() {
                     <Download size={15} />
                     Download freshness CSV
                   </SecondaryButton>
+                  <SecondaryButton
+                    type="button"
+                    onClick={copyXeroFreshnessPacket}
+                    disabled={!status}
+                  >
+                    <Copy size={15} />
+                    Copy freshness packet
+                  </SecondaryButton>
                 </div>
               }
             >
               <div className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+                {xeroFreshnessPacketReceipt ? (
+                  <p className="lg:col-span-2 text-sm font-medium text-success">
+                    {xeroFreshnessPacketReceipt}
+                  </p>
+                ) : null}
                 <div className="grid gap-3">
                   <p className="text-sm text-muted-foreground">
                     {status.accounting_freshness.summary}
