@@ -166,11 +166,19 @@ Last updated: 2026-05-28
   counts, and no-send/no-mutation guardrail text. It does not call comms
   dispatch, dismiss, evidence upload, SendGrid/Twilio sends, provider-history
   writes, candidate settlement, queue mutation, or provider refresh paths.
-- Sidecar recommendation for the next slice: add a Contractor Directory
-  readiness CSV from already-loaded contractor rows. Keep it local/export-only;
-  do not send contractor email/SMS, run maintenance AI classification,
+- 2026-05-28 Contractor directory continuation: `/contractors` now has a local
+  `contractor-directory-readiness.csv` download from already-loaded contractor
+  rows. It exports name, company, priority, categories, email/phone readiness,
+  service radius, notes, AI-suggest readiness, and review-only guardrail text.
+  It does not send contractor email/SMS, run maintenance AI classification,
   assign/update work-order contractors, create/update/delete contractors, write
   provider history, or dispatch receipts.
+- Sidecar recommendation for the next slice: add a Billing Readiness
+  month-end handoff CSV beside the existing `Copy handoff` button, using the
+  already-built `MonthEndHandoff` object. Keep it local/export-only; do not run
+  Xero draft creation, payment reconciliation preview/apply, tenant/owner email
+  dispatch, billing draft generation, invoice dispatch, provider refresh, or
+  provider-history mutation.
 
 ## Takeover Priority
 

@@ -12,6 +12,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Download,
   Loader2,
   Plus,
   Trash2,
@@ -43,6 +44,7 @@ import {
   listContractors,
   listEntities,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
@@ -63,6 +65,81 @@ const PRIORITY_TONE: Record<number, StatusTone> = {
 function friendlyError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return "Something went wrong.";
+}
+
+function csvCell(value: string | number | null | undefined) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function contactReadiness(value: string | null | undefined, label: string) {
+  return value?.trim() ? `${label} ready` : `${label} missing`;
+}
+
+function aiSuggestReadiness(contractor: ContractorRecord) {
+  if (!contractor.categories.length) {
+    return "AI suggest blocked: add at least one category";
+  }
+  if (!contractor.email && !contractor.phone) {
+    return "AI suggest needs contact details";
+  }
+  return "AI suggest ready";
+}
+
+function contractorDirectoryCsv(contractors: ContractorRecord[]) {
+  const guardrail =
+    "Review-only export: downloading this file does not send contractor email or SMS, run maintenance AI classification, assign work-order contractors, create/update/delete contractors, write provider history, or dispatch receipts.";
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Category",
+      "Name",
+      "Company",
+      "Priority",
+      "Categories",
+      "Email",
+      "Email readiness",
+      "Phone",
+      "Phone readiness",
+      "Service radius",
+      "AI suggest readiness",
+      "Notes",
+      "Guardrail",
+    ],
+    ...contractors.map((contractor) => [
+      "Contractor",
+      contractor.name,
+      contractor.company_name,
+      PRIORITY_LABEL[contractor.priority] ?? `Priority ${contractor.priority}`,
+      contractor.categories.join("; "),
+      contractor.email,
+      contactReadiness(contractor.email, "Email"),
+      contractor.phone,
+      contactReadiness(contractor.phone, "Phone"),
+      contractor.service_radius_km == null
+        ? "No radius set"
+        : `${contractor.service_radius_km} km`,
+      aiSuggestReadiness(contractor),
+      contractor.notes,
+      guardrail,
+    ]),
+    [
+      "Export guardrail",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      guardrail,
+      guardrail,
+    ],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
 export default function ContractorsPage() {
@@ -102,8 +179,17 @@ function ContractorsContent() {
     queryFn: () => listContractors(selectedEntityId),
     enabled: Boolean(selectedEntityId),
   });
+  const contractors = contractorsQuery.data ?? [];
 
   const [showCreate, setShowCreate] = useState(false);
+  const downloadDirectoryCsv = () => {
+    saveBlob(
+      new Blob([contractorDirectoryCsv(contractors)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      "contractor-directory-readiness.csv",
+    );
+  };
 
   return (
     <main className="min-h-screen">
@@ -129,13 +215,23 @@ function ContractorsContent() {
           title="Contractor directory"
           description="Trusted contractors organised by category and priority. AI maintenance categorisation will suggest a contractor from this directory once it ships."
           actions={
-            <Button
-              type="button"
-              onClick={() => setShowCreate((prev) => !prev)}
-            >
-              <Plus size={16} />
-              {showCreate ? "Close form" : "Add contractor"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <SecondaryButton
+                type="button"
+                onClick={downloadDirectoryCsv}
+                disabled={contractors.length === 0}
+              >
+                <Download size={15} />
+                Download directory CSV
+              </SecondaryButton>
+              <Button
+                type="button"
+                onClick={() => setShowCreate((prev) => !prev)}
+              >
+                <Plus size={16} />
+                {showCreate ? "Close form" : "Add contractor"}
+              </Button>
+            </div>
           }
         />
 
@@ -164,7 +260,7 @@ function ContractorsContent() {
         ) : null}
 
         {!contractorsQuery.isLoading &&
-        (contractorsQuery.data ?? []).length === 0 &&
+        contractors.length === 0 &&
         !contractorsQuery.error ? (
           <EmptyState
             icon={<Wrench size={18} />}
@@ -173,7 +269,7 @@ function ContractorsContent() {
           />
         ) : null}
 
-        {(contractorsQuery.data ?? []).map((contractor) => (
+        {contractors.map((contractor) => (
           <ContractorCard
             key={contractor.id}
             contractor={contractor}
