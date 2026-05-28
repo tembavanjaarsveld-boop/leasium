@@ -17,6 +17,7 @@ import {
   ChevronDown,
   CheckCircle2,
   Clock3,
+  Copy,
   Download,
   FileText,
   ImagePlus,
@@ -632,6 +633,31 @@ function buildTenantPortalActivity(portal: TenantPortalRecord) {
         new Date(left.timestamp).getTime(),
     )
     .slice(0, 6);
+}
+
+function tenantPortalActivitySummaryText(
+  activities: TenantPortalActivityItem[],
+) {
+  if (!activities.length) {
+    return [
+      "Tenant portal activity summary",
+      "No recent portal activity is available yet.",
+    ].join("\n");
+  }
+
+  return [
+    "Tenant portal activity summary",
+    `${activities.length} recent portal update${
+      activities.length === 1 ? "" : "s"
+    }`,
+    "",
+    ...activities.map(
+      (activity) =>
+        `- ${formatDateTime(activity.timestamp)} | ${activity.title} | ${
+          activity.detail
+        }`,
+    ),
+  ].join("\n");
 }
 
 function buildTenantPortalActionItems(
@@ -1805,9 +1831,94 @@ function RecentActivityPanel({
 }: {
   activities: TenantPortalActivityItem[];
 }) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const latestActivity = activities[0] ?? null;
+  const activityCounts = activities.reduce(
+    (counts, activity) => ({
+      ...counts,
+      [activity.tone]: counts[activity.tone] + 1,
+    }),
+    {
+      neutral: 0,
+      primary: 0,
+      success: 0,
+      warning: 0,
+    } satisfies Record<TenantPortalActivityItem["tone"], number>,
+  );
+  const activityStats = [
+    {
+      label: "Needs reply",
+      value: activityCounts.warning,
+      tone: activityCounts.warning ? "warning" : "neutral",
+    },
+    {
+      label: "Completed",
+      value: activityCounts.success,
+      tone: activityCounts.success ? "success" : "neutral",
+    },
+    {
+      label: "Team updates",
+      value: activityCounts.primary,
+      tone: activityCounts.primary ? "primary" : "neutral",
+    },
+    {
+      label: "Other",
+      value: activityCounts.neutral,
+      tone: "neutral",
+    },
+  ] satisfies Array<{
+    label: string;
+    value: number;
+    tone: TenantPortalActivityItem["tone"];
+  }>;
+  const copyActivitySummary = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(
+      tenantPortalActivitySummaryText(activities),
+    );
+    setCopyReceipt("Activity summary copied.");
+  };
+
   return (
-    <Panel title="Recent Activity" icon={<Clock3 size={18} />}>
+    <Panel
+      title="Recent Activity"
+      icon={<Clock3 size={18} />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton type="button" onClick={copyActivitySummary}>
+            <Copy size={15} />
+            Copy summary
+          </SecondaryButton>
+          {latestActivity ? (
+            <StatusBadge tone={latestActivity.tone}>
+              Latest {formatDate(latestActivity.timestamp)}
+            </StatusBadge>
+          ) : null}
+        </div>
+      }
+    >
       <div className="grid gap-3 p-4">
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        ) : null}
+        {activities.length ? (
+          <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 sm:grid-cols-4">
+            {activityStats.map((stat) => (
+              <div
+                key={stat.label}
+                className="flex items-center justify-between gap-2"
+              >
+                <span className="text-xs font-medium text-muted-foreground">
+                  {stat.label}
+                </span>
+                <StatusBadge tone={stat.tone}>{stat.value}</StatusBadge>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {activities.map((activity) => (
           <div key={activity.key} className="grid gap-1 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
