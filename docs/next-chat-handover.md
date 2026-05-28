@@ -254,13 +254,20 @@ Last updated: 2026-05-28
   refetch status, invalidate queries, refresh Xero, preview/apply
   reconciliation, create Xero drafts, dispatch invoices, send email/SMS, refresh
   providers, or mutate provider history.
+- 2026-05-28 Settings Xero continuation 4: Connection diagnostics now has a
+  local `xero-connection-diagnostics.csv` export from the already-loaded
+  `xeroDiagnostics` block. It includes connection source, tenant/org context,
+  token expiry, readiness gates, provider/missing config, redirect URI, required
+  env vars/scopes, next steps, diagnostics guardrails, and an export guardrail.
+  It does not start OAuth, call or refresh Xero, preview/apply reconciliation,
+  create Xero drafts, dispatch invoices/providers, send email/SMS, refresh
+  providers, or mutate provider history.
 - Sidecar recommendation for the next slice: add a local Settings Xero
-  diagnostics review CSV from the already-loaded `xeroDiagnostics` connection
-  diagnostics block. Include connection source, tenant/org label, token expiry,
-  readiness gates, missing config, redirect URI, required scopes, next steps,
-  diagnostics guardrails, and an export guardrail. Do not start OAuth, call or
-  refresh Xero, preview/apply reconciliation, create Xero drafts, dispatch
-  invoices/providers, send email/SMS, refresh providers, or mutate history.
+  `Copy diagnostics packet` beside `Download diagnostics CSV`, reusing
+  `xeroDiagnostics` only. Do not add a backend route, refetch diagnostics,
+  start OAuth, call/refresh Xero, preview/apply reconciliation, create drafts,
+  dispatch invoices/providers, send email/SMS, refresh providers, or mutate
+  provider history.
 
 ## Takeover Priority
 

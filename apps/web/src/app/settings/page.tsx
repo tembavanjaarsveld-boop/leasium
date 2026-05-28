@@ -485,6 +485,8 @@ function xeroProviderSetupPacket(diagnostics: XeroConnectionDiagnosticsRecord) {
   ].join("\n");
 }
 
+const XERO_DIAGNOSTICS_EXPORT_GUARDRAIL =
+  "Review-only export: downloading this file does not start OAuth, call or refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices or providers, send email or SMS, refresh providers, or mutate provider history.";
 const XERO_EXCEPTION_EXPORT_GUARDRAIL =
   "No Xero API refresh, invoice posting, tenant email, provider dispatch, or payment reconciliation is run by this export.";
 const XERO_FRESHNESS_EXPORT_GUARDRAIL =
@@ -620,6 +622,128 @@ function xeroExceptionCsv(queue: XeroExceptionQueueRecord) {
       XERO_EXCEPTION_EXPORT_GUARDRAIL,
     ]);
   }
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
+function xeroConnectionDiagnosticsCsv(
+  diagnostics: XeroConnectionDiagnosticsRecord,
+) {
+  const preflight = diagnostics.provider_setup_preflight;
+  const rows: Array<Array<string | number | null | undefined>> = [
+    ["Section", "Item", "Status", "Metric", "Detail", "Guardrail"],
+    [
+      "Connection diagnostics",
+      "Local readiness check",
+      diagnostics.connected ? "Ready" : "Blocked",
+      diagnostics.connection_source,
+      diagnostics.entity_name,
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+    ],
+    [
+      "Connection diagnostics",
+      "Provider setup",
+      diagnostics.provider_configured ? "Ready" : "Blocked",
+      diagnostics.missing_config.length
+        ? diagnostics.missing_config.join("; ")
+        : "No missing config",
+      diagnostics.redirect_uri,
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+    ],
+    [
+      "Connection diagnostics",
+      "Tenant",
+      diagnostics.xero_tenant_id ? "Ready" : "Blocked",
+      diagnostics.xero_tenant_id,
+      diagnostics.tenant_name,
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+    ],
+    [
+      "Connection diagnostics",
+      "Token expiry",
+      diagnostics.token_expires_at ? "Ready" : "Blocked",
+      diagnostics.token_expires_at
+        ? formatDateTime(diagnostics.token_expires_at)
+        : "No provider token",
+      "",
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+    ],
+    ...diagnosticsReadinessRows(diagnostics).map(([label, ready]) => [
+      "Readiness gate",
+      label,
+      ready ? "Ready" : "Blocked",
+      ready ? "Available" : "Disabled",
+      "Local diagnostics only.",
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+    ]),
+    ...preflight.required_env_vars.map((envVar) => [
+      "Required env var",
+      envVar,
+      preflight.missing_env_vars.includes(envVar) ? "Blocked" : "Ready",
+      preflight.missing_env_vars.includes(envVar) ? "Missing" : "Present",
+      "",
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+    ]),
+    ...(preflight.missing_env_vars.length
+      ? preflight.missing_env_vars.map((envVar) => [
+          "Missing config",
+          envVar,
+          "Blocked",
+          "Missing",
+          "",
+          XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+        ])
+      : [
+          [
+            "Missing config",
+            "None",
+            "Ready",
+            "No missing config",
+            "",
+            XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+          ],
+        ]),
+    [
+      "Redirect URI",
+      "Expected redirect URI",
+      "Ready",
+      preflight.expected_redirect_uri,
+      diagnostics.redirect_uri,
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+    ],
+    ...preflight.required_scopes.map((scope) => [
+      "Required scope",
+      scope,
+      diagnostics.scopes.includes(scope) ? "Ready" : "Blocked",
+      diagnostics.scopes.includes(scope) ? "Authorised" : "Missing",
+      "",
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+    ]),
+    ...diagnostics.next_steps.map((step) => [
+      "Next step",
+      step,
+      "",
+      "",
+      "",
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+    ]),
+    ...diagnostics.guardrails.map((guardrail) => [
+      "Diagnostics guardrail",
+      guardrail,
+      "",
+      "",
+      "",
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Export guardrail",
+      "Review-only",
+      "",
+      "",
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+      XERO_DIAGNOSTICS_EXPORT_GUARDRAIL,
+    ],
+  ];
+
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
@@ -2187,6 +2311,17 @@ function SettingsWorkspace() {
       "xero-provider-setup-packet.txt",
     );
     setXeroSetupCopyReceipt("Provider setup packet downloaded.");
+  };
+  const downloadXeroDiagnosticsCsv = () => {
+    if (!xeroDiagnostics) {
+      return;
+    }
+    saveBlob(
+      new Blob([xeroConnectionDiagnosticsCsv(xeroDiagnostics)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      "xero-connection-diagnostics.csv",
+    );
   };
 
   const unlinkLoginMutation = useMutation({
@@ -4666,8 +4801,15 @@ function SettingsWorkspace() {
                               ? "OAuth ready"
                               : xeroDiagnostics.connection_source === "manual"
                                 ? "Manual tenant"
-                                : "Needs connection"}
+                              : "Needs connection"}
                           </StatusBadge>
+                          <SecondaryButton
+                            type="button"
+                            onClick={downloadXeroDiagnosticsCsv}
+                          >
+                            <Download size={14} />
+                            Download diagnostics CSV
+                          </SecondaryButton>
                         </div>
                         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                           {diagnosticsReadinessRows(xeroDiagnostics).map(
