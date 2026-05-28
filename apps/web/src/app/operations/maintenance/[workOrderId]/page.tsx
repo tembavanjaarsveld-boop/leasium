@@ -67,6 +67,7 @@ import {
   uploadDocument,
   type WorkAssignmentNoticeChannelReceiptRecord,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 
 type Tone = "neutral" | "success" | "warning" | "danger" | "primary";
 type ContractorEmailTemplateKey =
@@ -257,6 +258,11 @@ function friendlyError(error: unknown) {
     return error.message;
   }
   return "Something went wrong.";
+}
+
+function csvCell(value: string | number | null | undefined) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
 }
 
 async function copyTextToClipboard(text: string) {
@@ -2051,7 +2057,7 @@ function completionReviewPacketText({
   ].join("\n");
 }
 
-function CompletionReviewPacketPanel({
+function completionReviewPacketCsv({
   workOrder,
   rows,
   completionReadiness,
@@ -2059,6 +2065,7 @@ function CompletionReviewPacketPanel({
   closeoutHistoryCount,
   latestActivity,
   linkedInvoiceDraft,
+  forwardingDraftRows,
 }: {
   workOrder: MaintenanceWorkOrderRecord;
   rows: CompletionReviewRow[];
@@ -2067,6 +2074,109 @@ function CompletionReviewPacketPanel({
   closeoutHistoryCount: number;
   latestActivity: ActivityTimelineEntry | null;
   linkedInvoiceDraft: InvoiceDraftRecord | null;
+  forwardingDraftRows: ForwardingDraftRow[];
+}) {
+  const packet = completionReviewPacketSummary({
+    workOrder,
+    rows,
+    completionReadiness,
+  });
+  const guardrail =
+    "Review-only: no owner, tenant, contractor, email, SMS, provider dispatch, billing update, or portal message has been sent from this packet.";
+  const csvRows: Array<Array<string | number | null | undefined>> = [
+    ["Category", "Item", "Status", "Detail", "Notes", "Guardrail"],
+    [
+      "Work order",
+      workOrder.title,
+      label(workOrder.status),
+      `Completed ${formatDateTime(workOrder.completed_at)}`,
+      packet.statusLabel,
+      guardrail,
+    ],
+    [
+      "Closeout evidence",
+      "Evidence",
+      `${closeoutHistoryCount} closeout event${closeoutHistoryCount === 1 ? "" : "s"}`,
+      `${closeoutPhotoCount} photo${closeoutPhotoCount === 1 ? "" : "s"}`,
+      "Generated from the current work-order closeout record.",
+      guardrail,
+    ],
+    [
+      "Billing handoff",
+      linkedInvoiceDraft?.invoice_number ?? linkedInvoiceDraft?.title ?? "None",
+      linkedInvoiceDraft ? label(linkedInvoiceDraft.status) : "No linked invoice draft",
+      "Billing Readiness owns invoice delivery, Xero dispatch, and payment follow-up.",
+      linkedInvoiceDraft ? linkedInvoiceDraft.title : "",
+      guardrail,
+    ],
+    [
+      "Latest activity",
+      latestActivity?.label ?? "No activity recorded",
+      latestActivity?.audienceLabel ?? "",
+      latestActivity
+        ? `${formatDateTime(latestActivity.at)} - ${latestActivity.detail}`
+        : "",
+      "",
+      guardrail,
+    ],
+    ...(packet.blockers.length
+      ? packet.blockers.map((blocker) => [
+          "Open review item",
+          blocker,
+          "Open",
+          "Review before external communication.",
+          "",
+          guardrail,
+        ])
+      : [
+          [
+            "Open review item",
+            "None",
+            "Clear",
+            "Recipient copy and closeout evidence have been reviewed.",
+            "",
+            guardrail,
+          ],
+        ]),
+    ...rows.map((row) => [
+      "Recipient review",
+      row.title,
+      row.statusLabel,
+      row.reviewedAt ? `Reviewed ${formatDateTime(row.reviewedAt)}` : "",
+      row.note ?? row.body,
+      guardrail,
+    ]),
+    ...forwardingDraftRows.map((row) => [
+      "Forwarding draft",
+      row.title,
+      row.statusLabel,
+      row.detail,
+      row.sourceLabel,
+      guardrail,
+    ]),
+  ];
+
+  return csvRows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
+function CompletionReviewPacketPanel({
+  workOrder,
+  rows,
+  completionReadiness,
+  closeoutPhotoCount,
+  closeoutHistoryCount,
+  latestActivity,
+  linkedInvoiceDraft,
+  forwardingDraftRows,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  rows: CompletionReviewRow[];
+  completionReadiness: ReturnType<typeof maintenanceCompletionReadiness>;
+  closeoutPhotoCount: number;
+  closeoutHistoryCount: number;
+  latestActivity: ActivityTimelineEntry | null;
+  linkedInvoiceDraft: InvoiceDraftRecord | null;
+  forwardingDraftRows: ForwardingDraftRow[];
 }) {
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
   const packet = completionReviewPacketSummary({
@@ -2092,6 +2202,27 @@ function CompletionReviewPacketPanel({
     );
     setCopyReceipt("Completion review packet copied.");
   };
+  const downloadPacketCsv = () => {
+    saveBlob(
+      new Blob(
+        [
+          completionReviewPacketCsv({
+            workOrder,
+            rows,
+            completionReadiness,
+            closeoutPhotoCount,
+            closeoutHistoryCount,
+            latestActivity,
+            linkedInvoiceDraft,
+            forwardingDraftRows,
+          }),
+        ],
+        { type: "text/csv;charset=utf-8" },
+      ),
+      `maintenance-completion-review-${workOrder.id}.csv`,
+    );
+    setCopyReceipt("Completion review CSV downloaded.");
+  };
 
   return (
     <div className="grid gap-3 rounded-md border border-border bg-white px-3 py-3">
@@ -2113,6 +2244,14 @@ function CompletionReviewPacketPanel({
           >
             <ClipboardCheck size={14} />
             Copy packet
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            className="min-h-9 rounded-lg px-3 text-xs"
+            onClick={downloadPacketCsv}
+          >
+            <Download size={14} />
+            Download packet CSV
           </SecondaryButton>
         </div>
       </div>
@@ -4280,6 +4419,7 @@ function MaintenanceDetailRoute() {
                           closeoutHistoryCount={closeoutHistory.length}
                           latestActivity={timeline[0] ?? null}
                           linkedInvoiceDraft={linkedInvoiceDraft}
+                          forwardingDraftRows={forwardingDraftRows}
                         />
                         {completionReviewRows.map((row) => (
                           <div

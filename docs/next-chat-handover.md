@@ -143,12 +143,19 @@ Last updated: 2026-05-28
   reason, action, and review guardrail text. It does not run enrichment
   preview/apply, OpenAI, SerpAPI, Xero, SendGrid, Twilio, onboarding, or
   billing draft mutations.
-- Sidecar recommendation for the next slice: add a local Operations
-  maintenance completion review CSV packet beside the existing completion
-  `Copy packet` action, generated from already-rendered work-order review data.
-  Do not send contractor email/SMS, update work-order status, write closeout or
-  review metadata, touch Xero, tenant portal messaging, provider dispatch, or
-  provider history.
+- 2026-05-28 Operations maintenance continuation: the completion review packet
+  now has a local `maintenance-completion-review-{workOrderId}.csv` download
+  beside `Copy packet`, generated from already-rendered work-order review data.
+  It includes closeout evidence counts, recipient review statuses, billing
+  handoff, latest activity, open review items, forwarding draft readiness, and
+  review-only guardrail text. It does not send contractor email/SMS, update
+  work-order status, write closeout or review metadata, touch Xero, tenant
+  portal messaging, provider dispatch, billing, or provider history.
+- Sidecar recommendation for the next slice: add a Notifications
+  provider-readiness CSV packet from the already-loaded notification-center
+  response. Keep it local/export-only; do not exercise send, retry, SMS, digest
+  send, mark-read, provider dispatch, refresh-token, provider-history, or
+  read-state mutation paths.
 
 ## Takeover Priority
 

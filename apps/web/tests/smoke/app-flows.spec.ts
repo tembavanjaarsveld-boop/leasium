@@ -1437,6 +1437,29 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByText("Contractor follow-up copy reviewed before sending."),
   ).toBeVisible();
+  const completionPacketDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download packet CSV" }).click();
+  const completionPacketDownload = await completionPacketDownloadPromise;
+  expect(completionPacketDownload.suggestedFilename()).toBe(
+    "maintenance-completion-review-work-order-1.csv",
+  );
+  const completionPacketDownloadPath = await completionPacketDownload.path();
+  expect(completionPacketDownloadPath).not.toBeNull();
+  const completionPacketCsv = await readFile(
+    completionPacketDownloadPath!,
+    "utf8",
+  );
+  expect(completionPacketCsv).toContain("Air conditioning fault");
+  expect(completionPacketCsv).toContain("Closeout evidence");
+  expect(completionPacketCsv).toContain("1 closeout event");
+  expect(completionPacketCsv).toContain("Owner review recorded");
+  expect(completionPacketCsv).toContain("Tenant review recorded");
+  expect(completionPacketCsv).toContain("Contractor review recorded");
+  expect(completionPacketCsv).toContain("Forwarding draft");
+  expect(completionPacketCsv).toContain("Billing handoff");
+  expect(completionPacketCsv).toContain(
+    "Review-only: no owner, tenant, contractor, email, SMS, provider dispatch, billing update, or portal message has been sent from this packet.",
+  );
   await page.getByRole("button", { name: "Reopen job" }).click();
   await expect(page.getByText("Job reopened")).toBeVisible();
   await expect(page.getByText("Job completion not recorded")).toBeVisible();
