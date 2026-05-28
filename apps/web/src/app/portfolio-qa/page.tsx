@@ -136,6 +136,14 @@ type BulkReviewGroup = {
   actionLabel: string;
   examples: string[];
   blockers: Array<{ label: string; count: number }>;
+  rows: BulkReviewRow[];
+};
+
+type BulkReviewRow = {
+  id: string;
+  label: string;
+  detail: string;
+  blocker: string;
 };
 
 type CompletionReportStatus = "complete" | "review" | "blocked";
@@ -1529,6 +1537,12 @@ function buildBulkReviewGroups({
         .slice(0, 3)
         .map((row) => `${row.tenantName} / ${row.propertyName}`),
       blockers: blockerBreakdown(contactBlocked.flatMap((row) => row.blockers)),
+      rows: contactBlocked.map((row) => ({
+        id: row.id,
+        label: `${row.tenantName} / ${row.propertyName}`,
+        detail: row.unitLabel,
+        blocker: row.blockers.join(" / "),
+      })),
     },
     {
       id: "onboarding-setup",
@@ -1542,6 +1556,12 @@ function buildBulkReviewGroups({
         .slice(0, 3)
         .map((row) => `${row.tenantName} / ${row.propertyName}`),
       blockers: blockerBreakdown(setupBlocked.flatMap((row) => row.blockers)),
+      rows: setupBlocked.map((row) => ({
+        id: row.id,
+        label: `${row.tenantName} / ${row.propertyName}`,
+        detail: row.unitLabel,
+        blocker: row.blockers.join(" / "),
+      })),
     },
     {
       id: "onboarding-existing",
@@ -1557,6 +1577,14 @@ function buildBulkReviewGroups({
       blockers: blockerBreakdown(
         existingInviteBlocked.flatMap((row) => row.blockers),
       ),
+      rows: existingInviteBlocked.map((row) => ({
+        id: row.id,
+        label: `${row.tenantName} / ${row.propertyName}`,
+        detail: row.onboarding
+          ? `Onboarding ${label(row.onboarding.status)}`
+          : row.unitLabel,
+        blocker: row.blockers.join(" / "),
+      })),
     },
     {
       id: "billing-owner",
@@ -1570,6 +1598,12 @@ function buildBulkReviewGroups({
       blockers: blockerBreakdown(
         ownerBillingIssues.map((issue) => issue.detail),
       ),
+      rows: ownerBillingIssues.map((issue) => ({
+        id: issue.id,
+        label: issue.title,
+        detail: issue.action,
+        blocker: issue.detail,
+      })),
     },
     {
       id: "billing-readiness",
@@ -1583,6 +1617,12 @@ function buildBulkReviewGroups({
       blockers: blockerBreakdown(
         billingReadinessIssues.map((issue) => issue.detail),
       ),
+      rows: billingReadinessIssues.map((issue) => ({
+        id: issue.id,
+        label: issue.title,
+        detail: issue.action,
+        blocker: issue.detail,
+      })),
     },
     {
       id: "billing-review-drafts",
@@ -1596,6 +1636,12 @@ function buildBulkReviewGroups({
       blockers: blockerBreakdown(
         reviewDrafts.map((draft) => label(draft.status)),
       ),
+      rows: reviewDrafts.map((draft) => ({
+        id: draft.id,
+        label: draft.title,
+        detail: `${formatMoney(draft.total_cents)} / ${label(draft.status)}`,
+        blocker: label(draft.status),
+      })),
     },
   ];
 
@@ -1886,6 +1932,12 @@ function cleanupReportText({
             group.examples.length
               ? `Examples: ${group.examples.join(" / ")}`
               : null,
+            group.rows.length
+              ? `Rows: ${group.rows
+                  .slice(0, 5)
+                  .map((row) => `${row.label} - ${row.blocker}`)
+                  .join(" / ")}`
+              : null,
           ]
             .filter(Boolean)
             .join(" "),
@@ -1978,25 +2030,36 @@ function cleanupReportCsv({
       action.tab ?? action.href ?? "",
     ]),
     ...(activeBulkGroups.length
-      ? activeBulkGroups.map((group) => [
-          "Active bulk group",
-          group.title,
-          group.tone,
-          `${group.count} rows`,
-          group.detail,
-          group.actionLabel,
+      ? activeBulkGroups.flatMap((group) => [
           [
-            group.blockers.length
-              ? `Top blockers: ${group.blockers
-                  .map((blocker) => `${blocker.label} (${blocker.count})`)
-                  .join("; ")}`
-              : null,
-            group.examples.length
-              ? `Examples: ${group.examples.join(" / ")}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" | "),
+            "Active bulk group",
+            group.title,
+            group.tone,
+            `${group.count} rows`,
+            group.detail,
+            group.actionLabel,
+            [
+              group.blockers.length
+                ? `Top blockers: ${group.blockers
+                    .map((blocker) => `${blocker.label} (${blocker.count})`)
+                    .join("; ")}`
+                : null,
+              group.examples.length
+                ? `Examples: ${group.examples.join(" / ")}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" | "),
+          ],
+          ...group.rows.map((row) => [
+            "Blocker drilldown",
+            group.title,
+            group.tone,
+            row.label,
+            row.blocker,
+            group.actionLabel,
+            row.detail,
+          ]),
         ])
       : [
           [
@@ -2787,6 +2850,62 @@ function PortfolioCompletionPanel({
               ) : (
                 <div className="py-4 text-sm text-muted-foreground">
                   No onboarding or billing bulk-review groups need action.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  Blocker drilldown
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Row-level blockers from the active bulk groups, ready for the
+                  cleanup handoff.
+                </p>
+              </div>
+              <StatusBadge
+                tone={activeBulkGroups.some((group) => group.rows.length)
+                  ? "warning"
+                  : "success"}
+              >
+                {activeBulkGroups.reduce(
+                  (totalRows, group) => totalRows + group.rows.length,
+                  0,
+                )}{" "}
+                rows
+              </StatusBadge>
+            </div>
+            <div className="mt-3 divide-y divide-border rounded-lg border border-border bg-white">
+              {activeBulkGroups.some((group) => group.rows.length) ? (
+                activeBulkGroups.map((group) =>
+                  group.rows.map((row) => (
+                    <div
+                      key={`${group.id}-${row.id}`}
+                      className="grid gap-1 px-3 py-3 text-sm"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge tone={group.tone}>
+                          {group.title}
+                        </StatusBadge>
+                        <span className="font-semibold text-foreground">
+                          {row.label}
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground">{row.blocker}</p>
+                      {row.detail ? (
+                        <p className="text-xs font-medium text-muted-foreground">
+                          {row.detail}
+                        </p>
+                      ) : null}
+                    </div>
+                  )),
+                )
+              ) : (
+                <div className="px-3 py-4 text-sm text-muted-foreground">
+                  No row-level bulk blockers need review.
                 </div>
               )}
             </div>

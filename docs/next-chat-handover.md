@@ -127,10 +127,15 @@ Last updated: 2026-05-28
   `tests/integration/test_owners_api.py`. The endpoints remain review-only
   GETs with no Xero, SendGrid, dispatch, delivery history, or payment
   reconciliation mutation.
-- Sidecar recommendation for the next slice: add a read-only Portfolio QA
-  blocker drilldown in the existing cleanup readiness report, plus matching
-  CSV row detail, so blocked onboarding/contact/billing rows can be reviewed
-  without hopping tabs. Keep it frontend/local-data only.
+- 2026-05-28 Portfolio QA continuation: the cleanup readiness report now has a
+  row-level Blocker drilldown for active bulk groups, and
+  `portfolio-qa-cleanup-report.csv` includes matching `Blocker drilldown` rows.
+  This stays frontend/local-data only and does not run enrichment, onboarding,
+  billing draft generation, Xero, email/SMS, or provider-history mutations.
+- Sidecar recommendation for the next slice: add a passive Settings -> Xero
+  exception queue export/copy packet from already-loaded exception rows. Keep
+  it frontend-only; do not start OAuth, preview/apply mappings, post invoices,
+  dispatch providers, refresh Xero, or reconcile payments.
 
 ## Takeover Priority
 

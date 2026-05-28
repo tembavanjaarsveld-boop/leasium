@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
 
@@ -699,6 +700,25 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   await expect(
     readinessPanel.getByText("Eagle Street Office is missing owner ABN").first(),
   ).toBeVisible();
+  await expect(readinessPanel.getByText("Blocker drilldown")).toBeVisible();
+  await expect(
+    readinessPanel
+      .locator("span")
+      .filter({
+        hasText:
+          /^Bright Cafe \(Bright Cafe Pty Ltd\) \/ Queen Street Retail Centre$/,
+      })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    readinessPanel.getByText("Existing onboarding Sent").first(),
+  ).toBeVisible();
+  await expect(
+    readinessPanel.getByText("Eagle Street Office is missing owner ABN").first(),
+  ).toBeVisible();
+  await expect(
+    readinessPanel.getByText("Missing Xero tax type").first(),
+  ).toBeVisible();
   const cleanupReportDownloadPromise = page.waitForEvent("download");
   await readinessPanel
     .getByRole("button", { name: "Download report CSV" })
@@ -707,6 +727,15 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   expect(cleanupReportDownload.suggestedFilename()).toBe(
     "portfolio-qa-cleanup-report.csv",
   );
+  const cleanupReportPath = await cleanupReportDownload.path();
+  expect(cleanupReportPath).not.toBeNull();
+  const cleanupReportCsv = await readFile(cleanupReportPath!, "utf8");
+  expect(cleanupReportCsv).toContain("Blocker drilldown");
+  expect(cleanupReportCsv).toContain(
+    "Bright Cafe (Bright Cafe Pty Ltd) / Queen Street Retail Centre",
+  );
+  expect(cleanupReportCsv).toContain("Existing onboarding sent");
+  expect(cleanupReportCsv).toContain("Missing Xero tax type");
 
   const ownerPanel = page.locator("section").filter({
     has: page.getByRole("heading", {

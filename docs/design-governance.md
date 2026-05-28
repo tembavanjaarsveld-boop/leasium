@@ -288,6 +288,8 @@ Status: pending Remba review. Settings now has a local Xero exception queue near
 
 2026-05-28 follow-up: Portfolio QA cleanup readiness now has a local `Download report CSV` action beside `Copy report`, covering completion states, reporting gates, active bulk groups, next actions, enrichment candidates, and blocked follow-ups. Remba/SKJ review should check whether the CSV language is plain enough for a non-technical cleanup handoff.
 
+2026-05-28 follow-up 2: Portfolio QA cleanup readiness now adds a row-level Blocker drilldown under the active bulk groups and writes the same row detail into `portfolio-qa-cleanup-report.csv`. This is presentation/export only over already-loaded Portfolio QA data; it does not run enrichment, create onboarding links, generate billing drafts, call Xero, send email/SMS, or mutate provider history. Remba/SKJ review should check whether the drilldown is dense enough for cleanup handoff without making the first report panel too heavy.
+
 ## Xero Chart/Tax Validation Preview
 
 Status: pending Remba review. Provider-backed chart/tax validation preview is built behind `/api/v1/xero/chart-tax/validate-preview/{entity_id}` and returns checked-rule totals, per-charge-rule validation results, blockers, provider chart/tax context, and guardrails. Keep the surface preview-only and review-first: operators should see whether local account codes and tax types match provider settings before future invoice posting approvals exist, with explicit copy that no invoice posting, tenant email, or payment reconciliation is run.
