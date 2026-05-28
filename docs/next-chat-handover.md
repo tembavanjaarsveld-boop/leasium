@@ -158,11 +158,19 @@ Last updated: 2026-05-28
   guardrails, and no-send/no-mutation guardrail text. It does not exercise
   send, retry, SMS, digest send, mark-read, provider dispatch, refresh-token,
   provider-history, or read-state mutation paths.
-- Sidecar recommendation for the next slice: add a Comms queue review CSV
-  packet from `queueQuery.data?.candidates` before any approve/dismiss/send
-  interaction. Keep it local/export-only; do not call comms dispatch, dismiss,
-  evidence upload, SendGrid/Twilio sends, provider-history writes, candidate
-  settlement, or provider refresh paths.
+- 2026-05-28 Comms continuation: `/comms` now has a local
+  `comms-queue-review-{date}.csv` download from already-loaded
+  `queueQuery.data?.candidates`, before any approve/dismiss/send interaction.
+  It exports candidate kind, tenant/property/unit, channel, recipient readiness,
+  severity, due/generated timestamps, subject/body preview, detail, session
+  counts, and no-send/no-mutation guardrail text. It does not call comms
+  dispatch, dismiss, evidence upload, SendGrid/Twilio sends, provider-history
+  writes, candidate settlement, queue mutation, or provider refresh paths.
+- Sidecar recommendation for the next slice: add a Contractor Directory
+  readiness CSV from already-loaded contractor rows. Keep it local/export-only;
+  do not send contractor email/SMS, run maintenance AI classification,
+  assign/update work-order contractors, create/update/delete contractors, write
+  provider history, or dispatch receipts.
 
 ## Takeover Priority
 

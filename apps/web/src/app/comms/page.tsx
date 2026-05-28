@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
+  Download,
   ExternalLink,
   Inbox,
   Loader2,
@@ -55,6 +56,7 @@ import {
   listEntities,
   uploadDocument,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
@@ -105,6 +107,116 @@ function formatDateTime(value: string | null | undefined) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function csvCell(value: string | number | null | undefined) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function commsQueueReviewDate(value: string | null | undefined) {
+  return value?.slice(0, 10) || "undated";
+}
+
+function commsQueueReviewCsv({
+  candidates,
+  generatedAt,
+  filterSummaryLabel,
+  progressSummaryLabel,
+  settledCount,
+  remainingCount,
+}: {
+  candidates: CommsCandidateRecord[];
+  generatedAt: string | null | undefined;
+  filterSummaryLabel: string;
+  progressSummaryLabel: string;
+  settledCount: number;
+  remainingCount: number;
+}) {
+  const guardrail =
+    "Review-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, or refresh provider state.";
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Category",
+      "Kind",
+      "Tenant",
+      "Property",
+      "Unit",
+      "Channel",
+      "Recipient",
+      "Recipient readiness",
+      "Severity",
+      "Due",
+      "Generated",
+      "Subject",
+      "Body preview",
+      "Detail",
+      "Session",
+      "Guardrail",
+    ],
+    [
+      "Queue summary",
+      "All drafts",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      formatDateTime(generatedAt),
+      "",
+      "",
+      filterSummaryLabel,
+      `${progressSummaryLabel} Remaining ${remainingCount}; settled ${settledCount}.`,
+      guardrail,
+    ],
+    ...candidates.map((candidate) => {
+      const isSms = candidate.kind === "inbound_sms";
+      const recipient = isSms
+        ? candidate.recipient_phone
+        : candidate.recipient_email;
+      return [
+        "Candidate",
+        KIND_LABEL[candidate.kind],
+        candidate.tenant_name,
+        candidate.property_name,
+        candidate.unit_label,
+        isSms ? "Twilio SMS" : "SendGrid email",
+        recipient,
+        recipient ? "Ready" : "Missing recipient",
+        SEVERITY_LABEL[candidate.severity],
+        formatDateTime(candidate.due_at),
+        formatDateTime(candidate.generated_at),
+        candidate.subject,
+        candidate.body,
+        candidate.detail,
+        "",
+        guardrail,
+      ];
+    }),
+    [
+      "Export guardrail",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      guardrail,
+      "",
+      guardrail,
+    ],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
 export default function CommsPage() {
@@ -212,6 +324,27 @@ function CommsContent() {
       : `${remainingCount} ${remainingCount === 1 ? "draft" : "drafts"} remaining, ${settledCount} settled this session.`;
   const queueGeneratedLabel = formatDateTime(queueQuery.data?.generated_at);
   const queueRefreshDisabled = !selectedEntityId || queueQuery.isFetching;
+  const downloadReviewCsv = () => {
+    if (!queueQuery.data) {
+      return;
+    }
+    saveBlob(
+      new Blob(
+        [
+          commsQueueReviewCsv({
+            candidates,
+            generatedAt: queueQuery.data.generated_at,
+            filterSummaryLabel,
+            progressSummaryLabel,
+            settledCount,
+            remainingCount,
+          }),
+        ],
+        { type: "text/csv;charset=utf-8" },
+      ),
+      `comms-queue-review-${commsQueueReviewDate(queueQuery.data.generated_at)}.csv`,
+    );
+  };
 
   return (
     <main className="min-h-screen">
@@ -242,6 +375,14 @@ function CommsContent() {
                   Queue generated {queueGeneratedLabel}
                 </StatusBadge>
               ) : null}
+              <SecondaryButton
+                type="button"
+                onClick={downloadReviewCsv}
+                disabled={!queueQuery.data || candidates.length === 0}
+              >
+                <Download size={15} />
+                Download review CSV
+              </SecondaryButton>
               <SecondaryButton
                 type="button"
                 onClick={() => {

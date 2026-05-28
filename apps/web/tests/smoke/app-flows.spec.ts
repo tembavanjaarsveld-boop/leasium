@@ -316,6 +316,24 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     page.getByText("2 drafts remaining this session."),
   ).toBeVisible();
+  const commsReviewDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download review CSV" }).click();
+  const commsReviewDownload = await commsReviewDownloadPromise;
+  expect(commsReviewDownload.suggestedFilename()).toBe(
+    "comms-queue-review-2026-05-27.csv",
+  );
+  const commsReviewDownloadPath = await commsReviewDownload.path();
+  expect(commsReviewDownloadPath).not.toBeNull();
+  const commsReviewCsv = await readFile(commsReviewDownloadPath!, "utf8");
+  expect(commsReviewCsv).toContain("Inbound SMS");
+  expect(commsReviewCsv).toContain("Rent review");
+  expect(commsReviewCsv).toContain("Twilio SMS");
+  expect(commsReviewCsv).toContain("SendGrid email");
+  expect(commsReviewCsv).toContain("+61400111222");
+  expect(commsReviewCsv).toContain("tenant@example.com");
+  expect(commsReviewCsv).toContain(
+    "Review-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, or refresh provider state.",
+  );
 
   const smsCard = page.locator("section").filter({ hasText: "Inbound SMS" });
   await expect(smsCard).toBeVisible();
