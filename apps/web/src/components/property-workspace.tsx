@@ -1292,6 +1292,14 @@ const propertyMapFocusOptions: Array<{
   { key: "vacancy", label: "Vacancy" },
 ];
 
+type PropertyMapPlanningLane = {
+  id: PropertyMapFocus | "stable";
+  label: string;
+  count: number;
+  detail: string;
+  tone: "neutral" | "success" | "warning" | "danger" | "primary";
+};
+
 function propertyMapFocusMatches({
   focus,
   occupancy,
@@ -1310,6 +1318,66 @@ function propertyMapFocusMatches({
     );
   }
   return true;
+}
+
+function propertyMapPlanningLanes({
+  properties,
+  occupancyByPropertyId,
+  nextExpiryByPropertyId,
+}: {
+  properties: PropertyRecord[];
+  occupancyByPropertyId: Map<string, PropertyOccupancy>;
+  nextExpiryByPropertyId: Map<string, NextLeaseExpiry>;
+}): PropertyMapPlanningLane[] {
+  const leaseRisk = properties.filter((property) =>
+    propertyMapFocusMatches({
+      focus: "lease_risk",
+      occupancy: occupancyByPropertyId.get(property.id),
+      expiry: nextExpiryByPropertyId.get(property.id),
+    }),
+  );
+  const vacancy = properties.filter((property) =>
+    propertyMapFocusMatches({
+      focus: "vacancy",
+      occupancy: occupancyByPropertyId.get(property.id),
+      expiry: nextExpiryByPropertyId.get(property.id),
+    }),
+  );
+  const stable = properties.filter((property) => {
+    const occupancy = occupancyByPropertyId.get(property.id);
+    const expiry = nextExpiryByPropertyId.get(property.id);
+    return occupancy?.status === "leased" && (!expiry || expiry.daysUntil > 90);
+  });
+
+  return [
+    {
+      id: "lease_risk",
+      label: "Lease risk",
+      count: leaseRisk.length,
+      detail:
+        leaseRisk[0]?.name ??
+        "No active lease expiries are inside the 90 day window.",
+      tone: leaseRisk.length ? "warning" : "success",
+    },
+    {
+      id: "vacancy",
+      label: "Vacancy focus",
+      count: vacancy.length,
+      detail:
+        vacancy[0]?.name ??
+        "No vacant, partial, or unknown occupancy records are in this view.",
+      tone: vacancy.length ? "danger" : "success",
+    },
+    {
+      id: "stable",
+      label: "Stable holdings",
+      count: stable.length,
+      detail:
+        stable[0]?.name ??
+        "No fully leased properties outside the 90 day expiry window.",
+      tone: stable.length ? "primary" : "neutral",
+    },
+  ];
 }
 
 function propertyMapRegionRows({
@@ -6747,6 +6815,11 @@ function PropertyMapView({
     occupancyByPropertyId,
     nextExpiryByPropertyId,
   });
+  const planningLanes = propertyMapPlanningLanes({
+    properties,
+    occupancyByPropertyId,
+    nextExpiryByPropertyId,
+  });
   const copyMapBrief = async () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) {
       setCopyReceipt("Clipboard is not available in this browser.");
@@ -6871,6 +6944,41 @@ function PropertyMapView({
           })}
         </div>
         <div className="grid content-start gap-2">
+          <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm">
+            <div className="font-semibold">Map planning</div>
+            {planningLanes.map((lane) => {
+              const content = (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{lane.label}</span>
+                    <StatusBadge tone={lane.tone}>{lane.count}</StatusBadge>
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {lane.detail}
+                  </div>
+                </>
+              );
+              const className =
+                "grid gap-1 rounded-md border border-border bg-muted/25 px-2 py-2 text-left transition hover:bg-muted/60";
+              if (lane.id === "stable") {
+                return (
+                  <div key={lane.id} className={className}>
+                    {content}
+                  </div>
+                );
+              }
+              return (
+                <button
+                  key={lane.id}
+                  type="button"
+                  onClick={() => setMapFocus(lane.id as PropertyMapFocus)}
+                  className={className}
+                >
+                  {content}
+                </button>
+              );
+            })}
+          </div>
           {regionRows.length ? (
             <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm">
               <div className="font-semibold">Regional focus</div>
