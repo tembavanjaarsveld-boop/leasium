@@ -313,6 +313,8 @@ def _xero_provider_setup_preflight(
                 "Set XERO_CLIENT_ID, XERO_CLIENT_SECRET, and XERO_TOKEN_ENCRYPTION_KEY "
                 "on the API service."
             ),
+            f"Set XERO_REDIRECT_URI={provider.redirect_uri} on the API service.",
+            "Set XERO_STATE_SECRET on the API service before production OAuth.",
             f"Register expected_redirect_uri in the Xero app: {provider.redirect_uri}",
             f"Confirm required_scopes in the Xero app consent screen: {required_scopes}",
             "Start OAuth only after these local diagnostics show provider_configured=true.",

@@ -653,6 +653,11 @@ def test_xero_connection_diagnostics_returns_operator_setup_preflight(
     assert "accounting.settings.read" in preflight["required_scopes"]
     assert "accounting.invoices" in preflight["required_scopes"]
     assert any("XERO_CLIENT_ID" in item for item in preflight["setup_checklist"])
+    assert any(
+        "XERO_REDIRECT_URI=https://api.leasium.test/api/v1/xero/oauth/callback" in item
+        for item in preflight["setup_checklist"]
+    )
+    assert any("XERO_STATE_SECRET" in item for item in preflight["setup_checklist"])
     assert any("expected_redirect_uri" in item for item in preflight["setup_checklist"])
     assert any("required_scopes" in item for item in preflight["setup_checklist"])
     assert body["can_start_oauth"] is False

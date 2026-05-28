@@ -332,15 +332,23 @@ Last updated: 2026-05-28
   forbidden-provider-request watcher proves setup packet copy/download does not
   start OAuth, call Xero previews, create drafts, dispatch providers, or run
   payment reconciliation.
-- Sidecar recommendation for the next slice: backend contract coverage for Xero
-  provider setup preflight diagnostics in `tests/integration/test_xero_api.py`.
-  Assert `GET /api/v1/xero/connection-diagnostics` returns stable
-  `provider_setup_preflight` fields for configured and missing-provider-config
-  settings, including required/missing env vars, expected redirect URI, required
-  scopes, setup checklist, and diagnostics guardrails. Monkeypatch provider
-  actions to raise if touched and assert diagnostics performs no OAuth start,
+- 2026-05-28 Settings Xero continuation 14: backend diagnostics contract
+  coverage now asserts `GET /api/v1/xero/connection-diagnostics` returns stable
+  provider setup preflight fields, including required/missing env vars, expected
+  redirect URI, required scopes, setup checklist, and diagnostics guardrails.
+  The checklist now explicitly tells operators to set
+  `XERO_REDIRECT_URI=<expected callback>` and `XERO_STATE_SECRET` before
+  production OAuth. The focused backend coverage monkeypatches provider actions
+  to fail if touched and confirms diagnostics remains local/read-only with no
   token refresh, Xero API call, draft creation, provider dispatch, email/SMS,
-  payment reconciliation, provider-history write, or DB mutation.
+  payment reconciliation, provider-history write, or audit mutation.
+- Sidecar recommendation for the next slice: frontend smoke guard for Settings
+  Xero when `/api/v1/xero/connection-diagnostics` is unavailable. Mock a 401,
+  403, or 500 response and assert the UI shows the diagnostics error while
+  keeping Connect with Xero, contact preview, chart/tax preview, invoice posting
+  preview, draft creation, provider dispatch, and payment reconciliation actions
+  disabled. Use the existing forbidden-provider-request watcher; keep this
+  mocked browser coverage only with no live provider calls.
 
 ## Takeover Priority
 
