@@ -1,7 +1,27 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
+
+function watchForbiddenXeroProviderRequests(page: Page) {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (
+      url.includes("/api/v1/xero/oauth/start") ||
+      url.includes("/api/v1/xero/contacts/sync-preview") ||
+      url.includes("/api/v1/xero/chart-tax/validate-preview") ||
+      url.includes("/api/v1/xero/invoices/posting-preview") ||
+      url.includes("/api/v1/xero/invoices/draft-create") ||
+      url.includes("/api/v1/xero/invoices/provider-dispatch") ||
+      url.includes("/api/v1/xero/payments/reconciliation-preview") ||
+      url.includes("/api/v1/xero/payments/reconciliation-apply")
+    ) {
+      requests.push(`${request.method()} ${url}`);
+    }
+  });
+  return requests;
+}
 
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
@@ -2369,6 +2389,8 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     exceptionQueuePanel.getByText("Base Rent tax type missing"),
   ).toBeVisible();
+  const forbiddenExceptionExportRequests =
+    watchForbiddenXeroProviderRequests(page);
   await exceptionQueuePanel
     .getByRole("button", { name: "Copy exception packet" })
     .click();
@@ -2393,6 +2415,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   expect(exceptionCsv).toContain(
     "No Xero API refresh, invoice posting, tenant email, provider dispatch, or payment reconciliation is run by this export.",
   );
+  expect(forbiddenExceptionExportRequests).toEqual([]);
   const providerSetupPreflightPanel = page.getByRole("region", {
     name: "Provider setup preflight",
   });
@@ -2450,24 +2473,8 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     "No Xero write occurs until an explicit reviewed action is run.",
   );
   await expect(page.getByText("Connection diagnostics")).toBeVisible();
-  const forbiddenUnconnectedDiagnosticsRequests: string[] = [];
-  page.on("request", (request) => {
-    const url = request.url();
-    if (
-      url.includes("/api/v1/xero/oauth/start") ||
-      url.includes("/api/v1/xero/contacts/sync-preview") ||
-      url.includes("/api/v1/xero/chart-tax/validate-preview") ||
-      url.includes("/api/v1/xero/invoices/posting-preview") ||
-      url.includes("/api/v1/xero/invoices/draft-create") ||
-      url.includes("/api/v1/xero/invoices/provider-dispatch") ||
-      url.includes("/api/v1/xero/payments/reconciliation-preview") ||
-      url.includes("/api/v1/xero/payments/reconciliation-apply")
-    ) {
-      forbiddenUnconnectedDiagnosticsRequests.push(
-        `${request.method()} ${url}`,
-      );
-    }
-  });
+  const forbiddenUnconnectedDiagnosticsRequests =
+    watchForbiddenXeroProviderRequests(page);
   const diagnosticsDownloadPromise = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "Download diagnostics CSV" })
@@ -2679,6 +2686,8 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     freshnessPanel.getByText("Review Xero-linked payments"),
   ).toBeVisible();
   await expect(freshnessPanel.getByText("Open payment review")).toBeVisible();
+  const forbiddenFreshnessExportRequests =
+    watchForbiddenXeroProviderRequests(page);
   const freshnessDownloadPromise = page.waitForEvent("download");
   await freshnessPanel
     .getByRole("button", { name: "Download freshness CSV" })
@@ -2723,6 +2732,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   expect(freshnessPacket).toContain(
     "Loading Xero status does not refresh tokens, call Xero, post invoices, or reconcile payments.",
   );
+  expect(forbiddenFreshnessExportRequests).toEqual([]);
 
   await expect(
     page.getByRole("button", { exact: true, name: "Review payments" }),
@@ -2854,22 +2864,7 @@ test("settings shows Xero draft creation ready only from diagnostics", async ({
   await expect(draftCreationCard).toContainText(
     "Provider connection and authorised scopes allow this reviewed action.",
   );
-  const forbiddenDiagnosticsRequests: string[] = [];
-  page.on("request", (request) => {
-    const url = request.url();
-    if (
-      url.includes("/api/v1/xero/oauth/start") ||
-      url.includes("/api/v1/xero/contacts/sync-preview") ||
-      url.includes("/api/v1/xero/chart-tax/validate-preview") ||
-      url.includes("/api/v1/xero/invoices/posting-preview") ||
-      url.includes("/api/v1/xero/invoices/draft-create") ||
-      url.includes("/api/v1/xero/invoices/provider-dispatch") ||
-      url.includes("/api/v1/xero/payments/reconciliation-preview") ||
-      url.includes("/api/v1/xero/payments/reconciliation-apply")
-    ) {
-      forbiddenDiagnosticsRequests.push(`${request.method()} ${url}`);
-    }
-  });
+  const forbiddenDiagnosticsRequests = watchForbiddenXeroProviderRequests(page);
   const diagnosticsCsvDownloadPromise = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "Download diagnostics CSV" })

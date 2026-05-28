@@ -319,12 +319,20 @@ Last updated: 2026-05-28
   exports do not start OAuth, preview contacts/chart/tax, preview posting, create
   Xero drafts, dispatch providers, or run payment reconciliation before the test
   intentionally exercises reviewed provider flows.
-- Sidecar recommendation for the next slice: Settings Xero export-action guard
-  parity. Apply the same no-extra-request/safe-unavailable treatment to other
-  review-only Settings Xero exports, especially exception queue copy/download and
-  accounting freshness CSV/copy. Keep it frontend/mock-only and do not start
-  OAuth, refresh tokens, call Xero, create drafts, dispatch providers, send
-  email/SMS, reconcile payments, or write provider history.
+- 2026-05-28 Settings Xero continuation 12: the Settings smoke now uses a shared
+  forbidden-provider-request watcher for review-only Xero exports. Exception
+  queue copy/download, accounting freshness CSV/copy, unconnected diagnostics
+  CSV/TXT/copy, and draft-ready diagnostics CSV/TXT/copy all assert no OAuth
+  start, contact/chart/tax/posting preview, draft creation, provider dispatch, or
+  payment reconciliation request occurs during local export actions.
+- Sidecar recommendation for the next slice: Settings Xero provider setup
+  preflight export smoke coverage. Cover `Copy setup packet` and
+  `Download setup packet` under Connection diagnostics > Provider setup
+  preflight, assert env vars, redirect URI, required scopes, setup checklist, and
+  guardrails are present, and add the same forbidden-provider-request watcher
+  around those export actions. Keep it local/mock-only: no OAuth start, token
+  refresh, Xero API call, Xero draft creation, provider dispatch, email/SMS,
+  payment reconciliation, or provider-history write.
 
 ## Takeover Priority
 
