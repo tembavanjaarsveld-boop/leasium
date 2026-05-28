@@ -15,12 +15,15 @@ import {
   KeyRound,
   Loader2,
   MailCheck,
+  Monitor,
+  Moon,
   PlugZap,
   RefreshCw,
   SearchCheck,
   Send,
   ShieldCheck,
   Smartphone,
+  Sun,
   Tags,
   UserPlus,
   UsersRound,
@@ -100,10 +103,12 @@ import {
 } from "@/lib/property-ownership";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
+const APPEARANCE_STORAGE_KEY = "leasium.appearance";
 const EMPTY_XERO_ISSUES: XeroMappingIssueRecord[] = [];
 const EMPTY_BRANDED_TEMPLATES: BrandedCommunicationTemplateRecord[] = [];
 
 type SettingsTab = "security" | "organisation" | "xero";
+type AppearanceMode = "system" | "light" | "dark";
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type PanelRef = { current: HTMLDivElement | null };
 type NotificationTemplateDraft = {
@@ -186,6 +191,143 @@ function formatDateTime(value: string | null | undefined) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function applyAppearancePreference(mode: AppearanceMode) {
+  if (typeof window === "undefined") return;
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const theme =
+    mode === "dark" || (mode === "system" && prefersDark) ? "dark" : "light";
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.appearance = mode;
+  document.documentElement.style.colorScheme = theme;
+}
+
+function SettingsAppearancePanel() {
+  const [mode, setMode] = useState<AppearanceMode>("system");
+  const [effectiveTheme, setEffectiveTheme] = useState<"light" | "dark">(
+    "light",
+  );
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
+    const initial: AppearanceMode =
+      stored === "light" || stored === "dark" || stored === "system"
+        ? stored
+        : "system";
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+
+    function sync(nextMode: AppearanceMode) {
+      setMode(nextMode);
+      setEffectiveTheme(
+        nextMode === "dark" || (nextMode === "system" && media.matches)
+          ? "dark"
+          : "light",
+      );
+      applyAppearancePreference(nextMode);
+    }
+
+    function syncSystemPreference() {
+      const current = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
+      sync(
+        current === "light" || current === "dark" || current === "system"
+          ? current
+          : "system",
+      );
+    }
+
+    sync(initial);
+    media.addEventListener("change", syncSystemPreference);
+    window.addEventListener("storage", syncSystemPreference);
+    window.addEventListener("leasium:appearance-change", syncSystemPreference);
+    return () => {
+      media.removeEventListener("change", syncSystemPreference);
+      window.removeEventListener("storage", syncSystemPreference);
+      window.removeEventListener(
+        "leasium:appearance-change",
+        syncSystemPreference,
+      );
+    };
+  }, []);
+
+  const options: Array<{
+    mode: AppearanceMode;
+    label: string;
+    detail: string;
+    icon: ReactNode;
+  }> = [
+    {
+      mode: "system",
+      label: "System",
+      detail: "Follow this device.",
+      icon: <Monitor size={16} />,
+    },
+    {
+      mode: "light",
+      label: "Light",
+      detail: "Use the light workspace.",
+      icon: <Sun size={16} />,
+    },
+    {
+      mode: "dark",
+      label: "Dark",
+      detail: "Use the dark workspace.",
+      icon: <Moon size={16} />,
+    },
+  ];
+
+  function chooseAppearance(nextMode: AppearanceMode) {
+    window.localStorage.setItem(APPEARANCE_STORAGE_KEY, nextMode);
+    applyAppearancePreference(nextMode);
+    window.dispatchEvent(new Event("leasium:appearance-change"));
+  }
+
+  return (
+    <SectionPanel
+      title="Appearance"
+      description="Choose how Leasium looks on this browser."
+      icon={<Monitor size={17} className="text-primary" />}
+      actions={
+        <StatusBadge tone={effectiveTheme === "dark" ? "primary" : "neutral"}>
+          {effectiveTheme === "dark" ? "Dark active" : "Light active"}
+        </StatusBadge>
+      }
+    >
+      <div className="grid gap-3 p-4 md:grid-cols-3">
+        {options.map((option) => {
+          const isActive = mode === option.mode;
+          return (
+            <button
+              key={option.mode}
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => chooseAppearance(option.mode)}
+              className={`grid gap-2 rounded-md border p-3 text-left transition hover:bg-muted/60 ${
+                isActive
+                  ? "border-primary bg-primary/5"
+                  : "border-border bg-white"
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary-soft text-primary">
+                  {option.icon}
+                </span>
+                <StatusBadge tone={isActive ? "primary" : "neutral"}>
+                  {isActive ? "Selected" : option.label}
+                </StatusBadge>
+              </span>
+              <span className="font-semibold text-foreground">
+                {option.label}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {option.detail}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </SectionPanel>
+  );
 }
 
 function formatDate(value: string | null | undefined) {
@@ -1775,6 +1917,8 @@ function SettingsWorkspace() {
           }
         />
 
+        <SettingsAppearancePanel />
+
         <div
           aria-label="Settings sections"
           className="flex w-full flex-wrap gap-2 rounded-2xl border border-border bg-white p-1 shadow-leasiumXs md:w-fit"
@@ -3074,7 +3218,9 @@ function SettingsWorkspace() {
                                 {brandedTemplateChannelLabel(template.channel)}
                               </StatusBadge>
                               <StatusBadge
-                                tone={template.is_active ? "success" : "neutral"}
+                                tone={
+                                  template.is_active ? "success" : "neutral"
+                                }
                               >
                                 {template.is_active ? "Active" : "Inactive"}
                               </StatusBadge>
@@ -3104,7 +3250,9 @@ function SettingsWorkspace() {
                           {template.action_label ? (
                             <span>Action: {template.action_label}</span>
                           ) : null}
-                          {template.notes ? <span>{template.notes}</span> : null}
+                          {template.notes ? (
+                            <span>{template.notes}</span>
+                          ) : null}
                         </div>
                       </div>
                     ))}
@@ -3526,181 +3674,184 @@ function SettingsWorkspace() {
                   </div>
                 }
               >
-              {xeroExceptionQueueQuery.isLoading && !exceptionQueue ? (
-                <div className="p-4 text-sm text-muted-foreground">
-                  Loading Xero sync exceptions.
-                </div>
-              ) : (
-                <>
-                  <div className="grid gap-3 p-4 md:grid-cols-4">
-                    <div className="rounded-md border border-border bg-muted/25 p-3">
-                      <div className="text-xs uppercase text-muted-foreground">
-                        Blockers
-                      </div>
-                      <div className="mt-1 text-lg font-semibold">
-                        {exceptionQueue?.summary.blockers ?? 0}
-                      </div>
-                    </div>
-                    <div className="rounded-md border border-border bg-muted/25 p-3">
-                      <div className="text-xs uppercase text-muted-foreground">
-                        Warnings
-                      </div>
-                      <div className="mt-1 text-lg font-semibold">
-                        {exceptionQueue?.summary.warnings ?? 0}
-                      </div>
-                    </div>
-                    <div className="rounded-md border border-border bg-muted/25 p-3">
-                      <div className="text-xs uppercase text-muted-foreground">
-                        Provider
-                      </div>
-                      <div className="mt-1 text-lg font-semibold">
-                        {exceptionQueue?.summary.provider ?? 0}
-                      </div>
-                    </div>
-                    <div className="rounded-md border border-border bg-muted/25 p-3">
-                      <div className="text-xs uppercase text-muted-foreground">
-                        Payments
-                      </div>
-                      <div className="mt-1 text-lg font-semibold">
-                        {exceptionQueue?.summary.payment ?? 0}
-                      </div>
-                    </div>
+                {xeroExceptionQueueQuery.isLoading && !exceptionQueue ? (
+                  <div className="p-4 text-sm text-muted-foreground">
+                    Loading Xero sync exceptions.
                   </div>
-                  {exceptionQueue?.guardrails.length ? (
-                    <ul className="grid gap-1 border-t border-border px-4 py-3 text-xs text-muted-foreground">
-                      {exceptionQueue.guardrails.map((guardrail) => (
-                        <li key={guardrail} className="flex gap-2">
-                          <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
-                          <span>{guardrail}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  <div className="divide-y divide-border border-t border-border">
-                    {exceptionItems.map((issue) => {
-                      const actionLabel = exceptionActionLabel(issue);
-                      const actionPending = exceptionActionPending(issue);
-                      return (
-                        <div
-                          key={issue.id}
-                          className="grid gap-3 px-4 py-3 text-sm lg:grid-cols-[170px_1fr_300px]"
-                        >
-                          <div className="flex flex-wrap items-start gap-2">
-                            <StatusBadge tone={exceptionTone(issue)}>
-                              {exceptionKindLabel(issue.kind)}
-                            </StatusBadge>
-                            {issue.next_action ? (
-                              <StatusBadge tone="neutral">
-                                {issue.next_action.replaceAll("_", " ")}
-                              </StatusBadge>
-                            ) : null}
-                          </div>
-                          <div>
-                            <div className="font-medium">{issue.label}</div>
-                            <p className="mt-1 text-muted-foreground">
-                              {issue.detail}
-                            </p>
-                            <p className="mt-2 text-xs text-muted-foreground">
-                              {issue.action}
-                            </p>
-                          </div>
-                          <div className="grid gap-2 text-xs text-muted-foreground">
-                            {actionLabel ? (
-                              <SecondaryButton
-                                type="button"
-                                className="min-h-8 justify-self-start rounded-lg px-3 text-xs"
-                                disabled={exceptionActionDisabled(issue)}
-                                onClick={() => handleExceptionAction(issue)}
-                              >
-                                {actionPending ? (
-                                  <Loader2 size={13} className="animate-spin" />
-                                ) : issue.next_action ===
-                                  "review_chart_tax_mapping" ? (
-                                  <CheckCircle2 size={13} />
-                                ) : (
-                                  <SearchCheck size={13} />
-                                )}
-                                {actionLabel}
-                              </SecondaryButton>
-                            ) : null}
-                            {issue.charge_rule_id ? (
-                              <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-2">
-                                <div>
-                                  Current: account{" "}
-                                  {issue.current_account_code ?? "-"} / tax{" "}
-                                  {issue.current_tax_type ?? "-"}
-                                </div>
-                                <div>
-                                  Suggested: account{" "}
-                                  {issue.suggested_account_code ?? "-"} / tax{" "}
-                                  {issue.suggested_tax_type ?? "-"}
-                                </div>
-                              </div>
-                            ) : null}
-                            {issue.invoice_number || issue.invoice_title ? (
-                              <div>
-                                Invoice:{" "}
-                                {issue.invoice_number ?? issue.invoice_title}
-                              </div>
-                            ) : null}
-                            {issue.tenant_name || issue.property_name ? (
-                              <div>
-                                Record: {issue.property_name ?? "Property"}
-                                {issue.unit_label
-                                  ? ` / ${issue.unit_label}`
-                                  : ""}
-                                {issue.tenant_name
-                                  ? ` / ${issue.tenant_name}`
-                                  : ""}
-                              </div>
-                            ) : null}
-                            {issue.total_cents !== null ? (
-                              <div>
-                                Amount:{" "}
-                                {formatCurrencyCents(
-                                  issue.total_cents,
-                                  issue.currency ?? "AUD",
-                                )}
-                              </div>
-                            ) : null}
-                            {issue.external_posting_status ? (
-                              <div>
-                                Posting: {issue.external_posting_status}
-                              </div>
-                            ) : null}
-                            {issue.xero_invoice_id ? (
-                              <div>Xero ID: {issue.xero_invoice_id}</div>
-                            ) : null}
-                            {issue.received_at ? (
-                              <div>
-                                Receipt: {formatDateTime(issue.received_at)}
-                              </div>
-                            ) : null}
-                            {issue.retry_count ? (
-                              <div>Attempt #{issue.retry_count}</div>
-                            ) : null}
-                            {issue.property_id ? (
-                              <Link
-                                href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
-                                className="font-medium text-primary hover:text-primary-hover"
-                              >
-                                Open property
-                              </Link>
-                            ) : null}
-                          </div>
+                ) : (
+                  <>
+                    <div className="grid gap-3 p-4 md:grid-cols-4">
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Blockers
                         </div>
-                      );
-                    })}
-                    {!exceptionItems.length ? (
-                      <EmptyState
-                        icon={<CheckCircle2 size={18} />}
-                        title="No Xero sync exceptions"
-                        description="Approved drafts, provider receipts, and reconciliation state are clear for this entity."
-                      />
+                        <div className="mt-1 text-lg font-semibold">
+                          {exceptionQueue?.summary.blockers ?? 0}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Warnings
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">
+                          {exceptionQueue?.summary.warnings ?? 0}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Provider
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">
+                          {exceptionQueue?.summary.provider ?? 0}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Payments
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">
+                          {exceptionQueue?.summary.payment ?? 0}
+                        </div>
+                      </div>
+                    </div>
+                    {exceptionQueue?.guardrails.length ? (
+                      <ul className="grid gap-1 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+                        {exceptionQueue.guardrails.map((guardrail) => (
+                          <li key={guardrail} className="flex gap-2">
+                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                            <span>{guardrail}</span>
+                          </li>
+                        ))}
+                      </ul>
                     ) : null}
-                  </div>
-                </>
-              )}
+                    <div className="divide-y divide-border border-t border-border">
+                      {exceptionItems.map((issue) => {
+                        const actionLabel = exceptionActionLabel(issue);
+                        const actionPending = exceptionActionPending(issue);
+                        return (
+                          <div
+                            key={issue.id}
+                            className="grid gap-3 px-4 py-3 text-sm lg:grid-cols-[170px_1fr_300px]"
+                          >
+                            <div className="flex flex-wrap items-start gap-2">
+                              <StatusBadge tone={exceptionTone(issue)}>
+                                {exceptionKindLabel(issue.kind)}
+                              </StatusBadge>
+                              {issue.next_action ? (
+                                <StatusBadge tone="neutral">
+                                  {issue.next_action.replaceAll("_", " ")}
+                                </StatusBadge>
+                              ) : null}
+                            </div>
+                            <div>
+                              <div className="font-medium">{issue.label}</div>
+                              <p className="mt-1 text-muted-foreground">
+                                {issue.detail}
+                              </p>
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                {issue.action}
+                              </p>
+                            </div>
+                            <div className="grid gap-2 text-xs text-muted-foreground">
+                              {actionLabel ? (
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-8 justify-self-start rounded-lg px-3 text-xs"
+                                  disabled={exceptionActionDisabled(issue)}
+                                  onClick={() => handleExceptionAction(issue)}
+                                >
+                                  {actionPending ? (
+                                    <Loader2
+                                      size={13}
+                                      className="animate-spin"
+                                    />
+                                  ) : issue.next_action ===
+                                    "review_chart_tax_mapping" ? (
+                                    <CheckCircle2 size={13} />
+                                  ) : (
+                                    <SearchCheck size={13} />
+                                  )}
+                                  {actionLabel}
+                                </SecondaryButton>
+                              ) : null}
+                              {issue.charge_rule_id ? (
+                                <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-2">
+                                  <div>
+                                    Current: account{" "}
+                                    {issue.current_account_code ?? "-"} / tax{" "}
+                                    {issue.current_tax_type ?? "-"}
+                                  </div>
+                                  <div>
+                                    Suggested: account{" "}
+                                    {issue.suggested_account_code ?? "-"} / tax{" "}
+                                    {issue.suggested_tax_type ?? "-"}
+                                  </div>
+                                </div>
+                              ) : null}
+                              {issue.invoice_number || issue.invoice_title ? (
+                                <div>
+                                  Invoice:{" "}
+                                  {issue.invoice_number ?? issue.invoice_title}
+                                </div>
+                              ) : null}
+                              {issue.tenant_name || issue.property_name ? (
+                                <div>
+                                  Record: {issue.property_name ?? "Property"}
+                                  {issue.unit_label
+                                    ? ` / ${issue.unit_label}`
+                                    : ""}
+                                  {issue.tenant_name
+                                    ? ` / ${issue.tenant_name}`
+                                    : ""}
+                                </div>
+                              ) : null}
+                              {issue.total_cents !== null ? (
+                                <div>
+                                  Amount:{" "}
+                                  {formatCurrencyCents(
+                                    issue.total_cents,
+                                    issue.currency ?? "AUD",
+                                  )}
+                                </div>
+                              ) : null}
+                              {issue.external_posting_status ? (
+                                <div>
+                                  Posting: {issue.external_posting_status}
+                                </div>
+                              ) : null}
+                              {issue.xero_invoice_id ? (
+                                <div>Xero ID: {issue.xero_invoice_id}</div>
+                              ) : null}
+                              {issue.received_at ? (
+                                <div>
+                                  Receipt: {formatDateTime(issue.received_at)}
+                                </div>
+                              ) : null}
+                              {issue.retry_count ? (
+                                <div>Attempt #{issue.retry_count}</div>
+                              ) : null}
+                              {issue.property_id ? (
+                                <Link
+                                  href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
+                                  className="font-medium text-primary hover:text-primary-hover"
+                                >
+                                  Open property
+                                </Link>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {!exceptionItems.length ? (
+                        <EmptyState
+                          icon={<CheckCircle2 size={18} />}
+                          title="No Xero sync exceptions"
+                          description="Approved drafts, provider receipts, and reconciliation state are clear for this entity."
+                        />
+                      ) : null}
+                    </div>
+                  </>
+                )}
               </SectionPanel>
             </div>
 

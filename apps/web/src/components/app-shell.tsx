@@ -325,8 +325,26 @@ function AppearanceToggle() {
         applyAppearance("system");
       }
     }
+    function syncStoredPreference() {
+      const current = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
+      const next: AppearanceMode =
+        current === "light" || current === "dark" || current === "system"
+          ? current
+          : "system";
+      setMode(next);
+      applyAppearance(next);
+    }
     media.addEventListener("change", syncSystemPreference);
-    return () => media.removeEventListener("change", syncSystemPreference);
+    window.addEventListener("storage", syncStoredPreference);
+    window.addEventListener("leasium:appearance-change", syncStoredPreference);
+    return () => {
+      media.removeEventListener("change", syncSystemPreference);
+      window.removeEventListener("storage", syncStoredPreference);
+      window.removeEventListener(
+        "leasium:appearance-change",
+        syncStoredPreference,
+      );
+    };
   }, []);
 
   const nextMode: AppearanceMode =
