@@ -2394,6 +2394,18 @@ function SettingsWorkspace() {
         : "Copy unavailable in this browser.",
     );
   };
+  const downloadXeroDiagnosticsPacket = () => {
+    if (!xeroDiagnostics) {
+      return;
+    }
+    saveBlob(
+      new Blob([xeroConnectionDiagnosticsPacket(xeroDiagnostics)], {
+        type: "text/plain;charset=utf-8",
+      }),
+      "xero-connection-diagnostics.txt",
+    );
+    setXeroDiagnosticsCopyReceipt("Xero diagnostics packet downloaded.");
+  };
 
   const unlinkLoginMutation = useMutation({
     mutationFn: (memberId: string) => unlinkSecurityMemberLogin(memberId),
@@ -4887,6 +4899,13 @@ function SettingsWorkspace() {
                           >
                             <Copy size={14} />
                             Copy diagnostics packet
+                          </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            onClick={downloadXeroDiagnosticsPacket}
+                          >
+                            <Download size={14} />
+                            Download diagnostics packet
                           </SecondaryButton>
                         </div>
                         {xeroDiagnosticsCopyReceipt ? (

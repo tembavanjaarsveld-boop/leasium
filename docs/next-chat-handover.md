@@ -270,13 +270,23 @@ Last updated: 2026-05-28
   backend route, refetch diagnostics, start OAuth, call/refresh Xero,
   preview/apply reconciliation, create drafts, dispatch invoices/providers, send
   email/SMS, refresh providers, or mutate provider history.
-- Sidecar recommendation for the next slice: add a local Settings Xero
-  `Download diagnostics packet` text export beside `Copy diagnostics packet`,
-  using the same `xeroConnectionDiagnosticsPacket(xeroDiagnostics)` content and
-  filename `xero-connection-diagnostics.txt`. Keep it local-only: no backend
-  route, diagnostics refetch, OAuth, Xero refresh/call, reconciliation preview
-  or apply, draft creation, invoice/provider dispatch, email/SMS, provider
-  refresh, or provider-history mutation.
+- 2026-05-28 Settings Xero continuation 6: Connection diagnostics now has a
+  local `Download diagnostics packet` text export beside
+  `Copy diagnostics packet`, using the same
+  `xeroConnectionDiagnosticsPacket(xeroDiagnostics)` content and filename
+  `xero-connection-diagnostics.txt`. The smoke test downloads the TXT and
+  verifies the same packet content and guardrails. It does not add a backend
+  route, refetch diagnostics, start OAuth, call/refresh Xero, preview/apply
+  reconciliation, create drafts, dispatch invoices/providers, send email/SMS,
+  refresh providers, or mutate provider history.
+- Sidecar recommendation for the next slice: add a local Settings Xero provider
+  action readiness explainer under Connection diagnostics. Each gate should show
+  `Ready`/`Blocked` plus a short local reason derived only from
+  `xeroDiagnostics`; for the current fixture, draft creation remains `Blocked`
+  because Xero is not connected. Do not call Xero, refresh tokens, start OAuth,
+  preview contacts/chart/tax/invoices/payments, create drafts, dispatch
+  providers, send email/SMS, mutate provider history, or change local approval
+  state.
 
 ## Takeover Priority
 

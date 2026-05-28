@@ -2498,6 +2498,35 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   expect(diagnosticsPacket).toContain(
     "Review-only export: downloading this file does not start OAuth, call or refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices or providers, send email or SMS, refresh providers, or mutate provider history.",
   );
+  const diagnosticsPacketDownloadPromise = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download diagnostics packet" })
+    .click();
+  const diagnosticsPacketDownload = await diagnosticsPacketDownloadPromise;
+  expect(diagnosticsPacketDownload.suggestedFilename()).toBe(
+    "xero-connection-diagnostics.txt",
+  );
+  const diagnosticsPacketDownloadPath = await diagnosticsPacketDownload.path();
+  expect(diagnosticsPacketDownloadPath).not.toBeNull();
+  const diagnosticsPacketText = await readFile(
+    diagnosticsPacketDownloadPath!,
+    "utf8",
+  );
+  expect(diagnosticsPacketText).toContain("Xero connection diagnostics packet");
+  expect(diagnosticsPacketText).toContain("Local readiness check");
+  expect(diagnosticsPacketText).toContain("OAuth: Ready");
+  expect(diagnosticsPacketText).toContain("Draft creation: Blocked");
+  expect(diagnosticsPacketText).toContain(
+    "Expected redirect URI: http://localhost:8000/api/v1/xero/oauth/callback",
+  );
+  expect(diagnosticsPacketText).toContain("Required env vars:");
+  expect(diagnosticsPacketText).toContain("XERO_CLIENT_ID");
+  expect(diagnosticsPacketText).toContain(
+    "Diagnostics are local only; loading this panel does not call Xero.",
+  );
+  expect(diagnosticsPacketText).toContain(
+    "Review-only export: downloading this file does not start OAuth, call or refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices or providers, send email or SMS, refresh providers, or mutate provider history.",
+  );
   await expect(page.getByText("Xero is not connected")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Connect Xero" }),
