@@ -123,6 +123,14 @@ type StatementExceptionRow = {
   invoiceCount: number;
 };
 
+type DispatchApprovalStep = {
+  id: string;
+  title: string;
+  detail: string;
+  metric: string;
+  tone: "neutral" | "success" | "warning" | "danger" | "primary";
+};
+
 function defaultMonth(): string {
   const now = new Date();
   // Previous calendar month, mirroring the backend default.
@@ -294,10 +302,16 @@ function dispatchApprovalPacketText(
   const blockedCount = rows.filter(
     (row) => row.status === "missing_recipient",
   ).length;
+  const approvalSteps = buildDispatchApprovalSteps(rows);
   return [
     "Owner statement dispatch approval queue",
     `Month: ${formatMonthLabel(month)}`,
     `${readyCount} ready / ${reviewCount} payment review / ${blockedCount} missing recipient`,
+    "",
+    "Approval runway:",
+    ...approvalSteps.map(
+      (step) => `- ${step.title}: ${step.metric} - ${step.detail}`,
+    ),
     "",
     ...rows.map(
       (row) =>
@@ -308,6 +322,90 @@ function dispatchApprovalPacketText(
     "",
     "Review-only: this queue does not send owner email or update provider delivery history.",
   ].join("\n");
+}
+
+function buildDispatchApprovalSteps(
+  rows: StatementDispatchReviewRow[],
+): DispatchApprovalStep[] {
+  const invoicedRows = rows.filter((row) => row.invoiceCount > 0);
+  const readyRows = rows.filter((row) => row.status === "ready");
+  const paymentReviewRows = rows.filter(
+    (row) => row.status === "payment_review",
+  );
+  const missingRecipientRows = rows.filter(
+    (row) => row.status === "missing_recipient",
+  );
+
+  return [
+    {
+      id: "statement-pack",
+      title: "Statement pack",
+      detail: invoicedRows.length
+        ? "Owner statement rows exist for this month."
+        : "Approve monthly invoices before finance can review owner statements.",
+      metric: invoicedRows.length
+        ? `${invoicedRows.length} owner row${invoicedRows.length === 1 ? "" : "s"}`
+        : "No statement rows",
+      tone: invoicedRows.length ? "success" : "neutral",
+    },
+    {
+      id: "recipient-gate",
+      title: "Recipient gate",
+      detail: missingRecipientRows.length
+        ? "Add owner billing emails before those statements can enter send approval."
+        : invoicedRows.length
+          ? "Every invoiced owner row has a billing recipient."
+          : "Recipient review unlocks once owner statements exist.",
+      metric: missingRecipientRows.length
+        ? `${missingRecipientRows.length} missing`
+        : invoicedRows.length
+          ? "Recipients ready"
+          : "Locked",
+      tone: missingRecipientRows.length
+        ? "danger"
+        : invoicedRows.length
+          ? "success"
+          : "neutral",
+    },
+    {
+      id: "payment-gate",
+      title: "Payment gate",
+      detail: paymentReviewRows.length
+        ? "Review outstanding or unreconciled owner balances before dispatch approval."
+        : invoicedRows.length
+          ? "No outstanding owner balances are blocking dispatch review."
+          : "Payment review unlocks once owner statements exist.",
+      metric: paymentReviewRows.length
+        ? `${paymentReviewRows.length} review`
+        : invoicedRows.length
+          ? "Payments clear"
+          : "Locked",
+      tone: paymentReviewRows.length
+        ? "warning"
+        : invoicedRows.length
+          ? "success"
+          : "neutral",
+    },
+    {
+      id: "approval-queue",
+      title: "Approval queue",
+      detail: readyRows.length
+        ? "These rows can be reviewed as send candidates once the explicit approval workflow is wired."
+        : invoicedRows.length
+          ? "No owner rows are ready for send-candidate review yet."
+          : "No approval queue until monthly statements are present.",
+      metric: readyRows.length
+        ? `${readyRows.length} send candidate${readyRows.length === 1 ? "" : "s"}`
+        : "None ready",
+      tone: readyRows.length
+        ? missingRecipientRows.length || paymentReviewRows.length
+          ? "primary"
+          : "success"
+        : invoicedRows.length
+          ? "warning"
+          : "neutral",
+    },
+  ];
 }
 
 function statementExceptionKindLabel(kind: StatementExceptionKind) {
@@ -1708,6 +1806,7 @@ function DispatchReviewPanel({
   const missingRecipientCount = rows.filter(
     (row) => row.status === "missing_recipient",
   ).length;
+  const approvalSteps = buildDispatchApprovalSteps(rows);
   const overallTone =
     missingRecipientCount > 0
       ? "danger"
@@ -1779,6 +1878,25 @@ function DispatchReviewPanel({
                 {missingRecipientCount} missing recipient
               </StatusBadge>
               <StatusBadge tone="neutral">Month {month}</StatusBadge>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-4">
+              {approvalSteps.map((step) => (
+                <div
+                  key={step.id}
+                  className="grid gap-2 rounded-md border border-border bg-white p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-semibold text-foreground">
+                      {step.title}
+                    </div>
+                    <StatusBadge tone={step.tone}>{step.metric}</StatusBadge>
+                  </div>
+                  <p className="text-sm leading-5 text-muted-foreground">
+                    {step.detail}
+                  </p>
+                </div>
+              ))}
             </div>
 
             <div className="overflow-x-auto rounded-md border border-border bg-white">
