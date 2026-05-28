@@ -1207,7 +1207,7 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       .getByText(/Please confirm your first available attendance window/)
       .last(),
   ).toBeVisible();
-  await expect(page.getByText("07 3000 1111")).toBeVisible();
+  await expect(page.getByText("07 3000 1111", { exact: true })).toBeVisible();
   await expect(
     page
       .locator("span")
@@ -1309,9 +1309,19 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(page.getByText("Contractor follow-up ready")).toBeVisible();
   await expect(page.getByText("Tenant update ready")).toBeVisible();
   await expect(page.getByText("Contractor closeout review")).toBeVisible();
-  await expect(page.getByText("Needs contractor review")).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Needs contractor review$/ })
+      .first(),
+  ).toBeVisible();
   await expect(page.getByText("Tenant closeout review")).toBeVisible();
-  await expect(page.getByText("Needs tenant review")).toBeVisible();
+  await expect(
+    page
+      .locator("span")
+      .filter({ hasText: /^Needs tenant review$/ })
+      .first(),
+  ).toBeVisible();
   await expect(
     page.getByText("Review this copy before sending anything outside Leasium."),
   ).toBeVisible();
@@ -1320,8 +1330,24 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       "Review-only; no owner, tenant, contractor, email, or portal message is sent from this panel.",
     ),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Copy owner update" }).click();
+  await expect(
+    page.getByText("Owner update copied. No message sent."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Copy tenant update" }).click();
+  await expect(
+    page.getByText("Tenant update copied. No message sent."),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Copy contractor follow-up" })
+    .click();
+  await expect(
+    page.getByText("Contractor follow-up copied. No message sent."),
+  ).toBeVisible();
   await expect(page.getByText("Owner completion review")).toBeVisible();
-  await expect(page.getByText("Needs owner review")).toBeVisible();
+  await expect(
+    page.locator("span").filter({ hasText: /^Needs owner review$/ }).first(),
+  ).toBeVisible();
   await page
     .getByRole("textbox", { name: "Owner review note" })
     .fill("Owner reviewed completion copy before sending.");

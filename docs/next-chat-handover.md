@@ -11,7 +11,7 @@ Last updated: 2026-05-28
 - Production API: `https://api.leasium.ai/api/v1` (Render custom domain). `https://leasium-api.onrender.com` is a provider fallback only.
 - Domain cutover note: `api.leasium.ai` now resolves and serves the Render API certificate. Production frontend/API/env/provider links should use `leasium.ai` and `api.leasium.ai`.
 - Clerk cutover note: live Vercel was previously serving a publishable key that decoded to `clerk.leasium.vercel.app`. That creates split-domain sessions. The canonical target is a Clerk setup anchored to `leasium.ai` (prefer `clerk.leasium.ai` via Clerk DNS/CNAME, or exact `https://leasium.ai/__clerk` proxy if enabled in Clerk Dashboard and Vercel env).
-- **Latest pushed commit:** run `git log --oneline -12` to confirm before editing. As of 2026-05-27, `a0759fd Update tenant invite smoke copy` is pushed to `main`; it only aligns smoke expectations with the current `Invite email` claim-gate label.
+- **Latest pushed commit:** run `git log --oneline -12` to confirm before editing. This handover is kept current by the Codex continuation slices, but the local log is the source of truth.
 - **Working tree:** expected clean after each pushed slice. If not, inspect with `git status --short` before editing.
 - **Mac tooling change (2026-05-24):** Node v26 installed via Homebrew; Desktop Commander MCP server (`@wonderwhy-er/desktop-commander`) is configured in Claude Desktop. Future Claude sessions in this workspace have `mcp__Desktop_Commander__*` tools available — they execute commands directly on the Mac (pytest, ruff, alembic, git, next dev, playwright). Sandbox-can't-write-git and no-local-Node constraints from prior sessions no longer apply.
 - The 2026-05-22 UX-review backlog is fully landed except Tier 2 (g) dark mode (deliberately deprioritised under the SKJ internal-first-6-months direction). All shipped items are marked `[x]` or `[~]` in `docs/product-roadmap.md`.
@@ -110,6 +110,12 @@ Last updated: 2026-05-28
   month-end signoff CSV download, and Portfolio QA has a local cleanup report
   CSV download beside the existing copyable report. Both reuse already-loaded
   review data and do not call providers or mutate records.
+- 2026-05-28 Operations continuation: completed maintenance work orders now
+  show local copy actions for owner, tenant, and contractor completion
+  communications beside the existing review receipts. These buttons copy the
+  already-rendered closeout text only and show a "No message sent" receipt;
+  they do not call SendGrid, Twilio, portal messaging, Xero, or provider
+  history endpoints.
 
 ## Takeover Priority
 

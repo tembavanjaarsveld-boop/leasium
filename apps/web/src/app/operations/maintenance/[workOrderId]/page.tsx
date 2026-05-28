@@ -174,6 +174,24 @@ const emptyCompletionReviewNotes: Record<CompletionReviewAudience, string> = {
   contractor: "",
 };
 
+const completionCommunicationCopyLabels: Record<
+  CompletionReviewAudience,
+  string
+> = {
+  owner: "Copy owner update",
+  tenant: "Copy tenant update",
+  contractor: "Copy contractor follow-up",
+};
+
+const completionCommunicationCopyReceipts: Record<
+  CompletionReviewAudience,
+  string
+> = {
+  owner: "Owner update copied. No message sent.",
+  tenant: "Tenant update copied. No message sent.",
+  contractor: "Contractor follow-up copied. No message sent.",
+};
+
 function label(value: string | null | undefined) {
   if (!value) {
     return "-";
@@ -218,6 +236,31 @@ function friendlyError(error: unknown) {
     return error.message;
   }
   return "Something went wrong.";
+}
+
+async function copyTextToClipboard(text: string) {
+  if (typeof navigator !== "undefined" && navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to the document-based copy path below.
+    }
+  }
+  if (typeof document === "undefined") {
+    return false;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  textarea.style.left = "-1000px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  return copied;
 }
 
 function statusTone(workOrder: MaintenanceWorkOrderRecord): Tone {
@@ -2278,6 +2321,10 @@ function MaintenanceDetailRoute() {
   const [completionReviewNotes, setCompletionReviewNotes] = useState<
     Record<CompletionReviewAudience, string>
   >(emptyCompletionReviewNotes);
+  const [
+    completionCommunicationCopyReceipt,
+    setCompletionCommunicationCopyReceipt,
+  ] = useState<Partial<Record<CompletionReviewAudience, string>>>({});
   const [commentBody, setCommentBody] = useState("");
   const [commentVisibility, setCommentVisibility] = useState<
     "internal" | "contractor" | "tenant"
@@ -3006,6 +3053,16 @@ function MaintenanceDetailRoute() {
       });
     },
   });
+
+  const copyCompletionCommunication = async (row: CompletionReviewRow) => {
+    const copied = await copyTextToClipboard(row.body);
+    setCompletionCommunicationCopyReceipt((current) => ({
+      ...current,
+      [row.audience]: copied
+        ? completionCommunicationCopyReceipts[row.audience]
+        : "Copy unavailable in this browser.",
+    }));
+  };
 
   const handleCloseoutSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -4136,6 +4193,17 @@ function MaintenanceDetailRoute() {
                             <div className="whitespace-pre-line text-muted-foreground">
                               {row.body}
                             </div>
+                            {completionCommunicationCopyReceipt[
+                              row.audience
+                            ] ? (
+                              <p className="text-xs font-medium text-success">
+                                {
+                                  completionCommunicationCopyReceipt[
+                                    row.audience
+                                  ]
+                                }
+                              </p>
+                            ) : null}
                             {row.reviewedAt ? (
                               <div className="grid gap-1 rounded-md border border-border bg-muted/30 px-2 py-2">
                                 <div className="font-semibold text-foreground">
@@ -4169,24 +4237,41 @@ function MaintenanceDetailRoute() {
                                 placeholder={row.placeholder}
                               />
                             </label>
-                            <Button
-                              type="button"
-                              className="w-fit"
-                              disabled={
-                                workOrder.status !== "completed" ||
-                                completionReviewMutation.isPending
-                              }
-                              onClick={() =>
-                                completionReviewMutation.mutate(row.audience)
-                              }
-                            >
-                              {completionReviewMutation.isPending ? (
-                                <Loader2 size={16} className="animate-spin" />
-                              ) : (
-                                <CheckCircle2 size={16} />
-                              )}
-                              {row.buttonLabel}
-                            </Button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <SecondaryButton
+                                type="button"
+                                className="min-h-9 rounded-lg px-3 text-xs"
+                                onClick={() => copyCompletionCommunication(row)}
+                              >
+                                <ClipboardCheck size={14} />
+                                {
+                                  completionCommunicationCopyLabels[
+                                    row.audience
+                                  ]
+                                }
+                              </SecondaryButton>
+                              <Button
+                                type="button"
+                                className="w-fit"
+                                disabled={
+                                  workOrder.status !== "completed" ||
+                                  completionReviewMutation.isPending
+                                }
+                                onClick={() =>
+                                  completionReviewMutation.mutate(row.audience)
+                                }
+                              >
+                                {completionReviewMutation.isPending ? (
+                                  <Loader2
+                                    size={16}
+                                    className="animate-spin"
+                                  />
+                                ) : (
+                                  <CheckCircle2 size={16} />
+                                )}
+                                {row.buttonLabel}
+                              </Button>
+                            </div>
                           </div>
                         ))}
                         <div className="text-muted-foreground">
