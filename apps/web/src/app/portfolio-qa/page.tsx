@@ -144,6 +144,16 @@ type ReadinessVerdict = {
   tone: Tone;
 };
 
+type CleanupNextAction = {
+  id: string;
+  title: string;
+  detail: string;
+  tone: Tone;
+  actionLabel: string;
+  tab?: QaTab;
+  href?: string;
+};
+
 type SourceRow = {
   id: string;
   kind: string;
@@ -1739,6 +1749,7 @@ function cleanupReportText({
   verdict,
   itemStatuses,
   activeBulkGroups,
+  nextActions,
   enrichmentCandidates,
   blockedFollowups,
 }: {
@@ -1750,6 +1761,7 @@ function cleanupReportText({
     status: CompletionReportStatus;
   }>;
   activeBulkGroups: BulkReviewGroup[];
+  nextActions: CleanupNextAction[];
   enrichmentCandidates: EnrichmentCandidate[];
   blockedFollowups: BlockedFollowup[];
 }) {
@@ -1762,6 +1774,11 @@ function cleanupReportText({
     ...itemStatuses.map(
       ({ item, percent, status }) =>
         `- ${item.label}: ${percent}% ready (${status}) - ${item.detail}`,
+    ),
+    "",
+    "Next cleanup actions:",
+    ...nextActions.map(
+      (action) => `- ${action.title}: ${action.actionLabel} - ${action.detail}`,
     ),
     "",
     "Bulk review queue:",
@@ -1801,6 +1818,92 @@ function cleanupReportText({
       : ["- Clear: no blocked cleanup rows remain in the current scan."]),
   ];
   return lines.join("\n");
+}
+
+function cleanupNextActions({
+  itemStatuses,
+  activeBulkGroups,
+  enrichmentCandidates,
+  blockedFollowups,
+}: {
+  itemStatuses: Array<{
+    item: QaCompletionItem;
+    percent: number;
+    status: CompletionReportStatus;
+  }>;
+  activeBulkGroups: BulkReviewGroup[];
+  enrichmentCandidates: EnrichmentCandidate[];
+  blockedFollowups: BlockedFollowup[];
+}): CleanupNextAction[] {
+  const actions: CleanupNextAction[] = [];
+  const blockedSections = itemStatuses.filter(
+    (item) => item.status === "blocked",
+  );
+  const highImpactEnrichment = enrichmentCandidates.filter(
+    (candidate) => candidate.priority === "high",
+  );
+
+  for (const group of activeBulkGroups.slice(0, 2)) {
+    actions.push({
+      id: `bulk-${group.id}`,
+      title: group.title,
+      detail: group.detail,
+      tone: group.tone,
+      actionLabel: group.actionLabel,
+      tab: group.tab,
+      href: group.href,
+    });
+  }
+
+  if (blockedSections.length) {
+    const section = blockedSections[0];
+    actions.push({
+      id: `section-${section.item.id}`,
+      title: `${section.item.label} is blocked`,
+      detail: section.item.detail,
+      tone: "danger",
+      actionLabel: "Open section",
+      tab: section.item.tab,
+    });
+  }
+
+  if (highImpactEnrichment.length) {
+    actions.push({
+      id: "high-impact-enrichment",
+      title: "Review high-impact enrichment",
+      detail: `${highImpactEnrichment.length} sourced candidate${
+        highImpactEnrichment.length === 1 ? "" : "s"
+      } may unblock owner, tenant, or billing identity cleanup.`,
+      tone: "primary",
+      actionLabel: "Review candidates",
+      href: highImpactEnrichment[0]?.href,
+    });
+  }
+
+  if (!actions.length && blockedFollowups.length) {
+    const followup = blockedFollowups[0];
+    actions.push({
+      id: `followup-${followup.id}`,
+      title: followup.title,
+      detail: followup.detail,
+      tone: followup.tone,
+      actionLabel: "Open follow-up",
+      tab: followup.tab,
+    });
+  }
+
+  if (!actions.length) {
+    actions.push({
+      id: "final-signoff",
+      title: "Prepare final cleanup signoff",
+      detail:
+        "No bulk blocker groups are active. Use the copied report as the handoff for live portfolio tuning.",
+      tone: "success",
+      actionLabel: "Copy report",
+    });
+  }
+
+  return actions.slice(0, 4);
 }
 
 function enrichmentFieldBreakdown(
@@ -2093,6 +2196,12 @@ function PortfolioCompletionPanel({
   const tenantEnrichmentCount =
     enrichmentCandidates.length - propertyEnrichmentCount;
   const topEnrichmentFields = enrichmentFieldBreakdown(enrichmentCandidates);
+  const nextActions = cleanupNextActions({
+    itemStatuses,
+    activeBulkGroups,
+    enrichmentCandidates,
+    blockedFollowups,
+  });
   const copyReport = async () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) {
       setReportReceipt("Copy unavailable in this browser.");
@@ -2104,6 +2213,7 @@ function PortfolioCompletionPanel({
         verdict,
         itemStatuses,
         activeBulkGroups,
+        nextActions,
         enrichmentCandidates,
         blockedFollowups,
       }),
@@ -2172,6 +2282,87 @@ function PortfolioCompletionPanel({
             {reportReceipt}
           </p>
         ) : null}
+      </div>
+      <div className="border-b border-border bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-foreground">
+              Next cleanup actions
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              The most useful actions to take before treating this scan as ready
+              for live portfolio tuning.
+            </p>
+          </div>
+          <StatusBadge
+            tone={
+              nextActions.some((action) => action.tone === "danger")
+                ? "danger"
+                : nextActions.some((action) => action.tone === "warning")
+                  ? "warning"
+                  : nextActions.some((action) => action.tone === "primary")
+                    ? "primary"
+                    : "success"
+            }
+          >
+            {nextActions.length} next
+          </StatusBadge>
+        </div>
+        <div className="mt-3 grid gap-3 lg:grid-cols-4">
+          {nextActions.map((action) => {
+            const body = (
+              <>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-semibold text-foreground">
+                    {action.title}
+                  </div>
+                  <StatusBadge tone={action.tone}>
+                    {tabs.find((tab) => tab.id === action.tab)?.label ??
+                      action.actionLabel}
+                  </StatusBadge>
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {action.detail}
+                </p>
+                <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                  {action.actionLabel}
+                  <ArrowRight size={13} />
+                </span>
+              </>
+            );
+            const className =
+              "rounded-xl border border-border bg-muted/30 p-3 text-left shadow-leasiumXs transition hover:bg-muted/60";
+            if (action.href) {
+              return (
+                <Link key={action.id} href={action.href} className={className}>
+                  {body}
+                </Link>
+              );
+            }
+            if (action.tab) {
+              return (
+                <button
+                  key={action.id}
+                  type="button"
+                  onClick={() => onOpenTab(action.tab as QaTab)}
+                  className={className}
+                >
+                  {body}
+                </button>
+              );
+            }
+            return (
+              <button
+                key={action.id}
+                type="button"
+                onClick={copyReport}
+                className={className}
+              >
+                {body}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
