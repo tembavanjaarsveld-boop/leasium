@@ -130,6 +130,7 @@ type BulkReviewGroup = {
   href?: string;
   actionLabel: string;
   examples: string[];
+  blockers: Array<{ label: string; count: number }>;
 };
 
 type CompletionReportStatus = "complete" | "review" | "blocked";
@@ -1428,6 +1429,21 @@ function buildBillingReviewRows({
   ];
 }
 
+function blockerBreakdown(values: string[], limit = 3) {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    const cleaned = value.trim();
+    if (!cleaned) {
+      continue;
+    }
+    counts.set(cleaned, (counts.get(cleaned) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, limit);
+}
+
 function buildBulkReviewGroups({
   tenantPrep,
   issues,
@@ -1475,6 +1491,7 @@ function buildBulkReviewGroups({
       examples: contactBlocked
         .slice(0, 3)
         .map((row) => `${row.tenantName} / ${row.propertyName}`),
+      blockers: blockerBreakdown(contactBlocked.flatMap((row) => row.blockers)),
     },
     {
       id: "onboarding-setup",
@@ -1487,6 +1504,7 @@ function buildBulkReviewGroups({
       examples: setupBlocked
         .slice(0, 3)
         .map((row) => `${row.tenantName} / ${row.propertyName}`),
+      blockers: blockerBreakdown(setupBlocked.flatMap((row) => row.blockers)),
     },
     {
       id: "onboarding-existing",
@@ -1499,6 +1517,9 @@ function buildBulkReviewGroups({
       examples: existingInviteBlocked
         .slice(0, 3)
         .map((row) => `${row.tenantName} / ${row.propertyName}`),
+      blockers: blockerBreakdown(
+        existingInviteBlocked.flatMap((row) => row.blockers),
+      ),
     },
     {
       id: "billing-owner",
@@ -1509,6 +1530,9 @@ function buildBulkReviewGroups({
       tab: ownerBillingIssues.length ? "issues" : undefined,
       actionLabel: ownerBillingIssues.length ? "Open fixes" : "Clear",
       examples: ownerBillingIssues.slice(0, 3).map((issue) => issue.title),
+      blockers: blockerBreakdown(
+        ownerBillingIssues.map((issue) => issue.detail),
+      ),
     },
     {
       id: "billing-readiness",
@@ -1519,6 +1543,9 @@ function buildBulkReviewGroups({
       href: billingReadinessIssues.length ? "/billing-readiness" : undefined,
       actionLabel: billingReadinessIssues.length ? "Open billing" : "Clear",
       examples: billingReadinessIssues.slice(0, 3).map((issue) => issue.title),
+      blockers: blockerBreakdown(
+        billingReadinessIssues.map((issue) => issue.detail),
+      ),
     },
     {
       id: "billing-review-drafts",
@@ -1529,6 +1556,9 @@ function buildBulkReviewGroups({
       href: reviewDrafts.length ? "/billing-readiness" : undefined,
       actionLabel: reviewDrafts.length ? "Review drafts" : "Clear",
       examples: reviewDrafts.slice(0, 3).map((draft) => draft.title),
+      blockers: blockerBreakdown(
+        reviewDrafts.map((draft) => label(draft.status)),
+      ),
     },
   ];
 
@@ -1721,11 +1751,19 @@ function cleanupReportText({
     ...(activeBulkGroups.length
       ? activeBulkGroups.map(
           (group) =>
-            `- ${group.title}: ${group.count} rows - ${group.detail}${
+            [
+              `- ${group.title}: ${group.count} rows - ${group.detail}`,
+              group.blockers.length
+                ? `Top blockers: ${group.blockers
+                    .map((blocker) => `${blocker.label} (${blocker.count})`)
+                    .join(", ")}`
+                : null,
               group.examples.length
-                ? ` Examples: ${group.examples.join(" / ")}`
-                : ""
-            }`,
+                ? `Examples: ${group.examples.join(" / ")}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" "),
         )
       : ["- Clear: no onboarding or billing bulk-review groups need action."]),
     "",
@@ -1957,6 +1995,22 @@ function PortfolioCompletionPanel({
                         <p className="mt-1 text-xs text-muted-foreground">
                           {group.examples.join(" / ")}
                         </p>
+                      ) : null}
+                      {group.blockers.length ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {group.blockers.map((blocker) => (
+                            <span
+                              key={blocker.label}
+                              className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-white px-2 py-0.5 text-leasium-micro font-semibold text-muted-foreground"
+                              title={blocker.label}
+                            >
+                              <span className="truncate">{blocker.label}</span>
+                              <span className="rounded-full bg-muted px-1 text-[10px] text-foreground">
+                                {blocker.count}
+                              </span>
+                            </span>
+                          ))}
+                        </div>
                       ) : null}
                       <span className="mt-2 inline-flex text-xs font-semibold text-primary">
                         {group.actionLabel}
