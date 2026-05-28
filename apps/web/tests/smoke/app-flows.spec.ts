@@ -23,8 +23,12 @@ function watchForbiddenXeroProviderRequests(page: Page) {
   return requests;
 }
 
-test.beforeEach(async ({ page }) => {
-  await mockLeasiumApi(page);
+test.beforeEach(async ({ page }, testInfo) => {
+  await mockLeasiumApi(page, {
+    leaseMatchAcceptConflict: testInfo.title.includes(
+      "active DocuSign conflict",
+    ),
+  });
 });
 
 test("setup explains Clerk configuration before first workspace setup", async ({
@@ -339,7 +343,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await page.setViewportSize({ width: 900, height: 900 });
   await page.goto("/comms");
 
-  await expect(page.getByRole("heading", { name: "Comms queue" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Comms queue" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", {
       name: "Work, 2 drafts in the comms queue, 0 urgent",
@@ -352,11 +358,16 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     page.getByRole("button", { name: "Refresh queue" }),
   ).toBeEnabled();
-  await expect(page.getByRole("group", { name: "Remaining now: 2" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Settled now: 0" })).toBeVisible();
   await expect(
-    page.getByRole("tab", { name: "All drafts 2" }),
-  ).toHaveAttribute("aria-selected", "true");
+    page.getByRole("group", { name: "Remaining now: 2" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: "Settled now: 0" }),
+  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "All drafts 2" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.getByText("Showing all 2 drafts.")).toBeVisible();
   await expect(
     page.getByText("2 drafts remaining this session."),
@@ -396,12 +407,18 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(rentReviewCard.getByRole("status")).toContainText(
     "Draft deferred until 3 June 2026",
   );
-  await expect(page.getByRole("group", { name: "Remaining now: 1" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Settled now: 1" })).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: "Remaining now: 1" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: "Settled now: 1" }),
+  ).toBeVisible();
   await expect(
     page.getByText("1 draft remaining, 1 settled this session."),
   ).toBeVisible();
-  await expect(rentReviewCard.getByText("Deferred", { exact: true })).toBeVisible();
+  await expect(
+    rentReviewCard.getByText("Deferred", { exact: true }),
+  ).toBeVisible();
   await expect(rentReviewCard.getByLabel("Subject")).toBeDisabled();
   await expect(
     rentReviewCard.getByText(
@@ -414,7 +431,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     page.getByText("Showing 1 of 2 drafts in Inbound SMS."),
   ).toBeVisible();
   await expect(smsCard).toBeVisible();
-  await expect(smsCard.getByText("AI: maintenance request (82%)")).toBeVisible();
+  await expect(
+    smsCard.getByText("AI: maintenance request (82%)"),
+  ).toBeVisible();
   await expect(smsCard.getByText(/Due 27 May 2026/)).toBeVisible();
   await expect(smsCard.getByText(/Drafted 27 May 2026/)).toBeVisible();
   await expect(smsCard.getByText("Twilio SMS")).toBeVisible();
@@ -439,9 +458,11 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     smsCard.getByRole("button", { name: "Approve & send" }),
   ).not.toHaveAttribute("aria-describedby", /.+/);
   await expect(smsCard.getByText("Edited draft")).toHaveCount(0);
-  await smsCard.getByLabel("Body").fill(
-    "Thanks for the heads up. We have logged this and will follow up shortly.",
-  );
+  await smsCard
+    .getByLabel("Body")
+    .fill(
+      "Thanks for the heads up. We have logged this and will follow up shortly.",
+    );
   await expect(smsCard.getByText("Edited draft")).toBeVisible();
   await expect(
     smsCard.getByRole("button", { name: "Reset draft" }),
@@ -471,17 +492,21 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await smsCard.getByRole("button", { name: "Approve & send" }).click();
 
   await expect(smsCard.getByText("SMS send skipped")).toBeVisible();
-  await expect(smsCard.getByText("Send skipped", { exact: true })).toBeVisible();
+  await expect(
+    smsCard.getByText("Send skipped", { exact: true }),
+  ).toBeVisible();
   const dispatchReceipt = smsCard.getByRole("status");
   await expect(dispatchReceipt).toContainText("SMS send skipped");
-  await expect(
-    smsCard.getByText("Twilio SMS to +61400111222."),
-  ).toBeVisible();
+  await expect(smsCard.getByText("Twilio SMS to +61400111222.")).toBeVisible();
   await expect(
     smsCard.getByText("Twilio Messaging is not configured yet"),
   ).toBeVisible();
-  await expect(page.getByRole("group", { name: "Remaining now: 0" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Settled now: 2" })).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: "Remaining now: 0" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: "Settled now: 2" }),
+  ).toBeVisible();
   await expect(
     page.getByText("0 drafts remaining, 2 settled this session."),
   ).toBeVisible();
@@ -782,7 +807,9 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
     has: page.getByRole("heading", { name: "Cleanup readiness report" }),
   });
   await expect(
-    readinessPanel.getByText("Eagle Street Office is missing owner ABN").first(),
+    readinessPanel
+      .getByText("Eagle Street Office is missing owner ABN")
+      .first(),
   ).toBeVisible();
   await expect(readinessPanel.getByText("Blocker drilldown")).toBeVisible();
   await expect(
@@ -798,7 +825,9 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
     readinessPanel.getByText("Existing onboarding Sent").first(),
   ).toBeVisible();
   await expect(
-    readinessPanel.getByText("Eagle Street Office is missing owner ABN").first(),
+    readinessPanel
+      .getByText("Eagle Street Office is missing owner ABN")
+      .first(),
   ).toBeVisible();
   await expect(
     readinessPanel.getByText("Missing Xero tax type").first(),
@@ -869,7 +898,9 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   const onboardingPanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Batch tenant onboarding prep" }),
   });
-  await expect(onboardingPanel.getByText("Invite blocker review")).toBeVisible();
+  await expect(
+    onboardingPanel.getByText("Invite blocker review"),
+  ).toBeVisible();
   await expect(onboardingPanel.getByText("Ready invites")).toBeVisible();
   await expect(onboardingPanel.getByText("Existing invites")).toBeVisible();
   await expect(onboardingPanel.getByText("Northwind Fitness")).toBeVisible();
@@ -883,14 +914,18 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   const billingPanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Billing draft generation" }),
   });
-  await expect(billingPanel.getByText("Billing cleanup blockers")).toBeVisible();
+  await expect(
+    billingPanel.getByText("Billing cleanup blockers"),
+  ).toBeVisible();
   await expect(
     billingPanel.getByText("Billing readiness blockers"),
   ).toBeVisible();
   await expect(billingPanel.getByText("Missing Xero tax type")).toBeVisible();
 
   await page
-    .getByRole("button", { name: /Source history Spreadsheet and intake trails/ })
+    .getByRole("button", {
+      name: /Source history Spreadsheet and intake trails/,
+    })
     .click();
   await expect(
     page.getByText("Acme portfolio register.xlsx").first(),
@@ -1468,15 +1503,16 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByText("Tenant update copied. No message sent."),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Copy contractor follow-up" })
-    .click();
+  await page.getByRole("button", { name: "Copy contractor follow-up" }).click();
   await expect(
     page.getByText("Contractor follow-up copied. No message sent."),
   ).toBeVisible();
   await expect(page.getByText("Owner completion review")).toBeVisible();
   await expect(
-    page.locator("span").filter({ hasText: /^Needs owner review$/ }).first(),
+    page
+      .locator("span")
+      .filter({ hasText: /^Needs owner review$/ })
+      .first(),
   ).toBeVisible();
   await page
     .getByRole("textbox", { name: "Owner review note" })
@@ -1784,6 +1820,9 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText("Tenant onboarding applied")).toBeVisible();
   await expect(page.getByText("Billing email").first()).toBeVisible();
   await expect(page.getByText("accounts@bright.example").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Insurance" })).toBeVisible();
+  await expect(page.getByText(/Confirmed until 30 .* 2027/)).toBeVisible();
+  await expect(page.getByText("Source: Smart Intake")).toBeVisible();
   await expect(page.getByText("Applied ABN")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Preview portal" }),
@@ -1850,6 +1889,43 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText("Fresh portal link copied.")).toBeVisible();
 });
 
+test("smart intake shows tenant lease upload match recommendation", async ({
+  page,
+}) => {
+  await page.goto("/intake");
+
+  await page.getByRole("button", { name: "Review" }).first().click();
+
+  await expect(
+    page.getByRole("heading", { name: "Review document" }),
+  ).toBeVisible();
+  await expect(page.getByText("Lease upload match")).toBeVisible();
+  await expect(page.getByText("Matched to scoped lease")).toBeVisible();
+  await expect(page.getByText("3 matched fields")).toBeVisible();
+  await expect(page.getByText("No lease status or register data")).toBeVisible();
+
+  await page.getByRole("button", { name: "Accept match" }).click();
+  await expect(page.getByText("Lease match accepted.")).toBeVisible();
+  await expect(page.getByText("Applied").first()).toBeVisible();
+});
+
+test("smart intake explains active DocuSign conflict before accepting lease match", async ({
+  page,
+}) => {
+  await page.goto("/intake");
+
+  await page.getByRole("button", { name: "Review" }).first().click();
+  await expect(page.getByText("Lease upload match")).toBeVisible();
+
+  await page.getByRole("button", { name: "Accept match" }).click();
+  await expect(
+    page.getByText(
+      "Resolve the active DocuSign envelope before accepting a tenant-uploaded lease.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("Lease match accepted.")).toBeHidden();
+});
+
 test("tenant detail sends lease pack after onboarding approval", async ({
   page,
 }) => {
@@ -1911,6 +1987,7 @@ test("tenant detail sends lease pack after onboarding approval", async ({
   };
   let reviewed = false;
   let applied = false;
+  let activated = false;
 
   await page.route(
     /\/api\/v1\/tenant-onboarding(\/.*)?(\?.*)?$/,
@@ -1989,9 +2066,76 @@ test("tenant detail sends lease pack after onboarding approval", async ({
                   metadata: { template_key: "tenant_lease_pack" },
                 },
               ],
+              docusign: {
+                status: "queued",
+                provider: "docusign",
+                envelope_id: "envelope-smoke-1",
+                signer_email: "mi***@example.com",
+                document_id: "document-lease-smoke-1",
+                error: null,
+              },
+            },
+            lease_agreement: {
+              status: "ready_to_sign",
+              open_question_count: 0,
+              questions: [],
+              signed_at: null,
+              signed_by_actor: null,
+              signing_locked_reason: null,
+              signing: {
+                provider: "docusign",
+                status: "queued",
+                envelope_id: "envelope-smoke-1",
+                signer_email: "mi***@example.com",
+                document_id: "document-lease-smoke-1",
+                sent_at: "2026-05-21T00:20:00.000Z",
+                sent_by_user_id: "user-temba",
+              },
+              signing_provider: "docusign",
+              signing_status: "queued",
+              signing_envelope_id: "envelope-smoke-1",
+              signing_document_id: "document-lease-smoke-1",
+              signing_sent_at: "2026-05-21T00:20:00.000Z",
             },
           },
           updated_at: "2026-05-21T00:20:00.000Z",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/tenant-onboarding/onboarding-1/activate-lease"
+      ) {
+        activated = true;
+        const deliveryData = onboardingRow.delivery_data;
+        const leaseAgreement = deliveryData.lease_agreement as Record<
+          string,
+          unknown
+        >;
+        const signing = leaseAgreement.signing as Record<string, unknown>;
+        onboardingRow = {
+          ...onboardingRow,
+          delivery_data: {
+            ...deliveryData,
+            lease_agreement: {
+              ...leaseAgreement,
+              signing: {
+                ...signing,
+                lease_activation_review: {
+                  status: "activated",
+                  current_lease_status: "active",
+                  recommended_status: "active",
+                  activated_at: "2026-05-21T00:30:00.000Z",
+                },
+              },
+            },
+          },
+          updated_at: "2026-05-21T00:30:00.000Z",
         };
         await route.fulfill({
           status: 200,
@@ -2007,13 +2151,17 @@ test("tenant detail sends lease pack after onboarding approval", async ({
   await page.goto("/tenants/tenant-1");
 
   await page.getByRole("button", { name: "Approve & apply" }).click();
-  expect(reviewed).toBe(true);
-  expect(applied).toBe(true);
+  await expect.poll(() => reviewed).toBe(true);
+  await expect.poll(() => applied).toBe(true);
   await expect(page.getByText("Lease pack next")).toBeVisible();
   await expect(
-    page.getByText("Upload a custom lease before sending the tenant a signing link."),
+    page.getByText(
+      "Upload a custom lease before sending the tenant a signing link.",
+    ),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send lease pack" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Send lease pack" }),
+  ).toBeDisabled();
 
   await page.getByLabel("Custom lease file").setInputFiles({
     name: "custom-lease.pdf",
@@ -2024,7 +2172,199 @@ test("tenant detail sends lease pack after onboarding approval", async ({
   await expect(page.getByText("custom-lease.pdf").first()).toBeVisible();
 
   await page.getByRole("button", { name: "Send lease pack" }).click();
-  await expect(page.getByText("Lease pack sent to tenant.")).toBeVisible();
+  await expect(
+    page.getByText("Lease pack sent. DocuSign is waiting for signature."),
+  ).toBeVisible();
+  await expect(page.getByText("DocuSign pending").first()).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Lease pack sent" }),
+  ).toBeDisabled();
+
+  const deliveryData = onboardingRow.delivery_data;
+  onboardingRow = {
+    ...onboardingRow,
+    delivery_data: {
+      ...deliveryData,
+      lease_agreement: {
+        ...(deliveryData.lease_agreement as Record<string, unknown>),
+        status: "signed",
+        signed_at: "2026-05-21T00:25:00.000Z",
+        signed_by_actor: "provider:docusign",
+        signing_locked_reason: null,
+        signing: {
+          provider: "docusign",
+          status: "completed",
+          envelope_id: "envelope-smoke-1",
+          signed_at: "2026-05-21T00:25:00.000Z",
+          signed_by_actor: "provider:docusign",
+          signed_document_id: "document-signed-smoke-1",
+          lease_activation_review: {
+            status: "ready_for_review",
+            current_lease_status: "pending",
+            recommended_status: "active",
+          },
+        },
+        signing_provider: "docusign",
+        signing_status: "completed",
+        signing_envelope_id: "envelope-smoke-1",
+        signing_document_id: "document-lease-smoke-1",
+        signing_sent_at: "2026-05-21T00:20:00.000Z",
+      },
+    },
+    updated_at: "2026-05-21T00:25:00.000Z",
+  };
+  await page.reload();
+  await expect(page.getByText("Lease signing complete")).toBeVisible();
+  await expect(page.getByText("Activation review ready")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Download signed lease" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Activate lease" }).click();
+  expect(activated).toBe(true);
+  await expect(
+    page.getByText("Lease activated after signed lease review."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Lease activated", { exact: true }),
+  ).toBeVisible();
+});
+
+test("tenant detail flags declined DocuSign envelope", async ({ page }) => {
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, { tenantPortalLeaseReady: true });
+  let onboardingRow = {
+    id: "onboarding-1",
+    entity_id: "entity-1",
+    lease_id: "lease-1",
+    tenant_id: "tenant-1",
+    token: "tenant-token-1",
+    status: "applied",
+    due_date: "2026-05-29",
+    expires_at: "2026-06-12T00:00:00.000Z",
+    last_sent_at: "2026-05-18T09:30:00.000Z",
+    resent_at: null,
+    cancel_reason: null,
+    onboarding_url: "http://127.0.0.1:3000/onboarding/tenant-token-1",
+    portal_url: "http://127.0.0.1:3000/tenant-portal/tenant-token-1",
+    submitted_data: {
+      legal_name: "Bright Cafe Pty Ltd",
+      contact_name: "Mia Hart",
+      contact_email: "mia@example.com",
+      accepted: true,
+    },
+    submitted_at: "2026-05-19T09:10:00.000Z",
+    review_data: { approved: true },
+    delivery_data: {
+      lease_pack: {
+        sent_at: "2026-05-21T00:20:00.000Z",
+        docusign: {
+          provider: "docusign",
+          status: "queued",
+          envelope_id: "envelope-declined-smoke",
+          document_id: "document-lease-smoke-1",
+        },
+      },
+      lease_agreement: {
+        status: "ready_to_sign",
+        open_question_count: 0,
+        questions: [],
+        signed_at: null,
+        signed_by_actor: null,
+        signing_locked_reason: null,
+        signing: {
+          provider: "docusign",
+          status: "declined",
+          envelope_id: "envelope-declined-smoke",
+          last_event: "envelope-declined",
+          last_event_at: "2026-05-21T00:30:00.000Z",
+        },
+        signing_provider: "docusign",
+        signing_status: "declined",
+        signing_envelope_id: "envelope-declined-smoke",
+        signing_document_id: "document-lease-smoke-1",
+        signing_sent_at: "2026-05-21T00:20:00.000Z",
+      },
+    },
+    reviewed_at: "2026-05-19T09:25:00.000Z",
+    reviewed_by_user_id: "user-temba",
+    applied_at: "2026-05-19T09:30:00.000Z",
+    applied_by_user_id: "user-temba",
+    created_at: "2026-05-18T09:30:00.000Z",
+    updated_at: "2026-05-21T00:30:00.000Z",
+    deleted_at: null,
+  };
+
+  await page.route(
+    /\/api\/v1\/tenant-onboarding(\/.*)?(\?.*)?$/,
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname.replace(/^\/api\/v1/, "");
+      if (request.method() === "GET" && path === "/tenant-onboarding") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([onboardingRow]),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/tenant-onboarding/onboarding-1/send-lease-pack"
+      ) {
+        onboardingRow = {
+          ...onboardingRow,
+          delivery_data: {
+            ...onboardingRow.delivery_data,
+            lease_pack: {
+              sent_at: "2026-05-21T00:40:00.000Z",
+              docusign: {
+                provider: "docusign",
+                status: "queued",
+                envelope_id: "fresh-resend-smoke",
+                document_id: "document-lease-smoke-1",
+              },
+            },
+            lease_agreement: {
+              ...onboardingRow.delivery_data.lease_agreement,
+              signing: {
+                provider: "docusign",
+                status: "queued",
+                envelope_id: "fresh-resend-smoke",
+                document_id: "document-lease-smoke-1",
+                sent_at: "2026-05-21T00:40:00.000Z",
+              },
+              signing_provider: "docusign",
+              signing_status: "queued",
+              signing_envelope_id: "fresh-resend-smoke",
+              signing_document_id: "document-lease-smoke-1",
+              signing_sent_at: "2026-05-21T00:40:00.000Z",
+            },
+          },
+          updated_at: "2026-05-21T00:40:00.000Z",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
+  await page.goto("/tenants/tenant-1");
+
+  await expect(page.getByText("DocuSign needs attention").first()).toBeVisible();
+  await expect(page.getByText("Envelope declined.").first()).toBeVisible();
+  await page.getByRole("button", { name: "Send again" }).click();
+  await expect(
+    page.getByText("Lease pack sent. DocuSign is waiting for signature."),
+  ).toBeVisible();
+  await expect(page.getByText("DocuSign pending").first()).toBeVisible();
+  await expect(page.getByText("fresh-re")).toBeVisible();
 });
 
 test("tenant portal invite is account-first before onboarding", async ({
@@ -2159,7 +2499,9 @@ test("tenant lease page focuses signing without portal dashboard", async ({
   await expect(
     page.getByRole("heading", { name: "Lease questions and signing" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Lease document" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Lease document" }),
+  ).toBeVisible();
   await expect(page.getByText("Attached")).toBeVisible();
   await expect(page.getByText("Ready to sign")).toBeVisible();
   await expect(
@@ -2359,6 +2701,12 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toBeVisible();
 
   await page.getByRole("tab", { name: "Organisation" }).click();
+  await expect(page.getByText("DocuSign Connect webhook")).toBeVisible();
+  await expect(
+    page.getByText(
+      "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
+    ),
+  ).toBeVisible();
   await expect(page.getByText("Communication templates")).toBeVisible();
   await expect(page.getByText("Invoice delivery").first()).toBeVisible();
   await expect(page.getByText("Stored template overrides")).toBeVisible();
@@ -2500,9 +2848,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   const forbiddenUnconnectedDiagnosticsRequests =
     watchForbiddenXeroProviderRequests(page);
   const diagnosticsDownloadPromise = page.waitForEvent("download");
-  await page
-    .getByRole("button", { name: "Download diagnostics CSV" })
-    .click();
+  await page.getByRole("button", { name: "Download diagnostics CSV" }).click();
   const diagnosticsDownload = await diagnosticsDownloadPromise;
   expect(diagnosticsDownload.suggestedFilename()).toBe(
     "xero-connection-diagnostics.csv",
@@ -2824,8 +3170,12 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("settings shows Xero OAuth callback success feedback", async ({ page }) => {
-  await page.goto("/settings?xero_connected=1&xero_tenant_id=tenant-provider-123");
+test("settings shows Xero OAuth callback success feedback", async ({
+  page,
+}) => {
+  await page.goto(
+    "/settings?xero_connected=1&xero_tenant_id=tenant-provider-123",
+  );
 
   await expect(page.getByText("Xero connected")).toBeVisible();
   await expect(page.getByText(/Run contact preview next/)).toBeVisible();
@@ -2840,9 +3190,7 @@ test("settings shows Xero OAuth callback error feedback without tab param", asyn
 }) => {
   await page.goto("/settings?xero_error=access_denied");
 
-  await expect(
-    page.getByText("Xero connection needs attention"),
-  ).toBeVisible();
+  await expect(page.getByText("Xero connection needs attention")).toBeVisible();
   await expect(page.getByText(/access denied/)).toBeVisible();
   await expect(page.getByRole("tab", { name: "Xero" })).toHaveAttribute(
     "aria-selected",
@@ -2860,7 +3208,9 @@ test("settings disables Xero provider actions when diagnostics block capabilitie
 
   await expect(page.getByText("Connection diagnostics")).toBeVisible();
   await expect(
-    page.getByText("Your role or authorised scopes do not allow provider actions."),
+    page.getByText(
+      "Your role or authorised scopes do not allow provider actions.",
+    ),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Connect Xero" })).toHaveCount(
     0,
@@ -2939,9 +3289,7 @@ test("settings shows Xero draft creation ready only from diagnostics", async ({
   );
   const forbiddenDiagnosticsRequests = watchForbiddenXeroProviderRequests(page);
   const diagnosticsCsvDownloadPromise = page.waitForEvent("download");
-  await page
-    .getByRole("button", { name: "Download diagnostics CSV" })
-    .click();
+  await page.getByRole("button", { name: "Download diagnostics CSV" }).click();
   const diagnosticsCsvDownload = await diagnosticsCsvDownloadPromise;
   expect(diagnosticsCsvDownload.suggestedFilename()).toBe(
     "xero-connection-diagnostics.csv",

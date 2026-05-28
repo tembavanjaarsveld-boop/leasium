@@ -26,6 +26,7 @@ from stewart.core.models import (
     AuditOutcome,
     DocumentCategory,
     Lease,
+    LeaseStatus,
     Property,
     StoredDocument,
     TenancyUnit,
@@ -41,6 +42,11 @@ from stewart.integrations.communications import (
     send_tenant_lease_pack_invite,
     send_tenant_onboarding_invite,
     send_tenant_portal_invite,
+)
+from stewart.integrations.docusign import (
+    LeaseSignatureRequest,
+    download_signed_lease_document,
+    send_lease_for_signature,
 )
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
@@ -66,7 +72,10 @@ from apps.api.tenant_lease_agreement import (
     blocking_lease_question_count,
     lease_agreement_exists,
     lease_agreement_read,
+    lease_agreement_section,
+    mark_lease_agreement_signed,
     respond_to_lease_question,
+    set_lease_agreement_section,
 )
 
 router = APIRouter(prefix="/tenant-onboarding", tags=["tenant-onboarding"])
@@ -83,6 +92,7 @@ EXPIRY_REMINDER_STEPS = (
     ("expires_soon", "Expiry reminder", 1),
 )
 ACTIVE_DELIVERY_STATUSES = {"queued", "sent", "delivered", "opened"}
+ACTIVE_DOCUSIGN_SIGNING_STATUSES = {"queued", "sent", "delivered"}
 
 
 def _onboarding_url(token: str) -> str:
@@ -690,6 +700,321 @@ def _assert_webhook_secret(request: Request) -> None:
         )
 
 
+def _assert_docusign_webhook_secret(request: Request) -> None:
+    secret = get_settings().docusign_webhook_secret
+    if not secret:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="DocuSign webhook secret is not configured.",
+        )
+    provided = (
+        request.headers.get("x-docusign-webhook-secret")
+        or request.headers.get("x-leasium-webhook-secret")
+        or request.query_params.get("token")
+    )
+    if not provided or not secrets.compare_digest(provided, secret):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook token.",
+        )
+
+
+def _docusign_event_section(payload: dict[str, Any]) -> dict[str, Any]:
+    data = payload.get("data")
+    return data if isinstance(data, dict) else {}
+
+
+def _docusign_envelope_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    data = _docusign_event_section(payload)
+    summary = data.get("envelopeSummary") or payload.get("envelopeSummary")
+    return summary if isinstance(summary, dict) else {}
+
+
+def _docusign_payload_value(payload: dict[str, Any], *keys: str) -> str | None:
+    sections = (payload, _docusign_event_section(payload), _docusign_envelope_summary(payload))
+    for section in sections:
+        for key in keys:
+            value = section.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return None
+
+
+def _docusign_event(payload: dict[str, Any]) -> str | None:
+    return _docusign_payload_value(payload, "event", "eventName", "event_name")
+
+
+def _docusign_envelope_id(payload: dict[str, Any]) -> str | None:
+    return _docusign_payload_value(payload, "envelopeId", "envelope_id")
+
+
+def _docusign_status(payload: dict[str, Any]) -> str | None:
+    status_value = _docusign_payload_value(payload, "status", "envelopeStatus")
+    if status_value:
+        return status_value.lower()
+    event_value = _docusign_event(payload)
+    if event_value and "completed" in event_value.lower():
+        return "completed"
+    return None
+
+
+def _docusign_custom_fields(payload: dict[str, Any]) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    sections = (payload, _docusign_event_section(payload), _docusign_envelope_summary(payload))
+    for section in sections:
+        custom_fields = section.get("customFields")
+        if not isinstance(custom_fields, dict):
+            continue
+        text_fields = custom_fields.get("textCustomFields")
+        if not isinstance(text_fields, list):
+            continue
+        for field in text_fields:
+            if not isinstance(field, dict):
+                continue
+            name = field.get("name")
+            value = field.get("value")
+            if isinstance(name, str) and isinstance(value, str) and value:
+                fields[name] = value
+    return fields
+
+
+def _docusign_custom_fields_match(
+    onboarding: TenantOnboarding,
+    signing_data: dict[str, Any],
+    payload: dict[str, Any],
+) -> bool:
+    fields = _docusign_custom_fields(payload)
+    expected = {
+        "tenant_onboarding_id": str(onboarding.id),
+        "lease_id": str(onboarding.lease_id),
+        "document_id": signing_data.get("document_id"),
+        "entity_id": str(onboarding.entity_id),
+    }
+    for name, expected_value in expected.items():
+        actual_value = fields.get(name)
+        if actual_value and isinstance(expected_value, str) and actual_value != expected_value:
+            return False
+    return True
+
+
+def _docusign_webhook_event_allowed(
+    signing_data: dict[str, Any],
+    envelope_id: str,
+    event_status: str,
+) -> bool:
+    if signing_data.get("provider") != "docusign":
+        return False
+    if signing_data.get("envelope_id") != envelope_id:
+        return False
+    current_status = signing_data.get("status")
+    if event_status == "completed":
+        if current_status == "completed" and signing_data.get("signed_at"):
+            return False
+        return current_status in ACTIVE_DOCUSIGN_SIGNING_STATUSES
+    return not (current_status == "completed" and signing_data.get("signed_at"))
+
+
+def _find_onboarding_by_docusign_envelope_id(
+    session: Session,
+    envelope_id: str,
+) -> TenantOnboarding | None:
+    rows = session.scalars(
+        select(TenantOnboarding).where(TenantOnboarding.deleted_at.is_(None))
+    ).all()
+    for row in rows:
+        signing = lease_agreement_section(row).get("signing")
+        if isinstance(signing, dict) and signing.get("envelope_id") == envelope_id:
+            return row
+    return None
+
+
+def _apply_docusign_webhook_event(
+    onboarding: TenantOnboarding,
+    payload: dict[str, Any],
+    envelope_id: str,
+    event_status: str,
+    session: Session,
+) -> None:
+    event_name = _docusign_event(payload)
+    signing = lease_agreement_section(onboarding).get("signing")
+    signing_data = dict(signing) if isinstance(signing, dict) else {}
+    if not _docusign_webhook_event_allowed(signing_data, envelope_id, event_status):
+        return
+    if not _docusign_custom_fields_match(onboarding, signing_data, payload):
+        return
+    events = signing_data.get("provider_events")
+    provider_events = (
+        [item for item in events if isinstance(item, dict)] if isinstance(events, list) else []
+    )
+    received_at = utcnow().isoformat()
+    provider_event = {
+        "received_at": received_at,
+        "event": event_name,
+        "status": event_status,
+        "envelope_id": envelope_id,
+    }
+    signing_updates: dict[str, object] = {
+        "provider": "docusign",
+        "status": event_status,
+        "envelope_id": envelope_id,
+        "last_event": event_name,
+        "last_event_at": received_at,
+        "provider_events": [provider_event, *provider_events[:9]],
+    }
+    if event_status == "completed":
+        signing_updates.update(
+            _retain_docusign_signed_document(onboarding, envelope_id, session, signing_data)
+        )
+        signing_updates["lease_activation_review"] = _lease_activation_review_data(
+            onboarding,
+            session,
+            signing_updates,
+        )
+        mark_lease_agreement_signed(
+            onboarding,
+            actor="provider:docusign",
+            source="docusign_webhook",
+            signing_updates=signing_updates,
+        )
+        return
+    section = lease_agreement_section(onboarding)
+    signing_data.update(signing_updates)
+    section["signing"] = signing_data
+    section["last_activity_at"] = received_at
+    set_lease_agreement_section(onboarding, section)
+
+
+def _retain_docusign_signed_document(
+    onboarding: TenantOnboarding,
+    envelope_id: str,
+    session: Session,
+    signing_data: dict[str, object],
+) -> dict[str, object]:
+    existing_document_id = signing_data.get("signed_document_id")
+    if isinstance(existing_document_id, str) and existing_document_id:
+        return {}
+
+    result = download_signed_lease_document(envelope_id, get_settings())
+    retention: dict[str, object] = {
+        "status": result.status,
+        "provider": result.provider,
+        "attempted_at": utcnow().isoformat(),
+        "error": result.error,
+    }
+    if result.status != "downloaded" or result.file_data is None:
+        return {"signed_document_retention": retention}
+
+    original_document_id = (
+        str(signing_data["document_id"])
+        if isinstance(signing_data.get("document_id"), str)
+        else None
+    )
+    document = StoredDocument(
+        entity_id=onboarding.entity_id,
+        tenant_id=onboarding.tenant_id,
+        lease_id=onboarding.lease_id,
+        tenant_onboarding_id=onboarding.id,
+        filename=result.filename or f"signed-lease-{envelope_id}.pdf",
+        content_type=result.content_type or "application/pdf",
+        byte_size=len(result.file_data),
+        file_data=result.file_data,
+        category=DocumentCategory.lease,
+        document_metadata={
+            "source": "docusign_signed_lease",
+            "docusign_envelope_id": envelope_id,
+            "original_lease_document_id": original_document_id,
+            "retained_at": retention["attempted_at"],
+        },
+    )
+    session.add(document)
+    session.flush()
+    retention["document_id"] = str(document.id)
+    return {
+        "signed_document_id": str(document.id),
+        "signed_document_retention": retention,
+    }
+
+
+def _lease_activation_review_data(
+    onboarding: TenantOnboarding,
+    session: Session,
+    signing_updates: dict[str, object],
+) -> dict[str, object]:
+    lease = session.get(Lease, onboarding.lease_id)
+    current_status = lease.status.value if lease is not None else None
+    signed_document_id = signing_updates.get("signed_document_id")
+    already_active = current_status in {LeaseStatus.active.value, LeaseStatus.holding_over.value}
+    return {
+        "status": "already_active" if already_active else "ready_for_review",
+        "current_lease_status": current_status,
+        "recommended_status": LeaseStatus.active.value,
+        "signed_document_id": signed_document_id if isinstance(signed_document_id, str) else None,
+        "updated_at": utcnow().isoformat(),
+        "guardrail": (
+            "DocuSign completion does not activate a lease automatically; "
+            "review and activate explicitly."
+        ),
+    }
+
+
+def _activate_signed_onboarding_lease(
+    onboarding: TenantOnboarding,
+    lease: Lease,
+    user: CurrentUser,
+) -> None:
+    signing = lease_agreement_section(onboarding).get("signing")
+    signing_data = dict(signing) if isinstance(signing, dict) else {}
+    if not isinstance(signing_data.get("signed_at"), str):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Complete lease signing before activation.",
+        )
+    if lease.status != LeaseStatus.pending:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only pending leases can be activated from onboarding.",
+        )
+
+    activated_at = utcnow().isoformat()
+    signing_source = (
+        "tenant_uploaded_lease_match"
+        if signing_data.get("source") == "tenant_uploaded_lease_match"
+        or signing_data.get("provider") == "tenant_upload"
+        else "tenant_onboarding_docusign"
+    )
+    lease.status = LeaseStatus.active
+    lease.lease_metadata = {
+        **(lease.lease_metadata or {}),
+        "activation": {
+            "source": signing_source,
+            "tenant_onboarding_id": str(onboarding.id),
+            "signed_document_id": signing_data.get("signed_document_id"),
+            "activated_at": activated_at,
+            "activated_by_user_id": str(user.id),
+        },
+    }
+    signing_data["lease_activation_review"] = {
+        **(
+            signing_data.get("lease_activation_review")
+            if isinstance(signing_data.get("lease_activation_review"), dict)
+            else {}
+        ),
+        "status": "activated",
+        "current_lease_status": LeaseStatus.active.value,
+        "recommended_status": LeaseStatus.active.value,
+        "activated_at": activated_at,
+        "activated_by_user_id": str(user.id),
+        "guardrail": "Lease activated only after explicit operator approval.",
+    }
+    section = lease_agreement_section(onboarding)
+    section["signing"] = signing_data
+    section["last_activity_at"] = activated_at
+    onboarding.delivery_data = {
+        **(onboarding.delivery_data or {}),
+        "lease_agreement": section,
+    }
+
+
 def _masked_recipient(value: str | None) -> str | None:
     if not value:
         return None
@@ -879,6 +1204,7 @@ def _deliver_lease_pack(
     lease: Lease,
     prop: Property,
     tenant: Tenant,
+    lease_document: StoredDocument,
     user: CurrentUser,
     session: Session,
 ) -> list[DeliveryResult]:
@@ -903,6 +1229,23 @@ def _deliver_lease_pack(
         template_key=settings.tenant_lease_pack_template_key,
         template_version=settings.tenant_lease_pack_template_version,
     )
+    signature_result = send_lease_for_signature(
+        LeaseSignatureRequest(
+            lease_id=lease.id,
+            tenant_onboarding_id=onboarding.id,
+            document_id=lease_document.id,
+            entity_id=onboarding.entity_id,
+            tenant_name=tenant.trading_name or tenant.legal_name,
+            signer_name=tenant.contact_name,
+            signer_email=tenant.contact_email or tenant.billing_email,
+            property_name=prop.name,
+            unit_label=unit.unit_label,
+            document_filename=lease_document.filename,
+            document_bytes=lease_document.file_data,
+            redirect_url=_account_lease_signing_url(),
+        ),
+        settings,
+    )
     results = send_tenant_lease_pack_invite(invite, settings)
     now = utcnow()
     delivery = dict(onboarding.delivery_data or {})
@@ -919,13 +1262,36 @@ def _deliver_lease_pack(
                 "metadata": result.metadata,
             }
         )
+    docusign_receipt = {
+        "status": signature_result.status,
+        "provider": signature_result.provider,
+        "envelope_id": signature_result.envelope_id,
+        "signer_email": _masked_recipient(signature_result.signer_email),
+        "document_id": str(lease_document.id),
+        "error": signature_result.error,
+    }
     delivery["lease_pack"] = {
         "sent_at": now.isoformat(),
         "sent_by_user_id": str(user.id),
         "template_key": invite.template_key,
         "template_version": invite.template_version,
         "receipts": receipts,
+        "docusign": docusign_receipt,
     }
+    if signature_result.status in {"queued", "sent"}:
+        lease_agreement = delivery.get("lease_agreement")
+        lease_agreement_data = dict(lease_agreement) if isinstance(lease_agreement, dict) else {}
+        lease_agreement_data["signing"] = {
+            "provider": signature_result.provider,
+            "status": signature_result.status,
+            "envelope_id": signature_result.envelope_id,
+            "signer_email": _masked_recipient(signature_result.signer_email),
+            "document_id": str(lease_document.id),
+            "sent_at": now.isoformat(),
+            "sent_by_user_id": str(user.id),
+        }
+        lease_agreement_data["last_activity_at"] = now.isoformat()
+        delivery["lease_agreement"] = lease_agreement_data
     history_raw = delivery.get("lease_pack_history")
     history = (
         [item for item in history_raw if isinstance(item, dict)]
@@ -956,6 +1322,24 @@ def _deliver_lease_pack(
             error_message=result.error if result.status == "failed" else None,
             data_classification="confidential",
         )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=onboarding.entity_id,
+        action="send_lease_for_signature",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+        tool_name="docusign.envelopes.create",
+        tool_input={
+            "document_id": str(lease_document.id),
+            "recipient": _masked_recipient(signature_result.signer_email),
+        },
+        tool_output_summary=f"docusign envelope {signature_result.status}",
+        outcome=AuditOutcome.error if signature_result.status == "failed" else AuditOutcome.success,
+        error_message=signature_result.error if signature_result.status == "failed" else None,
+        data_classification="confidential",
+    )
     return results
 
 
@@ -1028,6 +1412,24 @@ def _lease_scope(
             detail="Lease links tenant and unit across different entities.",
         )
     return lease, prop, tenant
+
+
+def _latest_lease_document(
+    onboarding: TenantOnboarding,
+    session: Session,
+) -> StoredDocument | None:
+    return session.scalar(
+        select(StoredDocument)
+        .where(
+            StoredDocument.entity_id == onboarding.entity_id,
+            StoredDocument.tenant_onboarding_id == onboarding.id,
+            StoredDocument.lease_id == onboarding.lease_id,
+            StoredDocument.tenant_id == onboarding.tenant_id,
+            StoredDocument.category == DocumentCategory.lease,
+            StoredDocument.deleted_at.is_(None),
+        )
+        .order_by(StoredDocument.created_at.desc())
+    )
 
 
 def _new_token(session: Session) -> str:
@@ -1298,6 +1700,43 @@ async def record_sendgrid_delivery_events(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/webhooks/docusign", status_code=status.HTTP_204_NO_CONTENT)
+async def record_docusign_envelope_event(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    _assert_docusign_webhook_secret(request)
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    envelope_id = _docusign_envelope_id(payload)
+    event_status = _docusign_status(payload)
+    if not envelope_id or not event_status:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    onboarding = _find_onboarding_by_docusign_envelope_id(session, envelope_id)
+    if onboarding is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    _apply_docusign_webhook_event(onboarding, payload, envelope_id, event_status, session)
+    audit_log(
+        session,
+        actor="provider:docusign",
+        entity_id=onboarding.entity_id,
+        action="signature_receipt",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+        tool_name="docusign.connect_webhook",
+        tool_input={
+            "status": event_status,
+            "event": _docusign_event(payload),
+            "envelope_id": envelope_id,
+        },
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.patch("/{onboarding_id}/reminders", response_model=TenantOnboardingRead)
 def update_tenant_onboarding_reminders(
     onboarding_id: UUID,
@@ -1473,8 +1912,74 @@ def send_tenant_onboarding_lease_pack(
             status_code=status.HTTP_409_CONFLICT,
             detail="Lease agreement is already signed.",
         )
+    signing = lease_agreement_section(onboarding).get("signing")
+    signing_data = dict(signing) if isinstance(signing, dict) else {}
+    if (
+        signing_data.get("provider") == "docusign"
+        and signing_data.get("status") in ACTIVE_DOCUSIGN_SIGNING_STATUSES
+        and not signing_data.get("signed_at")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A DocuSign envelope is already waiting for completion.",
+        )
     lease, prop, tenant = _lease_scope(onboarding.lease_id, session)
-    _deliver_lease_pack(onboarding, lease, prop, tenant, user, session)
+    lease_document = _latest_lease_document(onboarding, session)
+    if lease_document is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Attach a lease document before sending the lease pack.",
+        )
+    _deliver_lease_pack(onboarding, lease, prop, tenant, lease_document, user, session)
+    session.commit()
+    session.refresh(onboarding)
+    return _read(onboarding)
+
+
+@router.post("/{onboarding_id}/activate-lease", response_model=TenantOnboardingRead)
+def activate_tenant_onboarding_lease(
+    onboarding_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantOnboardingRead:
+    onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)
+    if onboarding.status != TenantOnboardingStatus.applied:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only applied onboarding rows can activate a lease.",
+        )
+    lease, _, _ = _lease_scope(onboarding.lease_id, session)
+    _activate_signed_onboarding_lease(onboarding, lease, user)
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=onboarding.entity_id,
+        action="activate_lease",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+        tool_input={
+            "lease_id": str(lease.id),
+            "source": lease.lease_metadata.get("activation", {}).get(
+                "source",
+                "tenant_onboarding_docusign",
+            ),
+        },
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=onboarding.entity_id,
+        action="activate",
+        target_table="lease",
+        target_id=lease.id,
+        tool_input={"tenant_onboarding_id": str(onboarding.id)},
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
     session.commit()
     session.refresh(onboarding)
     return _read(onboarding)

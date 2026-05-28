@@ -819,6 +819,124 @@ def test_document_intake_apply_insurance_uses_existing_document_scope(
     assert str(obligation.lease_id) == scope["lease_id"]
 
 
+def test_document_intake_apply_insurance_updates_scoped_tenant_metadata(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_insurance_extraction(), "resp_scoped_insurance_metadata"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    scope = _lease_scope(client, session)
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    tenant.tenant_metadata = {"insurance_expiry_date": "2026-12-31"}
+    document = StoredDocument(
+        entity_id=UUID(_entity_id(session)),
+        property_id=UUID(scope["property_id"]),
+        tenancy_unit_id=UUID(scope["tenancy_unit_id"]),
+        tenant_id=UUID(scope["tenant_id"]),
+        lease_id=UUID(scope["lease_id"]),
+        filename="scoped-insurance-metadata.txt",
+        content_type="text/plain",
+        byte_size=len(b"insurance"),
+        file_data=b"insurance",
+        category=DocumentCategory.insurance,
+        document_metadata={"source": "tenant_portal"},
+    )
+    session.add(document)
+    session.commit()
+
+    create_response = client.post(f"/api/v1/document-intakes/from-document/{document.id}")
+    assert create_response.status_code == 200
+    reviewed = _fake_insurance_extraction()
+    reviewed["key_dates"][1]["date"] = "2027-04-15"
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={"review_data": reviewed},
+    )
+
+    assert apply_response.status_code == 200
+    session.refresh(tenant)
+    assert tenant.tenant_metadata["insurance_confirmed"] is True
+    assert tenant.tenant_metadata["insurance_expiry_date"] == "2027-04-15"
+    assert tenant.tenant_metadata["insurance_document_id"] == str(document.id)
+    history = tenant.tenant_metadata["insurance_auto_update_history"]
+    assert history[-1]["document_intake_id"] == create_response.json()["id"]
+    assert history[-1]["expiry_date"] == "2027-04-15"
+    assert history[-1]["source"] == "document_intake"
+
+
+def test_document_intake_apply_insurance_uses_lease_tenant_for_metadata(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_insurance_extraction(), "resp_insurance_lease_tenant"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    scope = _lease_scope(client, session)
+    other_scope = _lease_scope(client, session)
+    lease_tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    other_tenant = session.get(Tenant, UUID(other_scope["tenant_id"]))
+    assert lease_tenant is not None
+    assert other_tenant is not None
+    document = StoredDocument(
+        entity_id=UUID(_entity_id(session)),
+        property_id=UUID(scope["property_id"]),
+        tenancy_unit_id=UUID(scope["tenancy_unit_id"]),
+        tenant_id=UUID(other_scope["tenant_id"]),
+        lease_id=UUID(scope["lease_id"]),
+        filename="mismatched-tenant-insurance.txt",
+        content_type="text/plain",
+        byte_size=len(b"insurance"),
+        file_data=b"insurance",
+        category=DocumentCategory.insurance,
+        document_metadata={"source": "tenant_portal"},
+    )
+    session.add(document)
+    session.commit()
+
+    create_response = client.post(f"/api/v1/document-intakes/from-document/{document.id}")
+    assert create_response.status_code == 200
+    reviewed = _fake_insurance_extraction()
+    reviewed["key_dates"][1]["date"] = "2027-05-20"
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={"review_data": reviewed},
+    )
+
+    assert apply_response.status_code == 200
+    session.refresh(document)
+    session.refresh(lease_tenant)
+    session.refresh(other_tenant)
+    assert document.tenant_id == lease_tenant.id
+    assert lease_tenant.tenant_metadata["insurance_expiry_date"] == "2027-05-20"
+    assert "insurance_expiry_date" not in (other_tenant.tenant_metadata or {})
+
+
 def test_document_intake_apply_compliance_creates_reviewed_obligations(
     client: TestClient,
     session: Session,

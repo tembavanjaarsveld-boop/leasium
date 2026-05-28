@@ -370,7 +370,12 @@ export type SecurityMemberRecord = {
   email: string;
   display_name: string;
   is_active: boolean;
-  access_status: "disabled" | "login_linked" | "invited" | "not_linked" | string;
+  access_status:
+    | "disabled"
+    | "login_linked"
+    | "invited"
+    | "not_linked"
+    | string;
   login_linked: boolean;
   invite_email_status:
     | "not_sent"
@@ -739,6 +744,14 @@ export type LeasePackDeliveryData = {
   template_key?: string | null;
   template_version?: string | null;
   receipts?: Array<Record<string, unknown>>;
+  docusign?: {
+    status?: string | null;
+    provider?: string | null;
+    envelope_id?: string | null;
+    signer_email?: string | null;
+    document_id?: string | null;
+    error?: string | null;
+  } | null;
 };
 
 export type OnboardingDeliveryData = {
@@ -903,6 +916,12 @@ export type TenantLeaseAgreementRecord = {
   questions: TenantLeaseQuestionRecord[];
   signed_at: string | null;
   signed_by_actor: string | null;
+  signing: Record<string, unknown>;
+  signing_provider: string | null;
+  signing_status: string | null;
+  signing_envelope_id: string | null;
+  signing_document_id: string | null;
+  signing_sent_at: string | null;
   signing_locked_reason: string | null;
 };
 
@@ -2614,6 +2633,7 @@ export type ProviderStatusRecord = {
   label: string;
   purpose: string;
   detail: string;
+  webhook_url?: string;
 };
 
 export type IntegrationStatusRecord = {
@@ -2622,6 +2642,7 @@ export type IntegrationStatusRecord = {
   sendgrid: ProviderStatusRecord;
   twilio: ProviderStatusRecord;
   xero: ProviderStatusRecord;
+  docusign: ProviderStatusRecord;
 };
 
 export function getIntegrationStatus() {
@@ -3270,6 +3291,15 @@ export function sendTenantOnboardingPortalInvite(onboardingId: string) {
 export function sendTenantOnboardingLeasePack(onboardingId: string) {
   return request<TenantOnboardingRecord>(
     `/tenant-onboarding/${onboardingId}/send-lease-pack`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function activateTenantOnboardingLease(onboardingId: string) {
+  return request<TenantOnboardingRecord>(
+    `/tenant-onboarding/${onboardingId}/activate-lease`,
     {
       method: "POST",
     },
@@ -4280,6 +4310,15 @@ export function applyDocumentIntake(
       lease_id: payload.leaseId || undefined,
     }),
   });
+}
+
+export function acceptDocumentIntakeLeaseMatch(intakeId: string) {
+  return request<DocumentIntakeRecord>(
+    `/document-intakes/${intakeId}/accept-lease-match`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function deleteDocumentIntake(intakeId: string) {

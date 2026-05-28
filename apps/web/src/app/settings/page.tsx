@@ -1840,6 +1840,7 @@ function IntegrationsHealthCard({
         { key: "sendgrid", data: integrations.sendgrid },
         { key: "twilio", data: integrations.twilio },
         { key: "xero", data: integrations.xero },
+        { key: "docusign", data: integrations.docusign },
       ]
     : [];
   return (
@@ -1876,6 +1877,16 @@ function IntegrationsHealthCard({
                 <div className="text-xs text-muted-foreground">
                   {data.detail}
                 </div>
+                {data.webhook_url ? (
+                  <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-2 text-xs">
+                    <span className="font-medium text-foreground">
+                      DocuSign Connect webhook
+                    </span>
+                    <code className="break-all font-mono text-[11px] text-muted-foreground">
+                      {data.webhook_url}
+                    </code>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

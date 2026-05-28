@@ -6,6 +6,7 @@ from uuid import UUID
 from apps.api.main import app
 from apps.api.routers import tenant_onboarding as tenant_onboarding_router
 from apps.api.routers import tenant_portal as tenant_portal_router
+from apps.api.tenant_lease_agreement import set_lease_agreement_section
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,10 +15,13 @@ from stewart.core.models import (
     BillingDraft,
     BillingDraftStatus,
     DocumentCategory,
+    DocumentIntake,
+    DocumentIntakeStatus,
     Entity,
     InvoiceDraft,
     InvoiceDraftStatus,
     Lease,
+    LeaseIntake,
     LeaseStatus,
     MaintenancePriority,
     MaintenanceWorkOrder,
@@ -1520,6 +1524,576 @@ def test_tenant_portal_onboarding_submit_writes_submitted_data(
     assert tenant.legal_name == "Portal Tenant One Pty Ltd"
 
 
+def test_tenant_portal_lease_upload_promotes_document_to_smart_intake(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={"openai_api_key": ""}
+    )
+
+    response = client.post(
+        "/api/v1/tenant-portal/documents",
+        headers={"x-tenant-portal-token": scope["token"]},
+        data={"category": "lease", "notes": "Executed lease uploaded by tenant."},
+        files={"file": ("signed-lease.txt", b"signed lease terms", "text/plain")},
+    )
+
+    assert response.status_code == 201
+    document_id = response.json()["id"]
+    document = session.get(StoredDocument, UUID(document_id))
+    assert document is not None
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.document_id == document.id)
+    )
+    assert intake is not None
+    assert intake.status == "uploaded"
+    assert intake.extracted_data == {}
+    assert intake.review_data["source"] == "tenant_portal"
+    assert intake.review_data["candidate"] == "tenant_uploaded_lease_auto_match"
+    assert intake.review_data["lease_id"] == scope["lease_id"]
+    assert document.document_metadata["smart_intake_id"] == str(intake.id)
+    assert document.document_metadata["auto_match_candidate"] == "tenant_uploaded_lease"
+
+
+def test_tenant_portal_insurance_upload_promotes_document_to_smart_intake(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={"openai_api_key": ""}
+    )
+
+    response = client.post(
+        "/api/v1/tenant-portal/documents",
+        headers={"x-tenant-portal-token": scope["token"]},
+        data={"category": "insurance", "notes": "Renewed insurance certificate."},
+        files={"file": ("renewed-insurance.txt", b"insurance certificate", "text/plain")},
+    )
+
+    assert response.status_code == 201
+    document = session.get(StoredDocument, UUID(response.json()["id"]))
+    assert document is not None
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.document_id == document.id)
+    )
+    assert intake is not None
+    assert intake.review_data["candidate"] == "tenant_uploaded_insurance_auto_update"
+    assert intake.review_data["tenant_id"] == scope["tenant_id"]
+    assert document.document_metadata["auto_match_candidate"] == "tenant_uploaded_insurance"
+
+
+def test_tenant_portal_insurance_upload_extracts_when_openai_is_configured(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_portal_scope(session)
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={"openai_api_key": "test-openai-key"}
+    )
+
+    def fake_extract_document_file(**kwargs):  # noqa: ANN003
+        assert kwargs["filename"] == "renewed-insurance.txt"
+        return (
+            {
+                "document_type": "insurance_certificate",
+                "summary": "Tenant insurance certificate expires 2027-02-28.",
+                "confidence": 0.91,
+                "key_dates": [{"label": "Policy expiry", "date": "2027-02-28"}],
+                "warnings": [],
+                "missing_information": [],
+            },
+            "resp_tenant_insurance_extract",
+        )
+
+    monkeypatch.setattr(
+        tenant_portal_router,
+        "extract_document_file",
+        fake_extract_document_file,
+        raising=False,
+    )
+
+    response = client.post(
+        "/api/v1/tenant-portal/documents",
+        headers={"x-tenant-portal-token": scope["token"]},
+        data={"category": "insurance", "notes": "Renewed insurance certificate."},
+        files={"file": ("renewed-insurance.txt", b"insurance certificate", "text/plain")},
+    )
+
+    assert response.status_code == 201
+    document = session.get(StoredDocument, UUID(response.json()["id"]))
+    assert document is not None
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.document_id == document.id)
+    )
+    assert intake is not None
+    assert intake.status == "ready_for_review"
+    assert intake.document_type == "insurance_certificate"
+    assert intake.openai_response_id == "resp_tenant_insurance_extract"
+    assert intake.extracted_data["key_dates"][0]["date"] == "2027-02-28"
+    assert document.document_metadata["smart_intake_auto_extracted"] is True
+
+
+def test_tenant_portal_upload_extraction_keeps_tenant_selected_category_until_review(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_portal_scope(session)
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={"openai_api_key": "test-openai-key"}
+    )
+
+    def fake_extract_document_file(**kwargs):  # noqa: ANN003
+        assert kwargs["filename"] == "unclear-insurance.txt"
+        return (
+            {
+                "document_type": "unknown",
+                "summary": "The upload could not be confidently classified.",
+                "confidence": 0.22,
+                "warnings": ["Could not confirm this is an insurance certificate."],
+                "missing_information": [],
+            },
+            "resp_unclear_tenant_upload",
+        )
+
+    monkeypatch.setattr(
+        tenant_portal_router,
+        "extract_document_file",
+        fake_extract_document_file,
+        raising=False,
+    )
+
+    response = client.post(
+        "/api/v1/tenant-portal/documents",
+        headers={"x-tenant-portal-token": scope["token"]},
+        data={"category": "insurance", "notes": "Renewed insurance certificate."},
+        files={
+            "file": ("unclear-insurance.txt", b"unclear certificate", "text/plain")
+        },
+    )
+
+    assert response.status_code == 201
+    document = session.get(StoredDocument, UUID(response.json()["id"]))
+    assert document is not None
+    assert document.category == DocumentCategory.insurance
+    assert document.document_metadata["document_type"] == "unknown"
+    assert document.document_metadata["proposed_document_category"] == "other"
+
+
+def test_tenant_portal_lease_upload_extraction_adds_match_recommendation(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_portal_scope(session)
+    lease = session.get(Lease, UUID(scope["lease_id"]))
+    assert lease is not None
+    lease.annual_rent_cents = 12500000
+    session.commit()
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={"openai_api_key": "test-openai-key"}
+    )
+
+    def fake_extract_document_file(**kwargs):  # noqa: ANN003
+        assert kwargs["filename"] == "signed-lease.txt"
+        return (
+            {
+                "document_type": "lease",
+                "summary": "Executed lease matches the portal lease.",
+                "confidence": 0.94,
+                "tenancy_schedule": [
+                    {
+                        "lease_start": "2025-07-01",
+                        "lease_expiry": "2028-06-30",
+                        "annual_rent": 125000,
+                    }
+                ],
+                "warnings": [],
+                "missing_information": [],
+            },
+            "resp_tenant_lease_extract",
+        )
+
+    monkeypatch.setattr(
+        tenant_portal_router,
+        "extract_document_file",
+        fake_extract_document_file,
+        raising=False,
+    )
+
+    response = client.post(
+        "/api/v1/tenant-portal/documents",
+        headers={"x-tenant-portal-token": scope["token"]},
+        data={"category": "lease", "notes": "Executed lease uploaded by tenant."},
+        files={"file": ("signed-lease.txt", b"signed lease terms", "text/plain")},
+    )
+
+    assert response.status_code == 201
+    document = session.get(StoredDocument, UUID(response.json()["id"]))
+    assert document is not None
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.document_id == document.id)
+    )
+    assert intake is not None
+    match = intake.extracted_data["lease_auto_match"]
+    assert match["status"] == "matched"
+    assert match["lease_id"] == scope["lease_id"]
+    assert {item["field"] for item in match["matched_fields"]} == {
+        "commencement_date",
+        "expiry_date",
+        "annual_rent_cents",
+    }
+    assert match["differences"] == []
+    assert match["guardrail"] == (
+        "This is a review recommendation only. No lease status or register data "
+        "changes until an operator applies the reviewed intake."
+    )
+
+
+def test_document_intake_accepts_tenant_lease_match_without_mutating_lease(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_portal_scope(session)
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    lease = session.get(Lease, UUID(scope["lease_id"]))
+    assert lease is not None
+    lease.annual_rent_cents = 12500000
+    lease.status = LeaseStatus.pending
+    onboarding.status = TenantOnboardingStatus.applied
+    session.commit()
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={"openai_api_key": "test-openai-key"}
+    )
+
+    def fake_extract_document_file(**kwargs):  # noqa: ANN003
+        return (
+            {
+                "document_type": "lease",
+                "summary": "Executed lease matches the portal lease.",
+                "confidence": 0.94,
+                "tenancy_schedule": [
+                    {
+                        "lease_start": "2025-07-01",
+                        "lease_expiry": "2028-06-30",
+                        "annual_rent": 125000,
+                    }
+                ],
+                "warnings": [],
+                "missing_information": [],
+            },
+            "resp_tenant_lease_extract",
+        )
+
+    monkeypatch.setattr(
+        tenant_portal_router,
+        "extract_document_file",
+        fake_extract_document_file,
+        raising=False,
+    )
+
+    response = client.post(
+        "/api/v1/tenant-portal/documents",
+        headers={"x-tenant-portal-token": scope["token"]},
+        data={"category": "lease", "notes": "Executed lease uploaded by tenant."},
+        files={"file": ("signed-lease.txt", b"signed lease terms", "text/plain")},
+    )
+    assert response.status_code == 201
+    document = session.get(StoredDocument, UUID(response.json()["id"]))
+    assert document is not None
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.document_id == document.id)
+    )
+    assert intake is not None
+    original_updated_at = lease.updated_at
+
+    accept_response = client.post(
+        f"/api/v1/document-intakes/{intake.id}/accept-lease-match"
+    )
+
+    assert accept_response.status_code == 200
+    body = accept_response.json()
+    assert body["status"] == "applied"
+    assert body["review_data"]["applied"]["action"] == "accepted_tenant_lease_match"
+    assert body["review_data"]["applied"]["lease_id"] == scope["lease_id"]
+
+    session.refresh(lease)
+    session.refresh(document)
+    session.refresh(onboarding)
+    assert lease.status == LeaseStatus.pending
+    assert lease.annual_rent_cents == 12500000
+    assert lease.updated_at.replace(tzinfo=None) == original_updated_at.replace(tzinfo=None)
+    assert document.document_metadata["accepted_lease_match"] is True
+    assert document.document_metadata["accepted_lease_match_id"] == str(intake.id)
+    assert session.scalars(select(LeaseIntake)).all() == []
+    signing = onboarding.delivery_data["lease_agreement"]["signing"]
+    assert signing["provider"] == "tenant_upload"
+    assert signing["status"] == "completed"
+    assert signing["signed_document_id"] == str(document.id)
+    assert signing["lease_activation_review"]["status"] == "ready_for_review"
+    assert signing["lease_activation_review"]["guardrail"] == (
+        "Tenant-uploaded lease match does not activate a lease automatically; "
+        "review and activate explicitly."
+    )
+
+    activate_response = client.post(
+        f"/api/v1/tenant-onboarding/{onboarding.id}/activate-lease"
+    )
+
+    assert activate_response.status_code == 200
+    session.refresh(lease)
+    assert lease.status == LeaseStatus.active
+    assert lease.lease_metadata["activation"]["source"] == "tenant_uploaded_lease_match"
+
+
+def test_document_intake_accept_lease_match_rejects_differences(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    lease = session.get(Lease, UUID(scope["lease_id"]))
+    assert lease is not None
+    document = StoredDocument(
+        entity_id=lease.tenancy_unit.property.entity_id,
+        property_id=lease.tenancy_unit.property_id,
+        tenancy_unit_id=lease.tenancy_unit_id,
+        tenant_id=lease.tenant_id,
+        lease_id=lease.id,
+        tenant_onboarding_id=UUID(scope["onboarding_id"]),
+        filename="different-lease.txt",
+        content_type="text/plain",
+        byte_size=5,
+        file_data=b"lease",
+        category=DocumentCategory.lease,
+        document_metadata={
+            "source": "tenant_portal",
+            "auto_match_candidate": "tenant_uploaded_lease",
+        },
+    )
+    session.add(document)
+    session.flush()
+    intake = DocumentIntake(
+        entity_id=document.entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.ready_for_review,
+        document_type="lease",
+        extracted_data={
+            "document_type": "lease",
+            "lease_auto_match": {
+                "status": "matched",
+                "lease_id": str(lease.id),
+                "matched_fields": [],
+                "differences": [
+                    {
+                        "field": "expiry_date",
+                        "current": "2028-06-30",
+                        "extracted": "2029-06-30",
+                    }
+                ],
+                "missing_fields": [],
+            },
+        },
+        review_data={},
+    )
+    session.add(intake)
+    session.commit()
+
+    response = client.post(f"/api/v1/document-intakes/{intake.id}/accept-lease-match")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Resolve lease match differences before accepting."
+
+
+def test_document_intake_accept_lease_match_rejects_active_docusign_envelope(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    lease = session.get(Lease, UUID(scope["lease_id"]))
+    assert lease is not None
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "signing": {
+                "provider": "docusign",
+                "status": "sent",
+                "envelope_id": "active-envelope-lease-match",
+                "sent_at": datetime.now(UTC).isoformat(),
+            }
+        },
+    )
+    document = StoredDocument(
+        entity_id=lease.tenancy_unit.property.entity_id,
+        property_id=lease.tenancy_unit.property_id,
+        tenancy_unit_id=lease.tenancy_unit_id,
+        tenant_id=lease.tenant_id,
+        lease_id=lease.id,
+        tenant_onboarding_id=UUID(scope["onboarding_id"]),
+        filename="matched-lease.txt",
+        content_type="text/plain",
+        byte_size=5,
+        file_data=b"lease",
+        category=DocumentCategory.lease,
+        document_metadata={
+            "source": "tenant_portal",
+            "auto_match_candidate": "tenant_uploaded_lease",
+        },
+    )
+    session.add(document)
+    session.flush()
+    intake = DocumentIntake(
+        entity_id=document.entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.ready_for_review,
+        document_type="lease",
+        extracted_data={
+            "document_type": "lease",
+            "lease_auto_match": {
+                "status": "matched",
+                "lease_id": str(lease.id),
+                "matched_fields": [{"field": "expiry_date"}],
+                "differences": [],
+                "missing_fields": [],
+            },
+        },
+        review_data={},
+    )
+    session.add(intake)
+    session.commit()
+
+    response = client.post(f"/api/v1/document-intakes/{intake.id}/accept-lease-match")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Resolve the active DocuSign envelope before accepting a tenant-uploaded lease."
+    )
+    session.refresh(intake)
+    session.refresh(document)
+    assert intake.status == DocumentIntakeStatus.ready_for_review
+    assert document.document_metadata.get("accepted_lease_match") is None
+
+
+def test_document_intake_accept_lease_match_rejects_missing_document_lease_scope(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    lease = session.get(Lease, UUID(scope["lease_id"]))
+    assert lease is not None
+    document = StoredDocument(
+        entity_id=lease.tenancy_unit.property.entity_id,
+        property_id=lease.tenancy_unit.property_id,
+        tenancy_unit_id=lease.tenancy_unit_id,
+        tenant_id=lease.tenant_id,
+        lease_id=None,
+        tenant_onboarding_id=UUID(scope["onboarding_id"]),
+        filename="malformed-lease.txt",
+        content_type="text/plain",
+        byte_size=5,
+        file_data=b"lease",
+        category=DocumentCategory.lease,
+        document_metadata={
+            "source": "tenant_portal",
+            "auto_match_candidate": "tenant_uploaded_lease",
+        },
+    )
+    session.add(document)
+    session.flush()
+    intake = DocumentIntake(
+        entity_id=document.entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.ready_for_review,
+        document_type="lease",
+        extracted_data={
+            "document_type": "lease",
+            "lease_auto_match": {
+                "status": "matched",
+                "lease_id": str(lease.id),
+                "matched_fields": [{"field": "expiry_date"}],
+                "differences": [],
+                "missing_fields": [],
+            },
+        },
+        review_data={},
+    )
+    session.add(intake)
+    session.commit()
+
+    response = client.post(f"/api/v1/document-intakes/{intake.id}/accept-lease-match")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Matched lease does not match the uploaded document scope."
+    )
+    session.refresh(document)
+    assert document.lease_id is None
+    assert document.document_metadata.get("accepted_lease_match") is None
+
+
+def test_document_intake_accept_lease_match_rejects_operator_uploaded_documents(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    lease = session.get(Lease, UUID(scope["lease_id"]))
+    assert lease is not None
+    document = StoredDocument(
+        entity_id=lease.tenancy_unit.property.entity_id,
+        property_id=lease.tenancy_unit.property_id,
+        tenancy_unit_id=lease.tenancy_unit_id,
+        tenant_id=lease.tenant_id,
+        lease_id=lease.id,
+        filename="operator-lease.txt",
+        content_type="text/plain",
+        byte_size=5,
+        file_data=b"lease",
+        category=DocumentCategory.lease,
+        document_metadata={"source": "smart_intake"},
+    )
+    session.add(document)
+    session.flush()
+    intake = DocumentIntake(
+        entity_id=document.entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.ready_for_review,
+        document_type="lease",
+        extracted_data={
+            "document_type": "lease",
+            "lease_auto_match": {
+                "status": "matched",
+                "lease_id": str(lease.id),
+                "matched_fields": [{"field": "expiry_date"}],
+                "differences": [],
+                "missing_fields": [],
+            },
+        },
+        review_data={},
+    )
+    session.add(intake)
+    session.commit()
+
+    response = client.post(f"/api/v1/document-intakes/{intake.id}/accept-lease-match")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Only tenant-uploaded scoped lease matches can be accepted."
+    )
+
+
 def test_tenant_portal_contact_change_request_waits_for_operator_apply(
     client: TestClient,
     session: Session,
@@ -1730,6 +2304,90 @@ def test_tenant_portal_lease_questions_gate_signing_and_apply(
     signed_agreement = sign_response.json()["lease_agreement"]
     assert signed_agreement["status"] == "signed"
     assert signed_agreement["signed_at"] is not None
+
+
+def test_tenant_portal_lease_signing_rejects_pending_docusign_envelope(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    bearer_headers = {"Authorization": "Bearer tenant-subject-one"}
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers=bearer_headers,
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    onboarding.status = TenantOnboardingStatus.applied
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "signing": {
+                "provider": "docusign",
+                "status": "queued",
+                "envelope_id": "envelope-pending",
+                "document_id": scope["document_id"],
+            }
+        },
+    )
+    session.commit()
+
+    response = client.post(
+        "/api/v1/tenant-portal/lease-agreement/sign",
+        headers=bearer_headers,
+        json={"accepted": True},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "A DocuSign envelope is waiting for completion. Complete the DocuSign request "
+        "instead of signing inside Leasium."
+    )
+
+
+def test_tenant_portal_lease_signing_rejects_delivered_docusign_envelope(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    bearer_headers = {"Authorization": "Bearer tenant-subject-one"}
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers=bearer_headers,
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    onboarding.status = TenantOnboardingStatus.applied
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "signing": {
+                "provider": "docusign",
+                "status": "delivered",
+                "envelope_id": "envelope-delivered",
+                "document_id": scope["document_id"],
+            }
+        },
+    )
+    session.commit()
+
+    response = client.post(
+        "/api/v1/tenant-portal/lease-agreement/sign",
+        headers=bearer_headers,
+        json={"accepted": True},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "A DocuSign envelope is waiting for completion. Complete the DocuSign request "
+        "instead of signing inside Leasium."
+    )
 
 
 def test_tenant_portal_onboarding_submit_rejects_non_sent_status(

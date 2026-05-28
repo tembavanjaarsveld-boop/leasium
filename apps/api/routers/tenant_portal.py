@@ -3,12 +3,13 @@
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -20,8 +21,9 @@ from fastapi import (
     status,
 )
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
+from stewart.ai.document_intake import DocumentExtractionError, extract_document_file
 from stewart.core.audit import audit_log
 from stewart.core.auth import (
     ClerkIdentity,
@@ -34,6 +36,8 @@ from stewart.core.ids import uuid7
 from stewart.core.models import (
     AuditOutcome,
     DocumentCategory,
+    DocumentIntake,
+    DocumentIntakeStatus,
     InvoiceDraft,
     InvoiceDraftStatus,
     Lease,
@@ -83,6 +87,7 @@ from apps.api.tenant_lease_agreement import (
     append_lease_question,
     blocking_lease_question_count,
     lease_agreement_read,
+    lease_agreement_section,
     lease_agreement_signed,
     mark_lease_agreement_signed,
 )
@@ -108,6 +113,18 @@ PORTAL_UPLOAD_CATEGORIES = (
     DocumentCategory.onboarding,
     DocumentCategory.other,
 )
+SMART_INTAKE_TENANT_UPLOAD_CATEGORIES = (
+    DocumentCategory.insurance,
+    DocumentCategory.lease,
+)
+SMART_INTAKE_UPLOAD_EXTENSIONS = {".docx", ".pdf", ".txt", ".md"}
+SMART_INTAKE_UPLOAD_CONTENT_TYPES = {
+    "application/octet-stream",
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/markdown",
+    "text/plain",
+}
 CONTACT_CHANGE_FIELDS: tuple[tuple[str, str], ...] = (
     ("contact_name", "Primary contact"),
     ("contact_email", "Contact email"),
@@ -632,6 +649,324 @@ def _document_read(document: StoredDocument) -> TenantPortalDocumentRead:
         source=_document_source(document),
         created_at=document.created_at,
     )
+
+
+def _maybe_promote_tenant_upload_to_intake(
+    document: StoredDocument,
+    scope: PortalScope,
+    session: Session,
+) -> DocumentIntake | None:
+    if document.category not in SMART_INTAKE_TENANT_UPLOAD_CATEGORIES:
+        return None
+    if Path(document.filename).suffix.lower() not in SMART_INTAKE_UPLOAD_EXTENSIONS:
+        return None
+    if document.content_type and document.content_type not in SMART_INTAKE_UPLOAD_CONTENT_TYPES:
+        return None
+    existing = session.scalar(
+        select(DocumentIntake).where(
+            DocumentIntake.document_id == document.id,
+            DocumentIntake.deleted_at.is_(None),
+        )
+    )
+    if existing is not None:
+        return existing
+    candidate = (
+        "tenant_uploaded_lease_auto_match"
+        if document.category == DocumentCategory.lease
+        else "tenant_uploaded_insurance_auto_update"
+    )
+    intake = DocumentIntake(
+        entity_id=document.entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.uploaded,
+        extracted_data={},
+        review_data={
+            "source": "tenant_portal",
+            "candidate": candidate,
+            "tenant_onboarding_id": str(scope.onboarding.id),
+            "tenant_id": str(scope.tenant.id),
+            "lease_id": str(scope.lease.id),
+            "guardrail": (
+                "Tenant-uploaded documents are promoted for operator review. "
+                "No lease status, tenant metadata, provider action, or payment "
+                "record is changed until an operator applies the review."
+            ),
+        },
+    )
+    session.add(intake)
+    session.flush()
+    document.document_metadata = {
+        **(document.document_metadata or {}),
+        "smart_intake_id": str(intake.id),
+        "smart_intake_promoted": True,
+        "smart_intake_promoted_at": utcnow().isoformat(),
+        "auto_match_candidate": "tenant_uploaded_lease"
+        if document.category == DocumentCategory.lease
+        else "tenant_uploaded_insurance",
+    }
+    audit_log(
+        session,
+        actor=scope.auth.actor,
+        entity_id=document.entity_id,
+        action="promote",
+        target_table="document_intake",
+        target_id=intake.id,
+        tool_input={
+            "document_id": str(document.id),
+            "category": document.category.value,
+            "source": "tenant_portal",
+        },
+        tool_output_summary="Tenant portal upload promoted to Smart Intake review queue.",
+        data_classification="confidential",
+    )
+    return intake
+
+
+def _tenant_upload_status_for_extraction(extracted: dict[str, Any]) -> DocumentIntakeStatus:
+    if extracted.get("document_type") == "unknown":
+        return DocumentIntakeStatus.needs_attention
+    if extracted.get("warnings") or extracted.get("missing_information"):
+        return DocumentIntakeStatus.needs_attention
+    return DocumentIntakeStatus.ready_for_review
+
+
+def _tenant_upload_document_category(document_type: str | None) -> DocumentCategory:
+    match document_type:
+        case "lease":
+            return DocumentCategory.lease
+        case "insurance_certificate":
+            return DocumentCategory.insurance
+        case _:
+            return DocumentCategory.other
+
+
+def _tenant_upload_confidence(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return min(max(number, 0), 1)
+
+
+def _tenant_upload_date(value: Any) -> date | None:
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _tenant_upload_amount_cents(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(round(float(str(value).replace(",", "")) * 100))
+    except ValueError:
+        return None
+
+
+def _tenant_upload_first_schedule(extracted: dict[str, Any]) -> dict[str, Any]:
+    schedule = extracted.get("tenancy_schedule")
+    if not isinstance(schedule, list):
+        return {}
+    return next((item for item in schedule if isinstance(item, dict)), {})
+
+
+def _tenant_upload_lease_auto_match(
+    document: StoredDocument,
+    extracted: dict[str, Any],
+    session: Session,
+) -> dict[str, Any]:
+    guardrail = (
+        "This is a review recommendation only. No lease status or register data "
+        "changes until an operator applies the reviewed intake."
+    )
+    if document.lease_id is None:
+        return {
+            "status": "needs_review",
+            "lease_id": None,
+            "matched_fields": [],
+            "differences": [],
+            "missing_fields": ["lease_id"],
+            "guardrail": guardrail,
+        }
+    lease = session.get(Lease, document.lease_id)
+    if lease is None:
+        return {
+            "status": "needs_review",
+            "lease_id": str(document.lease_id),
+            "matched_fields": [],
+            "differences": [],
+            "missing_fields": ["lease"],
+            "guardrail": guardrail,
+        }
+
+    schedule = _tenant_upload_first_schedule(extracted)
+    matched_fields: list[dict[str, Any]] = []
+    differences: list[dict[str, Any]] = []
+    missing_fields: list[str] = []
+
+    def compare(field: str, current: Any, proposed: Any) -> None:
+        if current is None or proposed is None:
+            missing_fields.append(field)
+            return
+        current_value = current.isoformat() if isinstance(current, date) else current
+        proposed_value = proposed.isoformat() if isinstance(proposed, date) else proposed
+        row = {
+            "field": field,
+            "current": current_value,
+            "extracted": proposed_value,
+        }
+        if current_value == proposed_value:
+            matched_fields.append(row)
+        else:
+            differences.append(row)
+
+    compare(
+        "commencement_date",
+        lease.commencement_date,
+        _tenant_upload_date(schedule.get("lease_start")),
+    )
+    compare(
+        "expiry_date",
+        lease.expiry_date,
+        _tenant_upload_date(schedule.get("lease_expiry")),
+    )
+    compare(
+        "annual_rent_cents",
+        lease.annual_rent_cents,
+        _tenant_upload_amount_cents(schedule.get("annual_rent")),
+    )
+    match_status = "candidate"
+    if differences:
+        match_status = "needs_review"
+    elif matched_fields:
+        match_status = "matched"
+
+    return {
+        "status": match_status,
+        "lease_id": str(lease.id),
+        "tenant_id": str(lease.tenant_id),
+        "tenancy_unit_id": str(lease.tenancy_unit_id),
+        "matched_fields": matched_fields,
+        "differences": differences,
+        "missing_fields": missing_fields,
+        "guardrail": guardrail,
+    }
+
+
+def _extract_tenant_upload_intake(
+    intake: DocumentIntake,
+    *,
+    actor: str,
+    settings: Settings,
+    session: Session,
+) -> None:
+    document = intake.document
+    intake.status = DocumentIntakeStatus.reading
+    intake.error_message = None
+    session.flush()
+    try:
+        extracted, response_id = extract_document_file(
+            file_data=document.file_data,
+            filename=document.filename,
+            content_type=document.content_type,
+            settings=settings,
+        )
+    except DocumentExtractionError as exc:
+        intake.status = DocumentIntakeStatus.failed
+        intake.error_message = str(exc)
+        document.document_metadata = {
+            **(document.document_metadata or {}),
+            "smart_intake_auto_extract_failed": True,
+            "smart_intake_auto_extract_error": str(exc),
+        }
+        audit_log(
+            session,
+            actor=actor,
+            entity_id=intake.entity_id,
+            action="extract",
+            target_table="document_intake",
+            target_id=intake.id,
+            tool_name="openai.responses",
+            tool_input={
+                "document_id": str(document.id),
+                "filename": document.filename,
+                "source": "tenant_portal",
+            },
+            outcome=AuditOutcome.error,
+            error_message=str(exc),
+            data_classification="confidential",
+        )
+        return
+
+    document_type = str(extracted.get("document_type") or "unknown")
+    summary = str(extracted.get("summary") or "").strip() or None
+    intake.status = _tenant_upload_status_for_extraction(extracted)
+    intake.document_type = document_type
+    intake.summary = summary
+    intake.confidence = _tenant_upload_confidence(extracted.get("confidence"))
+    if document_type == "lease":
+        extracted["lease_auto_match"] = _tenant_upload_lease_auto_match(
+            document,
+            extracted,
+            session,
+        )
+    intake.extracted_data = extracted
+    intake.review_data = {}
+    intake.openai_response_id = response_id
+    proposed_category = _tenant_upload_document_category(document_type)
+    document.document_metadata = {
+        **(document.document_metadata or {}),
+        "smart_intake_auto_extracted": True,
+        "smart_intake_auto_extracted_at": utcnow().isoformat(),
+        "document_type": document_type,
+        "proposed_document_category": proposed_category.value,
+    }
+    audit_log(
+        session,
+        actor=actor,
+        entity_id=intake.entity_id,
+        action="extract",
+        target_table="document_intake",
+        target_id=intake.id,
+        tool_name="openai.responses",
+        tool_input={
+            "document_id": str(document.id),
+            "filename": document.filename,
+            "source": "tenant_portal",
+        },
+        tool_output_summary="Tenant portal upload extracted into Smart Intake review.",
+        data_classification="confidential",
+    )
+
+
+def _extract_tenant_upload_intake_background(
+    intake_id: UUID,
+    actor: str,
+    settings: Settings,
+    bind: Any,
+) -> None:
+    BackgroundSession = sessionmaker(
+        bind=bind,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+    )
+    with BackgroundSession() as session:
+        intake = session.get(DocumentIntake, intake_id)
+        if intake is None or intake.deleted_at is not None:
+            return
+        if intake.status == DocumentIntakeStatus.applied:
+            return
+        _extract_tenant_upload_intake(
+            intake,
+            actor=actor,
+            settings=settings,
+            session=session,
+        )
+        session.commit()
 
 
 def _tenant_documents(scope: PortalScope, session: Session) -> list[StoredDocument]:
@@ -1863,6 +2198,20 @@ def sign_tenant_portal_lease_agreement(
             status_code=status.HTTP_409_CONFLICT,
             detail="Resolve lease agreement questions before signing.",
         )
+    signing = lease_agreement_section(scope.onboarding).get("signing")
+    signing_data = dict(signing) if isinstance(signing, dict) else {}
+    if (
+        signing_data.get("provider") == "docusign"
+        and signing_data.get("status") in {"queued", "sent", "delivered"}
+        and not signing_data.get("signed_at")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "A DocuSign envelope is waiting for completion. Complete the DocuSign request "
+                "instead of signing inside Leasium."
+            ),
+        )
     mark_lease_agreement_signed(scope.onboarding, actor=scope.auth.actor)
     audit_log(
         session,
@@ -2027,6 +2376,7 @@ def create_contact_change_request(
 )
 async def upload_tenant_portal_document(
     request: Request,
+    background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)],
     file: Annotated[UploadFile, File()],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -2050,7 +2400,7 @@ async def upload_tenant_portal_document(
             detail="Category is not available for tenant portal upload.",
         )
     data = await file.read()
-    max_bytes = get_settings().document_max_bytes
+    max_bytes = settings.document_max_bytes
     if not data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File is empty.")
     if len(data) > max_bytes:
@@ -2085,6 +2435,7 @@ async def upload_tenant_portal_document(
     )
     session.add(document)
     session.flush()
+    intake = _maybe_promote_tenant_upload_to_intake(document, scope, session)
     audit_log(
         session,
         actor=scope.auth.actor,
@@ -2096,6 +2447,14 @@ async def upload_tenant_portal_document(
         data_classification="confidential",
     )
     session.commit()
+    if intake is not None and settings.openai_api_key:
+        background_tasks.add_task(
+            _extract_tenant_upload_intake_background,
+            intake.id,
+            scope.auth.actor,
+            settings,
+            session.get_bind(),
+        )
     session.refresh(document)
     return _document_read(document)
 

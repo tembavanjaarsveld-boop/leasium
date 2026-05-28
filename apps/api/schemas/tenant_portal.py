@@ -149,6 +149,12 @@ class TenantPortalLeaseAgreementRead(BaseModel):
     questions: list[TenantPortalLeaseQuestionRead] = Field(default_factory=list)
     signed_at: datetime | None = None
     signed_by_actor: str | None = None
+    signing: dict[str, Any] = Field(default_factory=dict)
+    signing_provider: str | None = None
+    signing_status: str | None = None
+    signing_envelope_id: str | None = None
+    signing_document_id: str | None = None
+    signing_sent_at: datetime | None = None
     signing_locked_reason: str | None = None
 
 

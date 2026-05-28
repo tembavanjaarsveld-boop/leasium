@@ -262,6 +262,84 @@ Last updated: 2026-05-28
   It does not start OAuth, call or refresh Xero, preview/apply reconciliation,
   create Xero drafts, dispatch invoices/providers, send email/SMS, refresh
   providers, or mutate provider history.
+- 2026-05-29 tenant lifecycle push: tenant portal `lease` and `insurance`
+  uploads now auto-promote supported PDF/DOCX/TXT/MD files into Smart Intake
+  with tenant/onboarding/lease scope and review-first guardrails. When OpenAI
+  is configured, promoted tenant uploads now auto-extract in the background so
+  the operator gets a ready-to-review Smart Intake item; when OpenAI is absent,
+  the upload remains a normal promoted queue row. Extracted tenant lease uploads
+  now include a `lease_auto_match` recommendation against the scoped lease,
+  with matched fields, differences, missing fields, and a no-mutation guardrail.
+  Smart Intake now renders that match recommendation in the review panel so the
+  operator can see whether the tenant-uploaded lease matches the scoped lease
+  before applying anything. Matched tenant lease uploads can now be accepted via
+  `POST /api/v1/document-intakes/{id}/accept-lease-match`; that marks the
+  intake applied, links the document to the existing lease, stamps onboarding
+  signing as completed by `tenant_upload`, and queues the existing
+  activation-review handoff for pending leases without mutating lease
+  status/register values or creating a `LeaseIntake`. The accept endpoint is
+  deliberately narrow: tenant-portal source only, onboarding-scoped only, and
+  blocked if differences or missing fields remain. It also requires the stored
+  document and onboarding scope to match the accepted lease before relinking the
+  upload or stamping the signing handoff. It also now blocks while an active
+  DocuSign envelope is queued/sent/delivered for the same onboarding so
+  tenant-uploaded signing cannot silently supersede an unresolved provider
+  envelope. Reviewed scoped
+  `insurance_certificate` applies now update tenant insurance metadata
+  (`insurance_confirmed`, expiry, source document/intake ids, review history)
+  in addition to creating the renewal obligation. If the reviewed document is
+  lease-scoped, insurance metadata follows that lease tenant and corrects stale
+  document tenant scope before writing history. Upload/extraction keeps the
+  tenant-selected document category stable and stores AI classification only as
+  proposed metadata until review/apply. Tenant detail now shows the confirmed
+  insurance expiry plus source document/review links. **Send lease pack** now
+  requires an attached lease document server-side, calls the DocuSign signature
+  helper, stores a DocuSign receipt in `delivery_data.lease_pack.docusign`,
+  stores queued/sent envelope metadata under `delivery_data.lease_agreement.signing`,
+  and blocks tenant-side Leasium click-signing while a DocuSign envelope is
+  queued/sent. `stewart.integrations.docusign.send_lease_for_signature` now
+  performs JWT grant + envelope create when the four required DocuSign env vars
+  are configured, and soft-skips when config or signer email is missing. The
+  DocuSign Connect endpoint `POST /api/v1/tenant-onboarding/webhooks/docusign`
+  now requires `DOCUSIGN_WEBHOOK_SECRET`, rejects unsigned Connect events, and
+  marks completed envelopes signed idempotently only when the current signing
+  record is an active DocuSign envelope. On completion it downloads DocuSign's
+  completed combined PDF and stores it once as a signed lease document scoped to
+  the tenant/onboarding/lease. Envelope create now includes hidden custom fields
+  for lease id, tenant onboarding id, source document id, entity id, property,
+  and unit so provider-console traces can be matched back to Leasium. If
+  DocuSign echoes those Leasium custom fields in Connect payloads, the webhook
+  validates each present id before accepting completion; omitted fields remain
+  allowed for simpler Connect configurations.
+  Non-completion events such as declined/voided are
+  now retained as provider events and shown as DocuSign attention states without
+  marking the lease signed or downloading a PDF; delivered envelopes stay
+  blocked from duplicate operator **Send lease pack** attempts and local Leasium
+  signing until DocuSign completes or an operator resolves the provider state.
+  Tenant detail now offers **Send again** for
+  declined/voided/failed/skipped DocuSign states when the lease document is
+  still attached, creating a fresh envelope and preserving the previous
+  lease-pack attempt in history. Tenant detail now surfaces promoted Smart Intake
+  upload status, DocuSign signing status, and a direct signed lease download
+  when retention succeeds. Completion also stamps a review-safe
+  `lease_activation_review` marker; pending leases are shown as ready for
+  explicit activation review, but `Lease.status` is not changed automatically.
+  Operators can now click an explicit tenant-detail **Activate lease** action
+  after signed completion; that route activates only pending leases and stamps
+  lease metadata/signing history. Settings > Organisation > Integrations now
+  reports DocuSign readiness, shows the Connect webhook URL when
+  `PUBLIC_API_URL` is set, and warns when credentials are present but
+  `DOCUSIGN_WEBHOOK_SECRET` is still missing. Next slice is provider-console
+  verification with real DocuSign credentials: configure the DocuSign JWT app,
+  RSA key, account GUID, integration key, and impersonated service-user GUID;
+  set `DOCUSIGN_WEBHOOK_SECRET`; point DocuSign Connect at
+  `https://api.leasium.ai/api/v1/tenant-onboarding/webhooks/docusign`; complete
+  one test envelope; confirm the signed PDF is retained once under the
+  tenant/onboarding/lease scope; then review and explicitly click tenant-detail
+  **Activate lease**. Keep this operator-approved and provider-scoped: do not
+  expose secrets, do not send a lease pack without the correct attached lease
+  file, and do not treat webhook completion as automatic lease activation.
+  Plan: `docs/superpowers/plans/2026-05-29-tenant-lifecycle-two-day-push.md`.
 - 2026-05-28 Settings Xero continuation 5: Connection diagnostics now has a
   local `Copy diagnostics packet` action beside `Download diagnostics CSV`,
   reusing the already-loaded `xeroDiagnostics` block. The smoke test reads the

@@ -113,7 +113,7 @@ class Settings(BaseSettings):
     docusign_user_id: str = ""
     docusign_rsa_private_key: str = ""
     docusign_base_url: str = "https://demo.docusign.net/restapi"
-    docusign_auth_base_url: str = "https://account-d.docusign.net"
+    docusign_auth_base_url: str = "https://account-d.docusign.com"
     docusign_webhook_secret: str = ""
     slack_webhook_url: str = ""
 

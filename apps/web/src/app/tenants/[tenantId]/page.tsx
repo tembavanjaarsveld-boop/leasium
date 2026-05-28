@@ -52,6 +52,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  activateTenantOnboardingLease,
   applyPublicEnrichment,
   applyTenantContactChangeRequest,
   cancelTenantOnboarding,
@@ -402,6 +403,165 @@ function leasePackSentAt(item: TenantOnboardingRecord) {
   return item.delivery_data.lease_pack?.sent_at ?? null;
 }
 
+function docusignReceipt(
+  deliveryData: TenantOnboardingRecord["delivery_data"],
+) {
+  const receipt = deliveryData.lease_pack?.docusign;
+  return isRecord(receipt) ? receipt : null;
+}
+
+function signingRecord(leaseAgreement: TenantLeaseAgreementRecord | null) {
+  return isRecord(leaseAgreement?.signing) ? leaseAgreement.signing : {};
+}
+
+function leaseActivationReviewRecord(
+  leaseAgreement: TenantLeaseAgreementRecord | null,
+) {
+  const review = signingRecord(leaseAgreement).lease_activation_review;
+  return isRecord(review) ? review : null;
+}
+
+function leaseActivationReviewStatus(
+  leaseAgreement: TenantLeaseAgreementRecord | null,
+) {
+  const review = leaseActivationReviewRecord(leaseAgreement);
+  if (!review) {
+    return null;
+  }
+  const status = metadataString(review.status);
+  const currentStatus = metadataString(review.current_lease_status);
+  const recommendedStatus = metadataString(review.recommended_status);
+  if (status === "activated") {
+    return {
+      status,
+      label: "Lease activated",
+      detail: currentStatus
+        ? `Current lease status: ${sentenceStatus(currentStatus)}.`
+        : "Lease is active.",
+      tone: "success" as const,
+    };
+  }
+  if (status === "already_active") {
+    return {
+      status,
+      label: "Lease already active",
+      detail: currentStatus
+        ? `Current lease status: ${sentenceStatus(currentStatus)}.`
+        : "Lease is already active.",
+      tone: "success" as const,
+    };
+  }
+  return {
+    status,
+    label: "Activation review ready",
+    detail: recommendedStatus
+      ? `Review before changing lease status to ${sentenceStatus(recommendedStatus)}.`
+      : "Review before changing lease status.",
+    tone: "warning" as const,
+  };
+}
+
+function leaseSigningStatus({
+  deliveryData,
+  leaseAgreement,
+}: {
+  deliveryData: TenantOnboardingRecord["delivery_data"];
+  leaseAgreement: TenantLeaseAgreementRecord | null;
+}) {
+  const signing = signingRecord(leaseAgreement);
+  const receipt = docusignReceipt(deliveryData);
+  const provider =
+    leaseAgreement?.signing_provider ??
+    metadataString(signing.provider) ??
+    metadataString(receipt?.provider);
+  const status =
+    leaseAgreement?.signing_status ??
+    metadataString(signing.status) ??
+    metadataString(receipt?.status);
+  const envelopeId =
+    leaseAgreement?.signing_envelope_id ??
+    metadataString(signing.envelope_id) ??
+    metadataString(receipt?.envelope_id);
+  const signedDocumentId = metadataString(signing.signed_document_id);
+  const error = metadataString(receipt?.error);
+
+  if (leaseAgreement?.status === "signed") {
+    return {
+      label: provider === "docusign" ? "DocuSign completed" : "Signed",
+      detail: leaseAgreement.signed_at
+        ? `Signed ${formatDateTime(leaseAgreement.signed_at)}`
+        : "Signed",
+      tone: "success" as const,
+      envelopeId,
+      signedDocumentId,
+      error,
+      provider,
+      status,
+    };
+  }
+  if (provider === "docusign") {
+    if (
+      status === "failed" ||
+      status === "declined" ||
+      status === "voided" ||
+      status === "deleted"
+    ) {
+      return {
+        label: "DocuSign needs attention",
+        detail:
+          status === "declined"
+            ? "Envelope declined."
+            : status === "voided"
+              ? "Envelope voided."
+              : error ?? "Envelope could not be completed.",
+        tone: "danger" as const,
+        envelopeId,
+        signedDocumentId,
+        error,
+        provider,
+        status,
+      };
+    }
+    if (status === "skipped") {
+      return {
+        label: "DocuSign not sent",
+        detail: error ?? "Provider setup is not ready.",
+        tone: "warning" as const,
+        envelopeId,
+        signedDocumentId,
+        error,
+        provider,
+        status,
+      };
+    }
+    if (status === "queued" || status === "sent" || status === "delivered") {
+      return {
+        label: "DocuSign pending",
+        detail: "Waiting for DocuSign completion.",
+        tone: "primary" as const,
+        envelopeId,
+        signedDocumentId,
+        error,
+        provider,
+        status,
+      };
+    }
+  }
+  if (receipt) {
+    return {
+      label: sentenceStatus(metadataString(receipt.status) ?? "signature"),
+      detail: error ?? "Signature receipt stored.",
+      tone: "neutral" as const,
+      envelopeId,
+      signedDocumentId,
+      error,
+      provider,
+      status,
+    };
+  }
+  return null;
+}
+
 function onboardingProgressSteps({
   item,
   leaseAgreement,
@@ -415,6 +575,10 @@ function onboardingProgressSteps({
   const approved = item.status === "applied";
   const sentAt = leasePackSentAt(item);
   const signed = leaseAgreement?.status === "signed";
+  const signingStatus = leaseSigningStatus({
+    deliveryData: item.delivery_data,
+    leaseAgreement,
+  });
 
   return [
     {
@@ -477,7 +641,7 @@ function onboardingProgressSteps({
       detail: signed
         ? `Signed ${formatDateTime(leaseAgreement?.signed_at)}`
         : sentAt
-          ? "Waiting for tenant"
+          ? (signingStatus?.detail ?? "Waiting for tenant")
           : "After lease pack",
       status: signed ? "done" : sentAt ? "current" : "waiting",
     },
@@ -573,10 +737,59 @@ function intakeStatusTone(intake: DocumentIntakeRecord | undefined) {
   return "neutral" as const;
 }
 
+function promotedIntakeId(
+  document: { metadata: Record<string, unknown> },
+  intake: DocumentIntakeRecord | undefined,
+) {
+  return intake?.id ?? metadataString(document.metadata.smart_intake_id);
+}
+
+function documentReviewStatusLabel(
+  document: { metadata: Record<string, unknown> },
+  intake: DocumentIntakeRecord | undefined,
+) {
+  if (intake) {
+    return intakeStatusLabel(intake);
+  }
+  if (metadataString(document.metadata.smart_intake_id)) {
+    return "Sent to Smart Intake";
+  }
+  return "Stored";
+}
+
+function documentReviewStatusTone(
+  document: { metadata: Record<string, unknown> },
+  intake: DocumentIntakeRecord | undefined,
+) {
+  if (intake) {
+    return intakeStatusTone(intake);
+  }
+  if (metadataString(document.metadata.smart_intake_id)) {
+    return "primary" as const;
+  }
+  return "neutral" as const;
+}
+
+function tenantUploadMatchLabel(document: {
+  metadata: Record<string, unknown>;
+}) {
+  const candidate = metadataString(document.metadata.auto_match_candidate);
+  if (candidate === "tenant_uploaded_lease") {
+    return "Lease auto-match";
+  }
+  if (candidate === "tenant_uploaded_insurance") {
+    return "Insurance auto-update";
+  }
+  return null;
+}
+
 function intakeProvenanceNote(
   intake: DocumentIntakeRecord | undefined,
   metadata: Record<string, unknown>,
 ) {
+  if (!intake && metadataString(metadata.smart_intake_id)) {
+    return "Promoted to Smart Intake - review before anything changes.";
+  }
   if (!intake) {
     return "Stored only - no tenant fields changed.";
   }
@@ -713,6 +926,50 @@ function tenantPublicEnrichmentMetadata(
 ) {
   const publicEnrichment = tenantMetadata(tenant).public_enrichment;
   return isRecord(publicEnrichment) ? publicEnrichment : {};
+}
+
+function tenantInsuranceSummary(
+  tenant: TenantRecord | null | undefined,
+  documents: Array<{
+    id: string;
+    filename: string;
+    created_at: string;
+    metadata: Record<string, unknown>;
+  }>,
+  intakeByDocumentId: Map<string, DocumentIntakeRecord>,
+) {
+  const metadata = tenantMetadata(tenant);
+  const expiryDate = metadataString(metadata.insurance_expiry_date);
+  const confirmed = metadata.insurance_confirmed === true;
+  const documentId = metadataString(metadata.insurance_document_id);
+  const intakeId = metadataString(metadata.insurance_document_intake_id);
+  const updatedAt = metadataString(metadata.insurance_auto_updated_at);
+  const document = documentId
+    ? documents.find((item) => item.id === documentId) ?? null
+    : null;
+  const intake =
+    (document ? intakeByDocumentId.get(document.id) : undefined) ??
+    (intakeId
+      ? [...intakeByDocumentId.values()].find((item) => item.id === intakeId)
+      : undefined);
+  if (!confirmed && !expiryDate && !document && !intake) {
+    return null;
+  }
+  return {
+    confirmed,
+    expiryDate,
+    document,
+    intake,
+    updatedAt,
+    sourceLabel: intake ? "Smart Intake" : document ? "Tenant document" : "Tenant profile",
+    statusText: confirmed
+      ? expiryDate
+        ? `Confirmed until ${formatDate(expiryDate)}`
+        : "Confirmed"
+      : expiryDate
+        ? `Expiry ${formatDate(expiryDate)}`
+        : "Needs review",
+  };
 }
 
 function tenantEvidenceSource(value: unknown): TenantEvidenceSource | null {
@@ -1187,6 +1444,11 @@ function TenantDetail() {
     tenantDocuments,
     intakeByDocumentId,
   );
+  const insuranceSummary = tenantInsuranceSummary(
+    tenant,
+    tenantDocuments,
+    intakeByDocumentId,
+  );
 
   const tenantOnboardings = (onboardingQuery.data ?? [])
     .filter((item) => item.tenant_id === tenantId)
@@ -1227,12 +1489,19 @@ function TenantDetail() {
           document.category === "lease",
       )
     : [];
+  const primaryLeaseAgreement = primaryOnboarding
+    ? leaseAgreementFromDelivery(primaryOnboarding.delivery_data)
+    : null;
+  const primarySigningStatus = primaryOnboarding
+    ? leaseSigningStatus({
+        deliveryData: primaryOnboarding.delivery_data,
+        leaseAgreement: primaryLeaseAgreement,
+      })
+    : null;
   const primaryProgressSteps = primaryOnboarding
     ? onboardingProgressSteps({
         item: primaryOnboarding,
-        leaseAgreement: leaseAgreementFromDelivery(
-          primaryOnboarding.delivery_data,
-        ),
+        leaseAgreement: primaryLeaseAgreement,
         hasLeaseDocument: primaryOnboardingLeaseDocuments.length > 0,
       })
     : [];
@@ -1381,11 +1650,35 @@ function TenantDetail() {
 
   const sendLeasePackMutation = useMutation({
     mutationFn: sendTenantOnboardingLeasePack,
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
+      const receipt = docusignReceipt(updated.delivery_data);
+      const status = metadataString(receipt?.status);
+      if (status === "queued" || status === "sent") {
+        setLeasePackNotice(
+          "Lease pack sent. DocuSign is waiting for signature.",
+        );
+      } else if (status === "skipped") {
+        setLeasePackNotice("Lease pack sent. DocuSign setup needs attention.");
+      } else if (status === "failed") {
+        setLeasePackNotice("Lease pack sent. DocuSign could not start.");
+      } else {
+        setLeasePackNotice("Lease pack sent to tenant.");
+      }
+    },
+  });
+
+  const activateLeaseMutation = useMutation({
+    mutationFn: activateTenantOnboardingLease,
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["tenant-onboardings", tenant?.entity_id],
       });
-      setLeasePackNotice("Lease pack sent to tenant.");
+      queryClient.invalidateQueries({ queryKey: ["tenant-leases", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
+      setLeasePackNotice("Lease activated after signed lease review.");
     },
   });
 
@@ -1747,16 +2040,20 @@ function TenantDetail() {
               Lease pack
             </div>
             <div className="text-sm font-semibold">
-              {primaryOnboardingLeaseDocuments.length
-                ? "Lease attached"
-                : primaryOnboarding?.status === "applied"
-                  ? "Needs lease file"
-                  : "Pending approval"}
+              {primarySigningStatus
+                ? primarySigningStatus.label
+                : primaryOnboardingLeaseDocuments.length
+                  ? "Lease attached"
+                  : primaryOnboarding?.status === "applied"
+                    ? "Needs lease file"
+                    : "Pending approval"}
             </div>
             <div className="text-xs text-muted-foreground">
-              {primaryOnboarding
-                ? primaryProgressStep?.detail
-                : "Starts after onboarding"}
+              {primarySigningStatus
+                ? primarySigningStatus.detail
+                : primaryOnboarding
+                  ? primaryProgressStep?.detail
+                  : "Starts after onboarding"}
             </div>
           </div>
           <div className="grid gap-1 px-1">
@@ -1957,6 +2254,64 @@ function TenantDetail() {
                 </div>
               </dl>
             </SectionPanel>
+
+            {insuranceSummary ? (
+              <SectionPanel
+                title="Insurance"
+                icon={<ShieldCheck size={17} />}
+                actions={
+                  <StatusBadge
+                    tone={insuranceSummary.confirmed ? "success" : "warning"}
+                  >
+                    {insuranceSummary.confirmed ? "Confirmed" : "Review"}
+                  </StatusBadge>
+                }
+              >
+                <div className="grid gap-3 p-4 text-sm">
+                  <div>
+                    <div className="font-semibold">
+                      {insuranceSummary.statusText}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Source: {insuranceSummary.sourceLabel}
+                      {insuranceSummary.updatedAt
+                        ? ` - Applied ${formatDate(insuranceSummary.updatedAt)}`
+                        : ""}
+                    </div>
+                  </div>
+                  {insuranceSummary.document ? (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-white px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">
+                          {insuranceSummary.document.filename}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Reviewed insurance source document
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        {insuranceSummary.intake ? (
+                          <Link
+                            href={`/intake?review=${insuranceSummary.intake.id}`}
+                            className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                          >
+                            <Sparkles size={15} />
+                            Review
+                          </Link>
+                        ) : null}
+                        <a
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
+                          href={documentDownloadUrl(insuranceSummary.document.id)}
+                          aria-label={`Download ${insuranceSummary.document.filename}`}
+                        >
+                          <Download size={15} />
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </SectionPanel>
+            ) : null}
 
             {pendingContactRequests.length ? (
               <SectionPanel
@@ -2417,6 +2772,8 @@ function TenantDetail() {
               <div className="divide-y divide-border">
                 {(documentsQuery.data ?? []).map((document) => {
                   const intake = intakeByDocumentId.get(document.id);
+                  const reviewId = promotedIntakeId(document, intake);
+                  const matchLabel = tenantUploadMatchLabel(document);
                   return (
                     <div key={document.id} className="grid gap-3 p-4 text-sm">
                       <div className="flex items-start justify-between gap-3">
@@ -2425,9 +2782,16 @@ function TenantDetail() {
                             <div className="truncate font-medium">
                               {document.filename}
                             </div>
-                            <StatusBadge tone={intakeStatusTone(intake)}>
-                              {intakeStatusLabel(intake)}
+                            <StatusBadge
+                              tone={documentReviewStatusTone(document, intake)}
+                            >
+                              {documentReviewStatusLabel(document, intake)}
                             </StatusBadge>
+                            {matchLabel ? (
+                              <StatusBadge tone="primary">
+                                {matchLabel}
+                              </StatusBadge>
+                            ) : null}
                           </div>
                           <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                             <span>
@@ -2452,9 +2816,9 @@ function TenantDetail() {
                           ) : null}
                         </div>
                         <div className="flex shrink-0 gap-2">
-                          {intake ? (
+                          {reviewId ? (
                             <Link
-                              href={`/intake?review=${intake.id}`}
+                              href={`/intake?review=${reviewId}`}
                               className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                             >
                               <Sparkles size={15} />
@@ -2558,6 +2922,20 @@ function TenantDetail() {
                     item.delivery_data,
                   );
                   const leasePackSent = leasePackSentAt(item);
+                  const signingStatus = leaseSigningStatus({
+                    deliveryData: item.delivery_data,
+                    leaseAgreement,
+                  });
+                  const canResendLeasePack =
+                    leasePackSent &&
+                    latestLeaseDocument &&
+                    signingStatus?.provider === "docusign" &&
+                    ["declined", "voided", "deleted", "failed", "skipped"].includes(
+                      signingStatus.status ?? "",
+                    );
+                  const activationReviewStatus =
+                    leaseActivationReviewStatus(leaseAgreement);
+                  const leasePackDocusign = docusignReceipt(item.delivery_data);
                   const progressSteps = onboardingProgressSteps({
                     item,
                     leaseAgreement,
@@ -2593,12 +2971,14 @@ function TenantDetail() {
                     reviewOnboardingMutation.isPending ||
                     approveAndApplyOnboardingMutation.isPending ||
                     applyOnboardingMutation.isPending ||
-                    sendLeasePackMutation.isPending;
+                    sendLeasePackMutation.isPending ||
+                    activateLeaseMutation.isPending;
                   const onboardingActionError =
                     reviewOnboardingMutation.error ??
                     approveAndApplyOnboardingMutation.error ??
                     applyOnboardingMutation.error ??
-                    sendLeasePackMutation.error;
+                    sendLeasePackMutation.error ??
+                    activateLeaseMutation.error;
                   const providerDetail = (
                     <>
                       <dl className="grid gap-x-4 gap-y-3 border-t border-border pt-3 text-xs sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
@@ -3176,12 +3556,37 @@ function TenantDetail() {
                             <div className="text-muted-foreground">
                               {latestLeaseDocument
                                 ? leasePackSent
-                                  ? `Signing link sent ${formatDateTime(
+                                  ? (signingStatus?.detail ??
+                                    `Signing link sent ${formatDateTime(
                                       leasePackSent,
-                                    )}.`
+                                    )}.`)
                                   : "Custom lease is attached. Send the tenant the signing link when ready."
                                 : "Upload a custom lease before sending the tenant a signing link."}
                             </div>
+                            {signingStatus ? (
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <StatusBadge tone={signingStatus.tone}>
+                                  {signingStatus.label}
+                                </StatusBadge>
+                                {signingStatus.envelopeId ? (
+                                  <span className="text-xs text-muted-foreground">
+                                    Envelope {shortId(signingStatus.envelopeId)}
+                                  </span>
+                                ) : null}
+                                {metadataString(
+                                  leasePackDocusign?.document_id,
+                                ) ? (
+                                  <span className="text-xs text-muted-foreground">
+                                    Lease document attached
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {signingStatus?.error ? (
+                              <div className="mt-2 text-xs text-danger">
+                                {signingStatus.error}
+                              </div>
+                            ) : null}
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button
@@ -3192,13 +3597,16 @@ function TenantDetail() {
                               disabled={
                                 onboardingActionPending ||
                                 !latestLeaseDocument ||
-                                Boolean(leasePackSent)
+                                (Boolean(leasePackSent) &&
+                                  !canResendLeasePack)
                               }
                             >
                               <Send size={16} />
-                              {leasePackSent
-                                ? "Lease pack sent"
-                                : "Send lease pack"}
+                              {canResendLeasePack
+                                ? "Send again"
+                                : leasePackSent
+                                  ? "Lease pack sent"
+                                  : "Send lease pack"}
                             </Button>
                             <Link
                               className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition hover:bg-muted"
@@ -3208,6 +3616,84 @@ function TenantDetail() {
                               Preview
                             </Link>
                           </div>
+                        </div>
+                      ) : null}
+                      {item.status === "applied" &&
+                      leaseAgreement?.status === "signed" ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-success/25 bg-success/5 p-3 text-sm">
+                          <div>
+                            <div className="font-semibold">
+                              Lease signing complete
+                            </div>
+                            <div className="text-muted-foreground">
+                              {signingStatus?.detail ??
+                                "Signed lease retained on the tenant record."}
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <StatusBadge tone="success">
+                                {signingStatus?.label ?? "Signed"}
+                              </StatusBadge>
+                              {signingStatus?.envelopeId ? (
+                                <span className="text-xs text-muted-foreground">
+                                  Envelope {shortId(signingStatus.envelopeId)}
+                                </span>
+                              ) : null}
+                              {signingStatus?.signedDocumentId ? (
+                                <span className="text-xs text-muted-foreground">
+                                  Signed PDF retained
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {signingStatus?.signedDocumentId ? (
+                              <a
+                                href={documentDownloadUrl(
+                                  signingStatus.signedDocumentId,
+                                )}
+                                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition hover:bg-muted"
+                              >
+                                <Download size={15} />
+                                Download signed lease
+                              </a>
+                            ) : null}
+                            {activationReviewStatus?.status ===
+                            "ready_for_review" ? (
+                              <Button
+                                type="button"
+                                onClick={() =>
+                                  activateLeaseMutation.mutate(item.id)
+                                }
+                                disabled={onboardingActionPending}
+                              >
+                                {activateLeaseMutation.isPending ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <Check size={16} />
+                                )}
+                                Activate lease
+                              </Button>
+                            ) : null}
+                            <Link
+                              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition hover:bg-muted"
+                              href={`/tenants/${tenantId}/portal-preview/${item.id}`}
+                            >
+                              <ShieldCheck size={15} />
+                              Preview
+                            </Link>
+                          </div>
+                          {activationReviewStatus ? (
+                            <div className="basis-full rounded-md border border-border bg-white px-3 py-2 text-xs">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <StatusBadge tone={activationReviewStatus.tone}>
+                                  {activationReviewStatus.label}
+                                </StatusBadge>
+                                <span className="text-muted-foreground">
+                                  {activationReviewStatus.detail}
+                                </span>
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                       {item.status === "submitted" ? (
@@ -3259,6 +3745,12 @@ function TenantDetail() {
                               const intake = intakeByDocumentId.get(
                                 document.id,
                               );
+                              const reviewId = promotedIntakeId(
+                                document,
+                                intake,
+                              );
+                              const matchLabel =
+                                tenantUploadMatchLabel(document);
                               return (
                                 <div
                                   key={document.id}
@@ -3272,13 +3764,24 @@ function TenantDetail() {
                                       {documentCategoryLabel(document.category)}
                                     </span>
                                     <StatusBadge
-                                      tone={intakeStatusTone(intake)}
+                                      tone={documentReviewStatusTone(
+                                        document,
+                                        intake,
+                                      )}
                                     >
-                                      {intakeStatusLabel(intake)}
+                                      {documentReviewStatusLabel(
+                                        document,
+                                        intake,
+                                      )}
                                     </StatusBadge>
-                                    {intake ? (
+                                    {matchLabel ? (
+                                      <StatusBadge tone="primary">
+                                        {matchLabel}
+                                      </StatusBadge>
+                                    ) : null}
+                                    {reviewId ? (
                                       <Link
-                                        href={`/intake?review=${intake.id}`}
+                                        href={`/intake?review=${reviewId}`}
                                         className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                                       >
                                         <Sparkles size={14} />

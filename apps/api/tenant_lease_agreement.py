@@ -107,6 +107,22 @@ def lease_agreement_read(onboarding: TenantOnboarding) -> dict[str, object]:
         "signed_by_actor": signing_data.get("signed_by_actor")
         if isinstance(signing_data.get("signed_by_actor"), str)
         else None,
+        "signing": signing_data,
+        "signing_provider": signing_data.get("provider")
+        if isinstance(signing_data.get("provider"), str)
+        else None,
+        "signing_status": signing_data.get("status")
+        if isinstance(signing_data.get("status"), str)
+        else None,
+        "signing_envelope_id": signing_data.get("envelope_id")
+        if isinstance(signing_data.get("envelope_id"), str)
+        else None,
+        "signing_document_id": signing_data.get("document_id")
+        if isinstance(signing_data.get("document_id"), str)
+        else None,
+        "signing_sent_at": signing_data.get("sent_at")
+        if isinstance(signing_data.get("sent_at"), str)
+        else None,
         "signing_locked_reason": locked_reason,
     }
 
@@ -174,13 +190,17 @@ def mark_lease_agreement_signed(
     onboarding: TenantOnboarding,
     *,
     actor: str,
+    source: str = "tenant_portal",
+    signing_updates: dict[str, object] | None = None,
 ) -> dict[str, object]:
     section = lease_agreement_section(onboarding)
     signing = section.get("signing")
     signing_data = dict(signing) if isinstance(signing, dict) else {}
+    if signing_updates:
+        signing_data.update(signing_updates)
     signing_data["signed_at"] = signing_data.get("signed_at") or utcnow().isoformat()
     signing_data["signed_by_actor"] = signing_data.get("signed_by_actor") or actor
-    signing_data["source"] = signing_data.get("source") or "tenant_portal"
+    signing_data["source"] = signing_data.get("source") or source
     section["signing"] = signing_data
     section["last_activity_at"] = signing_data["signed_at"]
     set_lease_agreement_section(onboarding, section)

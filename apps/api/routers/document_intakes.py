@@ -44,6 +44,7 @@ from stewart.core.models import (
     StoredDocument,
     TenancyUnit,
     Tenant,
+    TenantOnboarding,
     UserRole,
 )
 from stewart.core.settings import get_settings
@@ -57,6 +58,7 @@ from apps.api.schemas.document_intake import (
     DocumentIntakeReviewRequest,
 )
 from apps.api.schemas.lease_intake import LeaseIntakeApplyRequest
+from apps.api.tenant_lease_agreement import lease_agreement_section, mark_lease_agreement_signed
 
 router = APIRouter(prefix="/document-intakes", tags=["document-intakes"])
 
@@ -70,6 +72,7 @@ SUPPORTED_CONTENT_TYPES = {
     "text/markdown",
     "text/plain",
 }
+ACTIVE_DOCUSIGN_SIGNING_STATUSES = {"queued", "sent", "delivered"}
 
 
 def _read_intake(intake: DocumentIntake) -> DocumentIntakeRead:
@@ -251,6 +254,58 @@ def _insurance_due_date(data: dict[str, Any]) -> date | None:
     if due_date is not None:
         return due_date
     return _best_date(_records(data.get("obligations")), labels)
+
+
+def _apply_tenant_insurance_metadata(
+    intake: DocumentIntake,
+    data: dict[str, Any],
+    session: Session,
+) -> None:
+    document = intake.document
+    tenant_id = document.tenant_id
+    if document.lease_id is not None:
+        lease = session.get(Lease, document.lease_id)
+        if lease is None or lease.deleted_at is not None:
+            return
+        tenant_id = lease.tenant_id
+        document.tenant_id = lease.tenant_id
+    if tenant_id is None:
+        return
+    expiry_date = _insurance_due_date(data)
+    if expiry_date is None:
+        return
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is None or tenant.deleted_at is not None:
+        return
+
+    now = utcnow().isoformat()
+    metadata = dict(tenant.tenant_metadata or {})
+    history_raw = metadata.get("insurance_auto_update_history")
+    history = (
+        [item for item in history_raw if isinstance(item, dict)]
+        if isinstance(history_raw, list)
+        else []
+    )
+    history.append(
+        {
+            "source": "document_intake",
+            "document_intake_id": str(intake.id),
+            "document_id": str(document.id),
+            "expiry_date": expiry_date.isoformat(),
+            "applied_at": now,
+        }
+    )
+    metadata.update(
+        {
+            "insurance_confirmed": True,
+            "insurance_expiry_date": expiry_date.isoformat(),
+            "insurance_document_id": str(document.id),
+            "insurance_document_intake_id": str(intake.id),
+            "insurance_auto_updated_at": now,
+            "insurance_auto_update_history": history[-10:],
+        }
+    )
+    tenant.tenant_metadata = metadata
 
 
 def _insurance_obligation_title(data: dict[str, Any]) -> str:
@@ -821,6 +876,69 @@ def _apply_lease_document_intake(
     lease_intake.applied_lease_id = lease.id
     lease_intake.applied_at = utcnow()
     return lease_intake, prop, unit, tenant, lease, obligations
+
+
+def _tenant_upload_activation_review_data(
+    lease: Lease,
+    document: StoredDocument,
+) -> dict[str, object]:
+    already_active = lease.status in {LeaseStatus.active, LeaseStatus.holding_over}
+    return {
+        "status": "already_active" if already_active else "ready_for_review",
+        "current_lease_status": lease.status.value,
+        "recommended_status": LeaseStatus.active.value,
+        "signed_document_id": str(document.id),
+        "updated_at": utcnow().isoformat(),
+        "guardrail": (
+            "Tenant-uploaded lease match does not activate a lease automatically; "
+            "review and activate explicitly."
+        ),
+    }
+
+
+def _mark_tenant_uploaded_lease_match_signed(
+    intake: DocumentIntake,
+    lease: Lease,
+    user: CurrentUser,
+    session: Session,
+) -> None:
+    onboarding_id = intake.document.tenant_onboarding_id
+    if onboarding_id is None:
+        return
+    onboarding = session.get(TenantOnboarding, onboarding_id)
+    if onboarding is None or onboarding.deleted_at is not None:
+        return
+    if onboarding.lease_id != lease.id:
+        return
+    mark_lease_agreement_signed(
+        onboarding,
+        actor=user.actor,
+        source="tenant_uploaded_lease_match",
+        signing_updates={
+            "provider": "tenant_upload",
+            "status": "completed",
+            "document_id": str(intake.document.id),
+            "signed_document_id": str(intake.document.id),
+            "document_intake_id": str(intake.id),
+            "accepted_at": utcnow().isoformat(),
+            "lease_activation_review": _tenant_upload_activation_review_data(
+                lease,
+                intake.document,
+            ),
+        },
+    )
+
+
+def _active_docusign_signing_for_onboarding(
+    onboarding: TenantOnboarding,
+) -> bool:
+    signing = lease_agreement_section(onboarding).get("signing")
+    signing_data = dict(signing) if isinstance(signing, dict) else {}
+    return (
+        signing_data.get("provider") == "docusign"
+        and signing_data.get("status") in ACTIVE_DOCUSIGN_SIGNING_STATUSES
+        and not signing_data.get("signed_at")
+    )
 
 
 def _property_for_document_apply(
@@ -2727,6 +2845,8 @@ def apply_document_intake(
         if document_type == "invoice_admin"
         else None
     )
+    if document_type == "insurance_certificate":
+        _apply_tenant_insurance_metadata(intake, reviewed, session)
     obligation_ids = [str(obligation.id) for obligation in obligations]
     billing_draft_ids = [str(billing_draft.id)] if billing_draft is not None else []
     if billing_draft is not None:
@@ -2775,6 +2895,163 @@ def apply_document_intake(
         target_table="document_intake",
         target_id=intake.id,
         tool_output_summary=f"Applied {len(obligation_ids)} document obligation(s).",
+    )
+    session.commit()
+    session.refresh(intake)
+    return _read_intake(intake)
+
+
+@router.post("/{intake_id}/accept-lease-match", response_model=DocumentIntakeRead)
+def accept_document_intake_lease_match(
+    intake_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> DocumentIntakeRead:
+    intake = _get_intake(intake_id, user, session, WRITE_ROLES)
+    if intake.status == DocumentIntakeStatus.applied:
+        return _read_intake(intake)
+    if intake.status not in {
+        DocumentIntakeStatus.ready_for_review,
+        DocumentIntakeStatus.needs_attention,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document intake is not ready to accept.",
+        )
+
+    reviewed = _reviewed_data(intake)
+    document_type = _str(reviewed.get("document_type")) or intake.document_type
+    if document_type != "lease":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only lease matches can be accepted.",
+        )
+    match = _dict(reviewed.get("lease_auto_match")) or _dict(
+        _dict(intake.extracted_data).get("lease_auto_match")
+    )
+    if match.get("status") != "matched":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Lease match must be matched before it can be accepted.",
+        )
+    if _records(match.get("differences")) or (
+        isinstance(match.get("missing_fields"), list) and match.get("missing_fields")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Resolve lease match differences before accepting.",
+        )
+    document_metadata = _dict(intake.document.document_metadata)
+    if (
+        intake.document.tenant_onboarding_id is None
+        or document_metadata.get("source") != "tenant_portal"
+        or document_metadata.get("auto_match_candidate") != "tenant_uploaded_lease"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only tenant-uploaded scoped lease matches can be accepted.",
+        )
+    lease_id = _str(match.get("lease_id"))
+    if lease_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Lease match is missing the matched lease.",
+        )
+    lease = session.get(Lease, UUID(lease_id))
+    if lease is None or lease.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Matched lease not found.",
+        )
+    unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+    if (
+        intake.document.lease_id != lease.id
+        or intake.document.tenant_id != lease.tenant_id
+        or intake.document.tenancy_unit_id != lease.tenancy_unit_id
+        or unit is None
+        or intake.document.property_id != unit.property_id
+        or intake.document.entity_id != unit.property.entity_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Matched lease does not match the uploaded document scope.",
+        )
+    onboarding = session.get(TenantOnboarding, intake.document.tenant_onboarding_id)
+    if (
+        onboarding is None
+        or onboarding.deleted_at is not None
+        or onboarding.lease_id != lease.id
+        or onboarding.tenant_id != lease.tenant_id
+        or onboarding.entity_id != intake.document.entity_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Matched lease does not match the uploaded onboarding scope.",
+        )
+    if onboarding is not None and _active_docusign_signing_for_onboarding(onboarding):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Resolve the active DocuSign envelope before accepting a "
+                "tenant-uploaded lease."
+            ),
+        )
+
+    now = utcnow()
+    intake.review_data = {
+        **reviewed,
+        "applied": {
+            "action": "accepted_tenant_lease_match",
+            "lease_id": str(lease.id),
+            "document_id": str(intake.document_id),
+            "matched_field_count": len(_records(match.get("matched_fields"))),
+            "difference_count": len(_records(match.get("differences"))),
+            "missing_field_count": len(match.get("missing_fields") or [])
+            if isinstance(match.get("missing_fields"), list)
+            else 0,
+            "guardrail": (
+                "Accepted the tenant-uploaded lease match. The existing lease "
+                "record was not mutated."
+            ),
+        },
+    }
+    intake.status = DocumentIntakeStatus.applied
+    intake.reviewed_at = intake.reviewed_at or now
+    intake.reviewed_by_user_id = intake.reviewed_by_user_id or user.id
+    intake.applied_at = now
+    intake.applied_by_user_id = user.id
+    intake.document.category = DocumentCategory.lease
+    intake.document.lease_id = lease.id
+    intake.document.tenancy_unit_id = lease.tenancy_unit_id
+    intake.document.tenant_id = lease.tenant_id
+    intake.document.property_id = unit.property_id
+    intake.document.document_metadata = {
+        **(intake.document.document_metadata or {}),
+        "accepted_lease_match": True,
+        "accepted_lease_match_id": str(intake.id),
+        "accepted_lease_id": str(lease.id),
+        "accepted_lease_match_at": now.isoformat(),
+        "applied_document_intake_id": str(intake.id),
+        "applied_document_type": document_type,
+    }
+    _mark_tenant_uploaded_lease_match_signed(intake, lease, user, session)
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=intake.entity_id,
+        action="apply",
+        target_table="document_intake",
+        target_id=intake.id,
+        tool_name="smart_intake_accept_lease_match",
+        tool_input={
+            "document_id": str(intake.document_id),
+            "lease_id": str(lease.id),
+        },
+        tool_output_summary=(
+            "Accepted tenant-uploaded lease match without mutating the lease record."
+        ),
+        data_classification="confidential",
     )
     session.commit()
     session.refresh(intake)

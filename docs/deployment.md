@@ -203,18 +203,37 @@ Set Twilio SMS status callbacks and SendGrid Event Webhook URLs to the hosted
 `/api/v1/tenant-onboarding/webhooks/...` endpoints using the shared webhook
 secret so Leasium can show sent, delivered, opened, and failed receipts.
 
-**DocuSign integration (scaffolded, not yet wired to real sends).** When the
-DocuSign developer account is provisioned, set on the API service:
+**DocuSign integration.** When the DocuSign developer account is provisioned,
+set on the API service:
 
 - `DOCUSIGN_ACCOUNT_ID` — DocuSign Account GUID
 - `DOCUSIGN_INTEGRATION_KEY` — Integration Key from the DocuSign console
 - `DOCUSIGN_USER_ID` — User GUID for the JWT grant (operator service account)
 - `DOCUSIGN_RSA_PRIVATE_KEY` — full PEM-encoded RSA private key
+- `DOCUSIGN_WEBHOOK_SECRET` — shared secret for verifying Connect webhook events
 - `DOCUSIGN_BASE_URL` (optional) — overrides the demo `https://demo.docusign.net/restapi`; production is `https://www.docusign.net/restapi`
-- `DOCUSIGN_AUTH_BASE_URL` (optional) — overrides the demo auth host
-- `DOCUSIGN_WEBHOOK_SECRET` (optional) — shared secret for verifying Connect webhook signatures
+- `DOCUSIGN_AUTH_BASE_URL` (optional) — overrides the demo auth host `https://account-d.docusign.com`; production is `https://account.docusign.com`
 
-Until all four required values are set, `stewart.integrations.docusign.send_lease_for_signature` returns `status="skipped"` with a clear `not_configured` error and never calls DocuSign. The shape of the dataclasses (`LeaseSignatureRequest`, `LeaseSignatureResult`) matches the SendGrid `DeliveryResult` pattern so the operator-facing receipt surface can render the same way once the real envelope-create + Connect-webhook plumbing lands in the next slice.
+Until the four DocuSign JWT values are set, `stewart.integrations.docusign.send_lease_for_signature` returns `status="skipped"` with a clear `not_configured` error and never calls DocuSign. Settings > Organisation > Integrations also reports DocuSign readiness without exposing secrets, including a reminder to add `DOCUSIGN_WEBHOOK_SECRET` before live Connect testing and the exact Connect webhook URL when `PUBLIC_API_URL` is set. When configured, the helper uses JWT Grant with `signature impersonation` scope and creates a remote-signing envelope from the attached lease document, including hidden custom fields for the lease, tenant onboarding, source document, entity, property, and unit. Configure DocuSign Connect to post envelope events to `<PUBLIC_API_URL>/api/v1/tenant-onboarding/webhooks/docusign`; the API rejects Connect events until `DOCUSIGN_WEBHOOK_SECRET` is configured and supplied as `x-docusign-webhook-secret` or a `token` query parameter. Completed envelope events are only accepted for the matching active DocuSign signing record; when Connect includes Leasium custom fields, the present tenant onboarding, lease, source document, and entity ids must also match before Leasium marks `lease_agreement.signing` signed and downloads the completed `combined` PDF back into tenant documents as a signed lease. Lease status is not activated by the webhook; an operator must explicitly use the tenant-detail Activate lease action, which calls `POST /api/v1/tenant-onboarding/{id}/activate-lease`.
+
+Live console verification:
+
+1. In DocuSign, create or confirm the JWT app, RSA key pair, API account GUID,
+   integration key, and impersonated service-user GUID. Grant consent for the
+   JWT app before testing.
+2. Set the four required JWT variables plus `DOCUSIGN_WEBHOOK_SECRET` on the
+   API service. Use the production DocuSign base/auth hosts only after the app
+   is promoted out of demo.
+3. In DocuSign Connect, point envelope events at
+   `https://api.leasium.ai/api/v1/tenant-onboarding/webhooks/docusign` and pass
+   the same webhook secret as a header or token query parameter. Do not expose
+   API keys or private keys in Connect payloads or operator-facing diagnostics.
+4. With operator approval and the correct lease file attached, send one lease
+   pack, complete the envelope in DocuSign, and confirm Leasium records the
+   signing status and retains exactly one completed signed PDF under the tenant,
+   onboarding, and lease scope.
+5. Review the signed lease on the tenant detail page, then explicitly click
+   **Activate lease** only after the operator accepts the completion evidence.
 
 **Inbound SMS parsing (Twilio Messaging webhook).** Leasium accepts inbound
 SMS through `POST /api/v1/comms/webhooks/twilio-inbound?entity_id=<uuid>`.

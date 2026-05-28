@@ -18,7 +18,11 @@ from apps.api.schemas.system import IntegrationStatusRead, ProviderStatus
 router = APIRouter(prefix="/system", tags=["system"])
 
 
-@router.get("/integration-status", response_model=IntegrationStatusRead)
+@router.get(
+    "/integration-status",
+    response_model=IntegrationStatusRead,
+    response_model_exclude_none=True,
+)
 def get_integration_status(
     user: Annotated[CurrentUser, Depends(get_current_user)],  # noqa: ARG001
     settings: Annotated[Settings, Depends(get_settings)],
@@ -75,6 +79,34 @@ def get_integration_status(
                 " complete the per-entity OAuth flow before posting invoices."
             ),
         ),
+        docusign=_status(
+            configured=bool(
+                settings.docusign_account_id
+                and settings.docusign_integration_key
+                and settings.docusign_user_id
+                and settings.docusign_rsa_private_key
+            ),
+            label="DocuSign",
+            purpose="Lease signature envelopes and signed lease retention",
+            unconfigured_detail=(
+                "Set DOCUSIGN_ACCOUNT_ID, DOCUSIGN_INTEGRATION_KEY, "
+                "DOCUSIGN_USER_ID, and DOCUSIGN_RSA_PRIVATE_KEY on the API service "
+                "before sending lease envelopes."
+            ),
+            configured_detail=(
+                "Configured for envelope creation and completed signed-document "
+                "retention."
+                if settings.docusign_webhook_secret
+                else (
+                    "Credentials are set; add DOCUSIGN_WEBHOOK_SECRET before live "
+                    "Connect testing so completed envelopes can be verified."
+                )
+            ),
+            webhook_url=_webhook_url(
+                settings,
+                "/api/v1/tenant-onboarding/webhooks/docusign",
+            ),
+        ),
     )
 
 
@@ -84,14 +116,25 @@ def _status(
     label: str,
     purpose: str,
     unconfigured_detail: str,
+    configured_detail: str | None = None,
+    webhook_url: str | None = None,
 ) -> ProviderStatus:
     return ProviderStatus(
         configured=configured,
         label=label,
         purpose=purpose,
         detail=(
-            "Configured. Provider sends still require explicit reviewed actions."
+            configured_detail
+            or "Configured. Provider sends still require explicit reviewed actions."
             if configured
             else unconfigured_detail
         ),
+        webhook_url=webhook_url,
     )
+
+
+def _webhook_url(settings: Settings, path: str) -> str | None:
+    base_url = settings.public_api_url.strip().rstrip("/")
+    if not base_url:
+        return None
+    return f"{base_url}{path}"

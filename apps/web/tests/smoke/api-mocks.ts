@@ -240,6 +240,11 @@ const tenants = [
     billing_email: "accounts@bright.example",
     notes: "Prefers email follow-up.",
     metadata: {
+      insurance_confirmed: true,
+      insurance_expiry_date: "2027-06-30",
+      insurance_document_id: "portal-document-1",
+      insurance_document_intake_id: "intake-insurance-1",
+      insurance_auto_updated_at: "2026-05-20T04:30:00.000Z",
       public_enrichment: {
         source_citations: {
           abn: {
@@ -1057,7 +1062,7 @@ const invoiceDrafts = [
   },
 ];
 
-const documentIntakes = [
+const initialDocumentIntakes = [
   {
     id: "intake-1",
     entity_id: entityId,
@@ -1080,6 +1085,33 @@ const documentIntakes = [
       suggested_links: { tenant_name: "Bright Cafe Pty Ltd" },
       warnings: [],
       missing_information: [],
+      lease_auto_match: {
+        status: "matched",
+        lease_id: "lease-1",
+        tenant_id: "tenant-1",
+        tenancy_unit_id: "unit-1",
+        matched_fields: [
+          {
+            field: "commencement_date",
+            current: "2025-07-01",
+            extracted: "2025-07-01",
+          },
+          {
+            field: "expiry_date",
+            current: "2028-06-30",
+            extracted: "2028-06-30",
+          },
+          {
+            field: "annual_rent_cents",
+            current: 9600000,
+            extracted: 9600000,
+          },
+        ],
+        differences: [],
+        missing_fields: [],
+        guardrail:
+          "This is a review recommendation only. No lease status or register data changes until an operator applies the reviewed intake.",
+      },
     },
     review_data: {},
     openai_response_id: "resp-smoke",
@@ -1094,6 +1126,46 @@ const documentIntakes = [
     content_type: "application/pdf",
     byte_size: 45000,
     category: "lease",
+  },
+  {
+    id: "intake-insurance-1",
+    entity_id: entityId,
+    document_id: "portal-document-1",
+    status: "applied",
+    document_type: "insurance_certificate",
+    summary: "Insurance certificate reviewed and applied.",
+    confidence: 0.9,
+    extracted_data: {
+      document_type: "insurance_certificate",
+      summary: "Insurance certificate reviewed and applied.",
+      confidence: 0.9,
+      parties: [{ name: "Bright Cafe Pty Ltd", role: "insured" }],
+      properties: [],
+      key_dates: [{ label: "Policy expiry", date: "2027-06-30" }],
+      money_amounts: [],
+      obligations: [],
+      suggested_links: { tenant_name: "Bright Cafe Pty Ltd" },
+      warnings: [],
+      missing_information: [],
+    },
+    review_data: {
+      applied: {
+        action: "created_insurance_obligation",
+        obligation_id: "obligation-insurance-1",
+      },
+    },
+    openai_response_id: "resp-insurance-smoke",
+    error_message: null,
+    reviewed_at: "2026-05-20T04:15:00.000Z",
+    reviewed_by_user_id: operatorId,
+    applied_at: "2026-05-20T04:30:00.000Z",
+    applied_by_user_id: operatorId,
+    created_at: "2026-05-20T04:00:00.000Z",
+    updated_at: "2026-05-20T04:30:00.000Z",
+    filename: "bright-cafe-insurance.pdf",
+    content_type: "application/pdf",
+    byte_size: 45000,
+    category: "insurance",
   },
 ];
 
@@ -1754,6 +1826,7 @@ function multipartFilename(body: string) {
 }
 
 type MockLeasiumApiOptions = {
+  leaseMatchAcceptConflict?: boolean;
   tenantAccountLinked?: boolean;
   tenantAccountLinkedToDifferentTenant?: boolean;
   tenantPortalLeaseReady?: boolean;
@@ -1796,6 +1869,7 @@ export async function mockLeasiumApi(
   let snapshotCount = 0;
   let insightSnapshots: JsonBody[] = [];
   let tenantPortalDocumentCount = initialTenantPortalDocuments.length;
+  let documentIntakes = jsonClone(initialDocumentIntakes);
   let tenantOnboardings = initialTenantOnboardings.map((onboarding) => ({
     ...onboarding,
     delivery_data: {
@@ -3146,6 +3220,15 @@ export async function mockLeasiumApi(
             "Accounting sync (contact, chart/tax, invoice posting, payments)",
           detail:
             "Configured. Provider sends still require explicit reviewed actions.",
+        },
+        docusign: {
+          configured: true,
+          label: "DocuSign",
+          purpose: "Lease signature envelopes and signed lease retention",
+          detail:
+            "Credentials are set; add DOCUSIGN_WEBHOOK_SECRET before live Connect testing so completed envelopes can be verified.",
+          webhook_url:
+            "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
         },
       });
       return;
@@ -6160,6 +6243,50 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/document-intakes") {
       await fulfillJson(route, documentIntakes);
+      return;
+    }
+
+    const leaseMatchAccept = path.match(
+      /^\/document-intakes\/([^/]+)\/accept-lease-match$/,
+    );
+    if (method === "POST" && leaseMatchAccept) {
+      const intake = documentIntakes.find(
+        (item) => item.id === leaseMatchAccept[1],
+      );
+      if (!intake) {
+        await fulfillJson(route, { detail: "Document intake not found." }, 404);
+        return;
+      }
+      if (options.leaseMatchAcceptConflict) {
+        await fulfillJson(
+          route,
+          {
+            detail:
+              "Resolve the active DocuSign envelope before accepting a tenant-uploaded lease.",
+          },
+          409,
+        );
+        return;
+      }
+      const now = "2026-05-29T00:00:00.000Z";
+      intake.status = "applied";
+      intake.review_data = {
+        ...intake.extracted_data,
+        applied: {
+          action: "accepted_tenant_lease_match",
+          lease_id: "lease-1",
+          document_id: intake.document_id,
+          matched_field_count: 3,
+          difference_count: 0,
+          missing_field_count: 0,
+          guardrail:
+            "Accepted the tenant-uploaded lease match. The existing lease record was not mutated.",
+        },
+      };
+      intake.applied_at = now;
+      intake.applied_by_user_id = operatorId;
+      intake.updated_at = now;
+      await fulfillJson(route, intake);
       return;
     }
 

@@ -8,6 +8,7 @@ class ProviderStatus(BaseModel):
     label: str
     purpose: str
     detail: str
+    webhook_url: str | None = None
 
 
 class IntegrationStatusRead(BaseModel):
@@ -16,3 +17,4 @@ class IntegrationStatusRead(BaseModel):
     sendgrid: ProviderStatus
     twilio: ProviderStatus
     xero: ProviderStatus
+    docusign: ProviderStatus

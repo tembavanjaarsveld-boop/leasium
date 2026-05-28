@@ -56,6 +56,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  acceptDocumentIntakeLeaseMatch,
   applyDocumentIntake,
   createDocumentIntake,
   deleteDocumentIntake,
@@ -91,6 +92,19 @@ type ReviewApplyTarget = {
   tenancyUnitId: string;
   tenantId: string;
   leaseId: string;
+};
+type LeaseAutoMatchField = {
+  field: string;
+  current: unknown;
+  extracted: unknown;
+};
+type LeaseAutoMatchRecommendation = {
+  status: string;
+  leaseId: string | null;
+  matchedFields: LeaseAutoMatchField[];
+  differences: LeaseAutoMatchField[];
+  missingFields: string[];
+  guardrail: string | null;
 };
 type AppliedPropertySource = {
   sourceHint: string | null;
@@ -345,6 +359,10 @@ function confidenceLabel(value: number | null | undefined) {
   return "Needs review";
 }
 
+function countLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 function safeCurrency(value: unknown) {
   const text = fieldText(value) ?? "AUD";
   return /^[A-Z]{3}$/.test(text) ? text : "AUD";
@@ -370,6 +388,95 @@ function fieldTextList(value: unknown) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function leaseAutoMatchField(value: unknown): LeaseAutoMatchField | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const field = fieldText(value.field);
+  if (!field) {
+    return null;
+  }
+  return {
+    field,
+    current: value.current,
+    extracted: value.extracted,
+  };
+}
+
+function leaseAutoMatchRecommendation(
+  data: DocumentIntakeExtraction,
+): LeaseAutoMatchRecommendation | null {
+  if (!isRecord(data.lease_auto_match)) {
+    return null;
+  }
+  const match = data.lease_auto_match;
+  return {
+    status: fieldText(match.status) ?? "needs_review",
+    leaseId: fieldText(match.lease_id),
+    matchedFields: Array.isArray(match.matched_fields)
+      ? match.matched_fields.flatMap((item) => {
+          const field = leaseAutoMatchField(item);
+          return field ? [field] : [];
+        })
+      : [],
+    differences: Array.isArray(match.differences)
+      ? match.differences.flatMap((item) => {
+          const field = leaseAutoMatchField(item);
+          return field ? [field] : [];
+        })
+      : [],
+    missingFields: fieldTextList(match.missing_fields),
+    guardrail: fieldText(match.guardrail),
+  };
+}
+
+function leaseAutoMatchStatusLabel(status: string) {
+  switch (status) {
+    case "matched":
+      return "Matched to scoped lease";
+    case "needs_review":
+      return "Needs review";
+    default:
+      return "Candidate match";
+  }
+}
+
+function leaseAutoMatchTone(status: string): StatusTone {
+  if (status === "matched") {
+    return "success";
+  }
+  if (status === "needs_review") {
+    return "warning";
+  }
+  return "primary";
+}
+
+function leaseAutoMatchFieldLabel(field: string) {
+  switch (field) {
+    case "commencement_date":
+      return "Start date";
+    case "expiry_date":
+      return "Expiry date";
+    case "annual_rent_cents":
+      return "Annual rent";
+    default:
+      return field.replaceAll("_", " ");
+  }
+}
+
+function leaseAutoMatchValue(field: string, value: unknown) {
+  if (field === "annual_rent_cents" && typeof value === "number") {
+    return formatMoney(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return "-";
 }
 
 function appliedSource(value: unknown): AppliedPropertySource | null {
@@ -1569,9 +1676,11 @@ function DocumentIntakeReviewPanel({
   onApplyTargetChange,
   onSave,
   onApply,
+  onAcceptLeaseMatch,
   onClear,
   saving,
   applying,
+  acceptingLeaseMatch,
   clearing,
   demo = false,
 }: {
@@ -1588,13 +1697,16 @@ function DocumentIntakeReviewPanel({
   onApplyTargetChange: (target: ReviewApplyTarget) => void;
   onSave: () => void;
   onApply: () => void;
+  onAcceptLeaseMatch: () => void;
   onClear: () => void;
   saving: boolean;
   applying: boolean;
+  acceptingLeaseMatch: boolean;
   clearing: boolean;
   demo?: boolean;
 }) {
   const data = draft;
+  const leaseAutoMatch = leaseAutoMatchRecommendation(draft);
   const warnings = [
     ...(data.warnings ?? []),
     ...(data.missing_information ?? []),
@@ -1764,6 +1876,87 @@ function DocumentIntakeReviewPanel({
           <div className="rounded-xl border border-primary/20 bg-primary-soft px-3 py-2 text-sm text-primary-hover">
             Demo preview only. Upload a live document when you are ready to save
             or apply.
+          </div>
+        ) : null}
+
+        {leaseAutoMatch ? (
+          <div className="grid gap-3 rounded-2xl border border-primary/15 bg-white p-3 shadow-leasiumXs">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">
+                  Lease upload match
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Review-only comparison against the lease this tenant portal is
+                  scoped to.
+                </p>
+              </div>
+              <StatusBadge tone={leaseAutoMatchTone(leaseAutoMatch.status)}>
+                {leaseAutoMatchStatusLabel(leaseAutoMatch.status)}
+              </StatusBadge>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge tone="success">
+                {countLabel(
+                  leaseAutoMatch.matchedFields.length,
+                  "matched field",
+                )}
+              </StatusBadge>
+              <StatusBadge
+                tone={leaseAutoMatch.differences.length ? "warning" : "neutral"}
+              >
+                {countLabel(leaseAutoMatch.differences.length, "difference")}
+              </StatusBadge>
+              <StatusBadge
+                tone={leaseAutoMatch.missingFields.length ? "warning" : "neutral"}
+              >
+                {countLabel(
+                  leaseAutoMatch.missingFields.length,
+                  "missing field",
+                )}
+              </StatusBadge>
+            </div>
+            {leaseAutoMatch.differences.length ? (
+              <div className="grid gap-2 rounded-xl border border-warning/20 bg-warning/5 p-3">
+                {leaseAutoMatch.differences.slice(0, 4).map((item) => (
+                  <div
+                    key={item.field}
+                    className="grid gap-1 text-sm md:grid-cols-[160px_1fr]"
+                  >
+                    <span className="font-medium">
+                      {leaseAutoMatchFieldLabel(item.field)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      Current {leaseAutoMatchValue(item.field, item.current)} -
+                      extracted{" "}
+                      {leaseAutoMatchValue(item.field, item.extracted)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {leaseAutoMatch.guardrail ? (
+              <div className="rounded-xl bg-muted/45 px-3 py-2 text-sm text-muted-foreground">
+                {leaseAutoMatch.guardrail}
+              </div>
+            ) : null}
+            {leaseAutoMatch.status === "matched" &&
+            intake.status !== "applied" ? (
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={onAcceptLeaseMatch}
+                  disabled={demo || acceptingLeaseMatch}
+                >
+                  {acceptingLeaseMatch ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <Check size={15} />
+                  )}
+                  Accept match
+                </Button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -2468,6 +2661,25 @@ export function Dashboard({
       });
       queryClient.invalidateQueries({
         queryKey: ["dashboard-tenants", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-rent-roll", selectedEntityId],
+      });
+    },
+    onError: (error) => {
+      setIntakeError(friendlyError(error));
+    },
+  });
+  const acceptLeaseMatchMutation = useMutation({
+    mutationFn: acceptDocumentIntakeLeaseMatch,
+    onMutate: () => {
+      setIntakeError(null);
+      setIntakeNotice(null);
+    },
+    onSuccess: () => {
+      setIntakeNotice("Lease match accepted.");
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-document-intakes", selectedEntityId],
       });
       queryClient.invalidateQueries({
         queryKey: ["dashboard-rent-roll", selectedEntityId],
@@ -3429,11 +3641,15 @@ export function Dashboard({
                     },
                   });
                 }}
+                onAcceptLeaseMatch={() => {
+                  acceptLeaseMatchMutation.mutate(selectedReviewIntake.id);
+                }}
                 onClear={() =>
                   deleteDocumentIntakeMutation.mutate(selectedReviewIntake.id)
                 }
                 saving={reviewDocumentIntakeMutation.isPending}
                 applying={applyDocumentIntakeMutation.isPending}
+                acceptingLeaseMatch={acceptLeaseMatchMutation.isPending}
                 clearing={deleteDocumentIntakeMutation.isPending}
                 demo={selectedReviewIntake.id.startsWith("demo-")}
               />
