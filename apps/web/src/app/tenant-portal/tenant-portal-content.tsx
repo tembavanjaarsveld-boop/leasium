@@ -263,17 +263,116 @@ function maintenanceStageIndex(status: string) {
 function maintenanceLatestUpdate(
   request: TenantPortalRecord["maintenance_requests"][number],
 ) {
-  if (request.history.length) {
-    const [latest] = [...request.history].sort(
-      (left, right) =>
-        new Date(right.timestamp).getTime() -
-        new Date(left.timestamp).getTime(),
-    );
+  const latest = latestMaintenanceHistoryEntry(request);
+  if (latest) {
     return `${maintenanceEventLabel(latest.event)} ${formatDateTime(
       latest.timestamp,
     )}: ${latest.summary}`;
   }
   return `Submitted ${formatDateTime(request.requested_at)}.`;
+}
+
+function latestMaintenanceHistoryEntry(
+  request: TenantPortalRecord["maintenance_requests"][number],
+) {
+  if (!request.history.length) {
+    return null;
+  }
+  return [...request.history].sort(
+    (left, right) =>
+      new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
+  )[0];
+}
+
+function maintenanceEvidenceCount(
+  request: TenantPortalRecord["maintenance_requests"][number],
+) {
+  return request.document_ids.length + request.photo_document_ids.length;
+}
+
+function maintenanceNextStep(
+  request: TenantPortalRecord["maintenance_requests"][number],
+) {
+  if (request.status === "completed") {
+    return {
+      label: "Completed",
+      detail: request.completed_at
+        ? `The property team marked this complete on ${formatDateTime(
+            request.completed_at,
+          )}.`
+        : "The property team marked this request complete.",
+      tone: "success" as const,
+    };
+  }
+  if (request.status === "cancelled") {
+    return {
+      label: "Closed",
+      detail:
+        "This request has been closed. Send a new request if the issue returns.",
+      tone: "neutral" as const,
+    };
+  }
+  if (request.status === "in_progress") {
+    return {
+      label: "Work underway",
+      detail:
+        "The property team or contractor is working through the request now.",
+      tone: "primary" as const,
+    };
+  }
+  if (request.status === "assigned") {
+    return {
+      label: "Scheduling",
+      detail:
+        "The request has been assigned and the next step is attendance or scheduling.",
+      tone: "primary" as const,
+    };
+  }
+  if (request.status === "approved") {
+    return {
+      label: "Approved",
+      detail:
+        "The work is approved and waiting for the property team to schedule it.",
+      tone: "primary" as const,
+    };
+  }
+  if (request.status === "awaiting_approval") {
+    return {
+      label: "Approval review",
+      detail:
+        "The property team is checking approval before the work can proceed.",
+      tone: "warning" as const,
+    };
+  }
+  if (request.status === "triaged") {
+    return {
+      label: "Team reviewed",
+      detail: request.due_date
+        ? `The request has been reviewed. Target date ${formatDate(
+            request.due_date,
+          )}.`
+        : "The request has been reviewed and is waiting for the next team step.",
+      tone: "primary" as const,
+    };
+  }
+  return {
+    label: "With the team",
+    detail: "The property team has your request and will triage the next step.",
+    tone: "warning" as const,
+  };
+}
+
+function maintenanceRequestSortValue(
+  request: TenantPortalRecord["maintenance_requests"][number],
+) {
+  const closed = ["completed", "cancelled"].includes(request.status);
+  const activityAt =
+    latestMaintenanceHistoryEntry(request)?.timestamp ??
+    request.completed_at ??
+    request.requested_at;
+  return `${closed ? "1" : "0"}-${String(
+    Number.MAX_SAFE_INTEGER - new Date(activityAt).getTime(),
+  ).padStart(16, "0")}`;
 }
 
 type TenantPortalActivityItem = {
@@ -1528,6 +1627,56 @@ function MaintenanceStatusTimeline({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function MaintenanceVisibilityCard({
+  request,
+}: {
+  request: TenantPortalRecord["maintenance_requests"][number];
+}) {
+  const latest = latestMaintenanceHistoryEntry(request);
+  const nextStep = maintenanceNextStep(request);
+  const evidenceCount = maintenanceEvidenceCount(request);
+  const latestTimestamp = latest?.timestamp ?? request.requested_at;
+
+  return (
+    <div className="grid gap-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm md:grid-cols-2">
+      <div className="grid gap-1 rounded-md border border-border bg-white px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="font-semibold text-foreground">Latest update</span>
+          <StatusBadge
+            tone={
+              latest
+                ? maintenanceTone(latest.status ?? request.status)
+                : "neutral"
+            }
+          >
+            {formatDate(latestTimestamp)}
+          </StatusBadge>
+        </div>
+        <div className="text-muted-foreground">
+          {latest ? latest.summary : "Request submitted to the property team."}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {formatDateTime(latestTimestamp)}
+        </div>
+      </div>
+      <div className="grid gap-1 rounded-md border border-border bg-white px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="font-semibold text-foreground">
+            What happens next
+          </span>
+          <StatusBadge tone={nextStep.tone}>{nextStep.label}</StatusBadge>
+        </div>
+        <div className="text-muted-foreground">{nextStep.detail}</div>
+        <div className="text-xs text-muted-foreground">
+          {evidenceCount
+            ? `${evidenceCount} file${evidenceCount === 1 ? "" : "s"} attached`
+            : "No files attached yet"}
+        </div>
       </div>
     </div>
   );
@@ -3540,6 +3689,15 @@ function TenantPortalContent({
       ).length,
     [portal?.maintenance_requests],
   );
+  const sortedMaintenanceRequests = useMemo(
+    () =>
+      [...(portal?.maintenance_requests ?? [])].sort((left, right) =>
+        maintenanceRequestSortValue(left).localeCompare(
+          maintenanceRequestSortValue(right),
+        ),
+      ),
+    [portal?.maintenance_requests],
+  );
 
   const documentDownloadMutation = useMutation({
     mutationFn: async ({
@@ -4543,7 +4701,7 @@ function TenantPortalContent({
                 </div>
 
                 <div className="grid gap-2">
-                  {portal.maintenance_requests.map((request) => (
+                  {sortedMaintenanceRequests.map((request) => (
                     <div
                       key={request.id}
                       className="grid gap-3 rounded-md border border-border p-3 md:grid-cols-[minmax(0,1fr)_auto]"
@@ -4565,12 +4723,8 @@ function TenantPortalContent({
                             {request.description}
                           </div>
                         ) : null}
-                        <div className="mt-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                          {maintenanceStatusDetail(
-                            request.status,
-                            request.due_date,
-                            request.completed_at,
-                          )}
+                        <div className="mt-2">
+                          <MaintenanceVisibilityCard request={request} />
                         </div>
                         <div className="mt-2">
                           <MaintenanceStatusTimeline request={request} />
@@ -4635,7 +4789,7 @@ function TenantPortalContent({
                       </div>
                     </div>
                   ))}
-                  {!portal.maintenance_requests.length ? (
+                  {!sortedMaintenanceRequests.length ? (
                     <div className="rounded-md border border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
                       No maintenance requests are open.
                     </div>
