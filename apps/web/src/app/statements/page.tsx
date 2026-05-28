@@ -174,6 +174,15 @@ function formatDateTime(value: string): string {
   }).format(new Date(value));
 }
 
+function formatDate(value: string | null): string {
+  if (!value) return "No date";
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
 function friendlyError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return "Something went wrong.";
@@ -250,6 +259,32 @@ function dispatchReviewStatusTone(status: StatementDispatchReviewStatus) {
   if (status === "missing_recipient") return "danger" as const;
   if (status === "locked") return "neutral" as const;
   return "warning" as const;
+}
+
+function invoiceEvidenceStatusLabel(status: string) {
+  return status
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function invoiceEvidenceSources(invoice: {
+  invoice_draft_id: string | null;
+  xero_invoice_id: string | null;
+  reconciliation_reference: string | null;
+  reconciliation_bank_transaction_id: string | null;
+}) {
+  return [
+    invoice.invoice_draft_id ? "Local invoice draft" : null,
+    invoice.xero_invoice_id ? `Xero ${invoice.xero_invoice_id}` : null,
+    invoice.reconciliation_reference
+      ? `Reconciliation ${invoice.reconciliation_reference}`
+      : null,
+    invoice.reconciliation_bank_transaction_id
+      ? `Bank txn ${invoice.reconciliation_bank_transaction_id}`
+      : null,
+  ].filter(Boolean);
 }
 
 function financeChecklistText(checklist: FinanceChecklist) {
@@ -1260,6 +1295,12 @@ function StatementPreviewPanel({
   const canPrint = owner.invoice_count > 0;
   const dispatchDraft = statementDispatchDraft({ owner, month });
   const recipientReady = Boolean(owner.billing_email);
+  const invoiceEvidenceRows = owner.properties.flatMap((property) =>
+    property.invoices.map((invoice) => ({
+      ...invoice,
+      propertyName: property.property_name,
+    })),
+  );
 
   const copySummary = async () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) {
@@ -1449,6 +1490,108 @@ function StatementPreviewPanel({
               </tbody>
             </table>
           </div>
+
+          <section
+            aria-label="Invoice evidence"
+            className="grid gap-3 rounded-md border border-border bg-muted/40 p-3"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">
+                  Invoice evidence
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Source invoice lines included in this owner statement.
+                </p>
+              </div>
+              <StatusBadge tone="neutral">
+                {invoiceEvidenceRows.length}{" "}
+                {invoiceEvidenceRows.length === 1 ? "invoice" : "invoices"}
+              </StatusBadge>
+            </div>
+
+            {invoiceEvidenceRows.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] border-collapse text-left text-xs tabular-nums">
+                  <thead className="border-b border-border uppercase text-muted-foreground">
+                    <tr>
+                      <th className="py-2 pr-3 font-semibold">Invoice</th>
+                      <th className="px-3 py-2 font-semibold">Property</th>
+                      <th className="px-3 py-2 font-semibold">Due</th>
+                      <th className="px-3 py-2 text-right font-semibold">
+                        Amount
+                      </th>
+                      <th className="px-3 py-2 text-right font-semibold">
+                        Paid
+                      </th>
+                      <th className="px-3 py-2 text-right font-semibold">
+                        Due
+                      </th>
+                      <th className="px-3 py-2 font-semibold">Status</th>
+                      <th className="py-2 pl-3 font-semibold">Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoiceEvidenceRows.map((invoice) => {
+                      const sources = invoiceEvidenceSources(invoice);
+                      return (
+                        <tr
+                          key={invoice.invoice_draft_id ?? invoice.invoice_number}
+                          className="border-b border-border last:border-0"
+                        >
+                          <td className="py-2 pr-3 align-top">
+                            <div className="font-semibold text-foreground">
+                              {invoice.invoice_number ??
+                                invoice.invoice_draft_id ??
+                                "Unnumbered invoice"}
+                            </div>
+                            <div className="mt-0.5 text-muted-foreground">
+                              {invoice.title}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 align-top font-medium text-foreground">
+                            {invoice.propertyName}
+                          </td>
+                          <td className="px-3 py-2 align-top text-muted-foreground">
+                            Due {formatDate(invoice.due_date)}
+                          </td>
+                          <td className="px-3 py-2 text-right align-top">
+                            {formatMoney(invoice.total_cents)}
+                          </td>
+                          <td className="px-3 py-2 text-right align-top text-muted-foreground">
+                            {formatMoney(invoice.paid_cents)} paid
+                          </td>
+                          <td className="px-3 py-2 text-right align-top font-semibold">
+                            {formatMoney(invoice.outstanding_cents)} due
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <StatusBadge
+                              tone={
+                                invoice.outstanding_cents > 0
+                                  ? "warning"
+                                  : "success"
+                              }
+                            >
+                              {invoiceEvidenceStatusLabel(
+                                invoice.payment_status,
+                              )}
+                            </StatusBadge>
+                          </td>
+                          <td className="py-2 pl-3 align-top text-muted-foreground">
+                            {sources.length ? sources.join(" · ") : "API row"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="rounded-md border border-border bg-white p-3 text-xs text-muted-foreground">
+                No invoice evidence rows were returned for this owner.
+              </p>
+            )}
+          </section>
 
           <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
             Review state:{" "}

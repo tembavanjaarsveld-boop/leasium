@@ -95,6 +95,11 @@ Last updated: 2026-05-28
   Statements finance checklist can download a local CSV. These are all
   review-only; no Xero refresh/write, email, payment reconciliation, provider
   attachment, or delivery-history mutation is performed.
+- 2026-05-28 finance UI continuation: Settings Xero now surfaces the provider
+  setup preflight in the diagnostics card, and `/statements` shows invoice
+  evidence rows inside the selected owner statement preview. Both are
+  read-only operator review surfaces; Connect with Xero still follows the
+  diagnostics capability gate, and owner dispatch remains separate.
 
 ## Takeover Priority
 

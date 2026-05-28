@@ -152,6 +152,16 @@ Progress notes:
   source/confidence fields and no-mutation dry-run guidance. This remains
   pending Remba review for button placement, workbook field order, and whether
   the migration instructions are clear enough for finance/admin users.
+- 2026-05-28 follow-up: Settings Xero now renders the provider setup
+  preflight details from diagnostics: required/missing env vars, expected
+  redirect URI, required scopes, and setup checklist. This remains pending
+  Remba review for density, checklist wording, and whether this should stay
+  inside the diagnostics card once production OAuth is connected.
+- 2026-05-28 follow-up: Owner statement preview now renders invoice evidence
+  rows below the owner totals, including invoice number, due date, amount paid,
+  amount outstanding, payment status, and local/Xero/reconciliation evidence
+  source. This remains pending Remba review for table density and whether the
+  evidence should default expanded or collapsed for finance users.
 
 Remba decision:
 

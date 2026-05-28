@@ -2148,6 +2148,28 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Xero" }).click();
   await expect(page.getByText("Xero sync exception queue")).toBeVisible();
+  const providerSetupPreflightPanel = page.getByRole("region", {
+    name: "Provider setup preflight",
+  });
+  await expect(providerSetupPreflightPanel).toBeVisible();
+  await expect(
+    providerSetupPreflightPanel.getByText("XERO_CLIENT_ID", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    providerSetupPreflightPanel.getByText(
+      "http://localhost:8000/api/v1/xero/oauth/callback",
+    ),
+  ).toBeVisible();
+  await expect(
+    providerSetupPreflightPanel.getByText("accounting.contacts.read", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    providerSetupPreflightPanel.getByText(
+      "Register expected_redirect_uri in the Xero app.",
+    ),
+  ).toBeVisible();
   await expect(page.getByText("Xero is not connected")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Connect Xero" }),

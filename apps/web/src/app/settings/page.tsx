@@ -4094,6 +4094,113 @@ function SettingsWorkspace() {
                             ),
                           )}
                         </div>
+                        <div
+                          aria-label="Provider setup preflight"
+                          className="mt-3 grid gap-3 rounded-md border border-border bg-white p-3"
+                          role="region"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <div className="text-xs uppercase text-muted-foreground">
+                                Provider setup preflight
+                              </div>
+                              <div className="mt-1 font-medium">
+                                Xero app configuration
+                              </div>
+                            </div>
+                            <StatusBadge
+                              tone={
+                                xeroDiagnostics.provider_setup_preflight
+                                  .missing_env_vars.length
+                                  ? "warning"
+                                  : "success"
+                              }
+                            >
+                              {xeroDiagnostics.provider_setup_preflight
+                                .missing_env_vars.length
+                                ? "Env vars missing"
+                                : "Env vars present"}
+                            </StatusBadge>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div>
+                              <div className="text-xs font-medium uppercase text-muted-foreground">
+                                Required env vars
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {xeroDiagnostics.provider_setup_preflight.required_env_vars.map(
+                                  (envVar) => (
+                                    <StatusBadge key={envVar} tone="neutral">
+                                      {envVar}
+                                    </StatusBadge>
+                                  ),
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs font-medium uppercase text-muted-foreground">
+                                Missing env vars
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {xeroDiagnostics.provider_setup_preflight
+                                  .missing_env_vars.length ? (
+                                  xeroDiagnostics.provider_setup_preflight.missing_env_vars.map(
+                                    (envVar) => (
+                                      <StatusBadge key={envVar} tone="warning">
+                                        {envVar}
+                                      </StatusBadge>
+                                    ),
+                                  )
+                                ) : (
+                                  <StatusBadge tone="success">None</StatusBadge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="grid gap-1">
+                            <div className="text-xs font-medium uppercase text-muted-foreground">
+                              Expected redirect URI
+                            </div>
+                            <div className="break-all rounded-md border border-border bg-muted/25 px-3 py-2 text-xs">
+                              {
+                                xeroDiagnostics.provider_setup_preflight
+                                  .expected_redirect_uri
+                              }
+                            </div>
+                          </div>
+                          <div className="grid gap-1">
+                            <div className="text-xs font-medium uppercase text-muted-foreground">
+                              Required scopes
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {xeroDiagnostics.provider_setup_preflight.required_scopes.map(
+                                (scope) => (
+                                  <StatusBadge key={scope} tone="neutral">
+                                    {scope}
+                                  </StatusBadge>
+                                ),
+                              )}
+                            </div>
+                          </div>
+                          <div className="grid gap-1">
+                            <div className="text-xs font-medium uppercase text-muted-foreground">
+                              Setup checklist
+                            </div>
+                            <ul className="grid gap-1 text-xs text-muted-foreground">
+                              {xeroDiagnostics.provider_setup_preflight.setup_checklist.map(
+                                (step) => (
+                                  <li key={step} className="flex gap-2">
+                                    <CheckCircle2
+                                      size={14}
+                                      className="mt-0.5 shrink-0 text-primary"
+                                    />
+                                    <span>{step}</span>
+                                  </li>
+                                ),
+                              )}
+                            </ul>
+                          </div>
+                        </div>
                         {xeroDiagnostics.next_steps.length ? (
                           <ul className="mt-3 grid gap-1 text-xs text-muted-foreground">
                             {xeroDiagnostics.next_steps.map((step) => (
