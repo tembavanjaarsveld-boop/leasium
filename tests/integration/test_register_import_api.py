@@ -1,10 +1,13 @@
 """Register spreadsheet import dry-run tests."""
 
+from collections.abc import Generator
 from io import BytesIO
 from uuid import UUID
 
+from apps.api.deps import get_session
+from apps.api.main import app
 from fastapi.testclient import TestClient
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.models import (
@@ -17,6 +20,7 @@ from stewart.core.models import (
     TenancyUnit,
     Tenant,
 )
+from stewart.core.settings import get_settings
 
 
 def _entity_id(session: Session) -> str:
@@ -242,6 +246,68 @@ def _workbook_bytes() -> bytes:
     actions.append(["Deadline", "Action", "Detail", "Owner"])
     actions.append(["2026-05-20", "Confirm tenant details", "Call tenant", "Ops"])
 
+    charge_rules = workbook.create_sheet("Charge Rules")
+    charge_rules.append(
+        [
+            "Tenancy ID",
+            "Charge type",
+            "Amount",
+            "Frequency",
+            "GST treatment",
+            "Start date",
+            "End date",
+            "Next due date",
+            "Billing identity",
+            "Notes",
+            "Source / confidence hint",
+        ]
+    )
+    charge_rules.append(
+        [
+            "NL1642-T001",
+            "Promotion levy",
+            120,
+            "Monthly",
+            "GST",
+            "2026-05-01",
+            "",
+            "2026-06-01",
+            "SKJ Property Pty Ltd",
+            "Needs mapping",
+            "Migration workbook",
+        ]
+    )
+
+    arrears = workbook.create_sheet("Arrears")
+    arrears.append(
+        [
+            "Tenancy ID",
+            "Tenant",
+            "Amount overdue",
+            "Days overdue",
+            "Last contact",
+            "Promise to pay",
+            "Owner",
+            "Status",
+            "Notes",
+            "Source / confidence hint",
+        ]
+    )
+    arrears.append(
+        [
+            "NL1642-T001",
+            "North Lakes Tenant",
+            880,
+            14,
+            "2026-05-18",
+            "2026-05-30",
+            "Finance",
+            "Open",
+            "Call logged",
+            "Migration workbook",
+        ]
+    )
+
     entities = workbook.create_sheet("Entities")
     entities.append(["Entity (legal name)", "Type", "Role", "Properties", "Notes"])
     entities.append(["SKJ Property Pty Ltd", "Pty Ltd", "Landlord", "NL1642", ""])
@@ -249,6 +315,94 @@ def _workbook_bytes() -> bytes:
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
+
+
+def test_register_import_template_downloads_no_mutation_workbook(
+    client: TestClient,
+    session: Session,
+) -> None:
+    plan_count_before = len(list(session.scalars(select(RegisterImportPlan))))
+    response = client.get("/api/v1/register-imports/template")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert "leasium-migration-template.xlsx" in response.headers["content-disposition"]
+
+    workbook = load_workbook(BytesIO(response.content), data_only=True)
+    assert workbook.sheetnames == [
+        "Instructions",
+        "Entities",
+        "Properties",
+        "Tenancies",
+        "Charge Rules",
+        "Bonds",
+        "Dates",
+        "Vendors",
+        "Arrears",
+        "Active Issues",
+        "Actions",
+    ]
+    instructions = workbook["Instructions"]
+    instruction_text = " ".join(
+        str(cell.value)
+        for row in instructions.iter_rows(min_row=1, max_row=8)
+        for cell in row
+        if cell.value
+    )
+    assert "Download this template" in instruction_text
+    assert "dry-run" in instruction_text
+    assert "explicit Apply" in instruction_text
+    assert "Nothing changes" in instruction_text
+
+    properties_headers = [cell.value for cell in workbook["Properties"][1]]
+    assert properties_headers[:5] == [
+        "Code",
+        "Suburb",
+        "Address",
+        "Owning entity (legal)",
+        "Role",
+    ]
+    tenancy_headers = [cell.value for cell in workbook["Tenancies"][1]]
+    assert "Unit code" in tenancy_headers
+    assert "Tenant (legal name)" in tenancy_headers
+    assert "Annual rent" in tenancy_headers
+    assert "Source / confidence hint" in tenancy_headers
+    assert [cell.value for cell in workbook["Arrears"][1]][:4] == [
+        "Tenancy ID",
+        "Tenant",
+        "Amount overdue",
+        "Days overdue",
+    ]
+
+    assert len(list(session.scalars(select(RegisterImportPlan)))) == plan_count_before
+    assert session.scalar(select(Property)) is None
+
+
+def test_register_import_template_requires_authenticated_operator_in_clerk_mode(
+    session: Session,
+) -> None:
+    def override_session() -> Generator[Session, None, None]:
+        yield session
+
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={
+            "auth_mode": "clerk",
+            "clerk_secret_key": "sk_test_clerk",
+            "clerk_jwks_url": "https://clerk.example/.well-known/jwks.json",
+            "clerk_allow_legacy_token_mapping": False,
+        }
+    )
+    try:
+        with TestClient(app) as clerk_client:
+            response = clerk_client.get("/api/v1/register-imports/template")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Missing Clerk bearer token."
 
 
 def test_register_import_dry_run_plans_workbook_without_mutation(
@@ -287,6 +441,16 @@ def test_register_import_dry_run_plans_workbook_without_mutation(
     assert any(
         candidate["key"] == "headlease_role_model" for candidate in body["feature_candidates"]
     )
+    assert any(
+        candidate["key"] == "charge_rule_review" for candidate in body["feature_candidates"]
+    )
+    arrears_candidate = next(
+        candidate
+        for candidate in body["feature_candidates"]
+        if candidate["key"] == "arrears_credit_control"
+    )
+    assert arrears_candidate["source_sheet"] == "Arrears"
+    assert arrears_candidate["source_count"] == 1
     assert any(
         item["target"] == "tenancies"
         and item["operation"] == "create"

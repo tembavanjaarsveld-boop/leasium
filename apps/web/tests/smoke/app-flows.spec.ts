@@ -1383,6 +1383,13 @@ test("spreadsheet intake review supports bulk approval controls", async ({
   await expect(
     page.getByRole("button", { name: "Review workbook" }),
   ).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Download template" }),
+  ).toBeEnabled();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download template" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("leasium-migration-template.xlsx");
 
   await page.locator('input[type="file"]').setInputFiles({
     name: "portfolio-import.xlsx",

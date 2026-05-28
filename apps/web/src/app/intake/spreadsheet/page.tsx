@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleSlash,
+  Download,
   FileSpreadsheet,
   Loader2,
   RefreshCw,
@@ -26,12 +27,14 @@ import {
 } from "@/components/ui";
 import {
   applyRegisterImportPlan,
+  downloadRegisterImportTemplate,
   dryRunRegisterImport,
   listEntities,
   type RegisterImportActionItem,
   type RegisterImportApplyRecord,
   type RegisterImportDryRunRecord,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
@@ -121,6 +124,13 @@ function SpreadsheetImportWorkspace() {
           ]),
         ),
       );
+    },
+  });
+
+  const templateMutation = useMutation({
+    mutationFn: downloadRegisterImportTemplate,
+    onSuccess: (blob) => {
+      saveBlob(blob, "leasium-migration-template.xlsx");
     },
   });
 
@@ -221,6 +231,18 @@ function SpreadsheetImportWorkspace() {
           description="Review a portfolio workbook before Leasium creates or updates register records."
           actions={
             <div className="flex flex-wrap gap-2">
+              <SecondaryButton
+                type="button"
+                onClick={() => templateMutation.mutate()}
+                disabled={templateMutation.isPending}
+              >
+                {templateMutation.isPending ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Download size={15} />
+                )}
+                Download template
+              </SecondaryButton>
               <Link
                 href="/intake"
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
@@ -281,6 +303,11 @@ function SpreadsheetImportWorkspace() {
         {dryRunMutation.error ? (
           <div className="rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
             {friendlyError(dryRunMutation.error)}
+          </div>
+        ) : null}
+        {templateMutation.error ? (
+          <div className="rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
+            {friendlyError(templateMutation.error)}
           </div>
         ) : null}
         {applyMutation.error ? (

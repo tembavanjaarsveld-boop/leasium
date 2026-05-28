@@ -538,7 +538,8 @@ Behavioural baseline:
   - Verification covered focused backend unit/integration tests, TypeScript, ESLint, and smoke flows for maintenance detail, Settings Xero, and Insights/public snapshots.
 - Spreadsheet import review polish:
   - `apps/web/src/app/intake/register-import-panel.tsx` and `apps/web/src/app/intake/spreadsheet/page.tsx` now show approve/review/ignored/blocked counts, explicit `Approve recommended` and `Ignore all` controls, and more field-change detail before Apply.
-  - `apps/web/tests/smoke/api-mocks.ts` now mocks `POST /register-imports/dry-run` and `POST /register-imports/apply`.
+  - Smart Intake now also offers `Download template` before upload. The API returns an authenticated `leasium-migration-template.xlsx` workbook with instructions, supported import tabs, richer migration fields, and source/confidence hint columns while preserving no-mutation dry-run/apply behaviour.
+  - `apps/web/tests/smoke/api-mocks.ts` now mocks the template download plus `POST /register-imports/dry-run` and `POST /register-imports/apply`.
   - `apps/web/tests/smoke/app-flows.spec.ts` covers the focused spreadsheet import review, bulk ignore, re-approve recommended, and apply outcome.
 
 ## Important Deployment Notes
@@ -596,7 +597,7 @@ Live route sanity after Vercel deploys:
 
 Treat these as pending UX/design sign-off:
 
-- Smart Intake spreadsheet import review/apply panel.
+- Smart Intake spreadsheet import review/apply panel and migration-template download.
 - Portfolio QA IA and command-search placement.
 - Reusable evidence/source-trail pattern across Properties, Smart Intake, Tenants, invoices, and maintenance.
 - Tenant portal account/self-service surfaces, fresh-link recovery, and document provenance density.

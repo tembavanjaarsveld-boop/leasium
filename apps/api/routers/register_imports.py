@@ -1,9 +1,12 @@
 """Review-first spreadsheet import routes."""
 
+from io import BytesIO
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
@@ -29,6 +32,169 @@ SUPPORTED_CONTENT_TYPES = {
     "application/octet-stream",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+TEMPLATE_SHEETS: tuple[tuple[str, list[str]], ...] = (
+    (
+        "Entities",
+        [
+            "Entity (legal name)",
+            "Type",
+            "Role",
+            "ABN / registration",
+            "Billing email",
+            "Xero contact name",
+            "Properties",
+            "Notes",
+            "Source / confidence hint",
+        ],
+    ),
+    (
+        "Properties",
+        [
+            "Code",
+            "Suburb",
+            "Address",
+            "Owning entity (legal)",
+            "Role",
+            "Property type",
+            "Active tenancies",
+            "Status",
+            "Notes",
+            "Source / confidence hint",
+        ],
+    ),
+    (
+        "Tenancies",
+        [
+            "Tenancy ID",
+            "Property",
+            "Unit code",
+            "Tenant (legal name)",
+            "Trading name",
+            "Size m²",
+            "Commencement",
+            "Expiry",
+            "Status",
+            "Annual rent",
+            "Outgoings",
+            "Security",
+            "Frequency",
+            "Rent per m²",
+            "Form",
+            "Insurance",
+            "Arrears",
+            "Review type",
+            "Next review",
+            "Options",
+            "Primary contact",
+            "Notes",
+            "Source / confidence hint",
+        ],
+    ),
+    (
+        "Charge Rules",
+        [
+            "Tenancy ID",
+            "Charge type",
+            "Amount",
+            "Frequency",
+            "GST treatment",
+            "Start date",
+            "End date",
+            "Next due date",
+            "Billing identity",
+            "Notes",
+            "Source / confidence hint",
+        ],
+    ),
+    (
+        "Bonds",
+        [
+            "Tenancy",
+            "Property",
+            "Tenant",
+            "Security type",
+            "Amount $AUD",
+            "Paid date",
+            "Security expiry",
+            "Insurance status",
+            "Insurance expiry",
+            "Notes",
+            "Source / confidence hint",
+        ],
+    ),
+    (
+        "Dates",
+        [
+            "Date",
+            "Property",
+            "Tenancy",
+            "Event type",
+            "Description",
+            "Severity",
+            "Owner",
+            "Notes",
+            "Source / confidence hint",
+        ],
+    ),
+    (
+        "Vendors",
+        [
+            "Vendor / Counterparty",
+            "Category",
+            "Scope",
+            "Sites / properties",
+            "Contact",
+            "Email",
+            "Phone",
+            "Status",
+            "Notes",
+            "Source / confidence hint",
+        ],
+    ),
+    (
+        "Arrears",
+        [
+            "Tenancy ID",
+            "Tenant",
+            "Amount overdue",
+            "Days overdue",
+            "Last contact",
+            "Promise to pay",
+            "Owner",
+            "Status",
+            "Notes",
+            "Source / confidence hint",
+        ],
+    ),
+    (
+        "Active Issues",
+        [
+            "Issue",
+            "Property",
+            "Tenancy",
+            "Severity",
+            "Owner",
+            "Status",
+            "Notes / next step",
+            "Source / confidence hint",
+        ],
+    ),
+    (
+        "Actions",
+        [
+            "Deadline",
+            "Action",
+            "Detail",
+            "Owner",
+            "Property",
+            "Tenancy",
+            "Status",
+            "Source / confidence hint",
+        ],
+    ),
+)
 
 
 def _validate_workbook_upload(filename: str, content_type: str | None) -> None:
@@ -42,6 +208,87 @@ def _validate_workbook_upload(filename: str, content_type: str | None) -> None:
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Register imports currently support .xlsx workbooks.",
         )
+
+
+def _append_header_sheet(workbook: Workbook, title: str, headers: list[str]) -> None:
+    sheet = workbook.create_sheet(title)
+    sheet.append(headers)
+    for cell in sheet[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="1F6F5B")
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+    sheet.freeze_panes = "A2"
+    for column_cells in sheet.columns:
+        header = str(column_cells[0].value or "")
+        sheet.column_dimensions[column_cells[0].column_letter].width = min(
+            max(len(header) + 4, 14),
+            32,
+        )
+
+
+def _migration_template_content() -> bytes:
+    workbook = Workbook()
+    instructions = workbook.active
+    assert instructions is not None
+    instructions.title = "Instructions"
+    instructions.append(["Leasium Smart Intake migration template"])
+    instructions.append(["1. Download this template and keep the sheet names unchanged."])
+    instructions.append(
+        ["2. Complete it using your preferred AI or spreadsheet workflow."]
+    )
+    instructions.append(
+        [
+            "3. Upload the completed workbook back into Smart Intake for dry-run, "
+            "row-level review, and explicit Apply."
+        ]
+    )
+    instructions.append(
+        [
+            "4. Nothing changes in the register during template download or dry-run; "
+            "only approved actions are applied."
+        ]
+    )
+    instructions.append(
+        [
+            "5. Use Source / confidence hint for row provenance, extraction confidence, "
+            "or notes from the migration source."
+        ]
+    )
+    instructions.append([])
+    instructions.append(
+        [
+            "Current Smart Intake applies Properties, Tenancies, Bonds, and Dates. "
+            "Entities, Vendors, Charge Rules, Arrears, Active Issues, and Actions are "
+            "kept visible for review and workflow staging."
+        ]
+    )
+    instructions["A1"].font = Font(bold=True, size=14, color="1F6F5B")
+    instructions.column_dimensions["A"].width = 118
+    for row in instructions.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+    for title, headers in TEMPLATE_SHEETS:
+        _append_header_sheet(workbook, title, headers)
+
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+@router.get("/template")
+def download_register_import_template(
+    _: Annotated[CurrentUser, Depends(get_current_user)],
+) -> Response:
+    """Return the Smart Intake migration template without creating an import plan."""
+
+    return Response(
+        content=_migration_template_content(),
+        media_type=XLSX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": 'attachment; filename="leasium-migration-template.xlsx"'
+        },
+    )
 
 
 @router.post("/dry-run", response_model=RegisterImportDryRunRead)

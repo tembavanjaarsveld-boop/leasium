@@ -4176,6 +4176,10 @@ export function dryRunRegisterImport(payload: {
   );
 }
 
+export function downloadRegisterImportTemplate() {
+  return requestBlob("/register-imports/template");
+}
+
 export function applyRegisterImportPlan(payload: {
   entityId: string;
   filename: string;

@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-05-24
+Last updated: 2026-05-28
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -144,6 +144,14 @@ Progress notes:
   recipient readiness, owner-facing subject/body preview, copy-to-clipboard,
   and a no-send guardrail. This remains pending Remba review before provider
   delivery is wired.
+- 2026-05-28: Smart Intake spreadsheet import now includes a
+  `Download template` action on both the dashboard panel and focused
+  spreadsheet workspace. The generated workbook keeps the upload contract
+  visible with Instructions, Entities, Properties, Tenancies, Charge Rules,
+  Bonds, Dates, Vendors, Arrears, Active Issues, and Actions tabs, including
+  source/confidence fields and no-mutation dry-run guidance. This remains
+  pending Remba review for button placement, workbook field order, and whether
+  the migration instructions are clear enough for finance/admin users.
 
 Remba decision:
 

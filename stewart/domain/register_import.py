@@ -843,6 +843,8 @@ def build_register_import_dry_run(
     dates = sheets.get("Dates", SheetRows("Dates", None, [], [])).rows
     entities = sheets.get("Entities", SheetRows("Entities", None, [], [])).rows
     vendors = sheets.get("Vendors", SheetRows("Vendors", None, [], [])).rows
+    charge_rules = sheets.get("Charge Rules", SheetRows("Charge Rules", None, [], [])).rows
+    arrears_sheet = sheets.get("Arrears", SheetRows("Arrears", None, [], [])).rows
     issues = sheets.get("Active Issues", SheetRows("Active Issues", None, [], [])).rows
     actions_rows = sheets.get("Actions", SheetRows("Actions", None, [], [])).rows
 
@@ -1200,6 +1202,18 @@ def build_register_import_dry_run(
                 len(vendors),
             )
         )
+    if charge_rules:
+        feature_candidates.append(
+            _feature(
+                "charge_rule_review",
+                "Charge rule migration review",
+                "The workbook has standalone charge-rule rows that should be "
+                "reviewed against lease charge rules before import mapping is expanded.",
+                "Charge Rules",
+                len(charge_rules),
+                "next",
+            )
+        )
     if issues or actions_rows:
         feature_candidates.append(
             _feature(
@@ -1236,15 +1250,20 @@ def build_register_import_dry_run(
                 "next",
             )
         )
-    if arrears_rows:
+    if arrears_rows or arrears_sheet:
+        source_sheet = "Tenancies"
+        if arrears_sheet and arrears_rows:
+            source_sheet = "Arrears / Tenancies"
+        elif arrears_sheet:
+            source_sheet = "Arrears"
         feature_candidates.append(
             _feature(
                 "arrears_credit_control",
                 "Arrears and credit-control queue",
                 "Tenancy status and arrears notes can seed an arrears workflow "
                 "beyond basic lease status.",
-                "Tenancies",
-                arrears_rows,
+                source_sheet,
+                arrears_rows + len(arrears_sheet),
                 "next",
             )
         )

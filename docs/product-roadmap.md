@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-05-25
+Last updated: 2026-05-28
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -73,6 +73,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Spreadsheet portfolio Smart Intake review/apply v1: spreadsheet import plans now surface reviewable row actions in Smart Intake, require explicit approved action IDs before Apply, and store workbook filename, sheet, row, action ID, source hint, confidence, and before/after provenance on created/updated records. Pending Remba review.
 - [x] Spreadsheet import plan durability v1: dry-runs now persist a server-side review plan ID, Smart Intake Apply can use the stored plan instead of trusting browser-sent action rows, and applied plans keep the approved/ignored IDs plus apply result for audit. New migration: `20260521_0020_register_import_plans`.
 - [x] Spreadsheet import review controls v1: Smart Intake and the focused spreadsheet page now show approve/review/ignored/blocked counts, bulk approve-recommended and ignore-all controls, and multi-field change previews before Apply. Pending Remba review.
+- [~] Spreadsheet migration template download v1: `/api/v1/register-imports/template` returns an authenticated `.xlsx` migration workbook with instructions and preset tabs for entities, properties, tenancies, charge rules, bonds, dates, vendors, arrears, issue queues, and action queues. Smart Intake and the focused spreadsheet page now expose a `Download template` action before upload, preserving dry-run/no-mutation review-first import behaviour. Pending Remba review.
 - [x] One-off SKJ portfolio workbook production import: the current source-of-truth workbook has been loaded into the hosted register with real properties, units, tenants, leases, charge rules, and obligations, while demo seed rows were archived.
 - [x] Post-import Portfolio QA workspace v1: `/portfolio-qa` brings together missing-field checks, tenant contact cleanup, source/import history, batch onboarding readiness, and internal billing draft preparation from the imported portfolio. Portfolio QA now has a primary navigation entry for pre-production cleanup, with final IA still pending Remba review.
 - [x] Charge-rule billing draft batch v1: reviewed rent/outgoings charge rules can generate source-linked internal billing drafts and line items with idempotent same-period reuse, synthetic prep source documents, and explicit no-PDF/no-email/no-Xero guardrails.
@@ -313,6 +314,7 @@ The 2026-05-23 [automation strategy](automation-strategy-2026-05-23.md) frames e
 - [ ] Live-review the Operations row-density pass on a real phone and tune disclosure labels if they feel unclear.
 - [~] Continue Xero from guided sync exceptions into accounting snapshot guardrails, stale reconciliation indicators, and richer accounting-readiness snapshots. Local freshness snapshots, Billing Readiness row cues, month-end checklist, owner-statement handoff, and Settings next-step guidance are shipped; remaining follow-up is live SKJ/accountant tuning.
 - [~] Continue Portfolio QA from guided cleanup v1 into bulk fix review, AI-assisted enrichment candidates, and clearer completion/reporting states. Completion report, enrichment candidate queue, reviewed bulk-staging actions, blocked-followup queue, onboarding/billing blocker-review summaries, and final-readiness verdicts are shipped; remaining follow-up is live SKJ tuning.
+- [~] Smart Intake spreadsheet migration template download shipped: the spreadsheet import section now has a `Download template` action, and the generated workbook covers the SaaS/bulk migration fields through the current import tabs: Entities for owners/billing identities, Properties, Tenancies for units/tenants/leases, Charge Rules, Bonds/Dates for obligations and compliance, Vendors for contacts/vendors, Arrears, Active Issues, and Actions. Remaining follow-up is live SKJ/Remba tuning of sheet names, field order, and whether additional AI-fill instructions should sit in-app or only inside the workbook.
 - [~] Branded communications editable templates UI + send-time wiring (deprioritised while SKJ uses Leasium internally per `leasium-internal-first-6-months`). Read-only stored override visibility is now shipped; remaining work is actual editing and provider send-time consumption after Remba/operator review.
 
 ## Smart Intake North Star

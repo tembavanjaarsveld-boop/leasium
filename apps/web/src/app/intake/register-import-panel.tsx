@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleSlash,
+  Download,
   FileSpreadsheet,
   FileUp,
   Loader2,
@@ -15,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   applyRegisterImportPlan,
+  downloadRegisterImportTemplate,
   dryRunRegisterImport,
   type RegisterImportActionItem,
   type RegisterImportApplyRecord,
@@ -28,6 +30,7 @@ import {
   SectionPanel,
   StatusBadge,
 } from "@/components/ui";
+import { saveBlob } from "@/lib/download";
 
 function friendlyError(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
@@ -150,6 +153,13 @@ export function RegisterImportPanel({
     },
   });
 
+  const templateMutation = useMutation({
+    mutationFn: downloadRegisterImportTemplate,
+    onSuccess: (blob) => {
+      saveBlob(blob, "leasium-migration-template.xlsx");
+    },
+  });
+
   const applyMutation = useMutation({
     mutationFn: () => {
       if (!dryRun) {
@@ -218,6 +228,18 @@ export function RegisterImportPanel({
           />
           <SecondaryButton
             type="button"
+            onClick={() => templateMutation.mutate()}
+            disabled={templateMutation.isPending}
+          >
+            {templateMutation.isPending ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Download size={15} />
+            )}
+            Download template
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={
               !entityId || dryRunMutation.isPending || applyMutation.isPending
@@ -270,6 +292,11 @@ export function RegisterImportPanel({
         {dryRunMutation.error ? (
           <div className="rounded-md border border-danger/25 bg-danger-soft px-3 py-2 text-sm text-danger">
             {friendlyError(dryRunMutation.error)}
+          </div>
+        ) : null}
+        {templateMutation.error ? (
+          <div className="rounded-md border border-danger/25 bg-danger-soft px-3 py-2 text-sm text-danger">
+            {friendlyError(templateMutation.error)}
           </div>
         ) : null}
         {applyMutation.error ? (
