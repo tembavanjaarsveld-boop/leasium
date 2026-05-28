@@ -312,12 +312,19 @@ Last updated: 2026-05-28
   proving those local exports do not start OAuth, preview contacts/chart/tax,
   preview posting, create Xero drafts, dispatch providers, or run payment
   reconciliation.
-- Sidecar recommendation for the next slice was export parity coverage, which
-  continuation 9 already covered. A good next local-only follow-up is adding the
-  same forbidden-request trap around the unconnected diagnostics CSV/TXT/copy
-  section in `settings shows Xero readiness and records mappings`, scoped only to
-  those export actions so the later reviewed provider workflow in that smoke can
-  still run.
+- 2026-05-28 Settings Xero continuation 11: the unconnected diagnostics section
+  in `settings shows Xero readiness and records mappings` now has the same
+  forbidden-request trap around CSV/TXT/copy actions, scoped before the later
+  manual tenant save and reviewed provider workflow. It proves local diagnostics
+  exports do not start OAuth, preview contacts/chart/tax, preview posting, create
+  Xero drafts, dispatch providers, or run payment reconciliation before the test
+  intentionally exercises reviewed provider flows.
+- Sidecar recommendation for the next slice: Settings Xero export-action guard
+  parity. Apply the same no-extra-request/safe-unavailable treatment to other
+  review-only Settings Xero exports, especially exception queue copy/download and
+  accounting freshness CSV/copy. Keep it frontend/mock-only and do not start
+  OAuth, refresh tokens, call Xero, create drafts, dispatch providers, send
+  email/SMS, reconcile payments, or write provider history.
 
 ## Takeover Priority
 

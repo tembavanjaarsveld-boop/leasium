@@ -2450,6 +2450,24 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     "No Xero write occurs until an explicit reviewed action is run.",
   );
   await expect(page.getByText("Connection diagnostics")).toBeVisible();
+  const forbiddenUnconnectedDiagnosticsRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (
+      url.includes("/api/v1/xero/oauth/start") ||
+      url.includes("/api/v1/xero/contacts/sync-preview") ||
+      url.includes("/api/v1/xero/chart-tax/validate-preview") ||
+      url.includes("/api/v1/xero/invoices/posting-preview") ||
+      url.includes("/api/v1/xero/invoices/draft-create") ||
+      url.includes("/api/v1/xero/invoices/provider-dispatch") ||
+      url.includes("/api/v1/xero/payments/reconciliation-preview") ||
+      url.includes("/api/v1/xero/payments/reconciliation-apply")
+    ) {
+      forbiddenUnconnectedDiagnosticsRequests.push(
+        `${request.method()} ${url}`,
+      );
+    }
+  });
   const diagnosticsDownloadPromise = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "Download diagnostics CSV" })
@@ -2532,6 +2550,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
       "Connect Xero before provider previews and draft creation are available.",
     ),
   ).toBeVisible();
+  expect(forbiddenUnconnectedDiagnosticsRequests).toEqual([]);
   await expect(page.getByText("Xero is not connected")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Connect Xero" }),
