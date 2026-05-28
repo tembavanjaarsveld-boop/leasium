@@ -1384,6 +1384,26 @@ function leaseEventDedupeKey(event: LeaseEventRecord) {
   return `${event.kind}-${event.target.lease_id ?? event.id}-${event.date ?? "undated"}`;
 }
 
+function calendarEventDaysUntil(event: LeaseEventRecord) {
+  return event.date ? daysUntil(event.date) : Number.POSITIVE_INFINITY;
+}
+
+function calendarPlanningBrief(events: LeaseEventRecord[]) {
+  if (!events.length) {
+    return "No rent reviews or lease expiries match the current filters.";
+  }
+  const lines = ["Portfolio lease calendar"];
+  for (const event of events.slice(0, 20)) {
+    lines.push(
+      `- ${formatDate(event.date)} | ${leaseEventKindLabel(event.kind)} | ${event.title} | ${event.chip}`,
+    );
+  }
+  if (events.length > 20) {
+    lines.push(`- ${events.length - 20} more event${events.length === 21 ? "" : "s"}`);
+  }
+  return lines.join("\n");
+}
+
 function propertyPortfolioViewFromSearch(): PropertyPortfolioView {
   if (typeof window === "undefined") {
     return "table";
@@ -6510,7 +6530,26 @@ function PropertyCalendarView({
   events: LeaseEventRecord[];
   isLoading: boolean;
 }) {
-  const groupedEvents = events.reduce<
+  const [eventKindFilter, setEventKindFilter] = useState<
+    "all" | "rent_review" | "lease_expiry"
+  >("all");
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const filteredEvents = events.filter((event) =>
+    eventKindFilter === "all" ? true : event.kind === eventKindFilter,
+  );
+  const next30Count = events.filter(
+    (event) => calendarEventDaysUntil(event) <= 30,
+  ).length;
+  const next90Count = events.filter(
+    (event) => calendarEventDaysUntil(event) <= 90,
+  ).length;
+  const reviewCount = events.filter(
+    (event) => event.kind === "rent_review",
+  ).length;
+  const expiryCount = events.filter(
+    (event) => event.kind === "lease_expiry",
+  ).length;
+  const groupedEvents = filteredEvents.reduce<
     Array<{ key: string; events: LeaseEventRecord[] }>
   >((groups, event) => {
     const key = event.date
@@ -6527,6 +6566,14 @@ function PropertyCalendarView({
     }
     return groups;
   }, []);
+  const copyCalendarBrief = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Clipboard is not available in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(calendarPlanningBrief(filteredEvents));
+    setCopyReceipt("Calendar brief copied.");
+  };
 
   if (isLoading) {
     return (
@@ -6545,44 +6592,113 @@ function PropertyCalendarView({
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
-      {groupedEvents.map((group) => (
-        <section
-          key={group.key}
-          className="overflow-hidden rounded-md border border-border bg-white"
-        >
-          <header className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-3">
-            <div className="font-semibold">{group.key}</div>
-            <StatusBadge tone="primary">
-              {group.events.length} event{group.events.length === 1 ? "" : "s"}
+    <div className="grid gap-3">
+      <div className="grid gap-3 rounded-md border border-border bg-white p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone="primary">{events.length} events</StatusBadge>
+            <StatusBadge tone={next30Count ? "warning" : "neutral"}>
+              {next30Count} next 30 days
             </StatusBadge>
-          </header>
-          <div className="grid gap-2 p-3">
-            {group.events.map((event) => (
-              <Link
-                key={event.id}
-                href={event.href}
-                className="grid gap-2 rounded-md border border-border p-3 text-sm transition hover:bg-muted/50 md:grid-cols-[96px_minmax(0,1fr)]"
-              >
-                <div className="font-semibold tabular-nums">
-                  {formatDate(event.date)}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate font-medium">{event.title}</span>
-                    <StatusBadge tone={leaseEventTone(event.kind)}>
-                      {leaseEventKindLabel(event.kind)}
-                    </StatusBadge>
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {event.chip}
-                  </div>
-                </div>
-              </Link>
-            ))}
+            <StatusBadge tone={next90Count ? "primary" : "neutral"}>
+              {next90Count} next 90 days
+            </StatusBadge>
           </div>
-        </section>
-      ))}
+          <div className="flex flex-wrap items-center gap-1 text-xs">
+            {(
+              [
+                { key: "all", label: "All", count: events.length },
+                {
+                  key: "rent_review",
+                  label: "Rent reviews",
+                  count: reviewCount,
+                },
+                {
+                  key: "lease_expiry",
+                  label: "Lease expiries",
+                  count: expiryCount,
+                },
+              ] as const
+            ).map((option) => {
+              const isActive = eventKindFilter === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setEventKindFilter(option.key)}
+                  aria-pressed={isActive}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold transition ${
+                    isActive
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-white text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  <span>{option.label}</span>
+                  <span className="rounded-full bg-black/10 px-1.5 text-leasium-micro font-bold">
+                    {option.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {copyReceipt ? (
+            <p className="text-sm font-medium text-success">{copyReceipt}</p>
+          ) : null}
+        </div>
+        <SecondaryButton type="button" onClick={copyCalendarBrief}>
+          <Copy size={15} />
+          Copy schedule
+        </SecondaryButton>
+      </div>
+
+      {!filteredEvents.length ? (
+        <div className="rounded-md border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+          No events match this calendar filter.
+        </div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {groupedEvents.map((group) => (
+            <section
+              key={group.key}
+              className="overflow-hidden rounded-md border border-border bg-white"
+            >
+              <header className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-3">
+                <div className="font-semibold">{group.key}</div>
+                <StatusBadge tone="primary">
+                  {group.events.length} event
+                  {group.events.length === 1 ? "" : "s"}
+                </StatusBadge>
+              </header>
+              <div className="grid gap-2 p-3">
+                {group.events.map((event) => (
+                  <Link
+                    key={event.id}
+                    href={event.href}
+                    className="grid gap-2 rounded-md border border-border p-3 text-sm transition hover:bg-muted/50 md:grid-cols-[96px_minmax(0,1fr)]"
+                  >
+                    <div className="font-semibold tabular-nums">
+                      {formatDate(event.date)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate font-medium">
+                          {event.title}
+                        </span>
+                        <StatusBadge tone={leaseEventTone(event.kind)}>
+                          {leaseEventKindLabel(event.kind)}
+                        </StatusBadge>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {event.chip}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
