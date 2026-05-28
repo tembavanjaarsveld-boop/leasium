@@ -303,6 +303,7 @@ function applyAppearance(mode: AppearanceMode) {
     mode === "dark" || (mode === "system" && prefersDark) ? "dark" : "light";
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.appearance = mode;
+  document.documentElement.style.colorScheme = theme;
 }
 
 function AppearanceToggle() {

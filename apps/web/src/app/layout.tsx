@@ -31,6 +31,7 @@ export default function RootLayout({
         var theme = mode === "dark" || (mode === "system" && prefersDark) ? "dark" : "light";
         document.documentElement.dataset.theme = theme;
         document.documentElement.dataset.appearance = mode;
+        document.documentElement.style.colorScheme = theme;
       } catch (_) {}
     })();
   `;

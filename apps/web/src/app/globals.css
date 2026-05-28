@@ -112,6 +112,17 @@
   ) !important;
 }
 
+:root[data-theme="dark"] .bg-white\/80,
+:root[data-theme="dark"] .bg-white\/75,
+:root[data-theme="dark"] .bg-white\/70,
+:root[data-theme="dark"] .bg-white\/60 {
+  background-color: color-mix(
+    in srgb,
+    var(--leasium-surface) 82%,
+    transparent
+  ) !important;
+}
+
 :root[data-theme="dark"] .bg-muted,
 :root[data-theme="dark"] .bg-muted\/20,
 :root[data-theme="dark"] .bg-muted\/25,
@@ -122,6 +133,15 @@
 :root[data-theme="dark"] .bg-muted\/50,
 :root[data-theme="dark"] .bg-muted\/60 {
   background-color: var(--leasium-slate-100) !important;
+}
+
+:root[data-theme="dark"] .hover\:bg-muted:hover,
+:root[data-theme="dark"] .hover\:bg-muted\/60:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--leasium-slate-150) 72%,
+    var(--leasium-surface)
+  ) !important;
 }
 
 :root[data-theme="dark"] .bg-primary\/5,
@@ -214,6 +234,10 @@
   color: var(--leasium-danger) !important;
 }
 
+:root[data-theme="dark"] .text-primary-foreground {
+  color: #ffffff !important;
+}
+
 :root[data-theme="dark"] .border-border,
 :root[data-theme="dark"] .border-border-strong {
   border-color: var(--leasium-border) !important;
@@ -271,6 +295,49 @@
   border-color: var(--leasium-border);
   color: var(--leasium-navy-800);
   color-scheme: dark;
+}
+
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+  color: var(--leasium-slate-400);
+}
+
+:root[data-theme="dark"] button:disabled,
+:root[data-theme="dark"] input:disabled,
+:root[data-theme="dark"] select:disabled,
+:root[data-theme="dark"] textarea:disabled {
+  background-color: var(--leasium-slate-100);
+  color: var(--leasium-slate-400);
+  opacity: 0.72;
+}
+
+:root[data-theme="dark"] table thead,
+:root[data-theme="dark"] thead.bg-muted {
+  background-color: var(--leasium-slate-150) !important;
+  color: var(--leasium-slate-500);
+}
+
+:root[data-theme="dark"] tr.border-t,
+:root[data-theme="dark"] tr.border-b,
+:root[data-theme="dark"] .divide-y > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--leasium-border) !important;
+}
+
+:root[data-theme="dark"] details,
+:root[data-theme="dark"] summary {
+  color: var(--leasium-navy-800);
+}
+
+:root[data-theme="dark"] pre,
+:root[data-theme="dark"] code,
+:root[data-theme="dark"] kbd {
+  background-color: var(--leasium-navy-900);
+  border-color: var(--leasium-border);
+  color: var(--leasium-navy-800);
+}
+
+:root[data-theme="dark"] hr {
+  border-color: var(--leasium-border);
 }
 
 * {
