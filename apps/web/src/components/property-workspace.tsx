@@ -1513,6 +1513,79 @@ function calendarEventDaysUntil(event: LeaseEventRecord) {
   return event.date ? daysUntil(event.date) : Number.POSITIVE_INFINITY;
 }
 
+type CalendarHorizonFilter = "all" | "overdue" | "next_30" | "next_90";
+
+const calendarHorizonOptions: Array<{
+  key: CalendarHorizonFilter;
+  label: string;
+}> = [
+  { key: "all", label: "All dates" },
+  { key: "overdue", label: "Overdue" },
+  { key: "next_30", label: "Next 30" },
+  { key: "next_90", label: "Next 90" },
+];
+
+function calendarHorizonMatches(
+  event: LeaseEventRecord,
+  horizon: CalendarHorizonFilter,
+) {
+  const days = calendarEventDaysUntil(event);
+  if (horizon === "overdue") {
+    return days < 0;
+  }
+  if (horizon === "next_30") {
+    return days >= 0 && days <= 30;
+  }
+  if (horizon === "next_90") {
+    return days >= 0 && days <= 90;
+  }
+  return true;
+}
+
+function calendarWorkloadRows(events: LeaseEventRecord[]) {
+  const overdue = events.filter((event) => calendarEventDaysUntil(event) < 0);
+  const next30 = events.filter((event) => {
+    const days = calendarEventDaysUntil(event);
+    return days >= 0 && days <= 30;
+  });
+  const next90 = events.filter((event) => {
+    const days = calendarEventDaysUntil(event);
+    return days > 30 && days <= 90;
+  });
+  const later = events.filter((event) => calendarEventDaysUntil(event) > 90);
+
+  return [
+    {
+      key: "overdue",
+      label: "Overdue",
+      count: overdue.length,
+      detail: overdue[0]?.title ?? "No overdue lease events.",
+      tone: overdue.length ? ("danger" as const) : ("success" as const),
+    },
+    {
+      key: "next30",
+      label: "Next 30 days",
+      count: next30.length,
+      detail: next30[0]?.title ?? "No immediate lease events.",
+      tone: next30.length ? ("warning" as const) : ("neutral" as const),
+    },
+    {
+      key: "next90",
+      label: "31-90 days",
+      count: next90.length,
+      detail: next90[0]?.title ?? "No near-term lease events.",
+      tone: next90.length ? ("primary" as const) : ("neutral" as const),
+    },
+    {
+      key: "later",
+      label: "Later",
+      count: later.length,
+      detail: later[0]?.title ?? "No later lease events in this view.",
+      tone: later.length ? ("neutral" as const) : ("success" as const),
+    },
+  ];
+}
+
 function calendarPlanningBrief(events: LeaseEventRecord[]) {
   if (!events.length) {
     return "No rent reviews or lease expiries match the current filters.";
@@ -6784,22 +6857,30 @@ function PropertyCalendarView({
   const [eventKindFilter, setEventKindFilter] = useState<
     "all" | "rent_review" | "lease_expiry"
   >("all");
+  const [horizonFilter, setHorizonFilter] =
+    useState<CalendarHorizonFilter>("all");
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
-  const filteredEvents = events.filter((event) =>
+  const kindFilteredEvents = events.filter((event) =>
     eventKindFilter === "all" ? true : event.kind === eventKindFilter,
   );
-  const next30Count = events.filter(
-    (event) => calendarEventDaysUntil(event) <= 30,
-  ).length;
-  const next90Count = events.filter(
-    (event) => calendarEventDaysUntil(event) <= 90,
-  ).length;
+  const filteredEvents = kindFilteredEvents.filter((event) =>
+    calendarHorizonMatches(event, horizonFilter),
+  );
+  const next30Count = events.filter((event) => {
+    const days = calendarEventDaysUntil(event);
+    return days >= 0 && days <= 30;
+  }).length;
+  const next90Count = events.filter((event) => {
+    const days = calendarEventDaysUntil(event);
+    return days >= 0 && days <= 90;
+  }).length;
   const reviewCount = events.filter(
     (event) => event.kind === "rent_review",
   ).length;
   const expiryCount = events.filter(
     (event) => event.kind === "lease_expiry",
   ).length;
+  const workloadRows = calendarWorkloadRows(kindFilteredEvents);
   const groupedEvents = filteredEvents.reduce<
     Array<{ key: string; events: LeaseEventRecord[] }>
   >((groups, event) => {
@@ -6892,6 +6973,32 @@ function PropertyCalendarView({
               );
             })}
           </div>
+          <div className="flex flex-wrap items-center gap-1 text-xs">
+            {calendarHorizonOptions.map((option) => {
+              const isActive = horizonFilter === option.key;
+              const count = kindFilteredEvents.filter((event) =>
+                calendarHorizonMatches(event, option.key),
+              ).length;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setHorizonFilter(option.key)}
+                  aria-pressed={isActive}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold transition ${
+                    isActive
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-white text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  <span>{option.label}</span>
+                  <span className="rounded-full bg-black/10 px-1.5 text-leasium-micro font-bold">
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
           {copyReceipt ? (
             <p className="text-sm font-medium text-success">{copyReceipt}</p>
           ) : null}
@@ -6900,6 +7007,35 @@ function PropertyCalendarView({
           <Copy size={15} />
           Copy schedule
         </SecondaryButton>
+      </div>
+
+      <div className="grid gap-2 md:grid-cols-4">
+        {workloadRows.map((row) => (
+          <button
+            key={row.key}
+            type="button"
+            onClick={() =>
+              setHorizonFilter(
+                row.key === "next30"
+                  ? "next_30"
+                  : row.key === "next90"
+                    ? "next_90"
+                    : row.key === "overdue"
+                      ? "overdue"
+                      : "all",
+              )
+            }
+            className="grid gap-1 rounded-md border border-border bg-white p-3 text-left transition hover:bg-muted/50"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold">{row.label}</span>
+              <StatusBadge tone={row.tone}>{row.count}</StatusBadge>
+            </div>
+            <div className="truncate text-xs text-muted-foreground">
+              {row.detail}
+            </div>
+          </button>
+        ))}
       </div>
 
       {!filteredEvents.length ? (
