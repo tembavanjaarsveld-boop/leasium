@@ -2820,6 +2820,23 @@ test("settings disables Xero provider actions when diagnostics block capabilitie
   ).toBeDisabled();
 });
 
+test("settings shows Xero draft creation ready only from diagnostics", async ({
+  page,
+}) => {
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, { xeroDiagnosticsDraftReady: true });
+
+  await page.goto("/settings?tab=xero");
+
+  await expect(page.getByText("Connection diagnostics")).toBeVisible();
+  const draftCreationCard = page.getByLabel("Draft creation readiness");
+  await expect(draftCreationCard).toContainText("Draft creation");
+  await expect(draftCreationCard).toContainText("Ready");
+  await expect(draftCreationCard).toContainText(
+    "Provider connection and authorised scopes allow this reviewed action.",
+  );
+});
+
 test("insights shows overview, exceptions, activity, and owner snapshot", async ({
   page,
 }) => {

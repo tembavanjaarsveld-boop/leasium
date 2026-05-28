@@ -1758,6 +1758,7 @@ type MockLeasiumApiOptions = {
   tenantAccountLinkedToDifferentTenant?: boolean;
   tenantPortalLeaseReady?: boolean;
   xeroDiagnosticsBlocked?: boolean;
+  xeroDiagnosticsDraftReady?: boolean;
 };
 
 export async function mockLeasiumApi(
@@ -1772,6 +1773,12 @@ export async function mockLeasiumApi(
   let xeroDraftApproved = false;
   let xeroDraftCreated = false;
   let xeroPaymentApplied = false;
+  if (options.xeroDiagnosticsDraftReady) {
+    xeroTenantId = "tenant-smoke";
+    xeroConnectedAt = "2026-05-19T10:00:00.000Z";
+    xeroProviderConnected = true;
+    xeroDraftApproved = true;
+  }
   let localInvoiceDrafts = jsonClone(invoiceDrafts);
   let tenantAccountLinked = options.tenantAccountLinked ?? false;
   let tenantPortalOnboardingSubmitted = false;

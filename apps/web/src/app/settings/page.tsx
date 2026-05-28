@@ -4962,6 +4962,7 @@ function SettingsWorkspace() {
                             ({ label, ready, detail }) => (
                               <div
                                 key={label}
+                                aria-label={`${label} readiness`}
                                 className="rounded-md border border-border bg-white px-3 py-2 text-xs"
                               >
                                 <div className="flex items-center justify-between gap-2">

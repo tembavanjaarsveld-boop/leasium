@@ -289,10 +289,22 @@ Last updated: 2026-05-28
   not start OAuth, refresh tokens, call Xero, create drafts, dispatch providers,
   send email/SMS, reconcile payments, write provider history, or change local
   approval state.
-- Sidecar recommendation for the next slice: harden this explainer with a
-  focused Settings smoke path or fixture variant that asserts Draft creation is
-  `Ready` only when `xeroDiagnostics.can_create_xero_drafts === true`; keep it
-  coverage/local-copy only, not provider behavior.
+- 2026-05-28 Settings Xero continuation 8: the readiness explainer now has a
+  mock-only smoke fixture for diagnostics where `can_create_xero_drafts=true`.
+  The test confirms the Draft creation readiness card shows `Ready` and the
+  reviewed-action reason only from the diagnostics fixture. It does not start
+  OAuth, refresh tokens, call Xero, create drafts, dispatch providers, send
+  email/SMS, reconcile payments, write provider history, or change local
+  approval state.
+- Sidecar recommendation for the next slice: add draft-ready diagnostics export
+  contract coverage using `mockLeasiumApi(page, { xeroDiagnosticsDraftReady:
+  true })`. Assert `xero-connection-diagnostics.csv` contains provider OAuth
+  source, `Draft creation,Ready`, `Payments,Blocked`, and the review-only export
+  guardrail; assert `xero-connection-diagnostics.txt` contains `Draft creation:
+  Ready`, `Payments: Blocked`, provider setup, next steps, and guardrails. Keep
+  it test/export coverage only: no OAuth start, token refresh, Xero API call,
+  draft creation, provider dispatch, email/SMS, payment reconciliation, or
+  provider-history write.
 
 ## Takeover Priority
 
