@@ -517,6 +517,12 @@ is blocked before OAuth because Chrome is signed in as `tembavj@outlook.com`,
 while production has active accepted operator access for `temba@skjcapital.com`
 only. No production rows were mutated during this investigation.
 
+Follow-up after Temba switched Chrome to `temba@skjcapital.com`: the production
+app reaches the Settings → Xero diagnostics panel for `SKJ Property Pty Ltd`.
+OAuth is still blocked by missing Render API env vars:
+`XERO_CLIENT_ID`, `XERO_CLIENT_SECRET`, and `XERO_TOKEN_ENCRYPTION_KEY`.
+Configure those before starting OAuth.
+
 - [ ] **Step 1: Confirm production environment values**
 
 Verify in Render/Vercel dashboards:

@@ -77,6 +77,16 @@ Last updated: 2026-05-28
   until Temba either signs in with `temba@skjcapital.com` or explicitly approves
   adding/linking `tembavj@outlook.com` as an operator. Production currently has
   no Xero connection row for `SKJ Property Pty Ltd`.
+- Follow-up verification after Temba signed into Chrome as `temba@skjcapital.com`:
+  the production app now loads `SKJ Property Pty Ltd` and Settings → Xero reaches
+  the diagnostics panel. The next blocker is API provider configuration: the UI
+  reports missing `XERO_CLIENT_ID`, `XERO_CLIENT_SECRET`, and
+  `XERO_TOKEN_ENCRYPTION_KEY`, and disables Connect with Xero. Configure these
+  on the Render API service, with
+  `XERO_REDIRECT_URI=https://api.leasium.ai/api/v1/xero/oauth/callback`, before
+  starting OAuth. `XERO_STATE_SECRET` is still recommended, although the current
+  code can fall back to the client secret/Clerk secret for state signing. No
+  Xero OAuth or provider mutation was started during this check.
 
 ## Takeover Priority
 
