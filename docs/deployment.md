@@ -117,6 +117,66 @@ that key configured anywhere tenant portal account creation is enabled.
 
 Provider webhook URLs should also use `https://api.leasium.ai`.
 
+## Xero Go-Live Checklist
+
+Use the production branded redirect URI everywhere:
+
+```text
+https://api.leasium.ai/api/v1/xero/oauth/callback
+```
+
+In the Xero developer app, configure that URI exactly. In Render, set these
+Xero environment variables on the API service:
+
+```bash
+XERO_CLIENT_ID=...
+XERO_CLIENT_SECRET=...
+XERO_REDIRECT_URI=https://api.leasium.ai/api/v1/xero/oauth/callback
+XERO_STATE_SECRET=choose-a-long-random-secret
+XERO_TOKEN_ENCRYPTION_KEY=...
+```
+
+Generate the Fernet encryption key for `XERO_TOKEN_ENCRYPTION_KEY` with:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+The branded domain variables must also point at production:
+
+```bash
+PUBLIC_API_URL=https://api.leasium.ai
+FRONTEND_URL=https://leasium.ai
+NEXT_PUBLIC_API_BASE_URL=https://api.leasium.ai/api/v1
+```
+
+Current workflow scopes:
+
+```text
+offline_access accounting.contacts.read accounting.settings.read accounting.transactions
+```
+
+Post-connect verification sequence:
+
+1. Open `GET /api/v1/xero/connection-diagnostics?entity_id=<entity_id>` and
+   confirm `provider_configured=true`, `missing_config=[]`, and the redirect URI
+   is `https://api.leasium.ai/api/v1/xero/oauth/callback`.
+2. Start OAuth from the operator settings screen and connect the correct Xero
+   organisation.
+3. Re-open connection diagnostics and confirm `connection_source=provider`,
+   `xero_tenant_id` is populated, and provider-backed preview capabilities are
+   enabled.
+4. Run contact sync preview, then apply only reviewed local contact mappings.
+5. Run chart/tax validation preview and fix local charge-rule mappings.
+6. Run invoice posting preview before explicit invoice posting approval.
+7. Create Xero draft invoices only from the explicit approved draft-create or
+   provider-dispatch endpoint.
+8. Run payment reconciliation preview before applying local payment metadata.
+
+`/api/v1/xero/connection-diagnostics` is intentionally non-mutating: it reads
+local configuration and connection rows only, and must not refresh tokens, call
+Xero, post invoices, write contacts, or reconcile payments.
+
 ## Clerk Domains
 
 The frontend and API must agree on the same Clerk issuer. Do not mix a

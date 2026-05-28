@@ -25,6 +25,8 @@ from stewart.core.models import (
     RentChargeRule,
     StoredDocument,
     Tenant,
+    UserEntityRole,
+    UserRole,
     XeroConnection,
 )
 from stewart.core.settings import Settings, get_settings
@@ -53,7 +55,11 @@ def _override_settings(settings: Settings) -> None:
     app.dependency_overrides[get_settings] = lambda: settings
 
 
-def _fake_xero_provider(monkeypatch, tenant_id: str = "tenant-provider-123") -> None:
+def _fake_xero_provider(
+    monkeypatch,
+    tenant_id: str = "tenant-provider-123",
+    scopes: str = "offline_access accounting.contacts.read",
+) -> None:
     def fake_exchange_code_for_tokens(code: str, settings: Settings) -> dict[str, object]:
         assert code == "auth-code"
         assert settings.xero_client_id == "xero-client-id"
@@ -61,7 +67,7 @@ def _fake_xero_provider(monkeypatch, tenant_id: str = "tenant-provider-123") -> 
             "access_token": "raw-access-token",
             "refresh_token": "raw-refresh-token",
             "expires_in": 1800,
-            "scope": "offline_access accounting.contacts.read",
+            "scope": scopes,
             "token_type": "Bearer",
         }
 
@@ -511,6 +517,302 @@ def test_xero_status_surfaces_mapping_gaps_and_manual_connection(
     )
     assert audit is not None
     assert audit.tool_output_summary == "Recorded Xero connection status; no sync was run."
+
+
+def test_xero_connection_diagnostics_configured_without_connection_is_read_only(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    entity_id = _entity_id(session)
+
+    def fail_provider_call(*args, **kwargs):
+        raise AssertionError("connection diagnostics must not call Xero or refresh tokens")
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_connections", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_contacts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_accounts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_tax_rates", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_invoices", fail_provider_call)
+    monkeypatch.setattr(xero_router, "create_xero_invoice_draft", fail_provider_call)
+
+    audit_count_before = len(
+        session.scalars(select(AuditAction).where(AuditAction.tool_name.like("xero.%"))).all()
+    )
+
+    response = client.get(f"/api/v1/xero/connection-diagnostics?entity_id={entity_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider_configured"] is True
+    assert body["missing_config"] == []
+    assert body["redirect_uri"] == "https://api.leasium.test/api/v1/xero/oauth/callback"
+    assert "offline_access" in body["scopes"]
+    assert body["connected"] is False
+    assert body["connection_source"] == "none"
+    assert body["xero_tenant_id"] is None
+    assert body["tenant_name"] is None
+    assert body["token_expires_at"] is None
+    assert body["can_start_oauth"] is True
+    assert body["can_preview_contacts"] is False
+    assert body["can_validate_chart_tax"] is False
+    assert body["can_preview_invoice_posting"] is False
+    assert body["can_create_xero_drafts"] is False
+    assert body["can_preview_payment_reconciliation"] is False
+    assert any("Connect Xero through OAuth" in step for step in body["next_steps"])
+    assert any("does not refresh tokens" in guardrail for guardrail in body["guardrails"])
+
+    audit_count_after = len(
+        session.scalars(select(AuditAction).where(AuditAction.tool_name.like("xero.%"))).all()
+    )
+    assert audit_count_after == audit_count_before
+
+
+def test_xero_connection_diagnostics_partial_scopes_unlock_contacts_only(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    connection = session.scalar(
+        select(XeroConnection).where(XeroConnection.entity_id == UUID(entity_id))
+    )
+    assert connection is not None
+    original_access_token = connection.access_token_ciphertext
+    original_refresh_token = connection.refresh_token_ciphertext
+    original_metadata = dict(connection.connection_metadata or {})
+
+    def fail_provider_call(*args, **kwargs):
+        raise AssertionError("connection diagnostics must not call Xero or refresh tokens")
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_connections", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_contacts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_accounts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_tax_rates", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_invoices", fail_provider_call)
+    monkeypatch.setattr(xero_router, "create_xero_invoice_draft", fail_provider_call)
+
+    response = client.get(f"/api/v1/xero/connection-diagnostics?entity_id={entity_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider_configured"] is True
+    assert body["connected"] is True
+    assert body["connection_source"] == "provider"
+    assert body["xero_tenant_id"] == "tenant-provider-123"
+    assert body["tenant_name"] == "SKJ Xero Demo"
+    assert body["token_expires_at"] is not None
+    assert body["can_start_oauth"] is True
+    assert body["can_preview_contacts"] is True
+    assert body["can_validate_chart_tax"] is False
+    assert body["can_preview_invoice_posting"] is False
+    assert body["can_create_xero_drafts"] is False
+    assert body["can_preview_payment_reconciliation"] is False
+    assert any("Preview Xero contacts" in step for step in body["next_steps"])
+    assert any("No Xero API calls" in guardrail for guardrail in body["guardrails"])
+
+    session.refresh(connection)
+    assert connection.access_token_ciphertext == original_access_token
+    assert connection.refresh_token_ciphertext == original_refresh_token
+    assert connection.connection_metadata == original_metadata
+
+
+def test_xero_connection_diagnostics_transactions_scope_does_not_unlock_invoice_actions(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(
+        monkeypatch,
+        scopes="offline_access accounting.transactions",
+    )
+    entity_id = _entity_id(session)
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    def fail_provider_call(*args, **kwargs):
+        raise AssertionError("connection diagnostics must not call Xero or refresh tokens")
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_connections", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_contacts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_accounts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_tax_rates", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_invoices", fail_provider_call)
+    monkeypatch.setattr(xero_router, "create_xero_invoice_draft", fail_provider_call)
+
+    response = client.get(f"/api/v1/xero/connection-diagnostics?entity_id={entity_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["can_preview_contacts"] is False
+    assert body["can_validate_chart_tax"] is False
+    assert body["can_preview_invoice_posting"] is False
+    assert body["can_create_xero_drafts"] is False
+    assert body["can_preview_payment_reconciliation"] is True
+
+
+def test_xero_connection_diagnostics_read_only_transaction_scope_unlocks_payment_preview(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(
+        monkeypatch,
+        scopes="offline_access accounting.transactions.read",
+    )
+    entity_id = _entity_id(session)
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    def fail_provider_call(*args, **kwargs):
+        raise AssertionError("connection diagnostics must not call Xero or refresh tokens")
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_connections", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_contacts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_accounts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_tax_rates", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_invoices", fail_provider_call)
+    monkeypatch.setattr(xero_router, "create_xero_invoice_draft", fail_provider_call)
+
+    response = client.get(f"/api/v1/xero/connection-diagnostics?entity_id={entity_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["can_preview_contacts"] is False
+    assert body["can_validate_chart_tax"] is False
+    assert body["can_preview_invoice_posting"] is False
+    assert body["can_create_xero_drafts"] is False
+    assert body["can_preview_payment_reconciliation"] is True
+
+
+def test_xero_connection_diagnostics_preview_scopes_do_not_unlock_draft_creation(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(
+        monkeypatch,
+        scopes="offline_access accounting.contacts.read accounting.settings.read",
+    )
+    entity_id = _entity_id(session)
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    def fail_provider_call(*args, **kwargs):
+        raise AssertionError("connection diagnostics must not call Xero or refresh tokens")
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_connections", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_contacts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_accounts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_tax_rates", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_invoices", fail_provider_call)
+    monkeypatch.setattr(xero_router, "create_xero_invoice_draft", fail_provider_call)
+
+    response = client.get(f"/api/v1/xero/connection-diagnostics?entity_id={entity_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["can_preview_contacts"] is True
+    assert body["can_validate_chart_tax"] is True
+    assert body["can_preview_invoice_posting"] is True
+    assert body["can_create_xero_drafts"] is False
+    assert body["can_preview_payment_reconciliation"] is False
+
+
+def test_xero_connection_diagnostics_full_scopes_unlock_provider_actions(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(
+        monkeypatch,
+        scopes=(
+            "offline_access accounting.contacts.read "
+            "accounting.settings.read accounting.transactions"
+        ),
+    )
+    entity_id = _entity_id(session)
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    def fail_provider_call(*args, **kwargs):
+        raise AssertionError("connection diagnostics must not call Xero or refresh tokens")
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_connections", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_contacts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_accounts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_tax_rates", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_invoices", fail_provider_call)
+    monkeypatch.setattr(xero_router, "create_xero_invoice_draft", fail_provider_call)
+
+    response = client.get(f"/api/v1/xero/connection-diagnostics?entity_id={entity_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["can_start_oauth"] is True
+    assert body["can_preview_contacts"] is True
+    assert body["can_validate_chart_tax"] is True
+    assert body["can_preview_invoice_posting"] is True
+    assert body["can_create_xero_drafts"] is True
+    assert body["can_preview_payment_reconciliation"] is True
+
+
+def test_xero_connection_diagnostics_viewer_cannot_use_provider_actions(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(
+        monkeypatch,
+        scopes=(
+            "offline_access accounting.contacts.read "
+            "accounting.settings.read accounting.transactions"
+        ),
+    )
+    entity_id = _entity_id(session)
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+    role = session.get(UserEntityRole, (settings.dev_user_id, UUID(entity_id)))
+    assert role is not None
+    role.role = UserRole.viewer
+    session.commit()
+
+    response = client.get(f"/api/v1/xero/connection-diagnostics?entity_id={entity_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["connected"] is True
+    assert body["connection_source"] == "provider"
+    assert body["can_start_oauth"] is False
+    assert body["can_preview_contacts"] is False
+    assert body["can_validate_chart_tax"] is False
+    assert body["can_preview_invoice_posting"] is False
+    assert body["can_create_xero_drafts"] is False
+    assert body["can_preview_payment_reconciliation"] is False
 
 
 def test_xero_oauth_callback_records_provider_connection(

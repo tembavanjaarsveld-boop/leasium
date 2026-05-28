@@ -65,6 +65,7 @@ from apps.api.schemas.xero import (
     XeroAccountingFreshnessRead,
     XeroChartTaxValidationPreviewRead,
     XeroChartTaxValidationResultRead,
+    XeroConnectionDiagnosticsRead,
     XeroConnectionStatusRead,
     XeroConnectionUpdate,
     XeroContactMappingApplyItem,
@@ -105,6 +106,12 @@ router = APIRouter(prefix="/xero", tags=["xero"])
 
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
+XERO_CONTACT_PREVIEW_SCOPES = {"accounting.contacts.read"}
+XERO_CHART_TAX_SCOPES = {"accounting.settings.read"}
+XERO_TRANSACTION_WRITE_SCOPES = {"accounting.transactions"}
+XERO_TRANSACTION_READ_SCOPES = {"accounting.transactions.read"}
+XERO_INVOICE_POSTING_PREVIEW_SCOPES = XERO_CONTACT_PREVIEW_SCOPES | XERO_CHART_TAX_SCOPES
+XERO_DRAFT_CREATE_SCOPES = XERO_INVOICE_POSTING_PREVIEW_SCOPES | XERO_TRANSACTION_WRITE_SCOPES
 
 PROPERTY_OWNER_BILLING_STRUCTURES = {"property_owner", "trust", "split"}
 SUGGESTED_CHARGE_MAPPINGS: dict[RentChargeType, tuple[str, str | None]] = {
@@ -155,6 +162,33 @@ def _active_xero_connection(session: Session, entity_id: UUID) -> XeroConnection
     )
 
 
+def _entity_role(session: Session, user: CurrentUser, entity_id: UUID) -> UserRole | None:
+    return session.scalar(
+        select(UserEntityRole.role).where(
+            UserEntityRole.user_id == user.id,
+            UserEntityRole.entity_id == entity_id,
+        )
+    )
+
+
+def _xero_scope_set(provider_connection: XeroConnection | None) -> set[str]:
+    if provider_connection is None or not provider_connection.scopes:
+        return set()
+    return {scope.strip() for scope in provider_connection.scopes.split() if scope.strip()}
+
+
+def _has_xero_scopes(
+    provider_connection: XeroConnection | None,
+    required_scopes: set[str],
+) -> bool:
+    return required_scopes.issubset(_xero_scope_set(provider_connection))
+
+
+def _has_xero_transaction_read_scope(provider_connection: XeroConnection | None) -> bool:
+    granted_scopes = _xero_scope_set(provider_connection)
+    return bool(granted_scopes & (XERO_TRANSACTION_READ_SCOPES | XERO_TRANSACTION_WRITE_SCOPES))
+
+
 def _connection(
     entity: Entity,
     session: Session,
@@ -202,6 +236,34 @@ def _connection(
             else "Connect Xero or record the tenant before any sync approval can be enabled."
         ),
     )
+
+
+def _xero_diagnostics_next_steps(
+    *,
+    provider_configured: bool,
+    connection_source: Literal["provider", "manual", "none"],
+) -> list[str]:
+    if not provider_configured:
+        return [
+            "Configure the missing Xero OAuth environment variables in Render.",
+            "Confirm the redirect URI matches the Xero app before starting OAuth.",
+        ]
+    if connection_source == "provider":
+        return [
+            "Preview Xero contacts and apply reviewed local mappings.",
+            "Validate chart and tax mappings before invoice posting approval.",
+            "Use invoice posting preview before explicit draft creation.",
+            "Preview payment reconciliation before applying local payment status changes.",
+        ]
+    if connection_source == "manual":
+        return [
+            "Reconnect Xero through OAuth so provider-backed previews can run.",
+            "Manual tenant IDs are enough for readiness labels, not provider API workflows.",
+        ]
+    return [
+        "Connect Xero through OAuth from the operator settings screen.",
+        "After connection, preview contacts, validate chart/tax mappings, then preview invoices.",
+    ]
 
 
 def _payment_status(metadata: dict[str, Any]) -> str:
@@ -2105,6 +2167,64 @@ def finish_xero_oauth(
         entity.id,
         xero_connected="1",
         xero_tenant_id=provider_connection.xero_tenant_id,
+    )
+
+
+@router.get("/connection-diagnostics", response_model=XeroConnectionDiagnosticsRead)
+def xero_connection_diagnostics(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    entity_id: Annotated[UUID, Query()],
+) -> XeroConnectionDiagnosticsRead:
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+
+    provider = _provider(settings)
+    connection = _connection(entity, session, settings)
+    provider_connection = _active_xero_connection(session, entity.id)
+    provider_ready = provider.configured and provider_connection is not None
+    can_write = _entity_role(session, user, entity.id) in WRITE_ROLES
+    action_ready = provider_ready and can_write
+    return XeroConnectionDiagnosticsRead(
+        entity_id=entity.id,
+        entity_name=entity.name,
+        provider_configured=provider.configured,
+        missing_config=provider.missing_config,
+        redirect_uri=provider.redirect_uri,
+        scopes=provider.scopes,
+        connected=connection.connected,
+        connection_source=connection.connection_source,
+        xero_tenant_id=connection.xero_tenant_id,
+        tenant_name=connection.tenant_name,
+        token_expires_at=(
+            provider_connection.token_expires_at if provider_connection is not None else None
+        ),
+        can_start_oauth=provider.configured and can_write,
+        can_preview_contacts=action_ready
+        and _has_xero_scopes(provider_connection, XERO_CONTACT_PREVIEW_SCOPES),
+        can_validate_chart_tax=action_ready
+        and _has_xero_scopes(provider_connection, XERO_CHART_TAX_SCOPES),
+        can_preview_invoice_posting=action_ready
+        and _has_xero_scopes(provider_connection, XERO_INVOICE_POSTING_PREVIEW_SCOPES),
+        can_create_xero_drafts=action_ready
+        and _has_xero_scopes(provider_connection, XERO_DRAFT_CREATE_SCOPES),
+        can_preview_payment_reconciliation=action_ready
+        and _has_xero_transaction_read_scope(provider_connection),
+        next_steps=_xero_diagnostics_next_steps(
+            provider_configured=provider.configured,
+            connection_source=connection.connection_source,
+        ),
+        guardrails=[
+            "Connection diagnostics reads local Leasium configuration and database state only.",
+            "Loading diagnostics does not refresh tokens, call Xero, or mutate provider state.",
+            (
+                "No Xero API calls, invoice posting, contact writes, "
+                "or payment reconciliation run here."
+            ),
+        ],
     )
 
 

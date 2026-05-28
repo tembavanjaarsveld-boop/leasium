@@ -47,6 +47,28 @@ class XeroConnectionStatusRead(BaseModel):
     next_action: str
 
 
+class XeroConnectionDiagnosticsRead(BaseModel):
+    entity_id: UUID
+    entity_name: str
+    provider_configured: bool
+    missing_config: list[str]
+    redirect_uri: str
+    scopes: list[str]
+    connected: bool
+    connection_source: Literal["provider", "manual", "none"]
+    xero_tenant_id: str | None
+    tenant_name: str | None = None
+    token_expires_at: datetime | None = None
+    can_start_oauth: bool
+    can_preview_contacts: bool
+    can_validate_chart_tax: bool
+    can_preview_invoice_posting: bool
+    can_create_xero_drafts: bool
+    can_preview_payment_reconciliation: bool
+    next_steps: list[str]
+    guardrails: list[str]
+
+
 class XeroReadinessSummaryRead(BaseModel):
     total: int
     ready: int
