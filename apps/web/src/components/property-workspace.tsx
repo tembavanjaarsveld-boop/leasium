@@ -1593,6 +1593,18 @@ type CalendarReviewRow = {
   daysUntil: number;
 };
 
+type CalendarDecisionLane = {
+  key: Extract<LeaseEventRecord["kind"], "rent_review" | "lease_expiry">;
+  label: string;
+  count: number;
+  overdueCount: number;
+  immediateCount: number;
+  planningCount: number;
+  nextEvent: LeaseEventRecord | null;
+  action: string;
+  tone: "neutral" | "primary" | "warning" | "danger";
+};
+
 const calendarHorizonOptions: Array<{
   key: CalendarHorizonFilter;
   label: string;
@@ -1662,6 +1674,63 @@ function calendarWorkloadRows(events: LeaseEventRecord[]) {
       tone: later.length ? ("neutral" as const) : ("success" as const),
     },
   ];
+}
+
+function calendarDecisionLanes(
+  events: LeaseEventRecord[],
+): CalendarDecisionLane[] {
+  return (
+    [
+      {
+        key: "rent_review",
+        label: "Rent reviews",
+        emptyAction: "No rent review dates in this view.",
+        action: "Prepare notice pack",
+      },
+      {
+        key: "lease_expiry",
+        label: "Lease expiries",
+        emptyAction: "No lease expiry dates in this view.",
+        action: "Prepare renewal decision",
+      },
+    ] as const
+  ).map((lane) => {
+    const laneEvents = events
+      .filter((event) => event.kind === lane.key)
+      .sort(
+        (left, right) =>
+          calendarEventDaysUntil(left) - calendarEventDaysUntil(right) ||
+          leaseEventSortValue(left) - leaseEventSortValue(right),
+      );
+    const overdueCount = laneEvents.filter(
+      (event) => calendarEventDaysUntil(event) < 0,
+    ).length;
+    const immediateCount = laneEvents.filter((event) => {
+      const days = calendarEventDaysUntil(event);
+      return days >= 0 && days <= 30;
+    }).length;
+    const planningCount = laneEvents.filter((event) => {
+      const days = calendarEventDaysUntil(event);
+      return days > 30 && days <= 90;
+    }).length;
+    return {
+      key: lane.key,
+      label: lane.label,
+      count: laneEvents.length,
+      overdueCount,
+      immediateCount,
+      planningCount,
+      nextEvent: laneEvents[0] ?? null,
+      action: laneEvents.length ? lane.action : lane.emptyAction,
+      tone: overdueCount
+        ? "danger"
+        : immediateCount
+          ? "warning"
+          : planningCount
+            ? "primary"
+            : "neutral",
+    };
+  });
 }
 
 function calendarPlanningBrief(events: LeaseEventRecord[]) {
@@ -7087,6 +7156,7 @@ function PropertyCalendarView({
     (event) => event.kind === "lease_expiry",
   ).length;
   const workloadRows = calendarWorkloadRows(kindFilteredEvents);
+  const decisionLanes = calendarDecisionLanes(filteredEvents);
   const reviewRows = calendarReviewRows(filteredEvents);
   const groupedEvents = filteredEvents.reduce<
     Array<{ key: string; events: LeaseEventRecord[] }>
@@ -7252,6 +7322,60 @@ function PropertyCalendarView({
           </button>
         ))}
       </div>
+
+      <section className="grid gap-3 rounded-md border border-border bg-white p-3 lg:grid-cols-2">
+        {decisionLanes.map((lane) => (
+          <div key={lane.key} className="grid gap-3 rounded-md bg-muted/30 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge tone={leaseEventTone(lane.key)}>
+                    {lane.label}
+                  </StatusBadge>
+                  <StatusBadge tone={lane.tone}>{lane.count} dates</StatusBadge>
+                </div>
+                <div className="mt-2 text-sm font-semibold">{lane.action}</div>
+              </div>
+              {lane.nextEvent ? (
+                <Link
+                  href={lane.nextEvent.href}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover"
+                >
+                  Open next
+                  <ExternalLink size={13} />
+                </Link>
+              ) : null}
+            </div>
+            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+              <div className="flex items-center justify-between gap-2 rounded-md bg-white px-2 py-1.5">
+                <span>Overdue</span>
+                <StatusBadge tone={lane.overdueCount ? "danger" : "neutral"}>
+                  {lane.overdueCount}
+                </StatusBadge>
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-md bg-white px-2 py-1.5">
+                <span>Next 30</span>
+                <StatusBadge tone={lane.immediateCount ? "warning" : "neutral"}>
+                  {lane.immediateCount}
+                </StatusBadge>
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-md bg-white px-2 py-1.5">
+                <span>31-90</span>
+                <StatusBadge tone={lane.planningCount ? "primary" : "neutral"}>
+                  {lane.planningCount}
+                </StatusBadge>
+              </div>
+            </div>
+            <div className="min-h-10 text-xs text-muted-foreground">
+              {lane.nextEvent
+                ? `${formatDate(lane.nextEvent.date)} - ${lane.nextEvent.title} - ${
+                    lane.nextEvent.chip
+                  }`
+                : "Switch filters or add lease dates to populate this lane."}
+            </div>
+          </div>
+        ))}
+      </section>
 
       <section className="overflow-hidden rounded-md border border-border bg-white">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3">
