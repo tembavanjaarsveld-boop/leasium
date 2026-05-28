@@ -326,7 +326,9 @@ Status: pending Remba review. When Clerk server and publishable keys are configu
 
 ## Insights Overview Surface
 
-Status: pending Remba review. Insights now uses a backend overview for portfolio health, live exceptions, automation activity, billing risk, owner/entity snapshots, finance snapshots, and lease-event snapshots. Operators can generate revocable public links for owner, finance, and lease-event snapshot views. Keep the internal page read-only, keep public snapshot pages clearly frozen/read-only, and avoid turning shared snapshots into live portals.
+Status: pending Remba review. Insights now uses a backend overview for portfolio health, live exceptions, automation activity, billing risk, owner/entity snapshots, finance snapshots, and lease-event snapshots. Operators can generate revocable public links for owner, finance, and lease-event snapshot views, and can download a local `insights-review-packet-{as_of}.csv` from already-loaded overview/snapshot history. Keep the internal page read-only, keep public snapshot pages clearly frozen/read-only, and avoid turning shared snapshots into live portals.
+
+2026-05-28 follow-up: Insights now adds a local `Download review CSV` action to the page header. The export covers live exceptions, automation activity, finance/accounting readiness, owner/entity gaps, lease events, snapshot history, overview guardrails, and an export guardrail row from already-loaded page data. It does not create or revoke snapshots, write Xero data, refresh providers, send SendGrid/Twilio messages, send tenant/owner/provider email, apply payment reconciliation, generate billing drafts, dispatch providers, or mutate provider history. Remba/SKJ review should confirm whether this is the right board-level packet before any shared live portal concept returns.
 
 ## Spreadsheet Portfolio Import Surface
 

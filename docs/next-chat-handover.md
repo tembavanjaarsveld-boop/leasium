@@ -190,12 +190,22 @@ Last updated: 2026-05-28
   templates into send paths, add edit controls, send notifications/digests,
   send invoices/onboarding/contractor messages, mutate preferences, or write
   provider history.
-- Sidecar recommendation for the next slice: add an Insights review packet CSV
-  on `/insights` from already-loaded overview and snapshot history. Include live
-  exceptions, automation activity, finance/accounting readiness, owner/entity
-  gaps, lease events, saved snapshot status, and a guardrail row. Do not add a
+- 2026-05-28 Insights continuation: `/insights` now has a local
+  `insights-review-packet-{as_of}.csv` download from already-loaded overview and
+  snapshot history. It exports live exceptions, automation activity,
+  finance/accounting readiness, owner/entity gaps, lease events, saved snapshot
+  status, overview guardrails, and review-only guardrail text. It does not add a
   backend export endpoint, create/revoke snapshots, refresh Xero/accounting,
   send providers, apply reconciliation, dispatch, or write provider history.
+- Sidecar recommendation for the next slice: add a Tenant portal operator
+  preview CSV on the existing read-only operator preview page. Generate it only
+  from `getTenantPortalOperatorPreview()` response data; include tenant, lease,
+  onboarding status, checklist rows, uploaded document names/counts, visible
+  invoice/payment rows, maintenance rows, latest contact-change request, and
+  guardrails. Do not call resend/fresh-link/send-portal-invite/apply/review,
+  tenant portal claim/submit/contact-change apply/dismiss, SendGrid/Twilio,
+  Xero, document upload/delete, provider dispatch, provider refresh, or
+  provider-history writes.
 
 ## Takeover Priority
 

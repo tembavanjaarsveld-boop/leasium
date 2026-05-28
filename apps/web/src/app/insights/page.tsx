@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Copy,
   Clock3,
+  Download,
   ExternalLink,
   Gauge,
   LineChart,
@@ -47,6 +48,7 @@ import {
   LiveExceptionRecord,
   revokeInsightsSnapshot,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -104,6 +106,10 @@ function formatMoney(cents: number | null | undefined) {
     currency: "AUD",
     maximumFractionDigits: 0,
   }).format(cents / 100);
+}
+
+function csvCell(value: string | number | null | undefined) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
 function labelStatus(value: string | null | undefined) {
@@ -358,6 +364,147 @@ function eventKindLabel(value: string) {
   return labels[value] ?? labelStatus(value);
 }
 
+const INSIGHTS_REVIEW_EXPORT_GUARDRAIL =
+  "Review-only export: downloading this file does not create or revoke snapshots, write Xero data, refresh providers, send SendGrid or Twilio messages, send tenant, owner, or provider email, apply payment reconciliation, generate billing drafts, dispatch providers, or mutate provider history.";
+
+function insightsReviewPacketCsv(
+  overview: InsightsOverviewRecord,
+  snapshots: InsightsSnapshotRecord[],
+) {
+  const accounting = overview.finance_snapshot.accounting_readiness;
+  const ownerSnapshot = overview.owner_entity_snapshot;
+  const leaseSnapshot = overview.lease_event_snapshot;
+  const rows: Array<Array<string | number | null | undefined>> = [
+    ["Category", "Item", "Status", "Count", "Amount", "Detail", "Guardrail"],
+    [
+      "Portfolio summary",
+      overview.entity.name,
+      overview.as_of,
+      overview.portfolio_health.property_count,
+      "",
+      `${overview.portfolio_health.tenant_count} tenants; ${overview.portfolio_health.active_lease_count} active leases; ${overview.portfolio_health.vacant_unit_count} vacant units.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ],
+    ...overview.live_exceptions.map((item) => [
+      "Live exception",
+      item.title,
+      item.severity,
+      item.rank,
+      "",
+      `${item.detail} Source: ${item.source}. Due: ${formatDate(item.due_date)}.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ]),
+    ...overview.automation_activity.map((item) => [
+      "Automation activity",
+      item.label,
+      labelStatus(item.outcome),
+      "",
+      "",
+      `${item.detail ?? item.source} Occurred: ${formatDateTime(item.occurred_at)}.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Finance snapshot",
+      "Billing readiness",
+      `${overview.finance_snapshot.ready_to_bill_count} ready / ${overview.finance_snapshot.blocked_row_count} blocked`,
+      overview.finance_snapshot.ready_to_bill_count,
+      formatMoney(overview.finance_snapshot.configured_charges_cents),
+      `${overview.finance_snapshot.approved_unsynced_invoice_count} approved not synced; ${overview.finance_snapshot.unpaid_invoice_count} unpaid.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ],
+    [
+      "Finance snapshot",
+      "Accounting readiness",
+      accounting ? labelStatus(accounting.status) : "Not available",
+      accounting?.readiness_issue_count ?? "",
+      "",
+      accounting
+        ? `${accounting.summary} Contact ${accounting.contact_ready} ready / ${accounting.contact_missing} missing; chart ${accounting.chart_ready} ready / ${accounting.chart_missing} missing; tax ${accounting.tax_ready} ready / ${accounting.tax_missing} missing.`
+        : "No accounting readiness snapshot loaded.",
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ],
+    [
+      "Owner / entity snapshot",
+      "Ownership and Xero readiness",
+      ownerSnapshot.xero_connected ? "Xero connected" : "Xero not connected",
+      ownerSnapshot.missing_xero_contact_count,
+      "",
+      `${ownerSnapshot.missing_invoice_issuer_count} missing issuers; ${ownerSnapshot.missing_owner_abn_count} missing owner ABNs; ${ownerSnapshot.missing_trustee_count} missing trustees; GST ${ownerSnapshot.entity_gst_registered ? "registered" : "not registered"}.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ],
+    ...Object.entries(ownerSnapshot.ownership_profile_counts).map(
+      ([profile, count]) => [
+        "Owner / entity snapshot",
+        ownershipLabel(profile),
+        "Ownership profile",
+        count,
+        "",
+        `${count} properties use ${ownershipLabel(profile)}.`,
+        INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+      ],
+    ),
+    [
+      "Lease event",
+      "Lease event snapshot",
+      `${leaseSnapshot.next_events.length} upcoming`,
+      leaseSnapshot.next_events.length,
+      "",
+      `${leaseSnapshot.next_review_count} rent reviews; ${leaseSnapshot.next_expiry_count} expiries; ${leaseSnapshot.due_soon_obligation_count} due soon obligations; ${leaseSnapshot.tenant_onboarding_waiting_count} onboarding follow-ups.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ],
+    ...leaseSnapshot.next_events.map((event) => [
+      "Lease event",
+      event.title,
+      eventKindLabel(event.kind),
+      event.rank,
+      "",
+      `${formatDate(event.date)}; ${event.chip}; ${event.href}.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ]),
+    ...(snapshots.length
+      ? snapshots.map((snapshot) => [
+          "Snapshot history",
+          snapshotTypeLabel(snapshot.snapshot_type),
+          snapshot.revoked_at ? "Revoked" : "Saved",
+          "",
+          "",
+          `As at ${snapshot.as_of}; expires ${formatDateTime(snapshot.expires_at)}; created ${formatDateTime(snapshot.created_at)}.`,
+          INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+        ])
+      : [
+          [
+            "Snapshot history",
+            "No saved snapshots",
+            "None",
+            0,
+            "",
+            "No saved snapshots are loaded for this entity.",
+            INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+          ],
+        ]),
+    ...overview.guardrails.map((guardrail) => [
+      "Overview guardrail",
+      guardrail,
+      "Read-only",
+      "",
+      "",
+      guardrail,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Export guardrail",
+      "",
+      "Review-only",
+      "",
+      "",
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 function SnapshotShareLink({
   snapshot,
   copied,
@@ -442,6 +589,9 @@ function InsightsWorkspace() {
   const [latestSnapshot, setLatestSnapshot] =
     useState<InsightsSnapshotCreateRecord | null>(null);
   const [copiedSnapshotId, setCopiedSnapshotId] = useState<string | null>(null);
+  const [reviewExportReceipt, setReviewExportReceipt] = useState<string | null>(
+    null,
+  );
   const asOf = dateOnly(new Date());
 
   const entitiesQuery = useQuery({
@@ -534,6 +684,19 @@ function InsightsWorkspace() {
   const accountingReadiness = financeSnapshot?.accounting_readiness;
   const leaseEventSnapshot = overview?.lease_event_snapshot;
   const snapshots = snapshotsQuery.data ?? [];
+
+  function downloadReviewCsv() {
+    if (!overview) {
+      return;
+    }
+    saveBlob(
+      new Blob([insightsReviewPacketCsv(overview, snapshots)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      `insights-review-packet-${overview.as_of}.csv`,
+    );
+    setReviewExportReceipt("Insights review CSV downloaded.");
+  }
 
   async function copySnapshotLink(value: string) {
     try {
@@ -651,9 +814,22 @@ function InsightsWorkspace() {
                 )}
                 {isOverviewFetching ? "Refreshing…" : "Refresh"}
               </SecondaryButton>
+              <SecondaryButton
+                type="button"
+                onClick={downloadReviewCsv}
+                disabled={!overview}
+              >
+                <Download size={15} />
+                Download review CSV
+              </SecondaryButton>
             </div>
           }
         />
+        {reviewExportReceipt ? (
+          <p className="text-sm font-medium text-success">
+            {reviewExportReceipt}
+          </p>
+        ) : null}
 
         {entityError ? (
           <div className="rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
