@@ -110,6 +110,19 @@ type StatementDispatchReviewRow = {
   propertyCount: number;
 };
 
+type StatementExceptionKind = "missing_recipient" | "payment_review";
+
+type StatementExceptionRow = {
+  id: string;
+  kind: StatementExceptionKind;
+  ownerIdentity: string;
+  detail: string;
+  metric: string;
+  outstandingCents: number;
+  propertyCount: number;
+  invoiceCount: number;
+};
+
 function defaultMonth(): string {
   const now = new Date();
   // Previous calendar month, mirroring the backend default.
@@ -294,6 +307,85 @@ function dispatchApprovalPacketText(
     ),
     "",
     "Review-only: this queue does not send owner email or update provider delivery history.",
+  ].join("\n");
+}
+
+function statementExceptionKindLabel(kind: StatementExceptionKind) {
+  if (kind === "missing_recipient") return "Missing recipient";
+  return "Payment review";
+}
+
+function statementExceptionKindTone(kind: StatementExceptionKind) {
+  if (kind === "missing_recipient") return "danger" as const;
+  return "warning" as const;
+}
+
+function buildStatementExceptionRows(
+  owners: OwnerStatementRecord[],
+): StatementExceptionRow[] {
+  const rows: StatementExceptionRow[] = [];
+  for (const owner of owners) {
+    if (owner.invoice_count === 0) {
+      continue;
+    }
+    if (!owner.billing_email) {
+      rows.push({
+        id: `${owner.owner_identity}-missing-recipient`,
+        kind: "missing_recipient",
+        ownerIdentity: owner.owner_identity,
+        detail:
+          "Add an owner billing email before this statement can move into dispatch approval.",
+        metric: `${owner.invoice_count} invoice${
+          owner.invoice_count === 1 ? "" : "s"
+        } waiting`,
+        outstandingCents: owner.outstanding_cents,
+        propertyCount: owner.property_count,
+        invoiceCount: owner.invoice_count,
+      });
+    }
+    if (owner.outstanding_cents > 0) {
+      rows.push({
+        id: `${owner.owner_identity}-payment-review`,
+        kind: "payment_review",
+        ownerIdentity: owner.owner_identity,
+        detail:
+          "Review outstanding or unreconciled payment state before sending this owner statement.",
+        metric: `${formatMoney(owner.outstanding_cents)} outstanding`,
+        outstandingCents: owner.outstanding_cents,
+        propertyCount: owner.property_count,
+        invoiceCount: owner.invoice_count,
+      });
+    }
+  }
+  return rows.sort(
+    (left, right) =>
+      (left.kind === "missing_recipient" ? 0 : 1) -
+        (right.kind === "missing_recipient" ? 0 : 1) ||
+      right.outstandingCents - left.outstandingCents ||
+      left.ownerIdentity.localeCompare(right.ownerIdentity),
+  );
+}
+
+function statementExceptionsText(rows: StatementExceptionRow[], month: string) {
+  if (!rows.length) {
+    return [
+      "Owner statement finance exceptions",
+      `Month: ${formatMonthLabel(month)}`,
+      "No recipient or payment exceptions are showing for the current statement pack.",
+    ].join("\n");
+  }
+  return [
+    "Owner statement finance exceptions",
+    `Month: ${formatMonthLabel(month)}`,
+    "",
+    ...rows.map(
+      (row) =>
+        `- ${row.ownerIdentity}: ${statementExceptionKindLabel(row.kind)} | ${row.metric} | ${row.propertyCount} propert${
+          row.propertyCount === 1 ? "y" : "ies"
+        } | ${row.invoiceCount} invoice${row.invoiceCount === 1 ? "" : "s"}`,
+    ),
+    "",
+    "Review-only: resolve these before owner statement dispatch approval.",
   ].join("\n");
 }
 
@@ -675,6 +767,10 @@ function StatementsContent() {
     () => buildDispatchReviewRows(owners, month),
     [month, owners],
   );
+  const statementExceptionRows = useMemo(
+    () => buildStatementExceptionRows(owners),
+    [owners],
+  );
   const openedFromBilling = handoffSource === "billing-readiness";
 
   return (
@@ -742,6 +838,14 @@ function StatementsContent() {
             invoiceDraftsQuery.isLoading ||
             xeroStatusQuery.isLoading
           }
+        />
+
+        <StatementExceptionsPanel
+          rows={statementExceptionRows}
+          month={month}
+          loading={statementsQuery.isLoading}
+          selectedOwnerIdentity={selectedOwnerIdentity}
+          onSelectOwner={setSelectedOwnerIdentity}
         />
 
         <DispatchReviewPanel
@@ -1440,6 +1544,149 @@ function FinanceChecklistPanel({
   );
 }
 
+function StatementExceptionsPanel({
+  rows,
+  month,
+  loading,
+  selectedOwnerIdentity,
+  onSelectOwner,
+}: {
+  rows: StatementExceptionRow[];
+  month: string;
+  loading: boolean;
+  selectedOwnerIdentity: string;
+  onSelectOwner: (value: string) => void;
+}) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const missingRecipientCount = rows.filter(
+    (row) => row.kind === "missing_recipient",
+  ).length;
+  const paymentReviewCount = rows.filter(
+    (row) => row.kind === "payment_review",
+  ).length;
+  const outstandingCents = rows.reduce(
+    (total, row) =>
+      row.kind === "payment_review" ? total + row.outstandingCents : total,
+    0,
+  );
+  const copyExceptions = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(statementExceptionsText(rows, month));
+    setCopyReceipt("Finance exceptions copied.");
+  };
+
+  return (
+    <SectionPanel
+      title="Finance exceptions"
+      description="Owner rows that need recipient or payment cleanup before dispatch approval."
+      icon={<AlertTriangle size={17} className="text-primary" />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton
+            type="button"
+            onClick={copyExceptions}
+            disabled={loading}
+          >
+            <ClipboardCheck size={15} />
+            Copy exceptions
+          </SecondaryButton>
+          <StatusBadge
+            tone={
+              loading
+                ? "neutral"
+                : missingRecipientCount > 0
+                  ? "danger"
+                  : paymentReviewCount > 0
+                    ? "warning"
+                    : "success"
+            }
+          >
+            {loading
+              ? "Checking"
+              : rows.length
+                ? `${rows.length} open`
+                : "Clear"}
+          </StatusBadge>
+        </div>
+      }
+    >
+      <div className="grid gap-4 p-4">
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        ) : null}
+
+        {loading ? (
+          <SkeletonRows rows={2} />
+        ) : !rows.length ? (
+          <div className="rounded-md border border-success/20 bg-success-soft px-4 py-3 text-sm text-success-strong">
+            No recipient or payment exceptions are showing for this statement
+            month.
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge tone={missingRecipientCount ? "danger" : "neutral"}>
+                {missingRecipientCount} missing recipient
+              </StatusBadge>
+              <StatusBadge tone={paymentReviewCount ? "warning" : "neutral"}>
+                {paymentReviewCount} payment review
+              </StatusBadge>
+              <StatusBadge tone={outstandingCents ? "warning" : "success"}>
+                {formatMoney(outstandingCents)} outstanding
+              </StatusBadge>
+              <StatusBadge tone="neutral">Month {month}</StatusBadge>
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-2">
+              {rows.map((row) => {
+                const isSelected = selectedOwnerIdentity === row.ownerIdentity;
+                return (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => onSelectOwner(row.ownerIdentity)}
+                    className={`grid gap-2 rounded-md border p-3 text-left transition hover:bg-muted/50 ${
+                      isSelected
+                        ? "border-primary bg-primary/5"
+                        : "border-border bg-white"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-foreground">
+                          {row.ownerIdentity}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {row.propertyCount}{" "}
+                          {row.propertyCount === 1 ? "property" : "properties"}{" "}
+                          · {row.invoiceCount}{" "}
+                          {row.invoiceCount === 1 ? "invoice" : "invoices"}
+                        </div>
+                      </div>
+                      <StatusBadge tone={statementExceptionKindTone(row.kind)}>
+                        {statementExceptionKindLabel(row.kind)}
+                      </StatusBadge>
+                    </div>
+                    <p className="text-sm leading-5 text-muted-foreground">
+                      {row.detail}
+                    </p>
+                    <div className="text-xs font-semibold text-muted-foreground">
+                      {row.metric}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </SectionPanel>
+  );
+}
+
 function DispatchReviewPanel({
   rows,
   month,
@@ -1474,7 +1721,9 @@ function DispatchReviewPanel({
       setCopyReceipt("Copy unavailable in this browser.");
       return;
     }
-    await navigator.clipboard.writeText(dispatchApprovalPacketText(rows, month));
+    await navigator.clipboard.writeText(
+      dispatchApprovalPacketText(rows, month),
+    );
     setCopyReceipt("Dispatch approval packet copied.");
   };
 
@@ -1526,9 +1775,7 @@ function DispatchReviewPanel({
               <StatusBadge tone={reviewCount ? "warning" : "neutral"}>
                 {reviewCount} payment review
               </StatusBadge>
-              <StatusBadge
-                tone={missingRecipientCount ? "danger" : "neutral"}
-              >
+              <StatusBadge tone={missingRecipientCount ? "danger" : "neutral"}>
                 {missingRecipientCount} missing recipient
               </StatusBadge>
               <StatusBadge tone="neutral">Month {month}</StatusBadge>
