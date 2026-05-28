@@ -7,7 +7,6 @@ from apps.api.routers import ai as ai_router
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
 from stewart.core.models import AuditAction, Entity
 
 

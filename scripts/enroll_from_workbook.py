@@ -48,7 +48,7 @@ import hashlib
 import re
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -56,14 +56,13 @@ from uuid import UUID
 import openpyxl
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
-
 from stewart.core.models import (
     AppUser,
     Entity,
     Lease,
     Property,
-    Tenant,
     TenancyUnit,
+    Tenant,
     TenantOnboarding,
     TenantOnboardingStatus,
 )
@@ -523,7 +522,7 @@ def main() -> int:
             print("Nothing to apply. Exiting cleanly.")
             return 0
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for match in matches:
             if match.blocked():
                 continue

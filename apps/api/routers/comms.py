@@ -23,6 +23,7 @@ import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from stewart.ai.inbox import INBOX_KINDS, InboxTriageError, triage_inbox
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
@@ -41,7 +42,6 @@ from stewart.core.models import (
     Tenant,
     UserRole,
 )
-from stewart.ai.inbox import INBOX_KINDS, InboxTriageError, triage_inbox
 from stewart.core.settings import Settings, get_settings
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session

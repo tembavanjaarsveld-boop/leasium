@@ -110,6 +110,9 @@ Last updated: 2026-05-27
 - Backend runtime: Python 3.12 with `.venv` already present.
 - Frontend dependencies: `apps/web/node_modules` already present.
 - `uv` and `pnpm` are not available in this shell right now; use `.venv/bin/python`, `.venv/bin/alembic`, `.venv/bin/uvicorn`, and `apps/web/node_modules/.bin/...` directly.
+- `make lint` is the fast merge gate: Ruff + frontend ESLint + frontend TypeScript.
+- `make typecheck` includes Python mypy and currently represents tracked strict-mode debt, not the day-to-day merge gate.
+- Xero Monday priority: connect OAuth in production, verify contact preview, chart/tax preview, invoice posting preview, approved Xero draft creation, and payment reconciliation preview/apply with explicit operator approvals.
 - Local services come from `docker-compose.yml`: Postgres on `5432`, Redis on `6379`, MinIO on `9000`, MinIO console on `9001`.
 - Dev auth defaults to `AUTH_MODE=dev` with the deterministic Temba operator values in `.env.example`.
 - Clerk mode is used in production/staging operator auth. Public tenant onboarding, tenant portal tokens, first setup, invite acceptance, sign-in/sign-up, and access gate pages remain public.

@@ -10,13 +10,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.audit import audit_log
-from stewart.core.db import utcnow
 from stewart.ai.maintenance import (
     MAINTENANCE_CATEGORIES,
     MaintenanceCategoriseError,
     categorise_maintenance,
 )
+from stewart.core.audit import audit_log
+from stewart.core.db import utcnow
 from stewart.core.models import (
     AppUser,
     AuditOutcome,

@@ -10,10 +10,10 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from stewart.core.settings import Settings, get_settings
 
 from apps.api.deps import CurrentUser, get_current_user
 from apps.api.schemas.system import IntegrationStatusRead, ProviderStatus
-from stewart.core.settings import Settings, get_settings
 
 router = APIRouter(prefix="/system", tags=["system"])
 

@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
 from stewart.core.db import utcnow
 from stewart.core.models import BrandedCommunicationTemplate, Entity
 
