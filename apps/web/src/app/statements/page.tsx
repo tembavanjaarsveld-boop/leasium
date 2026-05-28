@@ -61,6 +61,8 @@ import {
 import { saveBlob } from "@/lib/download";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
+const DISPATCH_APPROVAL_EXPORT_GUARDRAIL =
+  "Review-only export: downloading this file does not download owner PDFs, download PDF packs, send owner email, dispatch comms, dispatch invoices, write Xero data, preview or apply payment reconciliation, refresh providers, or mutate provider history.";
 
 type StatementPackStatus = "ready" | "incomplete" | "unpaid" | "blocked";
 
@@ -649,6 +651,89 @@ function dispatchApprovalPacketText(
     "",
     "Review-only: this queue does not send owner email or update provider delivery history.",
   ].join("\n");
+}
+
+function dispatchApprovalCsv(rows: StatementDispatchReviewRow[], month: string) {
+  const readyCount = rows.filter((row) => row.status === "ready").length;
+  const reviewCount = rows.filter(
+    (row) => row.status === "payment_review",
+  ).length;
+  const missingRecipientCount = rows.filter(
+    (row) => row.status === "missing_recipient",
+  ).length;
+  const approvalSteps = buildDispatchApprovalSteps(rows);
+  const tableRows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Section",
+      "Owner or item",
+      "Status",
+      "Recipient",
+      "Subject",
+      "Invoices",
+      "Properties",
+      "Outstanding",
+      "Detail",
+      "Guardrail",
+    ],
+    [
+      "Queue summary",
+      formatMonthLabel(month),
+      `${readyCount} ready / ${reviewCount} payment review / ${missingRecipientCount} missing recipient`,
+      "",
+      "",
+      rows.reduce((total, row) => total + row.invoiceCount, 0),
+      rows.reduce((total, row) => total + row.propertyCount, 0),
+      formatMoney(
+        rows.reduce((total, row) => total + row.outstandingCents, 0),
+      ),
+      "Dispatch approval queue review only.",
+      DISPATCH_APPROVAL_EXPORT_GUARDRAIL,
+    ],
+    ...approvalSteps.map((step) => [
+      "Approval runway",
+      step.title,
+      step.metric,
+      "",
+      "",
+      "",
+      "",
+      "",
+      step.detail,
+      DISPATCH_APPROVAL_EXPORT_GUARDRAIL,
+    ]),
+    ...rows.map((row) => [
+      "Owner row",
+      row.ownerIdentity,
+      dispatchReviewStatusLabel(row.status),
+      row.recipient ?? "Missing owner billing email",
+      row.subject,
+      row.invoiceCount,
+      row.propertyCount,
+      formatMoney(row.outstandingCents),
+      row.status === "ready"
+        ? "Ready for send-candidate review once explicit approval is wired."
+        : row.status === "payment_review"
+          ? "Review outstanding or unreconciled owner balance before dispatch approval."
+          : row.status === "missing_recipient"
+            ? "Add owner billing email before dispatch approval."
+            : "Approve monthly invoices before dispatch approval.",
+      DISPATCH_APPROVAL_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Guardrail",
+      "Review-only",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      DISPATCH_APPROVAL_EXPORT_GUARDRAIL,
+      DISPATCH_APPROVAL_EXPORT_GUARDRAIL,
+    ],
+  ];
+
+  return tableRows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
 function buildDispatchApprovalSteps(
@@ -2490,6 +2575,14 @@ function DispatchReviewPanel({
     );
     setCopyReceipt("Dispatch approval packet copied.");
   };
+  const downloadDispatchCsv = () => {
+    saveBlob(
+      new Blob([dispatchApprovalCsv(rows, month)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      `owner-statement-dispatch-review-${month}.csv`,
+    );
+  };
 
   return (
     <SectionPanel
@@ -2505,6 +2598,14 @@ function DispatchReviewPanel({
           >
             <ClipboardCheck size={15} />
             Copy approval packet
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            onClick={downloadDispatchCsv}
+            disabled={loading || rows.length === 0}
+          >
+            <Download size={15} />
+            Download dispatch CSV
           </SecondaryButton>
           <StatusBadge tone={loading ? "neutral" : overallTone}>
             {loading

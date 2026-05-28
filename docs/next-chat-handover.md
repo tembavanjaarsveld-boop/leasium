@@ -215,13 +215,21 @@ Last updated: 2026-05-28
   sends/digests, maintenance/arrears update mutations, backend export endpoints,
   Xero, invoice dispatch, payment reconciliation, onboarding send/resend,
   billing draft generation, provider refresh, or provider history.
-- Sidecar recommendation for the next slice: add a Statements local
-  dispatch-approval CSV on `/statements` from existing `StatementDispatchReviewRow`
-  data. Include owner, status, recipient/missing recipient, subject, invoice
-  count, property count, outstanding amount, approval runway summary, and a
-  guardrail line. Do not call owner PDF/PDF-pack downloads, comms dispatch,
-  invoice dispatch, Xero preview/apply/create-draft, payment reconciliation,
-  owner email paths, provider refresh, or provider-history endpoints.
+- 2026-05-28 Statements continuation: `/statements` now has a local
+  `owner-statement-dispatch-review-{month}.csv` download from existing
+  `StatementDispatchReviewRow` data. It exports queue summary, approval runway,
+  owner, status, recipient/missing recipient, subject, invoice/property counts,
+  outstanding amount, and review-only guardrails. It does not call owner
+  PDF/PDF-pack downloads, comms dispatch, invoice dispatch, Xero
+  preview/apply/create-draft, payment reconciliation, owner email paths,
+  provider refresh, or provider-history endpoints.
+- Sidecar recommendation for the next slice: add a local selected-owner
+  dispatch draft text download beside `Copy dispatch draft` on `/statements`,
+  reusing `statementDispatchDraft()` and the selected owner's already-loaded
+  statement data. Include recipient/missing-recipient, subject, body, owner
+  totals, and a guardrail line. Do not call owner email, comms dispatch,
+  PDF/PDF-pack downloads, Xero, payment reconciliation, invoice dispatch,
+  provider refresh, or provider-history endpoints.
 
 ## Takeover Priority
 
