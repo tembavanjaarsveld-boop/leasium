@@ -2438,12 +2438,29 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
       "Register expected_redirect_uri in the Xero app.",
     ),
   ).toBeVisible();
+  const forbiddenSetupPacketRequests = watchForbiddenXeroProviderRequests(page);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await providerSetupPreflightPanel
     .getByRole("button", { name: "Copy setup packet" })
     .click();
   await expect(
     providerSetupPreflightPanel.getByText("Provider setup packet copied."),
   ).toBeVisible();
+  const copiedSetupPacket = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(copiedSetupPacket).toContain("Xero provider setup packet");
+  expect(copiedSetupPacket).toContain(
+    "Expected redirect URI: http://localhost:8000/api/v1/xero/oauth/callback",
+  );
+  expect(copiedSetupPacket).toContain("XERO_CLIENT_ID");
+  expect(copiedSetupPacket).toContain("accounting.contacts.read");
+  expect(copiedSetupPacket).toContain(
+    "Register expected_redirect_uri in the Xero app.",
+  );
+  expect(copiedSetupPacket).toContain(
+    "Diagnostics are local only; loading this panel does not call Xero.",
+  );
   const setupPacketDownloadPromise = page.waitForEvent("download");
   await providerSetupPreflightPanel
     .getByRole("button", { name: "Download setup packet" })
@@ -2472,6 +2489,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   expect(setupPacketText).toContain(
     "No Xero write occurs until an explicit reviewed action is run.",
   );
+  expect(forbiddenSetupPacketRequests).toEqual([]);
   await expect(page.getByText("Connection diagnostics")).toBeVisible();
   const forbiddenUnconnectedDiagnosticsRequests =
     watchForbiddenXeroProviderRequests(page);

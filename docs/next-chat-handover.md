@@ -325,14 +325,22 @@ Last updated: 2026-05-28
   CSV/TXT/copy, and draft-ready diagnostics CSV/TXT/copy all assert no OAuth
   start, contact/chart/tax/posting preview, draft creation, provider dispatch, or
   payment reconciliation request occurs during local export actions.
-- Sidecar recommendation for the next slice: Settings Xero provider setup
-  preflight export smoke coverage. Cover `Copy setup packet` and
-  `Download setup packet` under Connection diagnostics > Provider setup
-  preflight, assert env vars, redirect URI, required scopes, setup checklist, and
-  guardrails are present, and add the same forbidden-provider-request watcher
-  around those export actions. Keep it local/mock-only: no OAuth start, token
-  refresh, Xero API call, Xero draft creation, provider dispatch, email/SMS,
-  payment reconciliation, or provider-history write.
+- 2026-05-28 Settings Xero continuation 13: provider setup preflight export
+  smoke coverage now asserts `Copy setup packet` clipboard content and
+  `Download setup packet` TXT content both include env vars, expected redirect
+  URI, required scopes, setup checklist, and diagnostics guardrails. The same
+  forbidden-provider-request watcher proves setup packet copy/download does not
+  start OAuth, call Xero previews, create drafts, dispatch providers, or run
+  payment reconciliation.
+- Sidecar recommendation for the next slice: backend contract coverage for Xero
+  provider setup preflight diagnostics in `tests/integration/test_xero_api.py`.
+  Assert `GET /api/v1/xero/connection-diagnostics` returns stable
+  `provider_setup_preflight` fields for configured and missing-provider-config
+  settings, including required/missing env vars, expected redirect URI, required
+  scopes, setup checklist, and diagnostics guardrails. Monkeypatch provider
+  actions to raise if touched and assert diagnostics performs no OAuth start,
+  token refresh, Xero API call, draft creation, provider dispatch, email/SMS,
+  payment reconciliation, provider-history write, or DB mutation.
 
 ## Takeover Priority
 
