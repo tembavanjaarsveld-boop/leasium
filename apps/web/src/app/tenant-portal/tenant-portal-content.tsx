@@ -362,6 +362,80 @@ function maintenanceNextStep(
   };
 }
 
+function maintenanceTenantAction(
+  request: TenantPortalRecord["maintenance_requests"][number],
+) {
+  if (request.status === "completed") {
+    return {
+      label: "Check the result",
+      detail:
+        "If the issue has returned or the repair is not right, submit a new request with the latest details.",
+      timing: request.completed_at
+        ? `Completed ${formatDateTime(request.completed_at)}`
+        : "Marked complete",
+      tone: "success" as const,
+    };
+  }
+  if (request.status === "cancelled") {
+    return {
+      label: "No action needed",
+      detail:
+        "This request has been closed. Send a new request if you still need help.",
+      timing: "Closed",
+      tone: "neutral" as const,
+    };
+  }
+  if (request.status === "in_progress") {
+    return {
+      label: "Watch for access",
+      detail:
+        "Keep access clear for the agreed time and add a new request if conditions change.",
+      timing: request.due_date
+        ? `Target ${formatDate(request.due_date)}`
+        : "Work underway",
+      tone: "primary" as const,
+    };
+  }
+  if (["assigned", "approved"].includes(request.status)) {
+    return {
+      label: "Wait for scheduling",
+      detail:
+        "The team has moved this forward. Watch for an attendance time or access request.",
+      timing: request.due_date
+        ? `Target ${formatDate(request.due_date)}`
+        : "Scheduling next",
+      tone: "primary" as const,
+    };
+  }
+  if (request.status === "awaiting_approval") {
+    return {
+      label: "No tenant action",
+      detail:
+        "The property team is checking approval. They may contact you if access or more detail is needed.",
+      timing: "Approval review",
+      tone: "warning" as const,
+    };
+  }
+  if (request.status === "triaged") {
+    return {
+      label: "Ready for next step",
+      detail:
+        "The request has been reviewed. Keep an eye out for scheduling or team questions.",
+      timing: request.due_date
+        ? `Target ${formatDate(request.due_date)}`
+        : "Reviewed",
+      tone: "primary" as const,
+    };
+  }
+  return {
+    label: "Nothing else yet",
+    detail:
+      "The request is with the property team. Add a new request only if the issue changes or becomes urgent.",
+    timing: `Submitted ${formatDateTime(request.requested_at)}`,
+    tone: "warning" as const,
+  };
+}
+
 function maintenanceRequestSortValue(
   request: TenantPortalRecord["maintenance_requests"][number],
 ) {
@@ -1639,11 +1713,12 @@ function MaintenanceVisibilityCard({
 }) {
   const latest = latestMaintenanceHistoryEntry(request);
   const nextStep = maintenanceNextStep(request);
+  const tenantAction = maintenanceTenantAction(request);
   const evidenceCount = maintenanceEvidenceCount(request);
   const latestTimestamp = latest?.timestamp ?? request.requested_at;
 
   return (
-    <div className="grid gap-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm md:grid-cols-2">
+    <div className="grid gap-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm lg:grid-cols-3">
       <div className="grid gap-1 rounded-md border border-border bg-white px-3 py-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="font-semibold text-foreground">Latest update</span>
@@ -1676,6 +1751,18 @@ function MaintenanceVisibilityCard({
           {evidenceCount
             ? `${evidenceCount} file${evidenceCount === 1 ? "" : "s"} attached`
             : "No files attached yet"}
+        </div>
+      </div>
+      <div className="grid gap-1 rounded-md border border-border bg-white px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="font-semibold text-foreground">Your action</span>
+          <StatusBadge tone={tenantAction.tone}>
+            {tenantAction.label}
+          </StatusBadge>
+        </div>
+        <div className="text-muted-foreground">{tenantAction.detail}</div>
+        <div className="text-xs text-muted-foreground">
+          {tenantAction.timing}
         </div>
       </div>
     </div>
