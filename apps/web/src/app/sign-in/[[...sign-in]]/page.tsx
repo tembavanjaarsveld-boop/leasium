@@ -4,6 +4,8 @@ import { SignIn } from "@clerk/nextjs";
 import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
+import { clerkEmailOnlyAppearance } from "@/lib/clerk-appearance";
+
 function ClerkNotConfigured() {
   return (
     <main className="min-h-screen bg-background px-6 py-12 text-foreground">
@@ -33,6 +35,7 @@ export default function SignInPage() {
     <main className="grid min-h-screen place-items-center bg-background px-6 py-12">
       <div className="grid justify-items-center gap-4">
         <SignIn
+          appearance={clerkEmailOnlyAppearance}
           routing="path"
           path="/sign-in"
           signUpUrl="/sign-up"

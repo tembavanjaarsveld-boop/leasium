@@ -1,6 +1,6 @@
 "use client";
 
-import { SignInButton, SignUpButton, useUser } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
 import { CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -62,6 +62,7 @@ function inviteErrorMessage(err: unknown) {
 
 function ClerkInviteLinker({ token }: { token: string }) {
   const { isLoaded, isSignedIn, user } = useUser();
+  const inviteRedirect = encodeURIComponent(`/accept-invite?token=${token}`);
   const [result, setResult] = useState<SecurityInviteAcceptRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -122,16 +123,18 @@ function ClerkInviteLinker({ token }: { token: string }) {
           Use the same email address the Leasium invite was sent to.
         </p>
         <div className="flex flex-wrap gap-3">
-          <SignInButton mode="redirect" fallbackRedirectUrl={`/accept-invite?token=${token}`}>
-            <button className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white">
-              Sign in
-            </button>
-          </SignInButton>
-          <SignUpButton mode="redirect" fallbackRedirectUrl={`/accept-invite?token=${token}`}>
-            <button className="rounded-md border border-border px-4 py-2 text-sm font-semibold">
-              Create login
-            </button>
-          </SignUpButton>
+          <Link
+            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white"
+            href={`/sign-in?redirect_url=${inviteRedirect}`}
+          >
+            Sign in
+          </Link>
+          <Link
+            className="rounded-md border border-border px-4 py-2 text-sm font-semibold"
+            href={`/sign-up?redirect_url=${inviteRedirect}`}
+          >
+            Create login
+          </Link>
         </div>
       </>
     );
