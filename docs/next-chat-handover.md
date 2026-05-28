@@ -231,12 +231,20 @@ Last updated: 2026-05-28
   call owner email, comms dispatch, PDF/PDF-pack downloads, Xero, payment
   reconciliation, invoice dispatch, provider refresh, or provider-history
   endpoints.
-- Sidecar recommendation for the next slice: add a local Xero provider setup
-  packet text download beside `Copy setup packet` in Settings → Xero provider
-  setup preflight. Reuse `xeroProviderSetupPacket(xeroDiagnostics)` and
-  `saveBlob`, filename `xero-provider-setup-packet.txt`. Do not call OAuth,
-  Xero preview/apply/create-draft, SendGrid, Twilio, invoice dispatch, payment
+- 2026-05-28 Settings Xero continuation: Settings → Xero provider setup
+  preflight now has a local `xero-provider-setup-packet.txt` download beside
+  `Copy setup packet`, reusing `xeroProviderSetupPacket(xeroDiagnostics)`.
+  It exports expected redirect URI, required/missing env vars, scopes, setup
+  checklist, and diagnostics guardrails. It does not call OAuth, Xero
+  preview/apply/create-draft, SendGrid, Twilio, invoice dispatch, payment
   reconciliation, provider refresh, or provider-history endpoints.
+- Sidecar recommendation for the next slice: add a local Settings Xero
+  accounting freshness CSV export from the already-loaded `/xero/status`
+  freshness snapshot and exception counts. Include checkpoint timestamps,
+  next-step state, stale/missing payment cues, and no-provider-mutation
+  guardrails. Do not refresh Xero, preview/apply reconciliation, create Xero
+  drafts, dispatch invoices, send email/SMS, refresh providers, or mutate
+  provider history.
 
 ## Takeover Priority
 

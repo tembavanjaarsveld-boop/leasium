@@ -2022,6 +2022,18 @@ function SettingsWorkspace() {
         : "Copy unavailable in this browser.",
     );
   };
+  const downloadXeroSetupPacket = () => {
+    if (!xeroDiagnostics) {
+      return;
+    }
+    saveBlob(
+      new Blob([xeroProviderSetupPacket(xeroDiagnostics)], {
+        type: "text/plain;charset=utf-8",
+      }),
+      "xero-provider-setup-packet.txt",
+    );
+    setXeroSetupCopyReceipt("Provider setup packet downloaded.");
+  };
 
   const unlinkLoginMutation = useMutation({
     mutationFn: (memberId: string) => unlinkSecurityMemberLogin(memberId),
@@ -4498,6 +4510,13 @@ function SettingsWorkspace() {
                               >
                                 <Copy size={14} />
                                 Copy setup packet
+                              </SecondaryButton>
+                              <SecondaryButton
+                                type="button"
+                                onClick={downloadXeroSetupPacket}
+                              >
+                                <Download size={14} />
+                                Download setup packet
                               </SecondaryButton>
                             </div>
                           </div>
