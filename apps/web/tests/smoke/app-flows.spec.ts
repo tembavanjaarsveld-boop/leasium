@@ -2527,6 +2527,11 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   expect(diagnosticsPacketText).toContain(
     "Review-only export: downloading this file does not start OAuth, call or refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices or providers, send email or SMS, refresh providers, or mutate provider history.",
   );
+  await expect(
+    page.getByText(
+      "Connect Xero before provider previews and draft creation are available.",
+    ),
+  ).toBeVisible();
   await expect(page.getByText("Xero is not connected")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Connect Xero" }),

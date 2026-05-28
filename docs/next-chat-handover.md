@@ -279,14 +279,20 @@ Last updated: 2026-05-28
   route, refetch diagnostics, start OAuth, call/refresh Xero, preview/apply
   reconciliation, create drafts, dispatch invoices/providers, send email/SMS,
   refresh providers, or mutate provider history.
-- Sidecar recommendation for the next slice: add a local Settings Xero provider
-  action readiness explainer under Connection diagnostics. Each gate should show
-  `Ready`/`Blocked` plus a short local reason derived only from
-  `xeroDiagnostics`; for the current fixture, draft creation remains `Blocked`
-  because Xero is not connected. Do not call Xero, refresh tokens, start OAuth,
-  preview contacts/chart/tax/invoices/payments, create drafts, dispatch
-  providers, send email/SMS, mutate provider history, or change local approval
-  state.
+- 2026-05-28 Settings Xero continuation 7: Connection diagnostics readiness
+  rows now include short local reasons for each provider action gate, derived
+  only from the already-loaded `xeroDiagnostics` response. The smoke test
+  confirms the unconnected fixture keeps Draft creation `Blocked` and explains
+  that Xero must be connected before provider previews and draft creation are
+  available. It does not derive readiness from `/xero/status`, invoice drafts,
+  exception queues, local UI mutation state, or optimistic state, and it does
+  not start OAuth, refresh tokens, call Xero, create drafts, dispatch providers,
+  send email/SMS, reconcile payments, write provider history, or change local
+  approval state.
+- Sidecar recommendation for the next slice: harden this explainer with a
+  focused Settings smoke path or fixture variant that asserts Draft creation is
+  `Ready` only when `xeroDiagnostics.can_create_xero_drafts === true`; keep it
+  coverage/local-copy only, not provider behavior.
 
 ## Takeover Priority
 

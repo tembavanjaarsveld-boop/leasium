@@ -459,6 +459,50 @@ function diagnosticsReadinessRows(
   ] as const;
 }
 
+function diagnosticsReadinessDetailRows(
+  diagnostics: XeroConnectionDiagnosticsRecord,
+) {
+  const providerMissing = diagnostics.missing_config.length
+    ? `Missing provider config: ${diagnostics.missing_config.join(", ")}.`
+    : "Set the required Xero API config before OAuth can start.";
+  const providerBlocked =
+    diagnostics.next_steps[0] ??
+    "Your role or authorised scopes do not allow this provider action.";
+  const connectionReasons: Record<string, string> = {
+    Contacts: "Connect Xero before contact previews are available.",
+    "Chart/tax": "Connect Xero before chart and tax validation is available.",
+    "Invoice preview":
+      "Connect Xero before invoice posting previews are available.",
+    "Draft creation":
+      "Connect Xero before provider previews and draft creation are available.",
+    Payments:
+      "Connect Xero before payment reconciliation previews are available.",
+  };
+  return diagnosticsReadinessRows(diagnostics).map(([label, ready]) => {
+    let detail = "";
+    if (ready) {
+      detail =
+        label === "OAuth"
+          ? "Provider setup is ready for an explicit OAuth connection."
+          : "Provider connection and authorised scopes allow this reviewed action.";
+    } else if (!diagnostics.provider_configured) {
+      detail = providerMissing;
+    } else if (!diagnostics.connected) {
+      detail =
+        label === "OAuth"
+          ? "Provider setup is ready; start OAuth when the operator approves."
+          : connectionReasons[label] ?? providerBlocked;
+    } else if (label === "Draft creation") {
+      detail = "Approve invoice drafts for Xero before creating provider drafts.";
+    } else if (label === "Payments") {
+      detail = "Create or link a Xero draft before reviewing provider payments.";
+    } else {
+      detail = providerBlocked;
+    }
+    return { label, ready, detail };
+  });
+}
+
 function xeroProviderSetupPacket(diagnostics: XeroConnectionDiagnosticsRecord) {
   const preflight = diagnostics.provider_setup_preflight;
   return [
@@ -4914,18 +4958,23 @@ function SettingsWorkspace() {
                           </p>
                         ) : null}
                         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                          {diagnosticsReadinessRows(xeroDiagnostics).map(
-                            ([label, ready]) => (
+                          {diagnosticsReadinessDetailRows(xeroDiagnostics).map(
+                            ({ label, ready, detail }) => (
                               <div
                                 key={label}
-                                className="flex items-center justify-between gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs"
+                                className="rounded-md border border-border bg-white px-3 py-2 text-xs"
                               >
-                                <span>{label}</span>
-                                <StatusBadge
-                                  tone={ready ? "success" : "warning"}
-                                >
-                                  {ready ? "Ready" : "Blocked"}
-                                </StatusBadge>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-medium">{label}</span>
+                                  <StatusBadge
+                                    tone={ready ? "success" : "warning"}
+                                  >
+                                    {ready ? "Ready" : "Blocked"}
+                                  </StatusBadge>
+                                </div>
+                                <p className="mt-2 leading-relaxed text-muted">
+                                  {detail}
+                                </p>
                               </div>
                             ),
                           )}
