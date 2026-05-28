@@ -158,6 +158,16 @@ type LiveActionReviewItem = {
   secondaryLabel?: string;
 };
 
+type LiveReviewHandoffStep = {
+  id: string;
+  title: string;
+  statusLabel: string;
+  detail: string;
+  tone: Tone;
+  actionLabel: string;
+  href?: string | null;
+};
+
 const emptyCompletionReviewNotes: Record<CompletionReviewAudience, string> = {
   owner: "",
   tenant: "",
@@ -1689,6 +1699,82 @@ function liveReviewChecklistText(cards: LiveReviewCard[]) {
   ].join("\n");
 }
 
+function liveReviewHandoffSteps({
+  cards,
+  items,
+}: {
+  cards: LiveReviewCard[];
+  items: LiveActionReviewItem[];
+}): LiveReviewHandoffStep[] {
+  const reviewSteps = cards
+    .filter((card) => ["danger", "warning"].includes(card.tone))
+    .map((card) => ({
+      id: `review-${card.id}`,
+      title: card.title,
+      statusLabel: card.statusLabel,
+      detail: card.detail,
+      tone: card.tone,
+      actionLabel: "Resolve review item",
+      href: null,
+    }));
+  const actionSteps = items
+    .filter((item) => ["danger", "warning"].includes(item.tone))
+    .map((item) => ({
+      id: `action-${item.id}`,
+      title: item.title,
+      statusLabel: item.statusLabel,
+      detail: item.detail,
+      tone: item.tone,
+      actionLabel: item.actionLabel,
+      href: item.href,
+    }));
+
+  const steps = [...reviewSteps, ...actionSteps];
+  if (steps.length) {
+    return steps.slice(0, 4);
+  }
+
+  const primaryActions = items
+    .filter((item) => item.tone === "primary")
+    .map((item) => ({
+      id: `action-${item.id}`,
+      title: item.title,
+      statusLabel: item.statusLabel,
+      detail: item.detail,
+      tone: item.tone,
+      actionLabel: item.actionLabel,
+      href: item.href,
+    }));
+  if (primaryActions.length) {
+    return primaryActions.slice(0, 3);
+  }
+
+  return [
+    {
+      id: "ready",
+      title: "Live controls reviewed",
+      statusLabel: "Ready",
+      detail:
+        "No urgent live-review blockers are showing. Continue with explicit email, SMS, closeout, or billing actions as needed.",
+      tone: "success",
+      actionLabel: "Continue review",
+      href: null,
+    },
+  ];
+}
+
+function liveReviewHandoffText(steps: LiveReviewHandoffStep[]) {
+  return [
+    "Operations live review handoff",
+    ...steps.map(
+      (step) =>
+        `- ${step.title}: ${step.statusLabel} - ${step.actionLabel} - ${step.detail}`,
+    ),
+    "",
+    "Review-only: this handoff does not send email, SMS, billing updates, or closeout messages.",
+  ].join("\n");
+}
+
 function completionReviewPacketSummary({
   workOrder,
   rows,
@@ -1939,6 +2025,98 @@ function LiveReviewStrip({ cards }: { cards: LiveReviewCard[] }) {
               </p>
             </div>
           ))}
+        </div>
+      </div>
+    </SectionPanel>
+  );
+}
+
+function LiveReviewHandoffPanel({ steps }: { steps: LiveReviewHandoffStep[] }) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const firstStep = steps[0];
+  const overallTone =
+    steps.find((step) => step.tone === "danger")?.tone ??
+    steps.find((step) => step.tone === "warning")?.tone ??
+    firstStep?.tone ??
+    "neutral";
+  const copyHandoff = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(liveReviewHandoffText(steps));
+    setCopyReceipt("Live handoff copied.");
+  };
+
+  return (
+    <SectionPanel
+      title="Live review handoff"
+      description="The next practical checks before operators touch live work-order actions."
+      icon={<ShieldCheck size={17} className="text-primary" />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton type="button" onClick={copyHandoff}>
+            <ClipboardCheck size={15} />
+            Copy handoff
+          </SecondaryButton>
+          <StatusBadge tone={overallTone}>
+            {firstStep?.statusLabel ?? "No checks"}
+          </StatusBadge>
+        </div>
+      }
+    >
+      <div className="grid gap-4 p-4">
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        ) : null}
+        {firstStep ? (
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-foreground">
+                First action: {firstStep.title}
+              </div>
+              <StatusBadge tone={firstStep.tone}>
+                {firstStep.statusLabel}
+              </StatusBadge>
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {firstStep.detail}
+            </p>
+          </div>
+        ) : null}
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {steps.map((step) => {
+            const body = (
+              <>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-semibold text-foreground">
+                    {step.title}
+                  </div>
+                  <StatusBadge tone={step.tone}>{step.statusLabel}</StatusBadge>
+                </div>
+                <p className="text-sm leading-5 text-muted-foreground">
+                  {step.detail}
+                </p>
+                <span className="text-xs font-semibold text-primary">
+                  {step.actionLabel}
+                </span>
+              </>
+            );
+            const className =
+              "grid gap-2 rounded-md border border-border bg-white p-3 text-left text-sm shadow-leasiumXs transition hover:bg-muted/60";
+            if (step.href) {
+              return (
+                <a key={step.id} href={step.href} className={className}>
+                  {body}
+                </a>
+              );
+            }
+            return (
+              <div key={step.id} className={className}>
+                {body}
+              </div>
+            );
+          })}
         </div>
       </div>
     </SectionPanel>
@@ -2306,6 +2484,10 @@ function MaintenanceDetailRoute() {
           contractorSmsStatus,
         })
       : [];
+  const liveReviewHandoff = liveReviewHandoffSteps({
+    cards: liveReviewCards,
+    items: liveActionReviewItems,
+  });
   const contractorTemplateOptions = useMemo(
     () => (workOrder ? contractorEmailTemplates(workOrder) : []),
     [workOrder],
@@ -2842,6 +3024,7 @@ function MaintenanceDetailRoute() {
 
         {workOrder ? (
           <>
+            <LiveReviewHandoffPanel steps={liveReviewHandoff} />
             <LiveReviewStrip cards={liveReviewCards} />
             <LiveActionDock items={liveActionReviewItems} />
 
