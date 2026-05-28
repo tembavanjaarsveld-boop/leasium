@@ -2245,6 +2245,36 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Xero" }).click();
   await expect(page.getByText("Xero sync exception queue")).toBeVisible();
+  const exceptionQueuePanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Xero sync exception queue" }),
+  });
+  await expect(
+    exceptionQueuePanel.getByText("Base Rent tax type missing"),
+  ).toBeVisible();
+  await exceptionQueuePanel
+    .getByRole("button", { name: "Copy exception packet" })
+    .click();
+  await expect(
+    exceptionQueuePanel.getByText("Xero exception packet copied."),
+  ).toBeVisible();
+  const exceptionDownloadPromise = page.waitForEvent("download");
+  await exceptionQueuePanel
+    .getByRole("button", { name: "Download exceptions CSV" })
+    .click();
+  const exceptionDownload = await exceptionDownloadPromise;
+  expect(exceptionDownload.suggestedFilename()).toBe(
+    "xero-exception-review.csv",
+  );
+  const exceptionDownloadPath = await exceptionDownload.path();
+  expect(exceptionDownloadPath).not.toBeNull();
+  const exceptionCsv = await readFile(exceptionDownloadPath!, "utf8");
+  expect(exceptionCsv).toContain("Base Rent tax type missing");
+  expect(exceptionCsv).toContain("needs a Xero tax type");
+  expect(exceptionCsv).toContain("Queen Street Retail Centre");
+  expect(exceptionCsv).toContain("Review and apply the suggested tax mapping.");
+  expect(exceptionCsv).toContain(
+    "No Xero API refresh, invoice posting, tenant email, provider dispatch, or payment reconciliation is run by this export.",
+  );
   const providerSetupPreflightPanel = page.getByRole("region", {
     name: "Provider setup preflight",
   });

@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Copy,
+  Download,
   ExternalLink,
   FileText,
   KeyRound,
@@ -76,6 +77,7 @@ import {
   type XeroChartTaxValidationResultRecord,
   type XeroContactMatchRecord,
   type XeroContactSyncPreviewRecord,
+  type XeroExceptionQueueRecord,
   type XeroExceptionQueueItemRecord,
   type XeroInvoiceDraftCreateRecord,
   type XeroInvoiceDraftCreateResultRecord,
@@ -99,6 +101,7 @@ import {
   type WorkAssignmentNotificationTemplateKind,
   type WorkAssignmentNotificationTemplateRecord,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 import {
   ownershipChipClassName,
   propertyOwnershipTagDirectory,
@@ -480,6 +483,140 @@ function xeroProviderSetupPacket(diagnostics: XeroConnectionDiagnosticsRecord) {
     "Guardrails:",
     ...diagnostics.guardrails.map((guardrail) => `- ${guardrail}`),
   ].join("\n");
+}
+
+const XERO_EXCEPTION_EXPORT_GUARDRAIL =
+  "No Xero API refresh, invoice posting, tenant email, provider dispatch, or payment reconciliation is run by this export.";
+
+function csvCell(value: string | number | null | undefined) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function xeroExceptionRecordLine(issue: XeroExceptionQueueItemRecord) {
+  return [
+    issue.property_name,
+    issue.unit_label,
+    issue.tenant_name,
+    issue.invoice_number ?? issue.invoice_title,
+    issue.total_cents !== null
+      ? formatCurrencyCents(issue.total_cents, issue.currency ?? "AUD")
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function xeroExceptionReviewPacket(queue: XeroExceptionQueueRecord) {
+  return [
+    "Xero exception review packet",
+    `Generated: ${formatDateTime(queue.generated_at)}`,
+    `${queue.summary.total} open exceptions (${queue.summary.blockers} blockers, ${queue.summary.warnings} warnings, ${queue.summary.info} info)`,
+    "",
+    "Guardrails:",
+    `- ${XERO_EXCEPTION_EXPORT_GUARDRAIL}`,
+    ...queue.guardrails.map((guardrail) => `- ${guardrail}`),
+    "",
+    "Exceptions:",
+    ...(queue.items.length
+      ? queue.items.map((issue) =>
+          [
+            `- ${issue.label} [${issue.severity} / ${exceptionKindLabel(issue.kind)}]`,
+            issue.detail,
+            `Next action: ${issue.action}`,
+            xeroExceptionRecordLine(issue)
+              ? `Record: ${xeroExceptionRecordLine(issue)}`
+              : null,
+            issue.charge_rule_id
+              ? `Mapping: account ${issue.current_account_code ?? "-"} -> ${issue.suggested_account_code ?? "-"}; tax ${issue.current_tax_type ?? "-"} -> ${issue.suggested_tax_type ?? "-"}`
+              : null,
+            issue.xero_invoice_id ? `Xero invoice: ${issue.xero_invoice_id}` : null,
+            issue.provider_status ? `Provider status: ${issue.provider_status}` : null,
+            issue.retry_count ? `Retry count: ${issue.retry_count}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n  "),
+        )
+      : ["- No Xero sync exceptions."]),
+  ].join("\n");
+}
+
+function xeroExceptionCsv(queue: XeroExceptionQueueRecord) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Severity",
+      "Kind",
+      "Label",
+      "Detail",
+      "Next action",
+      "Property",
+      "Unit",
+      "Tenant",
+      "Invoice",
+      "Amount",
+      "Current account",
+      "Suggested account",
+      "Current tax",
+      "Suggested tax",
+      "Posting status",
+      "Provider",
+      "Provider status",
+      "Xero invoice ID",
+      "Receipt time",
+      "Retry count",
+      "Guardrail",
+    ],
+    ...queue.items.map((issue) => [
+      issue.severity,
+      exceptionKindLabel(issue.kind),
+      issue.label,
+      issue.detail,
+      issue.action,
+      issue.property_name,
+      issue.unit_label,
+      issue.tenant_name,
+      issue.invoice_number ?? issue.invoice_title,
+      issue.total_cents !== null
+        ? formatCurrencyCents(issue.total_cents, issue.currency ?? "AUD")
+        : "",
+      issue.current_account_code,
+      issue.suggested_account_code,
+      issue.current_tax_type,
+      issue.suggested_tax_type,
+      issue.external_posting_status ?? issue.xero_status,
+      issue.provider,
+      issue.provider_status,
+      issue.xero_invoice_id,
+      issue.received_at,
+      issue.retry_count,
+      XERO_EXCEPTION_EXPORT_GUARDRAIL,
+    ]),
+  ];
+  if (!queue.items.length) {
+    rows.push([
+      "info",
+      "clear",
+      "No Xero sync exceptions",
+      "Approved drafts, provider receipts, and reconciliation state are clear.",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      XERO_EXCEPTION_EXPORT_GUARDRAIL,
+    ]);
+  }
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
 async function copyTextToClipboard(text: string) {
@@ -1360,6 +1497,9 @@ function SettingsWorkspace() {
   const [xeroSetupCopyReceipt, setXeroSetupCopyReceipt] = useState<
     string | null
   >(null);
+  const [xeroExceptionExportReceipt, setXeroExceptionExportReceipt] = useState<
+    string | null
+  >(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteDisplayName, setInviteDisplayName] = useState("");
   const [inviteRole, setInviteRole] = useState<SecurityRole>("viewer");
@@ -1857,6 +1997,31 @@ function SettingsWorkspace() {
     xeroPaymentApplyResult ?? xeroPaymentPreview;
   const exceptionQueue = xeroExceptionQueueQuery.data;
   const exceptionItems = exceptionQueue?.items ?? [];
+  const copyXeroExceptionPacket = async () => {
+    if (!exceptionQueue) {
+      return;
+    }
+    const copied = await copyTextToClipboard(
+      xeroExceptionReviewPacket(exceptionQueue),
+    );
+    setXeroExceptionExportReceipt(
+      copied
+        ? "Xero exception packet copied."
+        : "Copy unavailable in this browser.",
+    );
+  };
+  const downloadXeroExceptionCsv = () => {
+    if (!exceptionQueue) {
+      return;
+    }
+    saveBlob(
+      new Blob([xeroExceptionCsv(exceptionQueue)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      "xero-exception-review.csv",
+    );
+    setXeroExceptionExportReceipt("Xero exception CSV downloaded.");
+  };
   const xeroDiagnostics = xeroDiagnosticsQuery.data;
   const xeroDiagnosticsReady = Boolean(xeroDiagnostics);
   const xeroCanStartOauth = xeroDiagnostics?.can_start_oauth ?? false;
@@ -3844,6 +4009,24 @@ function SettingsWorkspace() {
                 icon={<AlertTriangle size={17} className="text-primary" />}
                 actions={
                   <div className="flex flex-wrap items-center gap-2">
+                    <SecondaryButton
+                      type="button"
+                      className="min-h-9 rounded-lg px-3 text-xs"
+                      disabled={!exceptionQueue}
+                      onClick={copyXeroExceptionPacket}
+                    >
+                      <Copy size={14} />
+                      Copy exception packet
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      className="min-h-9 rounded-lg px-3 text-xs"
+                      disabled={!exceptionQueue}
+                      onClick={downloadXeroExceptionCsv}
+                    >
+                      <Download size={14} />
+                      Download exceptions CSV
+                    </SecondaryButton>
                     <StatusBadge
                       tone={
                         exceptionQueue?.summary.blockers
@@ -3867,6 +4050,11 @@ function SettingsWorkspace() {
                   </div>
                 ) : (
                   <>
+                    {xeroExceptionExportReceipt ? (
+                      <p className="border-t border-border px-4 py-3 text-sm font-medium text-success">
+                        {xeroExceptionExportReceipt}
+                      </p>
+                    ) : null}
                     <div className="grid gap-3 p-4 md:grid-cols-4">
                       <div className="rounded-md border border-border bg-muted/25 p-3">
                         <div className="text-xs uppercase text-muted-foreground">

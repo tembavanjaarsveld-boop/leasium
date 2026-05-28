@@ -132,10 +132,15 @@ Last updated: 2026-05-28
   `portfolio-qa-cleanup-report.csv` includes matching `Blocker drilldown` rows.
   This stays frontend/local-data only and does not run enrichment, onboarding,
   billing draft generation, Xero, email/SMS, or provider-history mutations.
-- Sidecar recommendation for the next slice: add a passive Settings -> Xero
-  exception queue export/copy packet from already-loaded exception rows. Keep
-  it frontend-only; do not start OAuth, preview/apply mappings, post invoices,
-  dispatch providers, refresh Xero, or reconcile payments.
+- 2026-05-28 Xero exception export continuation: Settings -> Xero exception
+  queue now has a passive copyable review packet and
+  `xero-exception-review.csv` download from already-loaded exception rows.
+  The export does not start OAuth, preview/apply mappings, post invoices,
+  dispatch providers, refresh Xero, send email, or reconcile payments.
+- Sidecar recommendation for the next slice: add a Portfolio QA enrichment
+  queue CSV/export packet beside the existing copy-only enrichment queue. Keep
+  it frontend/local-data only; do not run enrichment preview/apply, OpenAI,
+  SerpAPI, Xero, SendGrid, Twilio, onboarding, or billing draft mutations.
 
 ## Takeover Priority
 
