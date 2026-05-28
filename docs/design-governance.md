@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-05-28
+Last updated: 2026-05-29
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -165,6 +165,12 @@ Progress notes:
   source. The selected owner evidence can also be downloaded as a local CSV.
   This remains pending Remba review for table density and whether the evidence
   should default expanded or collapsed for finance users.
+- 2026-05-29 follow-up: AppHeader top-right controls now render as one compact
+  workspace utility toolbar: entity selector, command search, keyboard
+  shortcuts, notifications, appearance, and profile/sign-in share a single
+  quiet container instead of separate bordered buttons. This remains pending
+  Remba review for sticky-header density, tenant selector width, and whether the
+  grouped toolbar should become the permanent app-shell pattern.
 
 Remba decision:
 

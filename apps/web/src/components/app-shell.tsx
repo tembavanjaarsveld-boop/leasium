@@ -271,6 +271,9 @@ const GLOBAL_SHORTCUTS = [
   { combo: "Esc", label: "Close any open dialog" },
 ];
 
+const headerUtilityButtonClass =
+  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-foreground";
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName.toLowerCase();
@@ -289,7 +292,7 @@ function OperatorUserControl() {
   return (
     <Link
       href="/sign-in"
-      className="inline-flex min-h-11 items-center rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+      className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold text-slate transition duration-200 ease-leasium hover:bg-muted"
     >
       Sign in
     </Link>
@@ -367,7 +370,7 @@ function AppearanceToggle() {
       }}
       aria-label={label}
       title={`${label}. Click for ${nextMode}.`}
-      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+      className={headerUtilityButtonClass}
     >
       <Icon size={15} />
     </button>
@@ -671,7 +674,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       ) : null}
 
       <header className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 py-2 min-[1600px]:max-w-none">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 py-2 min-[1600px]:max-w-none sm:px-4">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
@@ -680,12 +683,16 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           >
             <Menu size={15} />
           </button>
-          {children ? (
-            <div className="order-last w-full min-w-0 sm:order-none sm:ml-auto sm:w-auto sm:min-w-40 sm:max-w-xs">
-              {children}
-            </div>
-          ) : null}
-          <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:ml-0">
+          <div
+            role="toolbar"
+            aria-label="Workspace utilities"
+            className="ml-auto flex min-w-0 max-w-full items-center justify-end gap-1 rounded-xl border border-border bg-white/90 p-1 shadow-leasiumXs"
+          >
+            {children ? (
+              <div className="min-w-0 max-w-[44vw] border-r border-border pr-1 sm:max-w-xs sm:min-w-44 [&_select]:h-9 [&_select]:min-h-9 [&_select]:truncate [&_select]:rounded-lg [&_select]:border-0 [&_select]:bg-transparent [&_select]:px-2 [&_select]:text-sm [&_select]:font-medium [&_select]:shadow-none [&_select]:focus-visible:ring-0">
+                {children}
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={() => {
@@ -694,7 +701,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               }}
               aria-label="Open search"
               title="Search (Cmd K)"
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+              className={headerUtilityButtonClass}
             >
               <Search size={15} />
             </button>
@@ -703,7 +710,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               onClick={() => setCheatsheetOpen(true)}
               aria-label="Show keyboard shortcuts"
               title="Keyboard shortcuts (?)"
-              className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted sm:inline-flex"
+              className={cn("hidden sm:inline-flex", headerUtilityButtonClass)}
             >
               <Keyboard size={15} />
             </button>
@@ -712,16 +719,16 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               aria-label="Open notifications"
               title="Notifications"
               className={cn(
-                "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-white text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted",
+                headerUtilityButtonClass,
                 pathname.startsWith("/notifications") &&
-                  "border-primary/30 bg-primary-soft text-primary",
+                  "bg-primary-soft text-primary hover:bg-primary-soft",
               )}
             >
               <Bell size={15} />
             </Link>
             <AppearanceToggle />
             {clerkConfigured ? (
-              <div className="flex h-11 shrink-0 items-center">
+              <div className="flex h-9 shrink-0 items-center pl-1">
                 <OperatorUserControl />
               </div>
             ) : null}

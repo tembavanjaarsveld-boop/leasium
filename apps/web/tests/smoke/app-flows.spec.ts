@@ -74,6 +74,9 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByText("Insurance certificate renewal").first(),
   ).toBeVisible();
+  await expect(
+    page.getByRole("toolbar", { name: "Workspace utilities" }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Open search" }).click();
   await expect(
@@ -106,7 +109,10 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   });
   await expect(reopenedCommandSearch).toHaveValue("");
   await reopenedCommandSearch.fill("billing");
-  await page.getByText("Review billing blockers").click();
+  await page
+    .getByRole("list", { name: "Command actions" })
+    .getByRole("link", { name: /Review billing blockers/ })
+    .click();
 
   await expect(page).toHaveURL(/\/billing-readiness$/);
   await expect(
