@@ -1749,21 +1749,20 @@ function cleanupReportText({
     "",
     "Bulk review queue:",
     ...(activeBulkGroups.length
-      ? activeBulkGroups.map(
-          (group) =>
-            [
-              `- ${group.title}: ${group.count} rows - ${group.detail}`,
-              group.blockers.length
-                ? `Top blockers: ${group.blockers
-                    .map((blocker) => `${blocker.label} (${blocker.count})`)
-                    .join(", ")}`
-                : null,
-              group.examples.length
-                ? `Examples: ${group.examples.join(" / ")}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" "),
+      ? activeBulkGroups.map((group) =>
+          [
+            `- ${group.title}: ${group.count} rows - ${group.detail}`,
+            group.blockers.length
+              ? `Top blockers: ${group.blockers
+                  .map((blocker) => `${blocker.label} (${blocker.count})`)
+                  .join(", ")}`
+              : null,
+            group.examples.length
+              ? `Examples: ${group.examples.join(" / ")}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
         )
       : ["- Clear: no onboarding or billing bulk-review groups need action."]),
     "",
@@ -1785,6 +1784,179 @@ function cleanupReportText({
       : ["- Clear: no blocked cleanup rows remain in the current scan."]),
   ];
   return lines.join("\n");
+}
+
+function blockerTriageText(groups: BulkReviewGroup[]) {
+  const activeGroups = groups.filter((group) => group.count > 0);
+  if (!activeGroups.length) {
+    return [
+      "Portfolio QA blocker triage",
+      "No onboarding or billing blocker groups need action in the current scan.",
+    ].join("\n");
+  }
+  return [
+    "Portfolio QA blocker triage",
+    `${activeGroups.reduce((sum, group) => sum + group.count, 0)} rows across ${activeGroups.length} blocker groups`,
+    "",
+    ...activeGroups.map((group) =>
+      [
+        `${group.title}: ${group.count} rows`,
+        group.detail,
+        group.blockers.length
+          ? `Top reasons: ${group.blockers
+              .map((blocker) => `${blocker.label} (${blocker.count})`)
+              .join(", ")}`
+          : null,
+        group.examples.length
+          ? `Examples: ${group.examples.join(" / ")}`
+          : null,
+        `Next action: ${group.actionLabel}`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    ),
+    "",
+    "Review-only: apply tenant/contact/billing fixes from the relevant tab after checking the row details.",
+  ].join("\n\n");
+}
+
+function BlockerTriagePanel({
+  groups,
+  onOpenTab,
+}: {
+  groups: BulkReviewGroup[];
+  onOpenTab: (tab: QaTab) => void;
+}) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const activeGroups = groups.filter((group) => group.count > 0);
+  const totalRows = activeGroups.reduce((sum, group) => sum + group.count, 0);
+  const topReasons = blockerBreakdown(
+    activeGroups.flatMap((group) =>
+      group.blockers.flatMap((blocker) =>
+        Array.from({ length: blocker.count }, () => blocker.label),
+      ),
+    ),
+    5,
+  );
+  const copyTriage = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(blockerTriageText(groups));
+    setCopyReceipt("Blocker triage packet copied.");
+  };
+
+  return (
+    <SectionPanel
+      title="Blocker triage packet"
+      description="The current onboarding and billing blockers, grouped into the next cleanup pass."
+      icon={<AlertTriangle size={17} className="text-primary" />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton type="button" onClick={copyTriage}>
+            <Copy size={15} />
+            Copy triage
+          </SecondaryButton>
+          <StatusBadge tone={totalRows ? "warning" : "success"}>
+            {totalRows ? `${totalRows} rows` : "Clear"}
+          </StatusBadge>
+        </div>
+      }
+    >
+      <div className="grid gap-4 p-4">
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        ) : null}
+
+        {!activeGroups.length ? (
+          <div className="rounded-md border border-success/20 bg-success-soft px-4 py-3 text-sm text-success-strong">
+            No onboarding or billing blocker groups need action in this scan.
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge tone="warning">
+                {activeGroups.length} blocker groups
+              </StatusBadge>
+              {topReasons.map((reason) => (
+                <StatusBadge key={reason.label} tone="neutral">
+                  {reason.label}: {reason.count}
+                </StatusBadge>
+              ))}
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-2">
+              {activeGroups.map((group) => {
+                const body = (
+                  <>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-foreground">
+                          {group.title}
+                        </div>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {group.detail}
+                        </p>
+                      </div>
+                      <StatusBadge tone={group.tone}>{group.count}</StatusBadge>
+                    </div>
+                    {group.blockers.length ? (
+                      <div className="flex flex-wrap gap-1">
+                        {group.blockers.map((blocker) => (
+                          <span
+                            key={blocker.label}
+                            className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-leasium-micro font-semibold text-muted-foreground"
+                            title={blocker.label}
+                          >
+                            <span className="truncate">{blocker.label}</span>
+                            <span className="rounded-full bg-white px-1 text-[10px] text-foreground">
+                              {blocker.count}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {group.examples.length ? (
+                      <p className="text-xs text-muted-foreground">
+                        {group.examples.join(" / ")}
+                      </p>
+                    ) : null}
+                    <span className="text-xs font-semibold text-primary">
+                      {group.actionLabel}
+                    </span>
+                  </>
+                );
+                const className =
+                  "grid gap-3 rounded-md border border-border bg-white p-3 text-left shadow-leasiumXs transition hover:bg-muted/60";
+                if (group.href) {
+                  return (
+                    <Link
+                      key={group.id}
+                      href={group.href}
+                      className={className}
+                    >
+                      {body}
+                    </Link>
+                  );
+                }
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => group.tab && onOpenTab(group.tab)}
+                    className={className}
+                  >
+                    {body}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </SectionPanel>
+  );
 }
 
 function PortfolioCompletionPanel({
@@ -2812,13 +2984,19 @@ function PortfolioQaWorkspace() {
         </section>
 
         {!loading && !error ? (
-          <PortfolioCompletionPanel
-            items={completionItems}
-            enrichmentCandidates={enrichmentCandidates}
-            blockedFollowups={blockedFollowups}
-            bulkReviewGroups={bulkReviewGroups}
-            onOpenTab={setActiveTab}
-          />
+          <>
+            <PortfolioCompletionPanel
+              items={completionItems}
+              enrichmentCandidates={enrichmentCandidates}
+              blockedFollowups={blockedFollowups}
+              bulkReviewGroups={bulkReviewGroups}
+              onOpenTab={setActiveTab}
+            />
+            <BlockerTriagePanel
+              groups={bulkReviewGroups}
+              onOpenTab={setActiveTab}
+            />
+          </>
         ) : null}
 
         {loading && !error ? (
