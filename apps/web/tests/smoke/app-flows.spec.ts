@@ -903,6 +903,23 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expect(
     page.getByRole("button", { name: /Send ready notices 1/ }),
   ).toBeVisible();
+  const queueDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download queue CSV" }).click();
+  const queueDownload = await queueDownloadPromise;
+  expect(queueDownload.suggestedFilename()).toBe(
+    "operations-work-queue-review.csv",
+  );
+  const queueDownloadPath = await queueDownload.path();
+  expect(queueDownloadPath).not.toBeNull();
+  const queueCsv = await readFile(queueDownloadPath!, "utf8");
+  expect(queueCsv).toContain("Air conditioning fault");
+  expect(queueCsv).toContain("Bright Cafe arrears");
+  expect(queueCsv).toContain("Insurance certificate renewal");
+  expect(queueCsv).toContain("Temba van Jaarsveld");
+  expect(queueCsv).toContain("Notification ready");
+  expect(queueCsv).toContain(
+    "Review-only export: downloading this file does not send SendGrid or Twilio messages, send tenant owner or provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records.",
+  );
   await expect(page.getByText("Notice inbox")).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Air conditioning fault Ready/ }),

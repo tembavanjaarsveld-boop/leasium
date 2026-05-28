@@ -207,13 +207,21 @@ Last updated: 2026-05-28
   claim/submit/contact-change apply/dismiss, SendGrid/Twilio, Xero, document
   upload/delete, provider dispatch, provider refresh, or provider-history
   writes.
-- Sidecar recommendation for the next slice: add an Operations work queue review
-  CSV from already-loaded queue data in `/operations`. Include item kind, title,
-  property/tenant detail, due date, urgency chip, completion state, assignee,
-  notification status, follow-up/escalation cues, and guardrails. Do not call
-  notification sends/digests, maintenance/arrears update mutations, backend
-  export endpoints, Xero, invoice dispatch, payment reconciliation, onboarding
-  send/resend, billing draft generation, provider refresh, or provider history.
+- 2026-05-28 Operations continuation 3: `/operations` now has a local
+  `operations-work-queue-review.csv` download from the currently visible queue
+  rows. It exports item kind, title, property/tenant context, due date, urgency
+  chip, completion state, assignee, notification status, reminder/escalation
+  cues, and review-only guardrail text. It does not call notification
+  sends/digests, maintenance/arrears update mutations, backend export endpoints,
+  Xero, invoice dispatch, payment reconciliation, onboarding send/resend,
+  billing draft generation, provider refresh, or provider history.
+- Sidecar recommendation for the next slice: add a Statements local
+  dispatch-approval CSV on `/statements` from existing `StatementDispatchReviewRow`
+  data. Include owner, status, recipient/missing recipient, subject, invoice
+  count, property count, outstanding amount, approval runway summary, and a
+  guardrail line. Do not call owner PDF/PDF-pack downloads, comms dispatch,
+  invoice dispatch, Xero preview/apply/create-draft, payment reconciliation,
+  owner email paths, provider refresh, or provider-history endpoints.
 
 ## Takeover Priority
 

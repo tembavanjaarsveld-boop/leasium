@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock3,
+  Download,
   FileWarning,
   HandCoins,
   History,
@@ -78,6 +79,7 @@ import {
   type WorkAssignmentDigestRunRecord,
   type WorkAssignmentRenderedMessagePreviewRecord,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -93,6 +95,8 @@ const EMPTY_MEMBERS: SecurityMemberRecord[] = [];
 const WORK_ASSIGNMENT_KEY = "work_assignment";
 const WORK_ASSIGNMENT_TEMPLATE_KEY = "work_assignment_notification";
 const WORK_ASSIGNMENT_TEMPLATE_VERSION = "v1";
+const OPERATIONS_QUEUE_EXPORT_GUARDRAIL =
+  "Review-only export: downloading this file does not send SendGrid or Twilio messages, send tenant owner or provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records.";
 
 const tabs = [
   { id: "queue", label: "Queue", description: "All operational work" },
@@ -562,6 +566,10 @@ function sentenceLabel(value: string | null | undefined) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+function csvCell(value: string | number | null | undefined) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
 function propertyName(
   properties: PropertyRecord[],
   propertyId: string | null | undefined,
@@ -746,6 +754,85 @@ function queueMobileActionSummary(item: QueueItem) {
   return [queueAssignmentSummary(item), item.chip, notice]
     .filter(Boolean)
     .join(" - ");
+}
+
+function operationsQueueReviewCsv(items: QueueItem[]) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Kind",
+      "Title",
+      "Context",
+      "Due",
+      "Urgency",
+      "Completion",
+      "Assignee",
+      "Notification",
+      "Follow-up",
+      "Guardrail",
+    ],
+    ...items.map((item) => {
+      const assignment = isAssignableQueueItem(item)
+        ? workAssignment(item.record.metadata)
+        : null;
+      const noticeGroup = isAssignableQueueItem(item)
+        ? assignmentNoticeGroup(assignment)
+        : null;
+      const notificationStatus = assignment?.notificationStatus
+        ? `Notification ${label(assignment.notificationStatus)}`
+        : noticeGroup
+          ? `Notification ${assignmentNoticeLabel(noticeGroup)}`
+          : "No assignment notification";
+      const followUp = [
+        assignment?.reminderStatus
+          ? `Reminder ${label(assignment.reminderStatus)}`
+          : null,
+        assignment?.reminderDueOn
+          ? `due ${formatDate(assignment.reminderDueOn)}`
+          : null,
+        assignment?.escalationStatus
+          ? `Escalation ${label(assignment.escalationStatus)}`
+          : null,
+        assignment?.escalationDueOn
+          ? `due ${formatDate(assignment.escalationDueOn)}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("; ");
+
+      return [
+        queueKindLabel(item),
+        item.title,
+        item.description,
+        item.kind === "document_intake"
+          ? formatDateTime(item.dueDate)
+          : formatDate(item.dueDate),
+        item.chip,
+        item.completed ? "Complete" : "Open",
+        isAssignableQueueItem(item)
+          ? (assignment?.assignedName ??
+            assignment?.assignedEmail ??
+            (assignedUserId(item) ? "Assigned" : "Unassigned"))
+          : "",
+        notificationStatus,
+        followUp || "No follow-up due",
+        OPERATIONS_QUEUE_EXPORT_GUARDRAIL,
+      ];
+    }),
+    [
+      "Export guardrail",
+      "",
+      "",
+      "",
+      "",
+      "Review-only",
+      "",
+      "",
+      "",
+      OPERATIONS_QUEUE_EXPORT_GUARDRAIL,
+    ],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
 function maintenanceMobileActionSummary(workOrder: MaintenanceWorkOrderRecord) {
@@ -1901,6 +1988,14 @@ function OperationsWorkspace() {
       done: 0,
     } satisfies Record<AssignmentNoticeGroup, number>,
   );
+  const downloadQueueCsv = () => {
+    saveBlob(
+      new Blob([operationsQueueReviewCsv(filteredOpenQueueItems)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      "operations-work-queue-review.csv",
+    );
+  };
   const unassignedWorkCount = assignableOpenQueueItems.filter(
     (item) => !assignedUserId(item) && !assignedUserName(item),
   ).length;
@@ -2689,6 +2784,15 @@ function OperationsWorkspace() {
                 icon={<ClipboardList size={17} className="text-primary" />}
                 actions={
                   <div className="flex flex-wrap items-center justify-end gap-2">
+                    <SecondaryButton
+                      type="button"
+                      className="h-10 px-3"
+                      disabled={!selectedEntityId || operationsLoading}
+                      onClick={downloadQueueCsv}
+                    >
+                      <Download size={15} />
+                      Download queue CSV
+                    </SecondaryButton>
                     <SecondaryButton
                       type="button"
                       className="h-10 px-3"
