@@ -64,6 +64,19 @@ Last updated: 2026-05-28
   live blocker is attaching a custom lease file and explicitly clicking
   **Send lease pack** from the tenant detail page. Do not trigger this
   provider email without operator approval and the correct lease file.
+- 2026-05-28 Xero Monday readiness: commits through `cf2a2f9` are pushed to
+  `origin/main` and Vercel production deployment `dpl_HvcCaXcHErC2DQV6kuZnHktMWTnT`
+  is ready on `https://leasium.ai`. The API health check passes, production
+  OpenAPI includes `/api/v1/xero/connection-diagnostics`, and an unauthenticated
+  diagnostics request returns 401 instead of the earlier 404, proving the route
+  is live and protected. Chrome production verification found the signed-in
+  Clerk email was `tembavj@outlook.com`; production Neon has active accepted
+  operator access for `temba@skjcapital.com` on `SKJ Property Pty Ltd`, but no
+  `app_user` row for `tembavj@outlook.com`. The UI therefore shows
+  `Unknown Clerk user.` and no entity selector options. Do not start Xero OAuth
+  until Temba either signs in with `temba@skjcapital.com` or explicitly approves
+  adding/linking `tembavj@outlook.com` as an operator. Production currently has
+  no Xero connection row for `SKJ Property Pty Ltd`.
 
 ## Takeover Priority
 

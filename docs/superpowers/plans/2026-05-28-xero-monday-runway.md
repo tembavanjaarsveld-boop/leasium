@@ -507,6 +507,16 @@ git commit -m "Document Xero Monday verification"
 **Files:**
 - Modify only docs if new production facts are discovered.
 
+- [x] **Preflight: Confirm shipped route and current production blocker**
+
+Production frontend and API are deployed through `cf2a2f9`. The diagnostics
+route is live and protected: unauthenticated production requests now return
+401 `Missing Clerk bearer token.` instead of 404. Read-only Neon inspection
+confirmed `SKJ Property Pty Ltd` has no Xero connection yet. The live rehearsal
+is blocked before OAuth because Chrome is signed in as `tembavj@outlook.com`,
+while production has active accepted operator access for `temba@skjcapital.com`
+only. No production rows were mutated during this investigation.
+
 - [ ] **Step 1: Confirm production environment values**
 
 Verify in Render/Vercel dashboards:
