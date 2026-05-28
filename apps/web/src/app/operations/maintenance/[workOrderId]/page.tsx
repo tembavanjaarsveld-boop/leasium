@@ -1551,6 +1551,213 @@ function liveReviewChecklistText(cards: LiveReviewCard[]) {
   ].join("\n");
 }
 
+function completionReviewPacketSummary({
+  workOrder,
+  rows,
+  completionReadiness,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  rows: CompletionReviewRow[];
+  completionReadiness: ReturnType<typeof maintenanceCompletionReadiness>;
+}) {
+  const reviewedCount = rows.filter((row) => row.reviewedAt).length;
+  const pendingRows = rows.filter((row) => !row.reviewedAt);
+  const blockers = uniqueList([
+    workOrder.status !== "completed" ? "Job is not marked complete" : null,
+    rows.length === 0 ? "Completion copy has not been generated" : null,
+    ...completionReadiness.blockers,
+    ...pendingRows.map((row) => row.statusLabel),
+  ]);
+  const tone: Tone =
+    rows.length === 0 ? "neutral" : blockers.length ? "warning" : "success";
+  const statusLabel =
+    rows.length === 0
+      ? "No packet ready"
+      : blockers.length
+        ? `${blockers.length} open item${blockers.length === 1 ? "" : "s"}`
+        : "Packet reviewed";
+
+  return {
+    reviewedCount,
+    blockers,
+    tone,
+    statusLabel,
+  };
+}
+
+function completionReviewPacketText({
+  workOrder,
+  rows,
+  completionReadiness,
+  closeoutPhotoCount,
+  closeoutHistoryCount,
+  latestActivity,
+  linkedInvoiceDraft,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  rows: CompletionReviewRow[];
+  completionReadiness: ReturnType<typeof maintenanceCompletionReadiness>;
+  closeoutPhotoCount: number;
+  closeoutHistoryCount: number;
+  latestActivity: ActivityTimelineEntry | null;
+  linkedInvoiceDraft: InvoiceDraftRecord | null;
+}) {
+  const packet = completionReviewPacketSummary({
+    workOrder,
+    rows,
+    completionReadiness,
+  });
+  const recipientLines = rows.flatMap((row) =>
+    [
+      `${row.title}: ${row.reviewedAt ? `reviewed ${formatDateTime(row.reviewedAt)}` : row.statusLabel}`,
+      row.note ? `Review note: ${row.note}` : null,
+      row.body,
+      "",
+    ].filter((line): line is string => line !== null),
+  );
+
+  return [
+    "Operations completion review packet",
+    `Work order: ${workOrder.title}`,
+    `Status: ${label(workOrder.status)} - ${packet.statusLabel}`,
+    `Completed: ${formatDateTime(workOrder.completed_at)}`,
+    `Closeout evidence: ${closeoutHistoryCount} closeout event${closeoutHistoryCount === 1 ? "" : "s"}; ${closeoutPhotoCount} photo${closeoutPhotoCount === 1 ? "" : "s"}`,
+    `Billing handoff: ${
+      linkedInvoiceDraft
+        ? `${linkedInvoiceDraft.invoice_number ?? linkedInvoiceDraft.title} - ${label(linkedInvoiceDraft.status)}`
+        : "No linked invoice draft"
+    }`,
+    `Latest activity: ${
+      latestActivity
+        ? `${latestActivity.label} at ${formatDateTime(latestActivity.at)} (${latestActivity.audienceLabel})`
+        : "No activity recorded"
+    }`,
+    "",
+    "Open review items:",
+    ...(packet.blockers.length
+      ? packet.blockers.map((blocker) => `- ${blocker}`)
+      : ["- None"]),
+    "",
+    "Recipient copy:",
+    ...(recipientLines.length ? recipientLines : ["No recipient copy ready."]),
+    "Review-only: no owner, tenant, contractor, email, SMS, provider dispatch, or portal message has been sent from this packet.",
+  ].join("\n");
+}
+
+function CompletionReviewPacketPanel({
+  workOrder,
+  rows,
+  completionReadiness,
+  closeoutPhotoCount,
+  closeoutHistoryCount,
+  latestActivity,
+  linkedInvoiceDraft,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  rows: CompletionReviewRow[];
+  completionReadiness: ReturnType<typeof maintenanceCompletionReadiness>;
+  closeoutPhotoCount: number;
+  closeoutHistoryCount: number;
+  latestActivity: ActivityTimelineEntry | null;
+  linkedInvoiceDraft: InvoiceDraftRecord | null;
+}) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const packet = completionReviewPacketSummary({
+    workOrder,
+    rows,
+    completionReadiness,
+  });
+  const copyPacket = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(
+      completionReviewPacketText({
+        workOrder,
+        rows,
+        completionReadiness,
+        closeoutPhotoCount,
+        closeoutHistoryCount,
+        latestActivity,
+        linkedInvoiceDraft,
+      }),
+    );
+    setCopyReceipt("Completion review packet copied.");
+  };
+
+  return (
+    <div className="grid gap-3 rounded-md border border-border bg-white px-3 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-1">
+          <div className="font-semibold text-foreground">
+            Completion review packet
+          </div>
+          <div className="text-muted-foreground">
+            Operator-ready closeout summary before external copy is sent.
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone={packet.tone}>{packet.statusLabel}</StatusBadge>
+          <SecondaryButton
+            type="button"
+            className="min-h-9 rounded-lg px-3 text-xs"
+            onClick={copyPacket}
+          >
+            <ClipboardCheck size={14} />
+            Copy packet
+          </SecondaryButton>
+        </div>
+      </div>
+      {copyReceipt ? (
+        <p className="text-xs font-medium text-success">{copyReceipt}</p>
+      ) : null}
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className="rounded-md border border-border bg-muted/30 px-2 py-2">
+          <div className="font-semibold text-foreground">
+            Recipient review
+          </div>
+          <div className="text-muted-foreground">
+            {packet.reviewedCount}/{rows.length} reviewed
+          </div>
+        </div>
+        <div className="rounded-md border border-border bg-muted/30 px-2 py-2">
+          <div className="font-semibold text-foreground">Evidence</div>
+          <div className="text-muted-foreground">
+            {closeoutHistoryCount} event
+            {closeoutHistoryCount === 1 ? "" : "s"} · {closeoutPhotoCount} photo
+            {closeoutPhotoCount === 1 ? "" : "s"}
+          </div>
+        </div>
+        <div className="rounded-md border border-border bg-muted/30 px-2 py-2">
+          <div className="font-semibold text-foreground">Latest activity</div>
+          <div className="text-muted-foreground">
+            {latestActivity
+              ? `${latestActivity.label} · ${latestActivity.audienceLabel}`
+              : "No activity recorded"}
+          </div>
+        </div>
+      </div>
+      {packet.blockers.length ? (
+        <div className="grid gap-1 rounded-md border border-warning/20 bg-warning-soft px-2 py-2">
+          <div className="font-semibold text-warning-strong">
+            Open review items
+          </div>
+          {packet.blockers.map((blocker) => (
+            <div key={blocker} className="text-muted-foreground">
+              {blocker}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-md border border-success/20 bg-success-soft px-2 py-2 font-medium text-success-strong">
+          Recipient copy and closeout evidence have been reviewed.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LiveReviewStrip({ cards }: { cards: LiveReviewCard[] }) {
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
   const copyChecklist = async () => {
@@ -3407,6 +3614,15 @@ function MaintenanceDetailRoute() {
                         <div className="font-semibold text-foreground">
                           Completion communications
                         </div>
+                        <CompletionReviewPacketPanel
+                          workOrder={workOrder}
+                          rows={completionReviewRows}
+                          completionReadiness={completionReadiness}
+                          closeoutPhotoCount={closeoutPhotos.length}
+                          closeoutHistoryCount={closeoutHistory.length}
+                          latestActivity={timeline[0] ?? null}
+                          linkedInvoiceDraft={linkedInvoiceDraft}
+                        />
                         {completionReviewRows.map((row) => (
                           <div
                             key={row.audience}
