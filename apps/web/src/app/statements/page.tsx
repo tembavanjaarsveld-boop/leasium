@@ -502,6 +502,96 @@ function financeSignoffPacketText({
   ].join("\n");
 }
 
+function financeSignoffPacketCsv({
+  month,
+  readiness,
+  checklist,
+  exceptions,
+  dispatchRows,
+}: {
+  month: string;
+  readiness: StatementPackReadiness;
+  checklist: FinanceChecklist;
+  exceptions: StatementExceptionRow[];
+  dispatchRows: StatementDispatchReviewRow[];
+}) {
+  const status = financeSignoffStatus({
+    readiness,
+    checklist,
+    exceptions,
+    dispatchRows,
+  });
+  const approvalSteps = buildDispatchApprovalSteps(dispatchRows);
+  return [
+    ["Section", "Item", "Status", "Metric", "Detail"].map(csvCell).join(","),
+    [
+      "Signoff",
+      formatMonthLabel(month),
+      status.label,
+      "",
+      status.detail,
+    ]
+      .map(csvCell)
+      .join(","),
+    [
+      "Statement pack",
+      readiness.title,
+      statementPackLabel(readiness.status),
+      `${readiness.ownerCount} owners / ${readiness.statementInvoiceCount} statement invoices / ${formatMoney(readiness.outstandingCents)} outstanding`,
+      readiness.detail,
+    ]
+      .map(csvCell)
+      .join(","),
+    [
+      "Finance checklist",
+      checklist.title,
+      checklist.status,
+      `${checklist.completedCount} complete / ${checklist.reviewCount} review / ${checklist.blockedCount} blocked / ${checklist.lockedCount} locked`,
+      checklist.detail,
+    ]
+      .map(csvCell)
+      .join(","),
+    ...checklist.items.map((item) =>
+      [
+        "Checklist item",
+        item.title,
+        checklistStatusLabel(item.status),
+        item.metric,
+        item.detail,
+      ]
+        .map(csvCell)
+        .join(","),
+    ),
+    ...(exceptions.length
+      ? exceptions.map((row) =>
+          [
+            "Exception",
+            row.ownerIdentity,
+            statementExceptionKindLabel(row.kind),
+            row.metric,
+            row.detail,
+          ]
+            .map(csvCell)
+            .join(","),
+        )
+      : [["Exception", "None", "Clear", "", ""].map(csvCell).join(",")]),
+    ...approvalSteps.map((step) =>
+      ["Dispatch approval", step.title, step.title, step.metric, step.detail]
+        .map(csvCell)
+        .join(","),
+    ),
+    [
+      "Guardrail",
+      "Review-only",
+      "",
+      "",
+      "This packet does not send owner email, attach PDFs to outbound messages, or update provider delivery history.",
+    ]
+      .map(csvCell)
+      .join(","),
+  ].join("\n");
+}
+
 function buildDispatchReviewRows(
   owners: OwnerStatementRecord[],
   month: string,
@@ -2074,6 +2164,25 @@ function FinanceSignoffPanel({
     );
     setCopyReceipt("Month-end signoff packet copied.");
   };
+  const downloadSignoff = () => {
+    saveBlob(
+      new Blob(
+        [
+          financeSignoffPacketCsv({
+            month,
+            readiness,
+            checklist,
+            exceptions,
+            dispatchRows,
+          }),
+        ],
+        {
+          type: "text/csv;charset=utf-8",
+        },
+      ),
+      `owner-statement-signoff-${month}.csv`,
+    );
+  };
 
   return (
     <SectionPanel
@@ -2089,6 +2198,14 @@ function FinanceSignoffPanel({
           >
             <Copy size={15} />
             Copy signoff
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            onClick={downloadSignoff}
+            disabled={loading}
+          >
+            <Download size={15} />
+            Download signoff CSV
           </SecondaryButton>
           <StatusBadge tone={loading ? "neutral" : status.tone}>
             {loading ? "Checking" : status.label}

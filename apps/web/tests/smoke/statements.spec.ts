@@ -14,6 +14,15 @@ test("owner statement preview exposes invoice-level evidence", async ({
   await expect(
     page.getByRole("heading", { name: "Statement preview" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Month-end signoff packet" }),
+  ).toBeVisible();
+  const signoffDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download signoff CSV" }).click();
+  const signoffDownload = await signoffDownloadPromise;
+  expect(signoffDownload.suggestedFilename()).toBe(
+    "owner-statement-signoff-2026-05.csv",
+  );
 
   const evidence = page.getByRole("region", { name: "Invoice evidence" });
   await expect(evidence).toBeVisible();

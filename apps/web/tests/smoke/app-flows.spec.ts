@@ -687,7 +687,9 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   await expect(
     page.getByRole("heading", { name: "Cleanup readiness report" }),
   ).toBeVisible();
-  await expect(page.getByText("Public enrichment candidates")).toBeVisible();
+  await expect(
+    page.getByText("AI-assisted enrichment candidates"),
+  ).toBeVisible();
   await expect(page.getByText("Blocked follow-ups")).toBeVisible();
   await expect(page.getByText("Register cleanup still blocked")).toBeVisible();
   await expect(page.getByText("Final report")).toBeVisible();
@@ -695,8 +697,16 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
     has: page.getByRole("heading", { name: "Cleanup readiness report" }),
   });
   await expect(
-    readinessPanel.getByText("Eagle Street Office is missing owner ABN"),
+    readinessPanel.getByText("Eagle Street Office is missing owner ABN").first(),
   ).toBeVisible();
+  const cleanupReportDownloadPromise = page.waitForEvent("download");
+  await readinessPanel
+    .getByRole("button", { name: "Download report CSV" })
+    .click();
+  const cleanupReportDownload = await cleanupReportDownloadPromise;
+  expect(cleanupReportDownload.suggestedFilename()).toBe(
+    "portfolio-qa-cleanup-report.csv",
+  );
 
   const ownerPanel = page.locator("section").filter({
     has: page.getByRole("heading", {

@@ -106,6 +106,10 @@ Last updated: 2026-05-28
   be downloaded as a selected-owner CSV from the preview. Both are local UI
   conveniences only; no Xero, SendGrid, payment, owner dispatch, or provider
   history mutation is triggered.
+- 2026-05-28 handoff export continuation: `/statements` now has a local
+  month-end signoff CSV download, and Portfolio QA has a local cleanup report
+  CSV download beside the existing copyable report. Both reuse already-loaded
+  review data and do not call providers or mutate records.
 
 ## Takeover Priority
 

@@ -282,6 +282,10 @@ Status: pending Remba review. Settings now has a local Xero exception queue near
 
 2026-05-28 follow-up: Owner statements now expose finance checklist CSV download, invoice-level evidence in the owner statement API/PDF, and an `INVOICE-EVIDENCE-{month}.csv` inside accountant packs. This keeps finance review traceable from owner totals back to approved invoices, local payment state, Xero invoice IDs, and reconciliation references without sending owner email, posting to Xero, reconciling payments, or writing provider history. Remba/accountant review should focus on evidence density and whether invoice lines belong inline or in a disclosure.
 
+2026-05-28 follow-up: Owner statements now also expose a local month-end signoff CSV from the signoff packet, summarising pack status, checklist rows, exceptions, dispatch approval gates, and guardrails. This remains review-only and should be reviewed for accountant handoff wording before owner dispatch is wired.
+
+2026-05-28 follow-up: Portfolio QA cleanup readiness now has a local `Download report CSV` action beside `Copy report`, covering completion states, reporting gates, active bulk groups, next actions, enrichment candidates, and blocked follow-ups. Remba/SKJ review should check whether the CSV language is plain enough for a non-technical cleanup handoff.
+
 ## Xero Chart/Tax Validation Preview
 
 Status: pending Remba review. Provider-backed chart/tax validation preview is built behind `/api/v1/xero/chart-tax/validate-preview/{entity_id}` and returns checked-rule totals, per-charge-rule validation results, blockers, provider chart/tax context, and guardrails. Keep the surface preview-only and review-first: operators should see whether local account codes and tax types match provider settings before future invoice posting approvals exist, with explicit copy that no invoice posting, tenant email, or payment reconciliation is run.

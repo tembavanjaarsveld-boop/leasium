@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Copy,
+  Download,
   FileText,
   History,
   Loader2,
@@ -65,6 +66,7 @@ import {
   type RentRollRow,
   type TenantOnboardingRecord,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -1910,6 +1912,150 @@ function cleanupReportText({
   return lines.join("\n");
 }
 
+function csvCell(value: string | number | null | undefined) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function cleanupReportCsv({
+  completion,
+  verdict,
+  itemStatuses,
+  reportingGates,
+  activeBulkGroups,
+  nextActions,
+  enrichmentCandidates,
+  blockedFollowups,
+}: {
+  completion: number;
+  verdict: ReadinessVerdict;
+  itemStatuses: Array<{
+    item: QaCompletionItem;
+    percent: number;
+    status: CompletionReportStatus;
+  }>;
+  reportingGates: CleanupReportingGate[];
+  activeBulkGroups: BulkReviewGroup[];
+  nextActions: CleanupNextAction[];
+  enrichmentCandidates: EnrichmentCandidate[];
+  blockedFollowups: BlockedFollowup[];
+}) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    ["Category", "Item", "Status", "Metric", "Detail", "Action", "Extra"],
+    [
+      "Summary",
+      verdict.title,
+      "Final report",
+      `${completion}% checks ready`,
+      verdict.detail,
+      "Copy report",
+      "",
+    ],
+    ...itemStatuses.map(({ item, percent, status }) => [
+      "Completion state",
+      item.label,
+      status,
+      `${percent}% ready`,
+      item.detail,
+      "Open section",
+      item.tab,
+    ]),
+    ...reportingGates.map((gate) => [
+      "Reporting gate",
+      gate.label,
+      gate.status,
+      "",
+      gate.detail,
+      "",
+      gate.tone,
+    ]),
+    ...nextActions.map((action) => [
+      "Next action",
+      action.title,
+      action.tone,
+      "",
+      action.detail,
+      action.actionLabel,
+      action.tab ?? action.href ?? "",
+    ]),
+    ...(activeBulkGroups.length
+      ? activeBulkGroups.map((group) => [
+          "Active bulk group",
+          group.title,
+          group.tone,
+          `${group.count} rows`,
+          group.detail,
+          group.actionLabel,
+          [
+            group.blockers.length
+              ? `Top blockers: ${group.blockers
+                  .map((blocker) => `${blocker.label} (${blocker.count})`)
+                  .join("; ")}`
+              : null,
+            group.examples.length
+              ? `Examples: ${group.examples.join(" / ")}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" | "),
+        ])
+      : [
+          [
+            "Active bulk group",
+            "Clear",
+            "success",
+            "0 rows",
+            "No onboarding or billing bulk-review groups need action.",
+            "",
+            "",
+          ],
+        ]),
+    ...(enrichmentCandidates.length
+      ? enrichmentCandidates.map((candidate) => [
+          "Enrichment candidate",
+          candidate.title,
+          candidate.priority,
+          `${candidate.fields.length} fields`,
+          `${candidate.impact} - ${candidate.reason}`,
+          candidate.actionLabel,
+          `${candidate.kind}: ${candidate.fields.join("; ")}`,
+        ])
+      : [
+          [
+            "Enrichment candidate",
+            "Clear",
+            "success",
+            "0 queued",
+            "No obvious enrichment candidates remain.",
+            "",
+            "",
+          ],
+        ]),
+    ...(blockedFollowups.length
+      ? blockedFollowups.map((followup) => [
+          "Blocked follow-up",
+          followup.title,
+          followup.tone,
+          "",
+          followup.detail,
+          "Open follow-up",
+          followup.tab,
+        ])
+      : [
+          [
+            "Blocked follow-up",
+            "Clear",
+            "success",
+            "0 open",
+            "No blocked cleanup rows remain in the current scan.",
+            "",
+            "",
+          ],
+        ]),
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 function cleanupNextActions({
   itemStatuses,
   activeBulkGroups,
@@ -2317,6 +2463,27 @@ function PortfolioCompletionPanel({
     );
     setReportReceipt("Cleanup report copied.");
   };
+  const downloadReportCsv = () => {
+    saveBlob(
+      new Blob(
+        [
+          cleanupReportCsv({
+            completion,
+            verdict,
+            itemStatuses,
+            reportingGates,
+            activeBulkGroups,
+            nextActions,
+            enrichmentCandidates,
+            blockedFollowups,
+          }),
+        ],
+        { type: "text/csv;charset=utf-8" },
+      ),
+      "portfolio-qa-cleanup-report.csv",
+    );
+    setReportReceipt("Cleanup report CSV downloaded.");
+  };
   const copyEnrichmentQueue = async () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) {
       setEnrichmentReceipt("Copy unavailable in this browser.");
@@ -2338,6 +2505,10 @@ function PortfolioCompletionPanel({
           <SecondaryButton type="button" onClick={copyReport}>
             <Copy size={15} />
             Copy report
+          </SecondaryButton>
+          <SecondaryButton type="button" onClick={downloadReportCsv}>
+            <Download size={15} />
+            Download report CSV
           </SecondaryButton>
           <StatusBadge
             tone={
