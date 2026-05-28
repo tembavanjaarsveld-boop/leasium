@@ -17,6 +17,7 @@ import {
   Building2,
   CheckCircle2,
   ClipboardCheck,
+  Copy,
   Download,
   FileText,
   ListChecks,
@@ -262,6 +263,134 @@ function financeChecklistText(checklist: FinanceChecklist) {
     ),
     "",
     "Review-only: owner dispatch remains locked until the explicit approval workflow is wired.",
+  ].join("\n");
+}
+
+function financeSignoffStatus({
+  readiness,
+  checklist,
+  exceptions,
+  dispatchRows,
+}: {
+  readiness: StatementPackReadiness;
+  checklist: FinanceChecklist;
+  exceptions: StatementExceptionRow[];
+  dispatchRows: StatementDispatchReviewRow[];
+}) {
+  const readyDispatchCount = dispatchRows.filter(
+    (row) => row.status === "ready",
+  ).length;
+  const missingRecipientCount = exceptions.filter(
+    (row) => row.kind === "missing_recipient",
+  ).length;
+  const paymentReviewCount = exceptions.filter(
+    (row) => row.kind === "payment_review",
+  ).length;
+  const blocked =
+    readiness.status === "blocked" ||
+    checklist.blockedCount > 0 ||
+    missingRecipientCount > 0;
+  const review =
+    readiness.status === "unpaid" ||
+    checklist.reviewCount > 0 ||
+    paymentReviewCount > 0;
+  const locked =
+    readiness.statementInvoiceCount === 0 || checklist.lockedCount > 0;
+
+  if (blocked) {
+    return {
+      label: "Blocked",
+      tone: "danger" as const,
+      detail:
+        "Clear blocked finance checks or missing owner recipients before month-end signoff.",
+      readyDispatchCount,
+      missingRecipientCount,
+      paymentReviewCount,
+    };
+  }
+  if (review) {
+    return {
+      label: "Review",
+      tone: "warning" as const,
+      detail:
+        "Finance can review the statement pack, but payment or accounting checks still need signoff.",
+      readyDispatchCount,
+      missingRecipientCount,
+      paymentReviewCount,
+    };
+  }
+  if (locked) {
+    return {
+      label: "Locked",
+      tone: "neutral" as const,
+      detail:
+        "Approve this month’s invoices before finance can complete the owner statement signoff.",
+      readyDispatchCount,
+      missingRecipientCount,
+      paymentReviewCount,
+    };
+  }
+  return {
+    label: "Ready",
+    tone: "success" as const,
+    detail:
+      "The review pack is ready for finance signoff. Owner dispatch remains a separate approval workflow.",
+    readyDispatchCount,
+    missingRecipientCount,
+    paymentReviewCount,
+  };
+}
+
+function financeSignoffPacketText({
+  month,
+  readiness,
+  checklist,
+  exceptions,
+  dispatchRows,
+}: {
+  month: string;
+  readiness: StatementPackReadiness;
+  checklist: FinanceChecklist;
+  exceptions: StatementExceptionRow[];
+  dispatchRows: StatementDispatchReviewRow[];
+}) {
+  const status = financeSignoffStatus({
+    readiness,
+    checklist,
+    exceptions,
+    dispatchRows,
+  });
+  const approvalSteps = buildDispatchApprovalSteps(dispatchRows);
+  return [
+    "Owner statements month-end signoff",
+    `Month: ${formatMonthLabel(month)}`,
+    `Status: ${status.label} - ${status.detail}`,
+    "",
+    "Statement pack:",
+    `- ${readiness.title}: ${readiness.detail}`,
+    `- ${readiness.ownerCount} owners / ${readiness.statementInvoiceCount} statement invoices / ${formatMoney(readiness.outstandingCents)} outstanding`,
+    "",
+    "Finance checklist:",
+    `- ${checklist.completedCount} complete / ${checklist.reviewCount} review / ${checklist.blockedCount} blocked / ${checklist.lockedCount} locked`,
+    ...checklist.items.map(
+      (item) =>
+        `- ${item.title}: ${checklistStatusLabel(item.status)} (${item.metric})`,
+    ),
+    "",
+    "Exceptions:",
+    ...(exceptions.length
+      ? exceptions.map(
+          (row) =>
+            `- ${row.ownerIdentity}: ${statementExceptionKindLabel(row.kind)} - ${row.metric}`,
+        )
+      : ["- None"]),
+    "",
+    "Dispatch approval runway:",
+    ...approvalSteps.map(
+      (step) => `- ${step.title}: ${step.metric} - ${step.detail}`,
+    ),
+    "",
+    "Review-only: this packet does not send owner email, attach PDFs to outbound messages, or update provider delivery history.",
   ].join("\n");
 }
 
@@ -931,6 +1060,19 @@ function StatementsContent() {
 
         <FinanceChecklistPanel
           checklist={financeChecklist}
+          loading={
+            statementsQuery.isLoading ||
+            invoiceDraftsQuery.isLoading ||
+            xeroStatusQuery.isLoading
+          }
+        />
+
+        <FinanceSignoffPanel
+          readiness={statementReadiness}
+          checklist={financeChecklist}
+          exceptions={statementExceptionRows}
+          dispatchRows={dispatchReviewRows}
+          month={month}
           loading={
             statementsQuery.isLoading ||
             invoiceDraftsQuery.isLoading ||
@@ -1636,6 +1778,160 @@ function FinanceChecklistPanel({
               </div>
             );
           })}
+        </div>
+      </div>
+    </SectionPanel>
+  );
+}
+
+function FinanceSignoffPanel({
+  readiness,
+  checklist,
+  exceptions,
+  dispatchRows,
+  month,
+  loading,
+}: {
+  readiness: StatementPackReadiness;
+  checklist: FinanceChecklist;
+  exceptions: StatementExceptionRow[];
+  dispatchRows: StatementDispatchReviewRow[];
+  month: string;
+  loading: boolean;
+}) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const status = financeSignoffStatus({
+    readiness,
+    checklist,
+    exceptions,
+    dispatchRows,
+  });
+  const copySignoff = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(
+      financeSignoffPacketText({
+        month,
+        readiness,
+        checklist,
+        exceptions,
+        dispatchRows,
+      }),
+    );
+    setCopyReceipt("Month-end signoff packet copied.");
+  };
+
+  return (
+    <SectionPanel
+      title="Month-end signoff packet"
+      description="One finance handoff for statement readiness, checklist state, exceptions, and dispatch approval gates."
+      icon={<ClipboardCheck size={17} className="text-primary" />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton
+            type="button"
+            onClick={copySignoff}
+            disabled={loading}
+          >
+            <Copy size={15} />
+            Copy signoff
+          </SecondaryButton>
+          <StatusBadge tone={loading ? "neutral" : status.tone}>
+            {loading ? "Checking" : status.label}
+          </StatusBadge>
+        </div>
+      }
+    >
+      <div className="grid gap-4 p-4">
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        ) : null}
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div>
+            <div className="text-sm font-semibold text-foreground">
+              {loading ? "Checking statement signoff" : status.detail}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Month {month} remains review-only until explicit owner dispatch is
+              wired.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+            <StatusBadge tone="primary">
+              {readiness.ownerCount} owner
+              {readiness.ownerCount === 1 ? "" : "s"}
+            </StatusBadge>
+            <StatusBadge
+              tone={status.readyDispatchCount ? "success" : "neutral"}
+            >
+              {status.readyDispatchCount} dispatch-ready
+            </StatusBadge>
+            <StatusBadge
+              tone={status.missingRecipientCount ? "danger" : "success"}
+            >
+              {status.missingRecipientCount} missing recipient
+            </StatusBadge>
+            <StatusBadge
+              tone={status.paymentReviewCount ? "warning" : "success"}
+            >
+              {status.paymentReviewCount} payment review
+            </StatusBadge>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="rounded-md border border-border bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-muted-foreground">
+              Pack
+            </div>
+            <div className="mt-1 font-semibold text-foreground">
+              {statementPackLabel(readiness.status)}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {readiness.statementInvoiceCount} statement invoice
+              {readiness.statementInvoiceCount === 1 ? "" : "s"}
+            </div>
+          </div>
+          <div className="rounded-md border border-border bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-muted-foreground">
+              Checklist
+            </div>
+            <div className="mt-1 font-semibold text-foreground">
+              {checklist.status === "ready"
+                ? "Ready"
+                : checklist.status === "blocked"
+                  ? "Blocked"
+                  : "Review"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {checklist.completedCount} complete · {checklist.reviewCount}{" "}
+              review
+            </div>
+          </div>
+          <div className="rounded-md border border-border bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-muted-foreground">
+              Exceptions
+            </div>
+            <div className="mt-1 font-semibold text-foreground">
+              {exceptions.length ? `${exceptions.length} open` : "Clear"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              Recipient and payment cleanup
+            </div>
+          </div>
+          <div className="rounded-md border border-border bg-white p-3">
+            <div className="text-xs font-semibold uppercase text-muted-foreground">
+              Dispatch
+            </div>
+            <div className="mt-1 font-semibold text-foreground">
+              {status.readyDispatchCount} ready
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              Approval queue only
+            </div>
+          </div>
         </div>
       </div>
     </SectionPanel>
