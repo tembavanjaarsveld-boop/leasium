@@ -136,6 +136,17 @@ type CompletionReviewRow = {
   placeholder: string;
 };
 
+type ForwardingDraftTarget = "contractor" | "tenant";
+
+type ForwardingDraftRow = {
+  target: ForwardingDraftTarget;
+  title: string;
+  sourceLabel: string;
+  statusLabel: string;
+  detail: string;
+  body: string | null;
+};
+
 type LiveReviewCard = {
   id: string;
   title: string;
@@ -190,6 +201,16 @@ const completionCommunicationCopyReceipts: Record<
   owner: "Owner update copied. No message sent.",
   tenant: "Tenant update copied. No message sent.",
   contractor: "Contractor follow-up copied. No message sent.",
+};
+
+const forwardingDraftCopyLabels: Record<ForwardingDraftTarget, string> = {
+  contractor: "Copy contractor forward",
+  tenant: "Copy tenant forward",
+};
+
+const forwardingDraftCopyReceipts: Record<ForwardingDraftTarget, string> = {
+  contractor: "Contractor forward copied. No message sent.",
+  tenant: "Tenant forward copied. No message sent.",
 };
 
 function label(value: string | null | undefined) {
@@ -1731,6 +1752,71 @@ function activityTone(status: string | null, audience: ActivityAudience): Tone {
   return activityAudienceTone(audience);
 }
 
+function latestActivityForAudience(
+  timeline: ActivityTimelineEntry[],
+  audience: ActivityAudience,
+) {
+  return timeline
+    .filter((entry) => entry.audience === audience)
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))[0];
+}
+
+function maintenanceForwardingDraftRows({
+  workOrder,
+  tenantLabel,
+  timeline,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  tenantLabel: string;
+  timeline: ActivityTimelineEntry[];
+}): ForwardingDraftRow[] {
+  const contractorLabel = workOrder.contractor_name ?? "the contractor";
+  const tenantActivity = latestActivityForAudience(timeline, "tenant");
+  const contractorActivity = latestActivityForAudience(timeline, "contractor");
+  return [
+    {
+      target: "contractor",
+      title: "Tenant to contractor",
+      sourceLabel: "Tenant visible",
+      statusLabel: tenantActivity ? "Draft ready" : "Waiting for tenant note",
+      detail: tenantActivity
+        ? "Draft from latest tenant-visible activity for the contractor."
+        : "Add or receive a tenant-visible update before drafting the contractor forward.",
+      body: tenantActivity
+        ? [
+            `Hi ${contractorLabel},`,
+            "",
+            `Please note the latest tenant-facing update for ${workOrder.title}:`,
+            tenantActivity.detail,
+            "",
+            "Please confirm the next action or timing before we send anything further.",
+          ].join("\n")
+        : null,
+    },
+    {
+      target: "tenant",
+      title: "Contractor to tenant",
+      sourceLabel: "Contractor visible",
+      statusLabel: contractorActivity
+        ? "Draft ready"
+        : "Waiting for contractor note",
+      detail: contractorActivity
+        ? "Draft from latest contractor-visible activity for the tenant."
+        : "Add a contractor-visible update before drafting the tenant forward.",
+      body: contractorActivity
+        ? [
+            `Hi ${tenantLabel},`,
+            "",
+            `Update from ${contractorLabel} on ${workOrder.title}:`,
+            contractorActivity.detail,
+            "",
+            "We will keep this with Operations until the message is reviewed.",
+          ].join("\n")
+        : null,
+    },
+  ];
+}
+
 function liveReviewChecklistText(cards: LiveReviewCard[]) {
   return [
     "Operations live review checklist",
@@ -2325,6 +2411,9 @@ function MaintenanceDetailRoute() {
     completionCommunicationCopyReceipt,
     setCompletionCommunicationCopyReceipt,
   ] = useState<Partial<Record<CompletionReviewAudience, string>>>({});
+  const [forwardingDraftCopyReceipt, setForwardingDraftCopyReceipt] = useState<
+    Partial<Record<ForwardingDraftTarget, string>>
+  >({});
   const [commentBody, setCommentBody] = useState("");
   const [commentVisibility, setCommentVisibility] = useState<
     "internal" | "contractor" | "tenant"
@@ -2452,6 +2541,13 @@ function MaintenanceDetailRoute() {
     : [];
   const reopenHistory = workOrder ? reopenHistoryRows(workOrder) : [];
   const timeline = workOrder ? activityRows(workOrder) : [];
+  const forwardingDraftRows = workOrder
+    ? maintenanceForwardingDraftRows({
+        workOrder,
+        tenantLabel: tenantName(tenants, workOrder.tenant_id),
+        timeline,
+      })
+    : [];
   const linkedInvoiceDraft = workOrder?.invoice_draft_id
     ? (invoiceDrafts.find((draft) => draft.id === workOrder.invoice_draft_id) ??
       null)
@@ -3060,6 +3156,19 @@ function MaintenanceDetailRoute() {
       ...current,
       [row.audience]: copied
         ? completionCommunicationCopyReceipts[row.audience]
+        : "Copy unavailable in this browser.",
+    }));
+  };
+
+  const copyForwardingDraft = async (row: ForwardingDraftRow) => {
+    if (!row.body) {
+      return;
+    }
+    const copied = await copyTextToClipboard(row.body);
+    setForwardingDraftCopyReceipt((current) => ({
+      ...current,
+      [row.target]: copied
+        ? forwardingDraftCopyReceipts[row.target]
         : "Copy unavailable in this browser.",
     }));
   };
@@ -4443,6 +4552,64 @@ function MaintenanceDetailRoute() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  ) : null}
+                  {forwardingDraftRows.length ? (
+                    <div className="grid gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-semibold text-foreground">
+                          Forwarding drafts
+                        </div>
+                        <StatusBadge tone="primary">Review-only</StatusBadge>
+                      </div>
+                      <div className="grid gap-2 lg:grid-cols-2">
+                        {forwardingDraftRows.map((row) => (
+                          <div
+                            key={row.target}
+                            className="grid gap-2 rounded-md border border-border bg-white px-3 py-3"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-foreground">
+                                {row.title}
+                              </span>
+                              <StatusBadge
+                                tone={row.body ? "success" : "warning"}
+                              >
+                                {row.statusLabel}
+                              </StatusBadge>
+                              <StatusBadge tone="neutral">
+                                {row.sourceLabel}
+                              </StatusBadge>
+                            </div>
+                            <div className="text-muted-foreground">
+                              {row.detail}
+                            </div>
+                            {row.body ? (
+                              <div className="whitespace-pre-line rounded-md border border-border bg-muted/30 px-3 py-2 text-muted-foreground">
+                                {row.body}
+                              </div>
+                            ) : null}
+                            {forwardingDraftCopyReceipt[row.target] ? (
+                              <p className="text-xs font-medium text-success">
+                                {forwardingDraftCopyReceipt[row.target]}
+                              </p>
+                            ) : null}
+                            <SecondaryButton
+                              type="button"
+                              className="w-fit"
+                              disabled={!row.body}
+                              onClick={() => copyForwardingDraft(row)}
+                            >
+                              <ClipboardCheck size={15} />
+                              {forwardingDraftCopyLabels[row.target]}
+                            </SecondaryButton>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Review-only; copying these drafts does not send email,
+                        SMS, portal messages, or provider updates.
+                      </div>
                     </div>
                   ) : null}
                   <form className="grid gap-3" onSubmit={handleCommentSubmit}>

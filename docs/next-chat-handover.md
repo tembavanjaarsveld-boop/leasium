@@ -116,6 +116,17 @@ Last updated: 2026-05-28
   already-rendered closeout text only and show a "No message sent" receipt;
   they do not call SendGrid, Twilio, portal messaging, Xero, or provider
   history endpoints.
+- 2026-05-28 Operations continuation 2: maintenance Activity now includes
+  local forwarding drafts for tenant-to-contractor and contractor-to-tenant
+  updates, derived from the latest visible timeline row for each side. The
+  copy buttons are local only and do not send email/SMS, write portal messages,
+  touch providers, or mutate work-order history.
+- Sidecar recommendation for the next slice: harden owner statement PDF
+  readability for long property names, invoice references, Xero IDs, and
+  evidence rows in `apps/api/routers/owners.py`; extend
+  `tests/integration/test_owners_api.py`. Keep it strictly on review-only PDF
+  GET endpoints with no Xero, SendGrid, dispatch, delivery history, or payment
+  reconciliation mutation.
 
 ## Takeover Priority
 

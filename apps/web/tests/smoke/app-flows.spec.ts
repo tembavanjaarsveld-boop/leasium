@@ -1396,9 +1396,41 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await page.getByLabel("Comment visibility").selectOption("tenant");
   await page.getByRole("button", { name: "Add comment" }).click();
   await expect(
-    page.getByText("Owner approved attendance tomorrow morning."),
+    page.getByText("Owner approved attendance tomorrow morning.", {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(page.getByText("Tenant visible").last()).toBeVisible();
+  await expect(page.getByText("Forwarding drafts")).toBeVisible();
+  await expect(page.getByText("Tenant to contractor")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Draft from latest tenant-visible activity for the contractor.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Copy contractor forward" }).click();
+  await expect(
+    page.getByText("Contractor forward copied. No message sent."),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Comment" })
+    .fill("Contractor confirmed attendance tomorrow morning.");
+  await page.getByLabel("Comment visibility").selectOption("contractor");
+  await page.getByRole("button", { name: "Add comment" }).click();
+  await expect(
+    page.getByText("Contractor confirmed attendance tomorrow morning.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Draft from latest contractor-visible activity for the tenant.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Copy tenant forward" }).click();
+  await expect(
+    page.getByText("Tenant forward copied. No message sent."),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Recover in Billing" }).click();
   await expect(page).toHaveURL(/\/billing-readiness\?/);
   await expect(page.getByText("Operations handoff")).toBeVisible();
