@@ -1281,6 +1281,131 @@ function propertyMapPoint(property: PropertyRecord, index: number) {
   };
 }
 
+type PropertyMapFocus = "all" | "lease_risk" | "vacancy";
+
+const propertyMapFocusOptions: Array<{
+  key: PropertyMapFocus;
+  label: string;
+}> = [
+  { key: "all", label: "All" },
+  { key: "lease_risk", label: "Lease risk" },
+  { key: "vacancy", label: "Vacancy" },
+];
+
+function propertyMapFocusMatches({
+  focus,
+  occupancy,
+  expiry,
+}: {
+  focus: PropertyMapFocus;
+  occupancy: PropertyOccupancy | undefined;
+  expiry: NextLeaseExpiry | undefined;
+}) {
+  if (focus === "lease_risk") {
+    return Boolean(expiry && expiry.daysUntil <= 90);
+  }
+  if (focus === "vacancy") {
+    return ["vacant", "partial", "unknown"].includes(
+      occupancy?.status ?? "unknown",
+    );
+  }
+  return true;
+}
+
+function propertyMapRegionRows({
+  properties,
+  occupancyByPropertyId,
+  nextExpiryByPropertyId,
+}: {
+  properties: PropertyRecord[];
+  occupancyByPropertyId: Map<string, PropertyOccupancy>;
+  nextExpiryByPropertyId: Map<string, NextLeaseExpiry>;
+}) {
+  const rows = new Map<
+    string,
+    {
+      region: string;
+      count: number;
+      vacancyCount: number;
+      leaseRiskCount: number;
+    }
+  >();
+
+  for (const property of properties) {
+    const region = propertyRegionLabel(property) || "No region";
+    const occupancy = occupancyByPropertyId.get(property.id);
+    const expiry = nextExpiryByPropertyId.get(property.id);
+    const row = rows.get(region) ?? {
+      region,
+      count: 0,
+      vacancyCount: 0,
+      leaseRiskCount: 0,
+    };
+    row.count += 1;
+    if (
+      ["vacant", "partial", "unknown"].includes(occupancy?.status ?? "unknown")
+    ) {
+      row.vacancyCount += 1;
+    }
+    if (expiry && expiry.daysUntil <= 90) {
+      row.leaseRiskCount += 1;
+    }
+    rows.set(region, row);
+  }
+
+  return Array.from(rows.values()).sort(
+    (left, right) =>
+      right.leaseRiskCount - left.leaseRiskCount ||
+      right.vacancyCount - left.vacancyCount ||
+      right.count - left.count ||
+      left.region.localeCompare(right.region),
+  );
+}
+
+function propertyMapPlanningBrief({
+  properties,
+  focus,
+  occupancyByPropertyId,
+  nextExpiryByPropertyId,
+}: {
+  properties: PropertyRecord[];
+  focus: PropertyMapFocus;
+  occupancyByPropertyId: Map<string, PropertyOccupancy>;
+  nextExpiryByPropertyId: Map<string, NextLeaseExpiry>;
+}) {
+  if (!properties.length) {
+    return "No properties match the current map focus.";
+  }
+  const lines = [
+    `Portfolio map brief - ${
+      propertyMapFocusOptions.find((option) => option.key === focus)?.label ??
+      "All"
+    }`,
+  ];
+  for (const property of properties.slice(0, 20)) {
+    const occupancy = occupancyByPropertyId.get(property.id);
+    const expiry = nextExpiryByPropertyId.get(property.id);
+    lines.push(
+      [
+        property.name,
+        propertyRegionLabel(property) || property.street_address,
+        occupancy ? occupancyBadgeLabel(occupancy) : "No occupancy data",
+        expiry
+          ? `Earliest expiry ${formatDate(expiry.date)} (${nextExpiryChipLabel(expiry)})`
+          : "No active lease expiry found",
+      ].join(" | "),
+    );
+  }
+  if (properties.length > 20) {
+    lines.push(
+      `${properties.length - 20} more propert${
+        properties.length === 21 ? "y" : "ies"
+      }`,
+    );
+  }
+  return lines.join("\n");
+}
+
 function leaseEventKindLabel(kind: LeaseEventRecord["kind"]) {
   if (kind === "rent_review") {
     return "Rent review";
@@ -1399,7 +1524,9 @@ function calendarPlanningBrief(events: LeaseEventRecord[]) {
     );
   }
   if (events.length > 20) {
-    lines.push(`- ${events.length - 20} more event${events.length === 21 ? "" : "s"}`);
+    lines.push(
+      `- ${events.length - 20} more event${events.length === 21 ? "" : "s"}`,
+    );
   }
   return lines.join("\n");
 }
@@ -1761,13 +1888,12 @@ function Workspace({
     );
     const insightEvents = (
       insightsOverviewQuery.data?.lease_event_snapshot.next_events ?? []
-    )
-      .filter(
-        (event) =>
-          (event.kind === "rent_review" || event.kind === "lease_expiry") &&
-          (!event.target.property_id ||
-            visiblePropertyIds.has(event.target.property_id)),
-      );
+    ).filter(
+      (event) =>
+        (event.kind === "rent_review" || event.kind === "lease_expiry") &&
+        (!event.target.property_id ||
+          visiblePropertyIds.has(event.target.property_id)),
+    );
     const rentRollEvents = rentRollLeaseEvents(
       calendarRentRollQuery.data ?? rentRollQuery.data ?? [],
       visiblePropertyIds,
@@ -6422,6 +6548,50 @@ function PropertyMapView({
   selectedPropertyId,
   onSelect,
 }: PropertyBoardViewProps) {
+  const [mapFocus, setMapFocus] = useState<PropertyMapFocus>("all");
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const mapProperties = properties.filter((property) =>
+    propertyMapFocusMatches({
+      focus: mapFocus,
+      occupancy: occupancyByPropertyId.get(property.id),
+      expiry: nextExpiryByPropertyId.get(property.id),
+    }),
+  );
+  const leaseRiskCount = properties.filter((property) =>
+    propertyMapFocusMatches({
+      focus: "lease_risk",
+      occupancy: occupancyByPropertyId.get(property.id),
+      expiry: nextExpiryByPropertyId.get(property.id),
+    }),
+  ).length;
+  const vacancyFocusCount = properties.filter((property) =>
+    propertyMapFocusMatches({
+      focus: "vacancy",
+      occupancy: occupancyByPropertyId.get(property.id),
+      expiry: nextExpiryByPropertyId.get(property.id),
+    }),
+  ).length;
+  const regionRows = propertyMapRegionRows({
+    properties,
+    occupancyByPropertyId,
+    nextExpiryByPropertyId,
+  });
+  const copyMapBrief = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Clipboard is not available in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(
+      propertyMapPlanningBrief({
+        properties: mapProperties,
+        focus: mapFocus,
+        occupancyByPropertyId,
+        nextExpiryByPropertyId,
+      }),
+    );
+    setCopyReceipt("Map brief copied.");
+  };
+
   if (!properties.length) {
     return (
       <div className="rounded-md border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
@@ -6431,93 +6601,174 @@ function PropertyMapView({
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="relative min-h-[420px] overflow-hidden rounded-md border border-border bg-muted/30">
-        <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(to_right,rgba(100,116,139,0.16)_1px,transparent_1px),linear-gradient(to_bottom,rgba(100,116,139,0.16)_1px,transparent_1px)] [background-size:42px_42px]" />
-        <div className="absolute inset-x-4 top-4 rounded-md border border-border bg-white/90 px-3 py-2 text-sm shadow-sm">
-          <div className="font-semibold">Portfolio map</div>
-          <div className="text-xs text-muted-foreground">
-            Address-based view for suburb clustering and expiry focus.
+    <div className="grid gap-3">
+      <div className="grid gap-3 rounded-md border border-border bg-white p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone="primary">{properties.length} mapped</StatusBadge>
+            <StatusBadge tone={leaseRiskCount ? "warning" : "neutral"}>
+              {leaseRiskCount} lease risk
+            </StatusBadge>
+            <StatusBadge tone={vacancyFocusCount ? "danger" : "success"}>
+              {vacancyFocusCount} vacancy focus
+            </StatusBadge>
           </div>
+          <div className="flex flex-wrap items-center gap-1 text-xs">
+            {propertyMapFocusOptions.map((option) => {
+              const isActive = mapFocus === option.key;
+              const count =
+                option.key === "lease_risk"
+                  ? leaseRiskCount
+                  : option.key === "vacancy"
+                    ? vacancyFocusCount
+                    : properties.length;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setMapFocus(option.key)}
+                  aria-pressed={isActive}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold transition ${
+                    isActive
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-white text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  <span>{option.label}</span>
+                  <span className="rounded-full bg-black/10 px-1.5 text-leasium-micro font-bold">
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {copyReceipt ? (
+            <p className="text-sm font-medium text-success">{copyReceipt}</p>
+          ) : null}
         </div>
-        {properties.map((property, index) => {
-          const point = propertyMapPoint(property, index);
-          const occupancy = occupancyByPropertyId.get(property.id);
-          const expiry = nextExpiryByPropertyId.get(property.id);
-          const isSelected = property.id === selectedPropertyId;
-          return (
-            <button
-              key={property.id}
-              type="button"
-              onClick={() => onSelect(property.id)}
-              className={cn(
-                "absolute grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 shadow-sm transition hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                isSelected
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-white bg-foreground text-background",
-              )}
-              style={{ left: `${point.left}%`, top: `${point.top}%` }}
-              title={`${property.name} - ${propertyRegionLabel(property) || property.street_address}`}
-            >
-              <MapPin size={18} />
-              {expiry ? (
-                <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-warning ring-2 ring-white" />
-              ) : null}
-              <span className="sr-only">{property.name}</span>
-              {occupancy ? (
-                <span className="absolute -bottom-5 whitespace-nowrap rounded-full border border-border bg-white px-1.5 py-0.5 text-leasium-micro font-semibold text-foreground shadow-sm">
-                  {occupancy.leasedUnits}/{occupancy.totalUnits}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
+        <SecondaryButton type="button" onClick={copyMapBrief}>
+          <Copy size={15} />
+          Copy map brief
+        </SecondaryButton>
       </div>
-      <div className="grid content-start gap-2">
-        {properties.map((property) => {
-          const occupancy = occupancyByPropertyId.get(property.id);
-          const expiry = nextExpiryByPropertyId.get(property.id);
-          const isSelected = property.id === selectedPropertyId;
-          return (
-            <button
-              key={property.id}
-              type="button"
-              onClick={() => onSelect(property.id)}
-              className={cn(
-                "rounded-md border p-3 text-left transition hover:bg-muted/50",
-                isSelected
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-white",
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">
-                    {property.name}
-                  </div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {propertyRegionLabel(property) || property.street_address}
-                  </div>
-                </div>
+
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="relative min-h-[420px] overflow-hidden rounded-md border border-border bg-muted/30">
+          <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(to_right,rgba(100,116,139,0.16)_1px,transparent_1px),linear-gradient(to_bottom,rgba(100,116,139,0.16)_1px,transparent_1px)] [background-size:42px_42px]" />
+          <div className="absolute inset-x-4 top-4 rounded-md border border-border bg-white/90 px-3 py-2 text-sm shadow-sm">
+            <div className="font-semibold">Portfolio map</div>
+            <div className="text-xs text-muted-foreground">
+              Address-based view for suburb clustering and expiry focus.
+            </div>
+          </div>
+          {!mapProperties.length ? (
+            <div className="absolute inset-x-6 top-28 rounded-md border border-dashed border-border bg-white/90 px-4 py-6 text-center text-sm text-muted-foreground">
+              No properties match this map focus.
+            </div>
+          ) : null}
+          {mapProperties.map((property, index) => {
+            const point = propertyMapPoint(property, index);
+            const occupancy = occupancyByPropertyId.get(property.id);
+            const expiry = nextExpiryByPropertyId.get(property.id);
+            const isSelected = property.id === selectedPropertyId;
+            return (
+              <button
+                key={property.id}
+                type="button"
+                onClick={() => onSelect(property.id)}
+                className={cn(
+                  "absolute grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 shadow-sm transition hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                  isSelected
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-white bg-foreground text-background",
+                )}
+                style={{ left: `${point.left}%`, top: `${point.top}%` }}
+                title={`${property.name} - ${propertyRegionLabel(property) || property.street_address}`}
+              >
+                <MapPin size={18} />
+                {expiry ? (
+                  <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-warning ring-2 ring-white" />
+                ) : null}
+                <span className="sr-only">{property.name}</span>
                 {occupancy ? (
-                  <span className={occupancyBadgeClassName(occupancy.status)}>
-                    {occupancyBadgeLabel(occupancy)}
+                  <span className="absolute -bottom-5 whitespace-nowrap rounded-full border border-border bg-white px-1.5 py-0.5 text-leasium-micro font-semibold text-foreground shadow-sm">
+                    {occupancy.leasedUnits}/{occupancy.totalUnits}
                   </span>
                 ) : null}
-              </div>
-              {expiry ? (
-                <div className="mt-2">
-                  <span
-                    className={nextExpiryChipClassName(expiry.daysUntil)}
-                    title={`Earliest active lease expires ${expiry.date}.`}
-                  >
-                    {nextExpiryChipLabel(expiry)}
-                  </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="grid content-start gap-2">
+          {regionRows.length ? (
+            <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm">
+              <div className="font-semibold">Regional focus</div>
+              {regionRows.slice(0, 4).map((row) => (
+                <div
+                  key={row.region}
+                  className="grid gap-1 border-t border-border pt-2 first:border-t-0 first:pt-0"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{row.region}</span>
+                    <StatusBadge
+                      tone={row.leaseRiskCount ? "warning" : "neutral"}
+                    >
+                      {row.count}
+                    </StatusBadge>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {row.leaseRiskCount} lease risk · {row.vacancyCount} vacancy
+                    focus
+                  </div>
                 </div>
-              ) : null}
-            </button>
-          );
-        })}
+              ))}
+            </div>
+          ) : null}
+          {mapProperties.map((property) => {
+            const occupancy = occupancyByPropertyId.get(property.id);
+            const expiry = nextExpiryByPropertyId.get(property.id);
+            const isSelected = property.id === selectedPropertyId;
+            return (
+              <button
+                key={property.id}
+                type="button"
+                onClick={() => onSelect(property.id)}
+                className={cn(
+                  "rounded-md border p-3 text-left transition hover:bg-muted/50",
+                  isSelected
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-white",
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">
+                      {property.name}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {propertyRegionLabel(property) || property.street_address}
+                    </div>
+                  </div>
+                  {occupancy ? (
+                    <span className={occupancyBadgeClassName(occupancy.status)}>
+                      {occupancyBadgeLabel(occupancy)}
+                    </span>
+                  ) : null}
+                </div>
+                {expiry ? (
+                  <div className="mt-2">
+                    <span
+                      className={nextExpiryChipClassName(expiry.daysUntil)}
+                      title={`Earliest active lease expires ${expiry.date}.`}
+                    >
+                      {nextExpiryChipLabel(expiry)}
+                    </span>
+                  </div>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
