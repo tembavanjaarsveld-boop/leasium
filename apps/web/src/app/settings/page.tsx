@@ -487,6 +487,8 @@ function xeroProviderSetupPacket(diagnostics: XeroConnectionDiagnosticsRecord) {
 
 const XERO_EXCEPTION_EXPORT_GUARDRAIL =
   "No Xero API refresh, invoice posting, tenant email, provider dispatch, or payment reconciliation is run by this export.";
+const TEMPLATE_OVERRIDE_EXPORT_GUARDRAIL =
+  "Review-only export: downloading this file does not wire stored templates into send paths, add edit controls, send notifications, run digests, send invoices, send tenant onboarding messages, send contractor updates, mutate preferences, or write provider history.";
 
 function csvCell(value: string | number | null | undefined) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -616,6 +618,88 @@ function xeroExceptionCsv(queue: XeroExceptionQueueRecord) {
       XERO_EXCEPTION_EXPORT_GUARDRAIL,
     ]);
   }
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
+function communicationTemplateOverrideCsv({
+  runtimeTemplates,
+  brandedTemplates,
+}: {
+  runtimeTemplates: CommunicationTemplateCard[];
+  brandedTemplates: BrandedCommunicationTemplateRecord[];
+}) {
+  const runtimeTemplateKeys = new Set(
+    runtimeTemplates.map((template) => template.templateKey),
+  );
+  const activeOverrideKeys = new Set(
+    brandedTemplates
+      .filter((template) => template.is_active)
+      .map((template) => template.key),
+  );
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Category",
+      "Template key",
+      "Name",
+      "Version",
+      "Channel",
+      "Provider",
+      "State",
+      "Coverage",
+      "Detail",
+      "Guardrail",
+    ],
+    ...runtimeTemplates.map((template) => [
+      "Runtime template",
+      template.templateKey,
+      template.title,
+      template.templateVersion,
+      template.channel === "portal" ? "in_app" : template.channel,
+      template.provider,
+      template.sourceLabel,
+      activeOverrideKeys.has(template.templateKey)
+        ? "Runtime-aligned"
+        : "Runtime only",
+      template.actionLabel,
+      TEMPLATE_OVERRIDE_EXPORT_GUARDRAIL,
+    ]),
+    ...brandedTemplates.map((template) => {
+      const isRuntimeAligned = runtimeTemplateKeys.has(template.key);
+      return [
+        "Stored override",
+        template.key,
+        template.name,
+        template.version,
+        template.channel,
+        template.provider,
+        `${template.is_active ? "Active" : "Inactive"} ${
+          template.is_system ? "system" : "override"
+        }`,
+        template.is_active
+          ? isRuntimeAligned
+            ? "Runtime-aligned"
+            : "Needs wiring"
+          : isRuntimeAligned
+            ? "Inactive runtime-aligned"
+            : "Inactive needs wiring",
+        template.notes ?? template.body_template,
+        TEMPLATE_OVERRIDE_EXPORT_GUARDRAIL,
+      ];
+    }),
+    [
+      "Export guardrail",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "Review-only",
+      "",
+      TEMPLATE_OVERRIDE_EXPORT_GUARDRAIL,
+      TEMPLATE_OVERRIDE_EXPORT_GUARDRAIL,
+    ],
+  ];
+
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
@@ -1500,6 +1584,8 @@ function SettingsWorkspace() {
   const [xeroExceptionExportReceipt, setXeroExceptionExportReceipt] = useState<
     string | null
   >(null);
+  const [templateOverrideExportReceipt, setTemplateOverrideExportReceipt] =
+    useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteDisplayName, setInviteDisplayName] = useState("");
   const [inviteRole, setInviteRole] = useState<SecurityRole>("viewer");
@@ -1671,6 +1757,22 @@ function SettingsWorkspace() {
       }),
     [brandedTemplates, communicationTemplates],
   );
+
+  const downloadCommunicationTemplateOverridesCsv = () => {
+    saveBlob(
+      new Blob(
+        [
+          communicationTemplateOverrideCsv({
+            runtimeTemplates: communicationTemplates,
+            brandedTemplates,
+          }),
+        ],
+        { type: "text/csv;charset=utf-8" },
+      ),
+      "communication-template-overrides.csv",
+    );
+    setTemplateOverrideExportReceipt("Template override CSV downloaded.");
+  };
 
   const refreshXeroViews = () => {
     queryClient.invalidateQueries({ queryKey: ["entities"] });
@@ -3455,6 +3557,14 @@ function SettingsWorkspace() {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <SecondaryButton
+                      type="button"
+                      onClick={downloadCommunicationTemplateOverridesCsv}
+                      className="min-h-10 rounded-lg px-3"
+                    >
+                      <Download size={14} />
+                      Download overrides CSV
+                    </SecondaryButton>
                     <StatusBadge
                       tone={brandedTemplates.length ? "primary" : "neutral"}
                     >
@@ -3510,6 +3620,11 @@ function SettingsWorkspace() {
                     </div>
                   ) : null}
                 </div>
+                {templateOverrideExportReceipt ? (
+                  <p className="mt-3 text-sm font-medium text-success">
+                    {templateOverrideExportReceipt}
+                  </p>
+                ) : null}
                 {brandedTemplatesQuery.isLoading ? (
                   <div className="mt-3 rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
                     Loading stored template overrides.

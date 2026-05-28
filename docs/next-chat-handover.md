@@ -182,12 +182,20 @@ Last updated: 2026-05-28
   draft creation, payment reconciliation preview/apply, tenant/owner email
   dispatch, billing draft generation, invoice dispatch, provider refresh, or
   provider-history mutation.
-- Sidecar recommendation for the next slice: add a Settings communication
-  template override review CSV. Export runtime template keys, stored override
-  names/keys/versions/providers, active/inactive/system/override state, and
-  coverage status from Settings only. Keep it review-only: do not wire templates
-  into send paths, add edit controls, send notifications/digests/invoices,
-  mutate preferences, or write provider history.
+- 2026-05-28 Settings continuation: Settings Organisation now has a local
+  `communication-template-overrides.csv` download from the Communication
+  templates panel. It exports runtime template keys, stored override
+  names/keys/versions/providers, active/inactive and system/override state,
+  coverage status, and review-only guardrail text. It does not wire stored
+  templates into send paths, add edit controls, send notifications/digests,
+  send invoices/onboarding/contractor messages, mutate preferences, or write
+  provider history.
+- Sidecar recommendation for the next slice: add an Insights review packet CSV
+  on `/insights` from already-loaded overview and snapshot history. Include live
+  exceptions, automation activity, finance/accounting readiness, owner/entity
+  gaps, lease events, saved snapshot status, and a guardrail row. Do not add a
+  backend export endpoint, create/revoke snapshots, refresh Xero/accounting,
+  send providers, apply reconciliation, dispatch, or write provider history.
 
 ## Takeover Priority
 
