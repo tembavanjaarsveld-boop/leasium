@@ -262,12 +262,21 @@ Last updated: 2026-05-28
   It does not start OAuth, call or refresh Xero, preview/apply reconciliation,
   create Xero drafts, dispatch invoices/providers, send email/SMS, refresh
   providers, or mutate provider history.
+- 2026-05-28 Settings Xero continuation 5: Connection diagnostics now has a
+  local `Copy diagnostics packet` action beside `Download diagnostics CSV`,
+  reusing the already-loaded `xeroDiagnostics` block. The smoke test reads the
+  clipboard and verifies connection context, readiness gates, provider setup,
+  env vars, diagnostics guardrails, and the export guardrail. It does not add a
+  backend route, refetch diagnostics, start OAuth, call/refresh Xero,
+  preview/apply reconciliation, create drafts, dispatch invoices/providers, send
+  email/SMS, refresh providers, or mutate provider history.
 - Sidecar recommendation for the next slice: add a local Settings Xero
-  `Copy diagnostics packet` beside `Download diagnostics CSV`, reusing
-  `xeroDiagnostics` only. Do not add a backend route, refetch diagnostics,
-  start OAuth, call/refresh Xero, preview/apply reconciliation, create drafts,
-  dispatch invoices/providers, send email/SMS, refresh providers, or mutate
-  provider history.
+  `Download diagnostics packet` text export beside `Copy diagnostics packet`,
+  using the same `xeroConnectionDiagnosticsPacket(xeroDiagnostics)` content and
+  filename `xero-connection-diagnostics.txt`. Keep it local-only: no backend
+  route, diagnostics refetch, OAuth, Xero refresh/call, reconciliation preview
+  or apply, draft creation, invoice/provider dispatch, email/SMS, provider
+  refresh, or provider-history mutation.
 
 ## Takeover Priority
 

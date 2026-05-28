@@ -2477,6 +2477,27 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   expect(diagnosticsCsv).toContain(
     "Review-only export: downloading this file does not start OAuth, call or refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices or providers, send email or SMS, refresh providers, or mutate provider history.",
   );
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy diagnostics packet" }).click();
+  await expect(page.getByText("Xero diagnostics packet copied.")).toBeVisible();
+  const diagnosticsPacket = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(diagnosticsPacket).toContain("Xero connection diagnostics packet");
+  expect(diagnosticsPacket).toContain("Local readiness check");
+  expect(diagnosticsPacket).toContain("OAuth: Ready");
+  expect(diagnosticsPacket).toContain("Draft creation: Blocked");
+  expect(diagnosticsPacket).toContain(
+    "Expected redirect URI: http://localhost:8000/api/v1/xero/oauth/callback",
+  );
+  expect(diagnosticsPacket).toContain("Required env vars:");
+  expect(diagnosticsPacket).toContain("XERO_CLIENT_ID");
+  expect(diagnosticsPacket).toContain(
+    "Diagnostics are local only; loading this panel does not call Xero.",
+  );
+  expect(diagnosticsPacket).toContain(
+    "Review-only export: downloading this file does not start OAuth, call or refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices or providers, send email or SMS, refresh providers, or mutate provider history.",
+  );
   await expect(page.getByText("Xero is not connected")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Connect Xero" }),

@@ -487,6 +487,61 @@ function xeroProviderSetupPacket(diagnostics: XeroConnectionDiagnosticsRecord) {
 
 const XERO_DIAGNOSTICS_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not start OAuth, call or refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices or providers, send email or SMS, refresh providers, or mutate provider history.";
+
+function xeroConnectionDiagnosticsPacket(
+  diagnostics: XeroConnectionDiagnosticsRecord,
+) {
+  const preflight = diagnostics.provider_setup_preflight;
+  return [
+    "Xero connection diagnostics packet",
+    "",
+    `Entity: ${diagnostics.entity_name}`,
+    `Connection source: ${statusLabel(diagnostics.connection_source)}`,
+    `Tenant ID: ${diagnostics.xero_tenant_id ?? "Missing"}`,
+    `Tenant name: ${diagnostics.tenant_name ?? "Missing"}`,
+    `Token expires: ${
+      diagnostics.token_expires_at
+        ? formatDateTime(diagnostics.token_expires_at)
+        : "No provider token"
+    }`,
+    "",
+    "Local readiness check:",
+    ...diagnosticsReadinessRows(diagnostics).map(
+      ([label, ready]) => `- ${label}: ${ready ? "Ready" : "Blocked"}`,
+    ),
+    "",
+    "Provider setup:",
+    `- Provider configured: ${diagnostics.provider_configured ? "Ready" : "Blocked"}`,
+    `- Missing config: ${
+      diagnostics.missing_config.length
+        ? diagnostics.missing_config.join(", ")
+        : "None"
+    }`,
+    `- Redirect URI: ${diagnostics.redirect_uri}`,
+    `- Expected redirect URI: ${preflight.expected_redirect_uri}`,
+    "",
+    "Required env vars:",
+    ...preflight.required_env_vars.map((envVar) => `- ${envVar}`),
+    "",
+    "Missing env vars:",
+    ...(preflight.missing_env_vars.length
+      ? preflight.missing_env_vars.map((envVar) => `- ${envVar}`)
+      : ["- None"]),
+    "",
+    "Required scopes:",
+    ...preflight.required_scopes.map((scope) => `- ${scope}`),
+    "",
+    "Next steps:",
+    ...(diagnostics.next_steps.length
+      ? diagnostics.next_steps.map((step) => `- ${step}`)
+      : ["- None"]),
+    "",
+    "Guardrails:",
+    ...diagnostics.guardrails.map((guardrail) => `- ${guardrail}`),
+    `- ${XERO_DIAGNOSTICS_EXPORT_GUARDRAIL}`,
+  ].join("\n");
+}
+
 const XERO_EXCEPTION_EXPORT_GUARDRAIL =
   "No Xero API refresh, invoice posting, tenant email, provider dispatch, or payment reconciliation is run by this export.";
 const XERO_FRESHNESS_EXPORT_GUARDRAIL =
@@ -1856,6 +1911,9 @@ function SettingsWorkspace() {
   const [xeroSetupCopyReceipt, setXeroSetupCopyReceipt] = useState<
     string | null
   >(null);
+  const [xeroDiagnosticsCopyReceipt, setXeroDiagnosticsCopyReceipt] = useState<
+    string | null
+  >(null);
   const [xeroExceptionExportReceipt, setXeroExceptionExportReceipt] = useState<
     string | null
   >(null);
@@ -2321,6 +2379,19 @@ function SettingsWorkspace() {
         type: "text/csv;charset=utf-8",
       }),
       "xero-connection-diagnostics.csv",
+    );
+  };
+  const copyXeroDiagnosticsPacket = async () => {
+    if (!xeroDiagnostics) {
+      return;
+    }
+    const copied = await copyTextToClipboard(
+      xeroConnectionDiagnosticsPacket(xeroDiagnostics),
+    );
+    setXeroDiagnosticsCopyReceipt(
+      copied
+        ? "Xero diagnostics packet copied."
+        : "Copy unavailable in this browser.",
     );
   };
 
@@ -4801,7 +4872,7 @@ function SettingsWorkspace() {
                               ? "OAuth ready"
                               : xeroDiagnostics.connection_source === "manual"
                                 ? "Manual tenant"
-                              : "Needs connection"}
+                                : "Needs connection"}
                           </StatusBadge>
                           <SecondaryButton
                             type="button"
@@ -4810,7 +4881,19 @@ function SettingsWorkspace() {
                             <Download size={14} />
                             Download diagnostics CSV
                           </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            onClick={copyXeroDiagnosticsPacket}
+                          >
+                            <Copy size={14} />
+                            Copy diagnostics packet
+                          </SecondaryButton>
                         </div>
+                        {xeroDiagnosticsCopyReceipt ? (
+                          <p className="mt-3 text-xs font-medium text-success">
+                            {xeroDiagnosticsCopyReceipt}
+                          </p>
+                        ) : null}
                         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                           {diagnosticsReadinessRows(xeroDiagnostics).map(
                             ([label, ready]) => (
