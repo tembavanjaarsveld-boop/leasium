@@ -270,8 +270,9 @@ def test_owner_can_invite_and_update_operator_roles(
     assert created["invite_email_status"] == "sent"
     assert created["invite_sent_at"] is not None
     assert created["invite_expires_at"] is not None
-    assert created["roles"][0]["role"] == "ops"
     assert sent_urls
+    assert created["invite_accept_url"] == sent_urls[0]
+    assert created["roles"][0]["role"] == "ops"
     member = session.get(AppUser, UUID(member_id))
     assert member is not None
     member.notification_preferences = {

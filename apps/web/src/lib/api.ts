@@ -385,6 +385,7 @@ export type SecurityMemberRecord = {
   invite_sent_at: string | null;
   invite_expires_at: string | null;
   invite_accepted_at: string | null;
+  invite_accept_url?: string | null;
   notification_preferences: SecurityNotificationPreferences;
   created_at: string;
   roles: SecurityEntityRoleRecord[];
@@ -447,6 +448,7 @@ export type SecurityMemberInviteRecord = {
   member: SecurityMemberRecord;
   delivery_status: string;
   delivery_detail: string | null;
+  invite_accept_url: string | null;
 };
 
 export type SecurityInviteAcceptPayload = {

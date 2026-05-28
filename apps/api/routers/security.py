@@ -386,6 +386,7 @@ def _notification_preferences_for_write(
 def _member_read(
     member: AppUser,
     roles_by_user: dict[UUID, list[SecurityEntityRoleRead]],
+    invite_accept_url: str | None = None,
 ) -> SecurityMemberRead:
     login_linked = bool(member.auth_provider_id)
     return SecurityMemberRead(
@@ -400,6 +401,7 @@ def _member_read(
         invite_sent_at=member.invite_sent_at,
         invite_expires_at=member.invite_expires_at,
         invite_accepted_at=member.invite_accepted_at,
+        invite_accept_url=invite_accept_url,
         notification_preferences=_notification_preferences(member),
         created_at=member.created_at,
         roles=roles_by_user.get(member.id, []),
@@ -471,10 +473,11 @@ def _send_operator_invite(
     inviter: CurrentUser,
     organisation: Organisation,
     settings: Settings,
-) -> DeliveryResult:
+) -> tuple[DeliveryResult, str]:
     now = utcnow()
     raw_token = secrets.token_urlsafe(32)
     expires_at = now + timedelta(hours=settings.operator_invite_ttl_hours)
+    accept_url = _invite_accept_url(raw_token, settings)
     member.invite_token_hash = _invite_token_hash(raw_token)
     member.invite_expires_at = expires_at
     member.invited_by_user_id = inviter.id
@@ -488,7 +491,7 @@ def _send_operator_invite(
             invited_by_name=inviter.display_name,
             display_name=member.display_name,
             email=member.email,
-            accept_url=_invite_accept_url(raw_token, settings),
+            accept_url=accept_url,
             expires_at=expires_at,
             template_key=settings.operator_invite_template_key,
             template_version=settings.operator_invite_template_version,
@@ -504,7 +507,7 @@ def _send_operator_invite(
         member.invite_status = OperatorInviteStatus.failed
     else:
         member.invite_status = OperatorInviteStatus.skipped
-    return result
+    return result, accept_url
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -722,7 +725,7 @@ def create_security_member(
             payload.notification_preferences,
         )
     _replace_roles(session, user.organisation_id, member.id, assignments)
-    result = _send_operator_invite(member, user, organisation, settings)
+    result, accept_url = _send_operator_invite(member, user, organisation, settings)
     audit_log(
         session,
         actor=user.actor,
@@ -744,7 +747,7 @@ def create_security_member(
     session.commit()
     session.refresh(member)
     roles_by_user = _role_rows(session, user.organisation_id)
-    return _member_read(member, roles_by_user)
+    return _member_read(member, roles_by_user, invite_accept_url=accept_url)
 
 
 @router.post("/members/{member_id}/invite", response_model=SecurityMemberInviteRead)
@@ -766,7 +769,7 @@ def resend_security_member_invite(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This operator already has a linked provider login.",
         )
-    result = _send_operator_invite(member, user, organisation, settings)
+    result, accept_url = _send_operator_invite(member, user, organisation, settings)
     audit_log(
         session,
         actor=user.actor,
@@ -785,9 +788,10 @@ def resend_security_member_invite(
     session.refresh(member)
     roles_by_user = _role_rows(session, user.organisation_id)
     return SecurityMemberInviteRead(
-        member=_member_read(member, roles_by_user),
+        member=_member_read(member, roles_by_user, invite_accept_url=accept_url),
         delivery_status=result.status,
         delivery_detail=result.error,
+        invite_accept_url=accept_url,
     )
 
 

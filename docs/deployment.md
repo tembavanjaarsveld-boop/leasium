@@ -239,11 +239,24 @@ provider API tokens, or tokenized callback URLs.
 
 Operator invite delivery also uses the SendGrid key/from settings above. Invite
 links point to `/accept-invite?token=...`; the raw token is sent once by email,
-while only a hash is stored in the database. On a clean production database,
-use `/setup` after Clerk is configured to create the first organisation, entity,
-and owner operator from a signed-in Clerk session. Keep `AUTH_MODE=dev` for an
-existing seeded workspace until at least one owner/admin operator has accepted an
-invite and is linked to a Clerk user.
+while only a hash is stored in the database. Owner/admin invite actions also
+return the one-time accept link immediately so the Settings screen can copy it
+for a manual fallback when a recipient's internal mail filter quarantines the
+email. Operator invite emails disable SendGrid click tracking so the invite CTA
+is not rewritten through a SendGrid tracking domain.
+
+For production deliverability after the `leasium.ai` cutover, authenticate the
+SendGrid sender domain in DNS before relying on internal corporate mailboxes:
+publish the SendGrid-provided SPF/DKIM records for the `SENDGRID_FROM_EMAIL`
+domain and add a DMARC record for the same organisational domain. Configure
+SendGrid Event Webhook for operator receipts at
+`https://api.leasium.ai/api/v1/security/webhooks/sendgrid-events` with the same
+`COMMUNICATIONS_WEBHOOK_SECRET` used by the API so Leasium can move operator
+rows from queued into delivered, opened, deferred, bounced, or dropped states.
+On a clean production database, use `/setup` after Clerk is configured to create
+the first organisation, entity, and owner operator from a signed-in Clerk
+session. Keep `AUTH_MODE=dev` for an existing seeded workspace until at least
+one owner/admin operator has accepted an invite and is linked to a Clerk user.
 
 When both `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` are set on
 the web app, middleware redirects signed-out protected workspace requests to

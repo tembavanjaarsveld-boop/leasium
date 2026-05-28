@@ -9,6 +9,7 @@ import {
   Building2,
   CheckCircle2,
   CircleDollarSign,
+  Copy,
   ExternalLink,
   FileText,
   KeyRound,
@@ -1136,6 +1137,11 @@ function SettingsWorkspace() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteDisplayName, setInviteDisplayName] = useState("");
   const [inviteRole, setInviteRole] = useState<SecurityRole>("viewer");
+  const [latestInviteLink, setLatestInviteLink] = useState<{
+    email: string;
+    url: string;
+    copied: boolean;
+  } | null>(null);
   const [roleDrafts, setRoleDrafts] = useState<
     Record<string, SecurityRole | "">
   >({});
@@ -1193,6 +1199,7 @@ function SettingsWorkspace() {
     setXeroPaymentPreview(null);
     setXeroPaymentApplyResult(null);
     setSelectedXeroContactMatches({});
+    setLatestInviteLink(null);
   }, [selectedEntityId]);
 
   const selectedEntity = entitiesQuery.data?.find(
@@ -1467,7 +1474,14 @@ function SettingsWorkspace() {
         display_name: inviteDisplayName,
         roles: [{ entity_id: selectedEntityId, role: inviteRole }],
       }),
-    onSuccess: () => {
+    onSuccess: (member) => {
+      if (member.invite_accept_url) {
+        setLatestInviteLink({
+          email: member.email,
+          url: member.invite_accept_url,
+          copied: false,
+        });
+      }
       setInviteEmail("");
       setInviteDisplayName("");
       setInviteRole("viewer");
@@ -1478,10 +1492,25 @@ function SettingsWorkspace() {
 
   const resendInviteMutation = useMutation({
     mutationFn: (memberId: string) => resendSecurityMemberInvite(memberId),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result.invite_accept_url) {
+        setLatestInviteLink({
+          email: result.member.email,
+          url: result.invite_accept_url,
+          copied: false,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["security-workspace"] });
     },
   });
+
+  const copyLatestInviteLink = async () => {
+    if (!latestInviteLink) {
+      return;
+    }
+    await navigator.clipboard.writeText(latestInviteLink.url);
+    setLatestInviteLink({ ...latestInviteLink, copied: true });
+  };
 
   const unlinkLoginMutation = useMutation({
     mutationFn: (memberId: string) => unlinkSecurityMemberLogin(memberId),
@@ -2060,6 +2089,38 @@ function SettingsWorkspace() {
                     )}
                     Send invite
                   </Button>
+                  {latestInviteLink ? (
+                    <div className="grid gap-2 rounded-md border border-success/30 bg-success-soft/60 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-success-strong">
+                            Invite link ready
+                          </div>
+                          <div className="truncate text-xs text-success-strong/80">
+                            {latestInviteLink.email}
+                          </div>
+                        </div>
+                        <SecondaryButton
+                          type="button"
+                          className="shrink-0"
+                          onClick={copyLatestInviteLink}
+                        >
+                          {latestInviteLink.copied ? (
+                            <CheckCircle2 size={14} />
+                          ) : (
+                            <Copy size={14} />
+                          )}
+                          {latestInviteLink.copied ? "Copied" : "Copy"}
+                        </SecondaryButton>
+                      </div>
+                      <Input
+                        value={latestInviteLink.url}
+                        readOnly
+                        aria-label="Latest invite link"
+                        className="text-xs"
+                      />
+                    </div>
+                  ) : null}
                 </form>
               </div>
             </SectionPanel>

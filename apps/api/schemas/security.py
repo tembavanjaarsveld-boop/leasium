@@ -88,6 +88,7 @@ class SecurityMemberRead(ApiModel):
     invite_sent_at: datetime | None
     invite_expires_at: datetime | None
     invite_accepted_at: datetime | None
+    invite_accept_url: str | None = None
     notification_preferences: SecurityNotificationPreferences = Field(
         default_factory=SecurityNotificationPreferences
     )
@@ -178,6 +179,7 @@ class SecurityMemberInviteRead(BaseModel):
     member: SecurityMemberRead
     delivery_status: str
     delivery_detail: str | None = None
+    invite_accept_url: str | None = None
 
 
 class SecurityInviteAccept(BaseModel):

@@ -116,6 +116,9 @@ def test_operator_invite_sendgrid_categories_are_deduplicated(
 
     assert result.status == "queued"
     assert payloads[0]["categories"] == ["operator_invite"]
+    assert payloads[0]["tracking_settings"] == {
+        "click_tracking": {"enable": False, "enable_text": False}
+    }
 
 
 def test_tenant_onboarding_sendgrid_categories_are_deduplicated(

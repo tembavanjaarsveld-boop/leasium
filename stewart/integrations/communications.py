@@ -936,6 +936,9 @@ def send_operator_invite_email(
             {"type": "text/plain", "value": _operator_invite_text(invite)},
             {"type": "text/html", "value": _operator_invite_html(invite)},
         ],
+        "tracking_settings": {
+            "click_tracking": {"enable": False, "enable_text": False},
+        },
         "categories": _categories("operator_invite", invite.template_key),
     }
     try:
