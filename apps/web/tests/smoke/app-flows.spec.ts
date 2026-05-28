@@ -2835,6 +2835,22 @@ test("settings shows Xero draft creation ready only from diagnostics", async ({
   await expect(draftCreationCard).toContainText(
     "Provider connection and authorised scopes allow this reviewed action.",
   );
+  const forbiddenDiagnosticsRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (
+      url.includes("/api/v1/xero/oauth/start") ||
+      url.includes("/api/v1/xero/contacts/sync-preview") ||
+      url.includes("/api/v1/xero/chart-tax/validate-preview") ||
+      url.includes("/api/v1/xero/invoices/posting-preview") ||
+      url.includes("/api/v1/xero/invoices/draft-create") ||
+      url.includes("/api/v1/xero/invoices/provider-dispatch") ||
+      url.includes("/api/v1/xero/payments/reconciliation-preview") ||
+      url.includes("/api/v1/xero/payments/reconciliation-apply")
+    ) {
+      forbiddenDiagnosticsRequests.push(`${request.method()} ${url}`);
+    }
+  });
   const diagnosticsCsvDownloadPromise = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "Download diagnostics CSV" })
@@ -2876,6 +2892,22 @@ test("settings shows Xero draft creation ready only from diagnostics", async ({
   );
   expect(diagnosticsPacket).toContain("Next steps:");
   expect(diagnosticsPacket).toContain("Guardrails:");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy diagnostics packet" }).click();
+  await expect(page.getByText("Xero diagnostics packet copied.")).toBeVisible();
+  const copiedDiagnosticsPacket = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(copiedDiagnosticsPacket).toContain("Connection source: provider");
+  expect(copiedDiagnosticsPacket).toContain("Draft creation: Ready");
+  expect(copiedDiagnosticsPacket).toContain("Payments: Blocked");
+  expect(copiedDiagnosticsPacket).toContain(
+    "Provider connection and authorised scopes allow this reviewed action.",
+  );
+  expect(copiedDiagnosticsPacket).toContain(
+    "Review-only export: downloading this file does not start OAuth, call or refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices or providers, send email or SMS, refresh providers, or mutate provider history.",
+  );
+  expect(forbiddenDiagnosticsRequests).toEqual([]);
 });
 
 test("insights shows overview, exceptions, activity, and owner snapshot", async ({

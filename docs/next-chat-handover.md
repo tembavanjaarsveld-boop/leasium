@@ -304,12 +304,20 @@ Last updated: 2026-05-28
   details. It remains test/export coverage only: no OAuth start, token refresh,
   Xero API call, draft creation, provider dispatch, email/SMS, payment
   reconciliation, or provider-history write.
-- Sidecar recommendation for the next slice: add clipboard parity coverage for
-  Settings Xero diagnostics in the same draft-ready mock state. Click
-  `Copy diagnostics packet` and assert the clipboard contains Draft creation
-  `Ready`, Payments `Blocked`, provider/source details, and the review-only
-  diagnostics guardrail. Add a forbidden-request trap around copy/export actions
-  if useful.
+- 2026-05-28 Settings Xero continuation 10: the draft-ready diagnostics smoke
+  now also clicks `Copy diagnostics packet`, reads the clipboard, and asserts it
+  contains provider/source details, Draft creation `Ready`, Payments `Blocked`,
+  the local readiness reason, and the review-only diagnostics guardrail. The
+  same test now traps forbidden provider endpoints during CSV/TXT/copy actions,
+  proving those local exports do not start OAuth, preview contacts/chart/tax,
+  preview posting, create Xero drafts, dispatch providers, or run payment
+  reconciliation.
+- Sidecar recommendation for the next slice was export parity coverage, which
+  continuation 9 already covered. A good next local-only follow-up is adding the
+  same forbidden-request trap around the unconnected diagnostics CSV/TXT/copy
+  section in `settings shows Xero readiness and records mappings`, scoped only to
+  those export actions so the later reviewed provider workflow in that smoke can
+  still run.
 
 ## Takeover Priority
 
