@@ -1775,6 +1775,24 @@ function liveReviewHandoffText(steps: LiveReviewHandoffStep[]) {
   ].join("\n");
 }
 
+function liveActionDockText(items: LiveActionReviewItem[]) {
+  return [
+    "Operations live action dock",
+    ...items.map((item) =>
+      [
+        `- ${item.title}: ${item.statusLabel}`,
+        item.actionLabel,
+        item.detail,
+        item.secondaryLabel ? `Secondary: ${item.secondaryLabel}` : null,
+      ]
+        .filter(Boolean)
+        .join(" - "),
+    ),
+    "",
+    "Review-only: this checklist does not place calls, open SMS, send email, complete work, or update billing.",
+  ].join("\n");
+}
+
 function activityAuditText({
   workOrder,
   cards,
@@ -2160,13 +2178,42 @@ function LiveReviewHandoffPanel({ steps }: { steps: LiveReviewHandoffStep[] }) {
 }
 
 function LiveActionDock({ items }: { items: LiveActionReviewItem[] }) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const blockedCount = items.filter((item) =>
+    ["danger", "warning"].includes(item.tone),
+  ).length;
+  const copyActionDock = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(liveActionDockText(items));
+    setCopyReceipt("Action dock copied.");
+  };
+
   return (
     <SectionPanel
       title="Live action dock"
       description="Quick review jumps for the actions operators touch on a phone or during a live work-order check."
       icon={<PhoneCall size={17} className="text-primary" />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton type="button" onClick={copyActionDock}>
+            <ClipboardCheck size={15} />
+            Copy dock
+          </SecondaryButton>
+          <StatusBadge tone={blockedCount ? "warning" : "success"}>
+            {blockedCount ? `${blockedCount} checks` : "Ready"}
+          </StatusBadge>
+        </div>
+      }
     >
       <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success sm:col-span-2 xl:col-span-5">
+            {copyReceipt}
+          </p>
+        ) : null}
         {items.map((item) => (
           <div
             key={item.id}
