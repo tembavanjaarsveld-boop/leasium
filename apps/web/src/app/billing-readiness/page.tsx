@@ -8,6 +8,7 @@ import {
   Building2,
   CheckCircle2,
   ClipboardCheck,
+  Download,
   Eye,
   FileCheck2,
   FileText,
@@ -59,6 +60,7 @@ import {
   type RentRollRow,
   type XeroAccountingFreshnessRecord,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_RENT_ROWS: RentRollRow[] = [];
@@ -230,6 +232,11 @@ function formatMoney(cents: number | null | undefined) {
     currency: "AUD",
     maximumFractionDigits: 0,
   }).format(cents / 100);
+}
+
+function csvCell(value: string | number | null | undefined) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
 }
 
 function friendlyError(error: unknown, fallback: string) {
@@ -827,6 +834,71 @@ function monthEndHandoffText(handoff: MonthEndHandoff) {
   ].join("\n");
 }
 
+function monthEndHandoffCsv(handoff: MonthEndHandoff) {
+  const guardrail =
+    "Review-only export: downloading this file does not create Xero drafts, preview or apply payment reconciliation, send tenant or owner email, generate billing drafts, dispatch invoices, refresh providers, or mutate provider history.";
+  const rows: Array<Array<string | number | null | undefined>> = [
+    ["Category", "Item", "Status", "Count", "Amount", "Detail", "Guardrail"],
+    [
+      "Handoff",
+      handoff.entityName,
+      `${handoffStatusLabel(handoff.status)} (${handoff.closeStatus})`,
+      "",
+      "",
+      handoff.statementMonth,
+      guardrail,
+    ],
+    [
+      "Approved invoices",
+      "Approved invoices",
+      "Approved",
+      handoff.approvedCount,
+      formatMoney(handoff.approvedCents),
+      "Invoices available for owner statement review.",
+      guardrail,
+    ],
+    [
+      "Provider dispatch",
+      "Provider dispatch",
+      "Dispatch readiness",
+      handoff.readyDispatchCount,
+      "",
+      `${handoff.providerCompleteCount} complete; ${handoff.providerRecoveryCount} recovery.`,
+      guardrail,
+    ],
+    [
+      "Payment review",
+      "Payment review",
+      "Local payment state",
+      handoff.unpaidCount,
+      "",
+      `${handoff.paymentReviewCount} Xero-linked review.`,
+      guardrail,
+    ],
+    [
+      "Owner statements",
+      "Owner statements",
+      "Statement pack",
+      handoff.ownerCount,
+      formatMoney(handoff.outstandingCents),
+      `${handoff.statementInvoiceCount} invoices; ${handoff.missingOwnerEmailCount} missing recipient.`,
+      guardrail,
+    ],
+    ...handoff.issues.map((issue) => [
+      "Open item",
+      issue,
+      handoffStatusLabel(handoff.status),
+      "",
+      "",
+      issue,
+      guardrail,
+    ]),
+    ["Export guardrail", "", "", "", "", guardrail, guardrail],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 function buildMonthEndChecklist({
   invoiceDrafts,
   freshness,
@@ -1175,6 +1247,15 @@ function MonthEndHandoffPanel({ handoff }: { handoff: MonthEndHandoff }) {
     await navigator.clipboard.writeText(monthEndHandoffText(handoff));
     setCopyReceipt("Handoff packet copied.");
   };
+  const downloadHandoffCsv = () => {
+    saveBlob(
+      new Blob([monthEndHandoffCsv(handoff)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      `billing-month-end-handoff-${handoff.statementMonth}.csv`,
+    );
+    setCopyReceipt("Handoff CSV downloaded.");
+  };
 
   return (
     <div className="border-b border-border bg-white px-4 py-4">
@@ -1199,6 +1280,14 @@ function MonthEndHandoffPanel({ handoff }: { handoff: MonthEndHandoff }) {
           >
             <ClipboardCheck size={14} />
             Copy handoff
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            onClick={downloadHandoffCsv}
+            className="min-h-10 rounded-lg px-3"
+          >
+            <Download size={14} />
+            Download handoff CSV
           </SecondaryButton>
           <Link
             href={handoff.statementsHref}

@@ -173,12 +173,21 @@ Last updated: 2026-05-28
   It does not send contractor email/SMS, run maintenance AI classification,
   assign/update work-order contractors, create/update/delete contractors, write
   provider history, or dispatch receipts.
-- Sidecar recommendation for the next slice: add a Billing Readiness
-  month-end handoff CSV beside the existing `Copy handoff` button, using the
-  already-built `MonthEndHandoff` object. Keep it local/export-only; do not run
-  Xero draft creation, payment reconciliation preview/apply, tenant/owner email
+- 2026-05-28 Billing Readiness continuation: the Month-end handoff panel now has
+  a local `billing-month-end-handoff-{month}.csv` download beside `Copy handoff`,
+  generated from the already-built `MonthEndHandoff` object. It exports
+  entity/month/status, approved invoice totals, provider dispatch
+  readiness/recovery, payment review, owner statement readiness/missing
+  recipients, open items, and review-only guardrail text. It does not run Xero
+  draft creation, payment reconciliation preview/apply, tenant/owner email
   dispatch, billing draft generation, invoice dispatch, provider refresh, or
   provider-history mutation.
+- Sidecar recommendation for the next slice: add a Settings communication
+  template override review CSV. Export runtime template keys, stored override
+  names/keys/versions/providers, active/inactive/system/override state, and
+  coverage status from Settings only. Keep it review-only: do not wire templates
+  into send paths, add edit controls, send notifications/digests/invoices,
+  mutate preferences, or write provider history.
 
 ## Takeover Priority
 

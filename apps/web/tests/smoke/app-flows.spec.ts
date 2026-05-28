@@ -144,6 +144,25 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     primaryDispatchRow.getByRole("button", { name: "Email" }),
   ).toBeVisible();
+  const handoffDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download handoff CSV" }).click();
+  const handoffDownload = await handoffDownloadPromise;
+  expect(handoffDownload.suggestedFilename()).toBe(
+    "billing-month-end-handoff-2026-05.csv",
+  );
+  const handoffDownloadPath = await handoffDownload.path();
+  expect(handoffDownloadPath).not.toBeNull();
+  const handoffCsv = await readFile(handoffDownloadPath!, "utf8");
+  expect(handoffCsv).toContain("Acme Holdings Pty Ltd");
+  expect(handoffCsv).toContain("2026-05");
+  expect(handoffCsv).toContain("Approved invoices");
+  expect(handoffCsv).toContain("Provider dispatch");
+  expect(handoffCsv).toContain("Payment review");
+  expect(handoffCsv).toContain("Owner statements");
+  expect(handoffCsv).toContain("missing recipient");
+  expect(handoffCsv).toContain(
+    "Review-only export: downloading this file does not create Xero drafts, preview or apply payment reconciliation, send tenant or owner email, generate billing drafts, dispatch invoices, refresh providers, or mutate provider history.",
+  );
 
   await page.getByRole("link", { name: "Open statements" }).last().click();
   await expect(page).toHaveURL(/\/statements\?.*month=2026-05/);
