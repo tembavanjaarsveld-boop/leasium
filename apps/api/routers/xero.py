@@ -108,10 +108,11 @@ READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, Us
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 XERO_CONTACT_PREVIEW_SCOPES = {"accounting.contacts.read"}
 XERO_CHART_TAX_SCOPES = {"accounting.settings.read"}
-XERO_TRANSACTION_WRITE_SCOPES = {"accounting.transactions"}
-XERO_TRANSACTION_READ_SCOPES = {"accounting.transactions.read"}
+XERO_INVOICE_WRITE_SCOPES = {"accounting.invoices"}
+XERO_INVOICE_READ_SCOPES = {"accounting.invoices.read"}
+XERO_LEGACY_TRANSACTION_WRITE_SCOPES = {"accounting.transactions"}
+XERO_LEGACY_TRANSACTION_READ_SCOPES = {"accounting.transactions.read"}
 XERO_INVOICE_POSTING_PREVIEW_SCOPES = XERO_CONTACT_PREVIEW_SCOPES | XERO_CHART_TAX_SCOPES
-XERO_DRAFT_CREATE_SCOPES = XERO_INVOICE_POSTING_PREVIEW_SCOPES | XERO_TRANSACTION_WRITE_SCOPES
 
 PROPERTY_OWNER_BILLING_STRUCTURES = {"property_owner", "trust", "split"}
 SUGGESTED_CHARGE_MAPPINGS: dict[RentChargeType, tuple[str, str | None]] = {
@@ -184,9 +185,31 @@ def _has_xero_scopes(
     return required_scopes.issubset(_xero_scope_set(provider_connection))
 
 
-def _has_xero_transaction_read_scope(provider_connection: XeroConnection | None) -> bool:
+def _has_any_xero_scope(
+    provider_connection: XeroConnection | None,
+    accepted_scopes: set[str],
+) -> bool:
+    return bool(_xero_scope_set(provider_connection) & accepted_scopes)
+
+
+def _has_xero_invoice_write_scope(provider_connection: XeroConnection | None) -> bool:
+    return _has_any_xero_scope(
+        provider_connection,
+        XERO_INVOICE_WRITE_SCOPES | XERO_LEGACY_TRANSACTION_WRITE_SCOPES,
+    )
+
+
+def _has_xero_invoice_read_scope(provider_connection: XeroConnection | None) -> bool:
     granted_scopes = _xero_scope_set(provider_connection)
-    return bool(granted_scopes & (XERO_TRANSACTION_READ_SCOPES | XERO_TRANSACTION_WRITE_SCOPES))
+    return bool(
+        granted_scopes
+        & (
+            XERO_INVOICE_READ_SCOPES
+            | XERO_INVOICE_WRITE_SCOPES
+            | XERO_LEGACY_TRANSACTION_READ_SCOPES
+            | XERO_LEGACY_TRANSACTION_WRITE_SCOPES
+        )
+    )
 
 
 def _connection(
@@ -2210,9 +2233,10 @@ def xero_connection_diagnostics(
         can_preview_invoice_posting=action_ready
         and _has_xero_scopes(provider_connection, XERO_INVOICE_POSTING_PREVIEW_SCOPES),
         can_create_xero_drafts=action_ready
-        and _has_xero_scopes(provider_connection, XERO_DRAFT_CREATE_SCOPES),
+        and _has_xero_scopes(provider_connection, XERO_INVOICE_POSTING_PREVIEW_SCOPES)
+        and _has_xero_invoice_write_scope(provider_connection),
         can_preview_payment_reconciliation=action_ready
-        and _has_xero_transaction_read_scope(provider_connection),
+        and _has_xero_invoice_read_scope(provider_connection),
         next_steps=_xero_diagnostics_next_steps(
             provider_configured=provider.configured,
             connection_source=connection.connection_source,

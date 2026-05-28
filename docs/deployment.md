@@ -153,7 +153,7 @@ NEXT_PUBLIC_API_BASE_URL=https://api.leasium.ai/api/v1
 Current workflow scopes:
 
 ```text
-offline_access accounting.contacts.read accounting.settings.read accounting.transactions
+offline_access accounting.contacts.read accounting.settings.read accounting.invoices
 ```
 
 Post-connect verification sequence:

@@ -1,6 +1,7 @@
 """Xero readiness API integration tests."""
 
 from datetime import timedelta
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 from apps.api.main import app
@@ -107,6 +108,25 @@ def _finish_xero_oauth(client: TestClient, state: str) -> None:
     )
     assert response.status_code in {302, 307}
     assert "xero_connected=1" in response.headers["location"]
+
+
+def test_xero_oauth_start_uses_granular_invoice_scope(
+    client: TestClient,
+    session: Session,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    entity_id = _entity_id(session)
+
+    response = client.get(f"/api/v1/xero/oauth/start?entity_id={entity_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    query = parse_qs(urlparse(body["authorization_url"]).query)
+    requested_scopes = set(query["scope"][0].split())
+    assert "accounting.invoices" in requested_scopes
+    assert "accounting.transactions" not in requested_scopes
+    assert "accounting.transactions.read" not in requested_scopes
 
 
 def _create_charge_rule_fixture(
@@ -670,7 +690,7 @@ def test_xero_connection_diagnostics_transactions_scope_does_not_unlock_invoice_
     assert body["can_preview_payment_reconciliation"] is True
 
 
-def test_xero_connection_diagnostics_read_only_transaction_scope_unlocks_payment_preview(
+def test_xero_connection_diagnostics_read_only_invoice_scope_unlocks_payment_preview(
     client: TestClient,
     session: Session,
     monkeypatch,
@@ -679,7 +699,7 @@ def test_xero_connection_diagnostics_read_only_transaction_scope_unlocks_payment
     _override_settings(settings)
     _fake_xero_provider(
         monkeypatch,
-        scopes="offline_access accounting.transactions.read",
+        scopes="offline_access accounting.invoices.read",
     )
     entity_id = _entity_id(session)
     state = _start_xero_oauth(client, entity_id)
@@ -755,7 +775,7 @@ def test_xero_connection_diagnostics_full_scopes_unlock_provider_actions(
         monkeypatch,
         scopes=(
             "offline_access accounting.contacts.read "
-            "accounting.settings.read accounting.transactions"
+            "accounting.settings.read accounting.invoices"
         ),
     )
     entity_id = _entity_id(session)
@@ -796,7 +816,7 @@ def test_xero_connection_diagnostics_viewer_cannot_use_provider_actions(
         monkeypatch,
         scopes=(
             "offline_access accounting.contacts.read "
-            "accounting.settings.read accounting.transactions"
+            "accounting.settings.read accounting.invoices"
         ),
     )
     entity_id = _entity_id(session)
@@ -2189,7 +2209,7 @@ def test_xero_provider_payment_reconciliation_fetches_xero_invoices(
             "access_token": "raw-access-token-payments",
             "refresh_token": "raw-refresh-token-created",
             "expires_in": 1800,
-            "scope": "offline_access accounting.transactions.read",
+            "scope": "offline_access accounting.invoices.read",
         }
 
     def fake_fetch_xero_invoices(

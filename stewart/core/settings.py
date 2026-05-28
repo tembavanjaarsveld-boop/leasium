@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     xero_connections_url: str = "https://api.xero.com/connections"
     xero_api_base_url: str = "https://api.xero.com/api.xro/2.0"
     xero_default_scopes: str = (
-        "offline_access accounting.contacts.read accounting.settings.read accounting.transactions"
+        "offline_access accounting.contacts.read accounting.settings.read accounting.invoices"
     )
     xero_http_timeout_seconds: float = 15.0
     sendgrid_api_key: str = ""
