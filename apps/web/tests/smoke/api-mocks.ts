@@ -2044,6 +2044,28 @@ export async function mockLeasiumApi(
         "accounting.settings.read",
         "accounting.invoices",
       ],
+      provider_setup_preflight: {
+        required_env_vars: [
+          "XERO_CLIENT_ID",
+          "XERO_CLIENT_SECRET",
+          "XERO_TOKEN_ENCRYPTION_KEY",
+        ],
+        missing_env_vars: [],
+        expected_redirect_uri:
+          "http://localhost:8000/api/v1/xero/oauth/callback",
+        required_scopes: [
+          "offline_access",
+          "accounting.contacts.read",
+          "accounting.settings.read",
+          "accounting.invoices",
+        ],
+        setup_checklist: [
+          "Set XERO_CLIENT_ID, XERO_CLIENT_SECRET, and XERO_TOKEN_ENCRYPTION_KEY on the API service.",
+          "Register expected_redirect_uri in the Xero app.",
+          "Confirm required_scopes in the Xero app consent screen.",
+          "Start OAuth only after diagnostics show provider_configured=true.",
+        ],
+      },
       connected: connection.connected,
       connection_source: connection.connection_source,
       xero_tenant_id: connection.xero_tenant_id,
@@ -2079,6 +2101,21 @@ export async function mockLeasiumApi(
       paid_cents: number;
       outstanding_cents: number;
       invoice_count: number;
+      invoices: Array<{
+        invoice_draft_id: string;
+        invoice_number: string | null;
+        title: string;
+        issue_date: string | null;
+        due_date: string | null;
+        total_cents: number;
+        paid_cents: number;
+        outstanding_cents: number;
+        payment_status: string;
+        xero_invoice_id: string | null;
+        reconciliation_reference: string | null;
+        reconciliation_match_confidence: string | null;
+        reconciliation_bank_transaction_id: string | null;
+      }>;
     };
     type OwnerStatement = {
       owner_identity: string;
@@ -2141,14 +2178,47 @@ export async function mockLeasiumApi(
           paid_cents: 0,
           outstanding_cents: 0,
           invoice_count: 0,
+          invoices: [],
         };
         owner.properties.push(line);
         owner.property_count += 1;
       }
+      const xeroSync = jsonRecord(metadata.xero_sync);
+      const reconciliation = jsonRecord(metadata.xero_payment_reconciliation);
       line.invoiced_cents += draft.total_cents;
       line.paid_cents += paidCents;
       line.outstanding_cents += outstandingCents;
       line.invoice_count += 1;
+      line.invoices.push({
+        invoice_draft_id: draft.id,
+        invoice_number: draft.invoice_number,
+        title: draft.title,
+        issue_date: draft.issue_date,
+        due_date: draft.due_date,
+        total_cents: draft.total_cents,
+        paid_cents: paidCents,
+        outstanding_cents: outstandingCents,
+        payment_status:
+          typeof paymentStatus.status === "string"
+            ? paymentStatus.status
+            : "unpaid",
+        xero_invoice_id:
+          typeof xeroSync.xero_invoice_id === "string"
+            ? xeroSync.xero_invoice_id
+            : null,
+        reconciliation_reference:
+          typeof reconciliation.reference === "string"
+            ? reconciliation.reference
+            : null,
+        reconciliation_match_confidence:
+          typeof reconciliation.match_confidence === "string"
+            ? reconciliation.match_confidence
+            : null,
+        reconciliation_bank_transaction_id:
+          typeof reconciliation.bank_transaction_id === "string"
+            ? reconciliation.bank_transaction_id
+            : null,
+      });
       owner.invoiced_cents += draft.total_cents;
       owner.paid_cents += paidCents;
       owner.outstanding_cents += outstandingCents;

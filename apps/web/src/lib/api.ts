@@ -1540,6 +1540,14 @@ export type XeroOAuthStartRecord = XeroProviderConfigRecord & {
   state_expires_at: string | null;
 };
 
+export type XeroProviderSetupPreflightRecord = {
+  required_env_vars: string[];
+  missing_env_vars: string[];
+  expected_redirect_uri: string;
+  required_scopes: string[];
+  setup_checklist: string[];
+};
+
 export type XeroConnectionDiagnosticsRecord = {
   entity_id: string;
   entity_name: string;
@@ -1547,6 +1555,7 @@ export type XeroConnectionDiagnosticsRecord = {
   missing_config: string[];
   redirect_uri: string;
   scopes: string[];
+  provider_setup_preflight: XeroProviderSetupPreflightRecord;
   connected: boolean;
   connection_source: "provider" | "manual" | "none";
   xero_tenant_id: string | null;
@@ -4666,6 +4675,22 @@ export function getCommsQueueCounts(entityId: string) {
 
 // ---- Owner statements (per-owner monthly roll-up) -------------------------
 
+export type OwnerInvoiceEvidenceLineRecord = {
+  invoice_draft_id: string;
+  invoice_number: string | null;
+  title: string;
+  issue_date: string | null;
+  due_date: string | null;
+  total_cents: number;
+  paid_cents: number;
+  outstanding_cents: number;
+  payment_status: string;
+  xero_invoice_id: string | null;
+  reconciliation_reference: string | null;
+  reconciliation_match_confidence: string | null;
+  reconciliation_bank_transaction_id: string | null;
+};
+
 export type OwnerPropertyLineRecord = {
   property_id: string;
   property_name: string;
@@ -4673,6 +4698,7 @@ export type OwnerPropertyLineRecord = {
   paid_cents: number;
   outstanding_cents: number;
   invoice_count: number;
+  invoices: OwnerInvoiceEvidenceLineRecord[];
 };
 
 export type OwnerStatementRecord = {

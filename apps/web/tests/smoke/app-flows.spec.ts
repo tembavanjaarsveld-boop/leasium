@@ -125,7 +125,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     page.getByText("1 provider recovery needs attention before month end."),
   ).toBeVisible();
   await expect(
-    page.getByText("2 approved invoices are still unpaid locally."),
+    page.getByText("2 approved invoices are still unpaid locally.").first(),
   ).toBeVisible();
   await expect(
     page.getByText("Owner statements", { exact: true }).first(),
@@ -144,7 +144,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     primaryDispatchRow.getByRole("button", { name: "Email" }),
   ).toBeVisible();
 
-  await page.getByRole("link", { name: "Open statements" }).click();
+  await page.getByRole("link", { name: "Open statements" }).last().click();
   await expect(page).toHaveURL(/\/statements\?.*month=2026-05/);
   await expect(
     page.getByRole("heading", { name: "Owner statements" }),
@@ -152,8 +152,17 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByRole("heading", { name: "Statement pack readiness" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Finance checklist" }),
+  ).toBeVisible();
+  const checklistDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download checklist CSV" }).click();
+  const checklistDownload = await checklistDownloadPromise;
+  expect(checklistDownload.suggestedFilename()).toBe(
+    "owner-statement-checklist-2026-05.csv",
+  );
   await expect(page.getByText("Statement pack blocked")).toBeVisible();
-  await expect(page.getByText("2 statement invoices")).toBeVisible();
+  await expect(page.getByText("2 statement invoices").first()).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Queen Street Property Trust" }).first(),
   ).toBeVisible();

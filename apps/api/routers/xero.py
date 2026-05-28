@@ -97,6 +97,7 @@ from apps.api.schemas.xero import (
     XeroPaymentReconciliationResultRead,
     XeroPaymentSummaryRead,
     XeroProviderConfigRead,
+    XeroProviderSetupPreflightRead,
     XeroProviderStatusReceiptRead,
     XeroReadinessSummaryRead,
     XeroStatusRead,
@@ -113,6 +114,11 @@ XERO_INVOICE_READ_SCOPES = {"accounting.invoices.read"}
 XERO_LEGACY_TRANSACTION_WRITE_SCOPES = {"accounting.transactions"}
 XERO_LEGACY_TRANSACTION_READ_SCOPES = {"accounting.transactions.read"}
 XERO_INVOICE_POSTING_PREVIEW_SCOPES = XERO_CONTACT_PREVIEW_SCOPES | XERO_CHART_TAX_SCOPES
+XERO_PROVIDER_REQUIRED_ENV_VARS = [
+    "XERO_CLIENT_ID",
+    "XERO_CLIENT_SECRET",
+    "XERO_TOKEN_ENCRYPTION_KEY",
+]
 
 PROPERTY_OWNER_BILLING_STRUCTURES = {"property_owner", "trust", "split"}
 SUGGESTED_CHARGE_MAPPINGS: dict[RentChargeType, tuple[str, str | None]] = {
@@ -287,6 +293,31 @@ def _xero_diagnostics_next_steps(
         "Connect Xero through OAuth from the operator settings screen.",
         "After connection, preview contacts, validate chart/tax mappings, then preview invoices.",
     ]
+
+
+def _xero_provider_setup_preflight(
+    provider: XeroProviderConfigRead,
+) -> XeroProviderSetupPreflightRead:
+    required_scopes = " ".join(provider.scopes)
+    return XeroProviderSetupPreflightRead(
+        required_env_vars=XERO_PROVIDER_REQUIRED_ENV_VARS,
+        missing_env_vars=[
+            env_var
+            for env_var in XERO_PROVIDER_REQUIRED_ENV_VARS
+            if env_var in provider.missing_config
+        ],
+        expected_redirect_uri=provider.redirect_uri,
+        required_scopes=provider.scopes,
+        setup_checklist=[
+            (
+                "Set XERO_CLIENT_ID, XERO_CLIENT_SECRET, and XERO_TOKEN_ENCRYPTION_KEY "
+                "on the API service."
+            ),
+            f"Register expected_redirect_uri in the Xero app: {provider.redirect_uri}",
+            f"Confirm required_scopes in the Xero app consent screen: {required_scopes}",
+            "Start OAuth only after these local diagnostics show provider_configured=true.",
+        ],
+    )
 
 
 def _payment_status(metadata: dict[str, Any]) -> str:
@@ -2218,6 +2249,7 @@ def xero_connection_diagnostics(
         missing_config=provider.missing_config,
         redirect_uri=provider.redirect_uri,
         scopes=provider.scopes,
+        provider_setup_preflight=_xero_provider_setup_preflight(provider),
         connected=connection.connected,
         connection_source=connection.connection_source,
         xero_tenant_id=connection.xero_tenant_id,

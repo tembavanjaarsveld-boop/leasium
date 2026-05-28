@@ -47,6 +47,14 @@ class XeroConnectionStatusRead(BaseModel):
     next_action: str
 
 
+class XeroProviderSetupPreflightRead(BaseModel):
+    required_env_vars: list[str]
+    missing_env_vars: list[str]
+    expected_redirect_uri: str
+    required_scopes: list[str]
+    setup_checklist: list[str]
+
+
 class XeroConnectionDiagnosticsRead(BaseModel):
     entity_id: UUID
     entity_name: str
@@ -54,6 +62,7 @@ class XeroConnectionDiagnosticsRead(BaseModel):
     missing_config: list[str]
     redirect_uri: str
     scopes: list[str]
+    provider_setup_preflight: XeroProviderSetupPreflightRead
     connected: bool
     connection_source: Literal["provider", "manual", "none"]
     xero_tenant_id: str | None

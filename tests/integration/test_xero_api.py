@@ -597,6 +597,72 @@ def test_xero_connection_diagnostics_configured_without_connection_is_read_only(
     assert audit_count_after == audit_count_before
 
 
+def test_xero_connection_diagnostics_returns_operator_setup_preflight(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = Settings(
+        public_api_url="https://api.leasium.test",
+        frontend_url="https://app.leasium.test",
+        xero_client_id="",
+        xero_client_secret="",
+        xero_token_encryption_key="",
+    )
+    _override_settings(settings)
+    entity_id = _entity_id(session)
+
+    def fail_provider_call(*args, **kwargs):
+        raise AssertionError("connection diagnostics must not call Xero or refresh tokens")
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_connections", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_contacts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_accounts", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_tax_rates", fail_provider_call)
+    monkeypatch.setattr(xero_router, "fetch_xero_invoices", fail_provider_call)
+    monkeypatch.setattr(xero_router, "create_xero_invoice_draft", fail_provider_call)
+
+    audit_count_before = len(
+        session.scalars(select(AuditAction).where(AuditAction.tool_name.like("xero.%"))).all()
+    )
+
+    response = client.get(f"/api/v1/xero/connection-diagnostics?entity_id={entity_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider_configured"] is False
+    assert body["missing_config"] == [
+        "XERO_CLIENT_ID",
+        "XERO_CLIENT_SECRET",
+        "XERO_TOKEN_ENCRYPTION_KEY",
+    ]
+    preflight = body["provider_setup_preflight"]
+    assert preflight["required_env_vars"] == [
+        "XERO_CLIENT_ID",
+        "XERO_CLIENT_SECRET",
+        "XERO_TOKEN_ENCRYPTION_KEY",
+    ]
+    assert preflight["missing_env_vars"] == body["missing_config"]
+    assert preflight["expected_redirect_uri"] == (
+        "https://api.leasium.test/api/v1/xero/oauth/callback"
+    )
+    assert preflight["required_scopes"] == body["scopes"]
+    assert "offline_access" in preflight["required_scopes"]
+    assert "accounting.contacts.read" in preflight["required_scopes"]
+    assert "accounting.settings.read" in preflight["required_scopes"]
+    assert "accounting.invoices" in preflight["required_scopes"]
+    assert any("XERO_CLIENT_ID" in item for item in preflight["setup_checklist"])
+    assert any("expected_redirect_uri" in item for item in preflight["setup_checklist"])
+    assert any("required_scopes" in item for item in preflight["setup_checklist"])
+    assert body["can_start_oauth"] is False
+
+    audit_count_after = len(
+        session.scalars(select(AuditAction).where(AuditAction.tool_name.like("xero.%"))).all()
+    )
+    assert audit_count_after == audit_count_before
+
+
 def test_xero_connection_diagnostics_partial_scopes_unlock_contacts_only(
     client: TestClient,
     session: Session,

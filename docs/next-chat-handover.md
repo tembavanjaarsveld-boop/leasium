@@ -87,6 +87,14 @@ Last updated: 2026-05-28
   starting OAuth. `XERO_STATE_SECRET` is still recommended, although the current
   code can fall back to the client secret/Clerk secret for state signing. No
   Xero OAuth or provider mutation was started during this check.
+- 2026-05-28 finance/Xero continuation: Xero connection diagnostics now include
+  a read-only provider setup preflight block with required env vars, missing
+  env vars, expected redirect URI, required scopes, and a setup checklist.
+  Owner statements now include invoice-level evidence in JSON/PDF and an
+  `INVOICE-EVIDENCE-{month}.csv` inside accountant ZIP packs, and the
+  Statements finance checklist can download a local CSV. These are all
+  review-only; no Xero refresh/write, email, payment reconciliation, provider
+  attachment, or delivery-history mutation is performed.
 
 ## Takeover Priority
 
@@ -659,6 +667,7 @@ Open items at session end:
 - Billing Readiness Xero freshness cues implemented: Delivery & payments now reads `/xero/status`, shows a local accounting-freshness strip, and flags Xero-linked unpaid invoice rows with `Payment check missing` / `Reconciliation stale` plus a `Review payments` handoff to Settings. Settings fresh state now says `Reconciliation current` for consistency with Billing Readiness, Insights, and snapshots.
 - Verification for the Xero slice: focused Playwright smoke `settings shows Xero readiness`, ESLint on touched frontend files, and `tsc --noEmit` all pass.
 - Billing Readiness month-end finance checklist implemented: Delivery & payments now derives five local rows from invoice/Xero state — Accounting setup, Invoice approvals, Provider dispatch, Payment reconciliation, Month-end pack — with targeted handoffs and no provider mutation.
+- Follow-up finance artifacts: Statements can download `owner-statement-checklist-{month}.csv`; owner statement JSON/PDF/ZIP includes invoice evidence behind owner totals; Xero diagnostics exposes a provider setup preflight block for Monday env/redirect/scope checks.
 - Verification for the checklist slice: focused Playwright smokes `dashboard shows the mocked portfolio and opens billing readiness` + `settings shows Xero readiness`, ESLint on touched frontend files, and `tsc --noEmit` all pass.
 
 ## Codex continuation 2026-05-25

@@ -58,6 +58,7 @@ import {
   type XeroAccountingFreshnessRecord,
   type XeroStatusRecord,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
@@ -263,6 +264,26 @@ function financeChecklistText(checklist: FinanceChecklist) {
     ),
     "",
     "Review-only: owner dispatch remains locked until the explicit approval workflow is wired.",
+  ].join("\n");
+}
+
+function csvCell(value: string | number) {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+function financeChecklistCsv(checklist: FinanceChecklist) {
+  return [
+    ["Status", "Item", "Metric", "Detail"].map(csvCell).join(","),
+    ...checklist.items.map((item) =>
+      [
+        checklistStatusLabel(item.status),
+        item.title,
+        item.metric,
+        item.detail,
+      ]
+        .map(csvCell)
+        .join(","),
+    ),
   ].join("\n");
 }
 
@@ -1060,6 +1081,7 @@ function StatementsContent() {
 
         <FinanceChecklistPanel
           checklist={financeChecklist}
+          month={month}
           loading={
             statementsQuery.isLoading ||
             invoiceDraftsQuery.isLoading ||
@@ -1666,9 +1688,11 @@ function StatementReadinessPanel({
 
 function FinanceChecklistPanel({
   checklist,
+  month,
   loading,
 }: {
   checklist: FinanceChecklist;
+  month: string;
   loading: boolean;
 }) {
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
@@ -1681,6 +1705,14 @@ function FinanceChecklistPanel({
     await navigator.clipboard.writeText(financeChecklistText(checklist));
     setCopyReceipt("Finance checklist copied.");
   };
+  const downloadChecklist = () => {
+    saveBlob(
+      new Blob([financeChecklistCsv(checklist)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      `owner-statement-checklist-${month}.csv`,
+    );
+  };
 
   return (
     <SectionPanel
@@ -1692,6 +1724,14 @@ function FinanceChecklistPanel({
           <SecondaryButton type="button" onClick={copyChecklist}>
             <ClipboardCheck size={15} />
             Copy checklist
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            onClick={downloadChecklist}
+            disabled={loading}
+          >
+            <Download size={15} />
+            Download checklist CSV
           </SecondaryButton>
           <StatusBadge
             tone={loading ? "neutral" : checklistOverallTone(checklist.status)}

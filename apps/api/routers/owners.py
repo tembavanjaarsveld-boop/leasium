@@ -33,6 +33,7 @@ from stewart.core.models import (
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.owners import (
+    OwnerInvoiceEvidenceLine,
     OwnerPropertyLine,
     OwnerStatementRead,
     OwnerStatementsRead,
@@ -122,19 +123,121 @@ def _identity_label(prop: Property) -> str:
 
 
 def _invoice_paid_cents(invoice: InvoiceDraft) -> int:
-    """Read paid_cents from invoice_metadata.
+    """Read paid_cents from local invoice metadata.
 
-    Xero reconciliation writes payment totals onto `invoice_metadata`. We
-    tolerate string or int values defensively because JSONB serialisation
-    can vary.
+    Current payment status lives under ``payment_status``. Older local
+    metadata may have a top-level ``paid_cents`` value, so keep that as a
+    read-only fallback for existing invoices.
     """
 
     metadata: dict[str, Any] = invoice.invoice_metadata or {}
-    raw = metadata.get("paid_cents")
-    try:
-        return max(0, int(raw))
-    except (TypeError, ValueError):
-        return 0
+    payment = metadata.get("payment_status")
+    if isinstance(payment, dict):
+        paid_cents = _metadata_int(payment.get("paid_cents"))
+        if paid_cents is not None:
+            return max(0, paid_cents)
+
+    paid_cents = _metadata_int(metadata.get("paid_cents"))
+    return max(0, paid_cents or 0)
+
+
+def _metadata_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _metadata_text(record: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = record.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return None
+
+
+def _metadata_record(value: object) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _invoice_payment_status(invoice: InvoiceDraft, paid_cents: int) -> str:
+    metadata: dict[str, Any] = invoice.invoice_metadata or {}
+    payment = metadata.get("payment_status")
+    if isinstance(payment, dict):
+        status_value = payment.get("status")
+        if isinstance(status_value, str) and status_value.strip():
+            return status_value.strip()
+    if paid_cents >= invoice.total_cents and invoice.total_cents > 0:
+        return "paid"
+    if paid_cents > 0:
+        return "partially_paid"
+    return "unpaid"
+
+
+def _invoice_outstanding_cents(invoice: InvoiceDraft, paid_cents: int) -> int:
+    metadata: dict[str, Any] = invoice.invoice_metadata or {}
+    payment = metadata.get("payment_status")
+    if isinstance(payment, dict):
+        outstanding_cents = _metadata_int(payment.get("outstanding_cents"))
+        if outstanding_cents is not None:
+            return max(0, outstanding_cents)
+    return max(0, invoice.total_cents - paid_cents)
+
+
+def _invoice_xero_invoice_id(invoice: InvoiceDraft) -> str | None:
+    metadata: dict[str, Any] = invoice.invoice_metadata or {}
+    direct_id = _metadata_text(metadata, "xero_invoice_id", "InvoiceID")
+    if direct_id:
+        return direct_id
+    sync_state = _metadata_record(metadata.get("xero_sync"))
+    sync_id = _metadata_text(sync_state, "xero_invoice_id", "InvoiceID")
+    if sync_id:
+        return sync_id
+    posting_state = _metadata_record(metadata.get("posting_preparation"))
+    return _metadata_text(posting_state, "xero_invoice_id", "InvoiceID")
+
+
+def _invoice_reconciliation_record(invoice: InvoiceDraft) -> dict[str, Any]:
+    metadata: dict[str, Any] = invoice.invoice_metadata or {}
+    current = _metadata_record(metadata.get("xero_payment_reconciliation"))
+    if current:
+        return current
+    history = metadata.get("xero_payment_reconciliation_history")
+    if isinstance(history, list) and history:
+        return _metadata_record(history[-1])
+    return {}
+
+
+def _invoice_evidence_line(invoice: InvoiceDraft) -> OwnerInvoiceEvidenceLine:
+    paid_cents = _invoice_paid_cents(invoice)
+    reconciliation = _invoice_reconciliation_record(invoice)
+    return OwnerInvoiceEvidenceLine(
+        invoice_draft_id=invoice.id,
+        invoice_number=invoice.invoice_number,
+        title=invoice.title,
+        issue_date=invoice.issue_date,
+        due_date=invoice.due_date,
+        total_cents=invoice.total_cents,
+        paid_cents=paid_cents,
+        outstanding_cents=_invoice_outstanding_cents(invoice, paid_cents),
+        payment_status=_invoice_payment_status(invoice, paid_cents),
+        xero_invoice_id=_invoice_xero_invoice_id(invoice),
+        reconciliation_reference=_metadata_text(reconciliation, "reference"),
+        reconciliation_match_confidence=_metadata_text(
+            reconciliation,
+            "match_confidence",
+        ),
+        reconciliation_bank_transaction_id=_metadata_text(
+            reconciliation,
+            "bank_transaction_id",
+        ),
+    )
 
 
 def _build_owner_statements(
@@ -215,14 +318,23 @@ def _build_owner_statements(
         property_lines: list[OwnerPropertyLine] = []
         owner_invoiced = 0
         owner_paid = 0
+        owner_outstanding = 0
         owner_count = 0
         for prop in props:
             prop_invoices = invoices_by_property.get(prop.id, [])
-            invoiced = sum(inv.total_cents for inv in prop_invoices)
-            paid = sum(_invoice_paid_cents(inv) for inv in prop_invoices)
-            outstanding = max(0, invoiced - paid)
+            invoice_lines = [_invoice_evidence_line(inv) for inv in prop_invoices]
+            invoice_lines.sort(
+                key=lambda line: (
+                    line.issue_date or date.min,
+                    line.invoice_number or line.title,
+                )
+            )
+            invoiced = sum(line.total_cents for line in invoice_lines)
+            paid = sum(line.paid_cents for line in invoice_lines)
+            outstanding = sum(line.outstanding_cents for line in invoice_lines)
             owner_invoiced += invoiced
             owner_paid += paid
+            owner_outstanding += outstanding
             owner_count += len(prop_invoices)
             property_lines.append(
                 OwnerPropertyLine(
@@ -232,6 +344,7 @@ def _build_owner_statements(
                     paid_cents=paid,
                     outstanding_cents=outstanding,
                     invoice_count=len(prop_invoices),
+                    invoices=invoice_lines,
                 )
             )
 
@@ -241,7 +354,6 @@ def _build_owner_statements(
             key=lambda line: (-line.invoiced_cents, line.property_name)
         )
 
-        owner_outstanding = max(0, owner_invoiced - owner_paid)
         statements.append(
             OwnerStatementRead(
                 owner_identity=bucket["label"],
@@ -322,6 +434,34 @@ def _statement_pdf_bytes(statement: OwnerStatementRead, month: str) -> bytes:
                 ),
             ]
         )
+    invoice_lines = [
+        (prop.property_name, invoice)
+        for prop in statement.properties
+        for invoice in prop.invoices
+    ]
+    if invoice_lines:
+        lines.extend(
+            [
+                "",
+                "Invoice evidence",
+                (
+                    "Property | Invoice | Issue | Due | Status | Total | Paid | "
+                    "Outstanding | Xero invoice | Bank reference | Match | Bank txn"
+                ),
+            ]
+        )
+        for property_name, invoice in invoice_lines:
+            lines.append(
+                f"{property_name} | {invoice.invoice_number or invoice.title} | "
+                f"{invoice.issue_date or ''} | {invoice.due_date or ''} | "
+                f"{invoice.payment_status} | {_format_money(invoice.total_cents)} | "
+                f"{_format_money(invoice.paid_cents)} | "
+                f"{_format_money(invoice.outstanding_cents)} | "
+                f"{invoice.xero_invoice_id or ''} | "
+                f"{invoice.reconciliation_reference or ''} | "
+                f"{invoice.reconciliation_match_confidence or ''} | "
+                f"{invoice.reconciliation_bank_transaction_id or ''}"
+            )
     lines.extend(
         [
             "",
@@ -399,7 +539,7 @@ def _csv_cell(value: object) -> str:
 
 
 def _statement_pack_manifest_csv(statements: OwnerStatementsRead) -> str:
-    rows = [
+    rows: list[list[object]] = [
         [
             "owner_identity",
             "billing_email",
@@ -431,6 +571,51 @@ def _statement_pack_manifest_csv(statements: OwnerStatementsRead) -> str:
     return "\n".join(",".join(_csv_cell(cell) for cell in row) for row in rows) + "\n"
 
 
+def _statement_pack_invoice_evidence_csv(statements: OwnerStatementsRead) -> str:
+    rows: list[list[object]] = [
+        [
+            "owner_identity",
+            "property_name",
+            "invoice_draft_id",
+            "invoice_number",
+            "title",
+            "issue_date",
+            "due_date",
+            "total_cents",
+            "paid_cents",
+            "outstanding_cents",
+            "payment_status",
+            "xero_invoice_id",
+            "reconciliation_reference",
+            "reconciliation_match_confidence",
+            "reconciliation_bank_transaction_id",
+        ]
+    ]
+    for statement in statements.owners:
+        for prop in statement.properties:
+            for invoice in prop.invoices:
+                rows.append(
+                    [
+                        statement.owner_identity,
+                        prop.property_name,
+                        invoice.invoice_draft_id,
+                        invoice.invoice_number or "",
+                        invoice.title,
+                        invoice.issue_date or "",
+                        invoice.due_date or "",
+                        invoice.total_cents,
+                        invoice.paid_cents,
+                        invoice.outstanding_cents,
+                        invoice.payment_status,
+                        invoice.xero_invoice_id or "",
+                        invoice.reconciliation_reference or "",
+                        invoice.reconciliation_match_confidence or "",
+                        invoice.reconciliation_bank_transaction_id or "",
+                    ]
+                )
+    return "\n".join(",".join(_csv_cell(cell) for cell in row) for row in rows) + "\n"
+
+
 def _statement_pack_zip_bytes(statements: OwnerStatementsRead) -> bytes:
     included = [statement for statement in statements.owners if statement.invoice_count > 0]
     total_invoiced = sum(statement.invoiced_cents for statement in included)
@@ -449,6 +634,10 @@ def _statement_pack_zip_bytes(statements: OwnerStatementsRead) -> bytes:
             _statement_pack_manifest_csv(statements),
         )
         archive.writestr(
+            f"INVOICE-EVIDENCE-{statements.month}.csv",
+            _statement_pack_invoice_evidence_csv(statements),
+        )
+        archive.writestr(
             f"README-{statements.month}.txt",
             (
                 "Review-only owner statement pack generated by Leasium.\n"
@@ -459,6 +648,8 @@ def _statement_pack_zip_bytes(statements: OwnerStatementsRead) -> bytes:
                 f"Outstanding cents: {total_outstanding}\n"
                 f"Missing owner billing emails: {missing_recipients}\n"
                 "Use MANIFEST CSV for accountant review and recipient readiness.\n"
+                "Use INVOICE-EVIDENCE CSV to review the invoice-level source "
+                "data behind owner totals.\n"
                 "No owner email, Xero posting, payment reconciliation, or provider "
                 "delivery history mutation was performed.\n"
             ),

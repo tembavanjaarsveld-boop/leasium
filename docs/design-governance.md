@@ -263,7 +263,11 @@ Status: pending Remba review. Settings now has a local Xero exception queue near
 
 2026-05-28 update: Settings Xero now includes local connection diagnostics and OAuth callback success/error feedback. The diagnostics explain configured provider state, operator role, authorised scopes, and readiness for contacts, chart/tax, invoice preview, draft creation, and payment preview without refreshing tokens or calling Xero. Remba should review whether the readiness rows reduce confusion without crowding the existing Xero workflow, and whether disabled action states make scope/role blockers clear enough for Monday's production connection rehearsal.
 
+2026-05-28 follow-up: Xero connection diagnostics now also return an operator setup preflight block with required API env vars, missing env vars, expected redirect URI, required scopes, and a setup checklist. This is still read-only and does not start OAuth, refresh tokens, or call Xero. Remba/operator review should confirm whether this belongs in Settings as visible setup guidance or stays API-only for support/debugging.
+
 2026-05-24 follow-up: Delivery & payments now also has a month-end finance checklist built from the same local state. It keeps the close process to five scan rows: Accounting setup, Invoice approvals, Provider dispatch, Payment reconciliation, and Month-end pack. The checklist points operators to Xero review, dispatch recovery, ready-to-dispatch rows, or Insights only when relevant, and it does not trigger any provider action. Remba should review whether this belongs in Billing Readiness long-term or should graduate into a dedicated month-end/owner-statements workflow once reporting deepens.
+
+2026-05-28 follow-up: Owner statements now expose finance checklist CSV download, invoice-level evidence in the owner statement API/PDF, and an `INVOICE-EVIDENCE-{month}.csv` inside accountant packs. This keeps finance review traceable from owner totals back to approved invoices, local payment state, Xero invoice IDs, and reconciliation references without sending owner email, posting to Xero, reconciling payments, or writing provider history. Remba/accountant review should focus on evidence density and whether invoice lines belong inline or in a disclosure.
 
 ## Xero Chart/Tax Validation Preview
 

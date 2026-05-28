@@ -11,7 +11,25 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class OwnerInvoiceEvidenceLine(BaseModel):
+    """Local invoice evidence behind an owner/property total."""
+
+    invoice_draft_id: UUID
+    invoice_number: str | None = None
+    title: str
+    issue_date: date | None = None
+    due_date: date | None = None
+    total_cents: int
+    paid_cents: int
+    outstanding_cents: int
+    payment_status: str
+    xero_invoice_id: str | None = None
+    reconciliation_reference: str | None = None
+    reconciliation_match_confidence: str | None = None
+    reconciliation_bank_transaction_id: str | None = None
 
 
 class OwnerPropertyLine(BaseModel):
@@ -23,6 +41,7 @@ class OwnerPropertyLine(BaseModel):
     paid_cents: int
     outstanding_cents: int
     invoice_count: int
+    invoices: list[OwnerInvoiceEvidenceLine] = Field(default_factory=list)
 
 
 class OwnerStatementRead(BaseModel):

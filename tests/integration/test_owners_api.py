@@ -2,6 +2,7 @@
 
 from datetime import date
 from io import BytesIO
+from typing import TypedDict
 from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
@@ -21,6 +22,11 @@ from stewart.core.models import (
 )
 
 
+class _OwnerSeedScope(TypedDict):
+    entity_id: str
+    property_ids: list[str]
+
+
 def _entity(session: Session) -> Entity:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
@@ -33,7 +39,7 @@ def _seed_owner_with_invoices(
     trust_name: str,
     trustee_name: str,
     properties: list[tuple[str, list[tuple[date, int, int]]]],
-) -> dict[str, str]:
+) -> _OwnerSeedScope:
     """Seed a trust + N properties each with M invoices.
 
     Each invoice tuple is (issue_date, total_cents, paid_cents).
@@ -150,6 +156,103 @@ def test_owner_statements_groups_properties_by_trust(
         "Queen Street Retail Centre",
         "Queen Street Warehouse",
     ]
+
+
+def test_owner_statements_include_invoice_evidence_without_mutating_metadata(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Property totals expose the local invoice evidence behind them."""
+
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="evidence.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Evidence Billing",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    session.add(bd)
+    session.flush()
+    prop = Property(
+        entity_id=entity.id,
+        name="Evidence Property",
+        street_address="1 Evidence Lane",
+        property_type=PropertyType.commercial_retail,
+        owner_legal_name="Evidence Trustee Pty Ltd",
+        trustee_name="Evidence Trustee Pty Ltd",
+        trust_name="Evidence Trust",
+        invoice_issuer_name="Evidence Trust via Evidence Trustee Pty Ltd",
+    )
+    session.add(prop)
+    session.flush()
+    metadata = {
+        "payment_status": {
+            "status": "partially_paid",
+            "paid_cents": 80_000,
+            "outstanding_cents": 20_000,
+        },
+        "xero_sync": {"xero_invoice_id": "xero-invoice-evidence-1"},
+        "xero_payment_reconciliation": {
+            "reference": "BANK REF INV-EVIDENCE-1",
+            "match_confidence": "high",
+            "bank_transaction_id": "bank-txn-evidence-1",
+        },
+    }
+    invoice = InvoiceDraft(
+        entity_id=entity.id,
+        billing_draft_id=bd.id,
+        property_id=prop.id,
+        document_id=doc.id,
+        status=InvoiceDraftStatus.approved,
+        invoice_number="INV-EVIDENCE-1",
+        title="April evidence invoice",
+        currency="AUD",
+        issue_date=date(2026, 4, 9),
+        due_date=date(2026, 4, 23),
+        subtotal_cents=100_000,
+        gst_cents=0,
+        total_cents=100_000,
+        invoice_metadata=metadata,
+    )
+    session.add(invoice)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": str(entity.id), "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    owner = response.json()["owners"][0]
+    assert owner["paid_cents"] == 80_000
+    evidence = owner["properties"][0]["invoices"][0]
+    assert evidence == {
+        "invoice_draft_id": str(invoice.id),
+        "invoice_number": "INV-EVIDENCE-1",
+        "title": "April evidence invoice",
+        "issue_date": "2026-04-09",
+        "due_date": "2026-04-23",
+        "total_cents": 100_000,
+        "paid_cents": 80_000,
+        "outstanding_cents": 20_000,
+        "payment_status": "partially_paid",
+        "xero_invoice_id": "xero-invoice-evidence-1",
+        "reconciliation_reference": "BANK REF INV-EVIDENCE-1",
+        "reconciliation_match_confidence": "high",
+        "reconciliation_bank_transaction_id": "bank-txn-evidence-1",
+    }
+    session.refresh(invoice)
+    assert invoice.invoice_metadata == metadata
 
 
 def test_owner_statements_keeps_owners_separate(
@@ -373,3 +476,101 @@ def test_owner_statement_pdf_pack_downloads_all_review_pdfs(
     assert "Owners included: 2" in readme
     assert "Missing owner billing emails: 2" in readme
     assert first_pdf.startswith(b"%PDF-1.4")
+
+
+def test_owner_statement_exports_include_invoice_evidence(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="export-evidence.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Export Evidence Billing",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    session.add(bd)
+    session.flush()
+    prop = Property(
+        entity_id=entity.id,
+        name="Export Evidence Property",
+        street_address="2 Evidence Lane",
+        property_type=PropertyType.commercial_retail,
+        owner_legal_name="Export Evidence Trustee Pty Ltd",
+        trustee_name="Export Evidence Trustee Pty Ltd",
+        trust_name="Export Evidence Trust",
+        invoice_issuer_name="Export Evidence Trust via Export Evidence Trustee Pty Ltd",
+    )
+    session.add(prop)
+    session.flush()
+    session.add(
+        InvoiceDraft(
+            entity_id=entity.id,
+            billing_draft_id=bd.id,
+            property_id=prop.id,
+            document_id=doc.id,
+            status=InvoiceDraftStatus.approved,
+            invoice_number="INV-EXPORT-EVIDENCE-1",
+            title="Export evidence invoice",
+            currency="AUD",
+            issue_date=date(2026, 4, 12),
+            due_date=date(2026, 4, 26),
+            subtotal_cents=120_000,
+            gst_cents=0,
+            total_cents=120_000,
+            invoice_metadata={
+                "payment_status": {
+                    "status": "paid",
+                    "paid_cents": 120_000,
+                    "outstanding_cents": 0,
+                },
+                "xero_payment_reconciliation": {
+                    "reference": "BANK REF INV-EXPORT-EVIDENCE-1",
+                    "match_confidence": "medium",
+                    "bank_transaction_id": "bank-txn-export-evidence-1",
+                },
+            },
+        )
+    )
+    session.commit()
+
+    pdf_response = client.get(
+        "/api/v1/owners/statements/pdf",
+        params={
+            "entity_id": str(entity.id),
+            "month": "2026-04",
+            "owner_identity": (
+                "Export Evidence Trust "
+                "(Trustee: Export Evidence Trustee Pty Ltd)"
+            ),
+        },
+    )
+    assert pdf_response.status_code == 200
+    pdf_text = "\n".join(
+        page.extract_text() or ""
+        for page in PdfReader(BytesIO(pdf_response.content)).pages
+    )
+    assert "Invoice evidence" in pdf_text
+    assert "INV-EXPORT-EVIDENCE-1" in pdf_text
+    assert "BANK REF INV-EXPORT-EVIDENCE-1" in pdf_text
+
+    zip_response = client.get(
+        "/api/v1/owners/statements/pdf-pack",
+        params={"entity_id": str(entity.id), "month": "2026-04"},
+    )
+    assert zip_response.status_code == 200
+    with ZipFile(BytesIO(zip_response.content)) as archive:
+        evidence_csv = archive.read("INVOICE-EVIDENCE-2026-04.csv").decode()
+    assert "invoice_draft_id" in evidence_csv
+    assert "INV-EXPORT-EVIDENCE-1" in evidence_csv
+    assert "bank-txn-export-evidence-1" in evidence_csv
