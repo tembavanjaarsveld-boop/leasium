@@ -2170,6 +2170,12 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
       "Register expected_redirect_uri in the Xero app.",
     ),
   ).toBeVisible();
+  await providerSetupPreflightPanel
+    .getByRole("button", { name: "Copy setup packet" })
+    .click();
+  await expect(
+    providerSetupPreflightPanel.getByText("Provider setup packet copied."),
+  ).toBeVisible();
   await expect(page.getByText("Xero is not connected")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Connect Xero" }),

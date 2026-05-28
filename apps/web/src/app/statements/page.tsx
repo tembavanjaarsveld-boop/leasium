@@ -302,8 +302,8 @@ function financeChecklistText(checklist: FinanceChecklist) {
   ].join("\n");
 }
 
-function csvCell(value: string | number) {
-  return `"${String(value).replaceAll('"', '""')}"`;
+function csvCell(value: string | number | null | undefined) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
 function financeChecklistCsv(checklist: FinanceChecklist) {
@@ -318,6 +318,58 @@ function financeChecklistCsv(checklist: FinanceChecklist) {
       ]
         .map(csvCell)
         .join(","),
+    ),
+  ].join("\n");
+}
+
+function ownerSlug(ownerIdentity: string) {
+  return (
+    ownerIdentity
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "owner"
+  );
+}
+
+function ownerInvoiceEvidenceCsv(owner: OwnerStatementRecord) {
+  return [
+    [
+      "Owner",
+      "Property",
+      "Invoice",
+      "Title",
+      "Issue date",
+      "Due date",
+      "Total",
+      "Paid",
+      "Outstanding",
+      "Payment status",
+      "Xero invoice ID",
+      "Reconciliation reference",
+      "Bank transaction ID",
+    ]
+      .map(csvCell)
+      .join(","),
+    ...owner.properties.flatMap((property) =>
+      property.invoices.map((invoice) =>
+        [
+          owner.owner_identity,
+          property.property_name,
+          invoice.invoice_number ?? invoice.invoice_draft_id,
+          invoice.title,
+          invoice.issue_date,
+          invoice.due_date,
+          formatMoney(invoice.total_cents),
+          formatMoney(invoice.paid_cents),
+          formatMoney(invoice.outstanding_cents),
+          invoiceEvidenceStatusLabel(invoice.payment_status),
+          invoice.xero_invoice_id,
+          invoice.reconciliation_reference,
+          invoice.reconciliation_bank_transaction_id,
+        ]
+          .map(csvCell)
+          .join(","),
+      ),
     ),
   ].join("\n");
 }
@@ -1337,12 +1389,9 @@ function StatementPreviewPanel({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `owner-statement-${month}-${
-        owner.owner_identity
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "") || "owner"
-      }.pdf`;
+      anchor.download = `owner-statement-${month}-${ownerSlug(
+        owner.owner_identity,
+      )}.pdf`;
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
@@ -1353,6 +1402,16 @@ function StatementPreviewPanel({
     } finally {
       setPdfLoading(false);
     }
+  };
+  const downloadInvoiceEvidence = () => {
+    saveBlob(
+      new Blob([ownerInvoiceEvidenceCsv(owner)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      `owner-statement-invoice-evidence-${month}-${ownerSlug(
+        owner.owner_identity,
+      )}.csv`,
+    );
   };
 
   return (
@@ -1504,10 +1563,20 @@ function StatementPreviewPanel({
                   Source invoice lines included in this owner statement.
                 </p>
               </div>
-              <StatusBadge tone="neutral">
-                {invoiceEvidenceRows.length}{" "}
-                {invoiceEvidenceRows.length === 1 ? "invoice" : "invoices"}
-              </StatusBadge>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge tone="neutral">
+                  {invoiceEvidenceRows.length}{" "}
+                  {invoiceEvidenceRows.length === 1 ? "invoice" : "invoices"}
+                </StatusBadge>
+                <SecondaryButton
+                  type="button"
+                  onClick={downloadInvoiceEvidence}
+                  disabled={invoiceEvidenceRows.length === 0}
+                >
+                  <Download size={15} />
+                  Download invoice evidence CSV
+                </SecondaryButton>
+              </div>
             </div>
 
             {invoiceEvidenceRows.length ? (

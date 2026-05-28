@@ -17,6 +17,14 @@ test("owner statement preview exposes invoice-level evidence", async ({
 
   const evidence = page.getByRole("region", { name: "Invoice evidence" });
   await expect(evidence).toBeVisible();
+  const evidenceDownloadPromise = page.waitForEvent("download");
+  await evidence
+    .getByRole("button", { name: "Download invoice evidence CSV" })
+    .click();
+  const evidenceDownload = await evidenceDownloadPromise;
+  expect(evidenceDownload.suggestedFilename()).toBe(
+    "owner-statement-invoice-evidence-2026-05-queen-street-property-trust.csv",
+  );
 
   const invoiceRow = evidence.getByRole("row").filter({ hasText: "INV-1001" });
   await expect(invoiceRow).toContainText("May rent and outgoings");

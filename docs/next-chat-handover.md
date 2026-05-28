@@ -100,6 +100,12 @@ Last updated: 2026-05-28
   evidence rows inside the selected owner statement preview. Both are
   read-only operator review surfaces; Connect with Xero still follows the
   diagnostics capability gate, and owner dispatch remains separate.
+- 2026-05-28 finance UI continuation 2: Settings Xero can copy a provider setup
+  packet containing the expected redirect URI, env vars, scopes, checklist, and
+  guardrails for the Render/Xero handoff. Owner statement invoice evidence can
+  be downloaded as a selected-owner CSV from the preview. Both are local UI
+  conveniences only; no Xero, SendGrid, payment, owner dispatch, or provider
+  history mutation is triggered.
 
 ## Takeover Priority
 

@@ -456,6 +456,56 @@ function diagnosticsReadinessRows(
   ] as const;
 }
 
+function xeroProviderSetupPacket(diagnostics: XeroConnectionDiagnosticsRecord) {
+  const preflight = diagnostics.provider_setup_preflight;
+  return [
+    "Xero provider setup packet",
+    "",
+    `Expected redirect URI: ${preflight.expected_redirect_uri}`,
+    "",
+    "Required env vars:",
+    ...preflight.required_env_vars.map((envVar) => `- ${envVar}`),
+    "",
+    "Missing env vars:",
+    ...(preflight.missing_env_vars.length
+      ? preflight.missing_env_vars.map((envVar) => `- ${envVar}`)
+      : ["- None"]),
+    "",
+    "Required scopes:",
+    ...preflight.required_scopes.map((scope) => `- ${scope}`),
+    "",
+    "Setup checklist:",
+    ...preflight.setup_checklist.map((step) => `- ${step}`),
+    "",
+    "Guardrails:",
+    ...diagnostics.guardrails.map((guardrail) => `- ${guardrail}`),
+  ].join("\n");
+}
+
+async function copyTextToClipboard(text: string) {
+  if (typeof navigator !== "undefined" && navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to the textarea copy path below.
+    }
+  }
+  if (typeof document === "undefined") {
+    return false;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  return copied;
+}
+
 function accountingNextStep({
   freshness,
   exceptionBlockers,
@@ -1307,6 +1357,9 @@ function SettingsWorkspace() {
   >({});
   const [xeroCallbackFeedback, setXeroCallbackFeedback] =
     useState<XeroCallbackFeedback | null>(null);
+  const [xeroSetupCopyReceipt, setXeroSetupCopyReceipt] = useState<
+    string | null
+  >(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteDisplayName, setInviteDisplayName] = useState("");
   const [inviteRole, setInviteRole] = useState<SecurityRole>("viewer");
@@ -1712,6 +1765,20 @@ function SettingsWorkspace() {
     }
     await navigator.clipboard.writeText(latestInviteLink.url);
     setLatestInviteLink({ ...latestInviteLink, copied: true });
+  };
+
+  const copyXeroSetupPacket = async () => {
+    if (!xeroDiagnostics) {
+      return;
+    }
+    const copied = await copyTextToClipboard(
+      xeroProviderSetupPacket(xeroDiagnostics),
+    );
+    setXeroSetupCopyReceipt(
+      copied
+        ? "Provider setup packet copied."
+        : "Copy unavailable in this browser.",
+    );
   };
 
   const unlinkLoginMutation = useMutation({
@@ -4108,20 +4175,34 @@ function SettingsWorkspace() {
                                 Xero app configuration
                               </div>
                             </div>
-                            <StatusBadge
-                              tone={
-                                xeroDiagnostics.provider_setup_preflight
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge
+                                tone={
+                                  xeroDiagnostics.provider_setup_preflight
+                                    .missing_env_vars.length
+                                    ? "warning"
+                                    : "success"
+                                }
+                              >
+                                {xeroDiagnostics.provider_setup_preflight
                                   .missing_env_vars.length
-                                  ? "warning"
-                                  : "success"
-                              }
-                            >
-                              {xeroDiagnostics.provider_setup_preflight
-                                .missing_env_vars.length
-                                ? "Env vars missing"
-                                : "Env vars present"}
-                            </StatusBadge>
+                                  ? "Env vars missing"
+                                  : "Env vars present"}
+                              </StatusBadge>
+                              <SecondaryButton
+                                type="button"
+                                onClick={copyXeroSetupPacket}
+                              >
+                                <Copy size={14} />
+                                Copy setup packet
+                              </SecondaryButton>
+                            </div>
                           </div>
+                          {xeroSetupCopyReceipt ? (
+                            <p className="text-xs font-medium text-success">
+                              {xeroSetupCopyReceipt}
+                            </p>
+                          ) : null}
                           <div className="grid gap-3 md:grid-cols-2">
                             <div>
                               <div className="text-xs font-medium uppercase text-muted-foreground">
