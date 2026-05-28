@@ -7,6 +7,7 @@ import {
   Ban,
   Building2,
   CheckCircle2,
+  ClipboardCheck,
   Eye,
   FileCheck2,
   FileText,
@@ -90,6 +91,31 @@ type MonthEndChecklistItem = {
   status: MonthEndChecklistStatus;
   actionLabel?: string;
   href?: string;
+};
+
+type MonthEndHandoffStatus = "ready" | "review" | "blocked" | "loading";
+
+type MonthEndHandoff = {
+  status: MonthEndHandoffStatus;
+  title: string;
+  detail: string;
+  entityName: string;
+  statementMonth: string;
+  statementsHref: string;
+  closeStatus: "ready" | "incomplete" | "unpaid" | "blocked";
+  approvedCount: number;
+  approvedCents: number;
+  readyDispatchCount: number;
+  providerRecoveryCount: number;
+  providerCompleteCount: number;
+  unpaidCount: number;
+  paymentReviewCount: number;
+  needsXeroApprovalCount: number;
+  ownerCount: number;
+  statementInvoiceCount: number;
+  missingOwnerEmailCount: number;
+  outstandingCents: number;
+  issues: string[];
 };
 
 type BillingWorkspaceTab =
@@ -554,6 +580,253 @@ function ownerStatementsHref({
   return `/statements?${params.toString()}`;
 }
 
+function handoffStatusTone(status: MonthEndHandoffStatus): StatusTone {
+  if (status === "ready") {
+    return "success";
+  }
+  if (status === "blocked") {
+    return "danger";
+  }
+  if (status === "loading") {
+    return "neutral";
+  }
+  return "warning";
+}
+
+function handoffStatusLabel(status: MonthEndHandoffStatus) {
+  if (status === "ready") {
+    return "Ready";
+  }
+  if (status === "blocked") {
+    return "Blocked";
+  }
+  if (status === "loading") {
+    return "Checking";
+  }
+  return "Review";
+}
+
+function buildMonthEndHandoff({
+  invoiceDrafts,
+  freshness,
+  ownerStatements,
+  statementsLoading,
+  entityId,
+  entityName,
+  statementMonth,
+}: {
+  invoiceDrafts: InvoiceDraftRecord[];
+  freshness: XeroAccountingFreshnessRecord | null;
+  ownerStatements: OwnerStatementsRecord | undefined;
+  statementsLoading: boolean;
+  entityId: string;
+  entityName: string;
+  statementMonth: string;
+}): MonthEndHandoff {
+  const approvedDrafts = invoiceDrafts.filter(
+    (draft) => draft.status === "approved",
+  );
+  const reviews = approvedDrafts.map((draft) => invoiceDeliveryReview(draft));
+  const approvedCount = approvedDrafts.length;
+  const approvedCents = approvedDrafts.reduce(
+    (total, draft) => total + draft.total_cents,
+    0,
+  );
+  const needsXeroApprovalCount = reviews.filter(
+    (review) => !review.xeroApproved,
+  ).length;
+  const providerRecoveryCount = reviews.filter(
+    (review) => review.xeroFailed || review.emailFailed,
+  ).length;
+  const readyDispatchCount = reviews.filter(
+    (review) =>
+      review.readyForProviderDispatch &&
+      !review.xeroFailed &&
+      !review.emailFailed,
+  ).length;
+  const providerCompleteCount = reviews.filter(
+    (review) => review.providerComplete,
+  ).length;
+  const unpaidCount = reviews.filter(
+    (review) => review.paymentLabel !== "paid",
+  ).length;
+  const paymentReviewCount = approvedDrafts.filter((draft) =>
+    Boolean(invoicePaymentFreshnessCue(draft, freshness)),
+  ).length;
+  const accountingBlocked =
+    freshness?.status === "attention" ||
+    (freshness?.readiness_blocker_count ?? 0) > 0;
+  const accountingReview =
+    !freshness ||
+    freshness.status !== "ready" ||
+    (freshness.readiness_warning_count ?? 0) > 0;
+  const statementOwners = ownerStatements?.owners ?? [];
+  const ownerCount = statementOwners.length;
+  const statementInvoiceCount = statementOwners.reduce(
+    (total, owner) => total + owner.invoice_count,
+    0,
+  );
+  const missingOwnerEmailCount = statementOwners.filter(
+    (owner) => !owner.billing_email,
+  ).length;
+  const outstandingCents = statementOwners.reduce(
+    (total, owner) => total + owner.outstanding_cents,
+    0,
+  );
+  const closeReady =
+    approvedCount > 0 &&
+    statementInvoiceCount > 0 &&
+    missingOwnerEmailCount === 0 &&
+    !accountingBlocked &&
+    !accountingReview &&
+    needsXeroApprovalCount === 0 &&
+    providerRecoveryCount === 0 &&
+    readyDispatchCount === 0 &&
+    unpaidCount === 0 &&
+    paymentReviewCount === 0;
+  const closeStatus = closeReady
+    ? "ready"
+    : accountingBlocked ||
+        providerRecoveryCount > 0 ||
+        missingOwnerEmailCount > 0
+      ? "blocked"
+      : unpaidCount > 0 || paymentReviewCount > 0 || outstandingCents > 0
+        ? "unpaid"
+        : "incomplete";
+  const status: MonthEndHandoffStatus = statementsLoading
+    ? "loading"
+    : closeStatus === "ready"
+      ? "ready"
+      : closeStatus === "blocked"
+        ? "blocked"
+        : "review";
+  const issues: string[] = [];
+
+  if (!freshness) {
+    issues.push("Accounting freshness is unavailable for this handoff.");
+  } else if (accountingBlocked) {
+    issues.push(
+      `${countLabel(freshness.readiness_blocker_count, "accounting blocker")} needs clearing in Xero settings.`,
+    );
+  } else if (accountingReview) {
+    const warningCount = freshness.readiness_warning_count ?? 0;
+    issues.push(
+      warningCount > 0
+        ? `${countLabel(warningCount, "accounting warning")} should be reviewed before relying on the pack.`
+        : `Accounting status is ${freshness.status.replaceAll("_", " ")} and should be reviewed before relying on the pack.`,
+    );
+  }
+  if (approvedCount === 0) {
+    issues.push("No approved invoices are available for owner statements yet.");
+  }
+  if (needsXeroApprovalCount > 0) {
+    issues.push(
+      `${countLabel(needsXeroApprovalCount, "approved invoice")} still needs Xero approval.`,
+    );
+  }
+  if (providerRecoveryCount > 0) {
+    issues.push(
+      `${countLabel(providerRecoveryCount, "provider recovery", "provider recoveries")} needs attention before dispatch review.`,
+    );
+  }
+  if (readyDispatchCount > 0) {
+    issues.push(
+      `${countLabel(readyDispatchCount, "approved invoice")} ${
+        readyDispatchCount === 1 ? "is" : "are"
+      } ready for provider dispatch.`,
+    );
+  }
+  if (paymentReviewCount > 0) {
+    issues.push(
+      `${countLabel(paymentReviewCount, "Xero-linked payment review")} ${
+        paymentReviewCount === 1 ? "is" : "are"
+      } still open.`,
+    );
+  } else if (unpaidCount > 0) {
+    issues.push(
+      `${countLabel(unpaidCount, "approved invoice")} ${
+        unpaidCount === 1 ? "is" : "are"
+      } still unpaid locally.`,
+    );
+  }
+  if (!statementsLoading && statementInvoiceCount === 0) {
+    issues.push(
+      `No owner statement invoices are showing for ${statementMonth}.`,
+    );
+  }
+  if (missingOwnerEmailCount > 0) {
+    issues.push(
+      `${countLabel(missingOwnerEmailCount, "owner")} needs a billing email before dispatch approval.`,
+    );
+  }
+  if (!issues.length) {
+    issues.push("Statement pack is ready for preview and dispatch review.");
+  }
+
+  return {
+    status,
+    title:
+      status === "ready"
+        ? "Owner statement handoff ready"
+        : status === "blocked"
+          ? "Owner statement handoff blocked"
+          : status === "loading"
+            ? "Checking owner statement handoff"
+            : "Owner statement handoff needs review",
+    detail:
+      status === "ready"
+        ? "Finance can open the statement pack and review dispatch copy."
+        : status === "blocked"
+          ? "Clear blockers before relying on the owner statement pack."
+          : status === "loading"
+            ? `Checking statement roll-up for ${statementMonth}.`
+            : "Review the open items before treating this month as closed.",
+    entityName,
+    statementMonth,
+    statementsHref: ownerStatementsHref({
+      entityId,
+      month: statementMonth,
+      closeStatus,
+    }),
+    closeStatus,
+    approvedCount,
+    approvedCents,
+    readyDispatchCount,
+    providerRecoveryCount,
+    providerCompleteCount,
+    unpaidCount,
+    paymentReviewCount,
+    needsXeroApprovalCount,
+    ownerCount,
+    statementInvoiceCount,
+    missingOwnerEmailCount,
+    outstandingCents,
+    issues,
+  };
+}
+
+function monthEndHandoffText(handoff: MonthEndHandoff) {
+  return [
+    "Month-end owner statement handoff",
+    `Entity: ${handoff.entityName}`,
+    `Month: ${handoff.statementMonth}`,
+    `Status: ${handoffStatusLabel(handoff.status)} (${handoff.closeStatus})`,
+    "",
+    `Approved invoices: ${handoff.approvedCount} / ${formatMoney(
+      handoff.approvedCents,
+    )}`,
+    `Provider dispatch: ${handoff.providerCompleteCount} complete / ${handoff.readyDispatchCount} ready / ${handoff.providerRecoveryCount} recovery`,
+    `Payment review: ${handoff.unpaidCount} unpaid / ${handoff.paymentReviewCount} Xero-linked review`,
+    `Owner statements: ${handoff.ownerCount} owners / ${handoff.statementInvoiceCount} invoices / ${handoff.missingOwnerEmailCount} missing recipient`,
+    `Outstanding on statements: ${formatMoney(handoff.outstandingCents)}`,
+    "",
+    "Open items",
+    ...handoff.issues.map((issue) => `- ${issue}`),
+    "",
+    "Review-only: statement preview/export and dispatch review remain explicit approval steps.",
+  ].join("\n");
+}
+
 function buildMonthEndChecklist({
   invoiceDrafts,
   freshness,
@@ -653,10 +926,7 @@ function buildMonthEndChecklist({
             missingOwnerEmailCount,
             "owner",
           )} need billing email before dispatch.`
-        : `${countLabel(
-            statementOwners.length,
-            "owner",
-          )} and ${countLabel(
+        : `${countLabel(statementOwners.length, "owner")} and ${countLabel(
             statementInvoiceCount,
             "statement invoice",
           )} ready for preview and dispatch review.`;
@@ -687,9 +957,7 @@ function buildMonthEndChecklist({
                 approvedCount === 1 ? "has" : "have"
               } Xero approval recorded.`,
       status:
-        approvedCount === 0 || needsXeroApprovalCount > 0
-          ? "review"
-          : "clear",
+        approvedCount === 0 || needsXeroApprovalCount > 0 ? "review" : "clear",
       actionLabel: needsXeroApprovalCount > 0 ? "Review Xero" : undefined,
       href: needsXeroApprovalCount > 0 ? xeroHref : undefined,
     },
@@ -712,9 +980,7 @@ function buildMonthEndChecklist({
               : providerCompleteCount === approvedCount
                 ? "All approved invoices have Xero and tenant email receipts."
                 : `${countLabel(remainingProviderCount, "approved invoice")} ${
-                    remainingProviderCount === 1
-                      ? "still needs"
-                      : "still need"
+                    remainingProviderCount === 1 ? "still needs" : "still need"
                   } provider completion.`,
       status:
         providerRecoveryCount > 0
@@ -833,9 +1099,7 @@ function MonthEndChecklistStrip({ items }: { items: MonthEndChecklistItem[] }) {
                 <span className="text-primary">{icon}</span>
                 <span className="truncate">{item.title}</span>
               </div>
-              <div className="min-w-0 text-muted-foreground">
-                {item.detail}
-              </div>
+              <div className="min-w-0 text-muted-foreground">{item.detail}</div>
               <div className="flex flex-wrap items-center gap-2 md:justify-end">
                 <StatusBadge tone={tone}>
                   {checklistStatusLabel(item.status)}
@@ -854,6 +1118,126 @@ function MonthEndChecklistStrip({ items }: { items: MonthEndChecklistItem[] }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function MonthEndHandoffPanel({ handoff }: { handoff: MonthEndHandoff }) {
+  const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const metrics = [
+    {
+      label: "Approved invoices",
+      value: handoff.approvedCount,
+      detail: formatMoney(handoff.approvedCents),
+      tone: handoff.approvedCount ? "success" : "neutral",
+    },
+    {
+      label: "Dispatch",
+      value: handoff.readyDispatchCount,
+      detail: `${handoff.providerCompleteCount} complete / ${handoff.providerRecoveryCount} recovery`,
+      tone: handoff.providerRecoveryCount
+        ? "danger"
+        : handoff.readyDispatchCount
+          ? "warning"
+          : "success",
+    },
+    {
+      label: "Payments",
+      value: handoff.unpaidCount,
+      detail: `${handoff.paymentReviewCount} Xero-linked review`,
+      tone:
+        handoff.unpaidCount || handoff.paymentReviewCount
+          ? "warning"
+          : "success",
+    },
+    {
+      label: "Statement pack",
+      value: handoff.ownerCount,
+      detail: `${handoff.statementInvoiceCount} invoices / ${handoff.missingOwnerEmailCount} missing recipient`,
+      tone: handoff.missingOwnerEmailCount
+        ? "danger"
+        : handoff.statementInvoiceCount
+          ? "success"
+          : "warning",
+    },
+  ] satisfies Array<{
+    label: string;
+    value: number;
+    detail: string;
+    tone: StatusTone;
+  }>;
+
+  const copyHandoff = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyReceipt("Copy is not available in this browser.");
+      return;
+    }
+    await navigator.clipboard.writeText(monthEndHandoffText(handoff));
+    setCopyReceipt("Handoff packet copied.");
+  };
+
+  return (
+    <div className="border-b border-border bg-white px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone={handoffStatusTone(handoff.status)}>
+              {handoffStatusLabel(handoff.status)}
+            </StatusBadge>
+            <StatusBadge tone="neutral">{handoff.statementMonth}</StatusBadge>
+          </div>
+          <h3 className="mt-2 text-sm font-semibold text-foreground">
+            {handoff.title}
+          </h3>
+          <p className="mt-1 text-sm text-muted-foreground">{handoff.detail}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton
+            type="button"
+            onClick={copyHandoff}
+            className="min-h-10 rounded-lg px-3"
+          >
+            <ClipboardCheck size={14} />
+            Copy handoff
+          </SecondaryButton>
+          <Link
+            href={handoff.statementsHref}
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+          >
+            <ArrowUpRight size={14} />
+            Open statements
+          </Link>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 border-y border-border py-3 sm:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="min-w-0 border-border xl:border-r">
+            <div className="flex items-center gap-2">
+              <StatusBadge tone={metric.tone}>{metric.value}</StatusBadge>
+              <span className="text-sm font-semibold text-foreground">
+                {metric.label}
+              </span>
+            </div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              {metric.detail}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 grid gap-2 text-sm">
+        {handoff.issues.slice(0, 5).map((issue) => (
+          <div
+            key={issue}
+            className="flex items-start gap-2 text-muted-foreground"
+          >
+            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+            <span>{issue}</span>
+          </div>
+        ))}
+      </div>
+      {copyReceipt ? (
+        <p className="mt-3 text-sm font-medium text-success">{copyReceipt}</p>
+      ) : null}
     </div>
   );
 }
@@ -1500,6 +1884,29 @@ function BillingReadinessWorkspace() {
       xeroAccountingFreshness,
     ],
   );
+  const monthEndHandoff = useMemo(
+    () =>
+      buildMonthEndHandoff({
+        invoiceDrafts,
+        freshness: xeroAccountingFreshness,
+        ownerStatements: ownerStatementsQuery.data,
+        statementsLoading:
+          ownerStatementsQuery.isLoading || ownerStatementsQuery.isFetching,
+        entityId: selectedEntityId,
+        entityName: selectedEntity?.name ?? "Selected entity",
+        statementMonth,
+      }),
+    [
+      invoiceDrafts,
+      ownerStatementsQuery.data,
+      ownerStatementsQuery.isFetching,
+      ownerStatementsQuery.isLoading,
+      selectedEntity?.name,
+      selectedEntityId,
+      statementMonth,
+      xeroAccountingFreshness,
+    ],
+  );
   const invoiceDraftByBillingDraftId = useMemo(() => {
     const drafts = new Map<string, InvoiceDraftRecord>();
     for (const draft of invoiceDrafts) {
@@ -1552,13 +1959,15 @@ function BillingReadinessWorkspace() {
                   invoiceDraftsQuery.refetch();
                   xeroStatusQuery.refetch();
                   maintenanceQuery.refetch();
+                  ownerStatementsQuery.refetch();
                 }}
                 disabled={
                   !selectedEntityId ||
                   rentRollQuery.isFetching ||
                   billingDraftsQuery.isFetching ||
                   invoiceDraftsQuery.isFetching ||
-                  xeroStatusQuery.isFetching
+                  xeroStatusQuery.isFetching ||
+                  ownerStatementsQuery.isFetching
                 }
               >
                 {billingReadinessRefreshing ? (
@@ -2472,6 +2881,9 @@ function BillingReadinessWorkspace() {
                 {!invoiceDraftsLoading && !xeroStatusQuery.isLoading ? (
                   <MonthEndChecklistStrip items={monthEndChecklistItems} />
                 ) : null}
+                {!invoiceDraftsLoading && !xeroStatusQuery.isLoading ? (
+                  <MonthEndHandoffPanel handoff={monthEndHandoff} />
+                ) : null}
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
@@ -2509,11 +2921,10 @@ function BillingReadinessWorkspace() {
                         } = review;
                         const paymentReconciliationEntries =
                           invoicePaymentReconciliationEntries(draft);
-                        const paymentFreshnessCue =
-                          invoicePaymentFreshnessCue(
-                            draft,
-                            xeroAccountingFreshness,
-                          );
+                        const paymentFreshnessCue = invoicePaymentFreshnessCue(
+                          draft,
+                          xeroAccountingFreshness,
+                        );
                         const isRecordingDelivery =
                           recordInvoiceDeliveryMutation.isPending &&
                           recordInvoiceDeliveryMutation.variables === draft.id;
@@ -3157,7 +3568,9 @@ function BillingReadinessWorkspace() {
               <SectionPanel
                 title="Billing action queue"
                 description="Prioritised work with the right record to open next."
-                icon={<AlertTriangle size={17} className="text-warning-strong" />}
+                icon={
+                  <AlertTriangle size={17} className="text-warning-strong" />
+                }
                 className="order-1"
               >
                 {rentRollLoading ? (
