@@ -223,13 +223,20 @@ Last updated: 2026-05-28
   PDF/PDF-pack downloads, comms dispatch, invoice dispatch, Xero
   preview/apply/create-draft, payment reconciliation, owner email paths,
   provider refresh, or provider-history endpoints.
-- Sidecar recommendation for the next slice: add a local selected-owner
-  dispatch draft text download beside `Copy dispatch draft` on `/statements`,
-  reusing `statementDispatchDraft()` and the selected owner's already-loaded
-  statement data. Include recipient/missing-recipient, subject, body, owner
-  totals, and a guardrail line. Do not call owner email, comms dispatch,
-  PDF/PDF-pack downloads, Xero, payment reconciliation, invoice dispatch,
-  provider refresh, or provider-history endpoints.
+- 2026-05-28 Statements continuation 2: the selected owner Dispatch review panel
+  now has a local `owner-statement-dispatch-draft-{month}-{owner}.txt`
+  download beside `Copy dispatch draft`, reusing the selected owner's
+  already-loaded statement data. It includes recipient/missing-recipient,
+  subject, owner-facing body, owner totals, and a guardrail line. It does not
+  call owner email, comms dispatch, PDF/PDF-pack downloads, Xero, payment
+  reconciliation, invoice dispatch, provider refresh, or provider-history
+  endpoints.
+- Sidecar recommendation for the next slice: add a local Xero provider setup
+  packet text download beside `Copy setup packet` in Settings → Xero provider
+  setup preflight. Reuse `xeroProviderSetupPacket(xeroDiagnostics)` and
+  `saveBlob`, filename `xero-provider-setup-packet.txt`. Do not call OAuth,
+  Xero preview/apply/create-draft, SendGrid, Twilio, invoice dispatch, payment
+  reconciliation, provider refresh, or provider-history endpoints.
 
 ## Takeover Priority
 

@@ -76,3 +76,34 @@ test("owner statement dispatch approval queue exports review CSV", async ({
     "Review-only export: downloading this file does not download owner PDFs, download PDF packs, send owner email, dispatch comms, dispatch invoices, write Xero data, preview or apply payment reconciliation, refresh providers, or mutate provider history.",
   );
 });
+
+test("owner statement dispatch draft downloads as review-only text", async ({
+  page,
+}) => {
+  await page.goto("/statements?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Dispatch review" }),
+  ).toBeVisible();
+  const draftDownloadPromise = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download dispatch draft" })
+    .click();
+  const draftDownload = await draftDownloadPromise;
+  expect(draftDownload.suggestedFilename()).toBe(
+    "owner-statement-dispatch-draft-2026-05-queen-street-property-trust.txt",
+  );
+  const draftDownloadPath = await draftDownload.path();
+  expect(draftDownloadPath).not.toBeNull();
+  const draftText = await readFile(draftDownloadPath!, "utf8");
+  expect(draftText).toContain("To: owners@queenstreet.example");
+  expect(draftText).toContain(
+    "Subject: Owner statement for May 2026 - Queen Street Property Trust",
+  );
+  expect(draftText).toContain("Hi Mia Accounts,");
+  expect(draftText).toContain("Invoiced: $17,600");
+  expect(draftText).toContain("Outstanding: $17,600");
+  expect(draftText).toContain(
+    "Review-only export: downloading this file does not send owner email, dispatch comms, attach or download owner PDFs, write Xero data, preview or apply payment reconciliation, dispatch invoices, refresh providers, or mutate provider history.",
+  );
+});

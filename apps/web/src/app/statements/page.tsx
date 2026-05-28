@@ -63,6 +63,8 @@ import { saveBlob } from "@/lib/download";
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const DISPATCH_APPROVAL_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not download owner PDFs, download PDF packs, send owner email, dispatch comms, dispatch invoices, write Xero data, preview or apply payment reconciliation, refresh providers, or mutate provider history.";
+const DISPATCH_DRAFT_EXPORT_GUARDRAIL =
+  "Review-only export: downloading this file does not send owner email, dispatch comms, attach or download owner PDFs, write Xero data, preview or apply payment reconciliation, dispatch invoices, refresh providers, or mutate provider history.";
 
 type StatementPackStatus = "ready" | "incomplete" | "unpaid" | "blocked";
 
@@ -1498,6 +1500,24 @@ function statementDispatchDraft({
   };
 }
 
+function statementDispatchDraftText({
+  owner,
+  month,
+}: {
+  owner: OwnerStatementRecord;
+  month: string;
+}) {
+  const dispatchDraft = statementDispatchDraft({ owner, month });
+  return [
+    `To: ${owner.billing_email ?? "No owner billing email recorded"}`,
+    `Subject: ${dispatchDraft.subject}`,
+    "",
+    dispatchDraft.body,
+    "",
+    DISPATCH_DRAFT_EXPORT_GUARDRAIL,
+  ].join("\n");
+}
+
 function StatementPreviewPanel({
   owner,
   owners,
@@ -1543,14 +1563,20 @@ function StatementPreviewPanel({
       return;
     }
     await navigator.clipboard.writeText(
-      [
-        `To: ${owner.billing_email ?? "No owner billing email recorded"}`,
-        `Subject: ${dispatchDraft.subject}`,
-        "",
-        dispatchDraft.body,
-      ].join("\n"),
+      statementDispatchDraftText({ owner, month }),
     );
     setDispatchReceipt("Dispatch draft copied. No email sent.");
+  };
+  const downloadDispatchDraft = () => {
+    saveBlob(
+      new Blob([statementDispatchDraftText({ owner, month })], {
+        type: "text/plain;charset=utf-8",
+      }),
+      `owner-statement-dispatch-draft-${month}-${ownerSlug(
+        owner.owner_identity,
+      )}.txt`,
+    );
+    setDispatchReceipt("Dispatch draft downloaded. No email sent.");
   };
   const downloadPdf = async () => {
     setPdfLoading(true);
@@ -1884,10 +1910,14 @@ function StatementPreviewPanel({
                 <div className="mt-1 font-medium">{dispatchDraft.subject}</div>
               </div>
             </div>
-            <div className="flex items-start lg:justify-end">
+            <div className="flex flex-wrap items-start gap-2 lg:justify-end">
               <SecondaryButton type="button" onClick={copyDispatchDraft}>
                 <ClipboardCheck size={15} />
                 Copy dispatch draft
+              </SecondaryButton>
+              <SecondaryButton type="button" onClick={downloadDispatchDraft}>
+                <Download size={15} />
+                Download dispatch draft
               </SecondaryButton>
             </div>
           </div>
