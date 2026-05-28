@@ -238,13 +238,20 @@ Last updated: 2026-05-28
   checklist, and diagnostics guardrails. It does not call OAuth, Xero
   preview/apply/create-draft, SendGrid, Twilio, invoice dispatch, payment
   reconciliation, provider refresh, or provider-history endpoints.
+- 2026-05-28 Settings Xero continuation 2: Settings Xero accounting freshness
+  snapshot now has a local `xero-accounting-freshness.csv` export from the
+  already-loaded `/xero/status` freshness snapshot and computed next accounting
+  step. It includes checkpoint timestamps, stale/current reconciliation state,
+  readiness counts, payment cues, freshness guardrails, and export guardrails.
+  It also fixes the singular next-step copy to read `invoice needs`. It does not
+  refresh Xero, preview/apply reconciliation, create Xero drafts, dispatch
+  invoices, send email/SMS, refresh providers, or mutate provider history.
 - Sidecar recommendation for the next slice: add a local Settings Xero
-  accounting freshness CSV export from the already-loaded `/xero/status`
-  freshness snapshot and exception counts. Include checkpoint timestamps,
-  next-step state, stale/missing payment cues, and no-provider-mutation
-  guardrails. Do not refresh Xero, preview/apply reconciliation, create Xero
-  drafts, dispatch invoices, send email/SMS, refresh providers, or mutate
-  provider history.
+  `Copy freshness packet` action beside `Download freshness CSV`, reusing the
+  same `status.accounting_freshness` and `accountingStep` data. Do not add a
+  backend route, refetch status, invalidate queries, refresh Xero, preview/apply
+  reconciliation, create Xero drafts, dispatch invoices, send email/SMS, refresh
+  providers, or mutate provider history.
 
 ## Takeover Priority
 

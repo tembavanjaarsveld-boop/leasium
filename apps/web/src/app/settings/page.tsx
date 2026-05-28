@@ -487,6 +487,8 @@ function xeroProviderSetupPacket(diagnostics: XeroConnectionDiagnosticsRecord) {
 
 const XERO_EXCEPTION_EXPORT_GUARDRAIL =
   "No Xero API refresh, invoice posting, tenant email, provider dispatch, or payment reconciliation is run by this export.";
+const XERO_FRESHNESS_EXPORT_GUARDRAIL =
+  "Review-only export: downloading this file does not refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices, send email or SMS, refresh providers, or mutate provider history.";
 const TEMPLATE_OVERRIDE_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not wire stored templates into send paths, add edit controls, send notifications, run digests, send invoices, send tenant onboarding messages, send contractor updates, mutate preferences, or write provider history.";
 
@@ -618,6 +620,96 @@ function xeroExceptionCsv(queue: XeroExceptionQueueRecord) {
       XERO_EXCEPTION_EXPORT_GUARDRAIL,
     ]);
   }
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
+function xeroAccountingFreshnessCsv({
+  freshness,
+  nextStep,
+}: {
+  freshness: XeroAccountingFreshnessRecord;
+  nextStep: AccountingNextStep | null;
+}) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    ["Section", "Item", "Status", "Metric", "Detail", "Guardrail"],
+    [
+      "Accounting freshness",
+      "Summary",
+      statusLabel(freshness.status),
+      freshness.stale_reconciliation
+        ? `Reconciliation stale after ${freshness.stale_after_days} days`
+        : "Reconciliation current",
+      freshness.summary,
+      XERO_FRESHNESS_EXPORT_GUARDRAIL,
+    ],
+    [
+      "Accounting freshness",
+      "Readiness",
+      statusLabel(freshness.source),
+      `${freshness.readiness_issue_count} issues / ${freshness.readiness_blocker_count} blockers / ${freshness.readiness_warning_count} warnings`,
+      `${freshness.approved_unsynced_invoice_count} approved unsynced invoices`,
+      XERO_FRESHNESS_EXPORT_GUARDRAIL,
+    ],
+    [
+      "Payment cue",
+      "Xero-linked open invoices",
+      freshness.stale_reconciliation ? "Stale" : "Current",
+      freshness.xero_linked_open_invoice_count,
+      freshness.last_payment_reconciliation_at
+        ? `Last reconciliation ${formatDateTime(freshness.last_payment_reconciliation_at)}`
+        : "No payment reconciliation applied",
+      XERO_FRESHNESS_EXPORT_GUARDRAIL,
+    ],
+    [
+      "Payment cue",
+      "Payment source",
+      freshness.last_payment_reconciliation_source
+        ? statusLabel(freshness.last_payment_reconciliation_source)
+        : "Missing",
+      freshness.last_payment_reconciliation_mode
+        ? statusLabel(freshness.last_payment_reconciliation_mode)
+        : "Missing",
+      "Local payment metadata only.",
+      XERO_FRESHNESS_EXPORT_GUARDRAIL,
+    ],
+    ...accountingCheckpointRows(freshness).map(([checkpoint, value]) => [
+      "Checkpoint",
+      checkpoint,
+      value ? "Recorded" : "Missing",
+      value ? formatDateTime(value) : "No timestamp",
+      "",
+      XERO_FRESHNESS_EXPORT_GUARDRAIL,
+    ]),
+    ...(nextStep
+      ? [
+          [
+            "Next accounting step",
+            nextStep.title,
+            nextStep.actionLabel,
+            nextStep.action,
+            nextStep.detail,
+            XERO_FRESHNESS_EXPORT_GUARDRAIL,
+          ],
+        ]
+      : []),
+    ...freshness.guardrails.map((guardrail) => [
+      "Freshness guardrail",
+      guardrail,
+      "",
+      "",
+      "",
+      XERO_FRESHNESS_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Export guardrail",
+      "Review-only",
+      "",
+      "",
+      XERO_FRESHNESS_EXPORT_GUARDRAIL,
+      XERO_FRESHNESS_EXPORT_GUARDRAIL,
+    ],
+  ];
+
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
@@ -768,7 +860,9 @@ function accountingNextStep({
       title: "Review Xero-linked payments",
       detail: `${freshness.xero_linked_open_invoice_count} open Xero-linked invoice${
         freshness.xero_linked_open_invoice_count === 1 ? "" : "s"
-      } need a payment reconciliation preview before month-end reporting.`,
+      } ${
+        freshness.xero_linked_open_invoice_count === 1 ? "needs" : "need"
+      } a payment reconciliation preview before month-end reporting.`,
       tone: "warning",
       action: "payments",
       actionLabel: "Open payment review",
@@ -2155,6 +2249,25 @@ function SettingsWorkspace() {
         exceptionWarnings: exceptionQueue?.summary.warnings ?? 0,
       })
     : null;
+  const downloadXeroFreshnessCsv = () => {
+    if (!status) {
+      return;
+    }
+    saveBlob(
+      new Blob(
+        [
+          xeroAccountingFreshnessCsv({
+            freshness: status.accounting_freshness,
+            nextStep: accountingStep,
+          }),
+        ],
+        {
+          type: "text/csv;charset=utf-8",
+        },
+      ),
+      "xero-accounting-freshness.csv",
+    );
+  };
   const scrollToPanel = (target: PanelRef) => {
     window.setTimeout(() => {
       target.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -4001,6 +4114,14 @@ function SettingsWorkspace() {
                         : "Reconciliation current"}
                     </StatusBadge>
                   </span>
+                  <SecondaryButton
+                    type="button"
+                    onClick={downloadXeroFreshnessCsv}
+                    disabled={!status}
+                  >
+                    <Download size={15} />
+                    Download freshness CSV
+                  </SecondaryButton>
                 </div>
               }
             >

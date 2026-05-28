@@ -2577,6 +2577,31 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     freshnessPanel.getByText("Review Xero-linked payments"),
   ).toBeVisible();
   await expect(freshnessPanel.getByText("Open payment review")).toBeVisible();
+  const freshnessDownloadPromise = page.waitForEvent("download");
+  await freshnessPanel
+    .getByRole("button", { name: "Download freshness CSV" })
+    .click();
+  const freshnessDownload = await freshnessDownloadPromise;
+  expect(freshnessDownload.suggestedFilename()).toBe(
+    "xero-accounting-freshness.csv",
+  );
+  const freshnessDownloadPath = await freshnessDownload.path();
+  expect(freshnessDownloadPath).not.toBeNull();
+  const freshnessCsv = await readFile(freshnessDownloadPath!, "utf8");
+  expect(freshnessCsv).toContain("Accounting freshness");
+  expect(freshnessCsv).toContain("Reconciliation stale after 7 days");
+  expect(freshnessCsv).toContain("Contact preview");
+  expect(freshnessCsv).toContain("Review Xero-linked payments");
+  expect(freshnessCsv).toContain(
+    "1 open Xero-linked invoice needs a payment reconciliation preview before month-end reporting.",
+  );
+  expect(freshnessCsv).toContain("Xero-linked open invoices");
+  expect(freshnessCsv).toContain(
+    "Accounting freshness is calculated from local Leasium metadata only.",
+  );
+  expect(freshnessCsv).toContain(
+    "Loading Xero status does not refresh tokens, call Xero, post invoices, or reconcile payments.",
+  );
 
   await expect(
     page.getByRole("button", { exact: true, name: "Review payments" }),
