@@ -433,6 +433,114 @@ def test_owner_statement_pdf_downloads_review_pack(
     assert "$5,000" in text
 
 
+def test_owner_statement_pdf_wraps_long_finance_evidence_rows(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Long statement evidence should stay readable inside the PDF page."""
+
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="long-evidence.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Long Evidence Billing",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    session.add(bd)
+    session.flush()
+    prop = Property(
+        entity_id=entity.id,
+        name=(
+            "Long Evidence Property With Riverside Retail Arcade "
+            "And Level Two Storage Tenancy"
+        ),
+        street_address="99 Long Evidence Road",
+        property_type=PropertyType.commercial_retail,
+        owner_legal_name="Long Evidence Trustee Pty Ltd",
+        trustee_name="Long Evidence Trustee Pty Ltd",
+        trust_name="Long Evidence Trust",
+        invoice_issuer_name="Long Evidence Trust via Long Evidence Trustee Pty Ltd",
+    )
+    session.add(prop)
+    session.flush()
+    for index in range(12):
+        session.add(
+            InvoiceDraft(
+                entity_id=entity.id,
+                billing_draft_id=bd.id,
+                property_id=prop.id,
+                document_id=doc.id,
+                status=InvoiceDraftStatus.approved,
+                invoice_number=(
+                    "INV-LONG-EVIDENCE-"
+                    f"{index:02d}-XERO-REFERENCE-WITH-EXTENDED-SUFFIX"
+                ),
+                title=f"Long evidence invoice {index}",
+                currency="AUD",
+                issue_date=date(2026, 4, 12),
+                due_date=date(2026, 4, 26),
+                subtotal_cents=120_000,
+                gst_cents=0,
+                total_cents=120_000,
+                invoice_metadata={
+                    "payment_status": {
+                        "status": "paid",
+                        "paid_cents": 120_000,
+                        "outstanding_cents": 0,
+                    },
+                    "xero_sync": {
+                        "xero_invoice_id": (
+                            "xero-long-evidence-invoice-id-"
+                            f"{index:02d}-with-extra-provider-characters"
+                        )
+                    },
+                    "xero_payment_reconciliation": {
+                        "reference": (
+                            "BANK REF LONG EVIDENCE WITH EXTENDED "
+                            f"REFERENCE {index:02d}"
+                        ),
+                        "match_confidence": "high",
+                        "bank_transaction_id": (
+                            "bank-transaction-long-evidence-"
+                            f"{index:02d}-with-extra-provider-characters"
+                        ),
+                    },
+                },
+            )
+        )
+    session.commit()
+
+    response = client.get(
+        "/api/v1/owners/statements/pdf",
+        params={
+            "entity_id": str(entity.id),
+            "month": "2026-04",
+            "owner_identity": (
+                "Long Evidence Trust "
+                "(Trustee: Long Evidence Trustee Pty Ltd)"
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    reader = PdfReader(BytesIO(response.content))
+    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    assert "INV-LONG-EVIDENCE-00-XERO-REFERENCE-WITH-EXTENDED-SUFFIX" in text
+    assert "bank-transaction-long-evidence-00-with-extra-provider-characters" in text
+    assert len(reader.pages) >= 2
+    assert max(len(line) for line in text.splitlines()) <= 96
+
+
 def test_owner_statement_pdf_pack_downloads_all_review_pdfs(
     client: TestClient,
     session: Session,

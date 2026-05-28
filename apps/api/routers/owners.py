@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import calendar
 import re
+import textwrap
 import zipfile
 from datetime import date
 from io import BytesIO
@@ -400,6 +401,29 @@ def _pdf_text(value: str) -> str:
     )
 
 
+PDF_LINE_WIDTH = 88
+PDF_LINES_PER_PAGE = 48
+
+
+def _wrap_pdf_lines(lines: list[str]) -> list[str]:
+    wrapped: list[str] = []
+    for line in lines:
+        if not line:
+            wrapped.append("")
+            continue
+        wrapped.extend(
+            textwrap.wrap(
+                line,
+                width=PDF_LINE_WIDTH,
+                break_long_words=True,
+                break_on_hyphens=False,
+                subsequent_indent="  ",
+            )
+            or [""]
+        )
+    return wrapped
+
+
 def _statement_pdf_bytes(statement: OwnerStatementRead, month: str) -> bytes:
     """Render a compact text PDF without introducing a new provider dependency."""
 
@@ -470,7 +494,11 @@ def _statement_pdf_bytes(statement: OwnerStatementRead, month: str) -> bytes:
         ]
     )
 
-    page_chunks = [lines[index : index + 42] for index in range(0, len(lines), 42)] or [[]]
+    wrapped_lines = _wrap_pdf_lines(lines)
+    page_chunks = [
+        wrapped_lines[index : index + PDF_LINES_PER_PAGE]
+        for index in range(0, len(wrapped_lines), PDF_LINES_PER_PAGE)
+    ] or [[]]
     objects: list[bytes] = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"",  # Filled after pages are known.

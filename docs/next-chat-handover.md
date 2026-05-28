@@ -121,12 +121,16 @@ Last updated: 2026-05-28
   updates, derived from the latest visible timeline row for each side. The
   copy buttons are local only and do not send email/SMS, write portal messages,
   touch providers, or mutate work-order history.
-- Sidecar recommendation for the next slice: harden owner statement PDF
-  readability for long property names, invoice references, Xero IDs, and
-  evidence rows in `apps/api/routers/owners.py`; extend
-  `tests/integration/test_owners_api.py`. Keep it strictly on review-only PDF
-  GET endpoints with no Xero, SendGrid, dispatch, delivery history, or payment
+- 2026-05-28 finance PDF continuation: owner statement PDFs now wrap long
+  property names, invoice references, Xero IDs, bank references, and
+  reconciliation IDs across readable lines/pages. Coverage lives in
+  `tests/integration/test_owners_api.py`. The endpoints remain review-only
+  GETs with no Xero, SendGrid, dispatch, delivery history, or payment
   reconciliation mutation.
+- Sidecar recommendation for the next slice: add a read-only Portfolio QA
+  blocker drilldown in the existing cleanup readiness report, plus matching
+  CSV row detail, so blocked onboarding/contact/billing rows can be reviewed
+  without hopping tabs. Keep it frontend/local-data only.
 
 ## Takeover Priority
 
