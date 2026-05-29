@@ -2141,3 +2141,28 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 89: Tenant Upload Extraction Failure Audit Evidence
+
+- [x] **Step 1: Add failed extraction audit regression**
+
+Add tenant-upload extraction failure coverage so a failed OpenAI extraction audit
+must still identify the source Smart Intake row and failed review status.
+
+- [x] **Step 2: Stamp failure outcome evidence**
+
+When tenant-uploaded document extraction fails, include the document intake id
+and `failed` status in the `document_intake` extraction audit payload alongside
+the document id, filename, and source.
+
+- [x] **Step 3: Verify extraction success/failure audit parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_upload_extraction_failure_audits_source_intake tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_extracts_when_openai_is_configured -q
+.venv/bin/ruff check apps/api/routers/tenant_portal.py tests/integration/test_tenant_portal_api.py
+git diff --check
+```
+
+Expected: pass.

@@ -898,8 +898,10 @@ def _extract_tenant_upload_intake(
             tool_name="openai.responses",
             tool_input={
                 "document_id": str(document.id),
+                "document_intake_id": str(intake.id),
                 "filename": document.filename,
                 "source": "tenant_portal",
+                "status": intake.status.value,
             },
             outcome=AuditOutcome.error,
             error_message=str(exc),

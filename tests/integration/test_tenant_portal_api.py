@@ -10,6 +10,7 @@ from apps.api.tenant_lease_agreement import set_lease_agreement_section
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from stewart.ai.document_intake import DocumentExtractionError
 from stewart.core.auth import ClerkIdentity
 from stewart.core.models import (
     AuditAction,
@@ -1697,6 +1698,63 @@ def test_tenant_portal_insurance_upload_extracts_when_openai_is_configured(
         "proposed_document_category": "insurance",
         "status": "ready_for_review",
     }
+
+
+def test_tenant_portal_upload_extraction_failure_audits_source_intake(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_portal_scope(session)
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={"openai_api_key": "test-openai-key"}
+    )
+
+    def fake_extract_document_file(**kwargs):  # noqa: ANN003
+        assert kwargs["filename"] == "renewed-insurance.txt"
+        raise DocumentExtractionError("OpenAI extraction unavailable")
+
+    monkeypatch.setattr(
+        tenant_portal_router,
+        "extract_document_file",
+        fake_extract_document_file,
+        raising=False,
+    )
+
+    response = client.post(
+        "/api/v1/tenant-portal/documents",
+        headers={"x-tenant-portal-token": scope["token"]},
+        data={"category": "insurance", "notes": "Renewed insurance certificate."},
+        files={"file": ("renewed-insurance.txt", b"insurance certificate", "text/plain")},
+    )
+
+    assert response.status_code == 201
+    document = session.get(StoredDocument, UUID(response.json()["id"]))
+    assert document is not None
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.document_id == document.id)
+    )
+    assert intake is not None
+    assert intake.status == DocumentIntakeStatus.failed
+    assert intake.error_message == "OpenAI extraction unavailable"
+    extract_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "document_intake",
+            AuditAction.target_id == intake.id,
+            AuditAction.action == "extract",
+            AuditAction.tool_name == "openai.responses",
+        )
+    )
+    assert extract_audit is not None
+    assert extract_audit.tool_input == {
+        "document_id": str(document.id),
+        "document_intake_id": str(intake.id),
+        "filename": "renewed-insurance.txt",
+        "source": "tenant_portal",
+        "status": "failed",
+    }
+    assert extract_audit.error_message == "OpenAI extraction unavailable"
 
 
 def test_tenant_portal_insurance_upload_apply_refreshes_compliance_status(
