@@ -2382,3 +2382,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 98: DocuSign Webhook Applied Receipt Audit
+
+- [x] **Step 1: Add applied/ignored receipt regressions**
+
+Extend DocuSign webhook coverage so completed receipts state that the event was
+applied, and safely ignored custom-field mismatches state that the event was not
+applied with an explicit reason.
+
+- [x] **Step 2: Return webhook application outcome**
+
+Have the DocuSign webhook processor return a compact outcome for receipt
+auditing: `applied=true` after a signing update, or `applied=false` with an
+ignored reason when the event is disallowed or custom fields do not match.
+
+- [x] **Step 3: Verify DocuSign applied receipt audit**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_marks_lease_signed tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_ignores_mismatched_custom_fields -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.

@@ -859,14 +859,14 @@ def _apply_docusign_webhook_event(
     envelope_id: str,
     event_status: str,
     session: Session,
-) -> None:
+) -> dict[str, Any]:
     event_name = _docusign_event(payload)
     signing = lease_agreement_section(onboarding).get("signing")
     signing_data = dict(signing) if isinstance(signing, dict) else {}
     if not _docusign_webhook_event_allowed(signing_data, envelope_id, event_status):
-        return
+        return {"applied": False, "ignored_reason": "event_not_allowed"}
     if not _docusign_custom_fields_match(onboarding, signing_data, payload):
-        return
+        return {"applied": False, "ignored_reason": "custom_fields_mismatch"}
     events = signing_data.get("provider_events")
     provider_events = (
         [item for item in events if isinstance(item, dict)] if isinstance(events, list) else []
@@ -901,12 +901,13 @@ def _apply_docusign_webhook_event(
             source="docusign_webhook",
             signing_updates=signing_updates,
         )
-        return
+        return {"applied": True}
     section = lease_agreement_section(onboarding)
     signing_data.update(signing_updates)
     section["signing"] = signing_data
     section["last_activity_at"] = received_at
     set_lease_agreement_section(onboarding, section)
+    return {"applied": True}
 
 
 def _retain_docusign_signed_document(
@@ -1772,7 +1773,13 @@ async def record_docusign_envelope_event(
     onboarding = _find_onboarding_by_docusign_envelope_id(session, envelope_id)
     if onboarding is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-    _apply_docusign_webhook_event(onboarding, payload, envelope_id, event_status, session)
+    apply_result = _apply_docusign_webhook_event(
+        onboarding,
+        payload,
+        envelope_id,
+        event_status,
+        session,
+    )
     signing = lease_agreement_section(onboarding).get("signing")
     signing_data = signing if isinstance(signing, dict) else {}
     webhook_audit_input = {
@@ -1784,6 +1791,7 @@ async def record_docusign_envelope_event(
     }
     if isinstance(signing_data.get("signed_document_id"), str):
         webhook_audit_input["signed_document_id"] = signing_data["signed_document_id"]
+    webhook_audit_input.update(apply_result)
     audit_log(
         session,
         actor="provider:docusign",
