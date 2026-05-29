@@ -2139,6 +2139,85 @@ def test_document_intake_accept_lease_match_rejects_active_docusign_envelope(
     assert document.document_metadata.get("accepted_lease_match") is None
 
 
+def test_document_intake_accept_lease_match_rejects_already_signed_lease_agreement(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    lease = session.get(Lease, UUID(scope["lease_id"]))
+    assert lease is not None
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    signed_at = datetime.now(UTC).isoformat()
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "signing": {
+                "provider": "docusign",
+                "status": "completed",
+                "envelope_id": "completed-envelope-lease-match",
+                "signed_at": signed_at,
+                "signed_by_actor": "provider:docusign",
+                "source": "docusign_webhook",
+                "signed_document_id": "signed-document-lease-match",
+            }
+        },
+    )
+    document = StoredDocument(
+        entity_id=lease.tenancy_unit.property.entity_id,
+        property_id=lease.tenancy_unit.property_id,
+        tenancy_unit_id=lease.tenancy_unit_id,
+        tenant_id=lease.tenant_id,
+        lease_id=lease.id,
+        tenant_onboarding_id=UUID(scope["onboarding_id"]),
+        filename="matched-lease.txt",
+        content_type="text/plain",
+        byte_size=5,
+        file_data=b"lease",
+        category=DocumentCategory.lease,
+        document_metadata={
+            "source": "tenant_portal",
+            "auto_match_candidate": "tenant_uploaded_lease",
+        },
+    )
+    session.add(document)
+    session.flush()
+    intake = DocumentIntake(
+        entity_id=document.entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.ready_for_review,
+        document_type="lease",
+        extracted_data={
+            "document_type": "lease",
+            "lease_auto_match": {
+                "status": "matched",
+                "lease_id": str(lease.id),
+                "matched_fields": [{"field": "expiry_date"}],
+                "differences": [],
+                "missing_fields": [],
+            },
+        },
+        review_data={},
+    )
+    session.add(intake)
+    session.commit()
+
+    response = client.post(f"/api/v1/document-intakes/{intake.id}/accept-lease-match")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Lease agreement is already signed."
+    session.refresh(intake)
+    session.refresh(document)
+    session.refresh(onboarding)
+    assert intake.status == DocumentIntakeStatus.ready_for_review
+    assert document.document_metadata.get("accepted_lease_match") is None
+    signing = onboarding.delivery_data["lease_agreement"]["signing"]
+    assert signing["provider"] == "docusign"
+    assert signing["status"] == "completed"
+    assert signing["signed_at"] == signed_at
+    assert signing["signed_document_id"] == "signed-document-lease-match"
+
+
 def test_document_intake_accept_lease_match_rejects_missing_document_lease_scope(
     client: TestClient,
     session: Session,

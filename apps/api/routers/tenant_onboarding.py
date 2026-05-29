@@ -969,6 +969,11 @@ def _activate_signed_onboarding_lease(
             status_code=status.HTTP_409_CONFLICT,
             detail="Complete lease signing before activation.",
         )
+    if not isinstance(signing_data.get("signed_document_id"), str):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Retain the signed lease document before activation.",
+        )
     if lease.status != LeaseStatus.pending:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

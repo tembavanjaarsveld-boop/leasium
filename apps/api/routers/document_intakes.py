@@ -941,6 +941,14 @@ def _active_docusign_signing_for_onboarding(
     )
 
 
+def _signed_lease_agreement_for_onboarding(
+    onboarding: TenantOnboarding,
+) -> bool:
+    signing = lease_agreement_section(onboarding).get("signing")
+    signing_data = dict(signing) if isinstance(signing, dict) else {}
+    return isinstance(signing_data.get("signed_at"), str)
+
+
 def _property_for_document_apply(
     property_id: UUID,
     entity_id: UUID,
@@ -2993,6 +3001,11 @@ def accept_document_intake_lease_match(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Matched lease does not match the uploaded onboarding scope.",
+        )
+    if _signed_lease_agreement_for_onboarding(onboarding):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Lease agreement is already signed.",
         )
     if onboarding is not None and _active_docusign_signing_for_onboarding(onboarding):
         raise HTTPException(

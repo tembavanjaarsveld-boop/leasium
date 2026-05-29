@@ -1108,3 +1108,48 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_
 ```
 
 Expected: pass.
+
+## Task 50: Signed Document Activation Guardrail
+
+- [x] **Step 1: Add missing-retention activation regression**
+
+Add backend coverage that a completed DocuSign signing record with skipped or
+missing signed-document retention cannot activate a pending lease.
+
+- [x] **Step 2: Require retained signed document**
+
+Tighten the onboarding activation helper so explicit lease activation requires
+both a completed signing timestamp and a retained `signed_document_id`.
+
+- [x] **Step 3: Verify activation guardrails**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_activate_lease_after_docusign_completion tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_activate_lease_rejects_unsigned_agreement tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_activate_lease_rejects_missing_signed_document -q
+```
+
+Expected: pass.
+
+## Task 51: Already-Signed Lease Match Guardrail
+
+- [x] **Step 1: Add signed-state accept-match regression**
+
+Add backend coverage that accepting a tenant-uploaded lease match is rejected
+when the scoped onboarding lease agreement is already signed through DocuSign.
+
+- [x] **Step 2: Preserve existing signing metadata**
+
+Block `accept-lease-match` before mutating intake/document state when the
+onboarding signing record already has `signed_at`, preventing tenant-uploaded
+lease acceptance from overwriting DocuSign completion metadata.
+
+- [x] **Step 3: Verify accept-match guardrails**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_document_intake_accept_lease_match_rejects_already_signed_lease_agreement tests/integration/test_tenant_portal_api.py::test_document_intake_accept_lease_match_rejects_active_docusign_envelope tests/integration/test_tenant_portal_api.py::test_document_intake_accepts_tenant_lease_match_without_mutating_lease -q
+```
+
+Expected: pass.

@@ -1408,6 +1408,53 @@ def test_tenant_onboarding_activate_lease_rejects_unsigned_agreement(
     assert response.json()["detail"] == "Complete lease signing before activation."
 
 
+def test_tenant_onboarding_activate_lease_rejects_missing_signed_document(
+    client: TestClient,
+    session: Session,
+) -> None:
+    body = _create_applied_onboarding(client, session)
+    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
+    assert onboarding is not None
+    lease = session.get(Lease, onboarding.lease_id)
+    assert lease is not None
+    lease.status = LeaseStatus.pending
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "signing": {
+                "provider": "docusign",
+                "status": "completed",
+                "envelope_id": "envelope-missing-document-1",
+                "signed_at": utcnow().isoformat(),
+                "signed_by_actor": "provider:docusign",
+                "source": "docusign_webhook",
+                "signed_document_retention": {
+                    "status": "skipped",
+                    "provider": "docusign",
+                    "error": "DocuSign download is not configured.",
+                },
+                "lease_activation_review": {
+                    "status": "ready_for_review",
+                    "current_lease_status": "pending",
+                    "recommended_status": "active",
+                },
+            },
+        },
+    )
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/tenant-onboarding/{body['id']}/activate-lease",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Retain the signed lease document before activation."
+    )
+    session.refresh(lease)
+    assert lease.status == LeaseStatus.pending
+
+
 def test_tenant_onboarding_docusign_webhook_rejects_invalid_secret(
     client: TestClient,
     session: Session,
