@@ -1117,6 +1117,7 @@ Open items at session end:
 - Signed DocuSign callbacks with non-object JSON now write targetless receipt audits with `ignored_reason=invalid_payload` and the payload type.
 - Signed DocuSign callbacks with syntactically invalid JSON now write targetless receipt audits with `ignored_reason=invalid_json` instead of escaping before audit.
 - Signed DocuSign callbacks with a known envelope id but missing status now scope the `missing_status` receipt audit to the matching onboarding, lease, entity, and source document.
+- Signed DocuSign callbacks missing an envelope id can now scope the `missing_envelope_id` receipt audit from DocuSign custom fields when they carry tenant onboarding, lease, and source document context.
 - Tenant-uploaded lease activation now shows a source-aware success notice: `Lease activated after tenant-uploaded lease review.`
 - Historical DocuSign docs were cleaned up so the automation strategy and 5-day report no longer describe the flow as scaffold-only or say completion auto-activates leases; they now reflect signed-PDF retention, explicit activation review, and remaining production-readiness work.
 - DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.

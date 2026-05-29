@@ -1491,6 +1491,73 @@ def test_tenant_onboarding_docusign_webhook_audits_malformed_payload(
     ]
 
 
+def test_tenant_onboarding_docusign_webhook_scopes_missing_envelope_from_custom_fields(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    webhook_headers = _docusign_webhook_headers(monkeypatch)
+    body = _create_applied_onboarding(client, session)
+    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
+    assert onboarding is not None
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "signing": {
+                "provider": "docusign",
+                "status": "sent",
+                "envelope_id": "known-envelope-from-custom-fields",
+                "document_id": "document-1",
+            },
+        },
+    )
+    session.commit()
+
+    response = client.post(
+        "/api/v1/tenant-onboarding/webhooks/docusign",
+        headers=webhook_headers,
+        json={
+            "event": "envelope-completed",
+            "status": "completed",
+            "data": {
+                "envelopeSummary": {
+                    "customFields": {
+                        "textCustomFields": [
+                            {
+                                "name": "tenant_onboarding_id",
+                                "value": str(onboarding.id),
+                            },
+                            {"name": "lease_id", "value": str(onboarding.lease_id)},
+                            {"name": "document_id", "value": "document-1"},
+                            {"name": "entity_id", "value": str(onboarding.entity_id)},
+                        ]
+                    }
+                }
+            },
+        },
+    )
+
+    assert response.status_code == 204
+    webhook_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "signature_receipt",
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id == onboarding.id,
+        )
+    )
+    assert webhook_audit is not None
+    assert webhook_audit.entity_id == onboarding.entity_id
+    assert webhook_audit.tool_input == {
+        "status": "completed",
+        "event": "envelope-completed",
+        "tenant_onboarding_id": str(onboarding.id),
+        "lease_id": str(onboarding.lease_id),
+        "document_id": "document-1",
+        "applied": False,
+        "ignored_reason": "missing_envelope_id",
+    }
+
+
 def test_tenant_onboarding_docusign_webhook_scopes_missing_status_receipt(
     client: TestClient,
     session: Session,

@@ -2611,3 +2611,30 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 107: DocuSign Missing Envelope Custom Field Context
+
+- [x] **Step 1: Add custom-field scoping regression**
+
+Extend DocuSign webhook coverage so a malformed callback with no envelope id
+but valid onboarding custom fields writes its receipt audit against the matching
+onboarding row.
+
+- [x] **Step 2: Scope missing-envelope receipts from custom fields**
+
+When a malformed DocuSign callback is missing the envelope id, read
+`tenant_onboarding_id` and source document context from DocuSign custom fields
+and attach the `missing_envelope_id` receipt audit to the matching onboarding
+when found.
+
+- [x] **Step 3: Verify custom-field malformed context**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_scopes_missing_envelope_from_custom_fields tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_audits_malformed_payload -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.

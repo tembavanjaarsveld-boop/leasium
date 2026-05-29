@@ -1817,6 +1817,8 @@ async def record_docusign_envelope_event(
     event_status = _docusign_status(payload)
     if not envelope_id or not event_status:
         event_name = _docusign_event(payload)
+        fields = _docusign_custom_fields(payload)
+        onboarding: TenantOnboarding | None = None
         tool_input: dict[str, Any] = {
             "applied": False,
             "ignored_reason": "missing_envelope_id"
@@ -1835,10 +1837,25 @@ async def record_docusign_envelope_event(
                 signing_data = signing if isinstance(signing, dict) else {}
                 if isinstance(signing_data.get("document_id"), str):
                     tool_input["document_id"] = signing_data["document_id"]
+        else:
+            tenant_onboarding_id = fields.get("tenant_onboarding_id")
+            if tenant_onboarding_id:
+                try:
+                    onboarding = session.get(TenantOnboarding, UUID(tenant_onboarding_id))
+                except ValueError:
+                    onboarding = None
+                if onboarding is not None and onboarding.deleted_at is None:
+                    tool_input["tenant_onboarding_id"] = str(onboarding.id)
+                    tool_input["lease_id"] = str(onboarding.lease_id)
+                    signing = lease_agreement_section(onboarding).get("signing")
+                    signing_data = signing if isinstance(signing, dict) else {}
+                    document_id = fields.get("document_id") or signing_data.get("document_id")
+                    if isinstance(document_id, str):
+                        tool_input["document_id"] = document_id
         if event_status:
             tool_input["status"] = event_status
-        audit_entity_id = onboarding.entity_id if envelope_id and onboarding else None
-        audit_target_id = onboarding.id if envelope_id and onboarding else None
+        audit_entity_id = onboarding.entity_id if onboarding else None
+        audit_target_id = onboarding.id if onboarding else None
         audit_log(
             session,
             actor="provider:docusign",
