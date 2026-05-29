@@ -901,3 +901,26 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_system_api.py 
 ```
 
 Expected: pass.
+
+## Task 41: Settings DocuSign Endpoint Warning
+
+- [x] **Step 1: Add Settings smoke coverage**
+
+Add a Settings smoke state where DocuSign credentials, webhook secret, and public
+API URL are configured but the DocuSign REST/auth URLs are still demo endpoints.
+
+- [x] **Step 2: Mirror backend readiness payload in mocks**
+
+Update the shared smoke API mock so Settings receives the same non-secret
+`DOCUSIGN_BASE_URL` and `DOCUSIGN_AUTH_BASE_URL` blocker detail that the API
+now returns.
+
+- [x] **Step 3: Verify Settings visibility**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "settings explains DocuSign demo endpoint readiness"
+```
+
+Expected: pass.

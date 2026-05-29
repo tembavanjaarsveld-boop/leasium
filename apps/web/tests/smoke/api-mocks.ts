@@ -1827,6 +1827,7 @@ function multipartFilename(body: string) {
 
 type MockLeasiumApiOptions = {
   apiHealthUnavailable?: boolean;
+  docusignDemoEndpoints?: boolean;
   leaseMatchAcceptConflict?: boolean;
   tenantAccountLinked?: boolean;
   tenantAccountLinkedToDifferentTenant?: boolean;
@@ -3251,17 +3252,32 @@ export async function mockLeasiumApi(
             "Configured. Provider sends still require explicit reviewed actions.",
           missing_config: [],
         },
-        docusign: {
-          configured: true,
-          live_ready: false,
-          label: "DocuSign",
-          purpose: "Lease signature envelopes and signed lease retention",
-          detail:
-            "Credentials are set; add DOCUSIGN_WEBHOOK_SECRET before live Connect testing so completed envelopes can be verified.",
-          missing_config: ["DOCUSIGN_WEBHOOK_SECRET"],
-          webhook_url:
-            "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
-        },
+        docusign: options.docusignDemoEndpoints
+          ? {
+              configured: true,
+              live_ready: false,
+              label: "DocuSign",
+              purpose: "Lease signature envelopes and signed lease retention",
+              detail:
+                "Credentials and webhook are set; switch DocuSign REST and auth URLs to production before live envelope testing.",
+              missing_config: [
+                "DOCUSIGN_BASE_URL",
+                "DOCUSIGN_AUTH_BASE_URL",
+              ],
+              webhook_url:
+                "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
+            }
+          : {
+              configured: true,
+              live_ready: false,
+              label: "DocuSign",
+              purpose: "Lease signature envelopes and signed lease retention",
+              detail:
+                "Credentials are set; add DOCUSIGN_WEBHOOK_SECRET before live Connect testing so completed envelopes can be verified.",
+              missing_config: ["DOCUSIGN_WEBHOOK_SECRET"],
+              webhook_url:
+                "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
+            },
       });
       return;
     }

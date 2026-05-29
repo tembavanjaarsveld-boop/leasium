@@ -3273,6 +3273,29 @@ test("settings keeps provider readiness visible when API release is unavailable"
   ).toBeVisible();
 });
 
+test("settings explains DocuSign demo endpoint readiness", async ({ page }) => {
+  await page.unroute("**/api/v1/**");
+  await page.unroute("**/health");
+  await mockLeasiumApi(page, { docusignDemoEndpoints: true });
+
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Organisation" }).click();
+
+  await expect(page.getByText("DocuSign", { exact: true })).toBeVisible();
+  await expect(page.getByText("Setup needed").first()).toBeVisible();
+  await expect(
+    page.getByText(
+      "Credentials and webhook are set; switch DocuSign REST and auth URLs to production before live envelope testing.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("DOCUSIGN_BASE_URL", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("DOCUSIGN_AUTH_BASE_URL", { exact: true }),
+  ).toBeVisible();
+});
+
 test("settings shows Xero OAuth callback success feedback", async ({
   page,
 }) => {
