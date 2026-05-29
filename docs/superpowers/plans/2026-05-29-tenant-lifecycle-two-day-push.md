@@ -724,3 +724,23 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 33: Tenant Lifecycle Count Contract
+
+- [x] **Step 1: Add backend queue-count coverage**
+
+Add integration coverage that a declined DocuSign envelope and a tenant-upload
+activation review both flow through `/comms/queue/counts` as urgent tenant
+lifecycle drafts.
+
+- [x] **Step 2: Verify scanner parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::test_comms_queue_counts_include_urgent_tenant_lifecycle_reviews -q
+```
+
+Expected: pass if the count endpoint is already reusing the same lifecycle
+scanner and severity rules as `/comms/queue`; otherwise fix the shared scanner
+path until this passes.

@@ -748,6 +748,49 @@ def test_comms_queue_returns_tenant_upload_activation_review_candidate(
     assert "tenant upload completed" in (candidate["detail"] or "")
 
 
+def test_comms_queue_counts_include_urgent_tenant_lifecycle_reviews(
+    client: TestClient,
+    session: Session,
+) -> None:
+    docusign_scope = _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": "declined",
+            "envelope_id": "envelope-counts-declined-1",
+            "last_event": "envelope-declined",
+            "last_event_at": (date.today() - timedelta(days=1)).isoformat(),
+        },
+        contact_email="counts-docusign@example.com",
+    )
+    _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "tenant_upload",
+            "status": "completed",
+            "signed_document_id": "tenant-uploaded-lease-counts-1",
+            "signed_at": (date.today() - timedelta(days=1)).isoformat(),
+            "lease_activation_review": {
+                "status": "ready_for_review",
+                "current_lease_status": "pending",
+                "recommended_status": "active",
+            },
+        },
+        contact_email="counts-upload@example.com",
+    )
+
+    response = client.get(
+        "/api/v1/comms/queue/counts",
+        params={"entity_id": docusign_scope["entity_id"]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert body["urgent"] == 2
+    assert body["by_kind"]["tenant_lifecycle_stall"] == 2
+
+
 def test_comms_dismiss_tenant_lifecycle_stall_defers_candidate(
     client: TestClient,
     session: Session,
