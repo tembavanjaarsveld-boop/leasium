@@ -2223,3 +2223,30 @@ git diff --check
 ```
 
 Expected: pass after removing generated Playwright report artifacts.
+
+## Task 92: Inbound Attachment Extraction Audit Evidence
+
+- [x] **Step 1: Add inbound extraction audit regressions**
+
+Extend SendGrid inbound attachment extraction coverage so successful and failed
+OpenAI extraction audits must identify the Smart Intake row and resulting
+review status, matching tenant-upload audit evidence.
+
+- [x] **Step 2: Stamp inbound extraction outcome evidence**
+
+When inbound email attachments are auto-extracted into Smart Intake, include
+the intake id, document type, OpenAI response id, proposed category, and review
+status in successful extraction audits. When extraction fails, include the
+intake id and failed status alongside the provider error.
+
+- [x] **Step 3: Verify inbound attachment audit parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::test_inbound_webhook_extracts_attachment_when_openai_is_configured tests/integration/test_comms_api.py::test_inbound_webhook_keeps_attachment_intake_when_extraction_fails -q
+.venv/bin/ruff check apps/api/routers/comms.py tests/integration/test_comms_api.py
+git diff --check
+```
+
+Expected: pass.

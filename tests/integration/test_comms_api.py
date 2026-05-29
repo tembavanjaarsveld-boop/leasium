@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from stewart.core.models import (
     ArrearsCase,
     ArrearsCaseStatus,
+    AuditAction,
     DocumentIntake,
     DocumentIntakeStatus,
     Entity,
@@ -1398,6 +1399,25 @@ def test_inbound_webhook_extracts_attachment_when_openai_is_configured(
     assert intake.review_data["source"] == "sendgrid_inbound_parse"
     assert document.document_metadata["smart_intake_auto_extracted"] is True
     assert document.document_metadata["proposed_document_category"] == "insurance"
+    extract_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "document_intake",
+            AuditAction.target_id == intake.id,
+            AuditAction.action == "extract",
+            AuditAction.tool_name == "openai.responses",
+        )
+    )
+    assert extract_audit is not None
+    assert extract_audit.tool_input == {
+        "document_id": str(document.id),
+        "document_intake_id": str(intake.id),
+        "filename": "insurance-certificate.txt",
+        "source": "sendgrid_inbound_parse",
+        "document_type": "insurance_certificate",
+        "openai_response_id": "resp_inbound_attachment_extract",
+        "proposed_document_category": "insurance",
+        "status": "ready_for_review",
+    }
 
 
 def test_inbound_webhook_keeps_attachment_intake_when_extraction_fails(
@@ -1472,6 +1492,23 @@ def test_inbound_webhook_keeps_attachment_intake_when_extraction_fails(
     assert intake.error_message == "OpenAI extraction unavailable"
     assert intake.review_data["source"] == "sendgrid_inbound_parse"
     assert document.document_metadata["smart_intake_auto_extract_failed"] is True
+    extract_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "document_intake",
+            AuditAction.target_id == intake.id,
+            AuditAction.action == "extract",
+            AuditAction.tool_name == "openai.responses",
+        )
+    )
+    assert extract_audit is not None
+    assert extract_audit.tool_input == {
+        "document_id": str(document.id),
+        "document_intake_id": str(intake.id),
+        "filename": "insurance-certificate.txt",
+        "source": "sendgrid_inbound_parse",
+        "status": "failed",
+    }
+    assert extract_audit.error_message == "OpenAI extraction unavailable"
 
 
 def test_inbound_webhook_rejects_missing_shared_secret_when_configured(

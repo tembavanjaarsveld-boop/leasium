@@ -1102,6 +1102,7 @@ Open items at session end:
 - Failed tenant-uploaded Smart Intake extraction audits now also include the source intake id and failed status, so extraction errors remain traceable to the exact review row.
 - Smart Intake's review queue now has a compact `Review filter` for all reviews, tenant portal uploads, inbound email attachments, lease matches, insurance, and leases, so tenant lifecycle evidence is findable without scanning the generic first-five list.
 - Smart Intake's filtered review queue now has a local `Download queue CSV` handoff containing already-loaded review rows and source/detail evidence, with no provider send or review mutation.
+- Inbound email attachment Smart Intake extraction audits now match tenant-upload audit evidence, carrying source intake id, extraction outcome fields, response id on success, and failed status/error on failure.
 - Tenant-uploaded lease activation now shows a source-aware success notice: `Lease activated after tenant-uploaded lease review.`
 - Historical DocuSign docs were cleaned up so the automation strategy and 5-day report no longer describe the flow as scaffold-only or say completion auto-activates leases; they now reflect signed-PDF retention, explicit activation review, and remaining production-readiness work.
 - DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.
