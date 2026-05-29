@@ -1595,3 +1595,28 @@ git diff --check
 ```
 
 Expected: `rg` exits with no matches, and diff check passes.
+
+## Task 69: Entity-Safe Smart Intake Deep Links
+
+- [x] **Step 1: Add wrong-saved-entity smoke coverage**
+
+Add a Smart Intake smoke where local storage points at a different accessible
+entity, then navigate to `/intake?entity_id=<entity>&review=<intake-id>` and
+expect the intake workspace to select the URL entity and open the requested
+review.
+
+- [x] **Step 2: Respect entity_id and emit entity-aware links**
+
+When the intake workspace loads, prefer a valid `entity_id` URL parameter over
+the stored entity. Generate Smart Intake review links from Dashboard and
+Operations with both `entity_id` and `review` query parameters.
+
+- [x] **Step 3: Verify entity-safe links**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "smart intake deep link selects the review entity|operations workspace surfaces maintenance and arrears work|smart intake labels inbound email attachments"
+```
+
+Expected: pass.

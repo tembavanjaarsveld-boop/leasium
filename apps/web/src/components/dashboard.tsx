@@ -1036,6 +1036,14 @@ function intakeSourceInfo(intake: DocumentIntakeRecord) {
   };
 }
 
+function intakeReviewHref(entityId: string, intakeId: string) {
+  const params = new URLSearchParams({
+    entity_id: entityId,
+    review: intakeId,
+  });
+  return `/intake?${params.toString()}`;
+}
+
 function groupItems(
   draft: DocumentIntakeExtraction,
   key: ReviewGroupKey,
@@ -2524,16 +2532,23 @@ export function Dashboard({
   });
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedEntityId = isIntakeWorkspace ? params.get("entity_id") : null;
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
     const accessibleIds = new Set(
       (entitiesQuery.data ?? []).map((entity) => entity.id),
     );
     const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
-    const next = stored && accessibleIds.has(stored) ? stored : firstEntity;
+    const next =
+      requestedEntityId && accessibleIds.has(requestedEntityId)
+        ? requestedEntityId
+        : stored && accessibleIds.has(stored)
+          ? stored
+          : firstEntity;
     if (!selectedEntityId && next) {
       setSelectedEntityId(next);
     }
-  }, [entitiesQuery.data, selectedEntityId]);
+  }, [entitiesQuery.data, isIntakeWorkspace, selectedEntityId]);
 
   useEffect(() => {
     if (selectedEntityId) {
@@ -2923,7 +2938,7 @@ export function Dashboard({
         topSmartReview.status === "needs_attention"
           ? `${topSmartReview.filename} needs a human match before Leasium can turn it into reviewed workflow data.`
           : `${topSmartReview.filename} has extracted terms waiting for approval before lease, billing, or task work is created.`,
-      href: `/intake?review=${topSmartReview.id}`,
+      href: intakeReviewHref(topSmartReview.entity_id, topSmartReview.id),
       nextStep: "Review document",
       chip: "Review first",
       tone: "primary",
@@ -2942,7 +2957,7 @@ export function Dashboard({
         failedIntakes.length === 1 ? "read" : "reads"
       } failed`,
       why: `${topFailedIntake.filename} could not become source-backed review data, so downstream workflow should wait until it is fixed or cleared.`,
-      href: `/intake?review=${topFailedIntake.id}`,
+      href: intakeReviewHref(topFailedIntake.entity_id, topFailedIntake.id),
       nextStep: "Fix intake",
       chip: "Could not read",
       tone: "danger",
@@ -3551,7 +3566,7 @@ export function Dashboard({
                               </SecondaryButton>
                             ) : (
                               <Link
-                                href={`/intake?review=${item.id}`}
+                                href={intakeReviewHref(item.entity_id, item.id)}
                                 className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                               >
                                 Review

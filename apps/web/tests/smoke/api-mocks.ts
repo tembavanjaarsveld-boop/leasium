@@ -26,6 +26,7 @@ const unitId = "unit-1";
 const leaseId = "lease-1";
 const operatorId = "operator-1";
 const assigneeId = "operator-2";
+const secondaryEntityId = "entity-2";
 const propertyImageDocumentId = "document-property-image-1";
 const tinyPropertyImagePng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
@@ -42,6 +43,19 @@ const entities = [
     organisation_id: "org-1",
     name: "Acme Holdings Pty Ltd",
     abn: "12123123123",
+    gst_registered: true,
+    xero_tenant_id: null,
+    xero_connected_at: null,
+    xero_last_sync_at: null,
+    notes: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+    deleted_at: null,
+  },
+  {
+    id: secondaryEntityId,
+    organisation_id: "org-1",
+    name: "Secondary Holdings Pty Ltd",
+    abn: "98989898989",
     gst_registered: true,
     xero_tenant_id: null,
     xero_connected_at: null,
@@ -6511,7 +6525,15 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/document-intakes") {
-      await fulfillJson(route, documentIntakes);
+      const requestedEntityId = url.searchParams.get("entity_id");
+      await fulfillJson(
+        route,
+        requestedEntityId
+          ? documentIntakes.filter(
+              (intake) => intake.entity_id === requestedEntityId,
+            )
+          : documentIntakes,
+      );
       return;
     }
 

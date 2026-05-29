@@ -1095,7 +1095,7 @@ test("operations workspace surfaces maintenance and arrears work", async ({
     .first();
   await expect(tenantInsuranceReviewLink).toHaveAttribute(
     "href",
-    "/intake?review=intake-tenant-upload-insurance-1",
+    "/intake?entity_id=entity-1&review=intake-tenant-upload-insurance-1",
   );
   await expect(page.getByText("Notice inbox")).toBeVisible();
   await expect(
@@ -2066,6 +2066,23 @@ test("smart intake labels inbound email attachments in review queue", async ({
       "No tenant data, lease data, provider action, or payment record is changed",
     ),
   ).toBeVisible();
+});
+
+test("smart intake deep link selects the review entity", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.entity_id", "entity-2");
+  });
+
+  await page.goto(
+    "/intake?entity_id=entity-1&review=intake-tenant-upload-insurance-1",
+  );
+
+  await expect(page.getByLabel("Entity")).toHaveValue("entity-1");
+  await expect(
+    page.getByRole("heading", { name: "Review document" }),
+  ).toBeVisible();
+  await expect(page.getByText("tenant-uploaded-insurance.txt").nth(1)).toBeVisible();
+  await expect(page.getByText("Tenant portal upload")).toHaveCount(2);
 });
 
 test("smart intake explains active DocuSign conflict before accepting lease match", async ({

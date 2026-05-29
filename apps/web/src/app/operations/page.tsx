@@ -1312,7 +1312,9 @@ function intakeTitle(intake: DocumentIntakeRecord) {
 }
 
 function intakeReviewHref(intake: DocumentIntakeRecord) {
-  return `/intake?review=${encodeURIComponent(intake.id)}`;
+  return `/intake?entity_id=${encodeURIComponent(
+    intake.entity_id,
+  )}&review=${encodeURIComponent(intake.id)}`;
 }
 
 function queueKindLabel(task: QueueItem) {
