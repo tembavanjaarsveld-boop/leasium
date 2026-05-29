@@ -2786,7 +2786,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
       "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
     ),
   ).toBeVisible();
-  await expect(page.getByText("API release")).toBeVisible();
+  await expect(page.getByText("API release", { exact: true })).toBeVisible();
   await expect(page.getByText("Render commit")).toBeVisible();
   await expect(page.getByText("7248a2b", { exact: true })).toBeVisible();
   await expect(page.getByText("Communication templates")).toBeVisible();
@@ -3250,6 +3250,27 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByRole("row").filter({ hasText: "INV-1001" }),
   ).toHaveCount(0);
+});
+
+test("settings keeps provider readiness visible when API release is unavailable", async ({
+  page,
+}) => {
+  await page.unroute("**/api/v1/**");
+  await page.unroute("**/health");
+  await mockLeasiumApi(page, { apiHealthUnavailable: true });
+
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Organisation" }).click();
+
+  await expect(page.getByText("API release", { exact: true })).toBeVisible();
+  await expect(page.getByText("Release unavailable")).toBeVisible();
+  await expect(
+    page.getByText("API release status is unavailable."),
+  ).toBeVisible();
+  await expect(page.getByText("DocuSign Connect webhook")).toBeVisible();
+  await expect(
+    page.getByText("DOCUSIGN_WEBHOOK_SECRET", { exact: true }),
+  ).toBeVisible();
 });
 
 test("settings shows Xero OAuth callback success feedback", async ({

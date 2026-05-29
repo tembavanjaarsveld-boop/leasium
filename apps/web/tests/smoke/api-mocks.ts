@@ -1826,6 +1826,7 @@ function multipartFilename(body: string) {
 }
 
 type MockLeasiumApiOptions = {
+  apiHealthUnavailable?: boolean;
   leaseMatchAcceptConflict?: boolean;
   tenantAccountLinked?: boolean;
   tenantAccountLinkedToDifferentTenant?: boolean;
@@ -3127,6 +3128,10 @@ export async function mockLeasiumApi(
   });
 
   await page.route("**/health", async (route) => {
+    if (options.apiHealthUnavailable) {
+      await fulfillJson(route, { detail: "API health unavailable" }, 503);
+      return;
+    }
     await fulfillJson(route, {
       status: "ok",
       app: "Leasium",

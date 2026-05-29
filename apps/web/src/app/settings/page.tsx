@@ -1849,6 +1849,23 @@ function IntegrationsHealthCard({
         { key: "docusign", data: integrations.docusign },
       ]
     : [];
+  const release = apiHealth?.release;
+  const releaseIsLocal =
+    Boolean(release) &&
+    (release?.commit === "unknown" || release?.source === "local");
+  const releaseBadge: { label: string; tone: StatusTone } = release
+    ? {
+        label: releaseIsLocal
+          ? "Local release"
+          : release.source === "render"
+            ? "Render commit"
+            : `${release.source} commit`,
+        tone: releaseIsLocal ? "warning" : "success",
+      }
+    : {
+        label: isApiHealthLoading ? "Checking release" : "Release unavailable",
+        tone: isApiHealthLoading ? "neutral" : "danger",
+      };
   return (
     <SectionPanel
       title="Integrations"
@@ -1867,21 +1884,19 @@ function IntegrationsHealthCard({
                   : "API release status is unavailable."}
             </span>
           </div>
-          {apiHealth?.release ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge tone="success">
-                {apiHealth.release.source === "render"
-                  ? "Render commit"
-                  : `${apiHealth.release.source} commit`}
-              </StatusBadge>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone={releaseBadge.tone}>
+              {releaseBadge.label}
+            </StatusBadge>
+            {release ? (
               <code
                 className="rounded-sm border border-border bg-white px-2 py-1 font-mono text-xs text-muted-foreground"
-                title={apiHealth.release.commit}
+                title={release.commit}
               >
-                {apiHealth.release.commit.slice(0, 7)}
+                {release.commit.slice(0, 7)}
               </code>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
         {isLoading && !integrations ? (
           <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">

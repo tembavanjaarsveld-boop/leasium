@@ -789,3 +789,25 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 36: Settings Release Status Hardening
+
+- [x] **Step 1: Add unavailable release smoke coverage**
+
+Add Settings smoke coverage where `/health` is unavailable, while the provider
+integration status endpoint still responds.
+
+- [x] **Step 2: Badge degraded release states**
+
+Render explicit badges for API release states: Render/current commit,
+local/unknown release, loading, and unavailable.
+
+- [x] **Step 3: Verify degraded and happy paths**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "settings shows Xero readiness|settings keeps provider readiness"
+```
+
+Expected: pass.
