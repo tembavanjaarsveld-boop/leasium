@@ -878,3 +878,26 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_document_intak
 ```
 
 Expected: pass.
+
+## Task 40: DocuSign Production Endpoint Readiness
+
+- [x] **Step 1: Add demo-endpoint readiness regression**
+
+Add system integration coverage where DocuSign credentials, webhook secret, and
+public API URL are configured but the REST/auth URLs still point at demo.
+
+- [x] **Step 2: Require production DocuSign hosts for live-ready**
+
+Treat DocuSign as live-ready only when credentials, webhook secret, public API
+URL, `DOCUSIGN_BASE_URL=https://www.docusign.net/restapi`, and
+`DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com` are all set.
+
+- [x] **Step 3: Verify readiness states**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_system_api.py -q
+```
+
+Expected: pass.

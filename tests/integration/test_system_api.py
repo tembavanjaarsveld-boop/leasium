@@ -44,6 +44,8 @@ def test_integration_status_reports_docusign_configured_without_webhook_secret(
             "docusign_user_id": "user-123",
             "docusign_rsa_private_key": "-----BEGIN PRIVATE KEY-----\ntest\n",
             "docusign_webhook_secret": "",
+            "docusign_base_url": "https://www.docusign.net/restapi",
+            "docusign_auth_base_url": "https://account.docusign.com",
             "public_api_url": "https://api.leasium.test",
         }
     )
@@ -65,6 +67,37 @@ def test_integration_status_reports_docusign_configured_without_webhook_secret(
     )
 
 
+def test_integration_status_reports_docusign_demo_endpoints_not_live_ready(
+    client: TestClient,
+) -> None:
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={
+            "docusign_account_id": "account-123",
+            "docusign_integration_key": "integration-123",
+            "docusign_user_id": "user-123",
+            "docusign_rsa_private_key": "-----BEGIN PRIVATE KEY-----\ntest\n",
+            "docusign_webhook_secret": "secret-123",
+            "public_api_url": "https://api.leasium.test",
+        }
+    )
+
+    response = client.get("/api/v1/system/integration-status")
+
+    assert response.status_code == 200
+    docusign = response.json()["docusign"]
+    assert docusign["configured"] is True
+    assert docusign["live_ready"] is False
+    assert docusign["missing_config"] == [
+        "DOCUSIGN_BASE_URL",
+        "DOCUSIGN_AUTH_BASE_URL",
+    ]
+    assert docusign["detail"] == (
+        "Credentials and webhook are set; switch DocuSign REST and auth URLs "
+        "to production before live envelope testing."
+    )
+
+
 def test_integration_status_reports_docusign_live_ready(
     client: TestClient,
 ) -> None:
@@ -76,6 +109,8 @@ def test_integration_status_reports_docusign_live_ready(
             "docusign_user_id": "user-123",
             "docusign_rsa_private_key": "-----BEGIN PRIVATE KEY-----\ntest\n",
             "docusign_webhook_secret": "secret-123",
+            "docusign_base_url": "https://www.docusign.net/restapi",
+            "docusign_auth_base_url": "https://account.docusign.com",
             "public_api_url": "https://api.leasium.test",
         }
     )

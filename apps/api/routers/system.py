@@ -90,13 +90,7 @@ def get_integration_status(
                 "before sending lease envelopes."
             ),
             configured_detail=(
-                "Configured for envelope creation and completed signed-document "
-                "retention."
-                if settings.docusign_webhook_secret
-                else (
-                    "Credentials are set; add DOCUSIGN_WEBHOOK_SECRET before live "
-                    "Connect testing so completed envelopes can be verified."
-                )
+                _docusign_configured_detail(settings)
             ),
             webhook_url=_webhook_url(
                 settings,
@@ -156,6 +150,29 @@ def _docusign_live_ready(settings: Settings) -> bool:
     )
 
 
+def _docusign_configured_detail(settings: Settings) -> str:
+    if not settings.docusign_webhook_secret:
+        return (
+            "Credentials are set; add DOCUSIGN_WEBHOOK_SECRET before live "
+            "Connect testing so completed envelopes can be verified."
+        )
+    if not _docusign_production_endpoints_configured(settings):
+        return (
+            "Credentials and webhook are set; switch DocuSign REST and auth URLs "
+            "to production before live envelope testing."
+        )
+    return "Configured for envelope creation and completed signed-document retention."
+
+
+def _docusign_production_endpoints_configured(settings: Settings) -> bool:
+    return (
+        settings.docusign_base_url.strip().rstrip("/")
+        == "https://www.docusign.net/restapi"
+        and settings.docusign_auth_base_url.strip().rstrip("/")
+        == "https://account.docusign.com"
+    )
+
+
 def _missing_docusign_config(settings: Settings) -> list[str]:
     missing: list[str] = []
     if not settings.docusign_account_id:
@@ -170,4 +187,15 @@ def _missing_docusign_config(settings: Settings) -> list[str]:
         missing.append("DOCUSIGN_WEBHOOK_SECRET")
     if not settings.public_api_url.strip():
         missing.append("PUBLIC_API_URL")
+    if _docusign_credentials_configured(settings):
+        if (
+            settings.docusign_base_url.strip().rstrip("/")
+            != "https://www.docusign.net/restapi"
+        ):
+            missing.append("DOCUSIGN_BASE_URL")
+        if (
+            settings.docusign_auth_base_url.strip().rstrip("/")
+            != "https://account.docusign.com"
+        ):
+            missing.append("DOCUSIGN_AUTH_BASE_URL")
     return missing
