@@ -10,6 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.db import utcnow
 from stewart.core.models import (
+    AuditAction,
+    AuditOutcome,
     DocumentCategory,
     Entity,
     Lease,
@@ -790,6 +792,71 @@ def test_tenant_onboarding_send_lease_pack_after_apply_records_delivery(
     assert signing["envelope_id"] == "envelope-lease-pack-1"
     history = body["delivery_data"].get("lease_pack_history") or []
     assert len(history) == 1
+
+
+def test_tenant_onboarding_send_lease_pack_audits_skipped_docusign_as_error(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    def fake_lease_pack_send(invite, settings):  # noqa: ANN001, ARG001
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+                provider_message_id="lease-pack-skipped-docusign",
+                metadata={"template_key": invite.template_key},
+            )
+        ]
+
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "send_tenant_lease_pack_invite",
+        fake_lease_pack_send,
+    )
+
+    def fake_signature_send(request, settings):  # noqa: ANN001, ARG001
+        return LeaseSignatureResult(
+            status="skipped",
+            signer_email=request.signer_email,
+            error=(
+                "DocuSign production endpoints are not configured. Set "
+                "DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and "
+                "DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before "
+                "sending live lease envelopes."
+            ),
+        )
+
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "send_lease_for_signature",
+        fake_signature_send,
+    )
+    body = _create_applied_onboarding(client, session)
+    lease_document = _attach_lease_document(session, body["id"])
+
+    response = client.post(
+        f"/api/v1/tenant-onboarding/{body['id']}/send-lease-pack",
+    )
+
+    assert response.status_code == 200
+    lease_pack = response.json()["delivery_data"]["lease_pack"]
+    assert lease_pack["docusign"]["status"] == "skipped"
+    assert lease_pack["docusign"]["document_id"] == str(lease_document.id)
+    assert "lease_agreement" not in response.json()["delivery_data"]
+    audit = session.scalar(
+        select(AuditAction)
+        .where(
+            AuditAction.action == "send_lease_for_signature",
+            AuditAction.target_id == UUID(body["id"]),
+        )
+        .order_by(AuditAction.occurred_at.desc())
+    )
+    assert audit is not None
+    assert audit.outcome == AuditOutcome.error
+    assert audit.error_message == lease_pack["docusign"]["error"]
 
 
 def test_tenant_onboarding_send_lease_pack_retries_after_declined_docusign(

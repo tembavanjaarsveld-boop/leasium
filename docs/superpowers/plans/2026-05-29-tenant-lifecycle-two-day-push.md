@@ -948,3 +948,26 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/unit/test_docusign.py -q
 ```
 
 Expected: pass.
+
+## Task 43: DocuSign Skipped Send Audit Outcome
+
+- [x] **Step 1: Add skipped-send audit regression**
+
+Add onboarding coverage that a skipped DocuSign send with a setup error keeps a
+reviewable receipt but records the DocuSign audit event as `error`.
+
+- [x] **Step 2: Preserve queued success behavior**
+
+Change the DocuSign send audit outcome to use the provider error message rather
+than only the `failed` status, so skipped setup failures are visible while
+queued/sent envelopes remain success events.
+
+- [x] **Step 3: Verify send audit paths**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_send_lease_pack_audits_skipped_docusign_as_error tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_send_lease_pack_after_apply_records_delivery -q
+```
+
+Expected: pass.

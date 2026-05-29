@@ -1336,8 +1336,8 @@ def _deliver_lease_pack(
             "recipient": _masked_recipient(signature_result.signer_email),
         },
         tool_output_summary=f"docusign envelope {signature_result.status}",
-        outcome=AuditOutcome.error if signature_result.status == "failed" else AuditOutcome.success,
-        error_message=signature_result.error if signature_result.status == "failed" else None,
+        outcome=AuditOutcome.error if signature_result.error else AuditOutcome.success,
+        error_message=signature_result.error,
         data_classification="confidential",
     )
     return results
