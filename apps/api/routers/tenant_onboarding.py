@@ -2032,9 +2032,20 @@ def activate_tenant_onboarding_lease(
         target_id=onboarding.id,
         tool_input={
             "lease_id": str(lease.id),
-            "source": lease.lease_metadata.get("activation", {}).get(
+            "source": activation_metadata.get(
                 "source",
                 "tenant_onboarding_docusign",
+            ),
+            "signed_document_id": activation_metadata.get("signed_document_id"),
+            **(
+                {"document_intake_id": activation_metadata["document_intake_id"]}
+                if activation_metadata.get("document_intake_id") is not None
+                else {}
+            ),
+            **(
+                {"envelope_id": activation_metadata["envelope_id"]}
+                if activation_metadata.get("envelope_id") is not None
+                else {}
             ),
         },
         outcome=AuditOutcome.success,

@@ -2328,3 +2328,30 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 96: Onboarding Activation Source Audit Evidence
+
+- [x] **Step 1: Add final activation audit parity regressions**
+
+Extend DocuSign and tenant-upload activation coverage so the final
+`tenant_onboarding` activation audit must include the signed document evidence
+and the provider/source-specific envelope or Smart Intake id.
+
+- [x] **Step 2: Stamp source evidence on onboarding activation audits**
+
+When an operator activates a signed onboarding lease, copy the activation
+source, signed document id, DocuSign envelope id, and tenant-upload Smart Intake
+id from activation metadata into the `tenant_onboarding.activate_lease` audit
+payload.
+
+- [x] **Step 3: Verify activation audit parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_activate_lease_after_docusign_completion tests/integration/test_tenant_portal_api.py::test_document_intake_accepts_tenant_lease_match_without_mutating_lease -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py tests/integration/test_tenant_portal_api.py
+git diff --check
+```
+
+Expected: pass.

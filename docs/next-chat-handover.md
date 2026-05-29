@@ -1106,6 +1106,7 @@ Open items at session end:
 - Inbound email attachment Smart Intake promotion audits now include source inbound message, tenant attribution, candidate type, attachment field, document id, and intake id before extraction starts.
 - Tenant-uploaded Smart Intake extraction audits now also carry candidate, onboarding, tenant, and lease scope on both successful and failed extraction paths.
 - Tenant-uploaded Smart Intake promotion audits now include the promoted intake id alongside document, onboarding, tenant, lease, and candidate scope, matching inbound attachment promotion evidence.
+- Final tenant-onboarding activation audits now carry the signed document id plus DocuSign envelope id or tenant-upload Smart Intake id, matching the lease activation audit source evidence.
 - Tenant-uploaded lease activation now shows a source-aware success notice: `Lease activated after tenant-uploaded lease review.`
 - Historical DocuSign docs were cleaned up so the automation strategy and 5-day report no longer describe the flow as scaffold-only or say completion auto-activates leases; they now reflect signed-PDF retention, explicit activation review, and remaining production-readiness work.
 - DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.

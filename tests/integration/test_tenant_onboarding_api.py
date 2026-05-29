@@ -1618,6 +1618,20 @@ def test_tenant_onboarding_activate_lease_after_docusign_completion(
     assert signing["lease_activation_review"]["status"] == "activated"
     assert signing["lease_activation_review"]["current_lease_status"] == "active"
     assert signing["lease_activation_review"]["activated_at"] is not None
+    onboarding_activation_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "activate_lease",
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id == onboarding.id,
+        )
+    )
+    assert onboarding_activation_audit is not None
+    assert onboarding_activation_audit.tool_input == {
+        "lease_id": str(lease.id),
+        "source": "tenant_onboarding_docusign",
+        "signed_document_id": "document-signed-1",
+        "envelope_id": "envelope-activate-1",
+    }
     lease_activation_audit = session.scalar(
         select(AuditAction).where(
             AuditAction.action == "activate",

@@ -2171,6 +2171,20 @@ def test_document_intake_accepts_tenant_lease_match_without_mutating_lease(
     assert activation["signed_document_id"] == str(document.id)
     assert activation["document_intake_id"] == str(intake.id)
     assert activation["activated_by_user_id"] is not None
+    onboarding_activation_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id == onboarding.id,
+            AuditAction.action == "activate_lease",
+        )
+    )
+    assert onboarding_activation_audit is not None
+    assert onboarding_activation_audit.tool_input == {
+        "lease_id": str(lease.id),
+        "source": "tenant_uploaded_lease_match",
+        "signed_document_id": str(document.id),
+        "document_intake_id": str(intake.id),
+    }
     lease_activation_audit = session.scalar(
         select(AuditAction).where(
             AuditAction.target_table == "lease",
