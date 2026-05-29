@@ -1062,3 +1062,49 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::
 ```
 
 Expected: pass.
+
+## Task 48: Skipped DocuSign Counts Guardrail
+
+- [x] **Step 1: Extend urgent lifecycle counts coverage**
+
+Add a skipped DocuSign setup onboarding to the existing comms counts regression
+so declined DocuSign, tenant-upload activation review, and skipped setup all
+contribute to the tenant lifecycle urgent badge.
+
+- [x] **Step 2: Keep implementation unchanged**
+
+The existing counts endpoint already reuses the tenant lifecycle scanner, so no
+production change is needed for skipped setup to be counted.
+
+- [x] **Step 3: Verify focused counts coverage**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::test_comms_queue_counts_include_urgent_tenant_lifecycle_reviews -q
+```
+
+Expected: pass.
+
+## Task 49: Tenant Insurance Upload Apply Guardrail
+
+- [x] **Step 1: Add cross-router insurance regression**
+
+Cover the full tenant-uploaded insurance lifecycle: portal upload, Smart Intake
+auto-extraction, operator apply, scoped tenant metadata update, and refreshed
+tenant portal compliance due date/latest document.
+
+- [x] **Step 2: Keep implementation unchanged**
+
+The existing portal upload promotion, Smart Intake apply, and portal compliance
+paths already compose correctly, so no production change is needed.
+
+- [x] **Step 3: Verify focused insurance handoff coverage**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_apply_refreshes_compliance_status -q
+```
+
+Expected: pass.

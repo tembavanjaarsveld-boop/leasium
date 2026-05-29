@@ -1640,6 +1640,94 @@ def test_tenant_portal_insurance_upload_extracts_when_openai_is_configured(
     assert document.document_metadata["smart_intake_auto_extracted"] is True
 
 
+def test_tenant_portal_insurance_upload_apply_refreshes_compliance_status(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_portal_scope(session)
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={"openai_api_key": "test-openai-key"}
+    )
+
+    def fake_extract_document_file(**kwargs):  # noqa: ANN003
+        assert kwargs["filename"] == "renewed-insurance.txt"
+        return (
+            {
+                "document_type": "insurance_certificate",
+                "summary": "Renewed tenant insurance certificate expires 2027-02-28.",
+                "confidence": 0.94,
+                "key_dates": [
+                    {
+                        "label": "Policy expiry",
+                        "date": "2027-02-28",
+                        "confidence": 0.93,
+                        "source_hint": "Certificate period",
+                    }
+                ],
+                "warnings": [],
+                "missing_information": [],
+            },
+            "resp_tenant_insurance_apply",
+        )
+
+    monkeypatch.setattr(
+        tenant_portal_router,
+        "extract_document_file",
+        fake_extract_document_file,
+        raising=False,
+    )
+
+    upload_response = client.post(
+        "/api/v1/tenant-portal/documents",
+        headers={"x-tenant-portal-token": scope["token"]},
+        data={"category": "insurance", "notes": "Renewed insurance certificate."},
+        files={"file": ("renewed-insurance.txt", b"insurance certificate", "text/plain")},
+    )
+
+    assert upload_response.status_code == 201
+    document = session.get(StoredDocument, UUID(upload_response.json()["id"]))
+    assert document is not None
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.document_id == document.id)
+    )
+    assert intake is not None
+    assert intake.status == DocumentIntakeStatus.ready_for_review
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake.id}/apply",
+        json={},
+    )
+
+    assert apply_response.status_code == 200
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    session.refresh(tenant)
+    assert tenant.tenant_metadata["insurance_confirmed"] is True
+    assert tenant.tenant_metadata["insurance_expiry_date"] == "2027-02-28"
+    assert tenant.tenant_metadata["insurance_document_id"] == str(document.id)
+    assert tenant.tenant_metadata["insurance_document_intake_id"] == str(intake.id)
+    history = tenant.tenant_metadata["insurance_auto_update_history"]
+    assert history[-1]["document_id"] == str(document.id)
+    assert history[-1]["document_intake_id"] == str(intake.id)
+    assert history[-1]["expiry_date"] == "2027-02-28"
+
+    portal_response = client.get(
+        "/api/v1/tenant-portal/session",
+        headers={"x-tenant-portal-token": scope["token"]},
+    )
+    assert portal_response.status_code == 200
+    insurance_item = next(
+        item
+        for item in portal_response.json()["compliance"]["items"]
+        if item["key"] == "insurance"
+    )
+    assert insurance_item["status"] == "received"
+    assert insurance_item["due_date"] == "2027-02-28"
+    assert insurance_item["latest_document"]["id"] == str(document.id)
+
+
 def test_tenant_portal_upload_extraction_keeps_tenant_selected_category_until_review(
     client: TestClient,
     session: Session,

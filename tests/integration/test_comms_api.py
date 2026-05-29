@@ -824,6 +824,17 @@ def test_comms_queue_counts_include_urgent_tenant_lifecycle_reviews(
         },
         contact_email="counts-upload@example.com",
     )
+    _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": "skipped",
+            "document_id": "lease-doc-counts-skipped-1",
+            "error": "DocuSign production endpoints are not configured.",
+            "sent_at": (date.today() - timedelta(days=1)).isoformat(),
+        },
+        contact_email="counts-skipped@example.com",
+    )
 
     response = client.get(
         "/api/v1/comms/queue/counts",
@@ -832,9 +843,9 @@ def test_comms_queue_counts_include_urgent_tenant_lifecycle_reviews(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["total"] == 2
-    assert body["urgent"] == 2
-    assert body["by_kind"]["tenant_lifecycle_stall"] == 2
+    assert body["total"] == 3
+    assert body["urgent"] == 3
+    assert body["by_kind"]["tenant_lifecycle_stall"] == 3
 
 
 def test_comms_dismiss_tenant_lifecycle_stall_defers_candidate(
