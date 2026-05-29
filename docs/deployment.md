@@ -322,8 +322,13 @@ Twilio using only bare endpoint URLs. Configure the SendGrid Event Webhook at
 Work SMS status callbacks at
 `<PUBLIC_API_URL>/api/v1/work-assignments/webhooks/twilio-status`, then pass the
 shared `COMMUNICATIONS_WEBHOOK_SECRET` through the provider console or protected
-scheduler calls. Notification-center responses must not expose webhook secrets,
-provider API tokens, or tokenized callback URLs.
+scheduler calls. Maintenance contractor SMS callbacks should point at
+`<PUBLIC_API_URL>/api/v1/maintenance/work-orders/webhooks/twilio-status`.
+When `TWILIO_AUTH_TOKEN` is configured, both Twilio status callback endpoints
+also accept signed `X-Twilio-Signature` requests against `PUBLIC_API_URL` and
+reject unsigned callbacks before receipt metadata changes. Notification-center
+responses must not expose webhook secrets, provider API tokens, or tokenized
+callback URLs.
 
 Operator invite delivery also uses the SendGrid key/from settings above. Invite
 links point to `/accept-invite?token=...`; the raw token is sent once by email,

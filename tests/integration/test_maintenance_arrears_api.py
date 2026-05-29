@@ -1,5 +1,8 @@
 """Maintenance work order and arrears API integration tests."""
 
+import base64
+import hashlib
+import hmac
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +18,12 @@ def _entity_id(session: Session) -> str:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
     return str(entity.id)
+
+
+def _twilio_signature(url: str, data: dict[str, str], auth_token: str) -> str:
+    payload = url + "".join(f"{key}{data[key]}" for key in sorted(data))
+    digest = hmac.new(auth_token.encode(), payload.encode(), hashlib.sha1).digest()
+    return base64.b64encode(digest).decode()
 
 
 def _organisation_id(session: Session) -> str:
@@ -602,6 +611,127 @@ def test_maintenance_work_order_sends_contractor_sms_and_records_receipt(
     assert sms_receipt["action_available"] is False
 
 
+def test_maintenance_twilio_status_rejects_unsigned_when_token_configured(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Configured maintenance SMS callbacks must be signed before receipts move."""
+
+    from apps.api.routers import maintenance as maintenance_router
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(
+        maintenance_router,
+        "get_settings",
+        lambda: Settings(twilio_auth_token="twilio-secret"),
+    )
+    context = _lease_context(client, session)
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "Unsigned contractor receipt",
+            "status": "assigned",
+            "metadata": {
+                "contractor_delivery": {
+                    "sms": {
+                        "send": {
+                            "status": "queued",
+                            "provider": "twilio",
+                            "provider_message_id": "SM-maintenance-unsigned",
+                        },
+                        "receipts": [],
+                    }
+                }
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+
+    response = client.post(
+        "/api/v1/maintenance/work-orders/webhooks/twilio-status",
+        data={
+            "MessageSid": "SM-maintenance-unsigned",
+            "MessageStatus": "delivered",
+            "To": "+61400111222",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Invalid Twilio webhook signature."
+    work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+    assert work_order is not None
+    sms_delivery = work_order.work_order_metadata["contractor_delivery"]["sms"]
+    assert sms_delivery["send"]["status"] == "queued"
+    assert sms_delivery["receipts"] == []
+
+
+def test_maintenance_twilio_status_accepts_public_api_url_signature(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Production proxy URLs can validate signed maintenance SMS callbacks."""
+
+    from apps.api.routers import maintenance as maintenance_router
+    from stewart.core.settings import Settings
+
+    auth_token = "twilio-secret"
+    public_api_url = "https://api.leasium.test"
+    monkeypatch.setattr(
+        maintenance_router,
+        "get_settings",
+        lambda: Settings(public_api_url=public_api_url, twilio_auth_token=auth_token),
+    )
+    context = _lease_context(client, session)
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "Signed contractor receipt",
+            "status": "assigned",
+            "metadata": {
+                "contractor_delivery": {
+                    "sms": {
+                        "send": {
+                            "status": "queued",
+                            "provider": "twilio",
+                            "provider_message_id": "SM-maintenance-signed",
+                        },
+                        "receipts": [],
+                    }
+                }
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+    data = {
+        "MessageSid": "SM-maintenance-signed",
+        "MessageStatus": "delivered",
+        "To": "+61400111222",
+    }
+    url = f"{public_api_url}/api/v1/maintenance/work-orders/webhooks/twilio-status"
+    signature = _twilio_signature(url, data, auth_token)
+
+    response = client.post(
+        "/api/v1/maintenance/work-orders/webhooks/twilio-status",
+        data=data,
+        headers={"X-Twilio-Signature": signature},
+    )
+
+    assert response.status_code == 204
+    work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+    assert work_order is not None
+    sms_delivery = work_order.work_order_metadata["contractor_delivery"]["sms"]
+    assert sms_delivery["send"]["status"] == "delivered"
+    assert sms_delivery["receipts"][0]["provider_message_id"] == "SM-maintenance-signed"
+
+
 def test_maintenance_work_order_sends_assignment_notification_and_records_provider_attempt(
     client: TestClient,
     session: Session,
@@ -1135,6 +1265,147 @@ def test_notification_center_can_send_assignment_notice_sms_without_clobbering_e
     )
     assert audit is not None
     assert audit.action == "deliver"
+
+
+def test_work_assignment_twilio_status_rejects_unsigned_when_token_configured(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Configured Work SMS callbacks must be signed before receipts move."""
+
+    from apps.api.routers import work_assignment_notifications as work_notifications
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(
+        work_notifications,
+        "get_settings",
+        lambda: Settings(twilio_auth_token="twilio-secret"),
+    )
+    context = _lease_context(client, session)
+    settings = get_settings()
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "Unsigned Work receipt",
+            "status": "assigned",
+            "metadata": {
+                "work_assignment": {
+                    "assigned_user_id": str(settings.dev_user_id),
+                    "assigned_user_name": settings.dev_user_name,
+                    "assigned_user_email": settings.dev_user_email,
+                    "notification": {
+                        "channels": {
+                            "sms": {
+                                "channel": "sms",
+                                "provider": "twilio",
+                                "status": "queued",
+                                "provider_message_id": "SM-work-unsigned",
+                                "provider_history": [],
+                            }
+                        }
+                    },
+                    "history": [],
+                }
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+
+    response = client.post(
+        "/api/v1/work-assignments/webhooks/twilio-status",
+        data={
+            "MessageSid": "SM-work-unsigned",
+            "MessageStatus": "delivered",
+            "To": "+61400111222",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Invalid Twilio webhook signature."
+    work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+    assert work_order is not None
+    sms_channel = work_order.work_order_metadata["work_assignment"]["notification"][
+        "channels"
+    ]["sms"]
+    assert sms_channel["status"] == "queued"
+    assert sms_channel["provider_history"] == []
+
+
+def test_work_assignment_twilio_status_accepts_public_api_url_signature(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Production proxy URLs can validate signed Work SMS callbacks."""
+
+    from apps.api.routers import work_assignment_notifications as work_notifications
+    from stewart.core.settings import Settings
+
+    auth_token = "twilio-secret"
+    public_api_url = "https://api.leasium.test"
+    monkeypatch.setattr(
+        work_notifications,
+        "get_settings",
+        lambda: Settings(public_api_url=public_api_url, twilio_auth_token=auth_token),
+    )
+    context = _lease_context(client, session)
+    settings = get_settings()
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "Signed Work receipt",
+            "status": "assigned",
+            "metadata": {
+                "work_assignment": {
+                    "assigned_user_id": str(settings.dev_user_id),
+                    "assigned_user_name": settings.dev_user_name,
+                    "assigned_user_email": settings.dev_user_email,
+                    "notification": {
+                        "channels": {
+                            "sms": {
+                                "channel": "sms",
+                                "provider": "twilio",
+                                "status": "queued",
+                                "provider_message_id": "SM-work-signed",
+                                "provider_history": [],
+                            }
+                        }
+                    },
+                    "history": [],
+                }
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+    data = {
+        "MessageSid": "SM-work-signed",
+        "MessageStatus": "delivered",
+        "To": "+61400111222",
+    }
+    url = f"{public_api_url}/api/v1/work-assignments/webhooks/twilio-status"
+    signature = _twilio_signature(url, data, auth_token)
+
+    response = client.post(
+        "/api/v1/work-assignments/webhooks/twilio-status",
+        data=data,
+        headers={"X-Twilio-Signature": signature},
+    )
+
+    assert response.status_code == 204
+    work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+    assert work_order is not None
+    sms_channel = work_order.work_order_metadata["work_assignment"]["notification"][
+        "channels"
+    ]["sms"]
+    assert sms_channel["status"] == "delivered"
+    assert sms_channel["provider_history"][0]["provider_message_id"] == "SM-work-signed"
 
 
 def test_work_assignment_digest_runner_generates_review_only_operator_digest(

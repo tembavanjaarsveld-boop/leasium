@@ -1864,3 +1864,31 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 79: Maintenance And Work Twilio Status Signature Guards
+
+- [x] **Step 1: Add remaining status callback signature regressions**
+
+Extend maintenance contractor SMS and Work assignment SMS receipt coverage so,
+when `TWILIO_AUTH_TOKEN` is configured, unsigned Twilio status callbacks cannot
+move delivery receipts and signatures generated against `PUBLIC_API_URL` are
+accepted.
+
+- [x] **Step 2: Authenticate remaining Twilio status callbacks**
+
+Keep the existing `COMMUNICATIONS_WEBHOOK_SECRET` path, add Twilio
+HMAC-SHA1 signature validation as an alternate provider-auth path for both
+callback endpoints, and fail closed when a Twilio token is configured but
+neither path validates.
+
+- [x] **Step 3: Verify maintenance and Work callback hardening**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_maintenance_arrears_api.py::test_maintenance_work_order_sends_contractor_sms_and_records_receipt tests/integration/test_maintenance_arrears_api.py::test_maintenance_twilio_status_rejects_unsigned_when_token_configured tests/integration/test_maintenance_arrears_api.py::test_maintenance_twilio_status_accepts_public_api_url_signature tests/integration/test_maintenance_arrears_api.py::test_notification_center_can_send_assignment_notice_sms_without_clobbering_email tests/integration/test_maintenance_arrears_api.py::test_work_assignment_twilio_status_rejects_unsigned_when_token_configured tests/integration/test_maintenance_arrears_api.py::test_work_assignment_twilio_status_accepts_public_api_url_signature -q
+.venv/bin/ruff check apps/api/routers/maintenance.py apps/api/routers/work_assignment_notifications.py tests/integration/test_maintenance_arrears_api.py
+git diff --check
+```
+
+Expected: pass.
