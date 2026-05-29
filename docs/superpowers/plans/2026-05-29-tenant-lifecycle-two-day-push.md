@@ -1039,3 +1039,26 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 47: Tenant-Safe Skipped DocuSign Comms Copy
+
+- [x] **Step 1: Add tenant-safe copy regression**
+
+Extend skipped DocuSign setup comms coverage so the internal candidate detail
+keeps the production endpoint blocker while the tenant-facing body omits setup
+variable names and raw provider configuration guidance.
+
+- [x] **Step 2: Keep setup detail internal**
+
+Keep the provider error in operator detail and use neutral tenant body copy that
+says provider setup needs attention before a fresh lease pack is sent.
+
+- [x] **Step 3: Verify focused DocuSign comms checks**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::test_comms_queue_returns_skipped_docusign_setup_retry_candidate tests/integration/test_comms_api.py::test_comms_queue_returns_declined_or_failed_docusign_retry_candidate -q
+```
+
+Expected: pass.

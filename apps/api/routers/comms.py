@@ -1010,16 +1010,11 @@ def _tenant_lifecycle_stall_candidates(
                 detail_parts.append(provider_error)
             if signing_status == "skipped":
                 subject = f"DocuSign setup needed ({prop.name})"
-                setup_detail = (
-                    f"\n\nProvider setup detail: {provider_error}"
-                    if isinstance(provider_error, str)
-                    else ""
-                )
                 body = (
                     f"{greeting}\n\n"
                     f"The DocuSign signing request for your lease at {location} "
                     "could not be sent because provider setup needs attention."
-                    f"{setup_detail}\n\n"
+                    "\n\n"
                     "We are fixing the signing setup before sending a fresh "
                     "lease pack. Please reply if there is anything we should "
                     "correct before we resend it.\n\n"

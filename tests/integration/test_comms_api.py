@@ -710,7 +710,10 @@ def test_comms_queue_returns_skipped_docusign_setup_retry_candidate(
     assert "DocuSign setup needed" in candidate["subject"]
     assert "skipped" in (candidate["detail"] or "")
     assert "DOCUSIGN_BASE_URL" in (candidate["detail"] or "")
-    assert "before sending live lease envelopes" in candidate["body"]
+    assert "provider setup needs attention" in candidate["body"]
+    assert "DOCUSIGN_BASE_URL" not in candidate["body"]
+    assert "DOCUSIGN_AUTH_BASE_URL" not in candidate["body"]
+    assert "before sending live lease envelopes" not in candidate["body"]
 
 
 def test_comms_queue_returns_completed_signing_pending_activation_candidate(
