@@ -3121,7 +3121,7 @@ export async function mockLeasiumApi(
           chip: "Ready For Review",
           due_date: null,
           source: "Smart Intake",
-          href: "/intake?review=intake-1",
+          href: "/intake?entity_id=entity-1&review=intake-1",
           target: {
             property_id: null,
             tenancy_unit_id: null,

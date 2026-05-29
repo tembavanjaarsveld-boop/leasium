@@ -1785,3 +1785,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 76: Billing Readiness Intake Link Parity
+
+- [x] **Step 1: Add Billing Readiness source URL regression**
+
+Extend the Dashboard to Billing Readiness smoke so the Smart Intake source link
+inside the billing draft review table must include both `entity_id` and
+`review`.
+
+- [x] **Step 2: Harden Billing Readiness Smart Intake handoffs**
+
+Generate entity-aware Smart Intake review URLs for billing draft source links,
+while preserving the review-only fallback when no entity is selected.
+
+- [x] **Step 3: Verify Billing Readiness parity**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "dashboard shows the mocked portfolio and opens billing readiness"
+cd apps/web && ./node_modules/.bin/eslint src/app/billing-readiness/page.tsx tests/smoke/app-flows.spec.ts
+cd apps/web && ./node_modules/.bin/tsc --noEmit
+git diff --check
+```
+
+Expected: pass.

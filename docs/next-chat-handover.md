@@ -1086,6 +1086,7 @@ Open items at session end:
 - Insights Smart Intake live-exception links now also include `entity_id` plus `review`, so overview drilldowns no longer depend on the operator's saved entity selection.
 - Property workspace Smart Intake source-history links and document-upload redirects now include `entity_id` plus `review`, matching the exact-review handoff convention.
 - Portfolio QA Smart Intake source-history, issue, and evidence links now include `entity_id` plus `review`, so cleanup drilldowns open the exact review row.
+- Billing Readiness Smart Intake billing-draft source links now include `entity_id` plus `review`, so draft-review drilldowns open the exact Smart Intake item.
 - Tenant-uploaded lease activation now shows a source-aware success notice: `Lease activated after tenant-uploaded lease review.`
 - Historical DocuSign docs were cleaned up so the automation strategy and 5-day report no longer describe the flow as scaffold-only or say completion auto-activates leases; they now reflect signed-PDF retention, explicit activation review, and remaining production-readiness work.
 - DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.

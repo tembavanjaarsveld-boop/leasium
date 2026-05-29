@@ -136,6 +136,9 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
 
   await page.getByRole("tab", { name: /Review drafts/ }).click();
   await expect(page.getByText("May rent and outgoings")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Intake intake-1/ }),
+  ).toHaveAttribute("href", "/intake?entity_id=entity-1&review=intake-1");
 
   await page.getByRole("tab", { name: /Approve invoices/ }).click();
   await expect(

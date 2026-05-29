@@ -554,6 +554,13 @@ function billingDeliveryHref(entityId: string, filter: DeliveryFilter) {
   return `/billing-readiness?${params.toString()}`;
 }
 
+function intakeReviewHref(entityId: string, intakeId: string) {
+  const params = entityId
+    ? new URLSearchParams({ entity_id: entityId, review: intakeId })
+    : new URLSearchParams({ review: intakeId });
+  return `/intake?${params.toString()}`;
+}
+
 function monthFromDateString(value: string | null | undefined) {
   return value && /^\d{4}-\d{2}/.test(value) ? value.slice(0, 7) : null;
 }
@@ -2404,7 +2411,10 @@ function BillingReadinessWorkspace() {
                               <div className="mt-1 flex flex-wrap gap-2 text-muted-foreground">
                                 {source.intakeId && draft.document_intake_id ? (
                                   <Link
-                                    href={`/intake?review=${draft.document_intake_id}`}
+                                    href={intakeReviewHref(
+                                      selectedEntityId,
+                                      draft.document_intake_id,
+                                    )}
                                     className="inline-flex items-center gap-1 font-medium text-primary hover:text-primary-hover"
                                   >
                                     Intake {source.intakeId}
