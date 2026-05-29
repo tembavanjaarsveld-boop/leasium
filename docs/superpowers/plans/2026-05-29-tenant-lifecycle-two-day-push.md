@@ -2060,3 +2060,30 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 86: DocuSign Activation Envelope Evidence
+
+- [x] **Step 1: Add activation envelope provenance regression**
+
+Extend the DocuSign activation test so the final lease activation metadata and
+lease audit row must retain the DocuSign envelope id alongside the signed
+document id.
+
+- [x] **Step 2: Preserve envelope id through explicit activation**
+
+When a reviewed DocuSign completion is explicitly activated, carry
+`signing.envelope_id` into `lease.lease_metadata.activation` and the lease
+activation audit payload. Tenant-upload activation remains source-specific and
+only carries tenant-upload intake evidence.
+
+- [x] **Step 3: Verify DocuSign and tenant-upload activation parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_activate_lease_after_docusign_completion tests/integration/test_tenant_portal_api.py::test_document_intake_accepts_tenant_lease_match_without_mutating_lease -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py tests/integration/test_tenant_portal_api.py
+git diff --check
+```
+
+Expected: pass.

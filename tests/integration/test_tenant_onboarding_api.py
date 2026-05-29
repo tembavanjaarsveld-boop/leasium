@@ -1524,12 +1524,29 @@ def test_tenant_onboarding_activate_lease_after_docusign_completion(
     session.refresh(lease)
     session.refresh(onboarding)
     assert lease.status == LeaseStatus.active
-    assert lease.lease_metadata["activation"]["source"] == "tenant_onboarding_docusign"
-    assert lease.lease_metadata["activation"]["tenant_onboarding_id"] == body["id"]
+    activation = lease.lease_metadata["activation"]
+    assert activation["source"] == "tenant_onboarding_docusign"
+    assert activation["tenant_onboarding_id"] == body["id"]
+    assert activation["signed_document_id"] == "document-signed-1"
+    assert activation["envelope_id"] == "envelope-activate-1"
     signing = onboarding.delivery_data["lease_agreement"]["signing"]
     assert signing["lease_activation_review"]["status"] == "activated"
     assert signing["lease_activation_review"]["current_lease_status"] == "active"
     assert signing["lease_activation_review"]["activated_at"] is not None
+    lease_activation_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "activate",
+            AuditAction.target_table == "lease",
+            AuditAction.target_id == lease.id,
+        )
+    )
+    assert lease_activation_audit is not None
+    assert lease_activation_audit.tool_input == {
+        "tenant_onboarding_id": body["id"],
+        "source": "tenant_onboarding_docusign",
+        "signed_document_id": "document-signed-1",
+        "envelope_id": "envelope-activate-1",
+    }
 
 
 def test_tenant_onboarding_activate_lease_rejects_unsigned_agreement(

@@ -1022,6 +1022,11 @@ def _activate_signed_onboarding_lease(
         if isinstance(signing_data.get("document_intake_id"), str)
         else None
     )
+    source_envelope_id = (
+        signing_data.get("envelope_id")
+        if isinstance(signing_data.get("envelope_id"), str)
+        else None
+    )
     lease.status = LeaseStatus.active
     activation_metadata = {
         "source": signing_source,
@@ -1032,6 +1037,8 @@ def _activate_signed_onboarding_lease(
     }
     if source_document_intake_id is not None:
         activation_metadata["document_intake_id"] = source_document_intake_id
+    if source_envelope_id is not None:
+        activation_metadata["envelope_id"] = source_envelope_id
     lease.lease_metadata = {
         **(lease.lease_metadata or {}),
         "activation": activation_metadata,
@@ -2007,6 +2014,8 @@ def activate_tenant_onboarding_lease(
         lease_audit_input["document_intake_id"] = activation_metadata.get(
             "document_intake_id"
         )
+    if activation_metadata.get("envelope_id") is not None:
+        lease_audit_input["envelope_id"] = activation_metadata.get("envelope_id")
     audit_log(
         session,
         actor=user.actor,
