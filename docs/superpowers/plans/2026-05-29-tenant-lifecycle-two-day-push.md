@@ -1569,3 +1569,29 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 68: DocuSign Historical Docs Truth Pass
+
+- [x] **Step 1: Find stale DocuSign wording**
+
+Search the automation strategy and 5-day report for phrases that still describe
+DocuSign as scaffold-only or imply provider/webhook completion auto-activates a
+lease.
+
+- [x] **Step 2: Align docs with shipped review-first behavior**
+
+Update stale wording so DocuSign completion retains the signed PDF and creates
+an explicit activation review, tenant-uploaded lease matches do not
+auto-activate, and remaining work is production readiness with real credentials,
+webhook secret, public API URL, production endpoints, and live-envelope smoke.
+
+- [x] **Step 3: Verify stale wording is gone**
+
+Run:
+
+```bash
+rg -n "DocuSign \\(scaffold\\)|Scaffold complete|DocuSign real plumbing|DocuSign scaffold ready|updates lease status to active|lease auto-activates|Then: annual rent increases, owner statements, DocuSign, WhatsApp" docs/automation-strategy-2026-05-23.md Leasium-5-day-report.md
+git diff --check
+```
+
+Expected: `rg` exits with no matches, and diff check passes.

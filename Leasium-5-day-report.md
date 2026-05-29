@@ -1,7 +1,7 @@
 # Leasium — 5-Day Build Report
 
 **Period:** 2026-05-18 → 2026-05-23
-**Stack:** FastAPI · Postgres · Next.js 15 · SQLAlchemy · Alembic · Clerk · SendGrid · Twilio · Xero · OpenAI · DocuSign (scaffold) · Vercel · Render
+**Stack:** FastAPI · Postgres · Next.js 15 · SQLAlchemy · Alembic · Clerk · SendGrid · Twilio · Xero · OpenAI · DocuSign lease signing + activation review · Vercel · Render
 
 ## Goals
 
@@ -66,7 +66,7 @@ Dashboard · Smart Intake · AI Inbox · Properties · Tenants · Operations (Wo
 | OpenAI (Smart Intake / AI Inbox / Ask Leasium / image enrichment / triage) | Live |
 | SerpAPI (property image search) | Live |
 | MinIO / S3-compatible (document storage) | Live |
-| DocuSign (lease e-signature) | Scaffold complete, awaiting credentials |
+| DocuSign (lease e-signature) | Review-first flow shipped; live sends require production credentials/endpoints. Completion retains the signed PDF and opens explicit activation review. |
 
 ## Verification
 
@@ -87,7 +87,7 @@ Dashboard · Smart Intake · AI Inbox · Properties · Tenants · Operations (Wo
 - Annual rent increase batch (1-2 sprints)
 - Owner monthly statements (2-3 sprints)
 - Maintenance categorisation + contractor directory (2-3 sprints)
-- DocuSign real plumbing (when developer account is provisioned)
+- DocuSign production readiness: credentials, webhook secret, public API URL, production REST/auth endpoints, and live-envelope smoke
 - Bank-feed reconciliation via Basiq (2-3 sprints)
 
 ## Competitor comparison
@@ -104,7 +104,7 @@ Honest read against the two top-end PM platforms in commercial / mid-market: **R
 | Provider-mutation guardrail (no auto-sends ever) | Enforced platform-wide | Some auto-sends | Some auto-sends |
 | Accounting / Xero two-way sync | Live, review-first | Live (Xero partner) | QuickBooks-first |
 | Bank-feed reconciliation | Scoped for next session | Via Xero | Native AppFolio Payments |
-| E-signature integration | DocuSign scaffold ready | DocuSign + HelloSign | DocuSign + Adobe Sign |
+| E-signature integration | DocuSign review-first signing flow shipped; production readiness pending | DocuSign + HelloSign | DocuSign + Adobe Sign |
 | Inbound email / SMS parsing | Live webhooks (SendGrid + Twilio) | Limited | Limited |
 | Inspection workflows | Backlog | Mature mobile app | Mature mobile app |
 | Maintenance + contractor coordination | Live, contractor directory queued | Mature contractor marketplace | Mature contractor marketplace |

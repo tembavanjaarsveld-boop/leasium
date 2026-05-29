@@ -66,7 +66,7 @@ Smart Intake handles documents the operator drops in. The next step is documents
 |---|---|---|
 | **Email attachment parser** | Inbound email (above) → attachments routed to Smart Intake → AI extracts → operator reviews. | Included with inbound email. |
 | **Folder-watch sync** | Dropbox / Google Drive / OneDrive OAuth + polling worker. | 1 sprint per provider. |
-| **e-Signature / DocuSign** | DocuSign Connect webhook + envelope create API. Lease sent for signature from within Leasium; completed envelope updates lease status to active. | 2-3 sprints; DocuSign developer account + envelope template setup. |
+| **e-Signature / DocuSign** | DocuSign Connect webhook + envelope create API. Lease sent for signature from within Leasium; completed envelope retains the signed PDF, records provider completion, and creates a lease activation review. The operator must explicitly activate the lease. | 2-3 sprints; DocuSign developer account + envelope template setup. |
 
 ### 3d. Financial automation — high value, more risk
 
@@ -80,7 +80,7 @@ Smart Intake handles documents the operator drops in. The next step is documents
 
 | Automation | Required inputs | Effort |
 |---|---|---|
-| **Tenant-uploaded lease auto-match** | Tenant uploads signed lease → AI extracts terms → diffs against Leasium's draft → if matched, lease auto-activates. | 1 sprint (extends existing lease extraction). |
+| **Tenant-uploaded lease auto-match** | Tenant uploads signed lease → AI extracts terms → diffs against Leasium's draft → if matched, the upload is accepted as the signed agreement and creates a lease activation review. Lease status is unchanged until the operator activates explicitly. | 1 sprint (extends existing lease extraction). |
 | **Tenant-uploaded insurance** | Tenant uploads certificate → AI extracts insurer / policy / expiry → updates tenant metadata + sets a renewal obligation. | 1 sprint. |
 | **Maintenance categorisation + contractor draft** | Tenant submits with photos → AI categorises (electrical / plumbing / urgent) → suggests a contractor from the operator's directory → drafts the contractor brief. | 1-2 sprints. |
 
@@ -119,7 +119,7 @@ The first six slices, ordered by leverage-to-build-cost ratio for SKJ's actual d
 5. **Bank-feed + AI reconciliation.** Biggest financial-time saver.
 6. **Folder-watch document intake.** Dropbox / Drive / OneDrive sync into Smart Intake.
 
-Then: annual rent increases, owner statements, DocuSign, WhatsApp.
+Then: annual rent increases, owner statements, DocuSign production readiness, WhatsApp.
 Then: voice/call transcription, vacancy marketing, predictive maintenance, year-end tax pack.
 
 ## 5. Operating guardrails for every automation
