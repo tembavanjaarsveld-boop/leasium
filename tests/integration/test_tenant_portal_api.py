@@ -1637,6 +1637,11 @@ def test_tenant_portal_insurance_upload_extracts_when_openai_is_configured(
     assert intake.document_type == "insurance_certificate"
     assert intake.openai_response_id == "resp_tenant_insurance_extract"
     assert intake.extracted_data["key_dates"][0]["date"] == "2027-02-28"
+    assert intake.review_data["source"] == "tenant_portal"
+    assert intake.review_data["candidate"] == "tenant_uploaded_insurance_auto_update"
+    assert intake.review_data["tenant_id"] == scope["tenant_id"]
+    assert intake.review_data["lease_id"] == scope["lease_id"]
+    assert "No lease status" in intake.review_data["guardrail"]
     assert document.document_metadata["smart_intake_auto_extracted"] is True
 
 

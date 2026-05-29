@@ -1007,6 +1007,20 @@ function intakeSourceInfo(intake: DocumentIntakeRecord) {
   const reviewData = intake.review_data;
   const source = fieldText(reviewData.source);
   const candidate = fieldText(reviewData.candidate);
+  const guardrail = fieldText(reviewData.guardrail);
+  if (source === "tenant_portal") {
+    const candidateDetail =
+      candidate === "tenant_uploaded_insurance_auto_update"
+        ? "Tenant-uploaded insurance review"
+        : candidate === "tenant_uploaded_lease_auto_match"
+          ? "Tenant-uploaded lease match review"
+          : "Tenant-uploaded document review";
+    return {
+      label: "Tenant portal upload",
+      detail: candidateDetail,
+      guardrail,
+    };
+  }
   if (
     source !== "sendgrid_inbound_parse" &&
     candidate !== "inbound_email_attachment"
@@ -1015,7 +1029,6 @@ function intakeSourceInfo(intake: DocumentIntakeRecord) {
   }
 
   const subject = fieldText(reviewData.inbound_subject);
-  const guardrail = fieldText(reviewData.guardrail);
   return {
     label: "Inbound email attachment",
     detail: subject ? `Email subject: ${subject}` : "Routed from tenant email",

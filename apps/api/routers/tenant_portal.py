@@ -916,7 +916,9 @@ def _extract_tenant_upload_intake(
             session,
         )
     intake.extracted_data = extracted
-    intake.review_data = {}
+    intake.review_data = {
+        **(intake.review_data if isinstance(intake.review_data, dict) else {}),
+    }
     intake.openai_response_id = response_id
     proposed_category = _tenant_upload_document_category(document_type)
     document.document_metadata = {

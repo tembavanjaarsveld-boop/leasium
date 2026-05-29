@@ -1520,3 +1520,29 @@ Run:
 ```
 
 Expected: pass.
+
+## Task 66: Tenant-Uploaded Insurance Provenance
+
+- [x] **Step 1: Add provenance-preservation coverage**
+
+Extend the tenant portal insurance extraction test so successful OpenAI
+extraction must preserve the tenant portal review metadata: source, candidate,
+tenant/lease scope, and no-mutation guardrail.
+
+- [x] **Step 2: Preserve review metadata and label Smart Intake rows**
+
+Stop clearing `DocumentIntake.review_data` after tenant-upload extraction, and
+extend Smart Intake source labeling so tenant portal uploads show a visible
+`Tenant portal upload` badge with insurance-specific review detail and the
+stored guardrail.
+
+- [x] **Step 3: Verify insurance provenance**
+
+Run:
+
+```bash
+.venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_extracts_when_openai_is_configured tests/integration/test_tenant_portal_api.py::test_tenant_portal_lease_upload_extraction_adds_match_recommendation -q
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "smart intake labels inbound email attachments"
+```
+
+Expected: pass.

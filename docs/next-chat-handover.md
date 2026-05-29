@@ -290,9 +290,12 @@ Last updated: 2026-05-28
   in addition to creating the renewal obligation. If the reviewed document is
   lease-scoped, insurance metadata follows that lease tenant and corrects stale
   document tenant scope before writing history. Upload/extraction keeps the
-  tenant-selected document category stable and stores AI classification only as
-  proposed metadata until review/apply. Tenant detail now shows the confirmed
-  insurance expiry plus source document/review links. **Send lease pack** now
+  tenant-selected document category stable, preserves tenant-portal source/
+  candidate/scope/guardrail metadata through extraction, labels tenant-uploaded
+  insurance rows in Smart Intake as tenant portal uploads, and stores AI
+  classification only as proposed metadata until review/apply. Tenant detail
+  now shows the confirmed insurance expiry plus source document/review links.
+  **Send lease pack** now
   requires an attached lease document server-side, calls the DocuSign signature
   helper, stores a DocuSign receipt in `delivery_data.lease_pack.docusign`,
   stores queued/sent envelope metadata under `delivery_data.lease_agreement.signing`,
@@ -1075,5 +1078,6 @@ Open items at session end:
 - Tenant detail now labels accepted tenant-uploaded lease matches as `Tenant upload accepted` instead of the generic `Signed`, while keeping the same activation-review guardrail and Activate lease handoff.
 - Tenant-uploaded lease signing panels now link back to the source Smart Intake review when `document_intake_id` is present, so operators can audit the accepted match before activation.
 - The tenant insurance source card now uses the same explicit `Open Smart Intake review` handoff label for reviewed insurance certificates.
+- Tenant-uploaded insurance extraction now preserves tenant portal provenance through OpenAI extraction, and Smart Intake labels those review rows as `Tenant portal upload` with insurance-specific review detail.
 - Tenant-uploaded lease activation now shows a source-aware success notice: `Lease activated after tenant-uploaded lease review.`
 - DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.

@@ -2025,6 +2025,14 @@ test("smart intake labels inbound email attachments in review queue", async ({
 }) => {
   await page.goto("/intake");
 
+  const tenantInsuranceCard = page.getByTestId(
+    "review-intake-intake-tenant-upload-insurance-1",
+  );
+  await expect(tenantInsuranceCard.getByText("Tenant portal upload")).toBeVisible();
+  await expect(
+    tenantInsuranceCard.getByText("Tenant-uploaded insurance review"),
+  ).toBeVisible();
+
   const inboundCard = page.getByTestId(
     "review-intake-intake-inbound-email-attachment-1",
   );
