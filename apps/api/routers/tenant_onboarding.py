@@ -1827,13 +1827,25 @@ async def record_docusign_envelope_event(
             tool_input["event"] = event_name
         if envelope_id:
             tool_input["envelope_id"] = envelope_id
+            onboarding = _find_onboarding_by_docusign_envelope_id(session, envelope_id)
+            if onboarding is not None:
+                tool_input["tenant_onboarding_id"] = str(onboarding.id)
+                tool_input["lease_id"] = str(onboarding.lease_id)
+                signing = lease_agreement_section(onboarding).get("signing")
+                signing_data = signing if isinstance(signing, dict) else {}
+                if isinstance(signing_data.get("document_id"), str):
+                    tool_input["document_id"] = signing_data["document_id"]
         if event_status:
             tool_input["status"] = event_status
+        audit_entity_id = onboarding.entity_id if envelope_id and onboarding else None
+        audit_target_id = onboarding.id if envelope_id and onboarding else None
         audit_log(
             session,
             actor="provider:docusign",
+            entity_id=audit_entity_id,
             action="signature_receipt",
             target_table="tenant_onboarding",
+            target_id=audit_target_id,
             tool_name="docusign.connect_webhook",
             tool_input=tool_input,
             outcome=AuditOutcome.success,

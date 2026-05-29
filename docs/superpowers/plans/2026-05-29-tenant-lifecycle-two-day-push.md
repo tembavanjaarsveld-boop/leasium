@@ -2586,3 +2586,28 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 106: DocuSign Missing Status Context Audit
+
+- [x] **Step 1: Add known-envelope missing-status regression**
+
+Extend DocuSign webhook coverage so a callback with a known envelope id but no
+status writes its receipt audit against the matching onboarding row.
+
+- [x] **Step 2: Scope missing-status receipt audits**
+
+When a malformed DocuSign callback includes an envelope id, look up the matching
+onboarding before writing the `missing_status` receipt audit and include
+onboarding, lease, entity, and source document context when found.
+
+- [x] **Step 3: Verify missing-status context**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_scopes_missing_status_receipt tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_audits_malformed_payload -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.

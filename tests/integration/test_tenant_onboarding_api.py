@@ -1491,6 +1491,54 @@ def test_tenant_onboarding_docusign_webhook_audits_malformed_payload(
     ]
 
 
+def test_tenant_onboarding_docusign_webhook_scopes_missing_status_receipt(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    webhook_headers = _docusign_webhook_headers(monkeypatch)
+    body = _create_applied_onboarding(client, session)
+    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
+    assert onboarding is not None
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "signing": {
+                "provider": "docusign",
+                "status": "sent",
+                "envelope_id": "missing-status-known-envelope",
+                "document_id": "document-1",
+            },
+        },
+    )
+    session.commit()
+
+    response = client.post(
+        "/api/v1/tenant-onboarding/webhooks/docusign",
+        headers=webhook_headers,
+        json={"envelopeId": "missing-status-known-envelope"},
+    )
+
+    assert response.status_code == 204
+    webhook_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "signature_receipt",
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id == onboarding.id,
+        )
+    )
+    assert webhook_audit is not None
+    assert webhook_audit.entity_id == onboarding.entity_id
+    assert webhook_audit.tool_input == {
+        "envelope_id": "missing-status-known-envelope",
+        "tenant_onboarding_id": str(onboarding.id),
+        "lease_id": str(onboarding.lease_id),
+        "document_id": "document-1",
+        "applied": False,
+        "ignored_reason": "missing_status",
+    }
+
+
 def test_tenant_onboarding_docusign_webhook_audits_non_object_payload(
     client: TestClient,
     session: Session,
