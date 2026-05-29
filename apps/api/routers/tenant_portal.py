@@ -870,6 +870,12 @@ def _extract_tenant_upload_intake(
     session: Session,
 ) -> None:
     document = intake.document
+    review_data = intake.review_data if isinstance(intake.review_data, dict) else {}
+    audit_scope = {
+        key: review_data[key]
+        for key in ("candidate", "tenant_onboarding_id", "tenant_id", "lease_id")
+        if isinstance(review_data.get(key), str)
+    }
     intake.status = DocumentIntakeStatus.reading
     intake.error_message = None
     session.flush()
@@ -902,6 +908,7 @@ def _extract_tenant_upload_intake(
                 "filename": document.filename,
                 "source": "tenant_portal",
                 "status": intake.status.value,
+                **audit_scope,
             },
             outcome=AuditOutcome.error,
             error_message=str(exc),
@@ -951,6 +958,7 @@ def _extract_tenant_upload_intake(
             "openai_response_id": response_id,
             "proposed_document_category": proposed_category.value,
             "status": intake.status.value,
+            **audit_scope,
         },
         tool_output_summary="Tenant portal upload extracted into Smart Intake review.",
         data_classification="confidential",

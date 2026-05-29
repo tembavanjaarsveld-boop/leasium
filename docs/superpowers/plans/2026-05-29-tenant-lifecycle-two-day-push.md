@@ -2276,3 +2276,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 94: Tenant Upload Extraction Audit Scope
+
+- [x] **Step 1: Add tenant-upload extraction scope regressions**
+
+Extend tenant-uploaded insurance extraction success and failure tests so the
+Smart Intake extraction audit must include candidate type, onboarding id,
+tenant id, and lease id from the preserved tenant-upload review metadata.
+
+- [x] **Step 2: Stamp tenant-upload scope evidence on extraction audits**
+
+When tenant-uploaded documents are extracted, merge the source candidate,
+tenant onboarding, tenant, and lease scope into both successful and failed
+`document_intake` extraction audit payloads.
+
+- [x] **Step 3: Verify tenant-upload extraction scope parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_extracts_when_openai_is_configured tests/integration/test_tenant_portal_api.py::test_tenant_portal_upload_extraction_failure_audits_source_intake tests/integration/test_tenant_portal_api.py::test_tenant_portal_lease_upload_promotes_document_to_smart_intake -q
+.venv/bin/ruff check apps/api/routers/tenant_portal.py tests/integration/test_tenant_portal_api.py
+git diff --check
+```
+
+Expected: pass.

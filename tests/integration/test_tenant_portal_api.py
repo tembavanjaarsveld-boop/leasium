@@ -1697,6 +1697,10 @@ def test_tenant_portal_insurance_upload_extracts_when_openai_is_configured(
         "openai_response_id": "resp_tenant_insurance_extract",
         "proposed_document_category": "insurance",
         "status": "ready_for_review",
+        "candidate": "tenant_uploaded_insurance_auto_update",
+        "tenant_onboarding_id": scope["onboarding_id"],
+        "tenant_id": scope["tenant_id"],
+        "lease_id": scope["lease_id"],
     }
 
 
@@ -1753,6 +1757,10 @@ def test_tenant_portal_upload_extraction_failure_audits_source_intake(
         "filename": "renewed-insurance.txt",
         "source": "tenant_portal",
         "status": "failed",
+        "candidate": "tenant_uploaded_insurance_auto_update",
+        "tenant_onboarding_id": scope["onboarding_id"],
+        "tenant_id": scope["tenant_id"],
+        "lease_id": scope["lease_id"],
     }
     assert extract_audit.error_message == "OpenAI extraction unavailable"
 
