@@ -1759,6 +1759,70 @@ def test_tenant_portal_lease_upload_extraction_adds_match_recommendation(
     )
 
 
+def test_tenant_portal_lease_upload_extraction_marks_missing_fields_for_review(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_portal_scope(session)
+    lease = session.get(Lease, UUID(scope["lease_id"]))
+    assert lease is not None
+    lease.annual_rent_cents = 12500000
+    session.commit()
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={"openai_api_key": "test-openai-key"}
+    )
+
+    def fake_extract_document_file(**kwargs):  # noqa: ANN003
+        return (
+            {
+                "document_type": "lease",
+                "summary": "Executed lease with no rent schedule amount.",
+                "confidence": 0.88,
+                "tenancy_schedule": [
+                    {
+                        "lease_start": "2025-07-01",
+                        "lease_expiry": "2028-06-30",
+                    }
+                ],
+                "warnings": [],
+                "missing_information": ["annual_rent"],
+            },
+            "resp_tenant_lease_extract_missing_rent",
+        )
+
+    monkeypatch.setattr(
+        tenant_portal_router,
+        "extract_document_file",
+        fake_extract_document_file,
+        raising=False,
+    )
+
+    response = client.post(
+        "/api/v1/tenant-portal/documents",
+        headers={"x-tenant-portal-token": scope["token"]},
+        data={"category": "lease", "notes": "Executed lease uploaded by tenant."},
+        files={"file": ("signed-lease.txt", b"signed lease terms", "text/plain")},
+    )
+
+    assert response.status_code == 201
+    document = session.get(StoredDocument, UUID(response.json()["id"]))
+    assert document is not None
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.document_id == document.id)
+    )
+    assert intake is not None
+    match = intake.extracted_data["lease_auto_match"]
+    assert match["status"] == "needs_review"
+    assert match["differences"] == []
+    assert match["missing_fields"] == ["annual_rent_cents"]
+    assert {item["field"] for item in match["matched_fields"]} == {
+        "commencement_date",
+        "expiry_date",
+    }
+
+
 def test_document_intake_accepts_tenant_lease_match_without_mutating_lease(
     client: TestClient,
     session: Session,

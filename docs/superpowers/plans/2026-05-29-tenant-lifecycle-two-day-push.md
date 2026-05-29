@@ -833,3 +833,25 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_smoke_workflow
 ```
 
 Expected: pass.
+
+## Task 38: Lease Match Missing-Field Guardrail
+
+- [x] **Step 1: Add missing-field regression**
+
+Add tenant portal coverage for an otherwise matching uploaded lease where the
+extractor omits annual rent; the recommendation must remain `needs_review`.
+
+- [x] **Step 2: Tighten auto-match status**
+
+Treat either differences or missing fields as operator-review states so
+`matched` only appears when all compared fields are present and equal.
+
+- [x] **Step 3: Verify accept-match parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_lease_upload_extraction_adds_match_recommendation tests/integration/test_tenant_portal_api.py::test_tenant_portal_lease_upload_extraction_marks_missing_fields_for_review tests/integration/test_tenant_portal_api.py::test_document_intake_accepts_tenant_lease_match_without_mutating_lease tests/integration/test_tenant_portal_api.py::test_document_intake_accept_lease_match_rejects_differences tests/integration/test_tenant_portal_api.py::test_document_intake_accept_lease_match_rejects_operator_uploaded_documents -q
+```
+
+Expected: pass.

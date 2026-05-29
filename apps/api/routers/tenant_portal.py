@@ -839,7 +839,7 @@ def _tenant_upload_lease_auto_match(
         _tenant_upload_amount_cents(schedule.get("annual_rent")),
     )
     match_status = "candidate"
-    if differences:
+    if differences or missing_fields:
         match_status = "needs_review"
     elif matched_fields:
         match_status = "matched"
