@@ -447,9 +447,14 @@ Last updated: 2026-05-28
   inbound email attachment draft plus CSV coverage. This remains review-first:
   no tenant data, lease data, provider action, payment record, SendGrid reply,
   or Twilio message is changed until an operator approves the next step.
+- 2026-05-29 comms automation continuation 2: SendGrid inbound parse can now be
+  protected with `SENDGRID_INBOUND_SECRET`. When configured, the webhook rejects
+  missing/wrong secrets before persisting an inbound message; SendGrid can pass
+  the value as `token`, `secret`, `X-Leasium-SendGrid-Inbound-Secret`, or
+  `X-SendGrid-Inbound-Secret`. Deployment docs now show the tokenized inbound
+  parse URL, so live DNS/MX should not be enabled until that env var is set.
 - Sidecar recommendation for the next slice: add optional extraction for
-  inbound-email attachment intakes when `OPENAI_API_KEY` is configured, or add
-  SendGrid inbound signature/secret verification before live DNS enablement.
+  inbound-email attachment intakes when `OPENAI_API_KEY` is configured.
 
 ## Takeover Priority
 

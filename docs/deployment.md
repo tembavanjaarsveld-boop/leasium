@@ -67,6 +67,7 @@ Set the API host environment from `.env.example`, with production values for:
 - `SENDGRID_API_KEY`
 - `SENDGRID_FROM_EMAIL`
 - `SENDGRID_FROM_NAME`
+- `SENDGRID_INBOUND_SECRET` (required before enabling SendGrid Inbound Parse)
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_MESSAGING_SERVICE_SID` or `TWILIO_FROM_PHONE`
@@ -258,16 +259,17 @@ emails through `POST /api/v1/comms/webhooks/sendgrid-inbound?entity_id=<uuid>`.
 To wire this up: (1) add an MX record on a subdomain you control
 (e.g. `inbound.leasium.example.org`) pointing to `mx.sendgrid.net`;
 (2) in the SendGrid console, add an Inbound Parse setting that maps the
-subdomain to `https://<API_HOST>/api/v1/comms/webhooks/sendgrid-inbound?entity_id=<UUID>`
+subdomain to `https://<API_HOST>/api/v1/comms/webhooks/sendgrid-inbound?entity_id=<UUID>&token=<SENDGRID_INBOUND_SECRET>`
 with the SendGrid "POST the raw, full MIME message" option **off**
 (Leasium parses the form fields); (3) repeat with one Inbound Parse setting
 per entity so each operator portfolio gets a dedicated mailbox.
-The webhook is provider-only (unauthenticated) but verifies the entity
-exists before persisting; a future hardening pass should verify the
-SendGrid signature header. Inbound messages land in the `inbound_message`
-table and surface in the operator comms queue as `inbound_email`
-candidates the operator reviews and replies to via the existing
-dispatch path.
+Set `SENDGRID_INBOUND_SECRET` on the API before enabling live MX. If the secret
+is configured, the webhook rejects requests unless the same value is supplied
+as `token`, `secret`, `X-Leasium-SendGrid-Inbound-Secret`, or
+`X-SendGrid-Inbound-Secret`. Inbound messages land in the `inbound_message`
+table, attachments route to Smart Intake review rows, and both surface in the
+operator comms queue as `inbound_email` candidates the operator reviews and
+replies to via the existing dispatch path.
 
 Two distinct SendGrid templates are now used. The original tenant onboarding
 invite (template key `tenant_onboarding_invite`, version `v1`) is sent when the

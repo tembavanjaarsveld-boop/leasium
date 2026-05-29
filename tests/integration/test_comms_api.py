@@ -1293,6 +1293,73 @@ def test_inbound_webhook_routes_attachments_to_smart_intake(
     assert "1 attachment routed to Smart Intake" in inbound[0]["detail"]
 
 
+def test_inbound_webhook_rejects_missing_shared_secret_when_configured(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Configured SendGrid inbound routes require the shared secret."""
+
+    entity = _entity(session)
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(sendgrid_inbound_secret="inbound-secret"),
+    )
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        params={"entity_id": str(entity.id)},
+        data={
+            "from": "docs@inbound.example",
+            "to": "leasium@inbound.example.org",
+            "subject": "Lease attachment",
+            "text": "Hi team, attached is the lease document.",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "SendGrid inbound secret is invalid."
+    assert session.scalar(select(InboundMessage)) is None
+
+
+def test_inbound_webhook_accepts_matching_shared_secret_when_configured(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """SendGrid inbound accepts the configured secret from a header."""
+
+    entity = _entity(session)
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(sendgrid_inbound_secret="inbound-secret"),
+    )
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        params={"entity_id": str(entity.id)},
+        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        data={
+            "from": "docs@inbound.example",
+            "to": "leasium@inbound.example.org",
+            "subject": "Lease attachment",
+            "text": "Hi team, attached is the lease document.",
+        },
+    )
+
+    assert response.status_code == 202
+    message_id = UUID(response.json()["id"])
+    assert session.get(InboundMessage, message_id) is not None
+
+
 def test_comms_queue_returns_compliance_obligation_candidate(
     client: TestClient,
     session: Session,

@@ -1235,3 +1235,33 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 55: SendGrid Inbound Shared Secret Guard
+
+- [x] **Step 1: Add webhook secret regressions**
+
+Add backend coverage that a configured `SENDGRID_INBOUND_SECRET` rejects missing
+secrets before persisting an inbound message, and accepts a matching shared
+secret from the Leasium custom header.
+
+- [x] **Step 2: Add optional secret verification**
+
+Add the API setting and verify requests when configured. Accept `token`,
+`secret`, `X-Leasium-SendGrid-Inbound-Secret`, or
+`X-SendGrid-Inbound-Secret` so SendGrid can be configured either via URL or
+headers. Keep local/dev behaviour unchanged when the setting is blank.
+
+- [x] **Step 3: Document live setup**
+
+Update `.env.example`, `docs/deployment.md`, the roadmap, and handover with the
+tokenized inbound parse URL and the “set the secret before enabling MX” warning.
+
+- [x] **Step 4: Verify inbound guardrails**
+
+Run:
+
+```bash
+.venv/bin/pytest tests/integration/test_comms_api.py -k "shared_secret" -q
+```
+
+Expected: pass.

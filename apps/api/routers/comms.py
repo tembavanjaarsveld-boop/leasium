@@ -14,6 +14,7 @@ records on each call.
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -75,6 +76,7 @@ WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 
 DEFAULT_DISMISS_DAYS = 7
 DISMISS_METADATA_KEY = "comms_dismiss"
+SENDGRID_INBOUND_SECRET_DETAIL = "SendGrid inbound secret is invalid."
 
 
 @dataclass(frozen=True)
@@ -2031,6 +2033,24 @@ def _attribute_inbound_tenant(
     return None
 
 
+def _verify_sendgrid_inbound_secret(request: Request, settings: Settings) -> None:
+    expected = settings.sendgrid_inbound_secret.strip()
+    if not expected:
+        return
+    supplied = (
+        request.headers.get("x-leasium-sendgrid-inbound-secret")
+        or request.headers.get("x-sendgrid-inbound-secret")
+        or request.query_params.get("token")
+        or request.query_params.get("secret")
+        or ""
+    ).strip()
+    if not supplied or not secrets.compare_digest(supplied, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=SENDGRID_INBOUND_SECRET_DETAIL,
+        )
+
+
 async def _promote_sendgrid_attachments_to_intake(
     *,
     form: Any | None,
@@ -2167,6 +2187,7 @@ async def receive_sendgrid_inbound(
 
     tenant = _attribute_inbound_tenant(entity_id, cleaned_from, session)
     settings = get_settings()
+    _verify_sendgrid_inbound_secret(request, settings)
 
     # Capture remaining form fields for later debugging without dragging
     # them into structured columns. We never log the body in audit metadata

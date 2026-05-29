@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     sendgrid_from_email: str = ""
     sendgrid_from_name: str = "Leasium"
     sendgrid_mail_send_url: str = "https://api.sendgrid.com/v3/mail/send"
+    sendgrid_inbound_secret: str = ""
     invoice_email_enabled: bool = True
     invoice_email_template_key: str = "invoice_delivery"
     invoice_email_template_version: str = "v1"
