@@ -1068,4 +1068,5 @@ Open items at session end:
 - Tenant detail now shows the lease activation review transition (`Pending -> Active`) and the stored no-auto-activation guardrail beside the Activate lease action after DocuSign completion.
 - Tenant detail now labels accepted tenant-uploaded lease matches as `Tenant upload accepted` instead of the generic `Signed`, while keeping the same activation-review guardrail and Activate lease handoff.
 - Tenant-uploaded lease signing panels now link back to the source Smart Intake review when `document_intake_id` is present, so operators can audit the accepted match before activation.
+- The tenant insurance source card now uses the same explicit `Open Smart Intake review` handoff label for reviewed insurance certificates.
 - DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.

@@ -2318,7 +2318,7 @@ function TenantDetail() {
                             className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                           >
                             <Sparkles size={15} />
-                            Review
+                            Open Smart Intake review
                           </Link>
                         ) : null}
                         <a

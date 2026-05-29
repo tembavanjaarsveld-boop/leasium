@@ -1931,6 +1931,9 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Insurance" })).toBeVisible();
   await expect(page.getByText(/Confirmed until 30 .* 2027/)).toBeVisible();
   await expect(page.getByText("Source: Smart Intake")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open Smart Intake review" }),
+  ).toHaveAttribute("href", "/intake?review=intake-insurance-1");
   await expect(page.getByText("Applied ABN")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Preview portal" }),

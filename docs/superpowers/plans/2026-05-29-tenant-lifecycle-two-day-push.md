@@ -1418,3 +1418,26 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 62: Insurance Smart Intake Handoff Label
+
+- [x] **Step 1: Add insurance handoff smoke coverage**
+
+Extend the tenant-detail portal-access smoke so the confirmed insurance source
+card must expose an `Open Smart Intake review` link to the applied insurance
+intake.
+
+- [x] **Step 2: Align insurance source copy**
+
+Rename the insurance source Smart Intake action from generic `Review` to
+`Open Smart Intake review`.
+
+- [x] **Step 3: Verify insurance handoff label**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant detail shows portal access recovery actions"
+```
+
+Expected: pass.
