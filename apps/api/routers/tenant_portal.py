@@ -942,8 +942,13 @@ def _extract_tenant_upload_intake(
         tool_name="openai.responses",
         tool_input={
             "document_id": str(document.id),
+            "document_intake_id": str(intake.id),
             "filename": document.filename,
             "source": "tenant_portal",
+            "document_type": document_type,
+            "openai_response_id": response_id,
+            "proposed_document_category": proposed_category.value,
+            "status": intake.status.value,
         },
         tool_output_summary="Tenant portal upload extracted into Smart Intake review.",
         data_classification="confidential",

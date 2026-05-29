@@ -2115,3 +2115,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 88: Tenant Upload Extraction Audit Evidence
+
+- [x] **Step 1: Add extraction audit provenance regression**
+
+Extend tenant-uploaded insurance extraction coverage so the Smart Intake
+`extract` audit row must include the intake id, extracted document type,
+OpenAI response id, proposed category, and resulting review status.
+
+- [x] **Step 2: Stamp extraction outcome evidence**
+
+When tenant-uploaded documents are auto-extracted into Smart Intake, include
+the source intake id and resulting extraction outcome fields in the successful
+`document_intake` audit row.
+
+- [x] **Step 3: Verify tenant-upload extraction audit parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_extracts_when_openai_is_configured tests/integration/test_tenant_portal_api.py::test_tenant_portal_lease_upload_promotes_document_to_smart_intake tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_promotes_document_to_smart_intake -q
+.venv/bin/ruff check apps/api/routers/tenant_portal.py tests/integration/test_tenant_portal_api.py
+git diff --check
+```
+
+Expected: pass.

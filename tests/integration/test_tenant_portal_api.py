@@ -1678,6 +1678,25 @@ def test_tenant_portal_insurance_upload_extracts_when_openai_is_configured(
     assert intake.review_data["lease_id"] == scope["lease_id"]
     assert "No lease status" in intake.review_data["guardrail"]
     assert document.document_metadata["smart_intake_auto_extracted"] is True
+    extract_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "document_intake",
+            AuditAction.target_id == intake.id,
+            AuditAction.action == "extract",
+            AuditAction.tool_name == "openai.responses",
+        )
+    )
+    assert extract_audit is not None
+    assert extract_audit.tool_input == {
+        "document_id": str(document.id),
+        "document_intake_id": str(intake.id),
+        "filename": "renewed-insurance.txt",
+        "source": "tenant_portal",
+        "document_type": "insurance_certificate",
+        "openai_response_id": "resp_tenant_insurance_extract",
+        "proposed_document_category": "insurance",
+        "status": "ready_for_review",
+    }
 
 
 def test_tenant_portal_insurance_upload_apply_refreshes_compliance_status(
