@@ -1446,6 +1446,51 @@ def test_tenant_onboarding_docusign_webhook_ignores_unknown_envelope(
     }
 
 
+def test_tenant_onboarding_docusign_webhook_audits_malformed_payload(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    webhook_headers = _docusign_webhook_headers(monkeypatch)
+
+    missing_envelope_response = client.post(
+        "/api/v1/tenant-onboarding/webhooks/docusign",
+        headers=webhook_headers,
+        json={"event": "envelope-completed", "status": "completed"},
+    )
+    missing_status_response = client.post(
+        "/api/v1/tenant-onboarding/webhooks/docusign",
+        headers=webhook_headers,
+        json={"envelopeId": "missing-status-envelope"},
+    )
+
+    assert missing_envelope_response.status_code == 204
+    assert missing_status_response.status_code == 204
+    webhook_audits = session.scalars(
+        select(AuditAction)
+        .where(
+            AuditAction.action == "signature_receipt",
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id.is_(None),
+        )
+        .order_by(AuditAction.occurred_at.asc(), AuditAction.id.asc())
+    ).all()
+    assert [audit.entity_id for audit in webhook_audits] == [None, None]
+    assert [audit.tool_input for audit in webhook_audits] == [
+        {
+            "status": "completed",
+            "event": "envelope-completed",
+            "applied": False,
+            "ignored_reason": "missing_envelope_id",
+        },
+        {
+            "envelope_id": "missing-status-envelope",
+            "applied": False,
+            "ignored_reason": "missing_status",
+        },
+    ]
+
+
 def test_tenant_onboarding_docusign_webhook_ignores_completed_after_declined(
     client: TestClient,
     session: Session,

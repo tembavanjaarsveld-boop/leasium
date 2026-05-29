@@ -2511,3 +2511,28 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 103: DocuSign Malformed Receipt Audit
+
+- [x] **Step 1: Add malformed callback receipt regressions**
+
+Extend DocuSign webhook coverage so signed callbacks missing an envelope id or
+status still write targetless receipt audits marked as not applied.
+
+- [x] **Step 2: Audit missing envelope/status callbacks**
+
+Before the DocuSign webhook route exits for missing envelope id or status,
+write a `signature_receipt` audit with the available event/status/envelope
+fields and an ignored reason of `missing_envelope_id` or `missing_status`.
+
+- [x] **Step 3: Verify malformed receipt audit**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_audits_malformed_payload tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_ignores_unknown_envelope tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_marks_lease_signed -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.

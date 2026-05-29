@@ -1784,6 +1784,30 @@ async def record_docusign_envelope_event(
     envelope_id = _docusign_envelope_id(payload)
     event_status = _docusign_status(payload)
     if not envelope_id or not event_status:
+        event_name = _docusign_event(payload)
+        tool_input: dict[str, Any] = {
+            "applied": False,
+            "ignored_reason": "missing_envelope_id"
+            if not envelope_id
+            else "missing_status",
+        }
+        if event_name:
+            tool_input["event"] = event_name
+        if envelope_id:
+            tool_input["envelope_id"] = envelope_id
+        if event_status:
+            tool_input["status"] = event_status
+        audit_log(
+            session,
+            actor="provider:docusign",
+            action="signature_receipt",
+            target_table="tenant_onboarding",
+            tool_name="docusign.connect_webhook",
+            tool_input=tool_input,
+            outcome=AuditOutcome.success,
+            data_classification="confidential",
+        )
+        session.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     onboarding = _find_onboarding_by_docusign_envelope_id(session, envelope_id)
     if onboarding is None:
