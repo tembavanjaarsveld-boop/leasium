@@ -971,3 +971,27 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboard
 ```
 
 Expected: pass.
+
+## Task 44: Tenant Detail Skipped DocuSign Send Visibility
+
+- [x] **Step 1: Add skipped-send UI smoke**
+
+Add tenant detail smoke coverage for an applied onboarding with an attached
+lease where sending the lease pack returns a skipped DocuSign receipt because
+production endpoints are not configured.
+
+- [x] **Step 2: Mirror skipped provider receipt in mocks**
+
+Update the shared smoke API mock so the send-lease-pack response includes the
+same skipped DocuSign receipt and setup error that the provider boundary now
+returns.
+
+- [x] **Step 3: Verify operator-visible state**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant detail shows skipped DocuSign setup"
+```
+
+Expected: pass.

@@ -2280,6 +2280,28 @@ test("tenant detail sends lease pack after onboarding approval", async ({
   ).toBeVisible();
 });
 
+test("tenant detail shows skipped DocuSign setup after lease pack send", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { docusignSkippedLeasePack: true });
+
+  await page.goto("/tenants/tenant-1");
+
+  await expect(page.getByText("custom-lease.pdf").first()).toBeVisible();
+  await page.getByRole("button", { name: "Send lease pack" }).click();
+  await expect(
+    page.getByText("Lease pack sent. DocuSign setup needs attention."),
+  ).toBeVisible();
+  await expect(page.getByText("DocuSign not sent").first()).toBeVisible();
+  await expect(
+    page.getByText(
+      "DocuSign production endpoints are not configured. Set DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before sending live lease envelopes.",
+    ).last(),
+  ).toBeVisible();
+  await expect(page.getByText("DocuSign pending")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Send again" })).toBeVisible();
+});
+
 test("tenant detail flags declined DocuSign envelope", async ({ page }) => {
   await page.unroute("**/api/v1/**");
   await mockLeasiumApi(page, { tenantPortalLeaseReady: true });

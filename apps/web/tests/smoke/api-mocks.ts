@@ -1828,6 +1828,7 @@ function multipartFilename(body: string) {
 type MockLeasiumApiOptions = {
   apiHealthUnavailable?: boolean;
   docusignDemoEndpoints?: boolean;
+  docusignSkippedLeasePack?: boolean;
   leaseMatchAcceptConflict?: boolean;
   tenantAccountLinked?: boolean;
   tenantAccountLinkedToDifferentTenant?: boolean;
@@ -1874,6 +1875,27 @@ export async function mockLeasiumApi(
   let documentIntakes = jsonClone(initialDocumentIntakes);
   let tenantOnboardings = initialTenantOnboardings.map((onboarding) => ({
     ...onboarding,
+    status:
+      options.docusignSkippedLeasePack && onboarding.id === "onboarding-1"
+        ? "applied"
+        : onboarding.status,
+    submitted_at:
+      options.docusignSkippedLeasePack && onboarding.id === "onboarding-1"
+        ? "2026-05-21T01:00:00.000Z"
+        : onboarding.submitted_at,
+    applied_at:
+      options.docusignSkippedLeasePack && onboarding.id === "onboarding-1"
+        ? "2026-05-21T01:10:00.000Z"
+        : onboarding.applied_at,
+    submitted_data:
+      options.docusignSkippedLeasePack && onboarding.id === "onboarding-1"
+        ? {
+            legal_name: "Bright Cafe Pty Ltd",
+            contact_name: "Mia Hart",
+            contact_email: "mia@example.com",
+            accepted: true,
+          }
+        : onboarding.submitted_data,
     delivery_data: {
       ...onboarding.delivery_data,
       channels: { ...onboarding.delivery_data.channels },
@@ -1885,7 +1907,7 @@ export async function mockLeasiumApi(
   tenantPortalDocuments = initialTenantPortalDocuments.map((document) => ({
     ...document,
   }));
-  if (tenantPortalLeaseReady) {
+  if (tenantPortalLeaseReady || options.docusignSkippedLeasePack) {
     tenantPortalDocuments.unshift({
       id: "portal-lease-document-1",
       lease_id: leaseId,
@@ -4538,6 +4560,8 @@ export async function mockLeasiumApi(
       path === "/tenant-onboarding/onboarding-1/send-lease-pack"
     ) {
       const sentAt = "2026-05-21T00:20:00.000Z";
+      const docusignSkippedError =
+        "DocuSign production endpoints are not configured. Set DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before sending live lease envelopes.";
       tenantOnboardings = tenantOnboardings.map((onboarding) =>
         onboarding.id === "onboarding-1"
           ? {
@@ -4560,7 +4584,27 @@ export async function mockLeasiumApi(
                       metadata: { template_key: "tenant_lease_pack" },
                     },
                   ],
+                  docusign: options.docusignSkippedLeasePack
+                    ? {
+                        status: "skipped",
+                        provider: "docusign",
+                        envelope_id: null,
+                        signer_email: "mi***@example.com",
+                        document_id: "portal-lease-document-1",
+                        error: docusignSkippedError,
+                      }
+                    : undefined,
                 },
+                lease_agreement: options.docusignSkippedLeasePack
+                  ? onboarding.delivery_data.lease_agreement
+                  : {
+                      status: "ready_to_sign",
+                      open_question_count: 0,
+                      questions: [],
+                      signed_at: null,
+                      signed_by_actor: null,
+                      signing_locked_reason: null,
+                    },
               },
               updated_at: sentAt,
             }
