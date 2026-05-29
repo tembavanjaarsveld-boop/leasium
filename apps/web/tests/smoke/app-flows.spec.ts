@@ -3606,20 +3606,11 @@ test("settings disables Xero provider actions when diagnostics block capabilitie
   ).toBeDisabled();
 });
 
-test("settings fails closed when Xero diagnostics are unavailable", async ({
-  page,
-}) => {
-  await page.unroute("**/api/v1/**");
-  await mockLeasiumApi(page, { xeroDiagnosticsUnavailable: true });
-  const forbiddenProviderRequests = watchForbiddenXeroProviderRequests(page);
-
-  await page.goto("/settings?tab=xero");
-
-  await expect(
-    page.getByText(
-      "Xero connection diagnostics are unavailable in this mocked response.",
-    ),
-  ).toBeVisible();
+async function assertXeroDiagnosticsFailClosed(
+  page: Page,
+  expectedDetail: string,
+) {
+  await expect(page.getByText(expectedDetail)).toBeVisible();
   await expect(
     page.getByText(
       "Provider actions stay disabled until Xero diagnostics reload.",
@@ -3652,6 +3643,53 @@ test("settings fails closed when Xero diagnostics are unavailable", async ({
   await expect(
     page.getByRole("button", { name: "Create Xero drafts" }),
   ).toHaveCount(0);
+}
+
+test("settings fails closed when Xero diagnostics are unavailable", async ({
+  page,
+}) => {
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, { xeroDiagnosticsUnavailable: true });
+  const forbiddenProviderRequests = watchForbiddenXeroProviderRequests(page);
+
+  await page.goto("/settings?tab=xero");
+
+  await assertXeroDiagnosticsFailClosed(
+    page,
+    "Xero connection diagnostics are unavailable in this mocked response.",
+  );
+  expect(forbiddenProviderRequests).toEqual([]);
+});
+
+test("settings fails closed when Xero diagnostics require operator access", async ({
+  page,
+}) => {
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, { xeroDiagnosticsUnauthorized: true });
+  const forbiddenProviderRequests = watchForbiddenXeroProviderRequests(page);
+
+  await page.goto("/settings?tab=xero");
+
+  await assertXeroDiagnosticsFailClosed(
+    page,
+    "Operator access is required for Xero diagnostics.",
+  );
+  expect(forbiddenProviderRequests).toEqual([]);
+});
+
+test("settings fails closed when Xero diagnostics are missing a signed-in operator", async ({
+  page,
+}) => {
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, {
+    xeroDiagnosticsUnauthorized: true,
+    xeroDiagnosticsUnauthorizedStatus: 401,
+  });
+  const forbiddenProviderRequests = watchForbiddenXeroProviderRequests(page);
+
+  await page.goto("/settings?tab=xero");
+
+  await assertXeroDiagnosticsFailClosed(page, "Missing Clerk bearer token.");
   expect(forbiddenProviderRequests).toEqual([]);
 });
 

@@ -1834,6 +1834,8 @@ type MockLeasiumApiOptions = {
   tenantAccountLinkedToDifferentTenant?: boolean;
   tenantPortalLeaseReady?: boolean;
   xeroDiagnosticsBlocked?: boolean;
+  xeroDiagnosticsUnauthorized?: boolean;
+  xeroDiagnosticsUnauthorizedStatus?: 401 | 403;
   xeroDiagnosticsUnavailable?: boolean;
   xeroDiagnosticsDraftReady?: boolean;
 };
@@ -3204,6 +3206,20 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/xero/connection-diagnostics") {
+      if (options.xeroDiagnosticsUnauthorized) {
+        const status = options.xeroDiagnosticsUnauthorizedStatus ?? 403;
+        await fulfillJson(
+          route,
+          {
+            detail:
+              status === 401
+                ? "Missing Clerk bearer token."
+                : "Operator access is required for Xero diagnostics.",
+          },
+          status,
+        );
+        return;
+      }
       if (options.xeroDiagnosticsUnavailable) {
         await fulfillJson(
           route,

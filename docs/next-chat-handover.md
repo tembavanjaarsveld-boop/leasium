@@ -428,10 +428,17 @@ Last updated: 2026-05-28
   Xero plus contact/chart-tax/invoice/payment provider previews disabled, and
   asserts no OAuth, Xero preview/apply, draft creation, provider dispatch, or
   payment reconciliation request fires.
-- Sidecar recommendation for the next slice: pick another mocked/read-only
-  Settings Xero safety rail, such as making the unavailable-diagnostics smoke
-  cover a 401 or 403 variant, or move to the next product-roadmap local export
-  item. Keep it mocked/local and preserve the no-provider-action guardrails.
+- 2026-05-29 Settings Xero continuation 16: frontend smoke coverage now also
+  mocks `GET /api/v1/xero/connection-diagnostics` returning 401 (missing Clerk
+  bearer token) and 403 (operator access required). Both paths prove Settings
+  Xero fails closed: diagnostics/setup exports stay hidden, provider actions
+  remain disabled, and no OAuth, Xero preview/apply, draft creation, provider
+  dispatch, or payment reconciliation request fires. This is mock-only safety
+  coverage; the live Xero rehearsal still needs production credentials.
+- Sidecar recommendation for the next slice: tenant portal session should lock
+  Leasium signing when active DocuSign signing metadata is present, or route
+  inbound email attachments into Smart Intake. Both are credential-free local
+  slices and preserve the no-provider-action guardrails.
 
 ## Takeover Priority
 
