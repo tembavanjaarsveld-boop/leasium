@@ -370,6 +370,16 @@ function shortId(value: string | null | undefined) {
   return value.length > 10 ? `${value.slice(0, 8)}...` : value;
 }
 
+function intakeReviewHref(
+  entityId: string | null | undefined,
+  intakeId: string,
+) {
+  const params = entityId
+    ? new URLSearchParams({ entity_id: entityId, review: intakeId })
+    : new URLSearchParams({ review: intakeId });
+  return `/intake?${params.toString()}`;
+}
+
 function sourceLocationFromParts({
   sheet,
   row,
@@ -601,7 +611,7 @@ function propertyApplyRows(property: PropertyRecord): SourceRow[] {
           .join(" / ") || "Smart Intake apply history",
       source: "Smart Intake",
       href: intakeId
-        ? `/intake?review=${intakeId}`
+        ? intakeReviewHref(property.entity_id, intakeId)
         : `/properties?entity_id=${property.entity_id}&property_id=${property.id}`,
       evidence: {
         title: `${property.name} Smart Intake history`,
@@ -609,7 +619,9 @@ function propertyApplyRows(property: PropertyRecord): SourceRow[] {
           "Source document and before/after changes applied to this property.",
         sourceDocument: {
           label: documentType ? label(documentType) : "Smart Intake document",
-          href: intakeId ? `/intake?review=${intakeId}` : undefined,
+          href: intakeId
+            ? intakeReviewHref(property.entity_id, intakeId)
+            : undefined,
           detail: shortId(intakeId) ?? shortId(documentId) ?? undefined,
         },
         changes,
@@ -868,7 +880,7 @@ function buildIssues({
         title: intake.filename,
         detail: `${label(intake.document_type)} is ${label(intake.status)}.`,
         action: "Review document",
-        href: `/intake?review=${intake.id}`,
+        href: intakeReviewHref(intake.entity_id, intake.id),
       });
     }
   }
@@ -982,7 +994,7 @@ function buildSources({
       title: intake.filename,
       detail: `${label(intake.document_type)} / ${label(intake.status)}`,
       source: "Uploaded document",
-      href: `/intake?review=${intake.id}`,
+      href: intakeReviewHref(intake.entity_id, intake.id),
     });
   }
   for (const draft of drafts) {

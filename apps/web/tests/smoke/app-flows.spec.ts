@@ -1046,6 +1046,10 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   await expect(
     sourcePanel.getByText(/Bright Cafe .* public enrichment/),
   ).toBeVisible();
+  await page.getByPlaceholder("Search sources").fill("purchase contract");
+  await expect(
+    sourcePanel.getByRole("link", { name: "Queen Street Retail Centre" }),
+  ).toHaveAttribute("href", "/intake?entity_id=entity-1&review=intake-1");
 });
 
 test("operations workspace surfaces maintenance and arrears work", async ({

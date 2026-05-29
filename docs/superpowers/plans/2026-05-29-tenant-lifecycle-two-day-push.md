@@ -1759,3 +1759,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 75: Portfolio QA Intake Link Parity
+
+- [x] **Step 1: Add Portfolio QA source-history URL regression**
+
+Extend the Portfolio QA source-trail smoke so Smart Intake apply/source rows
+must link to `/intake?entity_id=<entity>&review=<intake-id>`.
+
+- [x] **Step 2: Harden Portfolio QA Smart Intake handoffs**
+
+Generate entity-aware Smart Intake review URLs for property apply-history rows,
+their evidence drawer source document links, open Smart Intake issue rows, and
+standalone Smart Intake source rows.
+
+- [x] **Step 3: Verify Portfolio QA parity**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "portfolio QA guides cleanup fixes and source trails"
+cd apps/web && ./node_modules/.bin/eslint src/app/portfolio-qa/page.tsx tests/smoke/app-flows.spec.ts
+cd apps/web && ./node_modules/.bin/tsc --noEmit
+git diff --check
+```
+
+Expected: pass.
