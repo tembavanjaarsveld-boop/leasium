@@ -1708,3 +1708,28 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 73: Insights Smart Intake Link Parity
+
+- [x] **Step 1: Add Insights live-exception URL regression**
+
+Extend the Insights overview integration test so Smart Intake live exceptions
+must link to `/intake?entity_id=<entity>&review=<intake-id>`.
+
+- [x] **Step 2: Return entity-aware Insights handoffs**
+
+Update the Insights overview Smart Intake exception href to include the current
+entity id beside the review id, matching the rest of the exact-review handoff
+work.
+
+- [x] **Step 3: Verify Insights parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_insights_api.py::test_insights_overview_summarises_live_operations_without_leaking_tool_inputs -q
+.venv/bin/ruff check apps/api/routers/insights.py tests/integration/test_insights_api.py
+git diff --check
+```
+
+Expected: pass.

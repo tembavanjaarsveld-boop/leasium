@@ -228,6 +228,12 @@ def test_insights_overview_summarises_live_operations_without_leaking_tool_input
         "billing_readiness",
         "xero_readiness",
     }.issubset(exception_kinds)
+    smart_intake_exception = next(
+        item for item in body["live_exceptions"] if item["kind"] == "smart_intake"
+    )
+    assert smart_intake_exception["href"] == (
+        f"/intake?entity_id={entity_id}&review={intake.id}"
+    )
 
     assert body["billing_risk"]["blocked_row_count"] == 2
     assert body["billing_risk"]["blocker_count"] >= 1

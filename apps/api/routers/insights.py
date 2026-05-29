@@ -438,7 +438,7 @@ def _build_insights_overview(
                 detail=intake.summary or "Smart Intake document is waiting for review.",
                 chip=_status_label(intake.status).title(),
                 source="Smart Intake",
-                href=f"/intake?review={intake.id}",
+                href=f"/intake?entity_id={entity_id}&review={intake.id}",
                 target=InsightTargetRead(document_intake_id=intake.id),
                 rank=-1 if intake.status == DocumentIntakeStatus.ready_for_review else 20,
             )
