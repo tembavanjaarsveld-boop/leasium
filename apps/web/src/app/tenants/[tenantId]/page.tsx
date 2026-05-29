@@ -493,6 +493,7 @@ function leaseSigningStatus({
     metadataString(signing.envelope_id) ??
     metadataString(receipt?.envelope_id);
   const signedDocumentId = metadataString(signing.signed_document_id);
+  const documentIntakeId = metadataString(signing.document_intake_id);
   const error = metadataString(receipt?.error);
 
   if (leaseAgreement?.status === "signed") {
@@ -510,6 +511,7 @@ function leaseSigningStatus({
       tone: "success" as const,
       envelopeId,
       signedDocumentId,
+      documentIntakeId,
       error,
       provider,
       status,
@@ -533,6 +535,7 @@ function leaseSigningStatus({
         tone: "danger" as const,
         envelopeId,
         signedDocumentId,
+        documentIntakeId,
         error,
         provider,
         status,
@@ -545,6 +548,7 @@ function leaseSigningStatus({
         tone: "warning" as const,
         envelopeId,
         signedDocumentId,
+        documentIntakeId,
         error,
         provider,
         status,
@@ -557,6 +561,7 @@ function leaseSigningStatus({
         tone: "primary" as const,
         envelopeId,
         signedDocumentId,
+        documentIntakeId,
         error,
         provider,
         status,
@@ -570,6 +575,7 @@ function leaseSigningStatus({
       tone: "neutral" as const,
       envelopeId,
       signedDocumentId,
+      documentIntakeId,
       error,
       provider,
       status,
@@ -3689,6 +3695,15 @@ function TenantDetail() {
                                 )}
                                 Activate lease
                               </Button>
+                            ) : null}
+                            {signingStatus?.documentIntakeId ? (
+                              <Link
+                                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition hover:bg-muted"
+                                href={`/intake?review=${signingStatus.documentIntakeId}`}
+                              >
+                                <Sparkles size={15} />
+                                Open Smart Intake review
+                              </Link>
                             ) : null}
                             <Link
                               className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition hover:bg-muted"

@@ -1394,3 +1394,27 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 61: Tenant Upload Smart Intake Handoff
+
+- [x] **Step 1: Add handoff smoke coverage**
+
+Extend the tenant-upload activation review smoke so an accepted upload with
+`document_intake_id` must expose an "Open Smart Intake review" link to
+`/intake?review=<id>`.
+
+- [x] **Step 2: Thread intake id into signing status**
+
+Read `signing.document_intake_id` into the tenant-detail signing status model
+and render the Smart Intake review handoff in the signed-lease panel only when
+the id is present.
+
+- [x] **Step 3: Verify tenant-upload handoff**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant detail labels tenant-uploaded lease activation review"
+```
+
+Expected: pass.

@@ -2500,6 +2500,9 @@ test("tenant detail labels tenant-uploaded lease activation review", async ({
       "Tenant-uploaded lease match does not activate a lease automatically; review and activate explicitly.",
     ),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open Smart Intake review" }),
+  ).toHaveAttribute("href", "/intake?review=intake-1");
 
   await page.getByRole("button", { name: "Activate lease" }).click();
   expect(activated).toBe(true);
