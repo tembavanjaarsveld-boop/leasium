@@ -2434,3 +2434,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 100: DocuSign Ignored Event State Audit
+
+- [x] **Step 1: Add ignored-state receipt regression**
+
+Extend completed-after-declined DocuSign webhook coverage so the receipt audit
+must explain that the event was not applied because the current signing state
+was already declined.
+
+- [x] **Step 2: Stamp ignored signing state context**
+
+When a DocuSign webhook is ignored because the event is not allowed for the
+current signing state, include the current signing status and last provider
+event in the `signature_receipt` audit payload.
+
+- [x] **Step 3: Verify ignored event audit context**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_ignores_completed_after_declined tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_ignores_mismatched_custom_fields tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_marks_lease_signed -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.

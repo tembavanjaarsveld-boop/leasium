@@ -864,7 +864,15 @@ def _apply_docusign_webhook_event(
     signing = lease_agreement_section(onboarding).get("signing")
     signing_data = dict(signing) if isinstance(signing, dict) else {}
     if not _docusign_webhook_event_allowed(signing_data, envelope_id, event_status):
-        return {"applied": False, "ignored_reason": "event_not_allowed"}
+        result: dict[str, Any] = {
+            "applied": False,
+            "ignored_reason": "event_not_allowed",
+        }
+        if isinstance(signing_data.get("status"), str):
+            result["current_signing_status"] = signing_data["status"]
+        if isinstance(signing_data.get("last_event"), str):
+            result["current_last_event"] = signing_data["last_event"]
+        return result
     if not _docusign_custom_fields_match(onboarding, signing_data, payload):
         return {"applied": False, "ignored_reason": "custom_fields_mismatch"}
     events = signing_data.get("provider_events")

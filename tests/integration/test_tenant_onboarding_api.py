@@ -1448,6 +1448,25 @@ def test_tenant_onboarding_docusign_webhook_ignores_completed_after_declined(
     assert signing["last_event"] == "envelope-declined"
     assert "signed_at" not in signing
     assert "lease_activation_review" not in signing
+    webhook_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "signature_receipt",
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id == onboarding.id,
+        )
+    )
+    assert webhook_audit is not None
+    assert webhook_audit.tool_input == {
+        "status": "completed",
+        "event": "envelope-completed",
+        "envelope_id": "envelope-declined-then-complete-1",
+        "tenant_onboarding_id": str(onboarding.id),
+        "lease_id": str(onboarding.lease_id),
+        "applied": False,
+        "ignored_reason": "event_not_allowed",
+        "current_signing_status": "declined",
+        "current_last_event": "envelope-declined",
+    }
 
 
 def test_tenant_onboarding_docusign_webhook_ignores_mismatched_custom_fields(
@@ -1534,6 +1553,7 @@ def test_tenant_onboarding_docusign_webhook_ignores_mismatched_custom_fields(
         "envelope_id": "envelope-custom-field-mismatch-1",
         "tenant_onboarding_id": str(onboarding.id),
         "lease_id": str(onboarding.lease_id),
+        "document_id": "document-1",
         "applied": False,
         "ignored_reason": "custom_fields_mismatch",
     }
