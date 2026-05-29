@@ -3,7 +3,13 @@ import hashlib
 import hmac
 from typing import Any
 
-from apps.api.webhook_auth import twilio_signature_valid, webhook_secret_valid
+import pytest
+from apps.api.webhook_auth import (
+    assert_webhook_secret,
+    twilio_signature_valid,
+    webhook_secret_valid,
+)
+from fastapi import HTTPException
 from starlette.requests import Request
 
 
@@ -63,6 +69,35 @@ def test_webhook_secret_valid_accepts_header_or_query_token() -> None:
         ),
         secret,
     )
+
+
+def test_assert_webhook_secret_rejects_missing_or_wrong_secret() -> None:
+    assert_webhook_secret(
+        _request(
+            "/api/v1/work-assignments/webhooks/sendgrid-events",
+            headers={"x-leasium-webhook-secret": "shared-secret"},
+        ),
+        "shared-secret",
+    )
+
+    with pytest.raises(HTTPException) as missing_error:
+        assert_webhook_secret(
+            _request("/api/v1/work-assignments/webhooks/sendgrid-events"),
+            "shared-secret",
+        )
+    assert missing_error.value.status_code == 401
+    assert missing_error.value.detail == "Invalid webhook token."
+
+    with pytest.raises(HTTPException) as wrong_error:
+        assert_webhook_secret(
+            _request(
+                "/api/v1/work-assignments/webhooks/sendgrid-events",
+                headers={"x-leasium-webhook-secret": "wrong-secret"},
+            ),
+            "shared-secret",
+        )
+    assert wrong_error.value.status_code == 401
+    assert wrong_error.value.detail == "Invalid webhook token."
 
 
 def test_twilio_signature_valid_accepts_public_api_url_signature() -> None:

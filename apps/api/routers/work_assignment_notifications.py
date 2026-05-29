@@ -1,6 +1,5 @@
 """Provider receipt webhooks for assignment notifications."""
 
-import secrets
 from datetime import date, datetime
 from typing import Annotated, Any
 from urllib.parse import parse_qs
@@ -37,6 +36,7 @@ from stewart.integrations.communications import (
     send_work_assignment_sms,
 )
 
+from apps.api import webhook_auth
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.work_assignments import (
     WorkAssignmentDigestCadence,
@@ -63,7 +63,6 @@ from apps.api.schemas.work_assignments import (
     WorkAssignmentProviderHistoryRead,
     WorkAssignmentRenderedMessagePreviewRead,
 )
-from apps.api.webhook_auth import twilio_signature_valid, webhook_secret_valid
 from apps.api.work_assignments import (
     apply_work_assignment_delivery_receipt,
     apply_work_assignment_sms_delivery_receipt,
@@ -187,12 +186,7 @@ def _assert_webhook_secret(request: Request) -> None:
     secret = get_settings().communications_webhook_secret
     if not secret:
         return
-    provided = request.headers.get("x-leasium-webhook-secret") or request.query_params.get("token")
-    if not provided or not secrets.compare_digest(provided, secret):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid webhook token.",
-        )
+    webhook_auth.assert_webhook_secret(request, secret)
 
 
 def _assert_twilio_status_webhook_auth(
@@ -201,11 +195,11 @@ def _assert_twilio_status_webhook_auth(
 ) -> None:
     settings = get_settings()
     secret = settings.communications_webhook_secret.strip()
-    if secret and webhook_secret_valid(request, secret):
+    if secret and webhook_auth.webhook_secret_valid(request, secret):
         return
 
     auth_token = settings.twilio_auth_token.strip()
-    if auth_token and twilio_signature_valid(
+    if auth_token and webhook_auth.twilio_signature_valid(
         request,
         payload,
         auth_token,

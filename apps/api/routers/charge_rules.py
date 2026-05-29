@@ -1,6 +1,5 @@
 """Rent charge rule and rent roll routes."""
 
-import secrets
 from datetime import date
 from html import escape
 from typing import Annotated, cast
@@ -37,6 +36,7 @@ from stewart.integrations.communications import (
     send_invoice_delivery_email,
 )
 
+from apps.api import webhook_auth
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.register import (
     BillingDraftBatchRead,
@@ -1001,12 +1001,7 @@ def _assert_webhook_secret(request: Request) -> None:
     secret = get_settings().communications_webhook_secret
     if not secret:
         return
-    provided = request.headers.get("x-leasium-webhook-secret") or request.query_params.get("token")
-    if not provided or not secrets.compare_digest(provided, secret):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid webhook token.",
-        )
+    webhook_auth.assert_webhook_secret(request, secret)
 
 
 def _invoice_email_receipt_status(raw_status: str) -> str:

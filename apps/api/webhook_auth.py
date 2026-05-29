@@ -8,7 +8,7 @@ import hmac
 import secrets
 from typing import Any
 
-from fastapi import Request
+from fastapi import HTTPException, Request, status
 
 
 def webhook_secret_valid(request: Request, secret: str) -> bool:
@@ -18,6 +18,14 @@ def webhook_secret_valid(request: Request, secret: str) -> bool:
         or ""
     ).strip()
     return bool(supplied) and secrets.compare_digest(supplied, secret)
+
+
+def assert_webhook_secret(request: Request, secret: str) -> None:
+    if not webhook_secret_valid(request, secret):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook token.",
+        )
 
 
 def twilio_signature_valid(

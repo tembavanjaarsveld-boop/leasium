@@ -1919,3 +1919,35 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 81: Shared SendGrid Webhook Secret Guard
+
+- [x] **Step 1: Add helper-level assertion coverage**
+
+Extend `apps/api/webhook_auth.py` coverage so the shared webhook-token helper
+also exposes the 401 assertion shape used by SendGrid receipt callbacks.
+
+- [x] **Step 2: Consolidate SendGrid receipt secret checks**
+
+Have invoice delivery, operator invite, tenant onboarding, maintenance
+contractor, and Work assignment SendGrid receipt endpoints call the shared
+webhook-token helper while preserving the current local/dev path when no
+`COMMUNICATIONS_WEBHOOK_SECRET` is configured.
+
+- [x] **Step 3: Add endpoint guard coverage**
+
+Add focused integration coverage proving that each SendGrid receipt endpoint
+rejects missing shared tokens when configured and still accepts the configured
+`x-leasium-webhook-secret` header.
+
+- [x] **Step 4: Verify SendGrid receipt hardening**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/unit/test_webhook_auth.py tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_sendgrid_receipt_updates_delivery_data tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_sendgrid_receipt_requires_configured_secret tests/integration/test_document_intake_api.py::test_document_intake_apply_invoice_prepares_billing_work tests/integration/test_document_intake_api.py::test_invoice_sendgrid_receipt_requires_configured_secret tests/integration/test_security_api.py::test_operator_invite_sendgrid_receipt_updates_member_status tests/integration/test_security_api.py::test_operator_invite_sendgrid_receipt_requires_configured_secret tests/integration/test_maintenance_arrears_api.py::test_maintenance_work_order_sends_contractor_email_and_records_receipt tests/integration/test_maintenance_arrears_api.py::test_maintenance_sendgrid_receipt_requires_configured_secret tests/integration/test_maintenance_arrears_api.py::test_notification_center_can_retry_assignment_notice_email tests/integration/test_maintenance_arrears_api.py::test_work_assignment_sendgrid_receipt_requires_configured_secret tests/integration/test_maintenance_arrears_api.py::test_work_assignment_digest_delivery_requires_approval_and_records_receipts -q
+.venv/bin/ruff check apps/api/webhook_auth.py apps/api/routers/charge_rules.py apps/api/routers/security.py apps/api/routers/tenant_onboarding.py apps/api/routers/maintenance.py apps/api/routers/work_assignment_notifications.py tests/unit/test_webhook_auth.py tests/integration/test_tenant_onboarding_api.py tests/integration/test_document_intake_api.py tests/integration/test_security_api.py tests/integration/test_maintenance_arrears_api.py
+git diff --check
+```
+
+Expected: pass.

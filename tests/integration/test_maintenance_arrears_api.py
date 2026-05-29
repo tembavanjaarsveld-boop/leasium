@@ -6,6 +6,8 @@ import hmac
 from typing import Any
 from uuid import UUID
 
+from apps.api.routers import maintenance as maintenance_router
+from apps.api.routers import work_assignment_notifications as work_assignment_router
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -447,6 +449,32 @@ def test_maintenance_work_order_sends_contractor_email_and_records_receipt(
     assert work_order.work_order_metadata["activity_history"][-1]["event"] == (
         "contractor_email_receipt"
     )
+
+
+def test_maintenance_sendgrid_receipt_requires_configured_secret(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    settings = maintenance_router.get_settings()
+    monkeypatch.setattr(
+        maintenance_router,
+        "get_settings",
+        lambda: settings.model_copy(update={"communications_webhook_secret": "sg-secret"}),
+    )
+
+    missing_response = client.post(
+        "/api/v1/maintenance/work-orders/webhooks/sendgrid-events",
+        json=[],
+    )
+    assert missing_response.status_code == 401
+    assert missing_response.json()["detail"] == "Invalid webhook token."
+
+    accepted_response = client.post(
+        "/api/v1/maintenance/work-orders/webhooks/sendgrid-events",
+        headers={"x-leasium-webhook-secret": "sg-secret"},
+        json=[],
+    )
+    assert accepted_response.status_code == 204
 
 
 def test_maintenance_work_order_sends_contractor_sms_and_records_receipt(
@@ -913,6 +941,32 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
         "sendgrid.work_assignment",
         "sendgrid.work_assignment_event_webhook",
     ]
+
+
+def test_work_assignment_sendgrid_receipt_requires_configured_secret(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    settings = work_assignment_router.get_settings()
+    monkeypatch.setattr(
+        work_assignment_router,
+        "get_settings",
+        lambda: settings.model_copy(update={"communications_webhook_secret": "sg-secret"}),
+    )
+
+    missing_response = client.post(
+        "/api/v1/work-assignments/webhooks/sendgrid-events",
+        json=[],
+    )
+    assert missing_response.status_code == 401
+    assert missing_response.json()["detail"] == "Invalid webhook token."
+
+    accepted_response = client.post(
+        "/api/v1/work-assignments/webhooks/sendgrid-events",
+        headers={"x-leasium-webhook-secret": "sg-secret"},
+        json=[],
+    )
+    assert accepted_response.status_code == 204
 
 
 def test_maintenance_assignment_notification_respects_operator_email_preference(

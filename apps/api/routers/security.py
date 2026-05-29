@@ -27,6 +27,7 @@ from stewart.integrations.communications import (
     send_operator_invite_email,
 )
 
+from apps.api import webhook_auth
 from apps.api.deps import CurrentUser, get_current_user, get_session
 from apps.api.schemas.security import (
     SecurityAuthStatusRead,
@@ -72,12 +73,7 @@ def _assert_webhook_secret(request: Request) -> None:
     secret = get_settings().communications_webhook_secret
     if not secret:
         return
-    provided = request.headers.get("x-leasium-webhook-secret") or request.query_params.get("token")
-    if not provided or not secrets.compare_digest(provided, secret):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid webhook token.",
-        )
+    webhook_auth.assert_webhook_secret(request, secret)
 
 
 def _operator_invite_receipt_detail(raw_status: str, event: dict[str, object]) -> str:

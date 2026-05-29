@@ -500,6 +500,32 @@ def test_tenant_onboarding_sendgrid_receipt_updates_delivery_data(
     assert onboarding.delivery_data["receipts"][0]["status"] == "delivered"
 
 
+def test_tenant_onboarding_sendgrid_receipt_requires_configured_secret(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    settings = tenant_onboarding_router.get_settings()
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "get_settings",
+        lambda: settings.model_copy(update={"communications_webhook_secret": "sg-secret"}),
+    )
+
+    missing_response = client.post(
+        "/api/v1/tenant-onboarding/webhooks/sendgrid-events",
+        json=[],
+    )
+    assert missing_response.status_code == 401
+    assert missing_response.json()["detail"] == "Invalid webhook token."
+
+    accepted_response = client.post(
+        "/api/v1/tenant-onboarding/webhooks/sendgrid-events",
+        headers={"x-leasium-webhook-secret": "sg-secret"},
+        json=[],
+    )
+    assert accepted_response.status_code == 204
+
+
 def test_tenant_onboarding_reminder_run_is_due_and_idempotent(
     client: TestClient,
     session: Session,

@@ -431,6 +431,32 @@ def test_operator_invite_sendgrid_receipt_updates_member_status(
     assert audit.tool_output_summary == "Operator invite delivered by SendGrid."
 
 
+def test_operator_invite_sendgrid_receipt_requires_configured_secret(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = security_router.get_settings()
+    monkeypatch.setattr(
+        security_router,
+        "get_settings",
+        lambda: settings.model_copy(update={"communications_webhook_secret": "sg-secret"}),
+    )
+
+    missing_response = client.post(
+        "/api/v1/security/webhooks/sendgrid-events",
+        json=[],
+    )
+    assert missing_response.status_code == 401
+    assert missing_response.json()["detail"] == "Invalid webhook token."
+
+    accepted_response = client.post(
+        "/api/v1/security/webhooks/sendgrid-events",
+        headers={"x-leasium-webhook-secret": "sg-secret"},
+        json=[],
+    )
+    assert accepted_response.status_code == 204
+
+
 def test_operator_invite_sendgrid_bounce_matches_message_id_prefix(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

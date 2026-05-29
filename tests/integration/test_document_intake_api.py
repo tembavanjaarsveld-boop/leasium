@@ -3,6 +3,7 @@
 from typing import Any
 from uuid import UUID
 
+from apps.api.routers import charge_rules as charge_rules_router
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -1423,6 +1424,32 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert document.category == "invoice"
     assert str(document.property_id) == scope["property_id"]
     assert document.document_metadata["applied_document_type"] == "invoice_admin"
+
+
+def test_invoice_sendgrid_receipt_requires_configured_secret(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    settings = charge_rules_router.get_settings()
+    monkeypatch.setattr(
+        charge_rules_router,
+        "get_settings",
+        lambda: settings.model_copy(update={"communications_webhook_secret": "sg-secret"}),
+    )
+
+    missing_response = client.post(
+        "/api/v1/invoice-drafts/webhooks/sendgrid-events",
+        json=[],
+    )
+    assert missing_response.status_code == 401
+    assert missing_response.json()["detail"] == "Invalid webhook token."
+
+    accepted_response = client.post(
+        "/api/v1/invoice-drafts/webhooks/sendgrid-events",
+        headers={"x-leasium-webhook-secret": "sg-secret"},
+        json=[],
+    )
+    assert accepted_response.status_code == 204
 
 
 def test_document_intake_apply_purchase_contract_creates_property_records(
