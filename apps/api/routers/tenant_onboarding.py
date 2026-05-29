@@ -1789,6 +1789,8 @@ async def record_docusign_envelope_event(
         "tenant_onboarding_id": str(onboarding.id),
         "lease_id": str(onboarding.lease_id),
     }
+    if isinstance(signing_data.get("document_id"), str):
+        webhook_audit_input["document_id"] = signing_data["document_id"]
     if isinstance(signing_data.get("signed_document_id"), str):
         webhook_audit_input["signed_document_id"] = signing_data["signed_document_id"]
     webhook_audit_input.update(apply_result)

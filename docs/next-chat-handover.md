@@ -1109,6 +1109,7 @@ Open items at session end:
 - Final tenant-onboarding activation audits now carry the signed document id plus DocuSign envelope id or tenant-upload Smart Intake id, matching the lease activation audit source evidence.
 - DocuSign Connect receipt audits now carry onboarding id, lease id, envelope id, and retained signed document id after completed webhook processing.
 - DocuSign Connect receipt audits now also state whether the webhook event was applied, or safely ignored with a reason such as custom-field mismatch.
+- DocuSign Connect receipt audits now carry the original lease document id from the envelope send metadata, including declined events that never produce a retained signed PDF.
 - Tenant-uploaded lease activation now shows a source-aware success notice: `Lease activated after tenant-uploaded lease review.`
 - Historical DocuSign docs were cleaned up so the automation strategy and 5-day report no longer describe the flow as scaffold-only or say completion auto-activates leases; they now reflect signed-PDF retention, explicit activation review, and remaining production-readiness work.
 - DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.

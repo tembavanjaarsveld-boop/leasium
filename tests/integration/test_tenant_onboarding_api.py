@@ -1314,6 +1314,7 @@ def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
         "envelope_id": "envelope-complete-1",
         "tenant_onboarding_id": str(onboarding.id),
         "lease_id": str(lease.id),
+        "document_id": "document-1",
         "signed_document_id": signed_document_id,
         "applied": True,
     }
@@ -1602,6 +1603,23 @@ def test_tenant_onboarding_docusign_webhook_records_declined_envelope(
     assert "signed_document_id" not in signing
     assert "lease_activation_review" not in signing
     assert downloads == []
+    webhook_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "signature_receipt",
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id == onboarding.id,
+        )
+    )
+    assert webhook_audit is not None
+    assert webhook_audit.tool_input == {
+        "status": "declined",
+        "event": "envelope-declined",
+        "envelope_id": "envelope-declined-1",
+        "tenant_onboarding_id": str(onboarding.id),
+        "lease_id": str(onboarding.lease_id),
+        "document_id": "document-1",
+        "applied": True,
+    }
 
 
 def test_tenant_onboarding_activate_lease_after_docusign_completion(

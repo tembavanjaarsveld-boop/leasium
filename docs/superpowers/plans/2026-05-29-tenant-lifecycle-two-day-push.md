@@ -2408,3 +2408,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 99: DocuSign Webhook Source Document Audit
+
+- [x] **Step 1: Add source document receipt regressions**
+
+Extend completed and declined DocuSign webhook coverage so receipt audits must
+include the original lease document id used when the envelope was sent.
+
+- [x] **Step 2: Stamp source document id on receipt audits**
+
+When a DocuSign Connect event is tied to an onboarding signing record, copy the
+stored `document_id` from signing metadata into the `signature_receipt` audit
+payload alongside envelope, onboarding, lease, applied outcome, and retained
+signed-document evidence when present.
+
+- [x] **Step 3: Verify source document receipt audit**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_marks_lease_signed tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_records_declined_envelope -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.
