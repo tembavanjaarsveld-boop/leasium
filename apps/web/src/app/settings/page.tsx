@@ -531,6 +531,45 @@ function xeroProviderSetupPacket(diagnostics: XeroConnectionDiagnosticsRecord) {
   ].join("\n");
 }
 
+const DOCUSIGN_SETUP_PACKET_GUARDRAIL =
+  "Review-only export: copying or downloading this packet does not call DocuSign, send envelopes, accept Connect events, download signed PDFs, activate leases, or mutate provider history.";
+
+function docusignProviderSetupPacket(status: ProviderStatusRecord) {
+  return [
+    "DocuSign provider setup packet",
+    "",
+    `Status: ${status.live_ready ? "Live ready" : status.configured ? "Setup needed" : "Not configured"}`,
+    `Detail: ${status.detail}`,
+    "",
+    `Webhook URL: ${status.webhook_url ?? "Set PUBLIC_API_URL on the API service to expose the Connect webhook URL."}`,
+    "",
+    "Required env vars:",
+    "- DOCUSIGN_ACCOUNT_ID",
+    "- DOCUSIGN_INTEGRATION_KEY",
+    "- DOCUSIGN_USER_ID",
+    "- DOCUSIGN_RSA_PRIVATE_KEY",
+    "- DOCUSIGN_WEBHOOK_SECRET",
+    "- PUBLIC_API_URL",
+    "",
+    "Missing production setup:",
+    ...(status.missing_config.length
+      ? status.missing_config.map((envVar) => `- ${envVar}`)
+      : ["- None"]),
+    "",
+    "Production endpoints:",
+    "- Set DOCUSIGN_BASE_URL=https://www.docusign.net/restapi for live envelopes.",
+    "- Set DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com for live JWT grants.",
+    "",
+    "DocuSign Connect:",
+    "- Subscribe to completed envelope events.",
+    "- Send DOCUSIGN_WEBHOOK_SECRET as x-docusign-webhook-secret or token query parameter.",
+    "- Keep signer, envelope, and custom-field review in Leasium before activating leases.",
+    "",
+    "Guardrails:",
+    `- ${DOCUSIGN_SETUP_PACKET_GUARDRAIL}`,
+  ].join("\n");
+}
+
 const XERO_DIAGNOSTICS_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not start OAuth, call or refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices or providers, send email or SMS, refresh providers, or mutate provider history.";
 
@@ -1850,6 +1889,9 @@ function IntegrationsHealthCard({
       ]
     : [];
   const release = apiHealth?.release;
+  const [docusignPacketReceipt, setDocusignPacketReceipt] = useState<
+    string | null
+  >(null);
   const releaseIsLocal =
     Boolean(release) &&
     (release?.commit === "unknown" || release?.source === "local");
@@ -1866,6 +1908,23 @@ function IntegrationsHealthCard({
         label: isApiHealthLoading ? "Checking release" : "Release unavailable",
         tone: isApiHealthLoading ? "neutral" : "danger",
       };
+  const copyDocusignSetupPacket = async (data: ProviderStatusRecord) => {
+    const copied = await copyTextToClipboard(docusignProviderSetupPacket(data));
+    setDocusignPacketReceipt(
+      copied
+        ? "DocuSign setup packet copied."
+        : "Copy unavailable in this browser.",
+    );
+  };
+  const downloadDocusignSetupPacket = (data: ProviderStatusRecord) => {
+    saveBlob(
+      new Blob([docusignProviderSetupPacket(data)], {
+        type: "text/plain;charset=utf-8",
+      }),
+      "docusign-provider-setup-packet.txt",
+    );
+    setDocusignPacketReceipt("DocuSign setup packet downloaded.");
+  };
   return (
     <SectionPanel
       title="Integrations"
@@ -1962,6 +2021,31 @@ function IntegrationsHealthCard({
                     <code className="break-all font-mono text-[11px] text-muted-foreground">
                       {data.webhook_url}
                     </code>
+                  </div>
+                ) : null}
+                {key === "docusign" ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SecondaryButton
+                      type="button"
+                      className="min-h-8 rounded-md px-2.5 text-xs"
+                      onClick={() => void copyDocusignSetupPacket(data)}
+                    >
+                      <Copy size={14} />
+                      Copy DocuSign setup packet
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      className="min-h-8 rounded-md px-2.5 text-xs"
+                      onClick={() => downloadDocusignSetupPacket(data)}
+                    >
+                      <Download size={14} />
+                      Download DocuSign setup packet
+                    </SecondaryButton>
+                    {docusignPacketReceipt ? (
+                      <span className="text-xs text-muted-foreground">
+                        {docusignPacketReceipt}
+                      </span>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

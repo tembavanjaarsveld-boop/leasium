@@ -161,6 +161,11 @@ def _docusign_configured_detail(settings: Settings) -> str:
             "Credentials and webhook are set; switch DocuSign REST and auth URLs "
             "to production before live envelope testing."
         )
+    if not settings.public_api_url.strip():
+        return (
+            "Credentials, webhook secret, and production DocuSign endpoints are set; "
+            "add PUBLIC_API_URL so Connect can reach the Leasium webhook."
+        )
     return "Configured for envelope creation and completed signed-document retention."
 
 

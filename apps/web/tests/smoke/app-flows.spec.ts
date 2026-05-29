@@ -3261,6 +3261,49 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
       "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
     ),
   ).toBeVisible();
+  const docusignCard = page
+    .locator("div")
+    .filter({ hasText: /^DocuSign/ })
+    .filter({ hasText: "Lease signature envelopes" })
+    .first();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await docusignCard
+    .getByRole("button", { name: "Copy DocuSign setup packet" })
+    .click();
+  await expect(
+    docusignCard.getByText("DocuSign setup packet copied."),
+  ).toBeVisible();
+  const copiedDocusignSetupPacket = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(copiedDocusignSetupPacket).toContain("DocuSign provider setup packet");
+  expect(copiedDocusignSetupPacket).toContain(
+    "Webhook URL: https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
+  );
+  expect(copiedDocusignSetupPacket).toContain("DOCUSIGN_WEBHOOK_SECRET");
+  expect(copiedDocusignSetupPacket).toContain(
+    "Set DOCUSIGN_BASE_URL=https://www.docusign.net/restapi for live envelopes.",
+  );
+  expect(copiedDocusignSetupPacket).toContain(
+    "Review-only export: copying or downloading this packet does not call DocuSign, send envelopes, accept Connect events, download signed PDFs, activate leases, or mutate provider history.",
+  );
+  const docusignSetupDownloadPromise = page.waitForEvent("download");
+  await docusignCard
+    .getByRole("button", { name: "Download DocuSign setup packet" })
+    .click();
+  const docusignSetupDownload = await docusignSetupDownloadPromise;
+  expect(docusignSetupDownload.suggestedFilename()).toBe(
+    "docusign-provider-setup-packet.txt",
+  );
+  const docusignSetupPath = await docusignSetupDownload.path();
+  expect(docusignSetupPath).not.toBeNull();
+  const docusignSetupText = await readFile(docusignSetupPath!, "utf8");
+  expect(docusignSetupText).toContain("DocuSign provider setup packet");
+  expect(docusignSetupText).toContain("DOCUSIGN_ACCOUNT_ID");
+  expect(docusignSetupText).toContain("DOCUSIGN_WEBHOOK_SECRET");
+  expect(docusignSetupText).toContain(
+    "Webhook URL: https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
+  );
   await expect(page.getByText("API release", { exact: true })).toBeVisible();
   await expect(page.getByText("Render commit")).toBeVisible();
   await expect(page.getByText("7248a2b", { exact: true })).toBeVisible();

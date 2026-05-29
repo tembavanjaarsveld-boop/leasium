@@ -332,8 +332,11 @@ Last updated: 2026-05-28
   after signed completion; that route activates only pending leases and stamps
   lease metadata/signing history. Settings > Organisation > Integrations now
   reports DocuSign readiness, shows the Connect webhook URL when
-  `PUBLIC_API_URL` is set, and warns when credentials are present but
-  `DOCUSIGN_WEBHOOK_SECRET` is still missing. Next slice is provider-console
+  `PUBLIC_API_URL` is set, warns when credentials are present but
+  `DOCUSIGN_WEBHOOK_SECRET` is still missing, warns specifically when
+  `PUBLIC_API_URL` is the remaining Connect blocker, and provides local
+  copy/download actions for a review-only DocuSign provider setup packet. Next
+  slice is provider-console
   verification with real DocuSign credentials: configure the DocuSign JWT app,
   RSA key, account GUID, integration key, and impersonated service-user GUID;
   set `DOCUSIGN_WEBHOOK_SECRET`; point DocuSign Connect at
@@ -933,7 +936,7 @@ Behavioural baseline:
   - `20260523_0024_contractors`
 - Provider setup still has external-console work:
   - SendGrid templates/event webhook configuration; notification-center readiness shows the bare Work event webhook endpoint only.
-  - **Pending external-console verification:** configure the DocuSign JWT app and Connect webhook with `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID`, `DOCUSIGN_RSA_PRIVATE_KEY`, `DOCUSIGN_WEBHOOK_SECRET`, and `PUBLIC_API_URL`. The code path now performs JWT grant, envelope create, Connect event validation, signed-PDF retention, and explicit activation review; remaining work is live provider-console proof with real credentials. Setup steps documented in `docs/deployment.md`.
+  - **Pending external-console verification:** configure the DocuSign JWT app and Connect webhook with `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID`, `DOCUSIGN_RSA_PRIVATE_KEY`, `DOCUSIGN_WEBHOOK_SECRET`, and `PUBLIC_API_URL`. The code path now performs JWT grant, envelope create, Connect event validation, signed-PDF retention, and explicit activation review; remaining work is live provider-console proof with real credentials. Setup steps documented in `docs/deployment.md`, and Settings > Organisation > Integrations can copy/download a DocuSign provider setup packet from the current API readiness state.
   - **Pending (2026-05-23, when Twilio numbers are provisioned): point the inbound SMS webhook at each entity's Twilio number.** In the Twilio console, set each per-entity number's *Messaging → A message comes in* webhook to `https://<API_HOST>/api/v1/comms/webhooks/twilio-inbound?entity_id=<UUID>` (HTTP POST). The webhook is live and tested; it just won't see inbound SMS until the Twilio side is wired. Steps in `docs/deployment.md`.
   - **Pending (2026-05-23, Temba waiting on tokens): configure SendGrid Inbound Parse for the comms inbound webhook.** Add MX record on a subdomain pointing to `mx.sendgrid.net`, then in the SendGrid console add an Inbound Parse setting per entity mapping the subdomain to `https://<API_HOST>/api/v1/comms/webhooks/sendgrid-inbound?entity_id=<UUID>`. Steps + rationale documented in `docs/deployment.md`.
   - **Pending (2026-05-23, Temba waiting on tokens, ETA a couple of days): create the SendGrid template `tenant_portal_invite` v1 used by the new tenant portal onboarding invite slice.** Copy should explain "Your Leasium tenant portal is ready", with brand name placeholder, property + unit label, due date, expiry, and a single primary CTA linking to the onboarding URL. Template key + version are overridable via `TENANT_PORTAL_INVITE_TEMPLATE_KEY` / `TENANT_PORTAL_INVITE_TEMPLATE_VERSION` env vars on the API service if the SendGrid template name doesn't match. Until this template exists, the Invite-to-portal button still fires the send pipe but SendGrid will fall back to a generic delivery and the receipt path will record a soft failure. Backend code, dashboard panel, and operator CTA all ship in commit `5aa5f8e` + `9af7462`.

@@ -98,6 +98,37 @@ def test_integration_status_reports_docusign_demo_endpoints_not_live_ready(
     )
 
 
+def test_integration_status_reports_docusign_missing_public_api_url(
+    client: TestClient,
+) -> None:
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={
+            "docusign_account_id": "account-123",
+            "docusign_integration_key": "integration-123",
+            "docusign_user_id": "user-123",
+            "docusign_rsa_private_key": "-----BEGIN PRIVATE KEY-----\ntest\n",
+            "docusign_webhook_secret": "secret-123",
+            "docusign_base_url": "https://www.docusign.net/restapi",
+            "docusign_auth_base_url": "https://account.docusign.com",
+            "public_api_url": "",
+        }
+    )
+
+    response = client.get("/api/v1/system/integration-status")
+
+    assert response.status_code == 200
+    docusign = response.json()["docusign"]
+    assert docusign["configured"] is True
+    assert docusign["live_ready"] is False
+    assert docusign["missing_config"] == ["PUBLIC_API_URL"]
+    assert docusign["detail"] == (
+        "Credentials, webhook secret, and production DocuSign endpoints are set; "
+        "add PUBLIC_API_URL so Connect can reach the Leasium webhook."
+    )
+    assert "webhook_url" not in docusign
+
+
 def test_integration_status_reports_docusign_live_ready(
     client: TestClient,
 ) -> None:

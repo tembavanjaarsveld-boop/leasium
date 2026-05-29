@@ -1466,3 +1466,31 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 64: DocuSign Setup Packet and Readiness Truthfulness
+
+- [x] **Step 1: Add setup packet and missing-public-URL coverage**
+
+Extend the Settings readiness smoke so the DocuSign integration card must copy
+and download a provider setup packet with the Connect webhook URL, required env
+vars, production endpoints, and review-only guardrail. Add system API coverage
+for the case where DocuSign credentials, webhook secret, and production
+endpoints are present but `PUBLIC_API_URL` is missing.
+
+- [x] **Step 2: Surface copy/download packet and truthful detail**
+
+Render compact DocuSign setup-packet actions in the existing Settings
+Integrations card using only the already-loaded integration status response.
+Tighten the API detail copy so missing `PUBLIC_API_URL` explains that DocuSign
+Connect cannot reach the Leasium webhook yet.
+
+- [x] **Step 3: Verify DocuSign readiness handoff**
+
+Run:
+
+```bash
+.venv/bin/python -m pytest tests/integration/test_system_api.py::test_integration_status_reports_docusign_missing_public_api_url tests/integration/test_system_api.py::test_integration_status_reports_docusign_live_ready -q
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "settings shows Xero readiness and records mappings"
+```
+
+Expected: pass.
