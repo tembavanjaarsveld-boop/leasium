@@ -246,10 +246,10 @@ number per portfolio so the `entity_id` query param can be hard-coded into
 the webhook URL); (2) on the Twilio console, set the number's *Messaging
 Configuration → A message comes in* webhook to
 `https://<API_HOST>/api/v1/comms/webhooks/twilio-inbound?entity_id=<UUID>`
-with HTTP POST; (3) the existing `TWILIO_AUTH_TOKEN` env var is already
-configured for outbound SMS — a future hardening pass uses it to verify the
-`X-Twilio-Signature` header. v1 is provider-only auth; the webhook verifies
-the entity exists before persisting. Inbound SMS lands in the same
+with HTTP POST; (3) keep `TWILIO_AUTH_TOKEN` configured on the API service so
+Leasium can verify Twilio's `X-Twilio-Signature` header before persisting the
+message. Local/dev environments without a token still accept the webhook for
+setup testing. Inbound SMS lands in the same
 `inbound_message` table with `channel="sms"`, attributed by digits-only
 phone-number suffix match against `tenant.contact_phone`, and surfaces in
 the operator comms queue as `inbound_sms` candidates.

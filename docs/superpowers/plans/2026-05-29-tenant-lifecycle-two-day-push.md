@@ -1811,3 +1811,30 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 77: Twilio Inbound SMS Signature Guard
+
+- [x] **Step 1: Add signed-webhook regressions**
+
+Extend inbound SMS webhook coverage so, when `TWILIO_AUTH_TOKEN` is configured,
+missing signatures are rejected before persistence and valid
+`X-Twilio-Signature` headers are accepted, including signatures generated
+against the configured public API URL behind a proxy.
+
+- [x] **Step 2: Validate Twilio signatures before storage**
+
+Compute Twilio's HMAC-SHA1 signature from the request/public URL plus sorted
+form fields, compare with `secrets.compare_digest`, and keep the no-token
+local/dev setup path unchanged.
+
+- [x] **Step 3: Verify inbound SMS hardening**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::test_twilio_inbound_webhook_persists_and_attributes_by_phone tests/integration/test_comms_api.py::test_twilio_inbound_webhook_rejects_missing_signature_when_token_configured tests/integration/test_comms_api.py::test_twilio_inbound_webhook_accepts_valid_signature_when_token_configured tests/integration/test_comms_api.py::test_twilio_inbound_webhook_accepts_public_api_url_signature -q
+.venv/bin/ruff check apps/api/routers/comms.py tests/integration/test_comms_api.py
+git diff --check
+```
+
+Expected: pass.

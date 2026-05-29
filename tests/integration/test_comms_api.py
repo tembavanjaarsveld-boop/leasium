@@ -6,6 +6,9 @@ arrears reminder drafts only; future slices extend to document-chase and
 lease-event drafts.
 """
 
+import base64
+import hashlib
+import hmac
 from datetime import date, timedelta
 from uuid import UUID
 
@@ -39,6 +42,16 @@ def _entity(session: Session) -> Entity:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
     return entity
+
+
+def _twilio_signature(url: str, data: dict[str, str], auth_token: str) -> str:
+    payload = url + "".join(f"{key}{data[key]}" for key in sorted(data))
+    digest = hmac.new(
+        auth_token.encode(),
+        payload.encode(),
+        hashlib.sha1,
+    ).digest()
+    return base64.b64encode(digest).decode()
 
 
 def _seed_arrears(session: Session) -> dict[str, str]:
@@ -1810,6 +1823,135 @@ def test_twilio_inbound_webhook_persists_and_attributes_by_phone(
     assert candidate["recipient_email"] is None
     assert candidate["subject"] == "SMS reply"
     assert candidate["body"].startswith("Hi Alex SMS,")
+
+
+def test_twilio_inbound_webhook_rejects_missing_signature_when_token_configured(
+    client: TestClient,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Configured Twilio webhooks must be signed before persisting SMS."""
+
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(twilio_auth_token="twilio-secret"),
+    )
+    entity = _entity(session)
+
+    response = client.post(
+        "/api/v1/comms/webhooks/twilio-inbound",
+        params={"entity_id": str(entity.id)},
+        data={
+            "From": "+61400111222",
+            "To": "+61491570006",
+            "Body": "Unsigned SMS should not persist.",
+            "MessageSid": "SM-unsigned-1",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Invalid Twilio webhook signature."
+    rows = session.scalars(
+        select(InboundMessage).where(InboundMessage.provider == "twilio")
+    ).all()
+    assert rows == []
+
+
+def test_twilio_inbound_webhook_accepts_valid_signature_when_token_configured(
+    client: TestClient,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid Twilio signatures keep the configured webhook path open."""
+
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    auth_token = "twilio-secret"
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(twilio_auth_token=auth_token),
+    )
+    entity = _entity(session)
+    data = {
+        "From": "+61400111222",
+        "To": "+61491570006",
+        "Body": "Signed SMS should persist.",
+        "MessageSid": "SM-signed-1",
+    }
+    url = str(
+        client.build_request(
+            "POST",
+            "/api/v1/comms/webhooks/twilio-inbound",
+            params={"entity_id": str(entity.id)},
+        ).url
+    )
+    signature = _twilio_signature(url, data, auth_token)
+
+    response = client.post(
+        "/api/v1/comms/webhooks/twilio-inbound",
+        params={"entity_id": str(entity.id)},
+        data=data,
+        headers={"X-Twilio-Signature": signature},
+    )
+
+    assert response.status_code == 202
+    row = session.get(InboundMessage, UUID(response.json()["id"]))
+    assert row is not None
+    assert row.provider == "twilio"
+    assert row.body_text == "Signed SMS should persist."
+
+
+def test_twilio_inbound_webhook_accepts_public_api_url_signature(
+    client: TestClient,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Proxy deployments can validate the public Twilio webhook URL."""
+
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    auth_token = "twilio-secret"
+    public_api_url = "https://api.leasium.test"
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(
+            public_api_url=public_api_url,
+            twilio_auth_token=auth_token,
+        ),
+    )
+    entity = _entity(session)
+    data = {
+        "From": "+61400111222",
+        "To": "+61491570006",
+        "Body": "Signed public URL SMS should persist.",
+        "MessageSid": "SM-signed-public-1",
+    }
+    url = (
+        f"{public_api_url}/api/v1/comms/webhooks/twilio-inbound"
+        f"?entity_id={entity.id}"
+    )
+    signature = _twilio_signature(url, data, auth_token)
+
+    response = client.post(
+        "/api/v1/comms/webhooks/twilio-inbound",
+        params={"entity_id": str(entity.id)},
+        data=data,
+        headers={"X-Twilio-Signature": signature},
+    )
+
+    assert response.status_code == 202
+    row = session.get(InboundMessage, UUID(response.json()["id"]))
+    assert row is not None
+    assert row.provider == "twilio"
+    assert row.body_text == "Signed public URL SMS should persist."
 
 
 def test_inbound_webhook_without_matching_tenant(

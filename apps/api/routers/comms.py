@@ -14,6 +14,9 @@ records on each call.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import secrets
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -2442,6 +2445,47 @@ def _attribute_inbound_tenant_by_phone(
     return None
 
 
+def _assert_twilio_webhook_signature(
+    request: Request,
+    form_payload: dict[str, Any],
+    settings: Settings,
+) -> None:
+    """Validate Twilio's signed webhook when an auth token is configured."""
+
+    auth_token = settings.twilio_auth_token.strip()
+    if not auth_token:
+        return
+
+    provided = request.headers.get("x-twilio-signature", "").strip()
+    if not provided:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid Twilio webhook signature.",
+        )
+
+    values = "".join(f"{key}{str(form_payload[key])}" for key in sorted(form_payload))
+    public_api_url = settings.public_api_url.strip().rstrip("/")
+    urls = [str(request.url)]
+    if public_api_url:
+        query = f"?{request.url.query}" if request.url.query else ""
+        urls.append(f"{public_api_url}{request.url.path}{query}")
+
+    for url in urls:
+        digest = hmac.new(
+            auth_token.encode(),
+            f"{url}{values}".encode(),
+            hashlib.sha1,
+        ).digest()
+        expected = base64.b64encode(digest).decode()
+        if secrets.compare_digest(provided, expected):
+            return
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Invalid Twilio webhook signature.",
+    )
+
+
 @router.post(
     "/webhooks/twilio-inbound",
     status_code=status.HTTP_202_ACCEPTED,
@@ -2465,9 +2509,10 @@ async def receive_twilio_inbound(
     phone-number suffix match, then run the existing /ai/triage classifier
     when ``OPENAI_API_KEY`` is set.
 
-    Same auth posture as the SendGrid webhook — provider-only, verifies the
-    entity exists. A future hardening pass verifies the Twilio X-Twilio-
-    Signature header against ``twilio_auth_token``.
+    When ``TWILIO_AUTH_TOKEN`` is configured, validates Twilio's
+    ``X-Twilio-Signature`` before persisting anything. Local/dev setups with
+    no token keep accepting the provider-only webhook while credentials are
+    being provisioned.
     """
 
     entity = session.get(Entity, entity_id)
@@ -2477,19 +2522,25 @@ async def receive_twilio_inbound(
             detail="Entity not found.",
         )
 
+    settings = get_settings()
+    try:
+        form = await request.form()
+        signature_payload: dict[str, Any] = {
+            key: str(value) for key, value in form.items()
+        }
+        raw_payload: dict[str, Any] = {
+            key: value[:2000] for key, value in signature_payload.items()
+        }
+    except Exception:  # pragma: no cover - defensive
+        signature_payload = {}
+        raw_payload = {}
+    _assert_twilio_webhook_signature(request, signature_payload, settings)
+
     cleaned_from = (from_phone or "").strip()
     cleaned_to = (to_phone or "").strip()
     cleaned_body = (body or "").strip() or None
 
     tenant = _attribute_inbound_tenant_by_phone(entity_id, cleaned_from, session)
-
-    try:
-        form = await request.form()
-        raw_payload: dict[str, Any] = {
-            key: str(value)[:2000] for key, value in form.items()
-        }
-    except Exception:  # pragma: no cover - defensive
-        raw_payload = {}
 
     message = InboundMessage(
         entity_id=entity_id,
@@ -2514,7 +2565,6 @@ async def receive_twilio_inbound(
     # Best-effort AI classification — same shape as the SendGrid webhook.
     # SMS bodies are short by nature; the classifier handles them the same
     # way it handles pasted email snippets.
-    settings = get_settings()
     if cleaned_body and settings.openai_api_key:
         try:
             result, _ = triage_inbox(body=cleaned_body, settings=settings)
