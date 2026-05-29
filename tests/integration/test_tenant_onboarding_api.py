@@ -1349,6 +1349,29 @@ def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
     ]
     assert len(signed_documents) == 1
     assert downloads == ["envelope-complete-1"]
+    replay_audits = session.scalars(
+        select(AuditAction)
+        .where(
+            AuditAction.action == "signature_receipt",
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id == onboarding.id,
+        )
+        .order_by(AuditAction.occurred_at.asc(), AuditAction.id.asc())
+    ).all()
+    assert len(replay_audits) == 2
+    assert replay_audits[1].tool_input == {
+        "status": "completed",
+        "event": "envelope-completed",
+        "envelope_id": "envelope-complete-1",
+        "tenant_onboarding_id": str(onboarding.id),
+        "lease_id": str(lease.id),
+        "document_id": "document-1",
+        "signed_document_id": signed_document_id,
+        "applied": False,
+        "ignored_reason": "already_completed",
+        "current_signing_status": "completed",
+        "current_last_event": "envelope-completed",
+    }
 
 
 def test_tenant_onboarding_docusign_webhook_rejects_unconfigured_secret(

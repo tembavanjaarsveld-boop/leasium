@@ -2460,3 +2460,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 101: DocuSign Completed Replay Audit
+
+- [x] **Step 1: Add completed replay receipt regression**
+
+Extend completed DocuSign webhook coverage so a duplicate completed callback
+creates a second receipt audit that is explicitly marked as not applied because
+the envelope was already completed.
+
+- [x] **Step 2: Stamp replay-specific ignored reason**
+
+When a completed DocuSign webhook is ignored because signing is already
+completed with a signed timestamp, record `ignored_reason=already_completed`
+with the current signing status and last event.
+
+- [x] **Step 3: Verify replay audit context**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_marks_lease_signed tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_ignores_completed_after_declined -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.
