@@ -1112,6 +1112,7 @@ Open items at session end:
 - DocuSign Connect receipt audits now carry the original lease document id from the envelope send metadata, including declined events that never produce a retained signed PDF.
 - DocuSign Connect receipt audits for ignored event-state conflicts now include the current signing status and last event, so completed-after-declined callbacks explain why they were not applied.
 - Duplicate completed DocuSign webhooks now audit as `applied=false` with `ignored_reason=already_completed`, while preserving the signed document and source document ids in the receipt.
+- Unknown DocuSign envelope callbacks now write targetless receipt audits with `ignored_reason=unknown_envelope` instead of disappearing silently.
 - Tenant-uploaded lease activation now shows a source-aware success notice: `Lease activated after tenant-uploaded lease review.`
 - Historical DocuSign docs were cleaned up so the automation strategy and 5-day report no longer describe the flow as scaffold-only or say completion auto-activates leases; they now reflect signed-PDF retention, explicit activation review, and remaining production-readiness work.
 - DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.

@@ -1787,6 +1787,23 @@ async def record_docusign_envelope_event(
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     onboarding = _find_onboarding_by_docusign_envelope_id(session, envelope_id)
     if onboarding is None:
+        audit_log(
+            session,
+            actor="provider:docusign",
+            action="signature_receipt",
+            target_table="tenant_onboarding",
+            tool_name="docusign.connect_webhook",
+            tool_input={
+                "status": event_status,
+                "event": _docusign_event(payload),
+                "envelope_id": envelope_id,
+                "applied": False,
+                "ignored_reason": "unknown_envelope",
+            },
+            outcome=AuditOutcome.success,
+            data_classification="confidential",
+        )
+        session.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     apply_result = _apply_docusign_webhook_event(
         onboarding,

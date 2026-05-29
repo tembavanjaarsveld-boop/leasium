@@ -2486,3 +2486,28 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 102: DocuSign Unknown Envelope Receipt Audit
+
+- [x] **Step 1: Add unknown-envelope receipt regression**
+
+Extend DocuSign webhook coverage so callbacks for unknown envelope ids still
+write a targetless receipt audit marked as not applied.
+
+- [x] **Step 2: Audit unknown envelope callbacks**
+
+When a signed DocuSign Connect callback has an envelope id and status but no
+matching onboarding signing record, write a `signature_receipt` audit with
+`ignored_reason=unknown_envelope`, without mutating onboarding state.
+
+- [x] **Step 3: Verify unknown envelope receipt audit**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_ignores_unknown_envelope tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_marks_lease_signed -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.

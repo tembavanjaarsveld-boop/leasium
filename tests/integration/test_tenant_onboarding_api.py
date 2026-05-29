@@ -1428,6 +1428,22 @@ def test_tenant_onboarding_docusign_webhook_ignores_unknown_envelope(
     assert response.status_code == 204
     session.refresh(onboarding)
     assert "signed_at" not in onboarding.delivery_data["lease_agreement"]["signing"]
+    webhook_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "signature_receipt",
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id.is_(None),
+        )
+    )
+    assert webhook_audit is not None
+    assert webhook_audit.entity_id is None
+    assert webhook_audit.tool_input == {
+        "status": "completed",
+        "event": None,
+        "envelope_id": "unknown-envelope",
+        "applied": False,
+        "ignored_reason": "unknown_envelope",
+    }
 
 
 def test_tenant_onboarding_docusign_webhook_ignores_completed_after_declined(
