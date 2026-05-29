@@ -402,7 +402,9 @@ def test_promote_lease_change_soft_fails_without_openai_key(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["target_kind"] == "document_intake"
-    assert body["target_href"].startswith("/intake?intake_id=")
+    assert body["target_href"] == (
+        f"/intake?entity_id={context['entity_id']}&review={body['target_id']}"
+    )
 
     intake = session.scalar(
         select(DocumentIntake).where(DocumentIntake.id == UUID(body["target_id"]))
@@ -498,6 +500,9 @@ def test_promote_lease_change_pre_extracts_fields_when_available(
     )
     assert response.status_code == 200, response.text
     body = response.json()
+    assert body["target_href"] == (
+        f"/intake?entity_id={context['entity_id']}&review={body['target_id']}"
+    )
     intake = session.scalar(
         select(DocumentIntake).where(DocumentIntake.id == UUID(body["target_id"]))
     )

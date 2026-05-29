@@ -1682,3 +1682,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 72: AI Inbox Lease-Change Intake Link Parity
+
+- [x] **Step 1: Add entity-aware promote URL regression**
+
+Update AI inbox lease-change promote coverage so soft-failed and extracted
+Smart Intake drafts expect `/intake?entity_id=<entity>&review=<intake-id>`
+instead of the older `/intake?intake_id=<intake-id>` convention.
+
+- [x] **Step 2: Return exact Smart Intake review links**
+
+Change the `lease_change` promote response to include the same entity-aware
+Smart Intake review URL used by Dashboard, Operations, and tenant detail
+handoffs. No provider mutation or frontend routing change is required.
+
+- [x] **Step 3: Verify lease-change promote parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_ai_triage_api.py::test_promote_lease_change_soft_fails_without_openai_key tests/integration/test_ai_triage_api.py::test_promote_lease_change_pre_extracts_fields_when_available -q
+.venv/bin/ruff check apps/api/routers/ai.py tests/integration/test_ai_triage_api.py
+git diff --check
+```
+
+Expected: pass.

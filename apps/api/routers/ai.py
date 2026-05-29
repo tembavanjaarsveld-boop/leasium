@@ -1299,7 +1299,7 @@ def promote_triage(
         return InboxPromoteRead(
             target_kind="document_intake",
             target_id=intake.id,
-            target_href=f"/intake?intake_id={intake.id}",
+            target_href=f"/intake?entity_id={payload.entity_id}&review={intake.id}",
             target_label=title or "Lease change from inbox",
         )
 
