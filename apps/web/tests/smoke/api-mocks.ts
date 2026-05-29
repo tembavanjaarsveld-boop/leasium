@@ -3268,7 +3268,7 @@ export async function mockLeasiumApi(
             recipient_phone: "+61400111222",
             subject: "SMS reply to Bright Cafe Pty Ltd",
             body: "Thanks for the update. We have logged this and will follow up shortly.",
-            severity: "warning",
+            severity: "danger",
             due_at: "2026-05-27T05:00:00.000Z",
             detail: "AI: maintenance request (82%)",
             generated_at: "2026-05-27T02:00:00.000Z",
@@ -3304,7 +3304,7 @@ export async function mockLeasiumApi(
             recipient_phone: null,
             subject: "DocuSign retry needed for your lease activation",
             body: "Hi Bright Cafe team, your lease activation is waiting on a DocuSign retry review. We are checking the envelope status now and will confirm the next step before anything is sent.",
-            severity: "warning",
+            severity: "danger",
             due_at: "2026-05-28T00:00:00.000Z",
             detail: "DocuSign retry review: envelope stalled before activation",
             generated_at: "2026-05-27T02:00:00.000Z",
@@ -3337,7 +3337,7 @@ export async function mockLeasiumApi(
       await fulfillJson(route, {
         entity_id: entityId,
         total: 4,
-        urgent: 0,
+        urgent: 2,
         by_kind: {
           arrears_reminder: 0,
           insurance_expiry: 0,

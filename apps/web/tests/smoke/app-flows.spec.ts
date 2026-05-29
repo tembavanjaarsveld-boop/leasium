@@ -348,7 +348,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("link", {
-      name: "Work, 4 drafts in the comms queue, 0 urgent",
+      name: "Work, 4 drafts in the comms queue, 2 urgent",
     }),
   ).toBeVisible();
   await expect(
@@ -364,6 +364,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     page.getByRole("group", { name: "Settled now: 0" }),
   ).toBeVisible();
+  await expect(page.getByRole("group", { name: "Urgent: 2" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "All drafts 4" })).toHaveAttribute(
     "aria-selected",
     "true",
@@ -425,6 +426,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     lifecycleCard.getByRole("button", { name: "Approve & send" }),
   ).toBeEnabled();
+  await expect(lifecycleCard.getByText("Urgent")).toBeVisible();
   const tenantUploadLifecycleCard = page
     .locator("section")
     .filter({ hasText: "tenant upload completed" })

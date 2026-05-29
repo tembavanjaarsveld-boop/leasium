@@ -701,3 +701,26 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 32: Tenant Lifecycle Urgency Smoke Parity
+
+- [x] **Step 1: Add urgent-count smoke expectation**
+
+Extend the focused comms smoke to expect two urgent lifecycle drafts, matching
+the backend `danger` severity for DocuSign retry and activation-review work.
+
+- [x] **Step 2: Align fixture severity with backend scanner**
+
+The shared comms smoke fixture now marks the DocuSign retry and tenant-upload
+activation-review drafts as `danger`, and `/comms/queue/counts` reports
+`urgent: 2`.
+
+- [x] **Step 3: Verify urgency parity**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "comms queue approves inbound SMS with a phone recipient"
+```
+
+Expected: pass.
