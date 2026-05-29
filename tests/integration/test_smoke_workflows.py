@@ -57,6 +57,26 @@ def test_healthcheck_reports_deployed_commit(
     }
 
 
+def test_healthcheck_contract_is_typed_in_openapi(client: TestClient) -> None:
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    openapi = response.json()
+    health_schema = openapi["paths"]["/health"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]
+    assert health_schema == {"$ref": "#/components/schemas/ApiHealthRead"}
+    assert openapi["components"]["schemas"]["ApiHealthRead"]["properties"] == {
+        "status": {"type": "string", "title": "Status"},
+        "app": {"type": "string", "title": "App"},
+        "release": {"$ref": "#/components/schemas/ApiReleaseRead"},
+    }
+    assert openapi["components"]["schemas"]["ApiReleaseRead"]["properties"] == {
+        "commit": {"type": "string", "title": "Commit"},
+        "source": {"type": "string", "title": "Source"},
+    }
+
+
 def test_billing_readiness_smoke_surfaces_actionable_blockers(
     client: TestClient,
     session: Session,

@@ -3,6 +3,17 @@
 from pydantic import BaseModel, Field
 
 
+class ApiReleaseRead(BaseModel):
+    commit: str
+    source: str
+
+
+class ApiHealthRead(BaseModel):
+    status: str
+    app: str
+    release: ApiReleaseRead
+
+
 class ProviderStatus(BaseModel):
     configured: bool
     live_ready: bool = False

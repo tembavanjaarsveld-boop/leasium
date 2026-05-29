@@ -811,3 +811,25 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 37: API Health OpenAPI Contract
+
+- [x] **Step 1: Add health contract coverage**
+
+Add smoke coverage that `/openapi.json` describes `/health` as a typed
+`ApiHealthRead` response with a nested `ApiReleaseRead` release block.
+
+- [x] **Step 2: Type the health endpoint**
+
+Add named system schemas for the health response and wire `/health` with a
+`response_model`, preserving the existing non-secret release payload.
+
+- [x] **Step 3: Verify health contract**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_smoke_workflows.py::test_healthcheck_smoke tests/integration/test_smoke_workflows.py::test_healthcheck_reports_deployed_commit tests/integration/test_smoke_workflows.py::test_healthcheck_contract_is_typed_in_openapi -q
+```
+
+Expected: pass.

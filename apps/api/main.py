@@ -37,6 +37,7 @@ from apps.api.routers import (
     work_assignment_notifications,
     xero,
 )
+from apps.api.schemas.system import ApiHealthRead
 
 settings = get_settings()
 
@@ -52,11 +53,15 @@ app.add_middleware(
 )
 
 
-@app.get("/health")
-def health() -> dict[str, str | dict[str, str]]:
+@app.get("/health", response_model=ApiHealthRead)
+def health() -> ApiHealthRead:
     """Healthcheck for local Docker and uptime checks."""
 
-    return {"status": "ok", "app": settings.app_name, "release": _release_metadata()}
+    return ApiHealthRead(
+        status="ok",
+        app=settings.app_name,
+        release=_release_metadata(),
+    )
 
 
 def _release_metadata(environ: Mapping[str, str] | None = None) -> dict[str, str]:
