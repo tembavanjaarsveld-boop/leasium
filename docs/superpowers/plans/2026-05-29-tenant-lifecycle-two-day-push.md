@@ -1650,3 +1650,35 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 71: Compliance Evidence Upload Back-Attribution
+
+- [x] **Step 1: Add compliance evidence attribution regression**
+
+Add backend coverage for a manual `/documents` upload from a `/comms`
+compliance obligation candidate. The upload must preserve existing obligation
+metadata, add the stored document id to `evidence_document_ids[]`, append a
+compact `evidence_history[]` row, and stamp the document metadata with the
+manual comms evidence source and source obligation id.
+
+- [x] **Step 2: Thread obligation context through manual evidence upload**
+
+Teach the document upload endpoint to accept optional `obligation_id`, validate
+entity/scope consistency, derive missing property/unit/lease/tenant scope from
+the obligation when safe, and back-attribute the uploaded document to the
+obligation metadata. Update `/comms` so manual compliance evidence uploads pass
+the candidate's obligation id and show linked-audit follow-up copy.
+
+- [x] **Step 3: Verify compliance evidence handoff**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::test_comms_queue_returns_compliance_obligation_candidate tests/integration/test_comms_api.py::test_compliance_evidence_upload_links_document_to_obligation -q
+.venv/bin/ruff check apps/api/routers/documents.py tests/integration/test_comms_api.py
+cd apps/web && ./node_modules/.bin/eslint src/app/comms/page.tsx src/lib/api.ts
+cd apps/web && ./node_modules/.bin/tsc --noEmit
+git diff --check
+```
+
+Expected: pass.

@@ -1598,6 +1598,92 @@ def test_comms_queue_returns_compliance_obligation_candidate(
     assert candidate["recipient_email"] == "jess@compliance.example"
 
 
+def test_compliance_evidence_upload_links_document_to_obligation(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Manual compliance evidence uploads stay linked to the source obligation."""
+
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Compliance Evidence House",
+        street_address="55 Evidence Street",
+        suburb="Brisbane City",
+        state="QLD",
+        postcode="4000",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Suite 4")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Evidence Tenant Pty Ltd",
+        contact_name="Evan Evidence",
+        contact_email="evan@compliance.example",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+        commencement_date=date.today() - timedelta(days=200),
+        expiry_date=date.today() + timedelta(days=730),
+    )
+    session.add(lease)
+    session.flush()
+    obligation = Obligation(
+        entity_id=entity.id,
+        property_id=prop.id,
+        tenancy_unit_id=unit.id,
+        lease_id=lease.id,
+        title="Annual fire safety certificate",
+        category=ObligationCategory.compliance,
+        status=ObligationStatus.due_soon,
+        due_date=date.today() + timedelta(days=20),
+        obligation_metadata={"existing": "kept"},
+    )
+    session.add(obligation)
+    session.commit()
+
+    upload_response = client.post(
+        "/api/v1/documents",
+        data={
+            "entity_id": str(entity.id),
+            "tenant_id": str(tenant.id),
+            "obligation_id": str(obligation.id),
+            "category": "other",
+            "notes": "Compliance evidence for annual fire safety.",
+        },
+        files={
+            "file": (
+                "fire-safety.pdf",
+                b"fire safety evidence",
+                "application/pdf",
+            )
+        },
+    )
+
+    assert upload_response.status_code == 201
+    document_id = UUID(upload_response.json()["id"])
+    document = session.get(StoredDocument, document_id)
+    assert document is not None
+    session.refresh(obligation)
+    assert obligation.obligation_metadata["existing"] == "kept"
+    assert obligation.obligation_metadata["evidence_document_ids"] == [
+        str(document_id)
+    ]
+    assert obligation.obligation_metadata["evidence_history"][-1] == {
+        "document_id": str(document_id),
+        "filename": "fire-safety.pdf",
+        "source": "manual_comms_evidence_upload",
+    }
+    assert document.document_metadata["source"] == "manual_comms_evidence_upload"
+    assert document.document_metadata["source_obligation_id"] == str(obligation.id)
+
+
 def test_inbound_webhook_classifies_with_ai_triage(
     client: TestClient,
     session: Session,

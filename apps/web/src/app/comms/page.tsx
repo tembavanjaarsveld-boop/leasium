@@ -702,9 +702,7 @@ function CandidateCard({
   // Evidence-attach lives on compliance obligations only. Smart Intake is
   // the recommended path (AI extracts metadata + attributes the document);
   // the manual file picker is a last-resort fallback so operators don't
-  // need to navigate elsewhere mid-flow. Backend v1 lands the upload in
-  // StoredDocument keyed to entity + tenant; v2 plumbs back-attribution
-  // into obligation_metadata.
+  // need to navigate elsewhere mid-flow.
   const showEvidencePanel = candidate.kind === "compliance_obligation";
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [evidenceFilename, setEvidenceFilename] = useState<string | null>(null);
@@ -713,6 +711,11 @@ function CandidateCard({
       uploadDocument({
         entityId,
         tenantId: candidate.tenant_id ?? undefined,
+        obligationId:
+          candidate.kind === "compliance_obligation" &&
+          candidate.target_kind === "obligation"
+            ? candidate.target_id
+            : undefined,
         category: "other",
         notes: `Compliance evidence for "${candidate.subject}"`,
         file,
@@ -914,8 +917,8 @@ function CandidateCard({
             {evidenceFilename ? (
               <p className="text-xs text-success-strong">
                 Uploaded {evidenceFilename}. The file is stored against the
-                tenant; finish review in Smart Intake to formally link it to
-                this compliance obligation.
+                tenant and linked to this compliance obligation for audit
+                follow-up.
               </p>
             ) : null}
             {evidenceError ? (

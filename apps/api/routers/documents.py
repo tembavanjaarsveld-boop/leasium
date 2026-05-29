@@ -24,6 +24,7 @@ from stewart.core.models import (
     DocumentCategory,
     DocumentIntakeStatus,
     Lease,
+    Obligation,
     Property,
     StoredDocument,
     TenancyUnit,
@@ -104,6 +105,31 @@ def _onboarding_for_entity(
     return onboarding
 
 
+def _obligation_for_entity(
+    obligation_id: UUID,
+    entity_id: UUID,
+    session: Session,
+) -> Obligation:
+    obligation = session.get(Obligation, obligation_id)
+    if (
+        obligation is None
+        or obligation.deleted_at is not None
+        or obligation.entity_id != entity_id
+    ):
+        raise _not_found("Obligation")
+    return obligation
+
+
+def _require_matching_scope(
+    provided_id: UUID | None,
+    expected_id: UUID | None,
+    *,
+    detail: str,
+) -> None:
+    if provided_id is not None and expected_id is not None and provided_id != expected_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
 @router.get("", response_model=list[DocumentRead])
 def list_documents(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -153,10 +179,46 @@ async def upload_document(
     tenant_id: Annotated[UUID | None, Form()] = None,
     lease_id: Annotated[UUID | None, Form()] = None,
     tenant_onboarding_id: Annotated[UUID | None, Form()] = None,
+    obligation_id: Annotated[UUID | None, Form()] = None,
     category: Annotated[DocumentCategory, Form()] = DocumentCategory.other,
     notes: Annotated[str | None, Form()] = None,
 ) -> StoredDocument:
     assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    obligation = (
+        _obligation_for_entity(obligation_id, entity_id, session)
+        if obligation_id is not None
+        else None
+    )
+    if obligation is not None:
+        _require_matching_scope(
+            property_id,
+            obligation.property_id,
+            detail="Document property must match the obligation property.",
+        )
+        _require_matching_scope(
+            tenancy_unit_id,
+            obligation.tenancy_unit_id,
+            detail="Document unit must match the obligation unit.",
+        )
+        _require_matching_scope(
+            lease_id,
+            obligation.lease_id,
+            detail="Document lease must match the obligation lease.",
+        )
+        property_id = property_id or obligation.property_id
+        tenancy_unit_id = tenancy_unit_id or obligation.tenancy_unit_id
+        lease_id = lease_id or obligation.lease_id
+        if tenant_id is not None and obligation.lease_id is not None:
+            obligation_lease = session.get(Lease, obligation.lease_id)
+            if obligation_lease is not None and obligation_lease.tenant_id != tenant_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Document tenant must match the obligation tenant.",
+                )
+        if tenant_id is None and obligation.lease_id is not None:
+            obligation_lease = session.get(Lease, obligation.lease_id)
+            if obligation_lease is not None:
+                tenant_id = obligation_lease.tenant_id
     if property_id is not None:
         _property_for_entity(property_id, entity_id, session)
     if tenancy_unit_id is not None:
@@ -214,6 +276,33 @@ async def upload_document(
     )
     session.add(document)
     session.flush()
+    if obligation is not None:
+        document.document_metadata = {
+            **(document.document_metadata or {}),
+            "source": "manual_comms_evidence_upload",
+            "source_obligation_id": str(obligation.id),
+            "source_obligation_title": obligation.title,
+        }
+        metadata = dict(obligation.obligation_metadata or {})
+        evidence_document_ids = list(metadata.get("evidence_document_ids") or [])
+        document_id = str(document.id)
+        if document_id not in evidence_document_ids:
+            evidence_document_ids.append(document_id)
+        evidence_history = list(metadata.get("evidence_history") or [])
+        evidence_history.append(
+            {
+                "document_id": document_id,
+                "filename": document.filename,
+                "source": "manual_comms_evidence_upload",
+            }
+        )
+        metadata.update(
+            {
+                "evidence_document_ids": evidence_document_ids,
+                "evidence_history": evidence_history[-20:],
+            }
+        )
+        obligation.obligation_metadata = metadata
     audit_log(
         session,
         actor=user.actor,
@@ -222,6 +311,11 @@ async def upload_document(
         action="upload",
         target_table="stored_document",
         target_id=document.id,
+        tool_input=(
+            {"obligation_id": str(obligation.id)}
+            if obligation is not None
+            else None
+        ),
     )
     session.commit()
     session.refresh(document)

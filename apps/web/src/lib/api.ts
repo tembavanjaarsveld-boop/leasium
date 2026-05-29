@@ -3786,6 +3786,7 @@ export function uploadDocument(payload: {
   tenantId?: string;
   leaseId?: string;
   tenantOnboardingId?: string;
+  obligationId?: string;
   category: DocumentCategory;
   notes?: string | null;
   file: File;
@@ -3806,6 +3807,9 @@ export function uploadDocument(payload: {
   }
   if (payload.tenantOnboardingId) {
     formData.append("tenant_onboarding_id", payload.tenantOnboardingId);
+  }
+  if (payload.obligationId) {
+    formData.append("obligation_id", payload.obligationId);
   }
   formData.append("category", payload.category);
   if (payload.notes?.trim()) {
