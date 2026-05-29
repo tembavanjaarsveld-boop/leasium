@@ -3364,6 +3364,25 @@ export async function mockLeasiumApi(
             generated_at: "2026-05-27T02:00:00.000Z",
           },
           {
+            id: "comms-tenant-lifecycle-stall-setup-1",
+            kind: "tenant_lifecycle_stall",
+            target_kind: "tenant_onboarding",
+            target_id: "tenant-onboarding-docusign-skipped-1",
+            tenant_id: tenantId,
+            tenant_name: "Bright Cafe Pty Ltd",
+            property_name: "Queen Street Retail Centre",
+            unit_label: "Shop 3",
+            recipient_email: "tenant@example.com",
+            recipient_phone: null,
+            subject: "DocuSign setup needed before lease signing",
+            body: "Hi Bright Cafe team, the DocuSign signing request could not be sent because provider setup needs attention. We are fixing the signing setup before sending a fresh lease pack.",
+            severity: "danger",
+            due_at: "2026-05-28T00:00:00.000Z",
+            detail:
+              "DocuSign skipped, DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before sending live lease envelopes",
+            generated_at: "2026-05-27T02:00:00.000Z",
+          },
+          {
             id: "comms-tenant-lifecycle-stall-2",
             kind: "tenant_lifecycle_stall",
             target_kind: "tenant_onboarding",
@@ -3390,8 +3409,8 @@ export async function mockLeasiumApi(
     if (method === "GET" && path === "/comms/queue/counts") {
       await fulfillJson(route, {
         entity_id: entityId,
-        total: 4,
-        urgent: 2,
+        total: 5,
+        urgent: 3,
         by_kind: {
           arrears_reminder: 0,
           insurance_expiry: 0,
@@ -3400,7 +3419,7 @@ export async function mockLeasiumApi(
           inbound_sms: 1,
           compliance_obligation: 0,
           rent_review: 1,
-          tenant_lifecycle_stall: 2,
+          tenant_lifecycle_stall: 3,
         },
         generated_at: "2026-05-27T02:00:00.000Z",
       });

@@ -1017,3 +1017,25 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::
 ```
 
 Expected: pass.
+
+## Task 46: Skipped DocuSign Comms Smoke Parity
+
+- [x] **Step 1: Add comms smoke expectation**
+
+Extend the Comms queue smoke to expect the skipped DocuSign setup draft in the
+Tenant lifecycle tab, CSV export, overall draft count, and urgent count.
+
+- [x] **Step 2: Update shared comms fixture**
+
+Add a third tenant lifecycle mock candidate for `DocuSign skipped` setup work
+and align `/comms/queue/counts` with five total drafts and three urgent drafts.
+
+- [x] **Step 3: Verify browser coverage**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "comms queue approves inbound SMS with a phone recipient"
+```
+
+Expected: pass.
