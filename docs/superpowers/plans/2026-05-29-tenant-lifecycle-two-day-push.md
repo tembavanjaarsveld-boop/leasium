@@ -2034,3 +2034,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 85: Tenant Upload Promotion Audit Scope
+
+- [x] **Step 1: Add promotion audit scope regressions**
+
+Extend tenant portal lease and insurance upload promotion tests so the Smart
+Intake promotion audit must include the tenant onboarding id, tenant id, lease
+id, and candidate type.
+
+- [x] **Step 2: Stamp scoped promotion evidence**
+
+When a tenant-uploaded lease or insurance document is promoted to Smart Intake,
+include the source onboarding/tenant/lease/candidate evidence in the
+`document_intake` promotion audit row.
+
+- [x] **Step 3: Verify tenant-upload promotion scope**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_lease_upload_promotes_document_to_smart_intake tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_promotes_document_to_smart_intake tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_extracts_when_openai_is_configured -q
+.venv/bin/ruff check apps/api/routers/tenant_portal.py tests/integration/test_tenant_portal_api.py
+git diff --check
+```
+
+Expected: pass.

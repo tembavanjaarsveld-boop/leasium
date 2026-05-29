@@ -1557,6 +1557,23 @@ def test_tenant_portal_lease_upload_promotes_document_to_smart_intake(
     assert intake.review_data["lease_id"] == scope["lease_id"]
     assert document.document_metadata["smart_intake_id"] == str(intake.id)
     assert document.document_metadata["auto_match_candidate"] == "tenant_uploaded_lease"
+    promotion_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "document_intake",
+            AuditAction.target_id == intake.id,
+            AuditAction.action == "promote",
+        )
+    )
+    assert promotion_audit is not None
+    assert promotion_audit.tool_input == {
+        "document_id": str(document.id),
+        "category": "lease",
+        "source": "tenant_portal",
+        "candidate": "tenant_uploaded_lease_auto_match",
+        "tenant_onboarding_id": scope["onboarding_id"],
+        "tenant_id": scope["tenant_id"],
+        "lease_id": scope["lease_id"],
+    }
 
 
 def test_tenant_portal_insurance_upload_promotes_document_to_smart_intake(
@@ -1586,6 +1603,23 @@ def test_tenant_portal_insurance_upload_promotes_document_to_smart_intake(
     assert intake.review_data["candidate"] == "tenant_uploaded_insurance_auto_update"
     assert intake.review_data["tenant_id"] == scope["tenant_id"]
     assert document.document_metadata["auto_match_candidate"] == "tenant_uploaded_insurance"
+    promotion_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "document_intake",
+            AuditAction.target_id == intake.id,
+            AuditAction.action == "promote",
+        )
+    )
+    assert promotion_audit is not None
+    assert promotion_audit.tool_input == {
+        "document_id": str(document.id),
+        "category": "insurance",
+        "source": "tenant_portal",
+        "candidate": "tenant_uploaded_insurance_auto_update",
+        "tenant_onboarding_id": scope["onboarding_id"],
+        "tenant_id": scope["tenant_id"],
+        "lease_id": scope["lease_id"],
+    }
 
 
 def test_tenant_portal_insurance_upload_extracts_when_openai_is_configured(
