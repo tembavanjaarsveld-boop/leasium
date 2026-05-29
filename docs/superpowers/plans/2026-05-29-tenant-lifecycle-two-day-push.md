@@ -1494,3 +1494,29 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 65: Backend Activation Review Gate
+
+- [x] **Step 1: Add missing-review regression coverage**
+
+Add an onboarding activation integration test where signing metadata looks
+completed and has a retained signed document, but does not include
+`lease_activation_review.status = "ready_for_review"`.
+
+- [x] **Step 2: Require explicit activation-review readiness**
+
+In the signed-lease activation helper, reject activation unless the signing
+metadata carries the review marker created by DocuSign completion or accepted
+tenant-uploaded lease match. Keep the existing signed timestamp, signed
+document, and pending-lease checks.
+
+- [x] **Step 3: Verify activation paths**
+
+Run:
+
+```bash
+.venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_activate_lease_rejects_missing_activation_review tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_activate_lease_after_docusign_completion tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_activate_lease_rejects_missing_signed_document -q
+.venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_lease_upload_extraction_adds_match_recommendation -q
+```
+
+Expected: pass.

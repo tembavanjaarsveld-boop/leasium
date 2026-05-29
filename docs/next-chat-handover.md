@@ -330,7 +330,10 @@ Last updated: 2026-05-28
   explicit activation review, but `Lease.status` is not changed automatically.
   Operators can now click an explicit tenant-detail **Activate lease** action
   after signed completion; that route activates only pending leases and stamps
-  lease metadata/signing history. Settings > Organisation > Integrations now
+  lease metadata/signing history. The backend activation route now also
+  requires `lease_activation_review.status = ready_for_review`, so malformed or
+  legacy signed-looking metadata cannot bypass the review marker. Settings >
+  Organisation > Integrations now
   reports DocuSign readiness, shows the Connect webhook URL when
   `PUBLIC_API_URL` is set, warns when credentials are present but
   `DOCUSIGN_WEBHOOK_SECRET` is still missing, warns specifically when

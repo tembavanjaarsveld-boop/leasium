@@ -974,6 +974,15 @@ def _activate_signed_onboarding_lease(
             status_code=status.HTTP_409_CONFLICT,
             detail="Retain the signed lease document before activation.",
         )
+    activation_review = signing_data.get("lease_activation_review")
+    activation_review_data = (
+        activation_review if isinstance(activation_review, dict) else {}
+    )
+    if activation_review_data.get("status") != "ready_for_review":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Review signed lease activation before activating.",
+        )
     if lease.status != LeaseStatus.pending:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
