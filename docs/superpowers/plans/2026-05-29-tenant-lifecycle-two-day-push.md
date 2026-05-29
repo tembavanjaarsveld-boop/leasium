@@ -2302,3 +2302,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 95: Tenant Upload Promotion Intake Evidence
+
+- [x] **Step 1: Add tenant-upload promotion intake regressions**
+
+Extend tenant-uploaded lease and insurance promotion coverage so the promotion
+audit must include the exact Smart Intake row created for operator review.
+
+- [x] **Step 2: Stamp promoted intake id on promotion audits**
+
+When a tenant-uploaded lease or insurance document is promoted into Smart
+Intake, include `document_intake_id` alongside the document, category,
+candidate, onboarding, tenant, and lease scope in the `document_intake`
+promotion audit payload.
+
+- [x] **Step 3: Verify tenant-upload promotion intake parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_lease_upload_promotes_document_to_smart_intake tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_promotes_document_to_smart_intake tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_extracts_when_openai_is_configured -q
+.venv/bin/ruff check apps/api/routers/tenant_portal.py tests/integration/test_tenant_portal_api.py
+git diff --check
+```
+
+Expected: pass.

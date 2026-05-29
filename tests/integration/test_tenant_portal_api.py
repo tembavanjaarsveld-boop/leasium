@@ -1568,6 +1568,7 @@ def test_tenant_portal_lease_upload_promotes_document_to_smart_intake(
     assert promotion_audit is not None
     assert promotion_audit.tool_input == {
         "document_id": str(document.id),
+        "document_intake_id": str(intake.id),
         "category": "lease",
         "source": "tenant_portal",
         "candidate": "tenant_uploaded_lease_auto_match",
@@ -1614,6 +1615,7 @@ def test_tenant_portal_insurance_upload_promotes_document_to_smart_intake(
     assert promotion_audit is not None
     assert promotion_audit.tool_input == {
         "document_id": str(document.id),
+        "document_intake_id": str(intake.id),
         "category": "insurance",
         "source": "tenant_portal",
         "candidate": "tenant_uploaded_insurance_auto_update",

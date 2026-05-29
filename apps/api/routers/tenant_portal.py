@@ -715,6 +715,7 @@ def _maybe_promote_tenant_upload_to_intake(
         target_id=intake.id,
         tool_input={
             "document_id": str(document.id),
+            "document_intake_id": str(intake.id),
             "category": document.category.value,
             "source": "tenant_portal",
             "candidate": candidate,
