@@ -2245,8 +2245,13 @@ async def _promote_sendgrid_attachments_to_intake(
             target_id=intake.id,
             tool_input={
                 "document_id": str(document.id),
+                "document_intake_id": str(intake.id),
                 "inbound_message_id": str(message.id),
                 "filename": safe_filename,
+                "source": "sendgrid_inbound_parse",
+                "candidate": "inbound_email_attachment",
+                "tenant_id": str(tenant.id) if tenant is not None else None,
+                "attachment_field": str(field_name),
             },
             tool_output_summary=(
                 "SendGrid inbound attachment promoted to Smart Intake review queue."

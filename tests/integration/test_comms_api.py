@@ -1298,6 +1298,24 @@ def test_inbound_webhook_routes_attachments_to_smart_intake(
     assert "No tenant data, lease data, provider action, or payment record" in (
         intake.review_data["guardrail"]
     )
+    promotion_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "document_intake",
+            AuditAction.target_id == intake.id,
+            AuditAction.action == "promote",
+        )
+    )
+    assert promotion_audit is not None
+    assert promotion_audit.tool_input == {
+        "document_id": str(document.id),
+        "document_intake_id": str(intake.id),
+        "inbound_message_id": str(message_id),
+        "filename": "signed-lease.pdf",
+        "source": "sendgrid_inbound_parse",
+        "candidate": "inbound_email_attachment",
+        "tenant_id": str(tenant.id),
+        "attachment_field": "attachment1",
+    }
 
     queue = client.get(
         "/api/v1/comms/queue",

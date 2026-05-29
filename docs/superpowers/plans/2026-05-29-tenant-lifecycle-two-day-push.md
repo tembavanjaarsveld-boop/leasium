@@ -2250,3 +2250,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 93: Inbound Attachment Promotion Audit Scope
+
+- [x] **Step 1: Add inbound promotion audit scope regression**
+
+Extend SendGrid inbound attachment routing coverage so the Smart Intake
+promotion audit must include the intake id, inbound message id, source,
+candidate type, attributed tenant id, and attachment field.
+
+- [x] **Step 2: Stamp scoped inbound promotion evidence**
+
+When inbound email attachments are promoted into Smart Intake, include the
+source inbound message, tenant attribution, candidate type, attachment field,
+document id, and intake id in the `document_intake` promotion audit payload.
+
+- [x] **Step 3: Verify inbound promotion/extraction parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::test_inbound_webhook_routes_attachments_to_smart_intake tests/integration/test_comms_api.py::test_inbound_webhook_extracts_attachment_when_openai_is_configured tests/integration/test_comms_api.py::test_inbound_webhook_keeps_attachment_intake_when_extraction_fails -q
+.venv/bin/ruff check apps/api/routers/comms.py tests/integration/test_comms_api.py
+git diff --check
+```
+
+Expected: pass.
