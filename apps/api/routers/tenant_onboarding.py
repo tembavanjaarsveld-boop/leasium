@@ -94,6 +94,10 @@ EXPIRY_REMINDER_STEPS = (
 )
 ACTIVE_DELIVERY_STATUSES = {"queued", "sent", "delivered", "opened"}
 ACTIVE_DOCUSIGN_SIGNING_STATUSES = {"queued", "sent", "delivered"}
+DOCUSIGN_SEND_SIGNING_STATUSES = ACTIVE_DOCUSIGN_SIGNING_STATUSES | {
+    "failed",
+    "skipped",
+}
 
 
 def _onboarding_url(token: str) -> str:
@@ -1328,7 +1332,7 @@ def _deliver_lease_pack(
         "receipts": receipts,
         "docusign": docusign_receipt,
     }
-    if signature_result.status in {"queued", "sent"}:
+    if signature_result.status in DOCUSIGN_SEND_SIGNING_STATUSES:
         lease_agreement = delivery.get("lease_agreement")
         lease_agreement_data = dict(lease_agreement) if isinstance(lease_agreement, dict) else {}
         lease_agreement_data["signing"] = {
@@ -1340,6 +1344,8 @@ def _deliver_lease_pack(
             "sent_at": now.isoformat(),
             "sent_by_user_id": str(user.id),
         }
+        if signature_result.error:
+            lease_agreement_data["signing"]["error"] = signature_result.error
         lease_agreement_data["last_activity_at"] = now.isoformat()
         delivery["lease_agreement"] = lease_agreement_data
     history_raw = delivery.get("lease_pack_history")

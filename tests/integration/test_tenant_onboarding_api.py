@@ -983,7 +983,12 @@ def test_tenant_onboarding_send_lease_pack_audits_skipped_docusign_as_error(
     lease_pack = response.json()["delivery_data"]["lease_pack"]
     assert lease_pack["docusign"]["status"] == "skipped"
     assert lease_pack["docusign"]["document_id"] == str(lease_document.id)
-    assert "lease_agreement" not in response.json()["delivery_data"]
+    signing = response.json()["delivery_data"]["lease_agreement"]["signing"]
+    assert signing["provider"] == "docusign"
+    assert signing["status"] == "skipped"
+    assert signing["document_id"] == str(lease_document.id)
+    assert signing["error"] == lease_pack["docusign"]["error"]
+    assert signing["sent_at"] is not None
     audit = session.scalar(
         select(AuditAction)
         .where(
@@ -995,6 +1000,86 @@ def test_tenant_onboarding_send_lease_pack_audits_skipped_docusign_as_error(
     assert audit is not None
     assert audit.outcome == AuditOutcome.error
     assert audit.error_message == lease_pack["docusign"]["error"]
+    queue_response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": _entity_id(session)},
+    )
+    assert queue_response.status_code == 200
+    lifecycle_candidates = [
+        candidate
+        for candidate in queue_response.json()["candidates"]
+        if candidate["kind"] == "tenant_lifecycle_stall"
+    ]
+    assert len(lifecycle_candidates) == 1
+    assert "DocuSign setup needed" in lifecycle_candidates[0]["subject"]
+    assert "DOCUSIGN_BASE_URL" in (lifecycle_candidates[0]["detail"] or "")
+
+
+def test_tenant_onboarding_failed_docusign_send_enters_lifecycle_queue(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    def fake_lease_pack_send(invite, settings):  # noqa: ANN001, ARG001
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+                provider_message_id="lease-pack-failed-docusign",
+                metadata={"template_key": invite.template_key},
+            )
+        ]
+
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "send_tenant_lease_pack_invite",
+        fake_lease_pack_send,
+    )
+
+    def fake_signature_send(request, settings):  # noqa: ANN001, ARG001
+        return LeaseSignatureResult(
+            status="failed",
+            signer_email=request.signer_email,
+            error="DocuSign envelope create failed: timeout",
+        )
+
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "send_lease_for_signature",
+        fake_signature_send,
+    )
+    body = _create_applied_onboarding(client, session)
+    lease_document = _attach_lease_document(session, body["id"])
+
+    response = client.post(
+        f"/api/v1/tenant-onboarding/{body['id']}/send-lease-pack",
+    )
+
+    assert response.status_code == 200
+    lease_pack = response.json()["delivery_data"]["lease_pack"]
+    assert lease_pack["docusign"]["status"] == "failed"
+    signing = response.json()["delivery_data"]["lease_agreement"]["signing"]
+    assert signing["provider"] == "docusign"
+    assert signing["status"] == "failed"
+    assert signing["document_id"] == str(lease_document.id)
+    assert signing["error"] == "DocuSign envelope create failed: timeout"
+    queue_response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": _entity_id(session)},
+    )
+    assert queue_response.status_code == 200
+    lifecycle_candidates = [
+        candidate
+        for candidate in queue_response.json()["candidates"]
+        if candidate["kind"] == "tenant_lifecycle_stall"
+    ]
+    assert len(lifecycle_candidates) == 1
+    assert "DocuSign retry needed" in lifecycle_candidates[0]["subject"]
+    assert "DocuSign envelope create failed: timeout" in (
+        lifecycle_candidates[0]["detail"] or ""
+    )
 
 
 def test_tenant_onboarding_send_lease_pack_retries_after_declined_docusign(

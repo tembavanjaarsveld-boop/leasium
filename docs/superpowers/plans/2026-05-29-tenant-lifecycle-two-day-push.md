@@ -2087,3 +2087,31 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 87: Skipped and Failed DocuSign Lifecycle Queue
+
+- [x] **Step 1: Add real send-path lifecycle regressions**
+
+Extend Send lease pack coverage so skipped DocuSign setup and failed envelope
+create outcomes must stamp `lease_agreement.signing` and appear in the tenant
+lifecycle comms queue from the real send path, not only from seeded scanner
+fixtures.
+
+- [x] **Step 2: Stamp non-active DocuSign send outcomes**
+
+When DocuSign returns `skipped` or `failed`, store the provider, status,
+document id, sent-at timestamp, signer, and provider error in
+`delivery_data.lease_agreement.signing`. Active-envelope locking remains limited
+to `queued`, `sent`, and `delivered`.
+
+- [x] **Step 3: Verify skipped/failed lifecycle parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_send_lease_pack_audits_skipped_docusign_as_error tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_failed_docusign_send_enters_lifecycle_queue tests/integration/test_comms_api.py::test_comms_queue_returns_skipped_docusign_setup_retry_candidate tests/integration/test_comms_api.py::test_comms_queue_returns_declined_or_failed_docusign_retry_candidate -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py tests/integration/test_comms_api.py
+git diff --check
+```
+
+Expected: pass.
