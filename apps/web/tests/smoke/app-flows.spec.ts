@@ -1089,6 +1089,14 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   expect(queueCsv).toContain(
     "Review-only export: downloading this file does not send SendGrid or Twilio messages, send tenant owner or provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records.",
   );
+  const tenantInsuranceReviewLink = page
+    .locator("a")
+    .filter({ hasText: "tenant-uploaded-insurance.txt" })
+    .first();
+  await expect(tenantInsuranceReviewLink).toHaveAttribute(
+    "href",
+    "/intake?review=intake-tenant-upload-insurance-1",
+  );
   await expect(page.getByText("Notice inbox")).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Air conditioning fault Ready/ }),

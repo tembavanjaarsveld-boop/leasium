@@ -1311,6 +1311,10 @@ function intakeTitle(intake: DocumentIntakeRecord) {
   }
 }
 
+function intakeReviewHref(intake: DocumentIntakeRecord) {
+  return `/intake?review=${encodeURIComponent(intake.id)}`;
+}
+
 function queueKindLabel(task: QueueItem) {
   const labels: Record<QueueItem["kind"], string> = {
     obligation: "Critical date",
@@ -1406,7 +1410,7 @@ function buildQueueItems(
       dueDate: intake.created_at,
       tone: intakeTone(intake),
       chip: intakeChip(intake),
-      href: "/intake",
+      href: intakeReviewHref(intake),
       record: intake,
       completed: false,
     }));
@@ -2503,7 +2507,7 @@ function OperationsWorkspace() {
       return (
         <Link
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
-          href="/intake"
+          href={item.href}
         >
           <Sparkles size={15} />
           Review

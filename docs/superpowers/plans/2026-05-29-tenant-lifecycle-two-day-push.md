@@ -1546,3 +1546,26 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 67: Operations Exact Smart Intake Handoff
+
+- [x] **Step 1: Add exact-link smoke coverage**
+
+Extend the Operations queue smoke so the tenant-uploaded insurance Smart Intake
+row links to `/intake?review=<intake-id>` instead of the generic Smart Intake
+workspace.
+
+- [x] **Step 2: Build review-specific intake links**
+
+Generate queue item links for document intakes with the review id query string,
+and reuse that same href for the row Review action.
+
+- [x] **Step 3: Verify Operations handoff**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "operations workspace surfaces maintenance and arrears work"
+```
+
+Expected: pass.
