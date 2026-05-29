@@ -665,6 +665,19 @@ function CandidateCard({
   const smsBodyOverGuide = smsBodyLength > SMS_SINGLE_SEGMENT_GUIDE;
   const dueLabel = formatDateTime(candidate.due_at);
   const generatedLabel = formatDateTime(candidate.generated_at);
+  const handoffLink =
+    candidate.kind === "tenant_lifecycle_stall" && candidate.tenant_id
+      ? {
+          href: `/tenants/${candidate.tenant_id}`,
+          label: "Open tenant review",
+        }
+      : candidate.kind === "inbound_email" &&
+          candidate.detail?.toLowerCase().includes("smart intake")
+        ? {
+            href: "/intake",
+            label: "Open Smart Intake",
+          }
+        : null;
   const dismissedUntilLabel = formatDateTime(dismissedUntil);
   const dispatchReceiptLabel =
     dispatchedStatus === "skipped"
@@ -750,6 +763,15 @@ function CandidateCard({
             <span className="rounded-full border border-border bg-muted/30 px-2.5 py-1">
               Drafted {generatedLabel}
             </span>
+          ) : null}
+          {handoffLink ? (
+            <Link
+              href={handoffLink.href}
+              className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary-soft px-2.5 py-1 font-medium text-primary-hover transition hover:border-primary/50 hover:bg-primary/10"
+            >
+              {handoffLink.label}
+              <ExternalLink size={12} />
+            </Link>
           ) : null}
         </div>
 

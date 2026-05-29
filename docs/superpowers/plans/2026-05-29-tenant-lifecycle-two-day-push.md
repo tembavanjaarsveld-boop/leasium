@@ -1325,3 +1325,26 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 58: Tenant Lifecycle Comms Handoffs
+
+- [x] **Step 1: Add operator handoff smoke coverage**
+
+Extend the Comms queue smoke so tenant lifecycle cards must link to the tenant
+review page and inbound email attachment cards must link to Smart Intake.
+
+- [x] **Step 2: Add contextual handoff links**
+
+Render "Open tenant review" on tenant lifecycle stall drafts when the candidate
+has a tenant id, and "Open Smart Intake" on inbound email drafts that mention
+Smart Intake routing.
+
+- [x] **Step 3: Verify comms handoffs**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "comms queue approves inbound SMS with a phone recipient"
+```
+
+Expected: pass.

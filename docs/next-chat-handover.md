@@ -1064,4 +1064,5 @@ Open items at session end:
 
 - Tenant lifecycle push shipped tenant-uploaded lease auto-match, tenant-uploaded insurance auto-update, DocuSign provider runway/webhook guardrails, SendGrid inbound secret guard, inbound email attachment routing, and optional inbound attachment auto-extraction.
 - Smart Intake now labels SendGrid-routed inbound email attachment rows in the review queue, shows the email subject and no-mutation guardrail in the review panel, and preserves extracted document facts even when review metadata is present.
+- The Comms queue now gives operators direct handoffs from tenant lifecycle drafts to the tenant review page, and from inbound email attachment drafts to Smart Intake, so the drafted email is no longer a dead end when the real work is an internal review.
 - DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.

@@ -439,6 +439,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     lifecycleCard.getByRole("button", { name: "Approve & send" }),
   ).toBeEnabled();
   await expect(lifecycleCard.getByText("Urgent")).toBeVisible();
+  await expect(
+    lifecycleCard.getByRole("link", { name: "Open tenant review" }),
+  ).toHaveAttribute("href", "/tenants/tenant-1");
   const skippedDocusignLifecycleCard = page
     .locator("section")
     .filter({ hasText: "DocuSign skipped" })
@@ -454,6 +457,11 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     "Hi Bright Cafe team, the DocuSign signing request could not be sent because provider setup needs attention. We are fixing the signing setup before sending a fresh lease pack.",
   );
   await expect(skippedDocusignLifecycleCard.getByText("Urgent")).toBeVisible();
+  await expect(
+    skippedDocusignLifecycleCard.getByRole("link", {
+      name: "Open tenant review",
+    }),
+  ).toHaveAttribute("href", "/tenants/tenant-1");
   const tenantUploadLifecycleCard = page
     .locator("section")
     .filter({ hasText: "tenant upload completed" })
@@ -470,6 +478,11 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(tenantUploadLifecycleCard.getByLabel("Body")).toHaveValue(
     "Hi Bright Cafe team, thanks for uploading your signed lease. The property team is completing the final activation review before the lease is marked active in our system.",
   );
+  await expect(
+    tenantUploadLifecycleCard.getByRole("link", {
+      name: "Open tenant review",
+    }),
+  ).toHaveAttribute("href", "/tenants/tenant-1");
   await page.getByRole("tab", { name: "Rent review 1" }).click();
   await expect(
     page.getByText("Showing 1 of 6 drafts in Rent review."),
@@ -574,6 +587,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     emailCard.getByText("1 attachment routed to Smart Intake"),
   ).toBeVisible();
+  await expect(
+    emailCard.getByRole("link", { name: "Open Smart Intake" }),
+  ).toHaveAttribute("href", "/intake");
   await expect(emailCard.getByText("SendGrid email")).toBeVisible();
   await expect(emailCard.getByLabel("Email recipient")).toHaveValue(
     "attachments@tenant.example",
