@@ -529,6 +529,19 @@ def _parse_iso_datetime(value: object) -> datetime | None:
         return datetime.combine(parsed_date, datetime.min.time())
 
 
+def _comms_kind_deferred(metadata: dict[str, Any], kind: str, today: date) -> bool:
+    dismiss = metadata.get(DISMISS_METADATA_KEY)
+    if not isinstance(dismiss, dict):
+        return False
+    entry = dismiss.get(kind)
+    if not isinstance(entry, dict):
+        return False
+    deferred_until = _parse_iso_date(
+        entry.get("deferred_until") or entry.get("next_eligible_on")
+    )
+    return deferred_until is not None and deferred_until > today
+
+
 def _insurance_candidates(
     entity_id: UUID, session: Session
 ) -> list[CommsCandidate]:
@@ -890,6 +903,8 @@ def _tenant_lifecycle_stall_candidates(
     )
     for onboarding in rows:
         delivery_data = onboarding.delivery_data or {}
+        if _comms_kind_deferred(delivery_data, "tenant_lifecycle_stall", today):
+            continue
         lease_agreement = delivery_data.get("lease_agreement")
         if not isinstance(lease_agreement, dict):
             continue

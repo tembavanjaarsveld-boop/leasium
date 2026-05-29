@@ -709,6 +709,111 @@ def test_comms_queue_returns_completed_signing_pending_activation_candidate(
     assert "ready_for_review" in (candidate["detail"] or "")
 
 
+def test_comms_dismiss_tenant_lifecycle_stall_defers_candidate(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": "declined",
+            "envelope_id": "envelope-dismissed-1",
+            "last_event_at": (date.today() - timedelta(days=1)).isoformat(),
+        },
+    )
+
+    response = client.post(
+        "/api/v1/comms/dismiss",
+        json={
+            "kind": "tenant_lifecycle_stall",
+            "target_kind": "tenant_onboarding",
+            "target_id": scope["onboarding_id"],
+            "reason": "operator will phone tenant first",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert (
+        body["candidate_id"]
+        == f"tenant_lifecycle_stall:tenant_onboarding:{scope['onboarding_id']}"
+    )
+    assert date.fromisoformat(body["deferred_until"]) > date.today()
+
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+    assert queue.status_code == 200
+    assert [
+        candidate
+        for candidate in queue.json()["candidates"]
+        if candidate["kind"] == "tenant_lifecycle_stall"
+    ] == []
+
+
+def test_comms_dispatch_tenant_lifecycle_stall_defers_candidate(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": "completed",
+            "envelope_id": "envelope-dispatched-1",
+            "signed_at": (date.today() - timedelta(days=2)).isoformat(),
+            "lease_activation_review": {
+                "status": "ready_for_review",
+                "current_lease_status": "pending",
+                "recommended_status": "active",
+            },
+        },
+    )
+
+    from apps.api.routers import comms as comms_router
+
+    def fake_send_email(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        return comms_router._CommsEmailResult(
+            status="queued",
+            provider="sendgrid",
+            recipient=recipient_email,
+            provider_message_id="sg-lifecycle-1",
+        )
+
+    monkeypatch.setattr(comms_router, "_send_comms_email", fake_send_email)
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": "tenant_lifecycle_stall",
+            "target_kind": "tenant_onboarding",
+            "target_id": scope["onboarding_id"],
+            "subject": "Lease activation review",
+            "body": "We are completing the final activation review.",
+            "recipient_email": "life@example.com",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["status"] == "queued"
+    assert body["provider_message_id"] == "sg-lifecycle-1"
+
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+    assert queue.status_code == 200
+    assert [
+        candidate
+        for candidate in queue.json()["candidates"]
+        if candidate["kind"] == "tenant_lifecycle_stall"
+    ] == []
+
+
 def test_comms_dispatch_inbound_sms_routes_through_twilio(
     client: TestClient,
     session: Session,

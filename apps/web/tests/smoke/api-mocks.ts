@@ -3291,6 +3291,24 @@ export async function mockLeasiumApi(
             detail: "+3% fixed increase",
             generated_at: "2026-05-27T02:00:00.000Z",
           },
+          {
+            id: "comms-tenant-lifecycle-stall-1",
+            kind: "tenant_lifecycle_stall",
+            target_kind: "tenant_onboarding",
+            target_id: "tenant-onboarding-docusign-retry-1",
+            tenant_id: tenantId,
+            tenant_name: "Bright Cafe Pty Ltd",
+            property_name: "Queen Street Retail Centre",
+            unit_label: "Shop 3",
+            recipient_email: "tenant@example.com",
+            recipient_phone: null,
+            subject: "DocuSign retry needed for your lease activation",
+            body: "Hi Bright Cafe team, your lease activation is waiting on a DocuSign retry review. We are checking the envelope status now and will confirm the next step before anything is sent.",
+            severity: "warning",
+            due_at: "2026-05-28T00:00:00.000Z",
+            detail: "DocuSign retry review: envelope stalled before activation",
+            generated_at: "2026-05-27T02:00:00.000Z",
+          },
         ],
       });
       return;
@@ -3299,7 +3317,7 @@ export async function mockLeasiumApi(
     if (method === "GET" && path === "/comms/queue/counts") {
       await fulfillJson(route, {
         entity_id: entityId,
-        total: 2,
+        total: 3,
         urgent: 0,
         by_kind: {
           arrears_reminder: 0,
@@ -3309,7 +3327,7 @@ export async function mockLeasiumApi(
           inbound_sms: 1,
           compliance_obligation: 0,
           rent_review: 1,
-          tenant_lifecycle_stall: 0,
+          tenant_lifecycle_stall: 1,
         },
         generated_at: "2026-05-27T02:00:00.000Z",
       });

@@ -16,6 +16,24 @@ or chat.
 - Tenant portal lease view after claim: `https://leasium.ai/tenant-portal/lease`
 - Public onboarding legacy redirect: `https://leasium.ai/onboarding/<token>`
 
+## Post-deploy Evidence
+
+Capture these checks after the production deploy and before the full smoke. Do
+not include secret values or real tenant tokens in shared notes.
+
+1. Confirm the live Vercel web deploy points at the intended commit:
+   `vercel inspect https://leasium.ai --scope <team-or-account>`.
+   Success: the deployment is ready and its commit SHA matches the release.
+2. Confirm the API health endpoint is live:
+   `curl -fsS https://api.leasium.ai/health`.
+   Success: the command exits cleanly and returns healthy JSON.
+3. Confirm the OpenAPI schema exposes tenant lifecycle readiness evidence:
+   `curl -fsS https://api.leasium.ai/openapi.json | rg 'live_ready|missing_config|tenant_lifecycle_stall'`.
+   Success: all three fields are present in the schema.
+4. Confirm the public onboarding handoff route returns 200 without exposing the
+   token: `curl -I https://leasium.ai/onboarding/<token>`.
+   Success: the response status is `200 OK`.
+
 ## 1. Preflight Readiness
 
 Run this before sending any live envelope.
