@@ -72,11 +72,13 @@ const KIND_LABEL: Record<CommsKind, string> = {
   inbound_sms: "Inbound SMS",
   compliance_obligation: "Compliance reminder",
   rent_review: "Rent review",
+  tenant_lifecycle_stall: "Tenant lifecycle",
 };
 const COMMS_KIND_ORDER: CommsKind[] = [
   "arrears_reminder",
   "insurance_expiry",
   "lease_renewal",
+  "tenant_lifecycle_stall",
   "inbound_email",
   "inbound_sms",
   "compliance_obligation",
@@ -289,6 +291,7 @@ function CommsContent() {
       inbound_sms: 0,
       compliance_obligation: 0,
       rent_review: 0,
+      tenant_lifecycle_stall: 0,
     };
     for (const candidate of candidates) {
       tally[candidate.kind]++;
@@ -411,7 +414,11 @@ function CommsContent() {
           <Metric label="Arrears" value={counts.arrears_reminder} />
           <Metric
             label="Insurance + lease"
-            value={counts.insurance_expiry + counts.lease_renewal}
+            value={
+              counts.insurance_expiry +
+              counts.lease_renewal +
+              counts.tenant_lifecycle_stall
+            }
           />
         </section>
         {candidates.length ? (

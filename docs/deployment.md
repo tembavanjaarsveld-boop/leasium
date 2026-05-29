@@ -218,6 +218,9 @@ Until the four DocuSign JWT values are set, `stewart.integrations.docusign.send_
 
 Live console verification:
 
+For the repeatable production go-live smoke, use
+[`docs/tenant-lifecycle-production-smoke.md`](tenant-lifecycle-production-smoke.md).
+
 1. In DocuSign, create or confirm the JWT app, RSA key pair, API account GUID,
    integration key, and impersonated service-user GUID. Grant consent for the
    JWT app before testing.

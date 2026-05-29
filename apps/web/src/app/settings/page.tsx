@@ -1867,8 +1867,20 @@ function IntegrationsHealthCard({
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-semibold">{data.label}</span>
-                  <StatusBadge tone={data.configured ? "success" : "warning"}>
-                    {data.configured ? "Configured" : "Not configured"}
+                  <StatusBadge
+                    tone={
+                      data.live_ready
+                        ? "success"
+                        : data.configured
+                          ? "warning"
+                          : "danger"
+                    }
+                  >
+                    {data.live_ready
+                      ? "Live ready"
+                      : data.configured
+                        ? "Setup needed"
+                        : "Not configured"}
                   </StatusBadge>
                 </div>
                 <div className="text-xs text-muted-foreground">
@@ -1877,6 +1889,23 @@ function IntegrationsHealthCard({
                 <div className="text-xs text-muted-foreground">
                   {data.detail}
                 </div>
+                {data.missing_config.length > 0 ? (
+                  <div className="grid gap-1 rounded-md border border-warning/30 bg-warning/10 p-2 text-xs">
+                    <span className="font-medium text-foreground">
+                      Missing production setup
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {data.missing_config.map((item) => (
+                        <code
+                          key={item}
+                          className="rounded-sm border border-warning/30 bg-white px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                        >
+                          {item}
+                        </code>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {data.webhook_url ? (
                   <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-2 text-xs">
                     <span className="font-medium text-foreground">

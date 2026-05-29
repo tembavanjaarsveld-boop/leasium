@@ -15,7 +15,7 @@ records on each call.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -40,6 +40,7 @@ from stewart.core.models import (
     Property,
     TenancyUnit,
     Tenant,
+    TenantOnboarding,
     UserRole,
 )
 from stewart.core.settings import Settings, get_settings
@@ -511,6 +512,23 @@ def _parse_iso_date(value: object) -> date | None:
         return None
 
 
+def _parse_iso_datetime(value: object) -> datetime | None:
+    """Tolerantly parse an ISO datetime from JSONB metadata."""
+
+    if value is None or not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if cleaned.endswith("Z"):
+        cleaned = f"{cleaned[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(cleaned)
+    except (TypeError, ValueError):
+        parsed_date = _parse_iso_date(cleaned)
+        if parsed_date is None:
+            return None
+        return datetime.combine(parsed_date, datetime.min.time())
+
+
 def _insurance_candidates(
     entity_id: UUID, session: Session
 ) -> list[CommsCandidate]:
@@ -836,6 +854,182 @@ def _rent_review_candidates(
                 severity=severity,  # type: ignore[arg-type]
                 due_at=lease.next_review_date,
                 detail=detail,
+                generated_at=now,
+            )
+        )
+    return candidates
+
+
+ACTIVE_DOCUSIGN_SIGNING_STATUSES = {"queued", "sent", "delivered"}
+RETRY_DOCUSIGN_SIGNING_STATUSES = {"declined", "failed", "voided", "deleted"}
+DOCUSIGN_WAITING_DAYS = 7
+
+
+def _tenant_lifecycle_stall_candidates(
+    entity_id: UUID, session: Session
+) -> list[CommsCandidate]:
+    """Surface tenant lifecycle stalls that need operator review.
+
+    Source of truth is the onboarding delivery_data lease agreement signing
+    metadata. The queue remains review-first: this scanner only creates draft
+    candidates, and provider sends still require an explicit /comms/dispatch.
+    """
+
+    today = date.today()
+    now = utcnow()
+    candidates: list[CommsCandidate] = []
+    rows = list(
+        session.scalars(
+            select(TenantOnboarding)
+            .where(
+                TenantOnboarding.entity_id == entity_id,
+                TenantOnboarding.deleted_at.is_(None),
+            )
+            .order_by(TenantOnboarding.updated_at.desc())
+        ).all()
+    )
+    for onboarding in rows:
+        delivery_data = onboarding.delivery_data or {}
+        lease_agreement = delivery_data.get("lease_agreement")
+        if not isinstance(lease_agreement, dict):
+            continue
+        signing = lease_agreement.get("signing")
+        if not isinstance(signing, dict):
+            continue
+        if signing.get("provider") != "docusign":
+            continue
+
+        tenant = session.get(Tenant, onboarding.tenant_id)
+        if tenant is None or tenant.deleted_at is not None:
+            continue
+        recipient_email = tenant.contact_email or tenant.billing_email
+        if not recipient_email:
+            continue
+
+        lease = session.get(Lease, onboarding.lease_id)
+        if lease is None or lease.deleted_at is not None:
+            continue
+        unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+        if unit is None or unit.deleted_at is not None:
+            continue
+        prop = session.get(Property, unit.property_id)
+        if prop is None or prop.deleted_at is not None or prop.entity_id != entity_id:
+            continue
+
+        raw_status = signing.get("status")
+        signing_status = raw_status if isinstance(raw_status, str) else ""
+        envelope_id = signing.get("envelope_id")
+        envelope_label = envelope_id if isinstance(envelope_id, str) else "unknown"
+        tenant_name = _tenant_display_name(tenant)
+        greeting = (
+            f"Hi {tenant.contact_name},"
+            if tenant.contact_name
+            else f"Hi {tenant_name},"
+        )
+        location_parts = [part for part in (prop.name, unit.unit_label) if part]
+        location = " ".join(location_parts) if location_parts else "your tenancy"
+
+        subject: str | None = None
+        body: str | None = None
+        detail_parts: list[str] = [
+            f"DocuSign {signing_status or 'unknown'}",
+            f"envelope {envelope_label}",
+        ]
+        severity = "warning"
+        due_at: date | None = None
+
+        if signing_status in ACTIVE_DOCUSIGN_SIGNING_STATUSES and not signing.get(
+            "signed_at"
+        ):
+            sent_at = _parse_iso_datetime(
+                signing.get("sent_at") or signing.get("last_event_at")
+            )
+            if sent_at is None:
+                continue
+            days_waiting = (today - sent_at.date()).days
+            if days_waiting < DOCUSIGN_WAITING_DAYS:
+                continue
+            due_at = sent_at.date()
+            detail_parts.append(f"waiting {days_waiting} days")
+            subject = f"DocuSign envelope waiting ({prop.name})"
+            body = (
+                f"{greeting}\n\n"
+                f"The DocuSign envelope for your lease at {location} is still "
+                "waiting for completion.\n\n"
+                "Please review the DocuSign email and complete signing, or reply "
+                "if you need the request resent or have questions about the lease "
+                "pack.\n\n"
+                "Thanks,\nThe property team"
+            )
+        elif signing_status in RETRY_DOCUSIGN_SIGNING_STATUSES:
+            event_at = _parse_iso_datetime(
+                signing.get("last_event_at") or signing.get("sent_at")
+            )
+            due_at = event_at.date() if event_at is not None else today
+            severity = "danger"
+            last_event = signing.get("last_event")
+            if isinstance(last_event, str):
+                detail_parts.append(last_event)
+            subject = f"DocuSign retry needed ({prop.name})"
+            body = (
+                f"{greeting}\n\n"
+                f"The DocuSign signing request for your lease at {location} "
+                f"was marked {signing_status}.\n\n"
+                "We are reviewing the lease pack before sending a fresh signing "
+                "request. Please reply if there is anything we should correct "
+                "before we resend it.\n\n"
+                "Thanks,\nThe property team"
+            )
+        elif signing_status == "completed" and signing.get("signed_at"):
+            activation_review = signing.get("lease_activation_review")
+            if not isinstance(activation_review, dict):
+                continue
+            review_status = activation_review.get("status")
+            if review_status != "ready_for_review":
+                continue
+            current_status = activation_review.get("current_lease_status")
+            recommended_status = activation_review.get("recommended_status")
+            if current_status == recommended_status:
+                continue
+            signed_at = _parse_iso_datetime(signing.get("signed_at"))
+            due_at = signed_at.date() if signed_at is not None else today
+            severity = "danger"
+            detail_parts.extend(
+                [
+                    f"activation {review_status}",
+                    f"lease {current_status or 'unknown'} -> {recommended_status or 'active'}",
+                ]
+            )
+            subject = f"Lease activation review ({prop.name})"
+            body = (
+                f"{greeting}\n\n"
+                f"Thank you for completing the lease signing for {location}. "
+                "The property team is completing the final activation review "
+                "before the lease is marked active in our system.\n\n"
+                "We will confirm once that review is complete.\n\n"
+                "Thanks,\nThe property team"
+            )
+
+        if subject is None or body is None:
+            continue
+
+        candidates.append(
+            CommsCandidate(
+                id=f"tenant_lifecycle_stall:tenant_onboarding:{onboarding.id}",
+                kind="tenant_lifecycle_stall",
+                target_kind="tenant_onboarding",
+                target_id=onboarding.id,
+                tenant_id=tenant.id,
+                tenant_name=tenant_name,
+                property_name=prop.name,
+                unit_label=unit.unit_label,
+                recipient_email=recipient_email,
+                recipient_phone=tenant.contact_phone,
+                subject=subject,
+                body=body,
+                severity=severity,  # type: ignore[arg-type]
+                due_at=due_at,
+                detail=", ".join(detail_parts),
                 generated_at=now,
             )
         )
@@ -1229,6 +1423,7 @@ def get_comms_queue(
         + _insurance_candidates(entity_id, session)
         + _lease_renewal_candidates(entity_id, session)
         + _rent_review_candidates(entity_id, session)
+        + _tenant_lifecycle_stall_candidates(entity_id, session)
     )
     return CommsQueueRead(
         entity_id=entity_id,
@@ -1259,6 +1454,7 @@ def get_comms_queue_counts(
         + _insurance_candidates(entity_id, session)
         + _lease_renewal_candidates(entity_id, session)
         + _rent_review_candidates(entity_id, session)
+        + _tenant_lifecycle_stall_candidates(entity_id, session)
     )
     by_kind: dict[str, int] = {
         "arrears_reminder": 0,
@@ -1268,6 +1464,7 @@ def get_comms_queue_counts(
         "inbound_sms": 0,
         "compliance_obligation": 0,
         "rent_review": 0,
+        "tenant_lifecycle_stall": 0,
     }
     urgent = 0
     for candidate in candidates:
@@ -1285,7 +1482,10 @@ def get_comms_queue_counts(
 
 def _resolve_dispatch_entity_id(
     payload: CommsDispatchCreate, session: Session
-) -> tuple[UUID, ArrearsCase | Tenant | Lease | InboundMessage | Obligation]:
+) -> tuple[
+    UUID,
+    ArrearsCase | Tenant | Lease | InboundMessage | Obligation | TenantOnboarding,
+]:
     """Look up the entity_id for a dispatch target and return the source row.
 
     Each kind is scoped to a different table — the target_kind tells us where
@@ -1354,6 +1554,17 @@ def _resolve_dispatch_entity_id(
                 detail="Lease scope is inconsistent.",
             )
         return prop.entity_id, lease
+    if (
+        payload.kind == "tenant_lifecycle_stall"
+        and payload.target_kind == "tenant_onboarding"
+    ):
+        onboarding = session.get(TenantOnboarding, payload.target_id)
+        if onboarding is None or onboarding.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant onboarding not found.",
+            )
+        return onboarding.entity_id, onboarding
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail="Unsupported comms target.",
@@ -1361,7 +1572,8 @@ def _resolve_dispatch_entity_id(
 
 
 def _update_source_after_dispatch(
-    source: ArrearsCase | Tenant | Lease | InboundMessage | Obligation, kind: str
+    source: ArrearsCase | Tenant | Lease | InboundMessage | Obligation | TenantOnboarding,
+    kind: str,
 ) -> None:
     """Bookkeeping after a draft is dispatched so the candidate doesn't
     re-appear in the queue immediately.
@@ -1409,6 +1621,15 @@ def _update_source_after_dispatch(
         }
         metadata[DISMISS_METADATA_KEY] = dismiss
         source.obligation_metadata = metadata
+    elif isinstance(source, TenantOnboarding):
+        delivery_data = dict(source.delivery_data or {})
+        dismiss = dict(delivery_data.get(DISMISS_METADATA_KEY) or {})
+        dismiss[kind] = {
+            "dispatched_at": utcnow().isoformat(),
+            "next_eligible_on": (today + timedelta(days=DEFAULT_DISMISS_DAYS)).isoformat(),
+        }
+        delivery_data[DISMISS_METADATA_KEY] = dismiss
+        source.delivery_data = delivery_data
 
 
 @router.post(
@@ -1530,7 +1751,10 @@ def dispatch_comms_draft(
 
 def _resolve_dismiss_entity_id(
     payload: CommsDismissCreate, session: Session
-) -> tuple[UUID, ArrearsCase | Tenant | Lease | InboundMessage | Obligation]:
+) -> tuple[
+    UUID,
+    ArrearsCase | Tenant | Lease | InboundMessage | Obligation | TenantOnboarding,
+]:
     """Same resolution as dispatch, but for the dismiss verb."""
 
     if (
@@ -1594,6 +1818,17 @@ def _resolve_dismiss_entity_id(
                 detail="Lease scope is inconsistent.",
             )
         return prop.entity_id, lease
+    if (
+        payload.kind == "tenant_lifecycle_stall"
+        and payload.target_kind == "tenant_onboarding"
+    ):
+        onboarding = session.get(TenantOnboarding, payload.target_id)
+        if onboarding is None or onboarding.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant onboarding not found.",
+            )
+        return onboarding.entity_id, onboarding
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail="Unsupported comms target.",
@@ -1660,6 +1895,16 @@ def dismiss_comms_candidate(
         }
         metadata[DISMISS_METADATA_KEY] = dismiss
         source.obligation_metadata = metadata
+    elif isinstance(source, TenantOnboarding):
+        delivery_data = dict(source.delivery_data or {})
+        dismiss = dict(delivery_data.get(DISMISS_METADATA_KEY) or {})
+        dismiss[payload.kind] = {
+            "dismissed_at": utcnow().isoformat(),
+            "deferred_until": deferred_until.isoformat(),
+            "reason": payload.reason,
+        }
+        delivery_data[DISMISS_METADATA_KEY] = dismiss
+        source.delivery_data = delivery_data
 
     audit_log(
         session,
@@ -2011,4 +2256,3 @@ async def receive_twilio_inbound(
         "id": str(message.id),
         "attributed_tenant_id": str(tenant.id) if tenant is not None else None,
     }
-

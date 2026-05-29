@@ -80,12 +80,8 @@ def get_integration_status(
             ),
         ),
         docusign=_status(
-            configured=bool(
-                settings.docusign_account_id
-                and settings.docusign_integration_key
-                and settings.docusign_user_id
-                and settings.docusign_rsa_private_key
-            ),
+            configured=_docusign_credentials_configured(settings),
+            live_ready=_docusign_live_ready(settings),
             label="DocuSign",
             purpose="Lease signature envelopes and signed lease retention",
             unconfigured_detail=(
@@ -106,6 +102,7 @@ def get_integration_status(
                 settings,
                 "/api/v1/tenant-onboarding/webhooks/docusign",
             ),
+            missing_config=_missing_docusign_config(settings),
         ),
     )
 
@@ -113,14 +110,17 @@ def get_integration_status(
 def _status(
     *,
     configured: bool,
+    live_ready: bool | None = None,
     label: str,
     purpose: str,
     unconfigured_detail: str,
     configured_detail: str | None = None,
     webhook_url: str | None = None,
+    missing_config: list[str] | None = None,
 ) -> ProviderStatus:
     return ProviderStatus(
         configured=configured,
+        live_ready=configured if live_ready is None else live_ready,
         label=label,
         purpose=purpose,
         detail=(
@@ -129,6 +129,7 @@ def _status(
             if configured
             else unconfigured_detail
         ),
+        missing_config=missing_config or [],
         webhook_url=webhook_url,
     )
 
@@ -138,3 +139,35 @@ def _webhook_url(settings: Settings, path: str) -> str | None:
     if not base_url:
         return None
     return f"{base_url}{path}"
+
+
+def _docusign_credentials_configured(settings: Settings) -> bool:
+    return bool(
+        settings.docusign_account_id
+        and settings.docusign_integration_key
+        and settings.docusign_user_id
+        and settings.docusign_rsa_private_key
+    )
+
+
+def _docusign_live_ready(settings: Settings) -> bool:
+    return _docusign_credentials_configured(settings) and not _missing_docusign_config(
+        settings
+    )
+
+
+def _missing_docusign_config(settings: Settings) -> list[str]:
+    missing: list[str] = []
+    if not settings.docusign_account_id:
+        missing.append("DOCUSIGN_ACCOUNT_ID")
+    if not settings.docusign_integration_key:
+        missing.append("DOCUSIGN_INTEGRATION_KEY")
+    if not settings.docusign_user_id:
+        missing.append("DOCUSIGN_USER_ID")
+    if not settings.docusign_rsa_private_key:
+        missing.append("DOCUSIGN_RSA_PRIVATE_KEY")
+    if not settings.docusign_webhook_secret:
+        missing.append("DOCUSIGN_WEBHOOK_SECRET")
+    if not settings.public_api_url.strip():
+        missing.append("PUBLIC_API_URL")
+    return missing

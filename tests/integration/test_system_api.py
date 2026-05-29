@@ -14,6 +14,7 @@ def test_integration_status_reports_docusign_missing_credentials(
     body = response.json()
     assert body["docusign"] == {
         "configured": False,
+        "live_ready": False,
         "label": "DocuSign",
         "purpose": "Lease signature envelopes and signed lease retention",
         "detail": (
@@ -21,6 +22,14 @@ def test_integration_status_reports_docusign_missing_credentials(
             "DOCUSIGN_USER_ID, and DOCUSIGN_RSA_PRIVATE_KEY on the API service "
             "before sending lease envelopes."
         ),
+        "missing_config": [
+            "DOCUSIGN_ACCOUNT_ID",
+            "DOCUSIGN_INTEGRATION_KEY",
+            "DOCUSIGN_USER_ID",
+            "DOCUSIGN_RSA_PRIVATE_KEY",
+            "DOCUSIGN_WEBHOOK_SECRET",
+            "PUBLIC_API_URL",
+        ],
     }
 
 
@@ -44,11 +53,40 @@ def test_integration_status_reports_docusign_configured_without_webhook_secret(
     assert response.status_code == 200
     docusign = response.json()["docusign"]
     assert docusign["configured"] is True
+    assert docusign["live_ready"] is False
     assert docusign["detail"] == (
         "Credentials are set; add DOCUSIGN_WEBHOOK_SECRET before live Connect "
         "testing so completed envelopes can be verified."
     )
+    assert docusign["missing_config"] == ["DOCUSIGN_WEBHOOK_SECRET"]
     assert (
         docusign["webhook_url"]
         == "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign"
+    )
+
+
+def test_integration_status_reports_docusign_live_ready(
+    client: TestClient,
+) -> None:
+    base_settings = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
+        update={
+            "docusign_account_id": "account-123",
+            "docusign_integration_key": "integration-123",
+            "docusign_user_id": "user-123",
+            "docusign_rsa_private_key": "-----BEGIN PRIVATE KEY-----\ntest\n",
+            "docusign_webhook_secret": "secret-123",
+            "public_api_url": "https://api.leasium.test",
+        }
+    )
+
+    response = client.get("/api/v1/system/integration-status")
+
+    assert response.status_code == 200
+    docusign = response.json()["docusign"]
+    assert docusign["configured"] is True
+    assert docusign["live_ready"] is True
+    assert docusign["missing_config"] == []
+    assert docusign["detail"] == (
+        "Configured for envelope creation and completed signed-document retention."
     )

@@ -3184,49 +3184,65 @@ export async function mockLeasiumApi(
       await fulfillJson(route, {
         serpapi: {
           configured: true,
+          live_ready: true,
           label: "SerpAPI Google Images",
           purpose:
             "Property image candidate search (Properties > Property images)",
           detail:
             "Configured. Provider sends still require explicit reviewed actions.",
+          missing_config: [],
         },
         openai: {
           configured: true,
+          live_ready: true,
           label: "OpenAI",
           purpose:
             "Public field enrichment (Properties/Tenants > Suggest missing values)",
           detail:
             "Configured. Provider sends still require explicit reviewed actions.",
+          missing_config: [],
         },
         sendgrid: {
           configured: false,
+          live_ready: false,
           label: "SendGrid",
           purpose:
             "Email delivery (invoice, contractor, Work notifications, digests)",
           detail:
             "Set SENDGRID_API_KEY and SENDGRID_FROM_EMAIL on the API service to enable provider sends. Without them, provider attempts are recorded as skipped.",
+          missing_config: ["SENDGRID_API_KEY", "SENDGRID_FROM_EMAIL"],
         },
         twilio: {
           configured: false,
+          live_ready: false,
           label: "Twilio Messaging",
           purpose: "SMS delivery (Work notifications, contractor SMS)",
           detail:
             "Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_MESSAGING_SERVICE_SID on the API service to enable SMS sends.",
+          missing_config: [
+            "TWILIO_ACCOUNT_SID",
+            "TWILIO_AUTH_TOKEN",
+            "TWILIO_MESSAGING_SERVICE_SID",
+          ],
         },
         xero: {
           configured: true,
+          live_ready: true,
           label: "Xero",
           purpose:
             "Accounting sync (contact, chart/tax, invoice posting, payments)",
           detail:
             "Configured. Provider sends still require explicit reviewed actions.",
+          missing_config: [],
         },
         docusign: {
           configured: true,
+          live_ready: false,
           label: "DocuSign",
           purpose: "Lease signature envelopes and signed lease retention",
           detail:
             "Credentials are set; add DOCUSIGN_WEBHOOK_SECRET before live Connect testing so completed envelopes can be verified.",
+          missing_config: ["DOCUSIGN_WEBHOOK_SECRET"],
           webhook_url:
             "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
         },
@@ -3293,6 +3309,7 @@ export async function mockLeasiumApi(
           inbound_sms: 1,
           compliance_obligation: 0,
           rent_review: 1,
+          tenant_lifecycle_stall: 0,
         },
         generated_at: "2026-05-27T02:00:00.000Z",
       });

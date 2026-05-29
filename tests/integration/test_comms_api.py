@@ -9,6 +9,7 @@ lease-event drafts.
 from datetime import date, timedelta
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,6 +27,8 @@ from stewart.core.models import (
     PropertyType,
     TenancyUnit,
     Tenant,
+    TenantOnboarding,
+    TenantOnboardingStatus,
 )
 
 
@@ -537,6 +540,173 @@ def test_comms_queue_rent_review_skips_far_future_review(
         c for c in response.json()["candidates"] if c["kind"] == "rent_review"
     ]
     assert rent_reviews == []
+
+
+def _seed_lifecycle_onboarding(
+    session: Session,
+    *,
+    signing: dict[str, object],
+    lease_status: LeaseStatus = LeaseStatus.pending,
+    contact_email: str | None = "life@example.com",
+) -> dict[str, str]:
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Lifecycle House",
+        street_address="88 Lifecycle Road",
+        property_type=PropertyType.commercial_office,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Suite L")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Lifecycle Tenant Pty Ltd",
+        trading_name="Lifecycle Co",
+        contact_name="Lane Lifecycle",
+        contact_email=contact_email,
+        contact_phone="+61 400 777 888",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=lease_status,
+        commencement_date=date.today() - timedelta(days=15),
+        expiry_date=date.today() + timedelta(days=730),
+    )
+    session.add(lease)
+    session.flush()
+    onboarding = TenantOnboarding(
+        entity_id=entity.id,
+        lease_id=lease.id,
+        tenant_id=tenant.id,
+        token=f"lifecycle-{lease.id}",
+        status=TenantOnboardingStatus.applied,
+        delivery_data={"lease_agreement": {"signing": signing}},
+    )
+    session.add(onboarding)
+    session.commit()
+    return {
+        "entity_id": str(entity.id),
+        "tenant_id": str(tenant.id),
+        "lease_id": str(lease.id),
+        "onboarding_id": str(onboarding.id),
+    }
+
+
+def test_comms_queue_returns_pending_docusign_waiting_candidate(
+    client: TestClient,
+    session: Session,
+) -> None:
+    sent_at = (date.today() - timedelta(days=8)).isoformat()
+    scope = _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": "sent",
+            "envelope_id": "envelope-waiting-1",
+            "sent_at": sent_at,
+        },
+    )
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+
+    assert response.status_code == 200
+    candidates = [
+        c
+        for c in response.json()["candidates"]
+        if c["kind"] == "tenant_lifecycle_stall"
+    ]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["target_kind"] == "tenant_onboarding"
+    assert candidate["target_id"] == scope["onboarding_id"]
+    assert candidate["tenant_id"] == scope["tenant_id"]
+    assert candidate["recipient_email"] == "life@example.com"
+    assert candidate["severity"] == "warning"
+    assert "DocuSign envelope waiting" in candidate["subject"]
+    assert "envelope-waiting-1" in (candidate["detail"] or "")
+
+
+@pytest.mark.parametrize("signing_status", ["declined", "failed"])
+def test_comms_queue_returns_declined_or_failed_docusign_retry_candidate(
+    client: TestClient,
+    session: Session,
+    signing_status: str,
+) -> None:
+    scope = _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": signing_status,
+            "envelope_id": f"envelope-{signing_status}-1",
+            "last_event": f"envelope-{signing_status}",
+            "last_event_at": (date.today() - timedelta(days=1)).isoformat(),
+        },
+    )
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+
+    assert response.status_code == 200
+    candidates = [
+        c
+        for c in response.json()["candidates"]
+        if c["kind"] == "tenant_lifecycle_stall"
+    ]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["target_kind"] == "tenant_onboarding"
+    assert candidate["target_id"] == scope["onboarding_id"]
+    assert candidate["severity"] == "danger"
+    assert "DocuSign retry needed" in candidate["subject"]
+    assert signing_status in (candidate["detail"] or "")
+
+
+def test_comms_queue_returns_completed_signing_pending_activation_candidate(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": "completed",
+            "envelope_id": "envelope-completed-1",
+            "signed_at": (date.today() - timedelta(days=2)).isoformat(),
+            "lease_activation_review": {
+                "status": "ready_for_review",
+                "current_lease_status": "pending",
+                "recommended_status": "active",
+            },
+        },
+    )
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+
+    assert response.status_code == 200
+    candidates = [
+        c
+        for c in response.json()["candidates"]
+        if c["kind"] == "tenant_lifecycle_stall"
+    ]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["target_kind"] == "tenant_onboarding"
+    assert candidate["target_id"] == scope["onboarding_id"]
+    assert candidate["severity"] == "danger"
+    assert "Lease activation review" in candidate["subject"]
+    assert "ready_for_review" in (candidate["detail"] or "")
 
 
 def test_comms_dispatch_inbound_sms_routes_through_twilio(

@@ -1,13 +1,15 @@
 """System integration status schema."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ProviderStatus(BaseModel):
     configured: bool
+    live_ready: bool = False
     label: str
     purpose: str
     detail: str
+    missing_config: list[str] = Field(default_factory=list)
     webhook_url: str | None = None
 
 

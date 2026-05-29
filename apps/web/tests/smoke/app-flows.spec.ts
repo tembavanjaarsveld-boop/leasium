@@ -2391,6 +2391,30 @@ test("tenant portal invite is account-first before onboarding", async ({
   );
 });
 
+test("public onboarding token explains the account-first portal handoff", async ({
+  page,
+}) => {
+  await page.goto("/onboarding/tenant-token-1");
+
+  await expect(
+    page.getByRole("heading", {
+      name: "Bright Cafe, your tenant portal is ready.",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Tenant portal invite")).toBeVisible();
+  await expect(page.getByText("Queen Street Retail Centre")).toBeVisible();
+  await expect(page.getByText("Shop 3")).toBeVisible();
+  await expect(page.getByText("12 Queen Street, Brisbane City")).toBeVisible();
+  await expect(page.getByText("available until")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Continue to tenant portal" }),
+  ).toHaveAttribute("href", "/tenant-portal/tenant-token-1");
+  await expect(page.getByRole("heading", { name: "Payments" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Maintenance" })).toHaveCount(
+    0,
+  );
+});
+
 test("tenant portal invite handles missing tenant login setup", async ({
   page,
 }) => {
@@ -2701,6 +2725,11 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toBeVisible();
 
   await page.getByRole("tab", { name: "Organisation" }).click();
+  await expect(page.getByText("Setup needed").first()).toBeVisible();
+  await expect(page.getByText("Missing production setup").first()).toBeVisible();
+  await expect(
+    page.getByText("DOCUSIGN_WEBHOOK_SECRET", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("DocuSign Connect webhook")).toBeVisible();
   await expect(
     page.getByText(

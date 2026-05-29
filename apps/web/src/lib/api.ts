@@ -2630,9 +2630,11 @@ export function getXeroConnectionDiagnostics(entityId: string) {
 
 export type ProviderStatusRecord = {
   configured: boolean;
+  live_ready: boolean;
   label: string;
   purpose: string;
   detail: string;
+  missing_config: string[];
   webhook_url?: string;
 };
 
@@ -4622,7 +4624,8 @@ export type CommsKind =
   | "inbound_email"
   | "inbound_sms"
   | "compliance_obligation"
-  | "rent_review";
+  | "rent_review"
+  | "tenant_lifecycle_stall";
 export type CommsSeverity = "info" | "warning" | "danger";
 
 export type CommsCandidateRecord = {
