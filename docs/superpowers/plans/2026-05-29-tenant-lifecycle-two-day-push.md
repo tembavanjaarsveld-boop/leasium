@@ -1348,3 +1348,26 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 59: Activation Review Guardrail Copy
+
+- [x] **Step 1: Add tenant-detail activation review smoke coverage**
+
+Extend the DocuSign completion tenant-detail smoke so the signed-lease panel
+must show the activation transition and the stored no-auto-activation guardrail
+before the operator clicks Activate lease.
+
+- [x] **Step 2: Surface activation review metadata**
+
+Render the current-to-recommended lease status transition and guardrail from
+`lease_activation_review` in the signed-lease panel.
+
+- [x] **Step 3: Verify activation review copy**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant detail sends lease pack after onboarding approval"
+```
+
+Expected: pass.

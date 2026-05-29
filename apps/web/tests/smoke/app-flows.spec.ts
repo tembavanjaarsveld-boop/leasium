@@ -2342,6 +2342,8 @@ test("tenant detail sends lease pack after onboarding approval", async ({
             status: "ready_for_review",
             current_lease_status: "pending",
             recommended_status: "active",
+            guardrail:
+              "DocuSign completion does not activate a lease automatically; review and activate explicitly.",
           },
         },
         signing_provider: "docusign",
@@ -2356,6 +2358,12 @@ test("tenant detail sends lease pack after onboarding approval", async ({
   await page.reload();
   await expect(page.getByText("Lease signing complete")).toBeVisible();
   await expect(page.getByText("Activation review ready")).toBeVisible();
+  await expect(page.getByText("Lease status: Pending -> Active.")).toBeVisible();
+  await expect(
+    page.getByText(
+      "DocuSign completion does not activate a lease automatically; review and activate explicitly.",
+    ),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Download signed lease" }),
   ).toBeVisible();

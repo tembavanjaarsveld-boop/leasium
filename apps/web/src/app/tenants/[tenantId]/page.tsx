@@ -431,6 +431,7 @@ function leaseActivationReviewStatus(
   const status = metadataString(review.status);
   const currentStatus = metadataString(review.current_lease_status);
   const recommendedStatus = metadataString(review.recommended_status);
+  const guardrail = metadataString(review.guardrail);
   if (status === "activated") {
     return {
       status,
@@ -439,6 +440,7 @@ function leaseActivationReviewStatus(
         ? `Current lease status: ${sentenceStatus(currentStatus)}.`
         : "Lease is active.",
       tone: "success" as const,
+      guardrail,
     };
   }
   if (status === "already_active") {
@@ -449,15 +451,23 @@ function leaseActivationReviewStatus(
         ? `Current lease status: ${sentenceStatus(currentStatus)}.`
         : "Lease is already active.",
       tone: "success" as const,
+      guardrail,
     };
   }
+  const statusTransition =
+    currentStatus && recommendedStatus
+      ? `Lease status: ${sentenceStatus(currentStatus)} -> ${sentenceStatus(recommendedStatus)}.`
+      : null;
   return {
     status,
     label: "Activation review ready",
-    detail: recommendedStatus
-      ? `Review before changing lease status to ${sentenceStatus(recommendedStatus)}.`
-      : "Review before changing lease status.",
+    detail:
+      statusTransition ??
+      (recommendedStatus
+        ? `Review before changing lease status to ${sentenceStatus(recommendedStatus)}.`
+        : "Review before changing lease status."),
     tone: "warning" as const,
+    guardrail,
   };
 }
 
@@ -3692,6 +3702,11 @@ function TenantDetail() {
                                   {activationReviewStatus.detail}
                                 </span>
                               </div>
+                              {activationReviewStatus.guardrail ? (
+                                <div className="mt-1 text-muted-foreground">
+                                  {activationReviewStatus.guardrail}
+                                </div>
+                              ) : null}
                             </div>
                           ) : null}
                         </div>
