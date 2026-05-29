@@ -2421,6 +2421,7 @@ export type LeaseIntakeRecord = {
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+const API_ROOT = API_BASE.replace(/\/api\/v1\/?$/, "");
 
 let authTokenProvider: (() => Promise<string | null>) | null = null;
 
@@ -2486,6 +2487,20 @@ async function requestWithAuthOption<T>(
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return requestWithAuthOption<T>(path, init, true);
+}
+
+export type ApiHealthRecord = {
+  status: string;
+  app: string;
+  release?: {
+    commit: string;
+    source: string;
+  };
+};
+
+export async function getApiHealth() {
+  const response = await fetch(`${API_ROOT}/health`);
+  return parseResponse<ApiHealthRecord>(response);
 }
 
 async function requestBlob(path: string): Promise<Blob> {

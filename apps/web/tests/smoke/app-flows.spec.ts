@@ -2786,6 +2786,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
       "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
     ),
   ).toBeVisible();
+  await expect(page.getByText("API release")).toBeVisible();
+  await expect(page.getByText("Render commit")).toBeVisible();
+  await expect(page.getByText("7248a2b", { exact: true })).toBeVisible();
   await expect(page.getByText("Communication templates")).toBeVisible();
   await expect(page.getByText("Invoice delivery").first()).toBeVisible();
   await expect(page.getByText("Stored template overrides")).toBeVisible();

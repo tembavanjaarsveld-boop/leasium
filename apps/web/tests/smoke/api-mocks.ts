@@ -3126,6 +3126,17 @@ export async function mockLeasiumApi(
     });
   });
 
+  await page.route("**/health", async (route) => {
+    await fulfillJson(route, {
+      status: "ok",
+      app: "Leasium",
+      release: {
+        commit: "7248a2b879722a0c6941dd2ff7436170b6cfb93d",
+        source: "render",
+      },
+    });
+  });
+
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const method = request.method();

@@ -767,3 +767,25 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_smoke_workflow
 ```
 
 Expected: pass.
+
+## Task 35: Settings API Release Visibility
+
+- [x] **Step 1: Add Settings smoke expectation**
+
+Extend the Settings smoke so Organisation > Integrations expects an API release
+row with the live health commit source and short commit hash.
+
+- [x] **Step 2: Fetch and render `/health` in Settings**
+
+Add a web API helper for the API root `/health` endpoint and render a compact
+non-secret release row above provider integration cards.
+
+- [x] **Step 3: Verify Settings visibility**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "settings shows Xero readiness"
+```
+
+Expected: pass.

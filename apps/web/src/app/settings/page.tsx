@@ -51,11 +51,13 @@ import {
   approveXeroInvoicePosting,
   createSecurityMember,
   createXeroInvoiceDrafts,
+  getApiHealth,
   getSecurityWorkspace,
   getWorkAssignmentNotificationTemplates,
   getXeroConnectionDiagnostics,
   getXeroExceptionQueue,
   getIntegrationStatus,
+  type ApiHealthRecord,
   type IntegrationStatusRecord,
   type ProviderStatusRecord,
   getXeroStatus,
@@ -1824,10 +1826,14 @@ function nextRolesForEntity(
 }
 
 function IntegrationsHealthCard({
+  apiHealth,
   integrations,
+  isApiHealthLoading,
   isLoading,
 }: {
+  apiHealth: ApiHealthRecord | undefined;
   integrations: IntegrationStatusRecord | undefined;
+  isApiHealthLoading: boolean;
   isLoading: boolean;
 }) {
   const rows: Array<{
@@ -1850,6 +1856,33 @@ function IntegrationsHealthCard({
       icon={<PlugZap size={17} className="text-primary" />}
     >
       <div className="grid gap-3 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/20 p-3 text-sm">
+          <div className="grid gap-1">
+            <span className="font-semibold">API release</span>
+            <span className="text-xs text-muted-foreground">
+              {isApiHealthLoading && !apiHealth
+                ? "Checking the API revision."
+                : apiHealth?.release
+                  ? `${apiHealth.app} is serving the current health contract.`
+                  : "API release status is unavailable."}
+            </span>
+          </div>
+          {apiHealth?.release ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge tone="success">
+                {apiHealth.release.source === "render"
+                  ? "Render commit"
+                  : `${apiHealth.release.source} commit`}
+              </StatusBadge>
+              <code
+                className="rounded-sm border border-border bg-white px-2 py-1 font-mono text-xs text-muted-foreground"
+                title={apiHealth.release.commit}
+              >
+                {apiHealth.release.commit.slice(0, 7)}
+              </code>
+            </div>
+          ) : null}
+        </div>
         {isLoading && !integrations ? (
           <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
             Loading integration status.
@@ -2131,6 +2164,12 @@ function SettingsWorkspace() {
   const integrationStatusQuery = useQuery({
     queryKey: ["integration-status"],
     queryFn: getIntegrationStatus,
+  });
+
+  const apiHealthQuery = useQuery({
+    queryKey: ["api-health"],
+    queryFn: getApiHealth,
+    retry: false,
   });
 
   const xeroExceptionQueueQuery = useQuery({
@@ -3918,7 +3957,9 @@ function SettingsWorkspace() {
         {activeTab === "organisation" ? (
           <>
             <IntegrationsHealthCard
+              apiHealth={apiHealthQuery.data}
               integrations={integrationStatusQuery.data}
+              isApiHealthLoading={apiHealthQuery.isLoading}
               isLoading={integrationStatusQuery.isLoading}
             />
             <SectionPanel
