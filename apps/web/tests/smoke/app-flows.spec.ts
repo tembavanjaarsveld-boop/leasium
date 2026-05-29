@@ -1941,7 +1941,10 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText("Source: Smart Intake")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Open Smart Intake review" }),
-  ).toHaveAttribute("href", "/intake?review=intake-insurance-1");
+  ).toHaveAttribute(
+    "href",
+    "/intake?entity_id=entity-1&review=intake-insurance-1",
+  );
   await expect(page.getByText("Applied ABN")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Preview portal" }),
@@ -2537,9 +2540,9 @@ test("tenant detail labels tenant-uploaded lease activation review", async ({
     ),
   ).toBeVisible();
   await expect(
-    page.locator('a[href="/intake?review=intake-1"]').getByText(
-      "Open Smart Intake review",
-    ),
+    page
+      .locator('a[href="/intake?entity_id=entity-1&review=intake-1"]')
+      .getByText("Open Smart Intake review"),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Activate lease" }).click();

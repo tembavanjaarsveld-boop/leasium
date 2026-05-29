@@ -3059,6 +3059,28 @@ def accept_document_intake_lease_match(
         actor=user.actor,
         user_id=user.id,
         entity_id=intake.entity_id,
+        action="lease_activation_review_ready",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+        tool_name="smart_intake_accept_lease_match",
+        tool_input={
+            "document_id": str(intake.document_id),
+            "document_intake_id": str(intake.id),
+            "lease_id": str(lease.id),
+            "provider": "tenant_upload",
+            "signed_document_id": str(intake.document_id),
+        },
+        tool_output_summary=(
+            "Accepted tenant-uploaded lease as signing evidence; activation "
+            "review is ready. Lease was not activated."
+        ),
+        data_classification="confidential",
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=intake.entity_id,
         action="apply",
         target_table="document_intake",
         target_id=intake.id,

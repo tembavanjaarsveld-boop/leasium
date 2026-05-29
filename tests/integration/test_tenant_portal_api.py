@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.auth import ClerkIdentity
 from stewart.core.models import (
+    AuditAction,
     BillingDraft,
     BillingDraftStatus,
     DocumentCategory,
@@ -2003,6 +2004,26 @@ def test_document_intake_accepts_tenant_lease_match_without_mutating_lease(
     assert signing["lease_activation_review"]["guardrail"] == (
         "Tenant-uploaded lease match does not activate a lease automatically; "
         "review and activate explicitly."
+    )
+    activation_review_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id == onboarding.id,
+            AuditAction.action == "lease_activation_review_ready",
+            AuditAction.tool_name == "smart_intake_accept_lease_match",
+        )
+    )
+    assert activation_review_audit is not None
+    assert activation_review_audit.tool_input == {
+        "document_id": str(document.id),
+        "document_intake_id": str(intake.id),
+        "lease_id": str(lease.id),
+        "provider": "tenant_upload",
+        "signed_document_id": str(document.id),
+    }
+    assert activation_review_audit.tool_output_summary == (
+        "Accepted tenant-uploaded lease as signing evidence; activation "
+        "review is ready. Lease was not activated."
     )
 
     activate_response = client.post(

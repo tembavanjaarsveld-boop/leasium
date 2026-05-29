@@ -1620,3 +1620,33 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 70: Tenant Detail Entity-Safe Intake Links and Activation Audit
+
+- [x] **Step 1: Add tenant-detail link and audit regressions**
+
+Extend tenant-detail smoke coverage so insurance and tenant-uploaded lease
+handoffs expect `/intake?entity_id=<entity>&review=<intake-id>`. Extend the
+tenant-uploaded accept-match backend coverage so accepting signing evidence
+must append a tenant-onboarding audit row for the activation review.
+
+- [x] **Step 2: Harden tenant detail handoffs and backend audit trail**
+
+Generate tenant detail Smart Intake handoff links with both entity and review
+context, including insurance source cards, document review rows, signed
+tenant-upload panels, reviewed source history, and the post-upload review
+redirect. When a tenant-uploaded lease match is accepted, append a
+`tenant_onboarding` audit event that says activation review is ready and the
+lease was not activated.
+
+- [x] **Step 3: Verify focused tenant lifecycle parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_document_intake_accepts_tenant_lease_match_without_mutating_lease -q
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant detail shows portal access recovery actions"
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant detail labels tenant-uploaded lease activation review"
+```
+
+Expected: pass.

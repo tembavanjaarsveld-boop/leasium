@@ -930,6 +930,16 @@ function shortId(value: string | null | undefined) {
   return value ? value.slice(0, 8) : null;
 }
 
+function intakeReviewHref(
+  entityId: string | null | undefined,
+  intakeId: string,
+) {
+  const params = entityId
+    ? new URLSearchParams({ entity_id: entityId, review: intakeId })
+    : new URLSearchParams({ review: intakeId });
+  return `/intake?${params.toString()}`;
+}
+
 function evidenceStatusLabel(status: string) {
   const value = status.split(".").at(-1) ?? status;
   return value.replaceAll("_", " ");
@@ -1139,13 +1149,14 @@ function enrichmentEvidenceChanges(
 
 function reviewedSourceDocument(
   entry: TenantReviewedChangeRecord,
+  entityId?: string | null,
 ): EvidenceSourceDocument {
   const isIntakeSource = entry.source.includes("intake");
   return {
     label: entry.source_label,
     href:
       isIntakeSource && entry.source_id
-        ? `/intake?review=${entry.source_id}`
+        ? intakeReviewHref(entityId, entry.source_id)
         : undefined,
     detail: shortId(entry.source_id) ?? undefined,
   };
@@ -1154,6 +1165,7 @@ function reviewedSourceDocument(
 function latestEvidenceChangeSet(
   reviewedChanges: TenantReviewedChangeRecord[],
   enrichmentHistory: TenantEnrichmentHistoryEntry[],
+  entityId?: string | null,
 ): TenantEvidenceChangeSet | null {
   const latestReviewed = reviewedChanges[0] ?? null;
   const latestEnrichment = enrichmentHistory[0] ?? null;
@@ -1179,7 +1191,7 @@ function latestEvidenceChangeSet(
 
   if (latestReviewed) {
     return {
-      sourceDocument: reviewedSourceDocument(latestReviewed),
+      sourceDocument: reviewedSourceDocument(latestReviewed, entityId),
       appliedAt: evidenceStatusIsApplied(latestReviewed.status)
         ? latestReviewed.occurred_at
         : null,
@@ -1456,6 +1468,7 @@ function TenantDetail() {
   const latestTenantEvidence = latestEvidenceChangeSet(
     tenantReviewedChanges,
     tenantEnrichmentHistoryRows,
+    tenant?.entity_id,
   );
   const firstTenantCitation = tenantSourceCitationRows[0]?.source;
   const latestTenantDocumentSource = documentEvidenceSource(tenantDocuments);
@@ -1892,7 +1905,7 @@ function TenantDetail() {
   const prepareReviewMutation = useMutation({
     mutationFn: createDocumentIntakeFromDocument,
     onSuccess: (intake) => {
-      router.push(`/intake?review=${intake.id}`);
+      router.push(intakeReviewHref(tenant?.entity_id, intake.id));
     },
   });
 
@@ -2322,7 +2335,10 @@ function TenantDetail() {
                       <div className="flex shrink-0 gap-2">
                         {insuranceSummary.intake ? (
                           <Link
-                            href={`/intake?review=${insuranceSummary.intake.id}`}
+                            href={intakeReviewHref(
+                              tenant?.entity_id,
+                              insuranceSummary.intake.id,
+                            )}
                             className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                           >
                             <Sparkles size={15} />
@@ -2848,7 +2864,10 @@ function TenantDetail() {
                         <div className="flex shrink-0 gap-2">
                           {reviewId ? (
                             <Link
-                              href={`/intake?review=${reviewId}`}
+                              href={intakeReviewHref(
+                                tenant?.entity_id,
+                                reviewId,
+                              )}
                               className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                             >
                               <Sparkles size={15} />
@@ -3707,7 +3726,10 @@ function TenantDetail() {
                             {signingStatus?.documentIntakeId ? (
                               <Link
                                 className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition hover:bg-muted"
-                                href={`/intake?review=${signingStatus.documentIntakeId}`}
+                                href={intakeReviewHref(
+                                  tenant?.entity_id,
+                                  signingStatus.documentIntakeId,
+                                )}
                               >
                                 <Sparkles size={15} />
                                 Open Smart Intake review
@@ -3825,7 +3847,10 @@ function TenantDetail() {
                                     ) : null}
                                     {reviewId ? (
                                       <Link
-                                        href={`/intake?review=${reviewId}`}
+                                        href={intakeReviewHref(
+                                          tenant?.entity_id,
+                                          reviewId,
+                                        )}
                                         className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                                       >
                                         <Sparkles size={14} />
