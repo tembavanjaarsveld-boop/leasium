@@ -2504,13 +2504,15 @@ test("tenant detail labels tenant-uploaded lease activation review", async ({
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Open Smart Intake review" }),
-  ).toHaveAttribute("href", "/intake?review=intake-1");
+    page.locator('a[href="/intake?review=intake-1"]').getByText(
+      "Open Smart Intake review",
+    ),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Activate lease" }).click();
   expect(activated).toBe(true);
   await expect(
-    page.getByText("Lease activated after signed lease review."),
+    page.getByText("Lease activated after tenant-uploaded lease review."),
   ).toBeVisible();
 });
 

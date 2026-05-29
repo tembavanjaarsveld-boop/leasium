@@ -1694,13 +1694,21 @@ function TenantDetail() {
 
   const activateLeaseMutation = useMutation({
     mutationFn: activateTenantOnboardingLease,
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({
         queryKey: ["tenant-onboardings", tenant?.entity_id],
       });
       queryClient.invalidateQueries({ queryKey: ["tenant-leases", tenantId] });
       queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
-      setLeasePackNotice("Lease activated after signed lease review.");
+      const leaseAgreement = leaseAgreementFromDelivery(updated.delivery_data);
+      const signing = signingRecord(leaseAgreement);
+      const provider = metadataString(signing.provider);
+      const source = metadataString(signing.source);
+      setLeasePackNotice(
+        provider === "tenant_upload" || source === "tenant_uploaded_lease_match"
+          ? "Lease activated after tenant-uploaded lease review."
+          : "Lease activated after signed lease review.",
+      );
     },
   });
 

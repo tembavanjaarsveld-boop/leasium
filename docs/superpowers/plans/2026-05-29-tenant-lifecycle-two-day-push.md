@@ -1441,3 +1441,28 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 63: Tenant Upload Activation Notice
+
+- [x] **Step 1: Add source-aware notice smoke coverage**
+
+Update the tenant-upload activation review smoke so activating a lease from a
+tenant-uploaded match expects `Lease activated after tenant-uploaded lease
+review.` instead of the generic signed-lease notice.
+
+- [x] **Step 2: Read activation source from returned signing metadata**
+
+After activation, inspect the returned onboarding signing metadata. Use the
+tenant-upload-specific notice when the provider/source identifies
+`tenant_upload` / `tenant_uploaded_lease_match`; keep the existing generic
+notice for other signed-lease activation paths.
+
+- [x] **Step 3: Verify tenant-upload activation notice**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant detail labels tenant-uploaded lease activation review"
+```
+
+Expected: pass.
