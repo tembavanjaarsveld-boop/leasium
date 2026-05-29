@@ -14,9 +14,6 @@ records on each call.
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
 import secrets
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -65,6 +62,7 @@ from apps.api.schemas.comms import (
     CommsQueueCountsRead,
     CommsQueueRead,
 )
+from apps.api.webhook_auth import twilio_signature_valid
 
 router = APIRouter(prefix="/comms", tags=["comms"])
 
@@ -2276,18 +2274,15 @@ async def receive_sendgrid_inbound(
     """Receive a parsed inbound email from SendGrid Inbound Parse.
 
     Reads the SendGrid form payload, attributes to a tenant by matching the
-    from-address against existing tenant contacts, and persists an
-    ``inbound_message`` row. Classification is deferred — a follow-up slice
-    wires this into the existing /ai/triage classifier under the same
-    guardrail. Returns 202 so SendGrid stops retrying once the row is
-    persisted, even if no tenant was attributed.
+    from-address against existing tenant contacts, persists an
+    ``inbound_message`` row, then runs AI inbox classification when the
+    provider key is configured. Returns 202 so SendGrid stops retrying once
+    the row is persisted, even if no tenant was attributed.
 
-    Auth: the inbound endpoint is webhook-only and not session-protected;
-    SendGrid signs requests via a shared secret configured in the
-    provider console. v1 trusts the entity_id passed in the query because
-    SendGrid Inbound Parse is configured per-MX-domain and each route is
-    only reachable by the provider. A future hardening pass should verify
-    the shared signature header.
+    Auth: the inbound endpoint is webhook-only and not session-protected.
+    When ``SENDGRID_INBOUND_SECRET`` is configured, the request must include
+    the matching shared secret header or query token before anything is
+    persisted.
     """
 
     # Validate the entity exists before persisting anything.
@@ -2456,29 +2451,13 @@ def _assert_twilio_webhook_signature(
     if not auth_token:
         return
 
-    provided = request.headers.get("x-twilio-signature", "").strip()
-    if not provided:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid Twilio webhook signature.",
-        )
-
-    values = "".join(f"{key}{str(form_payload[key])}" for key in sorted(form_payload))
-    public_api_url = settings.public_api_url.strip().rstrip("/")
-    urls = [str(request.url)]
-    if public_api_url:
-        query = f"?{request.url.query}" if request.url.query else ""
-        urls.append(f"{public_api_url}{request.url.path}{query}")
-
-    for url in urls:
-        digest = hmac.new(
-            auth_token.encode(),
-            f"{url}{values}".encode(),
-            hashlib.sha1,
-        ).digest()
-        expected = base64.b64encode(digest).decode()
-        if secrets.compare_digest(provided, expected):
-            return
+    if twilio_signature_valid(
+        request,
+        form_payload,
+        auth_token,
+        settings.public_api_url,
+    ):
+        return
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,

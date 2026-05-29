@@ -1892,3 +1892,30 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 80: Shared Twilio Webhook Auth Helper
+
+- [x] **Step 1: Add helper-level auth coverage**
+
+Add focused unit coverage for the shared webhook secret helper and Twilio
+signature helper, including signatures generated against `PUBLIC_API_URL`.
+
+- [x] **Step 2: Consolidate callback signature checks**
+
+Move the duplicated shared-token and Twilio HMAC-SHA1 verification logic into
+`apps/api/webhook_auth.py`, then have comms, tenant onboarding, maintenance,
+and Work assignment callback handlers call the shared helper while preserving
+their existing fail-open local/dev path when provider secrets are not
+configured.
+
+- [x] **Step 3: Refresh callback verification**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/unit/test_webhook_auth.py tests/integration/test_comms_api.py::test_twilio_inbound_webhook_persists_and_attributes_by_phone tests/integration/test_comms_api.py::test_twilio_inbound_webhook_rejects_missing_signature_when_token_configured tests/integration/test_comms_api.py::test_twilio_inbound_webhook_accepts_valid_signature_when_token_configured tests/integration/test_comms_api.py::test_twilio_inbound_webhook_accepts_public_api_url_signature tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_twilio_status_rejects_unsigned_when_token_configured tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_twilio_status_accepts_public_api_url_signature tests/integration/test_maintenance_arrears_api.py::test_maintenance_work_order_sends_contractor_sms_and_records_receipt tests/integration/test_maintenance_arrears_api.py::test_maintenance_twilio_status_rejects_unsigned_when_token_configured tests/integration/test_maintenance_arrears_api.py::test_maintenance_twilio_status_accepts_public_api_url_signature tests/integration/test_maintenance_arrears_api.py::test_notification_center_can_send_assignment_notice_sms_without_clobbering_email tests/integration/test_maintenance_arrears_api.py::test_work_assignment_twilio_status_rejects_unsigned_when_token_configured tests/integration/test_maintenance_arrears_api.py::test_work_assignment_twilio_status_accepts_public_api_url_signature -q
+.venv/bin/ruff check apps/api/webhook_auth.py apps/api/routers/comms.py apps/api/routers/tenant_onboarding.py apps/api/routers/maintenance.py apps/api/routers/work_assignment_notifications.py tests/unit/test_webhook_auth.py tests/integration/test_comms_api.py tests/integration/test_tenant_onboarding_api.py tests/integration/test_maintenance_arrears_api.py
+git diff --check
+```
+
+Expected: pass.

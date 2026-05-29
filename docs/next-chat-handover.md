@@ -1090,6 +1090,7 @@ Open items at session end:
 - Inbound Twilio SMS now verifies `X-Twilio-Signature` whenever `TWILIO_AUTH_TOKEN` is configured, rejecting unsigned/invalid provider posts before an `inbound_message` row is persisted.
 - Tenant onboarding Twilio SMS status callbacks now also verify signed provider callbacks when `TWILIO_AUTH_TOKEN` is configured, while preserving the existing shared `COMMUNICATIONS_WEBHOOK_SECRET` path.
 - Maintenance contractor SMS and Work assignment SMS status callbacks now follow the same signed Twilio callback pattern, with `PUBLIC_API_URL` support for production proxy signatures and the existing shared webhook-secret path preserved.
+- Twilio webhook authentication is now centralized in `apps/api/webhook_auth.py`, with helper-level coverage for shared webhook tokens and `PUBLIC_API_URL` Twilio signatures so future callback endpoints do not grow divergent signing logic.
 - Tenant-uploaded lease activation now shows a source-aware success notice: `Lease activated after tenant-uploaded lease review.`
 - Historical DocuSign docs were cleaned up so the automation strategy and 5-day report no longer describe the flow as scaffold-only or say completion auto-activates leases; they now reflect signed-PDF retention, explicit activation review, and remaining production-readiness work.
 - DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.
