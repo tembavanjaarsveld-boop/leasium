@@ -2044,7 +2044,26 @@ def test_document_intake_accepts_tenant_lease_match_without_mutating_lease(
     assert activate_response.status_code == 200
     session.refresh(lease)
     assert lease.status == LeaseStatus.active
-    assert lease.lease_metadata["activation"]["source"] == "tenant_uploaded_lease_match"
+    activation = lease.lease_metadata["activation"]
+    assert activation["source"] == "tenant_uploaded_lease_match"
+    assert activation["tenant_onboarding_id"] == str(onboarding.id)
+    assert activation["signed_document_id"] == str(document.id)
+    assert activation["document_intake_id"] == str(intake.id)
+    assert activation["activated_by_user_id"] is not None
+    lease_activation_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "lease",
+            AuditAction.target_id == lease.id,
+            AuditAction.action == "activate",
+        )
+    )
+    assert lease_activation_audit is not None
+    assert lease_activation_audit.tool_input == {
+        "tenant_onboarding_id": str(onboarding.id),
+        "source": "tenant_uploaded_lease_match",
+        "signed_document_id": str(document.id),
+        "document_intake_id": str(intake.id),
+    }
 
 
 def test_document_intake_accept_lease_match_rejects_differences(

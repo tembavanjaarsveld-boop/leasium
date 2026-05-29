@@ -1017,16 +1017,24 @@ def _activate_signed_onboarding_lease(
         or signing_data.get("provider") == "tenant_upload"
         else "tenant_onboarding_docusign"
     )
+    source_document_intake_id = (
+        signing_data.get("document_intake_id")
+        if isinstance(signing_data.get("document_intake_id"), str)
+        else None
+    )
     lease.status = LeaseStatus.active
+    activation_metadata = {
+        "source": signing_source,
+        "tenant_onboarding_id": str(onboarding.id),
+        "signed_document_id": signing_data.get("signed_document_id"),
+        "activated_at": activated_at,
+        "activated_by_user_id": str(user.id),
+    }
+    if source_document_intake_id is not None:
+        activation_metadata["document_intake_id"] = source_document_intake_id
     lease.lease_metadata = {
         **(lease.lease_metadata or {}),
-        "activation": {
-            "source": signing_source,
-            "tenant_onboarding_id": str(onboarding.id),
-            "signed_document_id": signing_data.get("signed_document_id"),
-            "activated_at": activated_at,
-            "activated_by_user_id": str(user.id),
-        },
+        "activation": activation_metadata,
     }
     signing_data["lease_activation_review"] = {
         **(
@@ -1985,6 +1993,20 @@ def activate_tenant_onboarding_lease(
         )
     lease, _, _ = _lease_scope(onboarding.lease_id, session)
     _activate_signed_onboarding_lease(onboarding, lease, user)
+    activation_metadata = (
+        lease.lease_metadata.get("activation", {})
+        if isinstance(lease.lease_metadata, dict)
+        else {}
+    )
+    lease_audit_input = {
+        "tenant_onboarding_id": str(onboarding.id),
+        "source": activation_metadata.get("source"),
+        "signed_document_id": activation_metadata.get("signed_document_id"),
+    }
+    if activation_metadata.get("document_intake_id") is not None:
+        lease_audit_input["document_intake_id"] = activation_metadata.get(
+            "document_intake_id"
+        )
     audit_log(
         session,
         actor=user.actor,
@@ -2011,7 +2033,7 @@ def activate_tenant_onboarding_lease(
         action="activate",
         target_table="lease",
         target_id=lease.id,
-        tool_input={"tenant_onboarding_id": str(onboarding.id)},
+        tool_input=lease_audit_input,
         outcome=AuditOutcome.success,
         data_classification="confidential",
     )

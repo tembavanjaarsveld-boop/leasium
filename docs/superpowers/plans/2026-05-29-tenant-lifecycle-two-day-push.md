@@ -2007,3 +2007,30 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 84: Tenant-Uploaded Lease Activation Source Evidence
+
+- [x] **Step 1: Add activation evidence regression**
+
+Extend tenant-uploaded lease acceptance coverage so the final Activate lease
+step must carry the source Smart Intake id into lease activation metadata and
+the lease activation audit row.
+
+- [x] **Step 2: Preserve Smart Intake source through activation**
+
+When activating a lease from tenant-uploaded signing evidence, copy
+`document_intake_id` from signing metadata into `lease.lease_metadata.activation`
+and into the lease-level activation audit input, while preserving the existing
+DocuSign activation path.
+
+- [x] **Step 3: Verify activation source evidence**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_document_intake_accepts_tenant_lease_match_without_mutating_lease tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_activate_lease_after_docusign_completion -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_portal_api.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.
