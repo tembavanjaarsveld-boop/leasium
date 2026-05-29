@@ -2046,6 +2046,7 @@ test("smart intake labels inbound email attachments in review queue", async ({
 }) => {
   await page.goto("/intake");
 
+  await page.getByLabel("Review filter").selectOption("tenant_portal");
   const tenantInsuranceCard = page.getByTestId(
     "review-intake-intake-tenant-upload-insurance-1",
   );
@@ -2057,6 +2058,10 @@ test("smart intake labels inbound email attachments in review queue", async ({
   const inboundCard = page.getByTestId(
     "review-intake-intake-inbound-email-attachment-1",
   );
+  await expect(inboundCard).toBeHidden();
+
+  await page.getByLabel("Review filter").selectOption("inbound_email_attachment");
+  await expect(tenantInsuranceCard).toBeHidden();
   await expect(inboundCard.getByText("Inbound email attachment")).toBeVisible();
   await expect(
     inboundCard.getByText("Email subject: Insurance certificate"),
@@ -2095,7 +2100,9 @@ test("smart intake deep link selects the review entity", async ({ page }) => {
     page.getByRole("heading", { name: "Review document" }),
   ).toBeVisible();
   await expect(page.getByText("tenant-uploaded-insurance.txt").nth(1)).toBeVisible();
-  await expect(page.getByText("Tenant portal upload")).toHaveCount(2);
+  await expect(
+    page.getByText("Tenant portal upload", { exact: true }),
+  ).toHaveCount(2);
 });
 
 test("smart intake explains active DocuSign conflict before accepting lease match", async ({

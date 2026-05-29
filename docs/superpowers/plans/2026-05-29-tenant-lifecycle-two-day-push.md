@@ -2166,3 +2166,31 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 90: Smart Intake Review Queue Filters
+
+- [x] **Step 1: Add source-filter smoke coverage**
+
+Extend the Smart Intake smoke so the review queue can be filtered to tenant
+portal uploads and inbound email attachments, with non-matching review cards
+hidden while matching cards remain available for review.
+
+- [x] **Step 2: Add compact source/type queue filter**
+
+Add a `Review filter` select to Smart Intake's review queue with options for
+all reviews, tenant portal uploads, inbound email attachments, lease matches,
+insurance, and leases. Use the filtered queue for visible cards and selected
+review fallback while leaving the global waiting count unchanged.
+
+- [x] **Step 3: Verify Smart Intake filter UX**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "smart intake shows tenant lease upload match recommendation|smart intake labels inbound email attachments|smart intake deep link selects the review entity" --workers=1
+cd apps/web && ./node_modules/.bin/tsc --noEmit
+cd apps/web && npm run lint
+git diff --check
+```
+
+Expected: pass after removing generated Playwright report artifacts.

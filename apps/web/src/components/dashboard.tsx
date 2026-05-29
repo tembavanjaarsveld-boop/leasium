@@ -93,6 +93,13 @@ type ReviewApplyTarget = {
   tenantId: string;
   leaseId: string;
 };
+type ReviewQueueFilter =
+  | "all"
+  | "tenant_portal"
+  | "inbound_email_attachment"
+  | "lease_match"
+  | "insurance_certificate"
+  | "lease";
 type LeaseAutoMatchField = {
   field: string;
   current: unknown;
@@ -1034,6 +1041,31 @@ function intakeSourceInfo(intake: DocumentIntakeRecord) {
     detail: subject ? `Email subject: ${subject}` : "Routed from tenant email",
     guardrail,
   };
+}
+
+function intakeReviewFilterMatch(
+  intake: DocumentIntakeRecord,
+  filter: ReviewQueueFilter,
+) {
+  if (filter === "all") {
+    return true;
+  }
+  const reviewData = intake.review_data;
+  const source = fieldText(reviewData.source);
+  const candidate = fieldText(reviewData.candidate);
+  if (filter === "tenant_portal") {
+    return source === "tenant_portal";
+  }
+  if (filter === "inbound_email_attachment") {
+    return (
+      source === "sendgrid_inbound_parse" ||
+      candidate === "inbound_email_attachment"
+    );
+  }
+  if (filter === "lease_match") {
+    return leaseAutoMatchRecommendation(intakeReviewData(intake)) !== null;
+  }
+  return intake.document_type === filter;
 }
 
 function intakeReviewHref(entityId: string, intakeId: string) {
@@ -2479,6 +2511,8 @@ export function Dashboard({
   const [intakeError, setIntakeError] = useState<string | null>(null);
   const [intakeNotice, setIntakeNotice] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [reviewQueueFilter, setReviewQueueFilter] =
+    useState<ReviewQueueFilter>("all");
   const [reviewIntakeId, setReviewIntakeId] = useState<string | null>(null);
   const [requestedReviewId, setRequestedReviewId] = useState<string | null>(
     null,
@@ -2879,10 +2913,13 @@ export function Dashboard({
   const reviewIntakes = documentIntakes.filter(
     (item) => item.status !== "applied",
   );
+  const filteredReviewIntakes = reviewIntakes.filter((item) =>
+    intakeReviewFilterMatch(item, reviewQueueFilter),
+  );
   const activeReviewIntakeId = reviewIntakeId ?? requestedReviewId;
   const selectedReviewIntake =
-    reviewIntakes.find((item) => item.id === activeReviewIntakeId) ??
-    reviewIntakes[0] ??
+    filteredReviewIntakes.find((item) => item.id === activeReviewIntakeId) ??
+    filteredReviewIntakes[0] ??
     null;
   const needsReviewCount = documentIntakes.filter((item) =>
     ["ready_for_review", "needs_attention"].includes(item.status),
@@ -3472,20 +3509,45 @@ export function Dashboard({
                   </Link>
                 </div>
                 <div className="overflow-hidden rounded-xl border border-border">
-                  <div className="flex items-center justify-between border-b border-border bg-muted/25 px-3 py-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/25 px-3 py-2.5">
                     <span className="text-sm font-semibold leading-5">
                       Review queue
                     </span>
-                    <StatusBadge
-                      tone={needsReviewCount ? "primary" : "neutral"}
-                    >
-                      {documentIntakesLoading
-                        ? "Loading…"
-                        : `${needsReviewCount} waiting`}
-                    </StatusBadge>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <Select
+                        aria-label="Review filter"
+                        className="h-9 min-h-9 w-52 rounded-md"
+                        value={reviewQueueFilter}
+                        onChange={(event) => {
+                          setReviewQueueFilter(
+                            event.target.value as ReviewQueueFilter,
+                          );
+                          setReviewIntakeId(null);
+                          setRequestedReviewId(null);
+                        }}
+                      >
+                        <option value="all">All reviews</option>
+                        <option value="tenant_portal">
+                          Tenant portal uploads
+                        </option>
+                        <option value="inbound_email_attachment">
+                          Inbound email attachments
+                        </option>
+                        <option value="lease_match">Lease matches</option>
+                        <option value="insurance_certificate">Insurance</option>
+                        <option value="lease">Leases</option>
+                      </Select>
+                      <StatusBadge
+                        tone={needsReviewCount ? "primary" : "neutral"}
+                      >
+                        {documentIntakesLoading
+                          ? "Loading…"
+                          : `${needsReviewCount} waiting`}
+                      </StatusBadge>
+                    </div>
                   </div>
                   <div className="divide-y divide-border">
-                    {reviewIntakes.slice(0, 5).map((item) => {
+                    {filteredReviewIntakes.slice(0, 5).map((item) => {
                       const propertyName = firstField(
                         item.extracted_data.properties,
                         "name",
@@ -3602,6 +3664,12 @@ export function Dashboard({
                         icon={<CheckCircle2 size={18} />}
                         title="No documents waiting for review."
                         description="Drop in a lease, acquisition contract, invoice, guarantee, insurance certificate, or tenant document to start your first review."
+                      />
+                    ) : filteredReviewIntakes.length === 0 ? (
+                      <EmptyState
+                        icon={<CheckCircle2 size={18} />}
+                        title="No matching reviews."
+                        description="Change the review filter to see other waiting documents."
                       />
                     ) : null}
                   </div>
