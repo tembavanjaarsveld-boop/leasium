@@ -855,3 +855,26 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_
 ```
 
 Expected: pass.
+
+## Task 39: Insurance Expiry Apply Guardrail
+
+- [x] **Step 1: Add scoped insurance expiry regression**
+
+Add Smart Intake coverage for a tenant-scoped insurance certificate with a dated
+follow-up obligation but no reviewed policy expiry. Applying must fail without
+creating obligations, marking the intake applied, or changing tenant metadata.
+
+- [x] **Step 2: Block insurance apply without expiry**
+
+Require `_insurance_due_date(reviewed)` before the insurance apply path creates
+obligations or writes tenant insurance metadata.
+
+- [x] **Step 3: Verify insurance apply behavior**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_document_intake_api.py::test_document_intake_apply_insurance_requires_reviewed_expiry_for_tenant_update tests/integration/test_document_intake_api.py::test_document_intake_apply_rejects_insurance_without_expiry tests/integration/test_document_intake_api.py::test_document_intake_apply_insurance_updates_scoped_tenant_metadata tests/integration/test_document_intake_api.py::test_document_intake_apply_insurance_uses_lease_tenant_for_metadata tests/integration/test_document_intake_api.py::test_document_intake_apply_insurance_uses_existing_document_scope -q
+```
+
+Expected: pass.

@@ -11,6 +11,7 @@ from stewart.core.models import (
     BillingDraft,
     DocumentCategory,
     DocumentIntake,
+    DocumentIntakeStatus,
     Entity,
     InvoiceDraft,
     Lease,
@@ -876,6 +877,82 @@ def test_document_intake_apply_insurance_updates_scoped_tenant_metadata(
     assert history[-1]["document_intake_id"] == create_response.json()["id"]
     assert history[-1]["expiry_date"] == "2027-04-15"
     assert history[-1]["source"] == "document_intake"
+
+
+def test_document_intake_apply_insurance_requires_reviewed_expiry_for_tenant_update(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    reviewed = _fake_insurance_extraction()
+    reviewed["key_dates"] = [
+        {
+            "label": "Policy start",
+            "date": "2026-03-31",
+            "confidence": 0.9,
+            "source_hint": "Policy period",
+        }
+    ]
+    reviewed["obligations"] = [
+        {
+            "title": "Review insurance certificate",
+            "due_date": "2027-04-15",
+            "category": "insurance",
+            "notes": "Follow up the reviewed certificate.",
+        }
+    ]
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return reviewed, "resp_scoped_insurance_missing_expiry"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    scope = _lease_scope(client, session)
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    tenant.tenant_metadata = {"insurance_expiry_date": "2026-12-31"}
+    document = StoredDocument(
+        entity_id=UUID(_entity_id(session)),
+        property_id=UUID(scope["property_id"]),
+        tenancy_unit_id=UUID(scope["tenancy_unit_id"]),
+        tenant_id=UUID(scope["tenant_id"]),
+        lease_id=UUID(scope["lease_id"]),
+        filename="scoped-insurance-no-expiry.txt",
+        content_type="text/plain",
+        byte_size=len(b"insurance"),
+        file_data=b"insurance",
+        category=DocumentCategory.insurance,
+        document_metadata={"source": "tenant_portal"},
+    )
+    session.add(document)
+    session.commit()
+
+    create_response = client.post(f"/api/v1/document-intakes/from-document/{document.id}")
+    assert create_response.status_code == 200
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={"review_data": reviewed},
+    )
+
+    assert apply_response.status_code == 422
+    assert apply_response.json()["detail"] == (
+        "Confirm the insurance expiry date before applying."
+    )
+    intake = session.get(DocumentIntake, UUID(create_response.json()["id"]))
+    assert intake is not None
+    assert intake.status != DocumentIntakeStatus.applied
+    assert session.scalars(select(Obligation)).all() == []
+    session.refresh(tenant)
+    assert tenant.tenant_metadata == {"insurance_expiry_date": "2026-12-31"}
 
 
 def test_document_intake_apply_insurance_uses_lease_tenant_for_metadata(

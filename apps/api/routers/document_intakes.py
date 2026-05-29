@@ -2839,6 +2839,12 @@ def apply_document_intake(
             detail="This document type is review-only for now.",
         )
 
+    if document_type == "insurance_certificate" and _insurance_due_date(reviewed) is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Confirm the insurance expiry date before applying.",
+        )
+
     obligations = _apply_document_obligation_intake(intake, reviewed, payload, user, session)
     billing_draft = (
         _apply_billing_draft_intake(intake, reviewed, payload, user, session)
