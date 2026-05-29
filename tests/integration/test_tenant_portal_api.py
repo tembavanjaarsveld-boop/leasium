@@ -2579,6 +2579,48 @@ def test_tenant_portal_lease_signing_rejects_pending_docusign_envelope(
     )
 
 
+def test_tenant_portal_session_locks_leasium_signing_for_active_docusign_envelope(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    bearer_headers = {"Authorization": "Bearer tenant-subject-one"}
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers=bearer_headers,
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    onboarding.status = TenantOnboardingStatus.applied
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "signing": {
+                "provider": "docusign",
+                "status": "queued",
+                "envelope_id": "envelope-pending",
+                "document_id": scope["document_id"],
+            }
+        },
+    )
+    session.commit()
+
+    response = client.get("/api/v1/tenant-portal/session", headers=bearer_headers)
+
+    assert response.status_code == 200
+    agreement = response.json()["lease_agreement"]
+    assert agreement["signing_provider"] == "docusign"
+    assert agreement["signing_status"] == "queued"
+    assert agreement["status"] == "not_ready"
+    assert agreement["signing_locked_reason"] == (
+        "A DocuSign envelope is waiting for completion. Complete the DocuSign request "
+        "instead of signing inside Leasium."
+    )
+
+
 def test_tenant_portal_lease_signing_rejects_delivered_docusign_envelope(
     client: TestClient,
     session: Session,

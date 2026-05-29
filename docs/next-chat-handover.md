@@ -297,7 +297,11 @@ Last updated: 2026-05-28
   helper, stores a DocuSign receipt in `delivery_data.lease_pack.docusign`,
   stores queued/sent envelope metadata under `delivery_data.lease_agreement.signing`,
   and blocks tenant-side Leasium click-signing while a DocuSign envelope is
-  queued/sent. `stewart.integrations.docusign.send_lease_for_signature` now
+  queued/sent. The tenant portal session read model now also fails closed for
+  active DocuSign signing metadata (`queued`, `sent`, or `delivered`): it
+  reports `not_ready`, exposes the DocuSign provider/status fields, and tells
+  tenants to complete DocuSign instead of enabling Leasium signing.
+  `stewart.integrations.docusign.send_lease_for_signature` now
   performs JWT grant + envelope create when the four required DocuSign env vars
   are configured, and soft-skips when config or signer email is missing. The
   DocuSign Connect endpoint `POST /api/v1/tenant-onboarding/webhooks/docusign`
@@ -435,10 +439,10 @@ Last updated: 2026-05-28
   remain disabled, and no OAuth, Xero preview/apply, draft creation, provider
   dispatch, or payment reconciliation request fires. This is mock-only safety
   coverage; the live Xero rehearsal still needs production credentials.
-- Sidecar recommendation for the next slice: tenant portal session should lock
-  Leasium signing when active DocuSign signing metadata is present, or route
-  inbound email attachments into Smart Intake. Both are credential-free local
-  slices and preserve the no-provider-action guardrails.
+- Sidecar recommendation for the next slice: route inbound email attachments
+  into Smart Intake. It is a credential-free local slice that preserves the
+  no-provider-action guardrails; production enablement still needs SendGrid
+  Inbound Parse/DNS.
 
 ## Takeover Priority
 

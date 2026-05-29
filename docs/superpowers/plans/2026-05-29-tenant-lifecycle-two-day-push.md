@@ -1177,3 +1177,28 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 53: DocuSign Session Signing Lock
+
+- [x] **Step 1: Add tenant portal session regression**
+
+Add backend coverage that a claimed tenant portal session with active DocuSign
+signing metadata (`queued`, `sent`, or `delivered`) does not report the lease
+agreement as ready for Leasium signing.
+
+- [x] **Step 2: Share the active DocuSign lock rule**
+
+Centralise the active DocuSign statuses and lock reason in
+`apps/api/tenant_lease_agreement.py`, use it in the lease agreement read model,
+and keep the existing `/tenant-portal/lease-agreement/sign` conflict aligned.
+
+- [x] **Step 3: Verify tenant portal guardrails**
+
+Run:
+
+```bash
+.venv/bin/pytest tests/integration/test_tenant_portal_api.py -q
+.venv/bin/ruff check apps/api/tenant_lease_agreement.py apps/api/routers/tenant_portal.py tests/integration/test_tenant_portal_api.py
+```
+
+Expected: pass.

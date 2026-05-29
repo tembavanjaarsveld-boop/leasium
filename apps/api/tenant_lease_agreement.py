@@ -7,6 +7,11 @@ from stewart.core.models import TenantOnboarding, TenantOnboardingStatus
 
 LEASE_AGREEMENT_KEY = "lease_agreement"
 BLOCKING_QUESTION_STATUSES = {"open", "needs_revision", "legal_review"}
+ACTIVE_DOCUSIGN_SIGNING_STATUSES = {"queued", "sent", "delivered"}
+DOCUSIGN_SIGNING_LOCKED_REASON = (
+    "A DocuSign envelope is waiting for completion. Complete the DocuSign request "
+    "instead of signing inside Leasium."
+)
 
 
 def _delivery_data(onboarding: TenantOnboarding) -> dict[str, object]:
@@ -86,6 +91,12 @@ def lease_agreement_read(onboarding: TenantOnboarding) -> dict[str, object]:
     if isinstance(signed_at, str) and signed_at:
         status = "signed"
         locked_reason = None
+    elif (
+        signing_data.get("provider") == "docusign"
+        and signing_data.get("status") in ACTIVE_DOCUSIGN_SIGNING_STATUSES
+    ):
+        status = "not_ready"
+        locked_reason = DOCUSIGN_SIGNING_LOCKED_REASON
     elif open_question_count:
         status = "questions_open"
         locked_reason = "Resolve lease agreement questions before signing."
