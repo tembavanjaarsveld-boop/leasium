@@ -952,6 +952,16 @@ function shortId(value: string | null | undefined) {
   return value ? value.slice(0, 8) : null;
 }
 
+function intakeReviewHref(
+  entityId: string | null | undefined,
+  intakeId: string,
+) {
+  const params = entityId
+    ? new URLSearchParams({ entity_id: entityId, review: intakeId })
+    : new URLSearchParams({ review: intakeId });
+  return `/intake?${params.toString()}`;
+}
+
 function billingIdentitySummary(
   property: PropertyRecord | null | undefined,
   currentEntityName?: string | null,
@@ -2934,7 +2944,7 @@ function Workspace({
       queryClient.invalidateQueries({
         queryKey: ["dashboard-document-intakes", selectedEntityId],
       });
-      router.push(`/intake?review=${intake.id}`);
+      router.push(intakeReviewHref(selectedEntityId, intake.id));
     },
   });
 
@@ -5734,7 +5744,10 @@ function Workspace({
                 </div>
                 {latestPropertyApply?.document_intake_id ? (
                   <Link
-                    href={`/intake?review=${latestPropertyApply.document_intake_id}`}
+                    href={intakeReviewHref(
+                      selectedEntityId,
+                      latestPropertyApply.document_intake_id,
+                    )}
                     className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                   >
                     <FileText size={15} />
@@ -5753,7 +5766,10 @@ function Workspace({
                             latestPropertyApply.document_type,
                           ),
                           href: latestPropertyApply.document_intake_id
-                            ? `/intake?review=${latestPropertyApply.document_intake_id}`
+                            ? intakeReviewHref(
+                                selectedEntityId,
+                                latestPropertyApply.document_intake_id,
+                              )
                             : undefined,
                           detail:
                             shortId(latestPropertyApply.document_intake_id) ??

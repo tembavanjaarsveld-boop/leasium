@@ -1733,3 +1733,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 74: Property Workspace Intake Link Parity
+
+- [x] **Step 1: Add property source-history URL regression**
+
+Extend the property workspace source-trail smoke so the latest Smart Intake
+history link must include both `entity_id` and `review`.
+
+- [x] **Step 2: Harden property workspace handoffs**
+
+Generate entity-aware Smart Intake review URLs for property document upload
+redirects, the Source history header link, and the evidence drawer source
+document link.
+
+- [x] **Step 3: Verify property workspace parity**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "property workspace shows the evidence source trail"
+cd apps/web && ./node_modules/.bin/eslint src/components/property-workspace.tsx tests/smoke/app-flows.spec.ts
+cd apps/web && ./node_modules/.bin/tsc --noEmit
+git diff --check
+```
+
+Expected: pass.
