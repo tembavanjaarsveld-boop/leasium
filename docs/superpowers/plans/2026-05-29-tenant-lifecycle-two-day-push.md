@@ -744,3 +744,26 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::
 Expected: pass if the count endpoint is already reusing the same lifecycle
 scanner and severity rules as `/comms/queue`; otherwise fix the shared scanner
 path until this passes.
+
+## Task 34: API Release Stamp
+
+- [x] **Step 1: Add healthcheck release coverage**
+
+Add smoke coverage that `/health` still reports OK locally and includes a
+non-secret release block with an `unknown` local fallback.
+
+- [x] **Step 2: Report deployed commit metadata**
+
+Teach `/health` to surface `RENDER_GIT_COMMIT` as `release.commit`, with common
+commit environment variable fallbacks, so production API verification can prove
+which backend revision is live.
+
+- [x] **Step 3: Verify release stamp**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_smoke_workflows.py::test_healthcheck_smoke tests/integration/test_smoke_workflows.py::test_healthcheck_reports_deployed_commit -q
+```
+
+Expected: pass.

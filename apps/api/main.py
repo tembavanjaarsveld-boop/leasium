@@ -1,5 +1,8 @@
 """FastAPI application entrypoint for Leasium."""
 
+import os
+from collections.abc import Mapping
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from stewart.core.settings import get_settings
@@ -50,10 +53,22 @@ app.add_middleware(
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
+def health() -> dict[str, str | dict[str, str]]:
     """Healthcheck for local Docker and uptime checks."""
 
-    return {"status": "ok", "app": settings.app_name}
+    return {"status": "ok", "app": settings.app_name, "release": _release_metadata()}
+
+
+def _release_metadata(environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return non-secret deploy provenance for live verification."""
+
+    env = environ or os.environ
+    if render_commit := env.get("RENDER_GIT_COMMIT", "").strip():
+        return {"commit": render_commit, "source": "render"}
+    for name in ("GIT_COMMIT", "COMMIT_SHA", "SOURCE_VERSION", "VERCEL_GIT_COMMIT_SHA"):
+        if commit := env.get(name, "").strip():
+            return {"commit": commit, "source": name.lower()}
+    return {"commit": "unknown", "source": "local"}
 
 
 app.include_router(organisations.router, prefix="/api/v1")

@@ -33,7 +33,28 @@ def test_healthcheck_smoke(client: TestClient) -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "app": "Leasium"}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["app"] == "Leasium"
+    assert body["release"] == {
+        "commit": "unknown",
+        "source": "local",
+    }
+
+
+def test_healthcheck_reports_deployed_commit(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "abc123def456")
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["release"] == {
+        "commit": "abc123def456",
+        "source": "render",
+    }
 
 
 def test_billing_readiness_smoke_surfaces_actionable_blockers(
