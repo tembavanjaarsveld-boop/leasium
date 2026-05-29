@@ -2355,3 +2355,30 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 97: DocuSign Webhook Receipt Scope Audit
+
+- [x] **Step 1: Add webhook receipt audit scope regression**
+
+Extend completed DocuSign webhook coverage so the `signature_receipt` audit must
+identify the tenant onboarding row, lease, envelope, and retained signed
+document.
+
+- [x] **Step 2: Stamp webhook receipt scope evidence**
+
+After processing a DocuSign Connect event, build the receipt audit payload from
+the updated onboarding signing record so completed events include retained
+signed document evidence alongside onboarding, lease, event, status, and
+envelope ids.
+
+- [x] **Step 3: Verify DocuSign receipt audit parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_marks_lease_signed tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_activate_lease_after_docusign_completion -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.

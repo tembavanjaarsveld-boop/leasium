@@ -1773,6 +1773,17 @@ async def record_docusign_envelope_event(
     if onboarding is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     _apply_docusign_webhook_event(onboarding, payload, envelope_id, event_status, session)
+    signing = lease_agreement_section(onboarding).get("signing")
+    signing_data = signing if isinstance(signing, dict) else {}
+    webhook_audit_input = {
+        "status": event_status,
+        "event": _docusign_event(payload),
+        "envelope_id": envelope_id,
+        "tenant_onboarding_id": str(onboarding.id),
+        "lease_id": str(onboarding.lease_id),
+    }
+    if isinstance(signing_data.get("signed_document_id"), str):
+        webhook_audit_input["signed_document_id"] = signing_data["signed_document_id"]
     audit_log(
         session,
         actor="provider:docusign",
@@ -1781,11 +1792,7 @@ async def record_docusign_envelope_event(
         target_table="tenant_onboarding",
         target_id=onboarding.id,
         tool_name="docusign.connect_webhook",
-        tool_input={
-            "status": event_status,
-            "event": _docusign_event(payload),
-            "envelope_id": envelope_id,
-        },
+        tool_input=webhook_audit_input,
         outcome=AuditOutcome.success,
         data_classification="confidential",
     )

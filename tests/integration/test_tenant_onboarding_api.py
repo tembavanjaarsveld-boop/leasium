@@ -1300,6 +1300,22 @@ def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
     assert signed_document.document_metadata["source"] == "docusign_signed_lease"
     assert signed_document.document_metadata["docusign_envelope_id"] == "envelope-complete-1"
     assert signed_document.document_metadata["original_lease_document_id"] == "document-1"
+    webhook_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "signature_receipt",
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id == onboarding.id,
+        )
+    )
+    assert webhook_audit is not None
+    assert webhook_audit.tool_input == {
+        "status": "completed",
+        "event": "envelope-completed",
+        "envelope_id": "envelope-complete-1",
+        "tenant_onboarding_id": str(onboarding.id),
+        "lease_id": str(lease.id),
+        "signed_document_id": signed_document_id,
+    }
 
     replay_response = client.post(
         "/api/v1/tenant-onboarding/webhooks/docusign",
