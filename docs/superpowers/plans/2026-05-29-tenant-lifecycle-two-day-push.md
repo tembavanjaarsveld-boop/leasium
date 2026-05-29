@@ -2536,3 +2536,28 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 104: DocuSign Invalid Payload Receipt Audit
+
+- [x] **Step 1: Add non-object payload receipt regression**
+
+Extend DocuSign webhook coverage so signed callbacks whose JSON payload is not
+an object still write a targetless receipt audit marked as not applied.
+
+- [x] **Step 2: Audit invalid JSON payload shape**
+
+Before the DocuSign webhook route exits for non-object JSON, write a
+`signature_receipt` audit with `ignored_reason=invalid_payload` and the payload
+type.
+
+- [x] **Step 3: Verify invalid payload receipt audit**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_audits_non_object_payload tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_audits_malformed_payload tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_ignores_unknown_envelope -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.

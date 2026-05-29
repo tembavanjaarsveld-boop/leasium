@@ -1491,6 +1491,36 @@ def test_tenant_onboarding_docusign_webhook_audits_malformed_payload(
     ]
 
 
+def test_tenant_onboarding_docusign_webhook_audits_non_object_payload(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    webhook_headers = _docusign_webhook_headers(monkeypatch)
+
+    response = client.post(
+        "/api/v1/tenant-onboarding/webhooks/docusign",
+        headers=webhook_headers,
+        json=["envelope-completed"],
+    )
+
+    assert response.status_code == 204
+    webhook_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "signature_receipt",
+            AuditAction.target_table == "tenant_onboarding",
+            AuditAction.target_id.is_(None),
+        )
+    )
+    assert webhook_audit is not None
+    assert webhook_audit.entity_id is None
+    assert webhook_audit.tool_input == {
+        "applied": False,
+        "ignored_reason": "invalid_payload",
+        "payload_type": "list",
+    }
+
+
 def test_tenant_onboarding_docusign_webhook_ignores_completed_after_declined(
     client: TestClient,
     session: Session,

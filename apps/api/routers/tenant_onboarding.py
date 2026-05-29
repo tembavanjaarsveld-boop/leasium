@@ -1780,6 +1780,21 @@ async def record_docusign_envelope_event(
     _assert_docusign_webhook_secret(request)
     payload = await request.json()
     if not isinstance(payload, dict):
+        audit_log(
+            session,
+            actor="provider:docusign",
+            action="signature_receipt",
+            target_table="tenant_onboarding",
+            tool_name="docusign.connect_webhook",
+            tool_input={
+                "applied": False,
+                "ignored_reason": "invalid_payload",
+                "payload_type": type(payload).__name__,
+            },
+            outcome=AuditOutcome.success,
+            data_classification="confidential",
+        )
+        session.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     envelope_id = _docusign_envelope_id(payload)
     event_status = _docusign_status(payload)
