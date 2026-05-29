@@ -1,5 +1,8 @@
 """Tenant onboarding link routes."""
 
+import base64
+import hashlib
+import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -694,6 +697,73 @@ def _assert_webhook_secret(request: Request) -> None:
         return
     provided = request.headers.get("x-leasium-webhook-secret") or request.query_params.get("token")
     if not provided or not secrets.compare_digest(provided, secret):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook token.",
+        )
+
+
+def _webhook_secret_valid(request: Request, secret: str) -> bool:
+    supplied = (
+        request.headers.get("x-leasium-webhook-secret")
+        or request.query_params.get("token")
+        or ""
+    ).strip()
+    return bool(supplied) and secrets.compare_digest(supplied, secret)
+
+
+def _twilio_signature_valid(
+    request: Request,
+    payload: dict[str, Any],
+    auth_token: str,
+    public_api_url: str,
+) -> bool:
+    supplied = request.headers.get("x-twilio-signature", "").strip()
+    if not supplied:
+        return False
+
+    values = "".join(f"{key}{str(payload[key])}" for key in sorted(payload))
+    urls = [str(request.url)]
+    base_url = public_api_url.strip().rstrip("/")
+    if base_url:
+        query = f"?{request.url.query}" if request.url.query else ""
+        urls.append(f"{base_url}{request.url.path}{query}")
+
+    for url in urls:
+        digest = hmac.new(
+            auth_token.encode(),
+            f"{url}{values}".encode(),
+            hashlib.sha1,
+        ).digest()
+        if secrets.compare_digest(supplied, base64.b64encode(digest).decode()):
+            return True
+    return False
+
+
+def _assert_twilio_status_webhook_auth(
+    request: Request,
+    payload: dict[str, Any],
+) -> None:
+    settings = get_settings()
+    secret = settings.communications_webhook_secret.strip()
+    if secret and _webhook_secret_valid(request, secret):
+        return
+
+    auth_token = settings.twilio_auth_token.strip()
+    if auth_token and _twilio_signature_valid(
+        request,
+        payload,
+        auth_token,
+        settings.public_api_url,
+    ):
+        return
+
+    if auth_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid Twilio webhook signature.",
+        )
+    if secret:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid webhook token.",
@@ -1638,9 +1708,9 @@ async def record_twilio_delivery_status(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    _assert_webhook_secret(request)
     body = (await request.body()).decode()
     payload = {key: values[0] for key, values in parse_qs(body).items() if values}
+    _assert_twilio_status_webhook_auth(request, payload)
     message_sid = payload.get("MessageSid") or payload.get("SmsSid")
     message_status = payload.get("MessageStatus") or payload.get("SmsStatus")
     if not message_sid or not message_status:

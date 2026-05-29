@@ -1838,3 +1838,29 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 78: Tenant Onboarding Twilio Status Signature Guard
+
+- [x] **Step 1: Add tenant status callback signature regressions**
+
+Extend tenant-onboarding receipt coverage so, when `TWILIO_AUTH_TOKEN` is
+configured, unsigned Twilio SMS status callbacks cannot move delivery receipts,
+and signatures generated against the configured public API URL are accepted.
+
+- [x] **Step 2: Authenticate tenant Twilio status callbacks**
+
+Keep the existing `COMMUNICATIONS_WEBHOOK_SECRET` path, add Twilio
+HMAC-SHA1 signature validation as an alternate provider-auth path, and fail
+closed when a Twilio token is configured but neither path validates.
+
+- [x] **Step 3: Verify tenant Twilio receipt hardening**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_twilio_status_rejects_unsigned_when_token_configured tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_twilio_status_accepts_public_api_url_signature -q
+.venv/bin/ruff check apps/api/routers/tenant_onboarding.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.

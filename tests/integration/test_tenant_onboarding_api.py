@@ -1,5 +1,8 @@
 """Tenant onboarding link API tests."""
 
+import base64
+import hashlib
+import hmac
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -28,6 +31,12 @@ def _entity_id(session: Session) -> str:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
     return str(entity.id)
+
+
+def _twilio_signature(url: str, data: dict[str, str], auth_token: str) -> str:
+    payload = url + "".join(f"{key}{data[key]}" for key in sorted(data))
+    digest = hmac.new(auth_token.encode(), payload.encode(), hashlib.sha1).digest()
+    return base64.b64encode(digest).decode()
 
 
 def _docusign_webhook_headers(monkeypatch) -> dict[str, str]:  # noqa: ANN001
@@ -600,6 +609,109 @@ def test_tenant_onboarding_send_portal_invite_records_delivery_and_audits(
     assert sends == ["tenant_portal_invite"]
     history = body["delivery_data"].get("portal_invite_history") or []
     assert len(history) == 1
+
+
+def test_tenant_onboarding_twilio_status_rejects_unsigned_when_token_configured(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Configured Twilio tenant status callbacks must be signed before receipts move."""
+
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "get_settings",
+        lambda: Settings(twilio_auth_token="twilio-secret"),
+    )
+    lease_id = _lease_id(client, session)
+    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    assert create_response.status_code == 201
+    onboarding = session.get(TenantOnboarding, UUID(create_response.json()["id"]))
+    assert onboarding is not None
+    onboarding.delivery_data = {
+        "channels": {
+            "sms": {
+                "channel": "sms",
+                "status": "queued",
+                "provider_message_id": "SM-tenant-status-1",
+            }
+        },
+        "receipts": [],
+    }
+    session.commit()
+
+    response = client.post(
+        "/api/v1/tenant-onboarding/webhooks/twilio-status",
+        data={
+            "MessageSid": "SM-tenant-status-1",
+            "MessageStatus": "delivered",
+            "To": "+61400111222",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Invalid Twilio webhook signature."
+    session.refresh(onboarding)
+    sms_channel = onboarding.delivery_data["channels"]["sms"]
+    assert sms_channel["status"] == "queued"
+    assert onboarding.delivery_data["receipts"] == []
+
+
+def test_tenant_onboarding_twilio_status_accepts_public_api_url_signature(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Production proxy URLs can validate signed Twilio tenant status callbacks."""
+
+    from stewart.core.settings import Settings
+
+    auth_token = "twilio-secret"
+    public_api_url = "https://api.leasium.test"
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "get_settings",
+        lambda: Settings(public_api_url=public_api_url, twilio_auth_token=auth_token),
+    )
+    lease_id = _lease_id(client, session)
+    create_response = client.post("/api/v1/tenant-onboarding", json={"lease_id": lease_id})
+    assert create_response.status_code == 201
+    onboarding = session.get(TenantOnboarding, UUID(create_response.json()["id"]))
+    assert onboarding is not None
+    onboarding.delivery_data = {
+        "channels": {
+            "sms": {
+                "channel": "sms",
+                "status": "queued",
+                "provider_message_id": "SM-tenant-status-2",
+            }
+        },
+        "receipts": [],
+    }
+    session.commit()
+    data = {
+        "MessageSid": "SM-tenant-status-2",
+        "MessageStatus": "delivered",
+        "To": "+61400111222",
+    }
+    url = f"{public_api_url}/api/v1/tenant-onboarding/webhooks/twilio-status"
+    signature = _twilio_signature(url, data, auth_token)
+
+    response = client.post(
+        "/api/v1/tenant-onboarding/webhooks/twilio-status",
+        data=data,
+        headers={"X-Twilio-Signature": signature},
+    )
+
+    assert response.status_code == 204
+    session.refresh(onboarding)
+    sms_channel = onboarding.delivery_data["channels"]["sms"]
+    assert sms_channel["status"] == "delivered"
+    assert onboarding.delivery_data["receipts"][0]["provider_message_id"] == (
+        "SM-tenant-status-2"
+    )
 
 
 def test_tenant_onboarding_can_skip_initial_link_for_portal_invite_flow(

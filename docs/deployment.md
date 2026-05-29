@@ -202,7 +202,11 @@ for SMS. If any channel is not configured, Leasium records the channel as
 skipped rather than blocking onboarding link creation.
 Set Twilio SMS status callbacks and SendGrid Event Webhook URLs to the hosted
 `/api/v1/tenant-onboarding/webhooks/...` endpoints using the shared webhook
-secret so Leasium can show sent, delivered, opened, and failed receipts.
+secret so Leasium can show sent, delivered, opened, and failed receipts. When
+`TWILIO_AUTH_TOKEN` is configured, the tenant-onboarding Twilio status callback
+also accepts Twilio's signed `X-Twilio-Signature` header against either the
+request URL or `PUBLIC_API_URL`; unsigned callbacks are rejected before receipt
+metadata changes.
 
 **DocuSign integration.** When the DocuSign developer account is provisioned,
 set on the API service:
