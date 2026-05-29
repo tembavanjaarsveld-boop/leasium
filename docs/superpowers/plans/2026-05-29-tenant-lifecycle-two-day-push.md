@@ -654,3 +654,27 @@ Run:
 ```
 
 Expected: pass.
+
+## Task 30: Tenant Upload Activation Review Comms
+
+- [x] **Step 1: Add tenant-upload lifecycle queue regression**
+
+Add backend coverage that an accepted tenant-uploaded lease match with a
+ready-for-review activation marker appears in the comms queue as
+`tenant_lifecycle_stall`.
+
+- [x] **Step 2: Include tenant-upload activation reviews**
+
+The tenant lifecycle scanner now accepts `tenant_upload` completed signing
+records for activation-review candidates while keeping DocuSign waiting/retry
+states scoped to active DocuSign envelopes only.
+
+- [x] **Step 3: Verify comms lifecycle coverage**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py -q
+```
+
+Expected: pass.

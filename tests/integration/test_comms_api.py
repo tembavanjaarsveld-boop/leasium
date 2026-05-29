@@ -709,6 +709,45 @@ def test_comms_queue_returns_completed_signing_pending_activation_candidate(
     assert "ready_for_review" in (candidate["detail"] or "")
 
 
+def test_comms_queue_returns_tenant_upload_activation_review_candidate(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "tenant_upload",
+            "status": "completed",
+            "signed_document_id": "tenant-uploaded-lease-1",
+            "signed_at": (date.today() - timedelta(days=1)).isoformat(),
+            "lease_activation_review": {
+                "status": "ready_for_review",
+                "current_lease_status": "pending",
+                "recommended_status": "active",
+            },
+        },
+    )
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+
+    assert response.status_code == 200
+    candidates = [
+        c
+        for c in response.json()["candidates"]
+        if c["kind"] == "tenant_lifecycle_stall"
+    ]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["target_kind"] == "tenant_onboarding"
+    assert candidate["target_id"] == scope["onboarding_id"]
+    assert candidate["severity"] == "danger"
+    assert "Lease activation review" in candidate["subject"]
+    assert "tenant upload completed" in (candidate["detail"] or "")
+
+
 def test_comms_dismiss_tenant_lifecycle_stall_defers_candidate(
     client: TestClient,
     session: Session,

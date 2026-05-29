@@ -911,7 +911,8 @@ def _tenant_lifecycle_stall_candidates(
         signing = lease_agreement.get("signing")
         if not isinstance(signing, dict):
             continue
-        if signing.get("provider") != "docusign":
+        signing_provider = signing.get("provider")
+        if signing_provider not in {"docusign", "tenant_upload"}:
             continue
 
         tenant = session.get(Tenant, onboarding.tenant_id)
@@ -933,6 +934,9 @@ def _tenant_lifecycle_stall_candidates(
 
         raw_status = signing.get("status")
         signing_status = raw_status if isinstance(raw_status, str) else ""
+        provider_label = (
+            "DocuSign" if signing_provider == "docusign" else "tenant upload"
+        )
         envelope_id = signing.get("envelope_id")
         envelope_label = envelope_id if isinstance(envelope_id, str) else "unknown"
         tenant_name = _tenant_display_name(tenant)
@@ -947,14 +951,21 @@ def _tenant_lifecycle_stall_candidates(
         subject: str | None = None
         body: str | None = None
         detail_parts: list[str] = [
-            f"DocuSign {signing_status or 'unknown'}",
-            f"envelope {envelope_label}",
+            f"{provider_label} {signing_status or 'unknown'}",
         ]
+        if signing_provider == "docusign":
+            detail_parts.append(f"envelope {envelope_label}")
+        else:
+            signed_document_id = signing.get("signed_document_id")
+            if isinstance(signed_document_id, str):
+                detail_parts.append(f"document {signed_document_id}")
         severity = "warning"
         due_at: date | None = None
 
-        if signing_status in ACTIVE_DOCUSIGN_SIGNING_STATUSES and not signing.get(
-            "signed_at"
+        if (
+            signing_provider == "docusign"
+            and signing_status in ACTIVE_DOCUSIGN_SIGNING_STATUSES
+            and not signing.get("signed_at")
         ):
             sent_at = _parse_iso_datetime(
                 signing.get("sent_at") or signing.get("last_event_at")
@@ -976,7 +987,10 @@ def _tenant_lifecycle_stall_candidates(
                 "pack.\n\n"
                 "Thanks,\nThe property team"
             )
-        elif signing_status in RETRY_DOCUSIGN_SIGNING_STATUSES:
+        elif (
+            signing_provider == "docusign"
+            and signing_status in RETRY_DOCUSIGN_SIGNING_STATUSES
+        ):
             event_at = _parse_iso_datetime(
                 signing.get("last_event_at") or signing.get("sent_at")
             )
