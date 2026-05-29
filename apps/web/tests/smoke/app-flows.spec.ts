@@ -348,7 +348,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("link", {
-      name: "Work, 3 drafts in the comms queue, 0 urgent",
+      name: "Work, 4 drafts in the comms queue, 0 urgent",
     }),
   ).toBeVisible();
   await expect(
@@ -359,18 +359,18 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     page.getByRole("button", { name: "Refresh queue" }),
   ).toBeEnabled();
   await expect(
-    page.getByRole("group", { name: "Remaining now: 3" }),
+    page.getByRole("group", { name: "Remaining now: 4" }),
   ).toBeVisible();
   await expect(
     page.getByRole("group", { name: "Settled now: 0" }),
   ).toBeVisible();
-  await expect(page.getByRole("tab", { name: "All drafts 3" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "All drafts 4" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
-  await expect(page.getByText("Showing all 3 drafts.")).toBeVisible();
+  await expect(page.getByText("Showing all 4 drafts.")).toBeVisible();
   await expect(
-    page.getByText("3 drafts remaining this session."),
+    page.getByText("4 drafts remaining this session."),
   ).toBeVisible();
   const commsReviewDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download review CSV" }).click();
@@ -392,14 +392,17 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     "DocuSign retry needed for your lease activation",
   );
   expect(commsReviewCsv).toContain(
+    "Lease activation review for tenant-uploaded lease",
+  );
+  expect(commsReviewCsv).toContain(
     "Review-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, or refresh provider state.",
   );
 
   const smsCard = page.locator("section").filter({ hasText: "Inbound SMS" });
   await expect(smsCard).toBeVisible();
-  await page.getByRole("tab", { name: "Tenant lifecycle 1" }).click();
+  await page.getByRole("tab", { name: "Tenant lifecycle 2" }).click();
   await expect(
-    page.getByText("Showing 1 of 3 drafts in Tenant lifecycle."),
+    page.getByText("Showing 2 of 4 drafts in Tenant lifecycle."),
   ).toBeVisible();
   await expect(smsCard).not.toBeVisible();
   const lifecycleCard = page
@@ -422,9 +425,25 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     lifecycleCard.getByRole("button", { name: "Approve & send" }),
   ).toBeEnabled();
+  const tenantUploadLifecycleCard = page
+    .locator("section")
+    .filter({ hasText: "tenant upload completed" })
+    .first();
+  await expect(tenantUploadLifecycleCard).toBeVisible();
+  await expect(
+    tenantUploadLifecycleCard.getByText(
+      "tenant upload completed, document tenant-uploaded-lease-1, activation ready_for_review, lease pending -> active",
+    ),
+  ).toBeVisible();
+  await expect(tenantUploadLifecycleCard.getByLabel("Subject")).toHaveValue(
+    "Lease activation review for tenant-uploaded lease",
+  );
+  await expect(tenantUploadLifecycleCard.getByLabel("Body")).toHaveValue(
+    "Hi Bright Cafe team, thanks for uploading your signed lease. The property team is completing the final activation review before the lease is marked active in our system.",
+  );
   await page.getByRole("tab", { name: "Rent review 1" }).click();
   await expect(
-    page.getByText("Showing 1 of 3 drafts in Rent review."),
+    page.getByText("Showing 1 of 4 drafts in Rent review."),
   ).toBeVisible();
   await expect(smsCard).not.toBeVisible();
   const rentReviewCard = page
@@ -437,13 +456,13 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     "Draft deferred until 3 June 2026",
   );
   await expect(
-    page.getByRole("group", { name: "Remaining now: 2" }),
+    page.getByRole("group", { name: "Remaining now: 3" }),
   ).toBeVisible();
   await expect(
     page.getByRole("group", { name: "Settled now: 1" }),
   ).toBeVisible();
   await expect(
-    page.getByText("2 drafts remaining, 1 settled this session."),
+    page.getByText("3 drafts remaining, 1 settled this session."),
   ).toBeVisible();
   await expect(
     rentReviewCard.getByText("Deferred", { exact: true }),
@@ -457,7 +476,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
 
   await page.getByRole("tab", { name: "Inbound SMS 1" }).click();
   await expect(
-    page.getByText("Showing 1 of 3 drafts in Inbound SMS."),
+    page.getByText("Showing 1 of 4 drafts in Inbound SMS."),
   ).toBeVisible();
   await expect(smsCard).toBeVisible();
   await expect(
@@ -531,13 +550,13 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     smsCard.getByText("Twilio Messaging is not configured yet"),
   ).toBeVisible();
   await expect(
-    page.getByRole("group", { name: "Remaining now: 1" }),
+    page.getByRole("group", { name: "Remaining now: 2" }),
   ).toBeVisible();
   await expect(
     page.getByRole("group", { name: "Settled now: 2" }),
   ).toBeVisible();
   await expect(
-    page.getByText("1 draft remaining, 2 settled this session."),
+    page.getByText("2 drafts remaining, 2 settled this session."),
   ).toBeVisible();
   await expect(
     smsCard.getByText(

@@ -678,3 +678,26 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py -
 ```
 
 Expected: pass.
+
+## Task 31: Tenant Lifecycle Queue Smoke Coverage
+
+- [x] **Step 1: Add failing tenant-upload comms smoke expectation**
+
+Extend the focused comms queue smoke so the Tenant lifecycle tab and CSV export
+expect both a DocuSign retry draft and a tenant-upload activation-review draft.
+
+- [x] **Step 2: Update shared smoke fixture**
+
+The shared web API mock now returns two `tenant_lifecycle_stall` candidates:
+one for DocuSign retry review and one for the accepted tenant-uploaded lease
+activation review.
+
+- [x] **Step 3: Verify browser coverage**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "comms queue approves inbound SMS with a phone recipient"
+```
+
+Expected: pass.
