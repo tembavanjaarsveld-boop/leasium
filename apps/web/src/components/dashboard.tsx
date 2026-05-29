@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock3,
+  Download,
   FileText,
   FileUp,
   Layers3,
@@ -37,6 +38,7 @@ import {
 } from "@/components/dashboard/DashboardMetricCard";
 import { UpcomingLeaseEventsPanel } from "@/components/dashboard/UpcomingLeaseEventsPanel";
 import { RegisterImportPanel } from "@/app/intake/register-import-panel";
+import { saveBlob } from "@/lib/download";
 import {
   EvidenceSourceTrail,
   type EvidenceFieldChange,
@@ -364,6 +366,11 @@ function confidenceLabel(value: number | null | undefined) {
     return "Check match";
   }
   return "Needs review";
+}
+
+function csvCell(value: string | number | null | undefined) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
 }
 
 function countLabel(count: number, singular: string, plural = `${singular}s`) {
@@ -1066,6 +1073,37 @@ function intakeReviewFilterMatch(
     return leaseAutoMatchRecommendation(intakeReviewData(intake)) !== null;
   }
   return intake.document_type === filter;
+}
+
+function smartIntakeReviewQueueCsv(intakes: DocumentIntakeRecord[]) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Filename",
+      "Status",
+      "Document type",
+      "Source",
+      "Source detail",
+      "Confidence",
+      "Summary",
+      "Created",
+      "Review URL",
+    ],
+    ...intakes.map((intake) => {
+      const sourceInfo = intakeSourceInfo(intake);
+      return [
+        intake.filename,
+        intakeStatusLabel(intake.status),
+        documentTypeLabel(intake.document_type),
+        sourceInfo?.label ?? "",
+        sourceInfo?.detail ?? "",
+        confidenceLabel(intake.confidence),
+        intake.summary,
+        formatDateTime(intake.created_at),
+        intakeReviewHref(intake.entity_id, intake.id),
+      ];
+    }),
+  ];
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
 function intakeReviewHref(entityId: string, intakeId: string) {
@@ -3117,6 +3155,15 @@ export function Dashboard({
     documentIntakeMutation.mutate(file);
   }
 
+  function downloadReviewQueueCsv() {
+    saveBlob(
+      new Blob([smartIntakeReviewQueueCsv(filteredReviewIntakes)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      `smart-intake-review-queue-${reviewQueueFilter}.csv`,
+    );
+  }
+
   useEffect(() => {
     if (!selectedReviewIntake) {
       setReviewDraftId(null);
@@ -3537,6 +3584,18 @@ export function Dashboard({
                         <option value="insurance_certificate">Insurance</option>
                         <option value="lease">Leases</option>
                       </Select>
+                      <SecondaryButton
+                        type="button"
+                        className="h-9"
+                        onClick={downloadReviewQueueCsv}
+                        disabled={
+                          documentIntakesLoading ||
+                          filteredReviewIntakes.length === 0
+                        }
+                      >
+                        <Download size={15} />
+                        Download queue CSV
+                      </SecondaryButton>
                       <StatusBadge
                         tone={needsReviewCount ? "primary" : "neutral"}
                       >

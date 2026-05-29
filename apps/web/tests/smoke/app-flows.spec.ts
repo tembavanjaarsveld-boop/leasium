@@ -2054,6 +2054,18 @@ test("smart intake labels inbound email attachments in review queue", async ({
   await expect(
     tenantInsuranceCard.getByText("Tenant-uploaded insurance review"),
   ).toBeVisible();
+  const smartIntakeDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download queue CSV" }).click();
+  const smartIntakeDownload = await smartIntakeDownloadPromise;
+  expect(smartIntakeDownload.suggestedFilename()).toBe(
+    "smart-intake-review-queue-tenant_portal.csv",
+  );
+  const smartIntakeDownloadPath = await smartIntakeDownload.path();
+  expect(smartIntakeDownloadPath).not.toBeNull();
+  const smartIntakeCsv = await readFile(smartIntakeDownloadPath!, "utf8");
+  expect(smartIntakeCsv).toContain("tenant-uploaded-insurance.txt");
+  expect(smartIntakeCsv).toContain("Tenant portal upload");
+  expect(smartIntakeCsv).not.toContain("inbound-insurance-certificate.txt");
 
   const inboundCard = page.getByTestId(
     "review-intake-intake-inbound-email-attachment-1",

@@ -2194,3 +2194,32 @@ git diff --check
 ```
 
 Expected: pass after removing generated Playwright report artifacts.
+
+## Task 91: Smart Intake Review Queue CSV
+
+- [x] **Step 1: Add filtered export smoke coverage**
+
+Extend the Smart Intake queue smoke so downloading the queue while filtered to
+tenant portal uploads creates a CSV containing the tenant-uploaded review row
+and excluding inbound attachment rows.
+
+- [x] **Step 2: Add local filtered queue export**
+
+Add a local `Download queue CSV` action to the Smart Intake review queue. The
+CSV is built from already-loaded, currently filtered review rows and includes
+filename, status, document type, source, source detail, confidence, summary,
+created date, and review URL. It does not send provider messages or mutate
+review state.
+
+- [x] **Step 3: Verify Smart Intake export UX**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "smart intake labels inbound email attachments" --workers=1
+cd apps/web && ./node_modules/.bin/tsc --noEmit
+cd apps/web && npm run lint
+git diff --check
+```
+
+Expected: pass after removing generated Playwright report artifacts.
