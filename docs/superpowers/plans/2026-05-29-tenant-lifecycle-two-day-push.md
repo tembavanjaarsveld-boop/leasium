@@ -924,3 +924,27 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 42: DocuSign Demo Endpoint Send Guard
+
+- [x] **Step 1: Add provider boundary regressions**
+
+Add unit coverage that configured DocuSign credentials with demo REST/auth URLs
+skip live envelope sends and signed-document downloads before any network call.
+
+- [x] **Step 2: Guard provider actions**
+
+Require `DOCUSIGN_BASE_URL=https://www.docusign.net/restapi` and
+`DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com` inside the DocuSign
+provider boundary before sending live lease envelopes or downloading retained
+signed PDFs.
+
+- [x] **Step 3: Verify provider behavior**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/unit/test_docusign.py -q
+```
+
+Expected: pass.

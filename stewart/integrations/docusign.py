@@ -90,6 +90,24 @@ def is_configured(settings: Settings) -> bool:
     )
 
 
+def _production_endpoints_configured(settings: Settings) -> bool:
+    return (
+        settings.docusign_base_url.strip().rstrip("/")
+        == "https://www.docusign.net/restapi"
+        and settings.docusign_auth_base_url.strip().rstrip("/")
+        == "https://account.docusign.com"
+    )
+
+
+def _production_endpoint_error(action: str) -> str:
+    return (
+        "DocuSign production endpoints are not configured. Set "
+        "DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and "
+        "DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before "
+        f"{action}."
+    )
+
+
 def download_signed_lease_document(
     envelope_id: str,
     settings: Settings,
@@ -105,6 +123,11 @@ def download_signed_lease_document(
                 "DOCUSIGN_RSA_PRIVATE_KEY on the API service to enable "
                 "signed-document retention."
             ),
+        )
+    if not _production_endpoints_configured(settings):
+        return SignedLeaseDocumentResult(
+            status="skipped",
+            error=_production_endpoint_error("downloading live signed lease documents"),
         )
     if not envelope_id:
         return SignedLeaseDocumentResult(
@@ -160,6 +183,12 @@ def send_lease_for_signature(
             status="skipped",
             signer_email=request.signer_email,
             error="Tenant signer email is required before sending to DocuSign.",
+        )
+    if not _production_endpoints_configured(settings):
+        return LeaseSignatureResult(
+            status="skipped",
+            signer_email=request.signer_email,
+            error=_production_endpoint_error("sending live lease envelopes"),
         )
 
     try:

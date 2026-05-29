@@ -51,6 +51,17 @@ def _settings() -> Settings:
         docusign_integration_key="integration-123",
         docusign_user_id="user-123",
         docusign_rsa_private_key="-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----",
+        docusign_base_url="https://www.docusign.net/restapi",
+        docusign_auth_base_url="https://account.docusign.com",
+    )
+
+
+def _demo_settings() -> Settings:
+    return Settings(
+        docusign_account_id="account-123",
+        docusign_integration_key="integration-123",
+        docusign_user_id="user-123",
+        docusign_rsa_private_key="-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----",
         docusign_base_url="https://demo.docusign.net/restapi",
         docusign_auth_base_url="https://account-d.docusign.com",
     )
@@ -93,6 +104,30 @@ def test_send_lease_for_signature_skips_without_signer_email() -> None:
     assert result.error == "Tenant signer email is required before sending to DocuSign."
 
 
+def test_send_lease_for_signature_skips_demo_endpoints() -> None:
+    result = send_lease_for_signature(_request(), _demo_settings())
+
+    assert result.status == "skipped"
+    assert result.error == (
+        "DocuSign production endpoints are not configured. Set "
+        "DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and "
+        "DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before sending "
+        "live lease envelopes."
+    )
+
+
+def test_download_signed_lease_document_skips_demo_endpoints() -> None:
+    result = download_signed_lease_document("envelope-123", _demo_settings())
+
+    assert result.status == "skipped"
+    assert result.error == (
+        "DocuSign production endpoints are not configured. Set "
+        "DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and "
+        "DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before downloading "
+        "live signed lease documents."
+    )
+
+
 def test_send_lease_for_signature_creates_envelope(monkeypatch) -> None:  # noqa: ANN001
     fake_client = _FakeClient()
     request = _request()
@@ -103,13 +138,13 @@ def test_send_lease_for_signature_creates_envelope(monkeypatch) -> None:  # noqa
 
     assert result.status == "sent"
     assert result.envelope_id == "envelope-123"
-    assert fake_client.calls[0][0] == "https://account-d.docusign.com/oauth/token"
+    assert fake_client.calls[0][0] == "https://account.docusign.com/oauth/token"
     assert fake_client.calls[0][1]["data"] == {
         "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
         "assertion": "jwt-token",
     }
     envelope_url, envelope_kwargs = fake_client.calls[1]
-    assert envelope_url == "https://demo.docusign.net/restapi/v2.1/accounts/account-123/envelopes"
+    assert envelope_url == "https://www.docusign.net/restapi/v2.1/accounts/account-123/envelopes"
     assert envelope_kwargs["headers"] == {"Authorization": "Bearer access-token"}
     payload = envelope_kwargs["json"]
     assert payload["status"] == "sent"
@@ -167,7 +202,7 @@ def test_download_signed_lease_document_gets_combined_pdf(monkeypatch) -> None: 
     assert result.file_data == b"%PDF signed lease"
     document_url, document_kwargs = fake_client.calls[1]
     assert document_url == (
-        "https://demo.docusign.net/restapi/v2.1/accounts/"
+        "https://www.docusign.net/restapi/v2.1/accounts/"
         "account-123/envelopes/envelope-123/documents/combined"
     )
     assert document_kwargs["headers"] == {"Authorization": "Bearer access-token"}
