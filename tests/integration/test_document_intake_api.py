@@ -878,6 +878,21 @@ def test_document_intake_apply_insurance_updates_scoped_tenant_metadata(
     assert history[-1]["document_intake_id"] == create_response.json()["id"]
     assert history[-1]["expiry_date"] == "2027-04-15"
     assert history[-1]["source"] == "document_intake"
+    tenant_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "tenant",
+            AuditAction.target_id == tenant.id,
+            AuditAction.tool_name == "smart_intake_insurance_auto_update",
+        )
+    )
+    assert tenant_audit is not None
+    assert tenant_audit.action == "update"
+    assert tenant_audit.tool_input["document_intake_id"] == create_response.json()["id"]
+    assert tenant_audit.tool_input["document_id"] == str(document.id)
+    assert tenant_audit.tool_input["expiry_date"] == "2027-04-15"
+    assert tenant_audit.tool_output_summary == (
+        "Updated tenant insurance metadata from reviewed Smart Intake certificate."
+    )
 
 
 def test_document_intake_apply_insurance_requires_reviewed_expiry_for_tenant_update(

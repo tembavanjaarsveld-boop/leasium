@@ -207,7 +207,15 @@ def _reviewed_data(intake: DocumentIntake, payload: dict[str, Any] | None = None
     if payload is not None:
         return payload
     review_data = _dict(intake.review_data)
-    return review_data or _dict(intake.extracted_data)
+    extracted_data = _dict(intake.extracted_data)
+    if (
+        review_data
+        and extracted_data
+        and "document_type" not in review_data
+        and "document_type" in extracted_data
+    ):
+        return {**extracted_data, **review_data}
+    return review_data or extracted_data
 
 
 def _best_date(records: list[dict[str, Any]], labels: set[str]) -> date | None:
@@ -259,6 +267,7 @@ def _insurance_due_date(data: dict[str, Any]) -> date | None:
 def _apply_tenant_insurance_metadata(
     intake: DocumentIntake,
     data: dict[str, Any],
+    user: CurrentUser,
     session: Session,
 ) -> None:
     document = intake.document
@@ -306,6 +315,25 @@ def _apply_tenant_insurance_metadata(
         }
     )
     tenant.tenant_metadata = metadata
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=intake.entity_id,
+        action="update",
+        target_table="tenant",
+        target_id=tenant.id,
+        tool_name="smart_intake_insurance_auto_update",
+        tool_input={
+            "document_intake_id": str(intake.id),
+            "document_id": str(document.id),
+            "expiry_date": expiry_date.isoformat(),
+        },
+        tool_output_summary=(
+            "Updated tenant insurance metadata from reviewed Smart Intake certificate."
+        ),
+        data_classification="confidential",
+    )
 
 
 def _insurance_obligation_title(data: dict[str, Any]) -> str:
@@ -2860,7 +2888,7 @@ def apply_document_intake(
         else None
     )
     if document_type == "insurance_certificate":
-        _apply_tenant_insurance_metadata(intake, reviewed, session)
+        _apply_tenant_insurance_metadata(intake, reviewed, user, session)
     obligation_ids = [str(obligation.id) for obligation in obligations]
     billing_draft_ids = [str(billing_draft.id)] if billing_draft is not None else []
     if billing_draft is not None:

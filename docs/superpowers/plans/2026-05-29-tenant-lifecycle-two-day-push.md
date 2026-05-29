@@ -1976,3 +1976,34 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 83: Tenant Insurance Auto-Update Audit Trail
+
+- [x] **Step 1: Add tenant audit regression**
+
+Extend insurance Smart Intake apply coverage so a reviewed certificate update
+must write a tenant-level audit row with the source intake id, document id, and
+reviewed expiry date.
+
+- [x] **Step 2: Preserve extracted facts when review metadata is present**
+
+Merge tenant-upload extraction facts with review metadata when `review_data`
+only carries provenance/guardrails, so an empty Apply on a tenant-uploaded
+insurance certificate still uses the extracted insurance expiry.
+
+- [x] **Step 3: Audit tenant insurance metadata updates**
+
+When a reviewed insurance certificate updates tenant insurance metadata, write
+an explicit `smart_intake_insurance_auto_update` audit row on the tenant record.
+
+- [x] **Step 4: Verify tenant insurance auto-update**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_document_intake_api.py::test_document_intake_apply_insurance_updates_scoped_tenant_metadata tests/integration/test_document_intake_api.py::test_document_intake_apply_insurance_uses_lease_tenant_for_metadata tests/integration/test_document_intake_api.py::test_document_intake_apply_insurance_requires_reviewed_expiry_for_tenant_update tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_extracts_when_openai_is_configured tests/integration/test_tenant_portal_api.py::test_tenant_portal_insurance_upload_apply_refreshes_compliance_status -q
+.venv/bin/ruff check apps/api/routers/document_intakes.py tests/integration/test_document_intake_api.py tests/integration/test_tenant_portal_api.py
+git diff --check
+```
+
+Expected: pass.

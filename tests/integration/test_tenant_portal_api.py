@@ -1718,6 +1718,17 @@ def test_tenant_portal_insurance_upload_apply_refreshes_compliance_status(
     assert history[-1]["document_id"] == str(document.id)
     assert history[-1]["document_intake_id"] == str(intake.id)
     assert history[-1]["expiry_date"] == "2027-02-28"
+    tenant_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "tenant",
+            AuditAction.target_id == tenant.id,
+            AuditAction.tool_name == "smart_intake_insurance_auto_update",
+        )
+    )
+    assert tenant_audit is not None
+    assert tenant_audit.tool_input["document_intake_id"] == str(intake.id)
+    assert tenant_audit.tool_input["document_id"] == str(document.id)
+    assert tenant_audit.tool_input["expiry_date"] == "2027-02-28"
 
     portal_response = client.get(
         "/api/v1/tenant-portal/session",
