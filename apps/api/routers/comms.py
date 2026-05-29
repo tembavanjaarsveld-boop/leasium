@@ -25,6 +25,7 @@ import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from stewart.ai.document_intake import DocumentExtractionError, extract_document_file
 from stewart.ai.inbox import INBOX_KINDS, InboxTriageError, triage_inbox
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
@@ -2051,6 +2052,114 @@ def _verify_sendgrid_inbound_secret(request: Request, settings: Settings) -> Non
         )
 
 
+def _inbound_attachment_confidence(value: Any) -> float | None:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(1.0, confidence))
+
+
+def _inbound_attachment_status_for_extraction(
+    extracted: dict[str, Any],
+) -> DocumentIntakeStatus:
+    if extracted.get("document_type") == "unknown":
+        return DocumentIntakeStatus.needs_attention
+    if extracted.get("warnings") or extracted.get("missing_information"):
+        return DocumentIntakeStatus.needs_attention
+    return DocumentIntakeStatus.ready_for_review
+
+
+def _inbound_attachment_document_category(document_type: str) -> DocumentCategory:
+    if document_type == "lease":
+        return DocumentCategory.lease
+    if document_type == "insurance_certificate":
+        return DocumentCategory.insurance
+    if document_type == "bank_guarantee":
+        return DocumentCategory.bank_guarantee
+    if document_type == "invoice":
+        return DocumentCategory.invoice
+    return DocumentCategory.other
+
+
+def _extract_inbound_attachment_intake(
+    intake: DocumentIntake,
+    *,
+    settings: Settings,
+    session: Session,
+) -> None:
+    document = intake.document
+    intake.status = DocumentIntakeStatus.reading
+    intake.error_message = None
+    session.flush()
+    try:
+        extracted, response_id = extract_document_file(
+            file_data=document.file_data,
+            filename=document.filename,
+            content_type=document.content_type,
+            settings=settings,
+        )
+    except DocumentExtractionError as exc:
+        intake.status = DocumentIntakeStatus.failed
+        intake.error_message = str(exc)
+        document.document_metadata = {
+            **(document.document_metadata or {}),
+            "smart_intake_auto_extract_failed": True,
+            "smart_intake_auto_extract_error": str(exc),
+        }
+        audit_log(
+            session,
+            actor="sendgrid.inbound_parse",
+            entity_id=intake.entity_id,
+            action="extract",
+            target_table="document_intake",
+            target_id=intake.id,
+            tool_name="openai.responses",
+            tool_input={
+                "document_id": str(document.id),
+                "filename": document.filename,
+                "source": "sendgrid_inbound_parse",
+            },
+            outcome=AuditOutcome.error,
+            error_message=str(exc),
+            data_classification="confidential",
+        )
+        return
+
+    document_type = str(extracted.get("document_type") or "unknown")
+    summary = str(extracted.get("summary") or "").strip() or None
+    intake.status = _inbound_attachment_status_for_extraction(extracted)
+    intake.document_type = document_type
+    intake.summary = summary
+    intake.confidence = _inbound_attachment_confidence(extracted.get("confidence"))
+    intake.extracted_data = extracted
+    intake.openai_response_id = response_id
+    proposed_category = _inbound_attachment_document_category(document_type)
+    document.document_metadata = {
+        **(document.document_metadata or {}),
+        "smart_intake_auto_extracted": True,
+        "smart_intake_auto_extracted_at": utcnow().isoformat(),
+        "document_type": document_type,
+        "proposed_document_category": proposed_category.value,
+    }
+    audit_log(
+        session,
+        actor="sendgrid.inbound_parse",
+        entity_id=intake.entity_id,
+        action="extract",
+        target_table="document_intake",
+        target_id=intake.id,
+        tool_name="openai.responses",
+        tool_input={
+            "document_id": str(document.id),
+            "filename": document.filename,
+            "source": "sendgrid_inbound_parse",
+        },
+        tool_output_summary="SendGrid inbound attachment extracted into Smart Intake review.",
+        data_classification="confidential",
+    )
+
+
 async def _promote_sendgrid_attachments_to_intake(
     *,
     form: Any | None,
@@ -2058,6 +2167,7 @@ async def _promote_sendgrid_attachments_to_intake(
     tenant: Tenant | None,
     session: Session,
     max_bytes: int,
+    settings: Settings,
 ) -> list[DocumentIntake]:
     promoted: list[DocumentIntake] = []
     if form is None:
@@ -2136,6 +2246,12 @@ async def _promote_sendgrid_attachments_to_intake(
             outcome=AuditOutcome.success,
             data_classification="confidential",
         )
+        if settings.openai_api_key:
+            _extract_inbound_attachment_intake(
+                intake,
+                settings=settings,
+                session=session,
+            )
         promoted.append(intake)
     return promoted
 
@@ -2222,6 +2338,7 @@ async def receive_sendgrid_inbound(
         tenant=tenant,
         session=session,
         max_bytes=settings.document_max_bytes,
+        settings=settings,
     )
     message.inbound_metadata = {
         **(message.inbound_metadata or {}),

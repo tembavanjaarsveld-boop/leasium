@@ -1218,6 +1218,7 @@ def test_inbound_webhook_persists_and_attributes_tenant(
 def test_inbound_webhook_routes_attachments_to_smart_intake(
     client: TestClient,
     session: Session,
+    monkeypatch,
 ) -> None:
     """SendGrid inbound attachments become Smart Intake rows for review."""
 
@@ -1229,6 +1230,11 @@ def test_inbound_webhook_routes_attachments_to_smart_intake(
     )
     session.add(tenant)
     session.commit()
+
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(comms_router, "get_settings", lambda: Settings(openai_api_key=""))
 
     response = client.post(
         "/api/v1/comms/webhooks/sendgrid-inbound",
@@ -1291,6 +1297,168 @@ def test_inbound_webhook_routes_attachments_to_smart_intake(
     ]
     assert len(inbound) == 1
     assert "1 attachment routed to Smart Intake" in inbound[0]["detail"]
+
+
+def test_inbound_webhook_extracts_attachment_when_openai_is_configured(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Inbound attachments are pre-extracted into Smart Intake when configured."""
+
+    entity = _entity(session)
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Extract Tenant Pty Ltd",
+        contact_email="extract@inbound.example",
+    )
+    session.add(tenant)
+    session.commit()
+
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(openai_api_key="sk-test"),
+    )
+
+    def fake_extract_document_file(**kwargs):  # noqa: ANN003
+        assert kwargs["filename"] == "insurance-certificate.txt"
+        return (
+            {
+                "document_type": "insurance_certificate",
+                "summary": "Inbound insurance certificate expires 2027-04-30.",
+                "confidence": 0.88,
+                "key_dates": [{"label": "Policy expiry", "date": "2027-04-30"}],
+                "warnings": [],
+                "missing_information": [],
+            },
+            "resp_inbound_attachment_extract",
+        )
+
+    monkeypatch.setattr(
+        comms_router,
+        "extract_document_file",
+        fake_extract_document_file,
+        raising=False,
+    )
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        params={"entity_id": str(entity.id)},
+        data={
+            "from": "extract@inbound.example",
+            "to": "leasium@inbound.example.org",
+            "subject": "Insurance certificate",
+            "text": "Hi team, attached is the renewed insurance certificate.",
+        },
+        files={
+            "attachment1": (
+                "insurance-certificate.txt",
+                b"insurance certificate",
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 202
+    document = session.scalar(
+        select(StoredDocument).where(
+            StoredDocument.entity_id == entity.id,
+            StoredDocument.tenant_id == tenant.id,
+            StoredDocument.filename == "insurance-certificate.txt",
+        )
+    )
+    assert document is not None
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.document_id == document.id)
+    )
+    assert intake is not None
+    assert intake.status == DocumentIntakeStatus.ready_for_review
+    assert intake.document_type == "insurance_certificate"
+    assert intake.summary == "Inbound insurance certificate expires 2027-04-30."
+    assert intake.confidence == 0.88
+    assert intake.openai_response_id == "resp_inbound_attachment_extract"
+    assert intake.extracted_data["key_dates"][0]["date"] == "2027-04-30"
+    assert intake.review_data["source"] == "sendgrid_inbound_parse"
+    assert document.document_metadata["smart_intake_auto_extracted"] is True
+    assert document.document_metadata["proposed_document_category"] == "insurance"
+
+
+def test_inbound_webhook_keeps_attachment_intake_when_extraction_fails(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Inbound attachment routing soft-fails if extraction fails."""
+
+    entity = _entity(session)
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Extract Failure Tenant Pty Ltd",
+        contact_email="extract-fail@inbound.example",
+    )
+    session.add(tenant)
+    session.commit()
+
+    from apps.api.routers import comms as comms_router
+    from stewart.ai.document_intake import DocumentExtractionError
+    from stewart.core.settings import Settings
+
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(openai_api_key="sk-test"),
+    )
+
+    def fake_extract_document_file(**kwargs):  # noqa: ANN003, ARG001
+        raise DocumentExtractionError("OpenAI extraction unavailable")
+
+    monkeypatch.setattr(
+        comms_router,
+        "extract_document_file",
+        fake_extract_document_file,
+        raising=False,
+    )
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        params={"entity_id": str(entity.id)},
+        data={
+            "from": "extract-fail@inbound.example",
+            "to": "leasium@inbound.example.org",
+            "subject": "Insurance certificate",
+            "text": "Hi team, attached is the renewed insurance certificate.",
+        },
+        files={
+            "attachment1": (
+                "insurance-certificate.txt",
+                b"insurance certificate",
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 202
+    assert response.json()["attachment_intake_count"] == 1
+    document = session.scalar(
+        select(StoredDocument).where(
+            StoredDocument.entity_id == entity.id,
+            StoredDocument.tenant_id == tenant.id,
+            StoredDocument.filename == "insurance-certificate.txt",
+        )
+    )
+    assert document is not None
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.document_id == document.id)
+    )
+    assert intake is not None
+    assert intake.status == DocumentIntakeStatus.failed
+    assert intake.error_message == "OpenAI extraction unavailable"
+    assert intake.review_data["source"] == "sendgrid_inbound_parse"
+    assert document.document_metadata["smart_intake_auto_extract_failed"] is True
 
 
 def test_inbound_webhook_rejects_missing_shared_secret_when_configured(

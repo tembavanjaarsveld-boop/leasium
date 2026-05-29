@@ -440,9 +440,12 @@ Last updated: 2026-05-28
   dispatch, or payment reconciliation request fires. This is mock-only safety
   coverage; the live Xero rehearsal still needs production credentials.
 - 2026-05-29 comms automation continuation: SendGrid inbound email attachments
-  are now routed into Stored Documents plus Smart Intake `uploaded` review rows
-  tied back to the inbound message and attributed tenant when the sender matches
-  a tenant email. The comms queue candidate detail calls out the attachment
+  are now routed into Stored Documents plus Smart Intake review rows tied back
+  to the inbound message and attributed tenant when the sender matches a tenant
+  email. When `OPENAI_API_KEY` is configured, attachment intakes are
+  pre-extracted into `ready_for_review`/`needs_attention`; extraction failures
+  soft-fail the intake as `failed` without losing the stored attachment or
+  inbound message. The comms queue candidate detail calls out the attachment
   count routed to Smart Intake, and the `/comms` smoke fixture now includes an
   inbound email attachment draft plus CSV coverage. This remains review-first:
   no tenant data, lease data, provider action, payment record, SendGrid reply,
@@ -453,8 +456,9 @@ Last updated: 2026-05-28
   the value as `token`, `secret`, `X-Leasium-SendGrid-Inbound-Secret`, or
   `X-SendGrid-Inbound-Secret`. Deployment docs now show the tokenized inbound
   parse URL, so live DNS/MX should not be enabled until that env var is set.
-- Sidecar recommendation for the next slice: add optional extraction for
-  inbound-email attachment intakes when `OPENAI_API_KEY` is configured.
+- Sidecar recommendation for the next slice: add operator-facing Smart Intake
+  filters/copy for inbound-email attachment rows, or move to the next
+  tenant-lifecycle guardrail.
 
 ## Takeover Priority
 

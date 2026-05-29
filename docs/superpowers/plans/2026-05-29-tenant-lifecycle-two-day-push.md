@@ -1265,3 +1265,34 @@ Run:
 ```
 
 Expected: pass.
+
+## Task 56: Inbound Attachment Auto-Extraction
+
+- [x] **Step 1: Add extraction regressions**
+
+Add backend coverage that SendGrid inbound attachments are extracted into
+Smart Intake when `OPENAI_API_KEY` is configured, while the OpenAI-off path
+continues to leave the review row as `uploaded`.
+
+- [x] **Step 2: Add soft-fail extraction**
+
+Reuse the existing Smart Intake extractor boundary for inbound attachment
+intakes. Successful extraction stamps document type, summary, confidence,
+extracted data, OpenAI response id, and proposed document category. Extraction
+errors leave the stored attachment and intake visible with a failed status and
+error metadata.
+
+- [x] **Step 3: Update handover and roadmap**
+
+Record that inbound email attachments now optionally pre-extract and remain
+review-first.
+
+- [x] **Step 4: Verify inbound attachment extraction**
+
+Run:
+
+```bash
+.venv/bin/pytest tests/integration/test_comms_api.py -k "inbound_webhook_extracts_attachment_when_openai_is_configured or inbound_webhook_keeps_attachment_intake_when_extraction_fails or inbound_webhook_routes_attachments_to_smart_intake" -q
+```
+
+Expected: pass.
