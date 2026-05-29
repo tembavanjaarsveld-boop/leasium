@@ -1951,3 +1951,28 @@ git diff --check
 ```
 
 Expected: pass.
+
+## Task 82: DocuSign Webhook Secret Helper Alignment
+
+- [x] **Step 1: Add provider-header helper coverage**
+
+Extend the shared webhook-token helper so callers can declare provider-specific
+header aliases while preserving `x-leasium-webhook-secret` and `token` support.
+
+- [x] **Step 2: Move DocuSign webhook auth onto the helper**
+
+Have `POST /tenant-onboarding/webhooks/docusign` use the shared helper with
+`x-docusign-webhook-secret` and `x-leasium-webhook-secret` header aliases,
+while keeping the fail-closed "secret not configured" behavior.
+
+- [x] **Step 3: Verify DocuSign auth parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/unit/test_webhook_auth.py tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_rejects_unconfigured_secret tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_rejects_invalid_secret tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_accepts_shared_secret_header tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_records_declined_envelope tests/integration/test_tenant_onboarding_api.py::test_tenant_onboarding_docusign_webhook_marks_lease_signed -q
+.venv/bin/ruff check apps/api/webhook_auth.py apps/api/routers/tenant_onboarding.py tests/unit/test_webhook_auth.py tests/integration/test_tenant_onboarding_api.py
+git diff --check
+```
+
+Expected: pass.

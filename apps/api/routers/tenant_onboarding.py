@@ -733,16 +733,11 @@ def _assert_docusign_webhook_secret(request: Request) -> None:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="DocuSign webhook secret is not configured.",
         )
-    provided = (
-        request.headers.get("x-docusign-webhook-secret")
-        or request.headers.get("x-leasium-webhook-secret")
-        or request.query_params.get("token")
+    webhook_auth.assert_webhook_secret(
+        request,
+        secret,
+        header_names=("x-docusign-webhook-secret", "x-leasium-webhook-secret"),
     )
-    if not provided or not secrets.compare_digest(provided, secret):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid webhook token.",
-        )
 
 
 def _docusign_event_section(payload: dict[str, Any]) -> dict[str, Any]:

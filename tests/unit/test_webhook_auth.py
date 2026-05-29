@@ -100,6 +100,36 @@ def test_assert_webhook_secret_rejects_missing_or_wrong_secret() -> None:
     assert wrong_error.value.detail == "Invalid webhook token."
 
 
+def test_assert_webhook_secret_accepts_provider_specific_headers() -> None:
+    assert_webhook_secret(
+        _request(
+            "/api/v1/tenant-onboarding/webhooks/docusign",
+            headers={"x-docusign-webhook-secret": "docu-secret"},
+        ),
+        "docu-secret",
+        header_names=("x-docusign-webhook-secret", "x-leasium-webhook-secret"),
+    )
+    assert_webhook_secret(
+        _request(
+            "/api/v1/tenant-onboarding/webhooks/docusign",
+            headers={"x-leasium-webhook-secret": "docu-secret"},
+        ),
+        "docu-secret",
+        header_names=("x-docusign-webhook-secret", "x-leasium-webhook-secret"),
+    )
+
+    with pytest.raises(HTTPException) as wrong_header_error:
+        assert_webhook_secret(
+            _request(
+                "/api/v1/tenant-onboarding/webhooks/docusign",
+                headers={"x-docusign-webhook-secret": "wrong-secret"},
+            ),
+            "docu-secret",
+            header_names=("x-docusign-webhook-secret", "x-leasium-webhook-secret"),
+        )
+    assert wrong_header_error.value.status_code == 401
+
+
 def test_twilio_signature_valid_accepts_public_api_url_signature() -> None:
     payload = {"MessageSid": "SM123", "MessageStatus": "delivered"}
     auth_token = "twilio-token"

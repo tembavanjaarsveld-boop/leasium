@@ -1662,6 +1662,41 @@ def test_tenant_onboarding_docusign_webhook_rejects_invalid_secret(
     assert response.status_code == 401
 
 
+def test_tenant_onboarding_docusign_webhook_accepts_shared_secret_header(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    original_get_settings = tenant_onboarding_router.get_settings
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "get_settings",
+        lambda: original_get_settings().model_copy(
+            update={"docusign_webhook_secret": "docu-secret"}
+        ),
+    )
+    body = _create_applied_onboarding(client, session)
+    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
+    assert onboarding is not None
+    set_lease_agreement_section(
+        onboarding,
+        {"signing": {"provider": "docusign", "envelope_id": "envelope-shared-1"}},
+    )
+    session.commit()
+
+    response = client.post(
+        "/api/v1/tenant-onboarding/webhooks/docusign",
+        headers={"x-leasium-webhook-secret": "docu-secret"},
+        json={"envelopeId": "envelope-shared-1", "status": "declined"},
+    )
+
+    assert response.status_code == 204
+    session.refresh(onboarding)
+    signing = onboarding.delivery_data["lease_agreement"]["signing"]
+    assert signing["status"] == "declined"
+    assert signing["envelope_id"] == "envelope-shared-1"
+
+
 def test_tenant_onboarding_send_lease_pack_rejects_before_apply(
     client: TestClient,
     session: Session,

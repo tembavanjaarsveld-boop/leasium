@@ -11,17 +11,28 @@ from typing import Any
 from fastapi import HTTPException, Request, status
 
 
-def webhook_secret_valid(request: Request, secret: str) -> bool:
-    supplied = (
-        request.headers.get("x-leasium-webhook-secret")
-        or request.query_params.get("token")
-        or ""
-    ).strip()
+def webhook_secret_valid(
+    request: Request,
+    secret: str,
+    *,
+    header_names: tuple[str, ...] = ("x-leasium-webhook-secret",),
+) -> bool:
+    supplied = ""
+    for header_name in header_names:
+        supplied = request.headers.get(header_name, "").strip()
+        if supplied:
+            break
+    supplied = supplied or (request.query_params.get("token") or "").strip()
     return bool(supplied) and secrets.compare_digest(supplied, secret)
 
 
-def assert_webhook_secret(request: Request, secret: str) -> None:
-    if not webhook_secret_valid(request, secret):
+def assert_webhook_secret(
+    request: Request,
+    secret: str,
+    *,
+    header_names: tuple[str, ...] = ("x-leasium-webhook-secret",),
+) -> None:
+    if not webhook_secret_valid(request, secret, header_names=header_names):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid webhook token.",
