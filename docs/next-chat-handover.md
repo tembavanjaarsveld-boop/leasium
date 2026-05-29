@@ -439,10 +439,17 @@ Last updated: 2026-05-28
   remain disabled, and no OAuth, Xero preview/apply, draft creation, provider
   dispatch, or payment reconciliation request fires. This is mock-only safety
   coverage; the live Xero rehearsal still needs production credentials.
-- Sidecar recommendation for the next slice: route inbound email attachments
-  into Smart Intake. It is a credential-free local slice that preserves the
-  no-provider-action guardrails; production enablement still needs SendGrid
-  Inbound Parse/DNS.
+- 2026-05-29 comms automation continuation: SendGrid inbound email attachments
+  are now routed into Stored Documents plus Smart Intake `uploaded` review rows
+  tied back to the inbound message and attributed tenant when the sender matches
+  a tenant email. The comms queue candidate detail calls out the attachment
+  count routed to Smart Intake, and the `/comms` smoke fixture now includes an
+  inbound email attachment draft plus CSV coverage. This remains review-first:
+  no tenant data, lease data, provider action, payment record, SendGrid reply,
+  or Twilio message is changed until an operator approves the next step.
+- Sidecar recommendation for the next slice: add optional extraction for
+  inbound-email attachment intakes when `OPENAI_API_KEY` is configured, or add
+  SendGrid inbound signature/secret verification before live DNS enablement.
 
 ## Takeover Priority
 

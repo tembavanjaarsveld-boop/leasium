@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -30,6 +31,9 @@ from stewart.core.models import (
     ArrearsCase,
     ArrearsCaseStatus,
     AuditOutcome,
+    DocumentCategory,
+    DocumentIntake,
+    DocumentIntakeStatus,
     Entity,
     InboundMessage,
     Lease,
@@ -38,6 +42,7 @@ from stewart.core.models import (
     ObligationCategory,
     ObligationStatus,
     Property,
+    StoredDocument,
     TenancyUnit,
     Tenant,
     TenantOnboarding,
@@ -1411,6 +1416,13 @@ def _inbound_email_candidates(
 
         if tenant is None:
             detail_parts.append("tenant not attributed")
+        metadata = message.inbound_metadata if isinstance(message.inbound_metadata, dict) else {}
+        attachment_count = metadata.get("attachment_intake_count")
+        if isinstance(attachment_count, int) and attachment_count > 0:
+            noun = "attachment" if attachment_count == 1 else "attachments"
+            detail_parts.append(
+                f"{attachment_count} {noun} routed to Smart Intake"
+            )
         if message.classification_kind:
             label = message.classification_kind.replace("_", " ")
             confidence = message.classification_confidence
@@ -2019,6 +2031,95 @@ def _attribute_inbound_tenant(
     return None
 
 
+async def _promote_sendgrid_attachments_to_intake(
+    *,
+    form: Any | None,
+    message: InboundMessage,
+    tenant: Tenant | None,
+    session: Session,
+    max_bytes: int,
+) -> list[DocumentIntake]:
+    promoted: list[DocumentIntake] = []
+    if form is None:
+        return promoted
+    items = form.multi_items() if hasattr(form, "multi_items") else form.items()
+    for field_name, value in items:
+        filename = getattr(value, "filename", None)
+        read = getattr(value, "read", None)
+        if not filename or not callable(read):
+            continue
+        data = await read(max_bytes + 1)
+        if not data or len(data) > max_bytes:
+            continue
+        safe_filename = Path(str(filename)).name or "sendgrid-attachment"
+        content_type = getattr(value, "content_type", None)
+        document = StoredDocument(
+            entity_id=message.entity_id,
+            tenant_id=tenant.id if tenant is not None else None,
+            filename=safe_filename,
+            content_type=content_type if isinstance(content_type, str) else None,
+            byte_size=len(data),
+            file_data=data,
+            category=DocumentCategory.other,
+            notes="SendGrid inbound email attachment",
+            document_metadata={
+                "source": "sendgrid_inbound_parse",
+                "inbound_message_id": str(message.id),
+                "inbound_attachment_field": str(field_name),
+                "original_filename": safe_filename,
+            },
+        )
+        session.add(document)
+        session.flush()
+        review_data: dict[str, Any] = {
+            "source": "sendgrid_inbound_parse",
+            "candidate": "inbound_email_attachment",
+            "inbound_message_id": str(message.id),
+            "inbound_subject": message.subject,
+            "guardrail": (
+                "No tenant data, lease data, provider action, or payment record "
+                "is changed until an operator applies the Smart Intake review."
+            ),
+        }
+        if tenant is not None:
+            review_data["tenant_id"] = str(tenant.id)
+        intake = DocumentIntake(
+            entity_id=message.entity_id,
+            document_id=document.id,
+            status=DocumentIntakeStatus.uploaded,
+            extracted_data={},
+            review_data=review_data,
+        )
+        session.add(intake)
+        session.flush()
+        document.document_metadata = {
+            **(document.document_metadata or {}),
+            "smart_intake_id": str(intake.id),
+            "smart_intake_promoted": True,
+            "smart_intake_promoted_at": utcnow().isoformat(),
+        }
+        audit_log(
+            session,
+            actor="sendgrid.inbound_parse",
+            entity_id=message.entity_id,
+            action="promote",
+            target_table="document_intake",
+            target_id=intake.id,
+            tool_input={
+                "document_id": str(document.id),
+                "inbound_message_id": str(message.id),
+                "filename": safe_filename,
+            },
+            tool_output_summary=(
+                "SendGrid inbound attachment promoted to Smart Intake review queue."
+            ),
+            outcome=AuditOutcome.success,
+            data_classification="confidential",
+        )
+        promoted.append(intake)
+    return promoted
+
+
 @router.post(
     "/webhooks/sendgrid-inbound",
     status_code=status.HTTP_202_ACCEPTED,
@@ -2065,10 +2166,12 @@ async def receive_sendgrid_inbound(
     cleaned_html = (html or "").strip() or None
 
     tenant = _attribute_inbound_tenant(entity_id, cleaned_from, session)
+    settings = get_settings()
 
     # Capture remaining form fields for later debugging without dragging
     # them into structured columns. We never log the body in audit metadata
     # because it can contain confidential tenant detail.
+    form: Any | None = None
     try:
         form = await request.form()
         raw_payload: dict[str, Any] = {
@@ -2092,12 +2195,26 @@ async def receive_sendgrid_inbound(
     )
     session.add(message)
     session.flush()
+    attachment_intakes = await _promote_sendgrid_attachments_to_intake(
+        form=form,
+        message=message,
+        tenant=tenant,
+        session=session,
+        max_bytes=settings.document_max_bytes,
+    )
+    message.inbound_metadata = {
+        **(message.inbound_metadata or {}),
+        "attachment_intake_count": len(attachment_intakes),
+        "attachment_document_ids": [
+            str(intake.document_id) for intake in attachment_intakes
+        ],
+        "attachment_intake_ids": [str(intake.id) for intake in attachment_intakes],
+    }
     # Best-effort AI classification. Soft-fails: if OPENAI_API_KEY is missing
     # or the call errors, the row is still persisted and the operator can
     # classify manually from the comms queue. The body itself is never
     # audited — only kind + confidence — so the inbound classifier matches
     # the existing /ai/triage guardrail.
-    settings = get_settings()
     classification_summary: str | None = None
     if cleaned_text and settings.openai_api_key:
         try:
@@ -2146,6 +2263,7 @@ async def receive_sendgrid_inbound(
     return {
         "id": str(message.id),
         "attributed_tenant_id": str(tenant.id) if tenant is not None else None,
+        "attachment_intake_count": len(attachment_intakes),
     }
 
 

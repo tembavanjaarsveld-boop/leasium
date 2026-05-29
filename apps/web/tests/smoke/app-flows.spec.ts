@@ -348,7 +348,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("link", {
-      name: "Work, 5 drafts in the comms queue, 3 urgent",
+      name: "Work, 6 drafts in the comms queue, 3 urgent",
     }),
   ).toBeVisible();
   await expect(
@@ -359,19 +359,19 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     page.getByRole("button", { name: "Refresh queue" }),
   ).toBeEnabled();
   await expect(
-    page.getByRole("group", { name: "Remaining now: 5" }),
+    page.getByRole("group", { name: "Remaining now: 6" }),
   ).toBeVisible();
   await expect(
     page.getByRole("group", { name: "Settled now: 0" }),
   ).toBeVisible();
   await expect(page.getByRole("group", { name: "Urgent: 3" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "All drafts 5" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "All drafts 6" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
-  await expect(page.getByText("Showing all 5 drafts.")).toBeVisible();
+  await expect(page.getByText("Showing all 6 drafts.")).toBeVisible();
   await expect(
-    page.getByText("5 drafts remaining this session."),
+    page.getByText("6 drafts remaining this session."),
   ).toBeVisible();
   const commsReviewDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download review CSV" }).click();
@@ -383,12 +383,15 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   expect(commsReviewDownloadPath).not.toBeNull();
   const commsReviewCsv = await readFile(commsReviewDownloadPath!, "utf8");
   expect(commsReviewCsv).toContain("Inbound SMS");
+  expect(commsReviewCsv).toContain("Inbound email");
   expect(commsReviewCsv).toContain("Rent review");
   expect(commsReviewCsv).toContain("Tenant lifecycle");
   expect(commsReviewCsv).toContain("Twilio SMS");
   expect(commsReviewCsv).toContain("SendGrid email");
   expect(commsReviewCsv).toContain("+61400111222");
+  expect(commsReviewCsv).toContain("attachments@tenant.example");
   expect(commsReviewCsv).toContain("tenant@example.com");
+  expect(commsReviewCsv).toContain("1 attachment routed to Smart Intake");
   expect(commsReviewCsv).toContain(
     "DocuSign retry needed for your lease activation",
   );
@@ -403,12 +406,18 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   );
 
   const smsCard = page.locator("section").filter({ hasText: "Inbound SMS" });
+  const emailCard = page
+    .locator("section")
+    .filter({ hasText: "Inbound email" })
+    .first();
   await expect(smsCard).toBeVisible();
+  await expect(emailCard).toBeVisible();
   await page.getByRole("tab", { name: "Tenant lifecycle 3" }).click();
   await expect(
-    page.getByText("Showing 3 of 5 drafts in Tenant lifecycle."),
+    page.getByText("Showing 3 of 6 drafts in Tenant lifecycle."),
   ).toBeVisible();
   await expect(smsCard).not.toBeVisible();
+  await expect(emailCard).not.toBeVisible();
   const lifecycleCard = page
     .locator("section")
     .filter({ hasText: "Tenant lifecycle" })
@@ -463,7 +472,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   );
   await page.getByRole("tab", { name: "Rent review 1" }).click();
   await expect(
-    page.getByText("Showing 1 of 5 drafts in Rent review."),
+    page.getByText("Showing 1 of 6 drafts in Rent review."),
   ).toBeVisible();
   await expect(smsCard).not.toBeVisible();
   const rentReviewCard = page
@@ -476,13 +485,13 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     "Draft deferred until 3 June 2026",
   );
   await expect(
-    page.getByRole("group", { name: "Remaining now: 4" }),
+    page.getByRole("group", { name: "Remaining now: 5" }),
   ).toBeVisible();
   await expect(
     page.getByRole("group", { name: "Settled now: 1" }),
   ).toBeVisible();
   await expect(
-    page.getByText("4 drafts remaining, 1 settled this session."),
+    page.getByText("5 drafts remaining, 1 settled this session."),
   ).toBeVisible();
   await expect(
     rentReviewCard.getByText("Deferred", { exact: true }),
@@ -496,7 +505,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
 
   await page.getByRole("tab", { name: "Inbound SMS 1" }).click();
   await expect(
-    page.getByText("Showing 1 of 5 drafts in Inbound SMS."),
+    page.getByText("Showing 1 of 6 drafts in Inbound SMS."),
   ).toBeVisible();
   await expect(smsCard).toBeVisible();
   await expect(
@@ -557,6 +566,21 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     smsCard.getByText("Edit body or recipient before approving."),
   ).toBeVisible();
 
+  await page.getByRole("tab", { name: "Inbound email 1" }).click();
+  await expect(
+    page.getByText("Showing 1 of 6 drafts in Inbound email."),
+  ).toBeVisible();
+  await expect(emailCard).toBeVisible();
+  await expect(
+    emailCard.getByText("1 attachment routed to Smart Intake"),
+  ).toBeVisible();
+  await expect(emailCard.getByText("SendGrid email")).toBeVisible();
+  await expect(emailCard.getByLabel("Email recipient")).toHaveValue(
+    "attachments@tenant.example",
+  );
+
+  await page.getByRole("tab", { name: "Inbound SMS 1" }).click();
+  await expect(smsCard).toBeVisible();
   await smsCard.getByRole("button", { name: "Approve & send" }).click();
 
   await expect(smsCard.getByText("SMS send skipped")).toBeVisible();
@@ -570,13 +594,13 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     smsCard.getByText("Twilio Messaging is not configured yet"),
   ).toBeVisible();
   await expect(
-    page.getByRole("group", { name: "Remaining now: 3" }),
+    page.getByRole("group", { name: "Remaining now: 4" }),
   ).toBeVisible();
   await expect(
     page.getByRole("group", { name: "Settled now: 2" }),
   ).toBeVisible();
   await expect(
-    page.getByText("3 drafts remaining, 2 settled this session."),
+    page.getByText("4 drafts remaining, 2 settled this session."),
   ).toBeVisible();
   await expect(
     smsCard.getByText(

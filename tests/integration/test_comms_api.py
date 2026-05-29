@@ -16,6 +16,8 @@ from sqlalchemy.orm import Session
 from stewart.core.models import (
     ArrearsCase,
     ArrearsCaseStatus,
+    DocumentIntake,
+    DocumentIntakeStatus,
     Entity,
     InboundMessage,
     Lease,
@@ -25,6 +27,7 @@ from stewart.core.models import (
     ObligationStatus,
     Property,
     PropertyType,
+    StoredDocument,
     TenancyUnit,
     Tenant,
     TenantOnboarding,
@@ -1210,6 +1213,84 @@ def test_inbound_webhook_persists_and_attributes_tenant(
     assert inbound[0]["target_id"] == body["id"]
     assert inbound[0]["tenant_id"] == str(tenant.id)
     assert inbound[0]["subject"] == "Re: Question about my rent"
+
+
+def test_inbound_webhook_routes_attachments_to_smart_intake(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """SendGrid inbound attachments become Smart Intake rows for review."""
+
+    entity = _entity(session)
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Attachment Tenant Pty Ltd",
+        contact_email="docs@inbound.example",
+    )
+    session.add(tenant)
+    session.commit()
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        params={"entity_id": str(entity.id)},
+        data={
+            "from": "docs@inbound.example",
+            "to": "leasium@inbound.example.org",
+            "subject": "Lease attachment",
+            "text": "Hi team, attached is the lease document.",
+        },
+        files={
+            "attachment1": (
+                "signed-lease.pdf",
+                b"%PDF-1.4\nlease attachment",
+                "application/pdf",
+            )
+        },
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["attachment_intake_count"] == 1
+    message_id = UUID(body["id"])
+
+    document = session.scalar(
+        select(StoredDocument).where(
+            StoredDocument.entity_id == entity.id,
+            StoredDocument.tenant_id == tenant.id,
+            StoredDocument.deleted_at.is_(None),
+        )
+    )
+    assert document is not None
+    assert document.filename == "signed-lease.pdf"
+    assert document.content_type == "application/pdf"
+    assert document.byte_size == len(b"%PDF-1.4\nlease attachment")
+    assert document.document_metadata["source"] == "sendgrid_inbound_parse"
+    assert document.document_metadata["inbound_message_id"] == str(message_id)
+
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.document_id == document.id)
+    )
+    assert intake is not None
+    assert intake.status == DocumentIntakeStatus.uploaded
+    assert intake.review_data["source"] == "sendgrid_inbound_parse"
+    assert intake.review_data["inbound_message_id"] == str(message_id)
+    assert intake.review_data["tenant_id"] == str(tenant.id)
+    assert "No tenant data, lease data, provider action, or payment record" in (
+        intake.review_data["guardrail"]
+    )
+
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert queue.status_code == 200
+    inbound = [
+        candidate
+        for candidate in queue.json()["candidates"]
+        if candidate["kind"] == "inbound_email"
+    ]
+    assert len(inbound) == 1
+    assert "1 attachment routed to Smart Intake" in inbound[0]["detail"]
 
 
 def test_comms_queue_returns_compliance_obligation_candidate(

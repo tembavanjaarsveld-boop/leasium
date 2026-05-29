@@ -1202,3 +1202,36 @@ Run:
 ```
 
 Expected: pass.
+
+## Task 54: Inbound Email Attachment Smart Intake Routing
+
+- [x] **Step 1: Add SendGrid attachment regression**
+
+Add backend coverage that a multipart SendGrid inbound email with an attachment
+persists the inbound message, stores the attachment as a `StoredDocument`, and
+creates a Smart Intake `uploaded` row tied back to the inbound message and
+attributed tenant.
+
+- [x] **Step 2: Route attachments without provider mutation**
+
+Read SendGrid attachment file fields from the already-parsed form payload,
+store each non-empty attachment within the configured document size limit, and
+create a review-only Smart Intake row with a guardrail explaining that no tenant
+data, lease data, provider action, or payment record changes until operator
+review.
+
+- [x] **Step 3: Surface operator handoff**
+
+Add the attachment count to inbound email comms candidate detail and extend the
+`/comms` smoke fixture/CSV coverage with an inbound email attachment draft.
+
+- [x] **Step 4: Verify attachment routing**
+
+Run:
+
+```bash
+.venv/bin/pytest tests/integration/test_comms_api.py::test_inbound_webhook_routes_attachments_to_smart_intake -q
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "comms queue approves inbound SMS with a phone recipient"
+```
+
+Expected: pass.
