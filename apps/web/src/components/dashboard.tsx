@@ -981,9 +981,46 @@ function cloneExtraction(
 function intakeReviewData(
   intake: DocumentIntakeRecord,
 ): DocumentIntakeExtraction {
-  return Object.keys(intake.review_data).length
+  const extractionKeys = [
+    "document_type",
+    "summary",
+    "confidence",
+    "parties",
+    "properties",
+    "key_dates",
+    "money_amounts",
+    "obligations",
+    "suggested_links",
+    "warnings",
+    "missing_information",
+    "lease_auto_match",
+  ];
+  const hasReviewedExtraction = extractionKeys.some(
+    (key) => key in intake.review_data,
+  );
+  return hasReviewedExtraction
     ? (intake.review_data as DocumentIntakeExtraction)
     : intake.extracted_data;
+}
+
+function intakeSourceInfo(intake: DocumentIntakeRecord) {
+  const reviewData = intake.review_data;
+  const source = fieldText(reviewData.source);
+  const candidate = fieldText(reviewData.candidate);
+  if (
+    source !== "sendgrid_inbound_parse" &&
+    candidate !== "inbound_email_attachment"
+  ) {
+    return null;
+  }
+
+  const subject = fieldText(reviewData.inbound_subject);
+  const guardrail = fieldText(reviewData.guardrail);
+  return {
+    label: "Inbound email attachment",
+    detail: subject ? `Email subject: ${subject}` : "Routed from tenant email",
+    guardrail,
+  };
 }
 
 function groupItems(
@@ -1734,6 +1771,7 @@ function DocumentIntakeReviewPanel({
   const visibleGroups = reviewGroups.filter(
     (group) => groupItems(draft, group.key).length > 0,
   );
+  const sourceInfo = intakeSourceInfo(intake);
   const groupTitle = (group: { key: ReviewGroupKey; title: string }) =>
     workflowType === "insurance_certificate" && group.key === "key_dates"
       ? "Policy dates"
@@ -1849,6 +1887,22 @@ function DocumentIntakeReviewPanel({
             ) : null}
           </div>
         </div>
+
+        {sourceInfo ? (
+          <div className="grid gap-2 rounded-xl border border-primary/15 bg-primary-soft/60 px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge tone="primary">{sourceInfo.label}</StatusBadge>
+              <span className="text-muted-foreground">
+                {sourceInfo.detail}
+              </span>
+            </div>
+            {sourceInfo.guardrail ? (
+              <div className="text-muted-foreground">
+                {sourceInfo.guardrail}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="rounded-2xl border border-primary/15 bg-primary-soft p-3 text-sm text-primary-hover">
           Nothing is applied until you approve the items below and press Apply.
@@ -3413,9 +3467,11 @@ export function Dashboard({
                         fieldText(
                           item.extracted_data.suggested_links?.tenant_name,
                         );
+                      const sourceInfo = intakeSourceInfo(item);
                       return (
                         <div
                           key={item.id}
+                          data-testid={`review-intake-${item.id}`}
                           className="grid gap-2 px-3 py-3 text-sm"
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -3445,6 +3501,16 @@ export function Dashboard({
                             <p className="line-clamp-2 text-sm text-muted-foreground">
                               {item.summary}
                             </p>
+                          ) : null}
+                          {sourceInfo ? (
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <StatusBadge tone="primary">
+                                {sourceInfo.label}
+                              </StatusBadge>
+                              <span className="text-muted-foreground">
+                                {sourceInfo.detail}
+                              </span>
+                            </div>
                           ) : null}
                           <div className="flex flex-wrap gap-2 text-xs">
                             {propertyName ? (

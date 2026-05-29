@@ -1296,3 +1296,32 @@ Run:
 ```
 
 Expected: pass.
+
+## Task 57: Inbound Attachment Smart Intake Operator Copy
+
+- [x] **Step 1: Add review-queue smoke coverage**
+
+Add a Smart Intake smoke fixture for a SendGrid-routed inbound email attachment
+and assert the review queue shows its inbound source, email subject, reviewed
+document facts, and no-mutation guardrail.
+
+- [x] **Step 2: Preserve extracted facts beside metadata**
+
+Treat review metadata such as inbound source, subject, and guardrail as
+metadata unless the review payload contains actual extraction keys, so the
+review panel continues to render the extracted policy dates and summary.
+
+- [x] **Step 3: Surface operator source copy**
+
+Show an "Inbound email attachment" badge plus email subject in the review queue
+and review panel, with the guardrail visible before operators apply anything.
+
+- [x] **Step 4: Verify Smart Intake copy**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "smart intake labels inbound email attachments"
+```
+
+Expected: pass.

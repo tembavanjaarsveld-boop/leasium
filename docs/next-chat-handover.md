@@ -1059,3 +1059,9 @@ Open items at session end:
 - Tenant lease-signing panel now shows attached lease documents and download actions before the tenant confirms signing.
 - Backend portal document reads now expose `lease_id` and `tenant_onboarding_id`, and operator document upload validates that supplied tenant/lease/onboarding scope is consistent.
 - Verification: frontend ESLint + `tsc --noEmit`, backend `ruff` on touched API files, and focused Playwright smoke `tenant detail sends lease pack after onboarding approval`.
+
+## Codex continuation 2026-05-29
+
+- Tenant lifecycle push shipped tenant-uploaded lease auto-match, tenant-uploaded insurance auto-update, DocuSign provider runway/webhook guardrails, SendGrid inbound secret guard, inbound email attachment routing, and optional inbound attachment auto-extraction.
+- Smart Intake now labels SendGrid-routed inbound email attachment rows in the review queue, shows the email subject and no-mutation guardrail in the review panel, and preserves extracted document facts even when review metadata is present.
+- DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.

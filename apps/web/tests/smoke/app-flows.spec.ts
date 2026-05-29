@@ -2001,6 +2001,38 @@ test("smart intake shows tenant lease upload match recommendation", async ({
   await expect(page.getByText("Applied").first()).toBeVisible();
 });
 
+test("smart intake labels inbound email attachments in review queue", async ({
+  page,
+}) => {
+  await page.goto("/intake");
+
+  const inboundCard = page.getByTestId(
+    "review-intake-intake-inbound-email-attachment-1",
+  );
+  await expect(inboundCard.getByText("Inbound email attachment")).toBeVisible();
+  await expect(
+    inboundCard.getByText("Email subject: Insurance certificate"),
+  ).toBeVisible();
+
+  await inboundCard.getByRole("button", { name: "Review" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Review document" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("inbound-insurance-certificate.txt").nth(1),
+  ).toBeVisible();
+  await expect(page.getByText("Policy dates")).toBeVisible();
+  await expect(
+    page.locator("textarea").first(),
+  ).toHaveValue("Inbound insurance certificate expires 2027-04-30.");
+  await expect(
+    page.getByText(
+      "No tenant data, lease data, provider action, or payment record is changed",
+    ),
+  ).toBeVisible();
+});
+
 test("smart intake explains active DocuSign conflict before accepting lease match", async ({
   page,
 }) => {
