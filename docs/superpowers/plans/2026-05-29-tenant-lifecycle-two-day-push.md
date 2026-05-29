@@ -1371,3 +1371,26 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 60: Tenant Upload Signed Label
+
+- [x] **Step 1: Add tenant-upload activation review smoke coverage**
+
+Add tenant-detail smoke coverage for an onboarding signed through
+`provider="tenant_upload"`, requiring the signed panel to show
+"Tenant upload accepted" plus the existing activation-review guardrail.
+
+- [x] **Step 2: Distinguish tenant-upload signing**
+
+Label signed tenant-upload matches as "Tenant upload accepted" instead of
+generic "Signed", while leaving DocuSign completions labelled separately.
+
+- [x] **Step 3: Verify tenant-upload label**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant detail labels tenant-uploaded lease activation review"
+```
+
+Expected: pass.

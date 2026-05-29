@@ -496,8 +496,14 @@ function leaseSigningStatus({
   const error = metadataString(receipt?.error);
 
   if (leaseAgreement?.status === "signed") {
+    const signedLabel =
+      provider === "docusign"
+        ? "DocuSign completed"
+        : provider === "tenant_upload"
+          ? "Tenant upload accepted"
+          : "Signed";
     return {
-      label: provider === "docusign" ? "DocuSign completed" : "Signed",
+      label: signedLabel,
       detail: leaseAgreement.signed_at
         ? `Signed ${formatDateTime(leaseAgreement.signed_at)}`
         : "Signed",

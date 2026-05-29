@@ -2378,6 +2378,136 @@ test("tenant detail sends lease pack after onboarding approval", async ({
   ).toBeVisible();
 });
 
+test("tenant detail labels tenant-uploaded lease activation review", async ({
+  page,
+}) => {
+  let activated = false;
+  let onboardingRow = {
+    id: "onboarding-1",
+    entity_id: "entity-1",
+    lease_id: "lease-1",
+    tenant_id: "tenant-1",
+    token: "tenant-token-1",
+    status: "applied",
+    due_date: "2026-05-29",
+    expires_at: "2026-06-12T00:00:00.000Z",
+    last_sent_at: "2026-05-18T09:30:00.000Z",
+    resent_at: null,
+    cancel_reason: null,
+    onboarding_url: "http://127.0.0.1:3000/onboarding/tenant-token-1",
+    portal_url: "http://127.0.0.1:3000/tenant-portal/tenant-token-1",
+    submitted_data: {},
+    submitted_at: "2026-05-19T09:10:00.000Z",
+    review_data: {},
+    delivery_data: {
+      lease_agreement: {
+        status: "signed",
+        open_question_count: 0,
+        questions: [],
+        signed_at: "2026-05-21T00:25:00.000Z",
+        signed_by_actor: "user-temba",
+        signing_locked_reason: null,
+        signing: {
+          provider: "tenant_upload",
+          status: "completed",
+          document_id: "tenant-uploaded-lease-1",
+          signed_document_id: "tenant-uploaded-lease-1",
+          document_intake_id: "intake-1",
+          accepted_at: "2026-05-21T00:25:00.000Z",
+          signed_at: "2026-05-21T00:25:00.000Z",
+          lease_activation_review: {
+            status: "ready_for_review",
+            current_lease_status: "pending",
+            recommended_status: "active",
+            guardrail:
+              "Tenant-uploaded lease match does not activate a lease automatically; review and activate explicitly.",
+          },
+        },
+        signing_provider: "tenant_upload",
+        signing_status: "completed",
+        signing_document_id: "tenant-uploaded-lease-1",
+      },
+    },
+    reviewed_at: "2026-05-19T09:25:00.000Z",
+    reviewed_by_user_id: "user-temba",
+    applied_at: "2026-05-19T09:30:00.000Z",
+    applied_by_user_id: "user-temba",
+    created_at: "2026-05-18T09:30:00.000Z",
+    updated_at: "2026-05-21T00:25:00.000Z",
+    deleted_at: null,
+  };
+
+  await page.route(
+    /\/api\/v1\/tenant-onboarding(\/.*)?(\?.*)?$/,
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname.replace(/^\/api\/v1/, "");
+      if (request.method() === "GET" && path === "/tenant-onboarding") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([onboardingRow]),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/tenant-onboarding/onboarding-1/activate-lease"
+      ) {
+        activated = true;
+        const deliveryData = onboardingRow.delivery_data;
+        const leaseAgreement = deliveryData.lease_agreement;
+        const signing = leaseAgreement.signing;
+        onboardingRow = {
+          ...onboardingRow,
+          delivery_data: {
+            ...deliveryData,
+            lease_agreement: {
+              ...leaseAgreement,
+              signing: {
+                ...signing,
+                lease_activation_review: {
+                  status: "activated",
+                  current_lease_status: "active",
+                  recommended_status: "active",
+                  activated_at: "2026-05-21T00:30:00.000Z",
+                },
+              },
+            },
+          },
+          updated_at: "2026-05-21T00:30:00.000Z",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
+  await page.goto("/tenants/tenant-1");
+
+  await expect(page.getByText("Lease signing complete")).toBeVisible();
+  await expect(page.getByText("Tenant upload accepted").first()).toBeVisible();
+  await expect(page.getByText("Signed PDF retained")).toBeVisible();
+  await expect(page.getByText("Lease status: Pending -> Active.")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Tenant-uploaded lease match does not activate a lease automatically; review and activate explicitly.",
+    ),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Activate lease" }).click();
+  expect(activated).toBe(true);
+  await expect(
+    page.getByText("Lease activated after signed lease review."),
+  ).toBeVisible();
+});
+
 test("tenant detail blocks onboarding apply until lease questions are resolved", async ({
   page,
 }) => {
