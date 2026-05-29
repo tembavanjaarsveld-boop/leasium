@@ -874,7 +874,13 @@ def _rent_review_candidates(
 
 
 ACTIVE_DOCUSIGN_SIGNING_STATUSES = {"queued", "sent", "delivered"}
-RETRY_DOCUSIGN_SIGNING_STATUSES = {"declined", "failed", "voided", "deleted"}
+RETRY_DOCUSIGN_SIGNING_STATUSES = {
+    "declined",
+    "failed",
+    "skipped",
+    "voided",
+    "deleted",
+}
 DOCUSIGN_WAITING_DAYS = 7
 
 
@@ -999,16 +1005,37 @@ def _tenant_lifecycle_stall_candidates(
             last_event = signing.get("last_event")
             if isinstance(last_event, str):
                 detail_parts.append(last_event)
-            subject = f"DocuSign retry needed ({prop.name})"
-            body = (
-                f"{greeting}\n\n"
-                f"The DocuSign signing request for your lease at {location} "
-                f"was marked {signing_status}.\n\n"
-                "We are reviewing the lease pack before sending a fresh signing "
-                "request. Please reply if there is anything we should correct "
-                "before we resend it.\n\n"
-                "Thanks,\nThe property team"
-            )
+            provider_error = signing.get("error")
+            if isinstance(provider_error, str):
+                detail_parts.append(provider_error)
+            if signing_status == "skipped":
+                subject = f"DocuSign setup needed ({prop.name})"
+                setup_detail = (
+                    f"\n\nProvider setup detail: {provider_error}"
+                    if isinstance(provider_error, str)
+                    else ""
+                )
+                body = (
+                    f"{greeting}\n\n"
+                    f"The DocuSign signing request for your lease at {location} "
+                    "could not be sent because provider setup needs attention."
+                    f"{setup_detail}\n\n"
+                    "We are fixing the signing setup before sending a fresh "
+                    "lease pack. Please reply if there is anything we should "
+                    "correct before we resend it.\n\n"
+                    "Thanks,\nThe property team"
+                )
+            else:
+                subject = f"DocuSign retry needed ({prop.name})"
+                body = (
+                    f"{greeting}\n\n"
+                    f"The DocuSign signing request for your lease at {location} "
+                    f"was marked {signing_status}.\n\n"
+                    "We are reviewing the lease pack before sending a fresh signing "
+                    "request. Please reply if there is anything we should correct "
+                    "before we resend it.\n\n"
+                    "Thanks,\nThe property team"
+                )
         elif signing_status == "completed" and signing.get("signed_at"):
             activation_review = signing.get("lease_activation_review")
             if not isinstance(activation_review, dict):

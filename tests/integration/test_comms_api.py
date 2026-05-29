@@ -670,6 +670,49 @@ def test_comms_queue_returns_declined_or_failed_docusign_retry_candidate(
     assert signing_status in (candidate["detail"] or "")
 
 
+def test_comms_queue_returns_skipped_docusign_setup_retry_candidate(
+    client: TestClient,
+    session: Session,
+) -> None:
+    error = (
+        "DocuSign production endpoints are not configured. Set "
+        "DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and "
+        "DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before sending "
+        "live lease envelopes."
+    )
+    scope = _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": "skipped",
+            "document_id": "lease-doc-skipped-1",
+            "error": error,
+            "sent_at": (date.today() - timedelta(days=1)).isoformat(),
+        },
+    )
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+
+    assert response.status_code == 200
+    candidates = [
+        c
+        for c in response.json()["candidates"]
+        if c["kind"] == "tenant_lifecycle_stall"
+    ]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["target_kind"] == "tenant_onboarding"
+    assert candidate["target_id"] == scope["onboarding_id"]
+    assert candidate["severity"] == "danger"
+    assert "DocuSign setup needed" in candidate["subject"]
+    assert "skipped" in (candidate["detail"] or "")
+    assert "DOCUSIGN_BASE_URL" in (candidate["detail"] or "")
+    assert "before sending live lease envelopes" in candidate["body"]
+
+
 def test_comms_queue_returns_completed_signing_pending_activation_candidate(
     client: TestClient,
     session: Session,

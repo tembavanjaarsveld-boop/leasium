@@ -995,3 +995,25 @@ cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flo
 ```
 
 Expected: pass.
+
+## Task 45: Skipped DocuSign Setup Comms Candidate
+
+- [x] **Step 1: Add skipped setup comms regression**
+
+Add backend comms coverage that a skipped DocuSign send with a provider setup
+error appears as an urgent tenant lifecycle candidate.
+
+- [x] **Step 2: Route skipped sends into lifecycle review**
+
+Treat DocuSign `skipped` as a retry/setup state in the tenant lifecycle scanner,
+with subject/detail/body copy that points at provider setup before resending.
+
+- [x] **Step 3: Verify comms retry parity**
+
+Run:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::test_comms_queue_returns_skipped_docusign_setup_retry_candidate tests/integration/test_comms_api.py::test_comms_queue_returns_declined_or_failed_docusign_retry_candidate -q
+```
+
+Expected: pass.
