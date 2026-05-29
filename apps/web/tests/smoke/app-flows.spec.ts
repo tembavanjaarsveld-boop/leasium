@@ -2298,6 +2298,223 @@ test("tenant detail sends lease pack after onboarding approval", async ({
   ).toBeVisible();
 });
 
+test("tenant detail blocks onboarding apply until lease questions are resolved", async ({
+  page,
+}) => {
+  type SmokeOnboardingRow = Record<string, unknown> & {
+    delivery_data: Record<string, unknown>;
+    review_data: Record<string, unknown>;
+    status: string;
+  };
+  const submittedAt = "2026-05-19T09:10:00.000Z";
+  let onboardingRow: SmokeOnboardingRow = {
+    id: "onboarding-1",
+    entity_id: "entity-1",
+    lease_id: "lease-1",
+    tenant_id: "tenant-1",
+    token: "tenant-token-1",
+    status: "submitted",
+    due_date: "2026-05-29",
+    expires_at: "2026-06-12T00:00:00.000Z",
+    last_sent_at: "2026-05-18T09:30:00.000Z",
+    resent_at: null,
+    cancel_reason: null,
+    onboarding_url: "http://127.0.0.1:3000/onboarding/tenant-token-1",
+    portal_url: "http://127.0.0.1:3000/tenant-portal/tenant-token-1",
+    submitted_data: {
+      legal_name: "Bright Cafe Pty Ltd",
+      contact_name: "Mia Hart",
+      contact_email: "mia@example.com",
+      contact_phone: "0400 111 222",
+      accepted: true,
+    },
+    submitted_at: submittedAt,
+    review_data: {},
+    delivery_data: {
+      channels: {
+        email: {
+          channel: "email",
+          status: "sent",
+          provider: "mock",
+          attempted_at: "2026-05-18T09:30:00.000Z",
+          recipient: "mia@example.com",
+        },
+      },
+      lease_agreement: {
+        status: "questions_open",
+        open_question_count: 1,
+        questions: [
+          {
+            id: "lease-question-1",
+            question: "Can you confirm the make-good clause before we sign?",
+            clause_reference: "Clause 12",
+            status: "open",
+            answer: null,
+            asked_at: "2026-05-19T09:05:00.000Z",
+            asked_by_actor: "tenant:tenant-1",
+            answered_at: null,
+            answered_by_actor: null,
+            answered_by_user_id: null,
+            resolved_at: null,
+          },
+        ],
+        signed_at: null,
+        signed_by_actor: null,
+        signing: {},
+        signing_provider: null,
+        signing_status: null,
+        signing_envelope_id: null,
+        signing_document_id: null,
+        signing_sent_at: null,
+        signing_locked_reason: null,
+      },
+    },
+    reviewed_at: null,
+    reviewed_by_user_id: null,
+    applied_at: null,
+    applied_by_user_id: null,
+    created_at: "2026-05-18T09:30:00.000Z",
+    updated_at: submittedAt,
+    deleted_at: null,
+  };
+  let reviewed = false;
+  let applied = false;
+  let questionResolved = false;
+
+  await page.route(
+    /\/api\/v1\/tenant-onboarding(\/.*)?(\?.*)?$/,
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname.replace(/^\/api\/v1/, "");
+      if (request.method() === "GET" && path === "/tenant-onboarding") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([onboardingRow]),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/tenant-onboarding/onboarding-1/review"
+      ) {
+        reviewed = true;
+        onboardingRow = {
+          ...onboardingRow,
+          status: "reviewed",
+          review_data: { approved: true, notes: null },
+          reviewed_at: "2026-05-19T09:25:00.000Z",
+          reviewed_by_user_id: "user-temba",
+          updated_at: "2026-05-19T09:25:00.000Z",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path ===
+          "/tenant-onboarding/onboarding-1/lease-questions/lease-question-1/respond"
+      ) {
+        const payload = (request.postDataJSON() ?? {}) as {
+          answer?: string | null;
+          status?: string | null;
+        };
+        questionResolved = true;
+        const deliveryData = onboardingRow.delivery_data;
+        const leaseAgreement = deliveryData.lease_agreement as Record<
+          string,
+          unknown
+        >;
+        onboardingRow = {
+          ...onboardingRow,
+          delivery_data: {
+            ...deliveryData,
+            lease_agreement: {
+              ...leaseAgreement,
+              status: "ready_to_sign",
+              open_question_count: 0,
+              questions: [
+                {
+                  id: "lease-question-1",
+                  question: "Can you confirm the make-good clause before we sign?",
+                  clause_reference: "Clause 12",
+                  status: payload.status ?? "resolved",
+                  answer: payload.answer,
+                  asked_at: "2026-05-19T09:05:00.000Z",
+                  asked_by_actor: "tenant:tenant-1",
+                  answered_at: "2026-05-19T09:28:00.000Z",
+                  answered_by_actor: "operator",
+                  answered_by_user_id: "user-temba",
+                  resolved_at:
+                    payload.status === "resolved"
+                      ? "2026-05-19T09:28:00.000Z"
+                      : null,
+                },
+              ],
+            },
+          },
+          updated_at: "2026-05-19T09:28:00.000Z",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/tenant-onboarding/onboarding-1/apply"
+      ) {
+        applied = true;
+        onboardingRow = {
+          ...onboardingRow,
+          status: "applied",
+          applied_at: "2026-05-19T09:30:00.000Z",
+          applied_by_user_id: "user-temba",
+          updated_at: "2026-05-19T09:30:00.000Z",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(onboardingRow),
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
+  await page.goto("/tenants/tenant-1");
+
+  await expect(page.getByText("Questions open").first()).toBeVisible();
+  await expect(
+    page.getByText("Answer lease questions before applying.").first(),
+  ).toBeVisible();
+  await expect(page.getByText("Clause 12")).toBeVisible();
+  await expect(
+    page.getByText("Can you confirm the make-good clause before we sign?"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Mark reviewed" }).click();
+  await expect.poll(() => reviewed).toBe(true);
+  await expect(page.getByRole("button", { name: "Apply" })).toBeDisabled();
+  expect(applied).toBe(false);
+
+  await page
+    .getByPlaceholder("Answer the tenant's question")
+    .fill("The make-good clause is limited to tenant-installed works.");
+  await page.getByRole("button", { name: "Resolve" }).click();
+  await expect.poll(() => questionResolved).toBe(true);
+  await expect(page.getByText("Ready to sign").first()).toBeVisible();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect.poll(() => applied).toBe(true);
+});
+
 test("tenant detail shows skipped DocuSign setup after lease pack send", async ({
   page,
 }) => {

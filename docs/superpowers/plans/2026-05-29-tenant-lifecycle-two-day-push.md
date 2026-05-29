@@ -1153,3 +1153,27 @@ OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_
 ```
 
 Expected: pass.
+
+## Task 52: Lease Question Apply Block Smoke
+
+- [x] **Step 1: Add operator blocking smoke**
+
+Add tenant-detail smoke coverage for submitted onboarding with an open lease
+question, asserting the operator sees `Questions open`, the apply-block reason,
+and `Mark reviewed` instead of applying immediately.
+
+- [x] **Step 2: Mock question resolution handoff**
+
+Extend the smoke route for that test so resolving the lease question returns an
+updated onboarding row with `open_question_count=0` and `ready_to_sign`, then
+allows the reviewed onboarding to apply.
+
+- [x] **Step 3: Verify focused smoke**
+
+Run:
+
+```bash
+cd apps/web && PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts --grep "tenant detail blocks onboarding apply until lease questions are resolved"
+```
+
+Expected: pass.
