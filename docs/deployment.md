@@ -125,6 +125,28 @@ that key configured anywhere tenant portal account creation is enabled.
 
 Provider webhook URLs should also use `https://api.leasium.ai`.
 
+## Observability
+
+Error/performance reporting via Sentry is optional and **disabled by default**.
+Set these on the API service to enable it:
+
+```bash
+SENTRY_DSN=
+SENTRY_ENVIRONMENT=
+```
+
+- `SENTRY_DSN` — the project DSN. Leave empty (the default) to keep Sentry
+  fully disabled; the API never initialises the SDK and runs as a no-op.
+- `SENTRY_ENVIRONMENT` — optional label (e.g. `production`); falls back to
+  `APP_ENV` when unset.
+
+Sentry init is guarded so a missing package or bad DSN can never break API
+startup. Regardless of Sentry, the API already emits a `server-timing` response
+header and an `x-request-id` per request for tracing slow live pages from logs.
+
+Frontend observability (Vercel Speed Insights) is deferred; it needs an npm
+dependency plus a Vercel env toggle and is not wired up yet.
+
 ## Xero Go-Live Checklist
 
 Use the production branded redirect URI everywhere:

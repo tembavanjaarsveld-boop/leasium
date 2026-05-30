@@ -104,6 +104,16 @@ class Settings(BaseSettings):
     twilio_messaging_service_sid: str = ""
     twilio_from_phone: str = ""
     twilio_api_base_url: str = "https://api.twilio.com"
+    # Basiq (AU) bank-feed reconciliation is review-first and OFF by default.
+    # Inert without these: the adapter soft-skips like the SendGrid / Xero /
+    # DocuSign adapters until an operator enables it. No real money movement.
+    basiq_enabled: bool = False
+    basiq_api_key: str = ""
+    basiq_api_base_url: str = "https://au-api.basiq.io"
+    basiq_http_timeout_seconds: float = 15.0
+    # Observability: a complete no-op unless set in the deployment env.
+    sentry_dsn: str = ""
+    sentry_environment: str = ""
     communications_webhook_secret: str = ""
     communications_timeout_seconds: float = 10.0
     tenant_onboarding_email_enabled: bool = True

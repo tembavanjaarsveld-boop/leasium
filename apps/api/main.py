@@ -15,6 +15,7 @@ from apps.api.routers import (
     activity_feed,
     ai,
     arrears,
+    basiq,
     branded_templates,
     charge_rules,
     comms,
@@ -46,6 +47,18 @@ from apps.api.schemas.system import ApiHealthRead
 
 settings = get_settings()
 logger = logging.getLogger("leasium.api")
+
+if settings.sentry_dsn:
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=settings.sentry_environment or settings.app_env,
+            traces_sample_rate=0.1,
+        )
+    except Exception:  # never let observability break startup
+        logging.getLogger(__name__).warning("Sentry init skipped", exc_info=True)
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 
@@ -141,6 +154,7 @@ app.include_router(document_intakes.router, prefix="/api/v1")
 app.include_router(register_imports.router, prefix="/api/v1")
 app.include_router(enrichment.router, prefix="/api/v1")
 app.include_router(xero.router, prefix="/api/v1")
+app.include_router(basiq.router, prefix="/api/v1")
 app.include_router(insights.router, prefix="/api/v1")
 app.include_router(system.router, prefix="/api/v1")
 app.include_router(branded_templates.router, prefix="/api/v1")
