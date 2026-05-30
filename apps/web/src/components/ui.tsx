@@ -13,7 +13,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover active:bg-primary-pressed active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100",
         className,
       )}
       {...props}
@@ -28,7 +28,7 @@ export function SecondaryButton({
   return (
     <button
       className={cn(
-        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted active:bg-muted active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100",
         className,
       )}
       {...props}
@@ -305,14 +305,10 @@ export function chipClass(
       ? "min-h-5 px-2 py-0.5 text-leasium-micro leading-4"
       : "min-h-6 px-2 py-1 text-xs leading-none";
 
-  const toneStyles: Record<
-    StatusTone,
-    { soft: string; bordered: string }
-  > = {
+  const toneStyles: Record<StatusTone, { soft: string; bordered: string }> = {
     neutral: {
       soft: "bg-muted text-leasium-slate-500",
-      bordered:
-        "border border-border bg-muted text-muted-foreground",
+      bordered: "border border-border bg-muted text-muted-foreground",
     },
     success: {
       soft: "bg-success-soft text-success-strong",
@@ -331,8 +327,7 @@ export function chipClass(
     },
     primary: {
       soft: "bg-primary-soft text-primary-hover",
-      bordered:
-        "border border-primary/30 bg-primary-soft text-primary-hover",
+      bordered: "border border-primary/30 bg-primary-soft text-primary-hover",
     },
   };
 

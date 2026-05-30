@@ -226,9 +226,30 @@ flat-tone defect — so per "don't fix what isn't broken" no change was made.
 The only open Phase B refinement is optional **section grouping** (Today /
 This week / Later headers) for days when many items share a due window.
 
-Remaining Phase B increment (not yet built): **progressive disclosure** of the
-long Events / Recent-activity sections (collapse or move to owning surfaces so
-the home screen fits the decision, not the database). Then Phase C punch-list.
+### Build status addendum — Phase B/C/E shipped (deployed)
+
+- **Phase B progressive disclosure (done):** `ActivityFeedPanel` now shows the 8
+  most recent audit rows with a "Show all N / Show fewer" toggle, so the feed
+  no longer buries the dashboard.
+- **Phase C craft (done):** Properties table hides empty Area/Parking columns;
+  "Needs review" zero-state now reads "Clear" to match every other metric card.
+  (Owner-tag `->` chains were left as-is — they are raw import data, not a
+  code-generated separator, and the full chain already shows in the chip
+  tooltip.)
+- **Phase E feedback (done, first pass):** shared `Button` / `SecondaryButton`
+  primitives gained consistent press (`active:` bg + 0.98 scale) and
+  `focus-visible` ring states, honouring `prefers-reduced-motion`. This lifts
+  every button across the app in one place.
+
+**Phase D (keyboard flow on queues) — intentionally not shipped blind.** j/k
+roving navigation + single-key actions is a real interaction feature with
+focus-management, scroll-into-view, and shortcut-conflict edge cases. The
+Playwright smoke can't run in the Cowork sandbox (Next middleware edge-runtime
+EvalError), so shipping it without the interaction test loop would risk exactly
+the kind of jank that undercuts the quality bar. Recommended to build it on the
+Mac where `playwright test` runs, against the command-center list and the
+operations queue. A deeper motion pass (list enter/exit transitions) similarly
+wants visual verification.
 
 ## Guardrails carried through all phases
 
