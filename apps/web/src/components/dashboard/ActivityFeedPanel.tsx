@@ -3,13 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
-import {
-  SectionPanel,
-  StatusBadge,
-  type StatusTone,
-} from "@/components/ui";
+import { SectionPanel, StatusBadge, type StatusTone } from "@/components/ui";
 import {
   listActivityFeed,
   type ActivityActionKind,
@@ -106,6 +102,26 @@ export function ActivityFeedPanel({ entityId }: { entityId: string }) {
 
   const total = feedQuery.data?.items.length ?? 0;
 
+  // Progressive disclosure: the feed can carry up to 30 rows, which buried the
+  // rest of the dashboard under a wall of audit lines. Show the most recent
+  // few by default and let the operator expand on demand.
+  const COLLAPSED_LIMIT = 8;
+  const [expanded, setExpanded] = useState(false);
+  const displayGrouped = useMemo(() => {
+    if (expanded || total <= COLLAPSED_LIMIT) {
+      return grouped;
+    }
+    let remaining = COLLAPSED_LIMIT;
+    const limited: { key: string; items: ActivityFeedItemRecord[] }[] = [];
+    for (const bucket of grouped) {
+      if (remaining <= 0) break;
+      const items = bucket.items.slice(0, remaining);
+      remaining -= items.length;
+      limited.push({ key: bucket.key, items });
+    }
+    return limited;
+  }, [expanded, grouped, total]);
+
   return (
     <SectionPanel
       title="Recent activity"
@@ -142,7 +158,7 @@ export function ActivityFeedPanel({ entityId }: { entityId: string }) {
             record, it will appear here.
           </div>
         ) : (
-          grouped.map((bucket) => (
+          displayGrouped.map((bucket) => (
             <div key={bucket.key} className="grid gap-2">
               <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {bucket.key}
@@ -206,6 +222,15 @@ export function ActivityFeedPanel({ entityId }: { entityId: string }) {
             </div>
           ))
         )}
+        {total > COLLAPSED_LIMIT ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className="mt-1 inline-flex min-h-9 items-center justify-center rounded-lg border border-border bg-white px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            {expanded ? "Show fewer" : `Show all ${total}`}
+          </button>
+        ) : null}
       </div>
     </SectionPanel>
   );

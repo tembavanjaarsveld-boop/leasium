@@ -3750,7 +3750,7 @@ export function Dashboard({
                 ? "Preparing"
                 : reviewMetricCount
                   ? "Review"
-                  : "Empty"
+                  : "Clear"
             }
             tone={
               reviewMetricLoading
