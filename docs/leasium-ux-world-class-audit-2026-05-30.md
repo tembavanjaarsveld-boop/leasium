@@ -5,6 +5,36 @@ easiest product I've ever used"* — speed and price to market on top of a UX
 that rivals the best in the world. This document is the research + answers
 pass to agree on **what** to fix before writing the code.
 
+## Local dev toolchain — investigation outcome (2026-05-30, authoritative)
+
+The blocked local smoke is **an environment problem, not the code.** Findings,
+in order:
+
+1. Installing the matching native `@next/swc-darwin-x64` did **not** fix the
+   middleware `EvalError` — so SWC is not the cause.
+2. On a throwaway `spike/node-middleware` branch, moving middleware to the Node
+   runtime (`export const runtime = "nodejs"` + `experimental.nodeMiddleware`)
+   **did** clear the EvalError (count → 0) — but the dev server then failed at a
+   second layer: `globals.css` → "Module parse failed: Unexpected character
+   '@'" (the Tailwind/PostCSS pipeline isn't processing CSS either).
+3. Production builds fine on Vercel throughout.
+
+Multiple compounding local-build failures + healthy prod ⇒ the **x64 Node v26**
+toolchain on this Mac is the root cause (it's the only Node installed, no
+version manager present). Node 26 is very new; the Next 15.5 local edge-runtime
+VM and CSS/SWC pipeline don't run cleanly on it.
+
+**Recommended fix (no app code change):** install an **arm64 LTS Node (20 or
+22)** and reinstall deps with pnpm so native SWC + the CSS pipeline work, then
+the existing smoke runs unchanged. The spike was reverted; `main` is untouched.
+The Node-runtime-middleware option is real but is *not* the fix — it changes
+production auth-middleware runtime (edge → Node lambda) and doesn't resolve the
+CSS layer, so it shouldn't be adopted just for local dev.
+
+Until the local toolchain is repaired, the **deploy → live Playwright** loop
+(`scripts/verify-keyboard-flow.mjs`, parameterised) remains the working
+verification path and is sufficient for interaction work.
+
 ## TL;DR — the honest verdict
 
 Reframe the benchmark first. Google/Facebook are consumer-attention products;
