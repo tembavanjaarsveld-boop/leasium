@@ -464,7 +464,7 @@ def _latest_maintenance_activity(
 
 
 def _maintenance_forwarding_candidates(
-    entity_id: UUID, session: Session
+    entity_id: UUID, session: Session, *, summary_only: bool = False
 ) -> list[CommsCandidate]:
     today = date.today()
     rows = list(
@@ -485,28 +485,34 @@ def _maintenance_forwarding_candidates(
             if isinstance(work_order.work_order_metadata, dict)
             else {}
         )
-        tenant = (
-            session.get(Tenant, work_order.tenant_id)
-            if work_order.tenant_id is not None
-            else None
-        )
-        tenant_name = _tenant_display_name(tenant) if tenant is not None else None
-        tenant_recipient_email = (
-            (tenant.contact_email or tenant.billing_email)
-            if tenant is not None
-            else None
-        )
-        tenant_recipient_phone = tenant.contact_phone if tenant is not None else None
-        property_name = None
-        if work_order.property_id is not None:
-            prop = session.get(Property, work_order.property_id)
-            if prop is not None and prop.deleted_at is None:
-                property_name = prop.name
-        unit_label = None
-        if work_order.tenancy_unit_id is not None:
-            unit = session.get(TenancyUnit, work_order.tenancy_unit_id)
-            if unit is not None and unit.deleted_at is None:
-                unit_label = unit.unit_label
+        tenant_name: str | None = None
+        tenant_recipient_email: str | None = None
+        tenant_recipient_phone: str | None = None
+        property_name: str | None = None
+        unit_label: str | None = None
+        if not summary_only:
+            tenant = (
+                session.get(Tenant, work_order.tenant_id)
+                if work_order.tenant_id is not None
+                else None
+            )
+            tenant_name = _tenant_display_name(tenant) if tenant is not None else None
+            tenant_recipient_email = (
+                (tenant.contact_email or tenant.billing_email)
+                if tenant is not None
+                else None
+            )
+            tenant_recipient_phone = (
+                tenant.contact_phone if tenant is not None else None
+            )
+            if work_order.property_id is not None:
+                prop = session.get(Property, work_order.property_id)
+                if prop is not None and prop.deleted_at is None:
+                    property_name = prop.name
+            if work_order.tenancy_unit_id is not None:
+                unit = session.get(TenancyUnit, work_order.tenancy_unit_id)
+                if unit is not None and unit.deleted_at is None:
+                    unit_label = unit.unit_label
 
         tenant_activity = _latest_maintenance_activity(work_order, "tenant")
         if tenant_activity is not None and not _comms_kind_deferred(
@@ -514,8 +520,28 @@ def _maintenance_forwarding_candidates(
             "maintenance_contractor_forward",
             today,
         ):
-            _, tenant_summary = tenant_activity
-            contractor_label = work_order.contractor_name or "the contractor"
+            subject = ""
+            body = ""
+            if not summary_only:
+                _, tenant_summary = tenant_activity
+                contractor_label = work_order.contractor_name or "the contractor"
+                subject = f"Maintenance forward: {work_order.title}"
+                body = "\n".join(
+                    [
+                        f"Hi {contractor_label},",
+                        "",
+                        (
+                            "Please note the latest tenant-facing update for "
+                            f"{work_order.title}:"
+                        ),
+                        tenant_summary,
+                        "",
+                        (
+                            "Please confirm the next action or timing before "
+                            "we send anything further."
+                        ),
+                    ]
+                )
             candidates.append(
                 CommsCandidate(
                     id=(
@@ -531,23 +557,8 @@ def _maintenance_forwarding_candidates(
                     unit_label=unit_label,
                     recipient_email=work_order.contractor_email,
                     recipient_phone=work_order.contractor_phone,
-                    subject=f"Maintenance forward: {work_order.title}",
-                    body="\n".join(
-                        [
-                            f"Hi {contractor_label},",
-                            "",
-                            (
-                                "Please note the latest tenant-facing update for "
-                                f"{work_order.title}:"
-                            ),
-                            tenant_summary,
-                            "",
-                            (
-                                "Please confirm the next action or timing before "
-                                "we send anything further."
-                            ),
-                        ]
-                    ),
+                    subject=subject,
+                    body=body,
                     severity="warning",
                     due_at=work_order.due_date,
                     detail="reviewed forward to contractor from latest tenant-visible activity",
@@ -561,9 +572,26 @@ def _maintenance_forwarding_candidates(
             "maintenance_tenant_forward",
             today,
         ):
-            _, contractor_summary = contractor_activity
-            tenant_label = tenant_name or "there"
-            contractor_label = work_order.contractor_name or "the contractor"
+            subject = ""
+            body = ""
+            if not summary_only:
+                _, contractor_summary = contractor_activity
+                tenant_label = tenant_name or "there"
+                contractor_label = work_order.contractor_name or "the contractor"
+                subject = f"Maintenance update: {work_order.title}"
+                body = "\n".join(
+                    [
+                        f"Hi {tenant_label},",
+                        "",
+                        f"Update from {contractor_label} on {work_order.title}:",
+                        contractor_summary,
+                        "",
+                        (
+                            "We will keep this with Operations until the "
+                            "message is reviewed."
+                        ),
+                    ]
+                )
             candidates.append(
                 CommsCandidate(
                     id=(
@@ -579,20 +607,8 @@ def _maintenance_forwarding_candidates(
                     unit_label=unit_label,
                     recipient_email=tenant_recipient_email,
                     recipient_phone=tenant_recipient_phone,
-                    subject=f"Maintenance update: {work_order.title}",
-                    body="\n".join(
-                        [
-                            f"Hi {tenant_label},",
-                            "",
-                            f"Update from {contractor_label} on {work_order.title}:",
-                            contractor_summary,
-                            "",
-                            (
-                                "We will keep this with Operations until the "
-                                "message is reviewed."
-                            ),
-                        ]
-                    ),
+                    subject=subject,
+                    body=body,
                     severity="warning",
                     due_at=work_order.due_date,
                     detail="reviewed forward to tenant from latest contractor-visible activity",
@@ -603,7 +619,7 @@ def _maintenance_forwarding_candidates(
 
 
 def _arrears_candidates(
-    entity_id: UUID, session: Session
+    entity_id: UUID, session: Session, *, summary_only: bool = False
 ) -> list[CommsCandidate]:
     """Build arrears reminder candidates for ``entity_id``.
 
@@ -638,43 +654,50 @@ def _arrears_candidates(
         tenant = session.get(Tenant, case.tenant_id)
         if tenant is None or tenant.deleted_at is not None:
             continue
-        property_name = None
-        if case.property_id is not None:
-            prop = session.get(Property, case.property_id)
-            if prop is not None and prop.deleted_at is None:
-                property_name = prop.name
-        unit_label = None
-        if case.tenancy_unit_id is not None:
-            unit = session.get(TenancyUnit, case.tenancy_unit_id)
-            if unit is not None and unit.deleted_at is None:
-                unit_label = unit.unit_label
-        # If a lease is attached and the case has no property/unit, fall back
-        # to the lease's relations so the draft still locates the tenancy.
-        if (property_name is None or unit_label is None) and case.lease_id is not None:
-            lease = session.get(Lease, case.lease_id)
-            if lease is not None and lease.deleted_at is None:
-                unit = session.get(TenancyUnit, lease.tenancy_unit_id)
-                if unit is not None and unit.deleted_at is None:
-                    if unit_label is None:
-                        unit_label = unit.unit_label
-                    if property_name is None:
-                        prop = session.get(Property, unit.property_id)
-                        if prop is not None and prop.deleted_at is None:
-                            property_name = prop.name
-
         severity = _arrears_severity(case, today)
-        tenant_name = _tenant_display_name(tenant)
-        subject = _arrears_subject(case, property_name, unit_label, severity)
-        body = _arrears_body(
-            case,
-            tenant_name,
-            tenant.contact_name,
-            property_name,
-            unit_label,
-            severity,
-        )
-        detail = _arrears_detail(case, today)
         due_at = case.next_reminder_on or case.oldest_unpaid_invoice_date
+        property_name: str | None = None
+        unit_label: str | None = None
+        tenant_name: str | None = None
+        subject = ""
+        body = ""
+        detail: str | None = None
+        if not summary_only:
+            if case.property_id is not None:
+                prop = session.get(Property, case.property_id)
+                if prop is not None and prop.deleted_at is None:
+                    property_name = prop.name
+            if case.tenancy_unit_id is not None:
+                unit = session.get(TenancyUnit, case.tenancy_unit_id)
+                if unit is not None and unit.deleted_at is None:
+                    unit_label = unit.unit_label
+            # If a lease is attached and the case has no property/unit, fall
+            # back to the lease's relations so the draft still locates the
+            # tenancy.
+            if (
+                property_name is None or unit_label is None
+            ) and case.lease_id is not None:
+                lease = session.get(Lease, case.lease_id)
+                if lease is not None and lease.deleted_at is None:
+                    unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+                    if unit is not None and unit.deleted_at is None:
+                        if unit_label is None:
+                            unit_label = unit.unit_label
+                        if property_name is None:
+                            prop = session.get(Property, unit.property_id)
+                            if prop is not None and prop.deleted_at is None:
+                                property_name = prop.name
+            tenant_name = _tenant_display_name(tenant)
+            subject = _arrears_subject(case, property_name, unit_label, severity)
+            body = _arrears_body(
+                case,
+                tenant_name,
+                tenant.contact_name,
+                property_name,
+                unit_label,
+                severity,
+            )
+            detail = _arrears_detail(case, today)
         candidates.append(
             CommsCandidate(
                 id=f"arrears_reminder:arrears_case:{case.id}",
@@ -745,7 +768,7 @@ def _comms_kind_deferred(metadata: dict[str, Any], kind: str, today: date) -> bo
 
 
 def _insurance_candidates(
-    entity_id: UUID, session: Session
+    entity_id: UUID, session: Session, *, summary_only: bool = False
 ) -> list[CommsCandidate]:
     """Build insurance-expiry reminder candidates for ``entity_id``.
 
@@ -775,83 +798,95 @@ def _insurance_candidates(
             continue
         if expiry > cutoff:
             continue
-        # We have not yet read the resolved property/unit for context — pick
-        # the most recent active lease's property/unit so the reminder names
-        # the location the policy covers.
-        lease = session.scalar(
-            select(Lease)
-            .where(
-                Lease.tenant_id == tenant.id,
-                Lease.deleted_at.is_(None),
-                Lease.status.in_(
-                    (LeaseStatus.active, LeaseStatus.holding_over)
-                ),
-            )
-            .order_by(Lease.commencement_date.desc().nulls_last())
-            .limit(1)
-        )
-        property_name: str | None = None
-        unit_label: str | None = None
-        if lease is not None:
-            unit = session.get(TenancyUnit, lease.tenancy_unit_id)
-            if unit is not None and unit.deleted_at is None:
-                unit_label = unit.unit_label
-                prop = session.get(Property, unit.property_id)
-                if prop is not None and prop.deleted_at is None:
-                    property_name = prop.name
 
         days_until = (expiry - today).days
         if days_until < 0:
             severity: str = "danger"
-            ask = (
-                "Your insurance policy on file expired on "
-                f"{expiry.strftime('%d %b %Y')}. Please send a current "
-                "certificate of currency as soon as possible — operating "
-                "without cover may breach your lease."
-            )
-            subject_prefix = "Insurance has expired"
         elif days_until <= 14:
             severity = "warning"
-            ask = (
-                f"Your insurance policy on file expires on "
-                f"{expiry.strftime('%d %b %Y')} ({days_until} days). Please "
-                "send a renewal certificate so we can update your record."
-            )
-            subject_prefix = "Insurance expires soon"
         else:
             severity = "info"
-            ask = (
-                f"Your insurance policy on file expires on "
-                f"{expiry.strftime('%d %b %Y')}. When the renewal lands, "
-                "please forward the certificate so we can update your record."
+
+        property_name: str | None = None
+        unit_label: str | None = None
+        tenant_name: str | None = None
+        subject = ""
+        body = ""
+        detail: str | None = None
+        if not summary_only:
+            # We have not yet read the resolved property/unit for context —
+            # pick the most recent active lease's property/unit so the
+            # reminder names the location the policy covers.
+            lease = session.scalar(
+                select(Lease)
+                .where(
+                    Lease.tenant_id == tenant.id,
+                    Lease.deleted_at.is_(None),
+                    Lease.status.in_(
+                        (LeaseStatus.active, LeaseStatus.holding_over)
+                    ),
+                )
+                .order_by(Lease.commencement_date.desc().nulls_last())
+                .limit(1)
             )
-            subject_prefix = "Upcoming insurance renewal"
+            if lease is not None:
+                unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+                if unit is not None and unit.deleted_at is None:
+                    unit_label = unit.unit_label
+                    prop = session.get(Property, unit.property_id)
+                    if prop is not None and prop.deleted_at is None:
+                        property_name = prop.name
 
-        location_parts = [part for part in (property_name, unit_label) if part]
-        location = " ".join(location_parts) if location_parts else "your tenancy"
-        tenant_name = _tenant_display_name(tenant)
-        greeting = (
-            f"Hi {tenant.contact_name},"
-            if tenant.contact_name
-            else f"Hi {tenant_name},"
-        )
-        body = (
-            f"{greeting}\n\n"
-            f"{ask}\n\n"
-            "If you have any questions or would like a recommendation for a "
-            "broker, let us know.\n\n"
-            "Thanks,\nThe property team"
-        )
+            if days_until < 0:
+                ask = (
+                    "Your insurance policy on file expired on "
+                    f"{expiry.strftime('%d %b %Y')}. Please send a current "
+                    "certificate of currency as soon as possible — operating "
+                    "without cover may breach your lease."
+                )
+                subject_prefix = "Insurance has expired"
+            elif days_until <= 14:
+                ask = (
+                    f"Your insurance policy on file expires on "
+                    f"{expiry.strftime('%d %b %Y')} ({days_until} days). Please "
+                    "send a renewal certificate so we can update your record."
+                )
+                subject_prefix = "Insurance expires soon"
+            else:
+                ask = (
+                    f"Your insurance policy on file expires on "
+                    f"{expiry.strftime('%d %b %Y')}. When the renewal lands, "
+                    "please forward the certificate so we can update your record."
+                )
+                subject_prefix = "Upcoming insurance renewal"
 
-        subject = (
-            f"{subject_prefix} for {location}" if location_parts else subject_prefix
-        )
-        detail_parts: list[str] = [f"Expires {expiry.strftime('%d %b %Y')}"]
-        if days_until < 0:
-            detail_parts.append(f"expired {abs(days_until)} days ago")
-        else:
-            detail_parts.append(f"{days_until} days remaining")
-        detail = ", ".join(detail_parts)
+            location_parts = [part for part in (property_name, unit_label) if part]
+            location = " ".join(location_parts) if location_parts else "your tenancy"
+            tenant_name = _tenant_display_name(tenant)
+            greeting = (
+                f"Hi {tenant.contact_name},"
+                if tenant.contact_name
+                else f"Hi {tenant_name},"
+            )
+            body = (
+                f"{greeting}\n\n"
+                f"{ask}\n\n"
+                "If you have any questions or would like a recommendation for a "
+                "broker, let us know.\n\n"
+                "Thanks,\nThe property team"
+            )
+
+            subject = (
+                f"{subject_prefix} for {location}"
+                if location_parts
+                else subject_prefix
+            )
+            detail_parts: list[str] = [f"Expires {expiry.strftime('%d %b %Y')}"]
+            if days_until < 0:
+                detail_parts.append(f"expired {abs(days_until)} days ago")
+            else:
+                detail_parts.append(f"{days_until} days remaining")
+            detail = ", ".join(detail_parts)
 
         candidates.append(
             CommsCandidate(
@@ -930,7 +965,7 @@ def _rent_review_calculation(
 
 
 def _rent_review_candidates(
-    entity_id: UUID, session: Session
+    entity_id: UUID, session: Session, *, summary_only: bool = False
 ) -> list[CommsCandidate]:
     """Surface leases due for rent review within 60 days.
 
@@ -977,13 +1012,6 @@ def _rent_review_candidates(
         if tenant is None or tenant.deleted_at is not None:
             continue
 
-        review_metadata = (lease.lease_metadata or {}).get("rent_review")
-        if not isinstance(review_metadata, dict):
-            review_metadata = None
-        new_rent_cents, formula_label = _rent_review_calculation(
-            lease.annual_rent_cents, review_metadata
-        )
-
         days_until = (lease.next_review_date - today).days
         if days_until < 0:
             severity = "danger"
@@ -995,64 +1023,76 @@ def _rent_review_candidates(
             severity = "info"
             subject_prefix = "Upcoming rent review"
 
-        tenant_name = _tenant_display_name(tenant)
-        location_parts = [part for part in (prop.name, unit.unit_label) if part]
-        location = " ".join(location_parts) if location_parts else "your tenancy"
-        greeting = (
-            f"Hi {tenant.contact_name},"
-            if tenant.contact_name
-            else f"Hi {tenant_name},"
-        )
-
-        review_date_text = lease.next_review_date.strftime("%d %b %Y")
-        current_rent_text = (
-            _format_amount_int(lease.annual_rent_cents, "AUD")
-            if lease.annual_rent_cents is not None
-            else "(current rent not on file)"
-        )
-
-        if new_rent_cents is not None:
-            new_rent_text = _format_amount_int(new_rent_cents, "AUD")
-            body = (
-                f"{greeting}\n\n"
-                f"Your lease at {location} is scheduled for a rent review on "
-                f"{review_date_text}.\n\n"
-                f"Current annual rent: {current_rent_text}\n"
-                f"Proposed new annual rent: {new_rent_text} ({formula_label})\n\n"
-                "Please reply to confirm the adjustment or get in touch if "
-                "you'd like to discuss before we issue the formal notice.\n\n"
-                "Thanks,\nThe property team"
+        tenant_name: str | None = None
+        subject = ""
+        body = ""
+        detail: str | None = None
+        if not summary_only:
+            review_metadata = (lease.lease_metadata or {}).get("rent_review")
+            if not isinstance(review_metadata, dict):
+                review_metadata = None
+            new_rent_cents, formula_label = _rent_review_calculation(
+                lease.annual_rent_cents, review_metadata
             )
-            detail_parts = [
-                f"current {current_rent_text}",
-                f"new {new_rent_text}",
-                formula_label or "no formula",
-                f"review {review_date_text}",
-            ]
-        else:
-            body = (
-                f"{greeting}\n\n"
-                f"Your lease at {location} is scheduled for a rent review on "
-                f"{review_date_text}.\n\n"
-                f"Current annual rent: {current_rent_text}.\n\n"
-                "We'll be in touch shortly with the proposed adjustment. If "
-                "you'd like to discuss in advance, please reply to this email.\n\n"
-                "Thanks,\nThe property team"
-            )
-            detail_parts = [
-                f"current {current_rent_text}",
-                "needs increase rule",
-                f"review {review_date_text}",
-            ]
-        if days_until < 0:
-            detail_parts.append(f"overdue {abs(days_until)} days")
-        else:
-            detail_parts.append(f"in {days_until} days")
-        detail = ", ".join(detail_parts)
 
-        subject = (
-            f"{subject_prefix} ({prop.name})" if prop.name else subject_prefix
-        )
+            tenant_name = _tenant_display_name(tenant)
+            location_parts = [part for part in (prop.name, unit.unit_label) if part]
+            location = " ".join(location_parts) if location_parts else "your tenancy"
+            greeting = (
+                f"Hi {tenant.contact_name},"
+                if tenant.contact_name
+                else f"Hi {tenant_name},"
+            )
+
+            review_date_text = lease.next_review_date.strftime("%d %b %Y")
+            current_rent_text = (
+                _format_amount_int(lease.annual_rent_cents, "AUD")
+                if lease.annual_rent_cents is not None
+                else "(current rent not on file)"
+            )
+
+            if new_rent_cents is not None:
+                new_rent_text = _format_amount_int(new_rent_cents, "AUD")
+                body = (
+                    f"{greeting}\n\n"
+                    f"Your lease at {location} is scheduled for a rent review on "
+                    f"{review_date_text}.\n\n"
+                    f"Current annual rent: {current_rent_text}\n"
+                    f"Proposed new annual rent: {new_rent_text} ({formula_label})\n\n"
+                    "Please reply to confirm the adjustment or get in touch if "
+                    "you'd like to discuss before we issue the formal notice.\n\n"
+                    "Thanks,\nThe property team"
+                )
+                detail_parts = [
+                    f"current {current_rent_text}",
+                    f"new {new_rent_text}",
+                    formula_label or "no formula",
+                    f"review {review_date_text}",
+                ]
+            else:
+                body = (
+                    f"{greeting}\n\n"
+                    f"Your lease at {location} is scheduled for a rent review on "
+                    f"{review_date_text}.\n\n"
+                    f"Current annual rent: {current_rent_text}.\n\n"
+                    "We'll be in touch shortly with the proposed adjustment. If "
+                    "you'd like to discuss in advance, please reply to this email.\n\n"
+                    "Thanks,\nThe property team"
+                )
+                detail_parts = [
+                    f"current {current_rent_text}",
+                    "needs increase rule",
+                    f"review {review_date_text}",
+                ]
+            if days_until < 0:
+                detail_parts.append(f"overdue {abs(days_until)} days")
+            else:
+                detail_parts.append(f"in {days_until} days")
+            detail = ", ".join(detail_parts)
+
+            subject = (
+                f"{subject_prefix} ({prop.name})" if prop.name else subject_prefix
+            )
 
         candidates.append(
             CommsCandidate(
@@ -1062,8 +1102,8 @@ def _rent_review_candidates(
                 target_id=lease.id,
                 tenant_id=tenant.id,
                 tenant_name=tenant_name,
-                property_name=prop.name,
-                unit_label=unit.unit_label,
+                property_name=prop.name if not summary_only else None,
+                unit_label=unit.unit_label if not summary_only else None,
                 recipient_email=tenant.contact_email or tenant.billing_email,
                 recipient_phone=tenant.contact_phone,
                 subject=subject,
@@ -1089,7 +1129,7 @@ DOCUSIGN_WAITING_DAYS = 7
 
 
 def _tenant_lifecycle_stall_candidates(
-    entity_id: UUID, session: Session
+    entity_id: UUID, session: Session, *, summary_only: bool = False
 ) -> list[CommsCandidate]:
     """Surface tenant lifecycle stalls that need operator review.
 
@@ -1149,7 +1189,7 @@ def _tenant_lifecycle_stall_candidates(
         )
         envelope_id = signing.get("envelope_id")
         envelope_label = envelope_id if isinstance(envelope_id, str) else "unknown"
-        tenant_name = _tenant_display_name(tenant)
+        tenant_name = _tenant_display_name(tenant) if not summary_only else None
         greeting = (
             f"Hi {tenant.contact_name},"
             if tenant.contact_name
@@ -1158,6 +1198,12 @@ def _tenant_lifecycle_stall_candidates(
         location_parts = [part for part in (prop.name, unit.unit_label) if part]
         location = " ".join(location_parts) if location_parts else "your tenancy"
 
+        # In summary mode we still run the qualification branches below (they
+        # set severity and apply the waiting-window / status filters), but the
+        # human-readable subject/body are presentation-only. Setting both to ""
+        # keeps the trailing "if subject is None or body is None" gate honest:
+        # a qualifying row still produces non-None strings, a non-qualifying
+        # row leaves both None and is skipped — identical inclusion either way.
         subject: str | None = None
         body: str | None = None
         detail_parts: list[str] = [
@@ -1187,16 +1233,20 @@ def _tenant_lifecycle_stall_candidates(
                 continue
             due_at = sent_at.date()
             detail_parts.append(f"waiting {days_waiting} days")
-            subject = f"DocuSign envelope waiting ({prop.name})"
-            body = (
-                f"{greeting}\n\n"
-                f"The DocuSign envelope for your lease at {location} is still "
-                "waiting for completion.\n\n"
-                "Please review the DocuSign email and complete signing, or reply "
-                "if you need the request resent or have questions about the lease "
-                "pack.\n\n"
-                "Thanks,\nThe property team"
-            )
+            if summary_only:
+                subject = ""
+                body = ""
+            else:
+                subject = f"DocuSign envelope waiting ({prop.name})"
+                body = (
+                    f"{greeting}\n\n"
+                    f"The DocuSign envelope for your lease at {location} is still "
+                    "waiting for completion.\n\n"
+                    "Please review the DocuSign email and complete signing, or reply "
+                    "if you need the request resent or have questions about the lease "
+                    "pack.\n\n"
+                    "Thanks,\nThe property team"
+                )
         elif (
             signing_provider == "docusign"
             and signing_status in RETRY_DOCUSIGN_SIGNING_STATUSES
@@ -1212,7 +1262,10 @@ def _tenant_lifecycle_stall_candidates(
             provider_error = signing.get("error")
             if isinstance(provider_error, str):
                 detail_parts.append(provider_error)
-            if signing_status == "skipped":
+            if summary_only:
+                subject = ""
+                body = ""
+            elif signing_status == "skipped":
                 subject = f"DocuSign setup needed ({prop.name})"
                 body = (
                     f"{greeting}\n\n"
@@ -1255,15 +1308,19 @@ def _tenant_lifecycle_stall_candidates(
                     f"lease {current_status or 'unknown'} -> {recommended_status or 'active'}",
                 ]
             )
-            subject = f"Lease activation review ({prop.name})"
-            body = (
-                f"{greeting}\n\n"
-                f"Thank you for completing the lease signing for {location}. "
-                "The property team is completing the final activation review "
-                "before the lease is marked active in our system.\n\n"
-                "We will confirm once that review is complete.\n\n"
-                "Thanks,\nThe property team"
-            )
+            if summary_only:
+                subject = ""
+                body = ""
+            else:
+                subject = f"Lease activation review ({prop.name})"
+                body = (
+                    f"{greeting}\n\n"
+                    f"Thank you for completing the lease signing for {location}. "
+                    "The property team is completing the final activation review "
+                    "before the lease is marked active in our system.\n\n"
+                    "We will confirm once that review is complete.\n\n"
+                    "Thanks,\nThe property team"
+                )
 
         if subject is None or body is None:
             continue
@@ -1292,7 +1349,7 @@ def _tenant_lifecycle_stall_candidates(
 
 
 def _lease_renewal_candidates(
-    entity_id: UUID, session: Session
+    entity_id: UUID, session: Session, *, summary_only: bool = False
 ) -> list[CommsCandidate]:
     """Build lease-renewal-discussion candidates.
 
@@ -1335,53 +1392,62 @@ def _lease_renewal_candidates(
         days_until = (lease.expiry_date - today).days
         if days_until <= 30:
             severity = "danger"
-            tone = (
-                "Your lease term is winding down. Could we set up a quick "
-                "call this week to lock in the renewal terms or plan a "
-                "smooth handover."
-            )
-            subject_prefix = "Lease ending soon — let's talk"
         elif days_until <= 60:
             severity = "warning"
-            tone = (
-                "Your current term is closing in. We would like to start "
-                "the renewal discussion — could you let us know whether "
-                "you intend to renew, and any changes you would like us "
-                "to consider."
-            )
-            subject_prefix = "Lease renewal — your intentions"
         else:
             severity = "info"
-            tone = (
-                "We are opening the renewal window for your tenancy. "
-                "Could you share whether you intend to renew, and we can "
-                "schedule a discussion before the formal notice period."
-            )
-            subject_prefix = "Lease renewal — opening the conversation"
 
-        tenant_name = _tenant_display_name(tenant)
-        greeting = (
-            f"Hi {tenant.contact_name},"
-            if tenant.contact_name
-            else f"Hi {tenant_name},"
-        )
-        location_parts = [part for part in (prop.name, unit.unit_label) if part]
-        location = " ".join(location_parts) if location_parts else "your tenancy"
-        body = (
-            f"{greeting}\n\n"
-            f"Your lease at {location} is scheduled to expire on "
-            f"{lease.expiry_date.strftime('%d %b %Y')} "
-            f"({days_until} days from today).\n\n"
-            f"{tone}\n\n"
-            "Thanks,\nThe property team"
-        )
-        subject = (
-            f"{subject_prefix} ({prop.name})" if prop.name else subject_prefix
-        )
-        detail = (
-            f"Expires {lease.expiry_date.strftime('%d %b %Y')}, "
-            f"{days_until} days remaining"
-        )
+        tenant_name: str | None = None
+        subject = ""
+        body = ""
+        detail: str | None = None
+        if not summary_only:
+            if days_until <= 30:
+                tone = (
+                    "Your lease term is winding down. Could we set up a quick "
+                    "call this week to lock in the renewal terms or plan a "
+                    "smooth handover."
+                )
+                subject_prefix = "Lease ending soon — let's talk"
+            elif days_until <= 60:
+                tone = (
+                    "Your current term is closing in. We would like to start "
+                    "the renewal discussion — could you let us know whether "
+                    "you intend to renew, and any changes you would like us "
+                    "to consider."
+                )
+                subject_prefix = "Lease renewal — your intentions"
+            else:
+                tone = (
+                    "We are opening the renewal window for your tenancy. "
+                    "Could you share whether you intend to renew, and we can "
+                    "schedule a discussion before the formal notice period."
+                )
+                subject_prefix = "Lease renewal — opening the conversation"
+
+            tenant_name = _tenant_display_name(tenant)
+            greeting = (
+                f"Hi {tenant.contact_name},"
+                if tenant.contact_name
+                else f"Hi {tenant_name},"
+            )
+            location_parts = [part for part in (prop.name, unit.unit_label) if part]
+            location = " ".join(location_parts) if location_parts else "your tenancy"
+            body = (
+                f"{greeting}\n\n"
+                f"Your lease at {location} is scheduled to expire on "
+                f"{lease.expiry_date.strftime('%d %b %Y')} "
+                f"({days_until} days from today).\n\n"
+                f"{tone}\n\n"
+                "Thanks,\nThe property team"
+            )
+            subject = (
+                f"{subject_prefix} ({prop.name})" if prop.name else subject_prefix
+            )
+            detail = (
+                f"Expires {lease.expiry_date.strftime('%d %b %Y')}, "
+                f"{days_until} days remaining"
+            )
 
         candidates.append(
             CommsCandidate(
@@ -1391,8 +1457,8 @@ def _lease_renewal_candidates(
                 target_id=lease.id,
                 tenant_id=tenant.id,
                 tenant_name=tenant_name,
-                property_name=prop.name,
-                unit_label=unit.unit_label,
+                property_name=prop.name if not summary_only else None,
+                unit_label=unit.unit_label if not summary_only else None,
                 recipient_email=tenant.contact_email or tenant.billing_email,
                 recipient_phone=tenant.contact_phone,
                 subject=subject,
@@ -1422,7 +1488,7 @@ COMPLIANCE_OPEN_STATUSES = (
 
 
 def _compliance_candidates(
-    entity_id: UUID, session: Session
+    entity_id: UUID, session: Session, *, summary_only: bool = False
 ) -> list[CommsCandidate]:
     """Surface compliance Obligation rows due in the next 45 days (or overdue).
 
@@ -1459,24 +1525,6 @@ def _compliance_candidates(
             today,
         ):
             continue
-        tenant: Tenant | None = None
-        property_name: str | None = None
-        unit_label: str | None = None
-        if obligation.lease_id is not None:
-            lease = session.get(Lease, obligation.lease_id)
-            if lease is not None and lease.deleted_at is None:
-                t = session.get(Tenant, lease.tenant_id)
-                if t is not None and t.deleted_at is None:
-                    tenant = t
-        if obligation.property_id is not None:
-            prop = session.get(Property, obligation.property_id)
-            if prop is not None and prop.deleted_at is None:
-                property_name = prop.name
-        if obligation.tenancy_unit_id is not None:
-            unit = session.get(TenancyUnit, obligation.tenancy_unit_id)
-            if unit is not None and unit.deleted_at is None:
-                unit_label = unit.unit_label
-
         days_until = (obligation.due_date - today).days
         if obligation.status == ObligationStatus.overdue or days_until < 0:
             severity: str = "danger"
@@ -1488,38 +1536,61 @@ def _compliance_candidates(
             severity = "info"
             subject_prefix = "Upcoming compliance reminder"
 
-        location_parts = [part for part in (property_name, unit_label) if part]
-        location = " ".join(location_parts) if location_parts else "your tenancy"
-        tenant_name = _tenant_display_name(tenant) if tenant is not None else None
-        greeting = (
-            f"Hi {tenant.contact_name},"
-            if tenant is not None and tenant.contact_name
-            else (f"Hi {tenant_name}," if tenant_name else "Hello,")
-        )
-        body = (
-            f"{greeting}\n\n"
-            f"We have an upcoming compliance item for {location}: "
-            f"\"{obligation.title}\" is due on "
-            f"{obligation.due_date.strftime('%d %b %Y')}.\n\n"
-            "Please send through any documentation that demonstrates this is "
-            "in place. If something has already been completed, reply with the "
-            "evidence and we will close it out.\n\n"
-            "Thanks,\nThe property team"
-        )
-        subject = (
-            f"{subject_prefix}: {obligation.title}"
-            if obligation.title
-            else subject_prefix
-        )
-        detail_parts: list[str] = [
-            obligation.category.value.replace("_", " "),
-            f"due {obligation.due_date.strftime('%d %b %Y')}",
-        ]
-        if days_until < 0:
-            detail_parts.append(f"overdue {abs(days_until)} days")
-        else:
-            detail_parts.append(f"in {days_until} days")
-        detail = ", ".join(detail_parts)
+        tenant: Tenant | None = None
+        property_name: str | None = None
+        unit_label: str | None = None
+        tenant_name: str | None = None
+        subject = ""
+        body = ""
+        detail: str | None = None
+        if not summary_only:
+            if obligation.lease_id is not None:
+                lease = session.get(Lease, obligation.lease_id)
+                if lease is not None and lease.deleted_at is None:
+                    t = session.get(Tenant, lease.tenant_id)
+                    if t is not None and t.deleted_at is None:
+                        tenant = t
+            if obligation.property_id is not None:
+                prop = session.get(Property, obligation.property_id)
+                if prop is not None and prop.deleted_at is None:
+                    property_name = prop.name
+            if obligation.tenancy_unit_id is not None:
+                unit = session.get(TenancyUnit, obligation.tenancy_unit_id)
+                if unit is not None and unit.deleted_at is None:
+                    unit_label = unit.unit_label
+
+            location_parts = [part for part in (property_name, unit_label) if part]
+            location = " ".join(location_parts) if location_parts else "your tenancy"
+            tenant_name = _tenant_display_name(tenant) if tenant is not None else None
+            greeting = (
+                f"Hi {tenant.contact_name},"
+                if tenant is not None and tenant.contact_name
+                else (f"Hi {tenant_name}," if tenant_name else "Hello,")
+            )
+            body = (
+                f"{greeting}\n\n"
+                f"We have an upcoming compliance item for {location}: "
+                f"\"{obligation.title}\" is due on "
+                f"{obligation.due_date.strftime('%d %b %Y')}.\n\n"
+                "Please send through any documentation that demonstrates this is "
+                "in place. If something has already been completed, reply with the "
+                "evidence and we will close it out.\n\n"
+                "Thanks,\nThe property team"
+            )
+            subject = (
+                f"{subject_prefix}: {obligation.title}"
+                if obligation.title
+                else subject_prefix
+            )
+            detail_parts: list[str] = [
+                obligation.category.value.replace("_", " "),
+                f"due {obligation.due_date.strftime('%d %b %Y')}",
+            ]
+            if days_until < 0:
+                detail_parts.append(f"overdue {abs(days_until)} days")
+            else:
+                detail_parts.append(f"in {days_until} days")
+            detail = ", ".join(detail_parts)
 
         candidates.append(
             CommsCandidate(
@@ -1549,7 +1620,7 @@ def _compliance_candidates(
 
 
 def _inbound_email_candidates(
-    entity_id: UUID, session: Session
+    entity_id: UUID, session: Session, *, summary_only: bool = False
 ) -> list[CommsCandidate]:
     """Surface unprocessed inbound emails + SMS as queue candidates.
 
@@ -1575,68 +1646,9 @@ def _inbound_email_candidates(
         ).all()
     )
     for message in rows:
-        tenant: Tenant | None = None
-        if message.attributed_tenant_id is not None:
-            tenant = session.get(Tenant, message.attributed_tenant_id)
-            if tenant is not None and tenant.deleted_at is not None:
-                tenant = None
-        tenant_name = _tenant_display_name(tenant) if tenant is not None else None
-        contact_name = (
-            tenant.contact_name if tenant and tenant.contact_name else "there"
-        )
-        snippet = (message.body_text or "")[:240]
-        if snippet and len(message.body_text or "") > 240:
-            snippet += "…"
-
         is_sms = message.channel == "sms"
         kind: str = "inbound_sms" if is_sms else "inbound_email"
         target_kind = "inbound_message"
-        if is_sms:
-            # SMS reply: short, no subject, no quoted original.
-            subject = "SMS reply"
-            body = (
-                f"Hi {contact_name}, thanks for your message — we've got it "
-                "and will follow up shortly. Reply with any updates."
-            )
-            recipient_email: str | None = None
-            recipient_phone: str | None = message.from_address
-            detail_parts: list[str] = [f"SMS from {message.from_address or 'unknown'}"]
-        else:
-            subject = (
-                f"Re: {message.subject}"
-                if message.subject
-                else "Re: your message"
-            )
-            body = (
-                f"Hi {contact_name},\n\n"
-                "Thanks for your message — we've received it and will follow "
-                "up shortly. Please let us know if anything in this thread "
-                "has changed in the meantime.\n\n"
-                f"Original message:\n{snippet or '(no body)'}\n\n"
-                "Thanks,\nThe property team"
-            )
-            recipient_email = message.from_address
-            recipient_phone = None
-            detail_parts = [f"from {message.from_address or 'unknown'}"]
-
-        if tenant is None:
-            detail_parts.append("tenant not attributed")
-        metadata = message.inbound_metadata if isinstance(message.inbound_metadata, dict) else {}
-        attachment_count = metadata.get("attachment_intake_count")
-        if isinstance(attachment_count, int) and attachment_count > 0:
-            noun = "attachment" if attachment_count == 1 else "attachments"
-            detail_parts.append(
-                f"{attachment_count} {noun} routed to Smart Intake"
-            )
-        if message.classification_kind:
-            label = message.classification_kind.replace("_", " ")
-            confidence = message.classification_confidence
-            if confidence is not None:
-                detail_parts.append(
-                    f"AI: {label} ({int(round(float(confidence) * 100))}%)"
-                )
-            else:
-                detail_parts.append(f"AI: {label}")
         # Severity reflects classification urgency when present, otherwise info.
         severity: str = "info"
         if message.classification_kind == "payment_or_arrears":
@@ -1645,6 +1657,78 @@ def _inbound_email_candidates(
             severity = "warning"
         elif message.classification_kind == "spam_or_noise":
             severity = "info"
+
+        tenant: Tenant | None = None
+        tenant_name: str | None = None
+        recipient_email: str | None = None
+        recipient_phone: str | None = None
+        subject = ""
+        body = ""
+        detail: str | None = None
+        if not summary_only:
+            if message.attributed_tenant_id is not None:
+                tenant = session.get(Tenant, message.attributed_tenant_id)
+                if tenant is not None and tenant.deleted_at is not None:
+                    tenant = None
+            tenant_name = _tenant_display_name(tenant) if tenant is not None else None
+            contact_name = (
+                tenant.contact_name if tenant and tenant.contact_name else "there"
+            )
+            snippet = (message.body_text or "")[:240]
+            if snippet and len(message.body_text or "") > 240:
+                snippet += "…"
+
+            if is_sms:
+                # SMS reply: short, no subject, no quoted original.
+                subject = "SMS reply"
+                body = (
+                    f"Hi {contact_name}, thanks for your message — we've got it "
+                    "and will follow up shortly. Reply with any updates."
+                )
+                recipient_phone = message.from_address
+                detail_parts: list[str] = [
+                    f"SMS from {message.from_address or 'unknown'}"
+                ]
+            else:
+                subject = (
+                    f"Re: {message.subject}"
+                    if message.subject
+                    else "Re: your message"
+                )
+                body = (
+                    f"Hi {contact_name},\n\n"
+                    "Thanks for your message — we've received it and will follow "
+                    "up shortly. Please let us know if anything in this thread "
+                    "has changed in the meantime.\n\n"
+                    f"Original message:\n{snippet or '(no body)'}\n\n"
+                    "Thanks,\nThe property team"
+                )
+                recipient_email = message.from_address
+                detail_parts = [f"from {message.from_address or 'unknown'}"]
+
+            if tenant is None:
+                detail_parts.append("tenant not attributed")
+            metadata = (
+                message.inbound_metadata
+                if isinstance(message.inbound_metadata, dict)
+                else {}
+            )
+            attachment_count = metadata.get("attachment_intake_count")
+            if isinstance(attachment_count, int) and attachment_count > 0:
+                noun = "attachment" if attachment_count == 1 else "attachments"
+                detail_parts.append(
+                    f"{attachment_count} {noun} routed to Smart Intake"
+                )
+            if message.classification_kind:
+                label = message.classification_kind.replace("_", " ")
+                confidence = message.classification_confidence
+                if confidence is not None:
+                    detail_parts.append(
+                        f"AI: {label} ({int(round(float(confidence) * 100))}%)"
+                    )
+                else:
+                    detail_parts.append(f"AI: {label}")
+            detail = ", ".join(detail_parts)
 
         candidates.append(
             CommsCandidate(
@@ -1662,7 +1746,7 @@ def _inbound_email_candidates(
                 body=body,
                 severity=severity,  # type: ignore[arg-type]
                 due_at=None,
-                detail=", ".join(detail_parts),
+                detail=detail,
                 generated_at=now,
             )
         )
@@ -1731,15 +1815,19 @@ def get_comms_queue_counts(
     cached = _queue_counts_cache.get(entity_id)
     if cached is not None and time.monotonic() - cached[0] < _QUEUE_COUNTS_TTL_SECONDS:
         return cached[1]
+    # Counts only reads each candidate's ``kind`` and ``severity``, so the
+    # scanners run in summary mode: same query + inclusion logic as ``/queue``,
+    # but skipping the per-row property/unit/lease ``session.get`` lookups and
+    # subject/body string building that only the full queue surface needs.
     candidates = (
-        _inbound_email_candidates(entity_id, session)
-        + _arrears_candidates(entity_id, session)
-        + _compliance_candidates(entity_id, session)
-        + _insurance_candidates(entity_id, session)
-        + _lease_renewal_candidates(entity_id, session)
-        + _rent_review_candidates(entity_id, session)
-        + _tenant_lifecycle_stall_candidates(entity_id, session)
-        + _maintenance_forwarding_candidates(entity_id, session)
+        _inbound_email_candidates(entity_id, session, summary_only=True)
+        + _arrears_candidates(entity_id, session, summary_only=True)
+        + _compliance_candidates(entity_id, session, summary_only=True)
+        + _insurance_candidates(entity_id, session, summary_only=True)
+        + _lease_renewal_candidates(entity_id, session, summary_only=True)
+        + _rent_review_candidates(entity_id, session, summary_only=True)
+        + _tenant_lifecycle_stall_candidates(entity_id, session, summary_only=True)
+        + _maintenance_forwarding_candidates(entity_id, session, summary_only=True)
     )
     by_kind: dict[str, int] = {
         "arrears_reminder": 0,

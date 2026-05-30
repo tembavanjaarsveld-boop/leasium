@@ -1619,9 +1619,9 @@ def test_comms_queue_counts_are_cached_per_entity(
     calls = {"n": 0}
     original = comms_router._tenant_lifecycle_stall_candidates
 
-    def counting(entity, sess):  # type: ignore[no-untyped-def]
+    def counting(entity, sess, **kwargs):  # type: ignore[no-untyped-def]
         calls["n"] += 1
-        return original(entity, sess)
+        return original(entity, sess, **kwargs)
 
     monkeypatch.setattr(
         comms_router, "_tenant_lifecycle_stall_candidates", counting
@@ -1644,6 +1644,86 @@ def test_comms_queue_counts_are_cached_per_entity(
     assert third.status_code == 200
     assert calls["n"] == 2
     assert third.json()["total"] == first.json()["total"]
+
+
+def test_comms_queue_counts_match_full_queue_grouping(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """The cheap counts path (scanners run with ``summary_only=True``) must
+    produce exactly the same total / urgent / by_kind tally as grouping the
+    full ``/queue`` candidates. This guards against the summary path diverging
+    from the queue semantics — a candidate counted must be a candidate shown.
+    """
+
+    from collections import Counter
+
+    from apps.api.routers import comms as comms_router
+
+    # Span multiple kinds with both an urgent (danger) and a non-urgent
+    # candidate. Arrears with a 90+ balance is danger; a DocuSign envelope
+    # waiting past the window is warning; a declined envelope is danger.
+    arrears = _seed_arrears(session)
+    _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": "sent",
+            "envelope_id": "envelope-parity-waiting-1",
+            "sent_at": (date.today() - timedelta(days=8)).isoformat(),
+        },
+        contact_email="parity-waiting@example.com",
+    )
+    _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": "declined",
+            "envelope_id": "envelope-parity-declined-1",
+            "last_event": "envelope-declined",
+            "last_event_at": (date.today() - timedelta(days=1)).isoformat(),
+        },
+        contact_email="parity-declined@example.com",
+    )
+    entity_id = arrears["entity_id"]
+
+    # The counts cache is keyed per entity and the seed helpers reuse one shared
+    # entity across the module, so clear it to force a fresh scan for this test.
+    comms_router._queue_counts_cache.clear()
+
+    queue = client.get("/api/v1/comms/queue", params={"entity_id": entity_id})
+    assert queue.status_code == 200
+    queue_candidates = queue.json()["candidates"]
+
+    expected_total = len(queue_candidates)
+    expected_by_kind = Counter(c["kind"] for c in queue_candidates)
+    expected_urgent = sum(
+        1 for c in queue_candidates if c["severity"] == "danger"
+    )
+
+    counts = client.get(
+        "/api/v1/comms/queue/counts", params={"entity_id": entity_id}
+    )
+    assert counts.status_code == 200
+    body = counts.json()
+
+    # Sanity: the seed produced a multi-kind queue with both severities.
+    assert expected_total >= 3
+    assert expected_urgent >= 1
+    assert len(expected_by_kind) >= 2
+    assert expected_urgent < expected_total
+
+    assert body["total"] == expected_total
+    assert body["urgent"] == expected_urgent
+    # by_kind in the response carries every kind (zeros included); compare only
+    # the kinds the queue actually surfaced.
+    for kind, count in expected_by_kind.items():
+        assert body["by_kind"][kind] == count
+    # Kinds absent from the queue must count zero, never something stale.
+    surfaced = set(expected_by_kind)
+    assert all(
+        value == 0 for kind, value in body["by_kind"].items() if kind not in surfaced
+    )
 
 
 def test_comms_dismiss_tenant_lifecycle_stall_defers_candidate(
