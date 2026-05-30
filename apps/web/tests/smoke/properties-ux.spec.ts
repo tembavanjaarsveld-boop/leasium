@@ -58,3 +58,45 @@ test("mobile properties default uses cards instead of a panning table", async ({
   await expectTouchTarget(selectButton);
   await expectTouchTarget(editButton);
 });
+
+test("properties table density toggle trims row padding in compact mode", async ({
+  page,
+}) => {
+  await page.goto("/properties");
+
+  await expect(
+    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+  ).toBeVisible();
+
+  const densityGroup = page.getByRole("group", { name: "Table row density" });
+  await expect(densityGroup).toBeVisible();
+  const comfortable = densityGroup.getByRole("button", {
+    name: "Comfortable",
+  });
+  const compact = densityGroup.getByRole("button", { name: "Compact" });
+
+  // Comfortable is the unchanged default; its cells keep the py-3 padding.
+  await expect(comfortable).toHaveAttribute("aria-pressed", "true");
+  const firstCell = page
+    .getByRole("table")
+    .first()
+    .locator("tbody tr")
+    .first()
+    .locator("td")
+    .first();
+  await expect(firstCell).toHaveClass(/py-3/);
+
+  // Compact mode swaps the row cells to the tighter py-1.5 padding and
+  // persists the choice in localStorage.
+  await compact.click();
+  await expect(compact).toHaveAttribute("aria-pressed", "true");
+  await expect(firstCell).toHaveClass(/py-1\.5/);
+  await expect(firstCell).not.toHaveClass(/py-3/);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.localStorage.getItem("leasium.properties.density"),
+      ),
+    )
+    .toBe("compact");
+});

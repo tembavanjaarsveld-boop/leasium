@@ -51,3 +51,27 @@ test("insights exports review packet CSV from loaded overview data", async ({
     "Review-only export: downloading this file does not create or revoke snapshots, write Xero data, refresh providers, send SendGrid or Twilio messages, send tenant, owner, or provider email, apply payment reconciliation, generate billing drafts, dispatch providers, or mutate provider history.",
   );
 });
+
+test("insights splits the Xero-status guardrail into label and caption", async ({
+  page,
+}) => {
+  await page.goto("/insights");
+
+  const guardrails = page
+    .locator("div")
+    .filter({ has: page.getByText("Guardrails", { exact: true }) })
+    .last();
+  await expect(guardrails).toBeVisible();
+
+  // C8: the leading status clause and the guardrail caption render as two
+  // distinct elements rather than one run-on sentence.
+  const statusLabel = guardrails.getByText("Loading Xero status", {
+    exact: true,
+  });
+  await expect(statusLabel).toBeVisible();
+  const caption = guardrails.getByText(
+    "does not refresh tokens, call Xero, post invoices, or reconcile payments.",
+    { exact: true },
+  );
+  await expect(caption).toBeVisible();
+});

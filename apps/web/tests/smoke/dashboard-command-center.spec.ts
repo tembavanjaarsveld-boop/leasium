@@ -113,6 +113,34 @@ test("stored entity lets dashboard data start before entities refresh settles", 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("dashboard groups upcoming lease events under a date-bucket header", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.demo_mode", "false");
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
+  });
+  await mockLeasiumApi(page);
+
+  await page.goto("/");
+
+  const eventsPanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Upcoming lease events" }),
+    })
+    .first();
+
+  // B3: the seeded rent-review event renders under one of the lightweight
+  // date-bucket headers (the exact bucket is relative to today's date).
+  await expect(eventsPanel).toContainText(
+    "Bright Cafe Pty Ltd rent review",
+  );
+  await expect(
+    eventsPanel.getByText(/^(Overdue|Today|This week|Later)$/).first(),
+  ).toBeVisible();
+});
+
 test("dashboard overview clears first-paint loading before detailed fan-out settles", async ({
   page,
 }) => {

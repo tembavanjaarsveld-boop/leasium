@@ -136,6 +136,9 @@ import {
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const PROPERTY_STORAGE_KEY = "leasium.property_id";
+const PROPERTY_DENSITY_STORAGE_KEY = "leasium.properties.density";
+
+type PropertyRowDensity = "comfortable" | "compact";
 
 const optionalNumber = z.preprocess(
   (value) => (value === "" || value === null ? undefined : value),
@@ -1881,6 +1884,11 @@ function Workspace({
   >("all");
   const [propertyView, setPropertyView] =
     useState<PropertyPortfolioView>(initialView);
+  // Row-density preference for the desktop properties table (C6).
+  // Defaults to "comfortable"; hydrated from localStorage after mount to
+  // avoid an SSR mismatch, mirroring the saved-views persistence pattern.
+  const [propertyDensity, setPropertyDensity] =
+    useState<PropertyRowDensity>("comfortable");
   const [rentRollPropertyId, setRentRollPropertyId] = useState<string>("");
   const [rentRollAsOf, setRentRollAsOf] = useState<string>(() =>
     dateOnly(new Date()),
@@ -2048,6 +2056,19 @@ function Workspace({
     window.history.replaceState(null, "", url);
   }, [occupancyFilter, propertyView]);
 
+  // Hydrate the row-density preference once on mount (C6).
+  useEffect(() => {
+    const stored = window.localStorage.getItem(PROPERTY_DENSITY_STORAGE_KEY);
+    if (stored === "compact" || stored === "comfortable") {
+      setPropertyDensity(stored);
+    }
+  }, []);
+
+  // Persist the row-density preference whenever it changes (C6).
+  useEffect(() => {
+    window.localStorage.setItem(PROPERTY_DENSITY_STORAGE_KEY, propertyDensity);
+  }, [propertyDensity]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get("entity_id");
@@ -2212,6 +2233,10 @@ function Workspace({
   );
   const propertyTableColumnCount =
     4 + (showAreaColumn ? 1 : 0) + (showParkingColumn ? 1 : 0);
+  // Compact density trims the table-row vertical padding (C6); the
+  // comfortable default keeps the existing py-3.
+  const rowCellPadding =
+    propertyDensity === "compact" ? "px-3 py-1.5" : "px-3 py-3";
   const leaseCalendarEvents = useMemo(() => {
     const visiblePropertyIds = new Set(
       displayedProperties.map((property) => property.id),
@@ -5335,6 +5360,38 @@ function Workspace({
                     onEdit={startEdit}
                     onOwnerTagFilter={applyOwnerTagFilter}
                   />
+                  <div className="hidden justify-end md:flex">
+                    <div
+                      role="group"
+                      aria-label="Table row density"
+                      className="inline-flex items-center gap-0.5 rounded-full border border-border bg-white p-0.5 text-xs font-medium"
+                    >
+                      {(
+                        [
+                          { id: "comfortable", label: "Comfortable" },
+                          { id: "compact", label: "Compact" },
+                        ] as const
+                      ).map((option) => {
+                        const isActive = propertyDensity === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            aria-pressed={isActive}
+                            onClick={() => setPropertyDensity(option.id)}
+                            className={cn(
+                              "inline-flex min-h-[36px] items-center rounded-full px-3 py-1 transition",
+                              isActive
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:bg-muted",
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <div className="hidden overflow-x-auto rounded-md border border-border bg-white md:block">
                     <table className="w-full min-w-[640px] border-collapse text-left text-sm tabular-nums">
                       <thead className="bg-muted text-xs uppercase text-muted-foreground">
@@ -5365,7 +5422,7 @@ function Workspace({
                               }`}
                               onClick={() => selectProperty(property.id)}
                             >
-                              <td className="px-3 py-3">
+                              <td className={rowCellPadding}>
                                 <StoredPropertyImage
                                   alt={`${property.name} property image`}
                                   className="h-14 w-24 rounded-md border border-border object-cover"
@@ -5374,7 +5431,7 @@ function Workspace({
                                 />
                               </td>
                               <td
-                                className="px-3 py-3"
+                                className={rowCellPadding}
                                 onClick={(event) => {
                                   // Allow inline-edit clicks inside the cell
                                   // without triggering row selection.
@@ -5502,20 +5559,20 @@ function Workspace({
                                     })}
                                 </div>
                               </td>
-                              <td className="px-3 py-3">
+                              <td className={rowCellPadding}>
                                 {property.property_type.replaceAll("_", " ")}
                               </td>
                               {showAreaColumn ? (
-                                <td className="px-3 py-3">
+                                <td className={rowCellPadding}>
                                   {property.building_sqm ?? "-"}
                                 </td>
                               ) : null}
                               {showParkingColumn ? (
-                                <td className="px-3 py-3">
+                                <td className={rowCellPadding}>
                                   {property.parking_spaces ?? "-"}
                                 </td>
                               ) : null}
-                              <td className="px-3 py-3">
+                              <td className={rowCellPadding}>
                                 <SecondaryButton
                                   type="button"
                                   aria-label={`Edit ${property.name}`}

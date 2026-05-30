@@ -3,7 +3,6 @@
 import {
   CheckCircle2,
   ClipboardList,
-  Link2,
   Loader2,
   ShieldCheck,
 } from "lucide-react";
@@ -58,6 +57,46 @@ export type CommandCenterCounts = {
   onboarding: number;
   operations: number;
 };
+
+// Lightweight date buckets (B3). Purely presentational: groups the
+// already-ranked items under quiet headers by each item's own due
+// date. Item order (and the #N rank badge) within a bucket is
+// unchanged — items without a date fall into "Later".
+type DateBucketKey = "overdue" | "today" | "week" | "later";
+
+const DATE_BUCKET_LABEL: Record<DateBucketKey, string> = {
+  overdue: "Overdue",
+  today: "Today",
+  week: "This week",
+  later: "Later",
+};
+
+const DATE_BUCKET_ORDER: DateBucketKey[] = [
+  "overdue",
+  "today",
+  "week",
+  "later",
+];
+
+function dateBucketFor(date: string | null): DateBucketKey {
+  if (!date) {
+    return "later";
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(`${date.slice(0, 10)}T00:00:00`);
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  if (diffDays < 0) {
+    return "overdue";
+  }
+  if (diffDays === 0) {
+    return "today";
+  }
+  if (diffDays <= 7) {
+    return "week";
+  }
+  return "later";
+}
 
 export function DashboardCommandCenter({
   items,
@@ -137,48 +176,63 @@ export function DashboardCommandCenter({
               description="Checking review queues, billing readiness, onboarding, and key dates."
             />
           ) : shownItems.length ? (
-            shownItems.map((item, index) => (
-              <Link
-                key={item.id}
-                href={item.href}
-                data-cc-row
-                className={[
-                  "group grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 transition hover:bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 md:grid-cols-[3.25rem_minmax(0,1fr)_auto] md:items-center",
-                  index === 0 ? "bg-primary-soft/35" : "",
-                ].join(" ")}
-              >
-                <div className="flex justify-center self-center">
-                  <span className="inline-flex h-8 min-w-10 items-center justify-center rounded-full border border-border bg-white px-2 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition group-hover:border-primary/30 group-hover:text-primary">
-                    #{index + 1}
-                  </span>
-                </div>
-                <div className="min-w-0">
-                  <div className="line-clamp-2 text-leasium-body-compact font-medium leading-5 text-foreground">
-                    {item.title}
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-4 text-muted-foreground">
-                    <StatusBadge tone={item.tone}>{item.chip}</StatusBadge>
-                    <span>{item.area}</span>
-                    <span
-                      aria-hidden="true"
-                      className="hidden h-1 w-1 rounded-full bg-border sm:inline-block"
-                    />
-                    <span className="min-w-0 truncate">{item.dateLabel}</span>
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">
-                    {item.why}
-                  </p>
-                </div>
-                <div className="col-start-2 flex min-w-0 items-center gap-2 md:col-start-auto md:justify-end md:self-center">
-                  <span className="truncate text-sm font-medium text-primary md:whitespace-nowrap">
-                    {item.nextStep}
-                  </span>
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border bg-white text-primary transition group-hover:border-primary/35 group-hover:bg-primary group-hover:text-white">
-                    <Link2 size={15} />
-                  </span>
-                </div>
-              </Link>
-            ))
+            DATE_BUCKET_ORDER.flatMap((bucket) => {
+              const bucketItems = shownItems
+                .map((item, index) => ({ item, index }))
+                .filter(({ item }) => dateBucketFor(item.date) === bucket);
+              if (bucketItems.length === 0) {
+                return [];
+              }
+              return [
+                <div
+                  key={`cc-bucket-${bucket}`}
+                  className="bg-muted/30 px-4 py-1.5 text-leasium-micro font-semibold uppercase tracking-wide text-muted-foreground"
+                >
+                  {DATE_BUCKET_LABEL[bucket]}
+                </div>,
+                ...bucketItems.map(({ item, index }) => (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    data-cc-row
+                    className={[
+                      "group grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 transition hover:bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 md:grid-cols-[3.25rem_minmax(0,1fr)_auto] md:items-center",
+                      index === 0 ? "bg-primary-soft/35" : "",
+                    ].join(" ")}
+                  >
+                    <div className="flex justify-center self-center">
+                      <span className="inline-flex h-8 min-w-10 items-center justify-center rounded-full border border-border bg-white px-2 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition group-hover:border-primary/30 group-hover:text-primary">
+                        #{index + 1}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="line-clamp-2 text-leasium-body-compact font-medium leading-5 text-foreground">
+                        {item.title}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-4 text-muted-foreground">
+                        <StatusBadge tone={item.tone}>{item.chip}</StatusBadge>
+                        <span>{item.area}</span>
+                        <span
+                          aria-hidden="true"
+                          className="hidden h-1 w-1 rounded-full bg-border sm:inline-block"
+                        />
+                        <span className="min-w-0 truncate">
+                          {item.dateLabel}
+                        </span>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">
+                        {item.why}
+                      </p>
+                    </div>
+                    <div className="col-start-2 flex min-w-0 items-center gap-2 md:col-start-auto md:justify-end md:self-center">
+                      <span className="truncate text-sm font-medium text-primary md:whitespace-nowrap">
+                        {item.nextStep}
+                      </span>
+                    </div>
+                  </Link>
+                )),
+              ];
+            })
           ) : (
             <EmptyState
               icon={<CheckCircle2 size={18} />}

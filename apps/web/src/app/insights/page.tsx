@@ -221,12 +221,32 @@ function AccountingReadinessTrail({
       <div className="rounded-2xl border border-border bg-muted/35 p-4 text-sm">
         <div className="font-semibold">Guardrails</div>
         <div className="mt-3 grid gap-2 text-muted-foreground">
-          {accounting.guardrails.map((guardrail) => (
-            <div key={guardrail} className="flex items-start gap-2">
-              <ShieldCheck size={15} className="mt-0.5 shrink-0 text-primary" />
-              <span>{guardrail}</span>
-            </div>
-          ))}
+          {accounting.guardrails.map((guardrail) => {
+            // C8: a couple of guardrails phrase the read-only state as
+            // "<action> does not …", which reads as one run-on line.
+            // Split the leading status clause onto its own quiet label so
+            // the caption beneath stands as a separate sentence. Purely
+            // presentational; the guardrail text is unchanged.
+            const split = guardrail.match(/^(.*?) (does not .*)$/);
+            return (
+              <div key={guardrail} className="flex items-start gap-2">
+                <ShieldCheck
+                  size={15}
+                  className="mt-0.5 shrink-0 text-primary"
+                />
+                {split ? (
+                  <span className="grid gap-0.5">
+                    <span className="font-medium text-foreground">
+                      {split[1]}
+                    </span>
+                    <span>{split[2]}</span>
+                  </span>
+                ) : (
+                  <span>{guardrail}</span>
+                )}
+              </div>
+            );
+          })}
           {!accounting.guardrails.length ? (
             <div>No extra guardrails flagged.</div>
           ) : null}

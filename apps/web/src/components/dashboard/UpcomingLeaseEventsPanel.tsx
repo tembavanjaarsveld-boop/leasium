@@ -53,6 +53,47 @@ function leaseEventKindTone(kind: LeaseEventRecord["kind"]): StatusTone {
   }
 }
 
+// Lightweight date buckets (B3). Purely presentational: groups the
+// existing, already-sorted events under quiet headers by each event's
+// own due date. Ordering within a bucket is unchanged.
+type DateBucketKey = "overdue" | "today" | "week" | "later";
+
+const DATE_BUCKET_LABEL: Record<DateBucketKey, string> = {
+  overdue: "Overdue",
+  today: "Today",
+  week: "This week",
+  later: "Later",
+};
+
+const DATE_BUCKET_ORDER: DateBucketKey[] = [
+  "overdue",
+  "today",
+  "week",
+  "later",
+];
+
+function dateBucketFor(date: string | null): DateBucketKey {
+  if (!date) {
+    return "later";
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(`${date.slice(0, 10)}T00:00:00`);
+  const diffDays = Math.round(
+    (due.getTime() - today.getTime()) / 86_400_000,
+  );
+  if (diffDays < 0) {
+    return "overdue";
+  }
+  if (diffDays === 0) {
+    return "today";
+  }
+  if (diffDays <= 7) {
+    return "week";
+  }
+  return "later";
+}
+
 export function UpcomingLeaseEventsPanel({
   overview,
   isLoading,
@@ -110,27 +151,42 @@ export function UpcomingLeaseEventsPanel({
             here as they are entered.
           </div>
         ) : (
-          events.map((event) => (
-            <Link
-              key={event.id}
-              href={event.href || "/properties"}
-              className="grid gap-1 rounded-md border border-border bg-white p-3 text-sm transition hover:bg-muted/40"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge tone={leaseEventKindTone(event.kind)}>
-                    {leaseEventKindLabel(event.kind)}
-                  </StatusBadge>
-                  <span className="font-medium text-foreground">
-                    {event.title}
-                  </span>
+          DATE_BUCKET_ORDER.map((bucket) => {
+            const bucketEvents = events.filter(
+              (event) => dateBucketFor(event.date) === bucket,
+            );
+            if (bucketEvents.length === 0) {
+              return null;
+            }
+            return (
+              <div key={bucket} className="grid gap-2">
+                <div className="px-0.5 text-leasium-micro font-semibold uppercase tracking-wide text-muted-foreground">
+                  {DATE_BUCKET_LABEL[bucket]}
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  {event.chip}
-                </span>
+                {bucketEvents.map((event) => (
+                  <Link
+                    key={event.id}
+                    href={event.href || "/properties"}
+                    className="grid gap-1 rounded-md border border-border bg-white p-3 text-sm transition hover:bg-muted/40"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge tone={leaseEventKindTone(event.kind)}>
+                          {leaseEventKindLabel(event.kind)}
+                        </StatusBadge>
+                        <span className="font-medium text-foreground">
+                          {event.title}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {event.chip}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
               </div>
-            </Link>
-          ))
+            );
+          })
         )}
       </div>
     </SectionPanel>

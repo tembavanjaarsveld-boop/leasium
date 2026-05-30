@@ -1618,6 +1618,14 @@ function OperationsWorkspace() {
     useState<ArrearsFormState>(emptyArrearsForm);
   const [maintenanceInlineUndo, setMaintenanceInlineUndo] =
     useState<MaintenanceInlineUndo | null>(null);
+  // Brief inline confirmation for the obligation Complete/Waive actions
+  // (E6). These mutations previously gave no feedback beyond the row
+  // leaving the open queue; this reuses the existing transient-status
+  // toast pattern below. Local-state only — no provider call.
+  const [obligationConfirmation, setObligationConfirmation] = useState<{
+    id: string;
+    message: string;
+  } | null>(null);
   const queryClient = useQueryClient();
 
   const entitiesQuery = useQuery({
@@ -1657,6 +1665,16 @@ function OperationsWorkspace() {
     }, 9000);
     return () => window.clearTimeout(timeout);
   }, [maintenanceInlineUndo]);
+
+  useEffect(() => {
+    if (!obligationConfirmation) return;
+    const timeout = window.setTimeout(() => {
+      setObligationConfirmation((current) =>
+        current?.id === obligationConfirmation.id ? null : current,
+      );
+    }, 6000);
+    return () => window.clearTimeout(timeout);
+  }, [obligationConfirmation]);
 
   const selectedEntity = entitiesQuery.data?.find(
     (entity) => entity.id === selectedEntityId,
@@ -1745,7 +1763,16 @@ function OperationsWorkspace() {
             payload.status === "completed" ? new Date().toISOString() : null,
         }),
       ),
-    onSuccess: invalidateOperations,
+    onSuccess: (_data, payload) => {
+      invalidateOperations();
+      setObligationConfirmation({
+        id: `${payload.obligation.id}-${payload.status}-${Date.now()}`,
+        message:
+          payload.status === "completed"
+            ? `Marked “${payload.obligation.title}” complete.`
+            : `Waived “${payload.obligation.title}”.`,
+      });
+    },
   });
 
   const assignObligationMutation = useMutation({
@@ -4069,6 +4096,28 @@ function OperationsWorkspace() {
                 Dismiss
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+      {obligationConfirmation ? (
+        <div
+          className="fixed bottom-5 left-5 right-5 z-40 rounded-2xl border border-border bg-white p-4 shadow-leasiumSm md:left-auto md:w-[420px]"
+          role="status"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2">
+              <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />
+              <div className="text-sm font-semibold text-foreground">
+                {obligationConfirmation.message}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="min-h-9 shrink-0 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition hover:bg-muted"
+              onClick={() => setObligationConfirmation(null)}
+            >
+              Dismiss
+            </button>
           </div>
         </div>
       ) : null}
