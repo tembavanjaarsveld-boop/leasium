@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from stewart.core import auth as auth_module
 from stewart.core.auth import (
     ClerkIdentity,
+    _clerk_jwks_client,
     _clerk_provider_id,
     _clerk_user,
     _dev_user,
@@ -59,10 +60,45 @@ def test_clerk_provider_id_legacy_token_mapping_requires_explicit_flag() -> None
         _clerk_provider_id("user_legacy_owner", disabled_settings)
 
     assert exc_info.value.status_code == 401
-    assert (
-        _clerk_provider_id("user_legacy_owner", enabled_settings)
-        == "user_legacy_owner"
+    assert _clerk_provider_id("user_legacy_owner", enabled_settings) == "user_legacy_owner"
+
+
+def test_clerk_jwks_client_is_reused_across_token_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        auth_mode="clerk",
+        clerk_jwks_url="https://clerk.example/.well-known/jwks.json",
     )
+    init_count = 0
+
+    class FakeSigningKey:
+        key = "public-key"
+
+    class FakeJwksClient:
+        def __init__(self, jwks_url: str) -> None:
+            nonlocal init_count
+            init_count += 1
+            assert jwks_url == settings.clerk_jwks_url
+
+        def get_signing_key_from_jwt(self, token: str) -> FakeSigningKey:
+            assert token == "signed-in-session"
+            return FakeSigningKey()
+
+    _clerk_jwks_client.cache_clear()
+    monkeypatch.setattr(auth_module, "PyJWKClient", FakeJwksClient)
+    monkeypatch.setattr(
+        auth_module.jwt,
+        "decode",
+        lambda *_args, **_kwargs: {"sub": "user_clerk_owner"},
+    )
+
+    assert _clerk_provider_id("signed-in-session", settings) == "user_clerk_owner"
+    assert _clerk_provider_id("signed-in-session", settings) == "user_clerk_owner"
+    assert init_count == 1
+
+    _clerk_jwks_client.cache_clear()
 
 
 def test_clerk_user_links_existing_operator_by_verified_email_claim(

@@ -2,7 +2,7 @@
 
 from collections.abc import Generator
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from sqlalchemy import DateTime, MetaData, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, mapped_column, sessionmaker
@@ -48,7 +48,17 @@ UpdatedAt = Annotated[
 
 
 settings = get_settings()
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+engine_options: dict[str, Any] = {"pool_pre_ping": True}
+if not settings.database_url.startswith("sqlite"):
+    engine_options.update(
+        {
+            "pool_size": settings.database_pool_size,
+            "max_overflow": settings.database_max_overflow,
+            "pool_timeout": settings.database_pool_timeout_seconds,
+            "pool_recycle": settings.database_pool_recycle_seconds,
+        }
+    )
+engine = create_engine(settings.database_url, **engine_options)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 

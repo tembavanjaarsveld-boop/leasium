@@ -1,5 +1,15 @@
 {
   "framework": "nextjs",
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm build"
+  "buildCommand": "pnpm build",
+  "rewrites": [
+    {
+      "source": "/api/v1/:path*",
+      "destination": "https://api.leasium.ai/api/v1/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://api.leasium.ai/health"
+    }
+  ]
 }

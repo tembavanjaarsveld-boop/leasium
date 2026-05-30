@@ -15,7 +15,7 @@ Recommended Vercel project settings:
 Required Vercel environment variable:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=https://api.leasium.ai/api/v1
+NEXT_PUBLIC_API_BASE_URL=/api/v1
 LEASIUM_ACCESS_PASSWORD=choose-a-temporary-private-beta-password
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
 # Only set this when Clerk's proxy URL is enabled in the Clerk Dashboard.
@@ -29,7 +29,10 @@ onboarding links under `/onboarding/...`, tenant portal links under
 `/tenant-portal/...`, operator login pages, invite acceptance, and first
 workspace setup under `/setup` remain accessible without the password.
 
-The web app is only the frontend. The FastAPI backend still needs a separate host.
+The web app is only the frontend. The FastAPI backend still needs a separate
+host. Production uses the Vercel rewrites in `apps/web/vercel.json` so browser
+API calls stay same-origin under `/api/v1` and `/health`; Vercel then proxies
+them to `https://api.leasium.ai`.
 
 Current production domains:
 
@@ -51,6 +54,10 @@ CNAME  www             a08403df2f706cb2.vercel-dns-017.com
 Set the API host environment from `.env.example`, with production values for:
 
 - `DATABASE_URL`
+- `DATABASE_POOL_SIZE`
+- `DATABASE_MAX_OVERFLOW`
+- `DATABASE_POOL_TIMEOUT_SECONDS`
+- `DATABASE_POOL_RECYCLE_SECONDS`
 - `REDIS_URL`
 - `PUBLIC_API_URL`
 - `FRONTEND_URL`
@@ -106,7 +113,7 @@ is active:
 ```bash
 FRONTEND_URL=https://leasium.ai
 PUBLIC_API_URL=https://api.leasium.ai
-NEXT_PUBLIC_API_BASE_URL=https://api.leasium.ai/api/v1
+NEXT_PUBLIC_API_BASE_URL=/api/v1
 XERO_REDIRECT_URI=https://api.leasium.ai/api/v1/xero/oauth/callback
 ```
 
@@ -148,7 +155,7 @@ The branded domain variables must also point at production:
 ```bash
 PUBLIC_API_URL=https://api.leasium.ai
 FRONTEND_URL=https://leasium.ai
-NEXT_PUBLIC_API_BASE_URL=https://api.leasium.ai/api/v1
+NEXT_PUBLIC_API_BASE_URL=/api/v1
 ```
 
 Current workflow scopes:

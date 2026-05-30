@@ -1,10 +1,14 @@
 """FastAPI application entrypoint for Leasium."""
 
+import logging
 import os
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
+from time import perf_counter
+from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import Response
 from stewart.core.settings import get_settings
 
 from apps.api.routers import (
@@ -15,6 +19,7 @@ from apps.api.routers import (
     charge_rules,
     comms,
     contractors,
+    dashboard,
     document_intakes,
     documents,
     enrichment,
@@ -40,6 +45,7 @@ from apps.api.routers import (
 from apps.api.schemas.system import ApiHealthRead
 
 settings = get_settings()
+logger = logging.getLogger("leasium.api")
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 
@@ -51,6 +57,42 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def request_timing_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """Attach request timing so slow live pages can be traced from logs."""
+
+    request_id = request.headers.get("x-request-id") or uuid4().hex
+    start = perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = (perf_counter() - start) * 1000
+        logger.exception(
+            "request failed method=%s path=%s duration_ms=%.1f request_id=%s",
+            request.method,
+            request.url.path,
+            duration_ms,
+            request_id,
+        )
+        raise
+
+    duration_ms = (perf_counter() - start) * 1000
+    response.headers["x-request-id"] = request_id
+    response.headers["server-timing"] = f"app;dur={duration_ms:.1f}"
+    logger.info(
+        "request completed method=%s path=%s status=%s duration_ms=%.1f request_id=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+        request_id,
+    )
+    return response
 
 
 @app.get("/health", response_model=ApiHealthRead)
@@ -93,6 +135,7 @@ app.include_router(lease_intakes.router, prefix="/api/v1")
 app.include_router(tenant_onboarding.router, prefix="/api/v1")
 app.include_router(tenant_portal.router, prefix="/api/v1")
 app.include_router(charge_rules.router, prefix="/api/v1")
+app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(document_intakes.router, prefix="/api/v1")
 app.include_router(register_imports.router, prefix="/api/v1")

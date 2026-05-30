@@ -1590,6 +1590,62 @@ def test_comms_queue_counts_include_urgent_tenant_lifecycle_reviews(
     assert body["by_kind"]["tenant_lifecycle_stall"] == 3
 
 
+def test_comms_queue_counts_are_cached_per_entity(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """The badge counts endpoint caches per entity so back-to-back page loads
+    do not re-run the full queue scan, while still recomputing once the short
+    TTL elapses. Counts stay identical to a fresh scan."""
+
+    from apps.api.routers import comms as comms_router
+
+    scope = _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": "declined",
+            "envelope_id": "envelope-counts-cache-1",
+            "last_event": "envelope-declined",
+            "last_event_at": (date.today() - timedelta(days=1)).isoformat(),
+        },
+        contact_email="counts-cache@example.com",
+    )
+    entity_id = scope["entity_id"]
+
+    # Start from a clean cache and count how often the scan actually runs.
+    comms_router._queue_counts_cache.clear()
+    calls = {"n": 0}
+    original = comms_router._tenant_lifecycle_stall_candidates
+
+    def counting(entity, sess):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        return original(entity, sess)
+
+    monkeypatch.setattr(
+        comms_router, "_tenant_lifecycle_stall_candidates", counting
+    )
+
+    first = client.get("/api/v1/comms/queue/counts", params={"entity_id": entity_id})
+    second = client.get("/api/v1/comms/queue/counts", params={"entity_id": entity_id})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    # Second request is served from the cache: the scan ran only once.
+    assert calls["n"] == 1
+    # Cached payload is identical to the freshly computed one.
+    assert second.json()["total"] == first.json()["total"]
+    assert second.json()["by_kind"] == first.json()["by_kind"]
+
+    # Once the TTL elapses the next request recomputes (counts unchanged).
+    monkeypatch.setattr(comms_router, "_QUEUE_COUNTS_TTL_SECONDS", 0.0)
+    third = client.get("/api/v1/comms/queue/counts", params={"entity_id": entity_id})
+    assert third.status_code == 200
+    assert calls["n"] == 2
+    assert third.json()["total"] == first.json()["total"]
+
+
 def test_comms_dismiss_tenant_lifecycle_stall_defers_candidate(
     client: TestClient,
     session: Session,

@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -102,9 +103,9 @@ def _clerk_identity(token: str, settings: Settings) -> ClerkIdentity:
             detail="Clerk JWKS is not configured.",
         )
     try:
-        jwks_client = PyJWKClient(settings.clerk_jwks_url)
+        jwks_client = _clerk_jwks_client(settings.clerk_jwks_url)
         signing_key = jwks_client.get_signing_key_from_jwt(token)
-        options = {"verify_aud": bool(settings.clerk_audience)}
+        options: Any = {"verify_aud": bool(settings.clerk_audience)}
         decoded = jwt.decode(
             token,
             signing_key.key,
@@ -140,6 +141,13 @@ def _clerk_identity(token: str, settings: Settings) -> ClerkIdentity:
     )
 
 
+@lru_cache(maxsize=8)
+def _clerk_jwks_client(jwks_url: str) -> PyJWKClient:
+    """Return a process-wide Clerk JWKS client so auth fan-out reuses key cache."""
+
+    return PyJWKClient(jwks_url)
+
+
 def _normalise_email(email: str) -> str:
     return email.strip().lower()
 
@@ -163,10 +171,7 @@ def _verified_email_from_clerk_user(provider_id: str, settings: Settings) -> str
         return None
 
     for email_address in email_addresses:
-        if (
-            not isinstance(email_address, dict)
-            or email_address.get("id") != primary_email_id
-        ):
+        if not isinstance(email_address, dict) or email_address.get("id") != primary_email_id:
             continue
         verification = email_address.get("verification")
         if not isinstance(verification, dict) or verification.get("status") != "verified":

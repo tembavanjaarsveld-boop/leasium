@@ -27,6 +27,10 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://stewart:stewart@localhost:5432/stewart"
     test_database_url: str | None = None
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
+    database_pool_timeout_seconds: int = 30
+    database_pool_recycle_seconds: int = 1800
     redis_url: str = "redis://localhost:6379/0"
 
     s3_endpoint_url: str = "http://localhost:9000"

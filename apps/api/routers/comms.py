@@ -15,6 +15,7 @@ records on each call.
 from __future__ import annotations
 
 import secrets
+import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -1700,21 +1701,36 @@ def get_comms_queue(
     )
 
 
+# Short-lived per-entity cache for the sidebar badge counts. The counts
+# endpoint runs the full set of queue scanners (the same scan as ``/queue``),
+# so calling it on every navigation across an operator team repeats expensive
+# work for a number that barely changes minute to minute. Caching the computed
+# counts per entity for a short window keeps the badge correct — it is the same
+# value a fresh scan would produce — while removing the repeated full-scan cost.
+# Local state only: no provider calls, no mutation, and the role check below
+# still runs on every request before the cache is consulted.
+_QUEUE_COUNTS_TTL_SECONDS = 45.0
+_queue_counts_cache: dict[UUID, tuple[float, CommsQueueCountsRead]] = {}
+
+
 @router.get("/queue/counts", response_model=CommsQueueCountsRead)
 def get_comms_queue_counts(
     entity_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
 ) -> CommsQueueCountsRead:
-    """Lightweight queue counts for the sidebar nav badge.
+    """Queue counts for the sidebar nav badge.
 
     Reuses the same scanners as ``/queue`` so a candidate that surfaces in
-    the queue is reflected in the counts. The badge updates every time the
-    sidebar mounts; this endpoint is cheap enough to call on every page
-    load.
+    the queue is reflected in the counts. Results are cached per entity for
+    ``_QUEUE_COUNTS_TTL_SECONDS`` so the badge can be requested on every page
+    load without re-running the full queue scan each time.
     """
 
     assert_entity_role(session, user, entity_id, READ_ROLES)
+    cached = _queue_counts_cache.get(entity_id)
+    if cached is not None and time.monotonic() - cached[0] < _QUEUE_COUNTS_TTL_SECONDS:
+        return cached[1]
     candidates = (
         _inbound_email_candidates(entity_id, session)
         + _arrears_candidates(entity_id, session)
@@ -1742,13 +1758,15 @@ def get_comms_queue_counts(
         by_kind[candidate.kind] = by_kind.get(candidate.kind, 0) + 1
         if candidate.severity == "danger":
             urgent += 1
-    return CommsQueueCountsRead(
+    result = CommsQueueCountsRead(
         entity_id=entity_id,
         total=len(candidates),
         urgent=urgent,
         by_kind=by_kind,  # type: ignore[arg-type]
         generated_at=utcnow(),
     )
+    _queue_counts_cache[entity_id] = (time.monotonic(), result)
+    return result
 
 
 def _body_preview(value: str | None, *, limit: int = 180) -> str | None:
