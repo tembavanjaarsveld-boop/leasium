@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     invoice_email_enabled: bool = True
     invoice_email_template_key: str = "invoice_delivery"
     invoice_email_template_version: str = "v1"
+    # Owner statement dispatch is review-first and off by default: a real send
+    # requires this flag, configured SendGrid, a recipient, and explicit
+    # per-owner operator approval on the request.
+    owner_statement_email_enabled: bool = False
+    owner_statement_email_template_key: str = "owner_statement"
+    owner_statement_email_template_version: str = "v1"
     contractor_email_enabled: bool = True
     contractor_email_template_key: str = "maintenance_contractor_update"
     contractor_email_template_version: str = "v1"

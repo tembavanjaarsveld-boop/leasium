@@ -234,6 +234,26 @@ class WorkAssignmentDigestEmail:
     template_version: str
 
 
+@dataclass(frozen=True)
+class OwnerStatementEmail:
+    """Context needed to send a reviewed owner statement email."""
+
+    entity_id: UUID
+    owner_identity: str
+    month: str
+    recipient_name: str | None
+    recipient_email: str | None
+    invoiced_label: str
+    paid_label: str
+    outstanding_label: str
+    property_count: int
+    invoice_count: int
+    pdf_filename: str | None
+    pdf_content: bytes | None
+    template_key: str
+    template_version: str
+
+
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
@@ -1726,6 +1746,156 @@ def send_invoice_delivery_email(
             {"type": "text/html", "value": _invoice_email_html(invite)},
         ],
         "categories": _categories("invoice_delivery", invite.template_key),
+    }
+    if invite.pdf_filename and invite.pdf_content:
+        payload["attachments"] = [
+            {
+                "content": base64.b64encode(invite.pdf_content).decode("ascii"),
+                "type": "application/pdf",
+                "filename": invite.pdf_filename,
+                "disposition": "attachment",
+            }
+        ]
+    try:
+        with httpx.Client(timeout=settings.communications_timeout_seconds) as client:
+            response = client.post(
+                settings.sendgrid_mail_send_url,
+                headers={
+                    "Authorization": f"Bearer {settings.sendgrid_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if 200 <= response.status_code < 300:
+            return DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient=recipient,
+                provider_message_id=response.headers.get("x-message-id"),
+                metadata=metadata,
+            )
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=_sendgrid_error(response),
+            metadata=metadata,
+        )
+    except httpx.HTTPError as exc:
+        return DeliveryResult(
+            channel="email",
+            status="failed",
+            provider="sendgrid",
+            recipient=recipient,
+            error=str(exc),
+            metadata=metadata,
+        )
+
+
+def _owner_statement_subject(invite: OwnerStatementEmail) -> str:
+    return f"Owner statement for {invite.month} - {invite.owner_identity}"
+
+
+def _owner_statement_text(invite: OwnerStatementEmail) -> str:
+    greeting = (
+        f"Hi {invite.recipient_name}," if invite.recipient_name else "Hello,"
+    )
+    return (
+        f"{greeting}\n\n"
+        f"Please find attached your property statement for {invite.month}.\n\n"
+        f"Invoiced: {invite.invoiced_label}\n"
+        f"Paid: {invite.paid_label}\n"
+        f"Outstanding: {invite.outstanding_label}\n\n"
+        f"This statement covers {invite.invoice_count} invoice(s) across "
+        f"{invite.property_count} property(ies).\n\n"
+        "If you have any questions about this statement, just reply to this "
+        "email.\n\n"
+        "Thanks,\nThe property team"
+    )
+
+
+def send_owner_statement_email(
+    invite: OwnerStatementEmail,
+    settings: Settings,
+) -> DeliveryResult:
+    """Send a reviewed owner statement email where provider credentials allow.
+
+    Review-first: the caller must already hold explicit per-owner operator
+    approval before invoking this. Soft-skips (never raises) when the feature
+    flag is off, no recipient is set, or SendGrid is not configured.
+    """
+
+    recipient = _clean(invite.recipient_email)
+    subject = _owner_statement_subject(invite)
+    metadata: dict[str, str | None] = {
+        "template_key": invite.template_key,
+        "template_version": invite.template_version,
+        "entity_id": str(invite.entity_id),
+        "owner_identity": invite.owner_identity,
+        "month": invite.month,
+        "subject": subject,
+        "pdf_filename": invite.pdf_filename,
+    }
+    if not settings.owner_statement_email_enabled:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="Owner statement email disabled.",
+            metadata=metadata,
+        )
+    if recipient is None:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            error="No owner statement recipient.",
+            metadata=metadata,
+        )
+    if not settings.sendgrid_api_key or not settings.sendgrid_from_email:
+        return DeliveryResult(
+            channel="email",
+            status="skipped",
+            provider="sendgrid",
+            recipient=recipient,
+            error="SendGrid is not configured.",
+            metadata=metadata,
+        )
+
+    payload = {
+        "personalizations": [
+            {
+                "to": [
+                    {
+                        "email": recipient,
+                        **(
+                            {"name": invite.recipient_name}
+                            if invite.recipient_name
+                            else {}
+                        ),
+                    }
+                ],
+                "subject": subject,
+                "custom_args": {
+                    "entity_id": str(invite.entity_id),
+                    "owner_identity": invite.owner_identity,
+                    "month": invite.month,
+                    "template_key": invite.template_key,
+                    "template_version": invite.template_version,
+                },
+            }
+        ],
+        "from": {
+            "email": settings.sendgrid_from_email,
+            "name": settings.sendgrid_from_name,
+        },
+        "content": [
+            {"type": "text/plain", "value": _owner_statement_text(invite)},
+        ],
+        "categories": _categories("owner_statement", invite.template_key),
     }
     if invite.pdf_filename and invite.pdf_content:
         payload["attachments"] = [

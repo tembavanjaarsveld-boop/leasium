@@ -28,14 +28,23 @@ from stewart.core.db import utcnow
 from stewart.core.models import (
     InvoiceDraft,
     InvoiceDraftStatus,
+    OwnerStatementDispatch,
     Property,
     UserRole,
+)
+from stewart.core.settings import get_settings
+from stewart.integrations.communications import (
+    OwnerStatementEmail,
+    send_owner_statement_email,
 )
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.owners import (
     OwnerInvoiceEvidenceLine,
     OwnerPropertyLine,
+    OwnerStatementDispatchListRead,
+    OwnerStatementDispatchReceipt,
+    OwnerStatementDispatchRequest,
     OwnerStatementRead,
     OwnerStatementsRead,
 )
@@ -48,6 +57,14 @@ READ_ROLES = {
     UserRole.finance,
     UserRole.ops,
     UserRole.viewer,
+}
+
+# Sending owner statements is a money-adjacent provider email, so it is
+# restricted to finance-capable roles rather than the broader read set.
+DISPATCH_ROLES = {
+    UserRole.owner,
+    UserRole.admin,
+    UserRole.finance,
 }
 
 
@@ -775,3 +792,179 @@ def get_owner_statement_pdf_pack(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+_DISPATCH_GUARDRAIL = (
+    "Owner statement dispatch only. Sending does not post to Xero, reconcile "
+    "payments, dispatch invoices, or message tenants."
+)
+
+
+def _resolve_statement_month(month: str) -> str:
+    """Resolve the canonical YYYY-MM, defaulting to the previous month."""
+
+    if not month:
+        today = date.today()
+        if today.month == 1:
+            target_year, target_month = today.year - 1, 12
+        else:
+            target_year, target_month = today.year, today.month - 1
+        month = f"{target_year:04d}-{target_month:02d}"
+    _, _, canonical_month = _parse_month(month)
+    return canonical_month
+
+
+def _dispatch_receipt(row: OwnerStatementDispatch) -> OwnerStatementDispatchReceipt:
+    return OwnerStatementDispatchReceipt(
+        id=row.id,
+        entity_id=row.entity_id,
+        owner_identity=row.owner_identity,
+        month=row.month,
+        channel=row.channel,
+        provider=row.provider,
+        status=row.status,
+        recipient_email=row.recipient_email,
+        subject=row.subject,
+        provider_message_id=row.provider_message_id,
+        error=row.error,
+        invoice_count=row.invoice_count,
+        invoiced_cents=row.invoiced_cents,
+        outstanding_cents=row.outstanding_cents,
+        created_by_user_id=row.created_by_user_id,
+        created_at=row.created_at,
+    )
+
+
+@router.get("/statements/dispatch", response_model=OwnerStatementDispatchListRead)
+def list_owner_statement_dispatch(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    month: Annotated[
+        str,
+        Query(
+            description="Month in YYYY-MM format. Defaults to the previous calendar month.",
+        ),
+    ] = "",
+) -> OwnerStatementDispatchListRead:
+    """Return owner-statement dispatch receipts for a month (read-only)."""
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    canonical_month = _resolve_statement_month(month)
+    rows = list(
+        session.scalars(
+            select(OwnerStatementDispatch)
+            .where(
+                OwnerStatementDispatch.entity_id == entity_id,
+                OwnerStatementDispatch.month == canonical_month,
+            )
+            .order_by(OwnerStatementDispatch.created_at.desc())
+        ).all()
+    )
+    return OwnerStatementDispatchListRead(
+        entity_id=entity_id,
+        month=canonical_month,
+        receipts=[_dispatch_receipt(row) for row in rows],
+        guardrail=_DISPATCH_GUARDRAIL,
+        generated_at=utcnow(),
+    )
+
+
+@router.post("/statements/send", response_model=OwnerStatementDispatchReceipt)
+def send_owner_statement(
+    entity_id: UUID,
+    payload: OwnerStatementDispatchRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> OwnerStatementDispatchReceipt:
+    """Send one reviewed owner statement via SendGrid after explicit approval.
+
+    Review-first guardrail: ``approve`` must be true (the operator's explicit
+    per-owner approval for a real provider email). A statement that already
+    has a live (queued / sent / delivered) receipt for the same owner + month
+    is returned as-is unless ``resend`` is set, so accidental double-sends are
+    blocked. Sending here never posts to Xero, reconciles payments, dispatches
+    invoices, or messages tenants.
+    """
+
+    assert_entity_role(session, user, entity_id, DISPATCH_ROLES)
+    if not payload.approve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Explicit per-owner approval (approve=true) is required to send.",
+        )
+
+    statements = _build_owner_statements(entity_id, session, payload.month)
+    statement = next(
+        (
+            item
+            for item in statements.owners
+            if item.owner_identity.casefold() == payload.owner_identity.casefold()
+        ),
+        None,
+    )
+    if statement is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner statement not found for this month.",
+        )
+
+    owner_key = statement.owner_identity.casefold()
+    existing = session.scalars(
+        select(OwnerStatementDispatch)
+        .where(
+            OwnerStatementDispatch.entity_id == entity_id,
+            OwnerStatementDispatch.owner_identity_key == owner_key,
+            OwnerStatementDispatch.month == statements.month,
+            OwnerStatementDispatch.status.in_(("queued", "sent", "delivered")),
+        )
+        .order_by(OwnerStatementDispatch.created_at.desc())
+    ).first()
+    if existing is not None and not payload.resend:
+        return _dispatch_receipt(existing)
+
+    settings = get_settings()
+    invite = OwnerStatementEmail(
+        entity_id=entity_id,
+        owner_identity=statement.owner_identity,
+        month=statements.month,
+        recipient_name=statement.billing_contact_name,
+        recipient_email=statement.billing_email,
+        invoiced_label=_format_money(statement.invoiced_cents),
+        paid_label=_format_money(statement.paid_cents),
+        outstanding_label=_format_money(statement.outstanding_cents),
+        property_count=statement.property_count,
+        invoice_count=statement.invoice_count,
+        pdf_filename=_statement_filename(statement.owner_identity, statements.month),
+        pdf_content=_statement_pdf_bytes(statement, statements.month),
+        template_key=settings.owner_statement_email_template_key,
+        template_version=settings.owner_statement_email_template_version,
+    )
+    result = send_owner_statement_email(invite, settings)
+
+    row = OwnerStatementDispatch(
+        entity_id=entity_id,
+        owner_identity=statement.owner_identity,
+        owner_identity_key=owner_key,
+        month=statements.month,
+        channel=result.channel,
+        provider=result.provider,
+        status=result.status,
+        recipient_email=result.recipient or statement.billing_email,
+        subject=result.metadata.get("subject"),
+        provider_message_id=result.provider_message_id,
+        error=result.error,
+        invoice_count=statement.invoice_count,
+        invoiced_cents=statement.invoiced_cents,
+        outstanding_cents=statement.outstanding_cents,
+        dispatch_metadata={
+            "template_key": invite.template_key,
+            "template_version": invite.template_version,
+            "resend": payload.resend,
+        },
+        created_by_user_id=user.id,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _dispatch_receipt(row)

@@ -2,7 +2,7 @@
 
 from datetime import date
 from io import BytesIO
-from typing import TypedDict
+from typing import Any, TypedDict
 from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
@@ -20,6 +20,8 @@ from stewart.core.models import (
     PropertyType,
     StoredDocument,
 )
+from stewart.core.settings import get_settings
+from stewart.integrations.communications import DeliveryResult
 
 
 class _OwnerSeedScope(TypedDict):
@@ -39,6 +41,8 @@ def _seed_owner_with_invoices(
     trust_name: str,
     trustee_name: str,
     properties: list[tuple[str, list[tuple[date, int, int]]]],
+    billing_email: str | None = None,
+    billing_contact_name: str | None = None,
 ) -> _OwnerSeedScope:
     """Seed a trust + N properties each with M invoices.
 
@@ -78,6 +82,8 @@ def _seed_owner_with_invoices(
             trustee_name=trustee_name,
             trust_name=trust_name,
             invoice_issuer_name=f"{trust_name} via {trustee_name}",
+            billing_email=billing_email,
+            billing_contact_name=billing_contact_name,
         )
         session.add(prop)
         session.flush()
@@ -808,3 +814,204 @@ def test_owner_statement_exports_include_invoice_evidence(
     assert "invoice_draft_id" in evidence_csv
     assert "INV-EXPORT-EVIDENCE-1" in evidence_csv
     assert "bank-txn-export-evidence-1" in evidence_csv
+
+
+def test_send_owner_statement_requires_explicit_approval(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Provider guardrail: a statement is never sent without approve=true."""
+
+    scope = _seed_owner_with_invoices(
+        session,
+        trust_name="Approval Trust",
+        trustee_name="AP Trustee",
+        billing_email="owner@example.com",
+        properties=[("Approval Property", [(date(2026, 4, 10), 500_000, 0)])],
+    )
+    statements = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    ).json()
+    owner_identity = statements["owners"][0]["owner_identity"]
+
+    def boom(invite: Any, settings_arg: Any) -> DeliveryResult:
+        raise AssertionError("send must not run without explicit approval")
+
+    monkeypatch.setattr("apps.api.routers.owners.send_owner_statement_email", boom)
+
+    response = client.post(
+        "/api/v1/owners/statements/send",
+        params={"entity_id": scope["entity_id"]},
+        json={"owner_identity": owner_identity, "month": "2026-04", "approve": False},
+    )
+    assert response.status_code == 400
+    assert "approval" in response.json()["detail"].lower()
+    listed = client.get(
+        "/api/v1/owners/statements/dispatch",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    ).json()
+    assert listed["receipts"] == []
+
+
+def test_send_owner_statement_queues_and_is_idempotent(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Approved send queues via SendGrid; a repeat send is idempotent."""
+
+    scope = _seed_owner_with_invoices(
+        session,
+        trust_name="Queue Trust",
+        trustee_name="Q Trustee",
+        billing_email="owner@example.com",
+        billing_contact_name="Owner Contact",
+        properties=[("Queue Property", [(date(2026, 4, 10), 500_000, 100_000)])],
+    )
+    statements = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    ).json()
+    owner = statements["owners"][0]
+    owner_identity = owner["owner_identity"]
+    assert owner["billing_email"] == "owner@example.com"
+
+    configured = get_settings().model_copy(
+        update={
+            "owner_statement_email_enabled": True,
+            "sendgrid_api_key": "sendgrid-secret",
+            "sendgrid_from_email": "ops@leasium.test",
+        }
+    )
+    monkeypatch.setattr("apps.api.routers.owners.get_settings", lambda: configured)
+
+    calls: list[Any] = []
+
+    def fake_send(invite: Any, settings_arg: Any) -> DeliveryResult:
+        calls.append(invite)
+        return DeliveryResult(
+            channel="email",
+            status="queued",
+            provider="sendgrid",
+            recipient=invite.recipient_email,
+            provider_message_id="sg-msg-1",
+            metadata={"subject": f"Owner statement for {invite.month}"},
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.owners.send_owner_statement_email", fake_send
+    )
+
+    response = client.post(
+        "/api/v1/owners/statements/send",
+        params={"entity_id": scope["entity_id"]},
+        json={"owner_identity": owner_identity, "month": "2026-04", "approve": True},
+    )
+    assert response.status_code == 200
+    receipt = response.json()
+    assert receipt["status"] == "queued"
+    assert receipt["provider_message_id"] == "sg-msg-1"
+    assert receipt["recipient_email"] == "owner@example.com"
+    assert receipt["invoice_count"] == 1
+    assert len(calls) == 1
+    assert calls[0].pdf_content is not None
+
+    again = client.post(
+        "/api/v1/owners/statements/send",
+        params={"entity_id": scope["entity_id"]},
+        json={"owner_identity": owner_identity, "month": "2026-04", "approve": True},
+    )
+    assert again.status_code == 200
+    assert again.json()["id"] == receipt["id"]
+    assert len(calls) == 1
+
+    listed = client.get(
+        "/api/v1/owners/statements/dispatch",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    ).json()
+    assert len(listed["receipts"]) == 1
+    assert listed["receipts"][0]["provider_message_id"] == "sg-msg-1"
+    assert "Xero" in listed["guardrail"]
+
+
+def test_send_owner_statement_skips_without_recipient(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """A configured, approved send still skips when the owner has no email."""
+
+    scope = _seed_owner_with_invoices(
+        session,
+        trust_name="No Email Trust",
+        trustee_name="NE Trustee",
+        billing_email=None,
+        properties=[("No Email Property", [(date(2026, 4, 10), 300_000, 0)])],
+    )
+    statements = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    ).json()
+    owner_identity = statements["owners"][0]["owner_identity"]
+
+    configured = get_settings().model_copy(
+        update={
+            "owner_statement_email_enabled": True,
+            "sendgrid_api_key": "sendgrid-secret",
+            "sendgrid_from_email": "ops@leasium.test",
+        }
+    )
+    monkeypatch.setattr("apps.api.routers.owners.get_settings", lambda: configured)
+
+    response = client.post(
+        "/api/v1/owners/statements/send",
+        params={"entity_id": scope["entity_id"]},
+        json={"owner_identity": owner_identity, "month": "2026-04", "approve": True},
+    )
+    assert response.status_code == 200
+    receipt = response.json()
+    assert receipt["status"] == "skipped"
+    assert receipt["provider_message_id"] is None
+    assert receipt["error"]
+
+
+def test_send_owner_statement_skips_when_provider_unconfigured(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Enabled but unconfigured SendGrid yields a skipped receipt, not a send."""
+
+    scope = _seed_owner_with_invoices(
+        session,
+        trust_name="Unconfigured Trust",
+        trustee_name="UN Trustee",
+        billing_email="owner@example.com",
+        properties=[("Unconfigured Property", [(date(2026, 4, 10), 200_000, 0)])],
+    )
+    statements = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    ).json()
+    owner_identity = statements["owners"][0]["owner_identity"]
+
+    configured = get_settings().model_copy(
+        update={
+            "owner_statement_email_enabled": True,
+            "sendgrid_api_key": "",
+            "sendgrid_from_email": "",
+        }
+    )
+    monkeypatch.setattr("apps.api.routers.owners.get_settings", lambda: configured)
+
+    response = client.post(
+        "/api/v1/owners/statements/send",
+        params={"entity_id": scope["entity_id"]},
+        json={"owner_identity": owner_identity, "month": "2026-04", "approve": True},
+    )
+    assert response.status_code == 200
+    receipt = response.json()
+    assert receipt["status"] == "skipped"
+    assert "configured" in (receipt["error"] or "").lower()

@@ -71,3 +71,48 @@ class OwnerStatementsRead(BaseModel):
     month_end: date
     owners: list[OwnerStatementRead]
     generated_at: datetime
+
+
+class OwnerStatementDispatchRequest(BaseModel):
+    """Explicit per-owner statement send request.
+
+    ``approve`` must be true — it is the operator's explicit per-owner
+    approval for a real provider email. ``resend`` allows a fresh attempt
+    after a prior live receipt for the same owner + month.
+    """
+
+    owner_identity: str
+    month: str = ""
+    approve: bool = False
+    resend: bool = False
+
+
+class OwnerStatementDispatchReceipt(BaseModel):
+    """Receipt for one reviewed owner-statement send attempt."""
+
+    id: UUID
+    entity_id: UUID
+    owner_identity: str
+    month: str
+    channel: str
+    provider: str | None = None
+    status: str
+    recipient_email: str | None = None
+    subject: str | None = None
+    provider_message_id: str | None = None
+    error: str | None = None
+    invoice_count: int
+    invoiced_cents: int
+    outstanding_cents: int
+    created_by_user_id: UUID | None = None
+    created_at: datetime
+
+
+class OwnerStatementDispatchListRead(BaseModel):
+    """Read response for ``GET /api/v1/owners/statements/dispatch``."""
+
+    entity_id: UUID
+    month: str
+    receipts: list[OwnerStatementDispatchReceipt] = Field(default_factory=list)
+    guardrail: str
+    generated_at: datetime

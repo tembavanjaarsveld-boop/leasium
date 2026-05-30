@@ -1121,6 +1121,62 @@ Index(
 )
 
 
+class OwnerStatementDispatch(Base):
+    """Receipt for a reviewed owner-statement email dispatch.
+
+    Owner statements are derived on the fly from Property + InvoiceDraft data
+    (there is no owner table), so dispatch receipts and idempotency live here
+    rather than on a source record. One row is written per reviewed send
+    attempt. The send endpoint refuses to re-send a statement that already has
+    a live (queued / sent / delivered) receipt for the same owner + month
+    unless the operator explicitly resends, so accidental double-sends are
+    blocked. Provider-mutation guardrail: a row is only ever created by the
+    explicit operator-approved send endpoint, never automatically.
+    """
+
+    __tablename__ = "owner_statement_dispatch"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    owner_identity: Mapped[str] = mapped_column(Text, nullable=False)
+    owner_identity_key: Mapped[str] = mapped_column(Text, nullable=False)
+    month: Mapped[str] = mapped_column(Text, nullable=False)
+    channel: Mapped[str] = mapped_column(Text, nullable=False, default="email")
+    provider: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    recipient_email: Mapped[str | None] = mapped_column(Text)
+    subject: Mapped[str | None] = mapped_column(Text)
+    provider_message_id: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    invoice_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    invoiced_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    outstanding_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    dispatch_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "dispatch_metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    entity: Mapped[Entity] = relationship()
+
+
+Index(
+    "owner_statement_dispatch_lookup_idx",
+    OwnerStatementDispatch.entity_id,
+    OwnerStatementDispatch.owner_identity_key,
+    OwnerStatementDispatch.month,
+)
+
+
 class Contractor(Base):
     """Per-entity directory of maintenance contractors.
 
