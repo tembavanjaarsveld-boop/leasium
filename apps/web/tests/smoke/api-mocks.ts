@@ -582,14 +582,54 @@ let maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);
 function maintenanceStatusMatrixWorkOrders() {
   const base = maintenanceWorkOrders[0];
   return [
-    { status: "requested", title: "Requested repair", due_date: null, completed_at: null },
-    { status: "triaged", title: "Triaged repair", due_date: "2026-05-21", completed_at: null },
-    { status: "assigned", title: "Assigned repair", due_date: "2026-05-21", completed_at: null },
-    { status: "awaiting_approval", title: "Approval repair", due_date: "2026-05-21", completed_at: null },
-    { status: "approved", title: "Approved repair", due_date: "2026-05-21", completed_at: null },
-    { status: "in_progress", title: "In-progress repair", due_date: "2026-05-22", completed_at: null },
-    { status: "completed", title: "Completed repair", due_date: "2026-05-22", completed_at: "2026-05-22T00:00:00.000Z" },
-    { status: "cancelled", title: "Cancelled repair", due_date: null, completed_at: null },
+    {
+      status: "requested",
+      title: "Requested repair",
+      due_date: null,
+      completed_at: null,
+    },
+    {
+      status: "triaged",
+      title: "Triaged repair",
+      due_date: "2026-05-21",
+      completed_at: null,
+    },
+    {
+      status: "assigned",
+      title: "Assigned repair",
+      due_date: "2026-05-21",
+      completed_at: null,
+    },
+    {
+      status: "awaiting_approval",
+      title: "Approval repair",
+      due_date: "2026-05-21",
+      completed_at: null,
+    },
+    {
+      status: "approved",
+      title: "Approved repair",
+      due_date: "2026-05-21",
+      completed_at: null,
+    },
+    {
+      status: "in_progress",
+      title: "In-progress repair",
+      due_date: "2026-05-22",
+      completed_at: null,
+    },
+    {
+      status: "completed",
+      title: "Completed repair",
+      due_date: "2026-05-22",
+      completed_at: "2026-05-22T00:00:00.000Z",
+    },
+    {
+      status: "cancelled",
+      title: "Cancelled repair",
+      due_date: null,
+      completed_at: null,
+    },
   ].map((row, index) => ({
     ...base,
     id: `work-order-status-${row.status}`,
@@ -682,7 +722,8 @@ const brandedCommunicationTemplates = [
       "Hi {{tenant_name}}, your reviewed invoice is attached. Please contact SKJ Capital if any detail needs attention.",
     action_label: "View invoice",
     action_url_template: "{{invoice_url}}",
-    notes: "Stored override is visible only; runtime sends still use approved templates.",
+    notes:
+      "Stored override is visible only; runtime sends still use approved templates.",
     is_active: true,
     is_system: false,
     created_by_user_id: operatorId,
@@ -1306,11 +1347,13 @@ const initialDocumentIntakes = [
     document_id: "document-inspection-1",
     status: "ready_for_review",
     document_type: "inspection_report",
-    summary: "Inspection report with two maintenance findings ready for review.",
+    summary:
+      "Inspection report with two maintenance findings ready for review.",
     confidence: 0.84,
     extracted_data: {
       document_type: "inspection_report",
-      summary: "Inspection report with two maintenance findings ready for review.",
+      summary:
+        "Inspection report with two maintenance findings ready for review.",
       confidence: 0.84,
       parties: [],
       properties: [
@@ -1520,8 +1563,7 @@ const tenantPortalSession = (
             status: tenantPortalDocumentsByCategory("insurance").length
               ? "received"
               : "not_on_file",
-            document_count:
-              tenantPortalDocumentsByCategory("insurance").length,
+            document_count: tenantPortalDocumentsByCategory("insurance").length,
             latest_document:
               tenantPortalDocumentsByCategory("insurance")[0] ?? null,
             due_date: "2027-06-30",
@@ -2424,9 +2466,7 @@ export async function mockLeasiumApi(
       connection_source: connection.connection_source,
       xero_tenant_id: connection.xero_tenant_id,
       tenant_name: connection.tenant_name,
-      token_expires_at: providerConnected
-        ? "2026-05-19T11:00:00.000Z"
-        : null,
+      token_expires_at: providerConnected ? "2026-05-19T11:00:00.000Z" : null,
       can_start_oauth: providerConfigured && actionReady,
       can_preview_contacts: providerConnected && actionReady,
       can_validate_chart_tax: providerConnected && actionReady,
@@ -3390,6 +3430,109 @@ export async function mockLeasiumApi(
     };
   };
 
+  const statusCounts = (items: Array<{ status: string }>) =>
+    items.reduce<Record<string, number>>((counts, item) => {
+      counts[item.status] = (counts[item.status] ?? 0) + 1;
+      return counts;
+    }, {});
+
+  const rentRollBlockers = (row: (typeof rentRoll)[number]) => [
+    ...(row.gst_readiness_blockers ?? []),
+    ...(row.xero_readiness_blockers ?? []),
+    ...(row.invoice_readiness_blockers ?? []),
+    ...(row.tenant_billing_email ? [] : ["Missing billing email"]),
+    ...(row.charge_rules.length ? [] : ["Missing charge rules"]),
+  ];
+
+  const dashboardOverview = (url: URL) => {
+    const asOf = url.searchParams.get("as_of") ?? "2026-05-30";
+    const openObligations = obligations.filter(
+      (item) => !["completed", "waived"].includes(item.status),
+    );
+    const dueSoonUntil = "2026-06-29";
+    const blockedRows = rentRoll.filter((row) => rentRollBlockers(row).length);
+    const submittedOnboardings = tenantOnboardings.filter(
+      (item) => item.status === "submitted",
+    );
+    const sentOnboardings = tenantOnboardings.filter(
+      (item) => item.status === "sent",
+    );
+    return {
+      entity: { id: entityId, name: "Acme Holdings Pty Ltd" },
+      as_of: asOf,
+      counts: {
+        property_count: properties.length,
+        tenant_count: tenants.length,
+        open_obligation_count: openObligations.length,
+        overdue_obligation_count: openObligations.filter(
+          (item) => item.due_date < asOf,
+        ).length,
+        due_soon_obligation_count: openObligations.filter(
+          (item) => item.due_date >= asOf && item.due_date <= dueSoonUntil,
+        ).length,
+      },
+      rent_roll: {
+        unit_count: rentRoll.length,
+        occupied_unit_count: rentRoll.filter((row) => row.lease_id).length,
+        vacant_unit_count: rentRoll.filter((row) => !row.lease_id).length,
+        active_lease_count: rentRoll.filter((row) => row.lease_id).length,
+        annual_rent_cents: rentRoll.reduce(
+          (total, row) => total + row.annual_rent_cents,
+          0,
+        ),
+        charge_rules_total_cents: rentRoll.reduce(
+          (total, row) => total + row.charge_rules_total_cents,
+          0,
+        ),
+        ready_to_bill_count: rentRoll.length - blockedRows.length,
+        blocked_row_count: blockedRows.length,
+      },
+      intake: {
+        document_counts: statusCounts(documentIntakes),
+        document_waiting_count: documentIntakes.filter((item) =>
+          [
+            "uploaded",
+            "reading",
+            "ready_for_review",
+            "needs_attention",
+            "failed",
+          ].includes(item.status),
+        ).length,
+        onboarding_counts: statusCounts(tenantOnboardings),
+        onboarding_waiting_count:
+          submittedOnboardings.length + sentOnboardings.length,
+      },
+      upcoming_lease_events: [
+        ...submittedOnboardings.map((onboarding) => ({
+          id: `tenant-onboarding-${onboarding.id}`,
+          kind: "tenant_onboarding",
+          date: onboarding.due_date,
+          lease_id: onboarding.lease_id,
+          tenant_id: onboarding.tenant_id,
+          tenant_name: "Bright Cafe",
+          property_id: null,
+          property_name: null,
+          tenancy_unit_id: null,
+          unit_label: null,
+          title: "Tenant onboarding ready for review",
+        })),
+        ...openObligations.map((obligation) => ({
+          id: `obligation-${obligation.id}`,
+          kind: "obligation",
+          date: obligation.due_date,
+          lease_id: obligation.lease_id,
+          tenant_id: null,
+          tenant_name: null,
+          property_id: obligation.property_id,
+          property_name: null,
+          tenancy_unit_id: obligation.tenancy_unit_id,
+          unit_label: null,
+          title: obligation.title,
+        })),
+      ],
+    };
+  };
+
   await page.route("https://images.example/**", async (route) => {
     await route.fulfill({
       body: tinyPropertyImagePng,
@@ -3433,6 +3576,11 @@ export async function mockLeasiumApi(
           xero_connected_at: xeroConnectedAt,
         })),
       );
+      return;
+    }
+
+    if (method === "GET" && path === "/dashboard/overview") {
+      await fulfillJson(route, dashboardOverview(url));
       return;
     }
 
@@ -3544,10 +3692,7 @@ export async function mockLeasiumApi(
               purpose: "Lease signature envelopes and signed lease retention",
               detail:
                 "Credentials and webhook are set; switch DocuSign REST and auth URLs to production before live envelope testing.",
-              missing_config: [
-                "DOCUSIGN_BASE_URL",
-                "DOCUSIGN_AUTH_BASE_URL",
-              ],
+              missing_config: ["DOCUSIGN_BASE_URL", "DOCUSIGN_AUTH_BASE_URL"],
               webhook_url:
                 "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
             }
@@ -3931,7 +4076,7 @@ export async function mockLeasiumApi(
             ? "comms-inbound-sms-1"
             : payload.kind === "compliance_obligation"
               ? "comms-compliance-obligation-1"
-            : "comms-rent-review-1",
+              : "comms-rent-review-1",
         kind: payload.kind ?? "rent_review",
         target_kind: payload.target_kind ?? "lease",
         target_id: payload.target_id ?? leaseId,
@@ -3964,7 +4109,7 @@ export async function mockLeasiumApi(
             ? "comms-inbound-sms-1"
             : payload.kind === "compliance_obligation"
               ? "comms-compliance-obligation-1"
-            : "comms-rent-review-1",
+              : "comms-rent-review-1",
         kind: payload.kind ?? "rent_review",
         target_kind: payload.target_kind ?? "lease",
         target_id: payload.target_id ?? leaseId,
@@ -4799,18 +4944,26 @@ export async function mockLeasiumApi(
         entity_id: String(payload.entity_id ?? entityId),
         legal_name: String(payload.legal_name ?? "Invited tenant"),
         trading_name:
-          typeof payload.trading_name === "string" ? payload.trading_name : null,
+          typeof payload.trading_name === "string"
+            ? payload.trading_name
+            : null,
         abn: typeof payload.abn === "string" ? payload.abn : null,
         contact_name:
-          typeof payload.contact_name === "string" ? payload.contact_name : null,
+          typeof payload.contact_name === "string"
+            ? payload.contact_name
+            : null,
         contact_email:
           typeof payload.contact_email === "string"
             ? payload.contact_email
             : null,
         contact_phone:
-          typeof payload.contact_phone === "string" ? payload.contact_phone : null,
+          typeof payload.contact_phone === "string"
+            ? payload.contact_phone
+            : null,
         billing_email:
-          typeof payload.billing_email === "string" ? payload.billing_email : null,
+          typeof payload.billing_email === "string"
+            ? payload.billing_email
+            : null,
         notes: typeof payload.notes === "string" ? payload.notes : null,
         metadata: {},
         created_at: "2026-05-21T00:00:00.000Z",
@@ -5202,8 +5355,9 @@ export async function mockLeasiumApi(
       );
       await fulfillJson(
         route,
-        tenantOnboardings.find((onboarding) => onboarding.id === onboardingId) ??
-          tenantOnboardings[0],
+        tenantOnboardings.find(
+          (onboarding) => onboarding.id === onboardingId,
+        ) ?? tenantOnboardings[0],
       );
       return;
     }
@@ -6788,10 +6942,7 @@ export async function mockLeasiumApi(
       return;
     }
 
-    if (
-      method === "GET" &&
-      path === "/branded-communication-templates"
-    ) {
+    if (method === "GET" && path === "/branded-communication-templates") {
       await fulfillJson(route, brandedCommunicationTemplates);
       return;
     }
@@ -7204,7 +7355,9 @@ export async function mockLeasiumApi(
       return;
     }
 
-    const documentIntakeApply = path.match(/^\/document-intakes\/([^/]+)\/apply$/);
+    const documentIntakeApply = path.match(
+      /^\/document-intakes\/([^/]+)\/apply$/,
+    );
     if (method === "POST" && documentIntakeApply) {
       const intake = documentIntakes.find(
         (item) => item.id === documentIntakeApply[1],
@@ -7266,9 +7419,13 @@ export async function mockLeasiumApi(
                 "Created from reviewed inspection intake only; no contractor dispatch, provider message, billing draft, or Xero action ran.",
               inspection_finding: {
                 location:
-                  typeof finding.location === "string" ? finding.location : null,
+                  typeof finding.location === "string"
+                    ? finding.location
+                    : null,
                 category:
-                  typeof finding.category === "string" ? finding.category : null,
+                  typeof finding.category === "string"
+                    ? finding.category
+                    : null,
                 confidence:
                   typeof finding.confidence === "number"
                     ? finding.confidence
@@ -7280,7 +7437,8 @@ export async function mockLeasiumApi(
                   actor: "user:operator@example.com",
                   source: "smart_intake_apply",
                   event: "created_from_inspection_review",
-                  summary: "Work order created from reviewed inspection finding.",
+                  summary:
+                    "Work order created from reviewed inspection finding.",
                   status: "requested",
                 },
               ],

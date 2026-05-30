@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import {
@@ -400,6 +400,39 @@ function workflowStepStateClass(status: WorkflowStepStatus) {
     status === "current" && "text-primary",
     status === "blocked" && "text-warning",
     status === "waiting" && "text-muted-foreground",
+  );
+}
+
+function ProviderDetailDisclosure({ children }: { children: ReactNode }) {
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 768px)");
+    const syncViewport = () => setIsDesktop(query.matches);
+
+    syncViewport();
+    query.addEventListener("change", syncViewport);
+    return () => query.removeEventListener("change", syncViewport);
+  }, []);
+
+  return (
+    <details
+      className="group md:grid md:gap-3"
+      data-testid="provider-detail"
+      open={isDesktop || isOpen}
+      onToggle={(event) => {
+        if (!isDesktop) {
+          setIsOpen(event.currentTarget.open);
+        }
+      }}
+    >
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden">
+        Provider detail
+        <ChevronDown size={12} className="transition group-open:rotate-180" />
+      </summary>
+      <div className="mt-3 grid gap-3 md:mt-0">{children}</div>
+    </details>
   );
 }
 
@@ -3504,29 +3537,9 @@ function TenantDetail() {
                           </li>
                         ))}
                       </ol>
-                      <div className="md:hidden">
-                        <details
-                          className="group"
-                          data-testid="mobile-provider-detail"
-                        >
-                          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
-                            Provider detail
-                            <ChevronDown
-                              size={12}
-                              className="transition group-open:rotate-180"
-                            />
-                          </summary>
-                          <div className="mt-3 grid gap-3">
-                            {providerDetail}
-                          </div>
-                        </details>
-                      </div>
-                      <div
-                        className="hidden gap-3 md:grid"
-                        data-testid="desktop-provider-detail"
-                      >
+                      <ProviderDetailDisclosure>
                         {providerDetail}
-                      </div>
+                      </ProviderDetailDisclosure>
                       {leaseAgreement ? (
                         <div className="grid gap-3 border-t border-border pt-4 text-xs">
                           <div className="flex flex-wrap items-center justify-between gap-2">

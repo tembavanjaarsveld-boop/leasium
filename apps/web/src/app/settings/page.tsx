@@ -16,8 +16,6 @@ import {
   KeyRound,
   Loader2,
   MailCheck,
-  Monitor,
-  Moon,
   PlugZap,
   RefreshCw,
   SearchCheck,
@@ -115,7 +113,7 @@ const EMPTY_XERO_ISSUES: XeroMappingIssueRecord[] = [];
 const EMPTY_BRANDED_TEMPLATES: BrandedCommunicationTemplateRecord[] = [];
 
 type SettingsTab = "security" | "organisation" | "xero";
-type AppearanceMode = "system" | "light" | "dark";
+type AppearanceMode = "light";
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type PanelRef = { current: HTMLDivElement | null };
 type NotificationTemplateDraft = {
@@ -209,57 +207,33 @@ function formatDateTime(value: string | null | undefined) {
 
 function applyAppearancePreference(mode: AppearanceMode) {
   if (typeof window === "undefined") return;
-  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const theme =
-    mode === "dark" || (mode === "system" && prefersDark) ? "dark" : "light";
-  document.documentElement.dataset.theme = theme;
+  window.localStorage.setItem(APPEARANCE_STORAGE_KEY, mode);
+  document.documentElement.dataset.theme = "light";
   document.documentElement.dataset.appearance = mode;
-  document.documentElement.style.colorScheme = theme;
+  document.documentElement.style.colorScheme = "light";
 }
 
 function SettingsAppearancePanel() {
-  const [mode, setMode] = useState<AppearanceMode>("system");
-  const [effectiveTheme, setEffectiveTheme] = useState<"light" | "dark">(
-    "light",
-  );
+  const [mode, setMode] = useState<AppearanceMode>("light");
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
-    const initial: AppearanceMode =
-      stored === "light" || stored === "dark" || stored === "system"
-        ? stored
-        : "system";
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-
-    function sync(nextMode: AppearanceMode) {
-      setMode(nextMode);
-      setEffectiveTheme(
-        nextMode === "dark" || (nextMode === "system" && media.matches)
-          ? "dark"
-          : "light",
-      );
-      applyAppearancePreference(nextMode);
+    function syncLightPreference() {
+      setMode("light");
+      applyAppearancePreference("light");
+    }
+    function onStorage(event: StorageEvent) {
+      if (event.key && event.key !== APPEARANCE_STORAGE_KEY) return;
+      syncLightPreference();
     }
 
-    function syncSystemPreference() {
-      const current = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
-      sync(
-        current === "light" || current === "dark" || current === "system"
-          ? current
-          : "system",
-      );
-    }
-
-    sync(initial);
-    media.addEventListener("change", syncSystemPreference);
-    window.addEventListener("storage", syncSystemPreference);
-    window.addEventListener("leasium:appearance-change", syncSystemPreference);
+    syncLightPreference();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("leasium:appearance-change", syncLightPreference);
     return () => {
-      media.removeEventListener("change", syncSystemPreference);
-      window.removeEventListener("storage", syncSystemPreference);
+      window.removeEventListener("storage", onStorage);
       window.removeEventListener(
         "leasium:appearance-change",
-        syncSystemPreference,
+        syncLightPreference,
       );
     };
   }, []);
@@ -271,22 +245,10 @@ function SettingsAppearancePanel() {
     icon: ReactNode;
   }> = [
     {
-      mode: "system",
-      label: "System",
-      detail: "Follow this device.",
-      icon: <Monitor size={16} />,
-    },
-    {
       mode: "light",
       label: "Light",
-      detail: "Use the light workspace.",
+      detail: "Locked for the MVP workspace.",
       icon: <Sun size={16} />,
-    },
-    {
-      mode: "dark",
-      label: "Dark",
-      detail: "Use the dark workspace.",
-      icon: <Moon size={16} />,
     },
   ];
 
@@ -299,15 +261,11 @@ function SettingsAppearancePanel() {
   return (
     <SectionPanel
       title="Appearance"
-      description="Choose how Leasium looks on this browser."
-      icon={<Monitor size={17} className="text-primary" />}
-      actions={
-        <StatusBadge tone={effectiveTheme === "dark" ? "primary" : "neutral"}>
-          {effectiveTheme === "dark" ? "Dark active" : "Light active"}
-        </StatusBadge>
-      }
+      description="Light workspace appearance for the MVP release."
+      icon={<Sun size={17} className="text-primary" />}
+      actions={<StatusBadge tone="neutral">Light active</StatusBadge>}
     >
-      <div className="grid gap-3 p-4 md:grid-cols-3">
+      <div className="grid gap-3 p-4 sm:max-w-md">
         {options.map((option) => {
           const isActive = mode === option.mode;
           return (
@@ -408,6 +366,13 @@ function exceptionKindLabel(kind: XeroExceptionQueueItemRecord["kind"]) {
 
 function statusLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function providerLabel(value: string | null) {
+  if (!value) {
+    return null;
+  }
+  return value.toLowerCase() === "xero" ? "Xero" : statusLabel(value);
 }
 
 function cleanXeroCallbackError(value: string | null) {
@@ -1954,7 +1919,7 @@ function IntegrationsHealthCard({
         </div>
         {isLoading && !integrations ? (
           <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
-            Loading integration status.
+            Checking integration status.
           </div>
         ) : rows.length === 0 ? (
           <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
@@ -2671,6 +2636,11 @@ function SettingsWorkspace() {
   const workNotificationTemplateCount =
     (notificationTemplateCatalogQuery.data?.notice_templates.length ?? 0) +
     (notificationTemplateCatalogQuery.data?.digest_templates.length ?? 0);
+  const workNotificationTemplateLabel =
+    notificationTemplateCatalogQuery.isLoading &&
+    !notificationTemplateCatalogQuery.data
+      ? "Checking templates"
+      : `${workNotificationTemplateCount} templates`;
   const selectedXeroContactMatchCount =
     xeroContactPreview?.suggested_matches.filter(
       (match) => selectedXeroContactMatches[xeroContactMatchKey(match)],
@@ -2730,6 +2700,57 @@ function SettingsWorkspace() {
     setXeroExceptionExportReceipt("Xero exception CSV downloaded.");
   };
   const xeroDiagnostics = xeroDiagnosticsQuery.data;
+  const securityWorkspace = securityQuery.data;
+  const isSecurityWorkspaceLoading =
+    securityQuery.isLoading && !securityWorkspace;
+  const operatorLoginResolved = Boolean(securityWorkspace);
+  const operatorLoginEnforced =
+    securityWorkspace?.auth.operator_login_enforced ?? false;
+  const clerkConfigResolved = Boolean(securityWorkspace);
+  const clerkConfigReady =
+    Boolean(securityWorkspace?.auth.clerk_secret_configured) &&
+    Boolean(securityWorkspace?.auth.clerk_jwks_configured);
+  const securityControlStatus = isSecurityWorkspaceLoading
+    ? "Checking"
+    : securityWorkspace?.can_manage_security
+      ? "Owner/admin controls"
+      : "Read-only";
+  const organisationNameLabel = securityWorkspace
+    ? securityWorkspace.organisation.name
+    : securityQuery.isLoading
+      ? "Checking organisation"
+      : "Organisation unavailable";
+  const organisationTimezoneLabel = securityWorkspace
+    ? securityWorkspace.organisation.timezone
+    : securityQuery.isLoading
+      ? "Checking timezone"
+      : "Timezone unavailable";
+  const organisationEntityCountLabel =
+    entitiesQuery.isLoading && !entitiesQuery.data
+      ? "Checking"
+      : (entitiesQuery.data?.length ?? 0);
+  const ownershipTagLabel =
+    propertiesQuery.isLoading && !propertiesQuery.data
+      ? "Checking ownership tags"
+      : `${ownershipTags.length} ${
+          ownershipTags.length === 1 ? "tag" : "tags"
+        }`;
+  const storedTemplateOverrideLabel =
+    brandedTemplatesQuery.isLoading && !brandedTemplatesQuery.data
+      ? "Checking overrides"
+      : `${brandedTemplates.length} stored`;
+  const xeroExceptionOpenLabel =
+    xeroExceptionQueueQuery.isLoading && !exceptionQueue
+      ? "Checking"
+      : `${exceptionQueue?.summary.total ?? 0} open`;
+  const xeroExceptionOpenTone =
+    xeroExceptionQueueQuery.isLoading && !exceptionQueue
+      ? "neutral"
+      : exceptionQueue?.summary.blockers
+        ? "danger"
+        : exceptionItems.length
+          ? "warning"
+          : "success";
   const xeroDiagnosticsReady = Boolean(xeroDiagnostics);
   const xeroCanStartOauth = xeroDiagnostics?.can_start_oauth ?? false;
   const xeroCanPreviewContacts = xeroDiagnostics?.can_preview_contacts ?? false;
@@ -3133,57 +3154,59 @@ function SettingsWorkspace() {
             <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard
                 label="Auth mode"
-                value={securityQuery.data?.auth.auth_mode ?? "..."}
+                value={securityWorkspace?.auth.auth_mode ?? "Checking"}
                 detail={
-                  securityQuery.data?.auth.login_boundary ??
-                  "Loading the current login boundary."
+                  securityWorkspace?.auth.login_boundary ??
+                  "Checking current login boundary."
                 }
-                tone={
-                  securityQuery.data?.auth.operator_login_enforced
-                    ? "success"
-                    : "warning"
-                }
+                tone={operatorLoginEnforced ? "success" : "neutral"}
                 icon={<ShieldCheck size={18} />}
               />
               <MetricCard
                 label="Operator login"
                 value={
-                  securityQuery.data?.auth.operator_login_enforced
-                    ? "Enforced"
-                    : "Pre-prod"
+                  !operatorLoginResolved
+                    ? "Checking"
+                    : operatorLoginEnforced
+                      ? "Enforced"
+                      : "Pre-prod"
                 }
                 detail={
-                  securityQuery.data?.auth.operator_login_enforced
-                    ? "Production requests resolve through the configured provider."
-                    : "Private beta access is still protected by the temporary gate."
+                  !operatorLoginResolved
+                    ? "Checking the configured operator login boundary."
+                    : operatorLoginEnforced
+                      ? "Production requests resolve through the configured provider."
+                      : "Private beta access is still protected by the temporary gate."
                 }
                 tone={
-                  securityQuery.data?.auth.operator_login_enforced
-                    ? "success"
-                    : "warning"
+                  !operatorLoginResolved
+                    ? "neutral"
+                    : operatorLoginEnforced
+                      ? "success"
+                      : "warning"
                 }
                 icon={<KeyRound size={18} />}
               />
               <MetricCard
                 label="Clerk config"
                 value={
-                  securityQuery.data?.auth.clerk_secret_configured &&
-                  securityQuery.data?.auth.clerk_jwks_configured
-                    ? "Ready"
-                    : "Pending"
+                  !clerkConfigResolved
+                    ? "Checking"
+                    : clerkConfigReady
+                      ? "Ready"
+                      : "Pending"
                 }
                 detail="Secret and JWKS settings are tracked without exposing values."
-                tone={
-                  securityQuery.data?.auth.clerk_secret_configured &&
-                  securityQuery.data?.auth.clerk_jwks_configured
-                    ? "success"
-                    : "neutral"
-                }
+                tone={clerkConfigReady ? "success" : "neutral"}
                 icon={<PlugZap size={18} />}
               />
               <MetricCard
                 label="Operators"
-                value={securityQuery.data?.members.length ?? "..."}
+                value={
+                  securityWorkspace
+                    ? securityWorkspace.members.length
+                    : "Checking"
+                }
                 detail={`${selectedEntityName} role access can be reviewed below.`}
                 tone="primary"
                 icon={<UsersRound size={18} />}
@@ -3195,11 +3218,17 @@ function SettingsWorkspace() {
               description="Send provider-backed invite emails and choose access for the selected entity."
               icon={<UserPlus size={17} className="text-primary" />}
               actions={
-                securityQuery.data?.can_manage_security ? (
-                  <StatusBadge tone="success">Owner/admin controls</StatusBadge>
-                ) : (
-                  <StatusBadge tone="warning">Read-only</StatusBadge>
-                )
+                <StatusBadge
+                  tone={
+                    isSecurityWorkspaceLoading
+                      ? "neutral"
+                      : securityWorkspace?.can_manage_security
+                        ? "success"
+                        : "warning"
+                  }
+                >
+                  {securityControlStatus}
+                </StatusBadge>
               }
             >
               <div className="grid gap-4 p-4 lg:grid-cols-[1fr_360px]">
@@ -3208,22 +3237,26 @@ function SettingsWorkspace() {
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge
                         tone={
-                          securityQuery.data?.auth.dev_auth_active
-                            ? "warning"
-                            : "success"
+                          isSecurityWorkspaceLoading
+                            ? "neutral"
+                            : securityWorkspace?.auth.dev_auth_active
+                              ? "warning"
+                              : "success"
                         }
                       >
-                        {securityQuery.data?.auth.dev_auth_active
-                          ? "Dev auth active"
-                          : "Provider login active"}
+                        {isSecurityWorkspaceLoading
+                          ? "Checking login"
+                          : securityWorkspace?.auth.dev_auth_active
+                            ? "Dev auth active"
+                            : "Provider login active"}
                       </StatusBadge>
                       <span className="font-medium">
-                        {securityQuery.data?.current_user.display_name ??
-                          "Loading operator"}
+                        {securityWorkspace?.current_user.display_name ??
+                          "Checking operator"}
                       </span>
                     </div>
                     <p className="mt-2 text-muted-foreground">
-                      {securityQuery.data?.current_user.email ??
+                      {securityWorkspace?.current_user.email ??
                         "Current operator details will appear here."}
                     </p>
                   </div>
@@ -3339,7 +3372,216 @@ function SettingsWorkspace() {
               description={`Review who can access ${selectedEntityName}.`}
               icon={<UsersRound size={17} className="text-primary" />}
             >
-              <div className="overflow-x-auto">
+              <div className="grid gap-3 p-4 lg:hidden">
+                {selectedEntityRoleMembers.map((member) => {
+                  const roleKey = `${member.id}:${selectedEntityId}`;
+                  const currentRole = roleForEntity(member, selectedEntityId);
+                  const draftRole =
+                    roleDrafts[roleKey] ?? currentRole?.role ?? "";
+                  const isSelf =
+                    member.id === securityQuery.data?.current_user.id;
+                  const isUpdating =
+                    memberMutation.isPending &&
+                    memberMutation.variables?.memberId === member.id;
+                  const isSendingInvite =
+                    resendInviteMutation.isPending &&
+                    resendInviteMutation.variables === member.id;
+                  const isUnlinking =
+                    unlinkLoginMutation.isPending &&
+                    unlinkLoginMutation.variables === member.id;
+
+                  return (
+                    <article
+                      key={member.id}
+                      className="grid gap-3 rounded-md border border-border bg-white p-3 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <div className="break-words font-medium">
+                          {member.display_name}
+                        </div>
+                        <div className="mt-1 break-all text-xs text-muted-foreground">
+                          {member.email}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <StatusBadge tone={accessStatusTone(member)}>
+                          {accessStatusLabel(member)}
+                        </StatusBadge>
+                        {member.access_status !== "login_linked" &&
+                        member.access_status !== "disabled" ? (
+                          <StatusBadge tone={inviteTone(member)}>
+                            {inviteLabel(member)}
+                          </StatusBadge>
+                        ) : null}
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        {member.invite_email_detail}
+                      </p>
+                      {member.invite_sent_at ? (
+                        <p className="text-xs text-muted-foreground">
+                          Sent {formatDateTime(member.invite_sent_at)}
+                        </p>
+                      ) : null}
+
+                      <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-3">
+                        <div className="text-xs font-semibold uppercase text-muted-foreground">
+                          Selected entity role
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                          <Select
+                            aria-label={`${member.display_name} role`}
+                            value={draftRole}
+                            onChange={(event) =>
+                              setRoleDrafts((drafts) => ({
+                                ...drafts,
+                                [roleKey]: event.target.value as
+                                  | SecurityRole
+                                  | "",
+                              }))
+                            }
+                          >
+                            <option value="">No access</option>
+                            {roleOptions.map((role) => (
+                              <option key={role.value} value={role.value}>
+                                {role.label}
+                              </option>
+                            ))}
+                          </Select>
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-10 justify-center"
+                            disabled={
+                              isUpdating ||
+                              !securityQuery.data?.can_manage_security ||
+                              !selectedEntityId
+                            }
+                            onClick={() =>
+                              memberMutation.mutate({
+                                memberId: member.id,
+                                payload: {
+                                  roles: nextRolesForEntity(
+                                    member,
+                                    selectedEntityId,
+                                    draftRole,
+                                  ),
+                                },
+                              })
+                            }
+                          >
+                            {isUpdating ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <CheckCircle2 size={14} />
+                            )}
+                            Save
+                          </SecondaryButton>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-3">
+                        <div className="text-xs font-semibold uppercase text-muted-foreground">
+                          All access
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {member.roles.map((role) => (
+                            <StatusBadge
+                              key={`${member.id}-${role.entity_id}`}
+                              tone="neutral"
+                            >
+                              {role.entity_name}: {roleLabel(role.role)}
+                            </StatusBadge>
+                          ))}
+                          {member.roles.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">
+                              No entity access
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {!member.login_linked ? (
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-10 justify-center"
+                            disabled={
+                              isSendingInvite ||
+                              !member.is_active ||
+                              !securityQuery.data?.can_manage_security
+                            }
+                            onClick={() =>
+                              resendInviteMutation.mutate(member.id)
+                            }
+                          >
+                            {isSendingInvite ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Send size={14} />
+                            )}
+                            Send invite
+                          </SecondaryButton>
+                        ) : null}
+                        {member.login_linked && !isSelf ? (
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-10 justify-center"
+                            disabled={
+                              isUnlinking ||
+                              !securityQuery.data?.can_manage_security
+                            }
+                            onClick={() =>
+                              unlinkLoginMutation.mutate(member.id)
+                            }
+                          >
+                            {isUnlinking ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <KeyRound size={14} />
+                            )}
+                            Unlink login
+                          </SecondaryButton>
+                        ) : null}
+                        <SecondaryButton
+                          type="button"
+                          className={`min-h-10 justify-center ${
+                            member.is_active ? "text-danger" : ""
+                          }`}
+                          disabled={
+                            isSelf ||
+                            isUpdating ||
+                            !securityQuery.data?.can_manage_security
+                          }
+                          onClick={() =>
+                            memberMutation.mutate({
+                              memberId: member.id,
+                              payload: { is_active: !member.is_active },
+                            })
+                          }
+                        >
+                          {member.is_active ? (
+                            <Ban size={14} />
+                          ) : (
+                            <CheckCircle2 size={14} />
+                          )}
+                          {member.is_active ? "Deactivate" : "Activate"}
+                        </SecondaryButton>
+                      </div>
+                    </article>
+                  );
+                })}
+                {!securityQuery.isLoading &&
+                selectedEntityRoleMembers.length === 0 ? (
+                  <EmptyState
+                    icon={<UsersRound size={18} />}
+                    title="No operators yet"
+                    description="Owner and admin users will appear here once the security workspace loads."
+                  />
+                ) : null}
+              </div>
+
+              <div className="hidden overflow-x-auto lg:block">
                 <table className="w-full border-collapse text-left text-sm tabular-nums">
                   <thead className="bg-muted text-xs uppercase text-muted-foreground">
                     <tr>
@@ -3582,7 +3824,7 @@ function SettingsWorkspace() {
                     {workDigestEnabledCount} digest on
                   </StatusBadge>
                   <StatusBadge tone="neutral">
-                    {workNotificationTemplateCount || "Loading…"} templates
+                    {workNotificationTemplateLabel}
                   </StatusBadge>
                 </div>
               }
@@ -4093,7 +4335,7 @@ function SettingsWorkspace() {
                     Name
                   </div>
                   <div className="mt-1 font-semibold">
-                    {securityQuery.data?.organisation.name ?? "Loading…"}
+                    {organisationNameLabel}
                   </div>
                 </div>
                 <div className="rounded-md border border-border bg-muted/25 p-3">
@@ -4101,7 +4343,7 @@ function SettingsWorkspace() {
                     Timezone
                   </div>
                   <div className="mt-1 font-semibold">
-                    {securityQuery.data?.organisation.timezone ?? "Loading…"}
+                    {organisationTimezoneLabel}
                   </div>
                 </div>
                 <div className="rounded-md border border-border bg-muted/25 p-3">
@@ -4109,7 +4351,7 @@ function SettingsWorkspace() {
                     Entities
                   </div>
                   <div className="mt-1 font-semibold">
-                    {entitiesQuery.data?.length ?? 0}
+                    {organisationEntityCountLabel}
                   </div>
                 </div>
               </div>
@@ -4234,7 +4476,7 @@ function SettingsWorkspace() {
                     <StatusBadge
                       tone={brandedTemplates.length ? "primary" : "neutral"}
                     >
-                      {brandedTemplates.length} stored
+                      {storedTemplateOverrideLabel}
                     </StatusBadge>
                     <StatusBadge tone="neutral">Read-only</StatusBadge>
                   </div>
@@ -4293,7 +4535,7 @@ function SettingsWorkspace() {
                 ) : null}
                 {brandedTemplatesQuery.isLoading ? (
                   <div className="mt-3 rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
-                    Loading stored template overrides.
+                    Checking stored template overrides.
                   </div>
                 ) : brandedTemplatesQuery.error ? (
                   <div className="mt-3 rounded-md border border-danger/20 bg-danger-soft p-3 text-sm text-danger">
@@ -4376,8 +4618,7 @@ function SettingsWorkspace() {
                   <StatusBadge
                     tone={ownershipTags.length ? "primary" : "neutral"}
                   >
-                    {ownershipTags.length}{" "}
-                    {ownershipTags.length === 1 ? "tag" : "tags"}
+                    {ownershipTagLabel}
                   </StatusBadge>
                 ) : null
               }
@@ -4385,7 +4626,7 @@ function SettingsWorkspace() {
               <div className="divide-y divide-border">
                 {propertiesQuery.isLoading ? (
                   <div className="px-4 py-4 text-sm text-muted-foreground">
-                    Loading ownership tags...
+                    Checking ownership tags.
                   </div>
                 ) : null}
                 {propertiesQuery.error ? (
@@ -4829,16 +5070,8 @@ function SettingsWorkspace() {
                       <Download size={14} />
                       Download exceptions CSV
                     </SecondaryButton>
-                    <StatusBadge
-                      tone={
-                        exceptionQueue?.summary.blockers
-                          ? "danger"
-                          : exceptionItems.length
-                            ? "warning"
-                            : "success"
-                      }
-                    >
-                      {exceptionQueue?.summary.total ?? 0} open
+                    <StatusBadge tone={xeroExceptionOpenTone}>
+                      {xeroExceptionOpenLabel}
                     </StatusBadge>
                     {xeroExceptionQueueQuery.isFetching ? (
                       <StatusBadge tone="neutral">Refreshing</StatusBadge>
@@ -4848,7 +5081,7 @@ function SettingsWorkspace() {
               >
                 {xeroExceptionQueueQuery.isLoading && !exceptionQueue ? (
                   <div className="p-4 text-sm text-muted-foreground">
-                    Loading Xero sync exceptions.
+                    Checking Xero sync exceptions.
                   </div>
                 ) : (
                   <>
@@ -4905,35 +5138,125 @@ function SettingsWorkspace() {
                       {exceptionItems.map((issue) => {
                         const actionLabel = exceptionActionLabel(issue);
                         const actionPending = exceptionActionPending(issue);
+                        const currentMappingLabel = `Account ${
+                          issue.current_account_code ?? "Not set"
+                        } / tax ${issue.current_tax_type ?? "Not set"}`;
+                        const suggestedMappingLabel = `Account ${
+                          issue.suggested_account_code ?? "Not set"
+                        } / tax ${issue.suggested_tax_type ?? "Not set"}`;
+                        const providerContextLabel =
+                          issue.provider || issue.provider_status
+                            ? `${providerLabel(issue.provider) ?? "Provider"}${
+                                issue.provider_status
+                                  ? ` / ${statusLabel(issue.provider_status)}`
+                                  : ""
+                              }`
+                            : null;
                         return (
-                          <div
-                            key={issue.id}
-                            className="grid gap-3 px-4 py-3 text-sm lg:grid-cols-[170px_1fr_300px]"
-                          >
-                            <div className="flex flex-wrap items-start gap-2">
-                              <StatusBadge tone={exceptionTone(issue)}>
-                                {exceptionKindLabel(issue.kind)}
-                              </StatusBadge>
-                              {issue.next_action ? (
-                                <StatusBadge tone="neutral">
-                                  {issue.next_action.replaceAll("_", " ")}
+                          <div key={issue.id} className="px-4 py-3 text-sm">
+                            <div
+                              data-testid="xero-exception-mobile-card"
+                              className="grid gap-3 rounded-lg border border-border bg-surface p-3 lg:hidden"
+                            >
+                              <div className="flex flex-wrap items-start gap-2">
+                                <StatusBadge tone={exceptionTone(issue)}>
+                                  {exceptionKindLabel(issue.kind)}
                                 </StatusBadge>
+                                {issue.next_action ? (
+                                  <StatusBadge tone="neutral">
+                                    {issue.next_action.replaceAll("_", " ")}
+                                  </StatusBadge>
+                                ) : null}
+                              </div>
+                              <div>
+                                <div className="font-medium">{issue.label}</div>
+                                <p className="mt-1 text-muted-foreground">
+                                  {issue.detail}
+                                </p>
+                              </div>
+                              {issue.charge_rule_id ? (
+                                <dl className="grid gap-2 rounded-md border border-border bg-muted/20 p-3 text-xs">
+                                  <div>
+                                    <dt className="font-medium text-foreground">
+                                      Current mapping
+                                    </dt>
+                                    <dd className="mt-1 text-muted-foreground">
+                                      {currentMappingLabel}
+                                    </dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-foreground">
+                                      Suggested mapping
+                                    </dt>
+                                    <dd className="mt-1 text-muted-foreground">
+                                      {suggestedMappingLabel}
+                                    </dd>
+                                  </div>
+                                </dl>
                               ) : null}
-                            </div>
-                            <div>
-                              <div className="font-medium">{issue.label}</div>
-                              <p className="mt-1 text-muted-foreground">
-                                {issue.detail}
-                              </p>
-                              <p className="mt-2 text-xs text-muted-foreground">
+                              <div className="grid gap-1 text-xs text-muted-foreground">
+                                {issue.invoice_number || issue.invoice_title ? (
+                                  <div>
+                                    Invoice:{" "}
+                                    {issue.invoice_number ??
+                                      issue.invoice_title}
+                                  </div>
+                                ) : null}
+                                {issue.tenant_name || issue.property_name ? (
+                                  <div>
+                                    Record: {issue.property_name ?? "Property"}
+                                    {issue.unit_label
+                                      ? ` / ${issue.unit_label}`
+                                      : ""}
+                                    {issue.tenant_name
+                                      ? ` / ${issue.tenant_name}`
+                                      : ""}
+                                  </div>
+                                ) : null}
+                                {issue.total_cents !== null ? (
+                                  <div>
+                                    Amount:{" "}
+                                    {formatCurrencyCents(
+                                      issue.total_cents,
+                                      issue.currency ?? "AUD",
+                                    )}
+                                  </div>
+                                ) : null}
+                                {issue.xero_invoice_id ? (
+                                  <div>Xero ID: {issue.xero_invoice_id}</div>
+                                ) : null}
+                                {providerContextLabel ? (
+                                  <div>Provider: {providerContextLabel}</div>
+                                ) : null}
+                                {issue.external_posting_status ? (
+                                  <div>
+                                    Posting: {issue.external_posting_status}
+                                  </div>
+                                ) : null}
+                                {issue.received_at ? (
+                                  <div>
+                                    Receipt: {formatDateTime(issue.received_at)}
+                                  </div>
+                                ) : null}
+                                {issue.retry_count ? (
+                                  <div>Attempt #{issue.retry_count}</div>
+                                ) : null}
+                                {issue.property_id ? (
+                                  <Link
+                                    href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
+                                    className="font-medium text-primary hover:text-primary-hover"
+                                  >
+                                    Open property
+                                  </Link>
+                                ) : null}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
                                 {issue.action}
                               </p>
-                            </div>
-                            <div className="grid gap-2 text-xs text-muted-foreground">
                               {actionLabel ? (
                                 <SecondaryButton
                                   type="button"
-                                  className="min-h-8 justify-self-start rounded-lg px-3 text-xs"
+                                  className="min-h-11 w-full justify-center rounded-lg px-3 text-xs"
                                   disabled={exceptionActionDisabled(issue)}
                                   onClick={() => handleExceptionAction(issue)}
                                 >
@@ -4951,70 +5274,115 @@ function SettingsWorkspace() {
                                   {actionLabel}
                                 </SecondaryButton>
                               ) : null}
-                              {issue.charge_rule_id ? (
-                                <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-2">
-                                  <div>
-                                    Current: account{" "}
-                                    {issue.current_account_code ?? "-"} / tax{" "}
-                                    {issue.current_tax_type ?? "-"}
+                            </div>
+                            <div
+                              data-testid="xero-exception-desktop-row"
+                              className="hidden gap-3 lg:grid lg:grid-cols-[170px_1fr_300px]"
+                            >
+                              <div className="flex flex-wrap items-start gap-2">
+                                <StatusBadge tone={exceptionTone(issue)}>
+                                  {exceptionKindLabel(issue.kind)}
+                                </StatusBadge>
+                                {issue.next_action ? (
+                                  <StatusBadge tone="neutral">
+                                    {issue.next_action.replaceAll("_", " ")}
+                                  </StatusBadge>
+                                ) : null}
+                              </div>
+                              <div>
+                                <div className="font-medium">{issue.label}</div>
+                                <p className="mt-1 text-muted-foreground">
+                                  {issue.detail}
+                                </p>
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  {issue.action}
+                                </p>
+                              </div>
+                              <div className="grid gap-2 text-xs text-muted-foreground">
+                                {actionLabel ? (
+                                  <SecondaryButton
+                                    type="button"
+                                    className="min-h-8 justify-self-start rounded-lg px-3 text-xs"
+                                    disabled={exceptionActionDisabled(issue)}
+                                    onClick={() => handleExceptionAction(issue)}
+                                  >
+                                    {actionPending ? (
+                                      <Loader2
+                                        size={13}
+                                        className="animate-spin"
+                                      />
+                                    ) : issue.next_action ===
+                                      "review_chart_tax_mapping" ? (
+                                      <CheckCircle2 size={13} />
+                                    ) : (
+                                      <SearchCheck size={13} />
+                                    )}
+                                    {actionLabel}
+                                  </SecondaryButton>
+                                ) : null}
+                                {issue.charge_rule_id ? (
+                                  <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-2">
+                                    <div>Current: {currentMappingLabel}</div>
+                                    <div>
+                                      Suggested: {suggestedMappingLabel}
+                                    </div>
                                   </div>
+                                ) : null}
+                                {issue.invoice_number || issue.invoice_title ? (
                                   <div>
-                                    Suggested: account{" "}
-                                    {issue.suggested_account_code ?? "-"} / tax{" "}
-                                    {issue.suggested_tax_type ?? "-"}
+                                    Invoice:{" "}
+                                    {issue.invoice_number ??
+                                      issue.invoice_title}
                                   </div>
-                                </div>
-                              ) : null}
-                              {issue.invoice_number || issue.invoice_title ? (
-                                <div>
-                                  Invoice:{" "}
-                                  {issue.invoice_number ?? issue.invoice_title}
-                                </div>
-                              ) : null}
-                              {issue.tenant_name || issue.property_name ? (
-                                <div>
-                                  Record: {issue.property_name ?? "Property"}
-                                  {issue.unit_label
-                                    ? ` / ${issue.unit_label}`
-                                    : ""}
-                                  {issue.tenant_name
-                                    ? ` / ${issue.tenant_name}`
-                                    : ""}
-                                </div>
-                              ) : null}
-                              {issue.total_cents !== null ? (
-                                <div>
-                                  Amount:{" "}
-                                  {formatCurrencyCents(
-                                    issue.total_cents,
-                                    issue.currency ?? "AUD",
-                                  )}
-                                </div>
-                              ) : null}
-                              {issue.external_posting_status ? (
-                                <div>
-                                  Posting: {issue.external_posting_status}
-                                </div>
-                              ) : null}
-                              {issue.xero_invoice_id ? (
-                                <div>Xero ID: {issue.xero_invoice_id}</div>
-                              ) : null}
-                              {issue.received_at ? (
-                                <div>
-                                  Receipt: {formatDateTime(issue.received_at)}
-                                </div>
-                              ) : null}
-                              {issue.retry_count ? (
-                                <div>Attempt #{issue.retry_count}</div>
-                              ) : null}
-                              {issue.property_id ? (
-                                <Link
-                                  href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
-                                  className="font-medium text-primary hover:text-primary-hover"
-                                >
-                                  Open property
-                                </Link>
-                              ) : null}
+                                ) : null}
+                                {issue.tenant_name || issue.property_name ? (
+                                  <div>
+                                    Record: {issue.property_name ?? "Property"}
+                                    {issue.unit_label
+                                      ? ` / ${issue.unit_label}`
+                                      : ""}
+                                    {issue.tenant_name
+                                      ? ` / ${issue.tenant_name}`
+                                      : ""}
+                                  </div>
+                                ) : null}
+                                {issue.total_cents !== null ? (
+                                  <div>
+                                    Amount:{" "}
+                                    {formatCurrencyCents(
+                                      issue.total_cents,
+                                      issue.currency ?? "AUD",
+                                    )}
+                                  </div>
+                                ) : null}
+                                {issue.external_posting_status ? (
+                                  <div>
+                                    Posting: {issue.external_posting_status}
+                                  </div>
+                                ) : null}
+                                {issue.xero_invoice_id ? (
+                                  <div>Xero ID: {issue.xero_invoice_id}</div>
+                                ) : null}
+                                {providerContextLabel ? (
+                                  <div>Provider: {providerContextLabel}</div>
+                                ) : null}
+                                {issue.received_at ? (
+                                  <div>
+                                    Receipt: {formatDateTime(issue.received_at)}
+                                  </div>
+                                ) : null}
+                                {issue.retry_count ? (
+                                  <div>Attempt #{issue.retry_count}</div>
+                                ) : null}
+                                {issue.property_id ? (
+                                  <Link
+                                    href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
+                                    className="font-medium text-primary hover:text-primary-hover"
+                                  >
+                                    Open property
+                                  </Link>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
                         );

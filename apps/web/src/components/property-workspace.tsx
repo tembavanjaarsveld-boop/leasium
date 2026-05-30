@@ -3366,7 +3366,7 @@ function Workspace({
           }}
         >
           <option value="">
-            {entitiesLoading ? "Loading entities..." : "Select entity"}
+            {entitiesLoading ? "Checking entities" : "Select entity"}
           </option>
           {entitiesQuery.data?.map((entity) => (
             <option key={entity.id} value={entity.id}>
@@ -3387,7 +3387,7 @@ function Workspace({
                 {propertiesQuery.isError
                   ? friendlyError(propertiesQuery.error)
                   : propertiesLoading
-                    ? "Loading properties..."
+                    ? "Checking properties"
                     : ownerTagFilter
                       ? activeOwnerTag
                         ? `${activeOwnerTag.propertyCount} ${
@@ -3461,7 +3461,7 @@ function Workspace({
 
           {propertyWorkspaceLoading && !propertyWorkspaceError ? (
             <SectionPanel
-              title="Loading property workspace"
+              title="Preparing property workspace"
               description={
                 selectedProperty
                   ? `Checking units, leases, dates, and billing for ${selectedProperty.name}.`
@@ -3474,7 +3474,9 @@ function Workspace({
                 <StatusBadge
                   tone={propertyWorkspaceRefreshing ? "primary" : "neutral"}
                 >
-                  {propertyWorkspaceRefreshing ? "Refreshing…" : "Loading…"}
+                  {propertyWorkspaceRefreshing
+                    ? "Updating workspace"
+                    : "Preparing workspace"}
                 </StatusBadge>
               }
               className="mb-4 border-primary/20 bg-primary/5"
@@ -4561,7 +4563,7 @@ function Workspace({
                   })}
                   {obligationsLoading ? (
                     <div className="px-4 py-6 text-sm text-muted-foreground">
-                      Loading attention items...
+                      Updating attention items
                     </div>
                   ) : null}
                   {!obligationsLoading && activeObligations.length === 0 ? (
@@ -4755,7 +4757,7 @@ function Workspace({
                             className="px-3 py-8 text-center text-muted-foreground"
                             colSpan={5}
                           >
-                            Loading rent roll rows...
+                            Updating rent roll rows
                           </td>
                         </tr>
                       ) : null}
@@ -4870,7 +4872,7 @@ function Workspace({
                       }
                     >
                       <option value="">
-                        {leasesLoading ? "Loading leases..." : "Select lease"}
+                        {leasesLoading ? "Checking leases" : "Select lease"}
                       </option>
                       {leasesQuery.data?.map((lease) => (
                         <option key={lease.id} value={lease.id}>
@@ -5252,7 +5254,7 @@ function Workspace({
                         aria-selected={isActive}
                         onClick={() => setPropertyView(option.id)}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full px-3 py-1 transition",
+                          "inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 py-1 transition",
                           isActive
                             ? "bg-primary text-primary-foreground"
                             : "text-muted-foreground hover:bg-muted",
@@ -5289,7 +5291,7 @@ function Workspace({
                         type="button"
                         onClick={() => setOccupancyFilter(key)}
                         aria-pressed={isActive}
-                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold transition ${
+                        className={`inline-flex min-h-[44px] items-center gap-1 rounded-full border px-2.5 py-1 font-semibold transition ${
                           isActive
                             ? "border-primary bg-primary text-primary-foreground"
                             : "border-border bg-white text-muted-foreground hover:bg-muted"
@@ -5306,223 +5308,242 @@ function Workspace({
               ) : null}
 
               {propertyView === "table" ? (
-                <div className="overflow-x-auto rounded-md border border-border bg-white">
-                  <table className="w-full min-w-[640px] border-collapse text-left text-sm tabular-nums">
-                    <thead className="bg-muted text-xs uppercase text-muted-foreground">
-                      <tr>
-                        <th className="w-28 px-3 py-2 font-semibold">Image</th>
-                        <th className="px-3 py-2 font-semibold">Property</th>
-                        <th className="px-3 py-2 font-semibold">Type</th>
-                        <th className="px-3 py-2 font-semibold">Area</th>
-                        <th className="px-3 py-2 font-semibold">Parking</th>
-                        <th className="w-12 px-3 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayedProperties.map((property) => {
-                        const isSelected = property.id === selectedPropertyId;
-                        const rowImage = propertyPrimaryImage(property);
-                        return (
-                          <tr
-                            key={property.id}
-                            className={`cursor-pointer border-t border-border transition hover:bg-muted/70 ${
-                              isSelected ? "bg-primary/5" : ""
-                            }`}
-                            onClick={() => selectProperty(property.id)}
-                          >
-                            <td className="px-3 py-3">
-                              <StoredPropertyImage
-                                alt={`${property.name} property image`}
-                                className="h-14 w-24 rounded-md border border-border object-cover"
-                                image={rowImage}
-                                placeholderClassName="grid h-14 w-24 place-items-center rounded-md border border-dashed border-border bg-muted/40 text-muted-foreground"
-                              />
-                            </td>
-                            <td
-                              className="px-3 py-3"
-                              onClick={(event) => {
-                                // Allow inline-edit clicks inside the cell
-                                // without triggering row selection.
-                                const target = event.target as HTMLElement;
-                                if (target.closest("[data-inline-edit]")) {
-                                  event.stopPropagation();
-                                }
-                              }}
+                <>
+                  <PropertyMobileListView
+                    properties={displayedProperties}
+                    occupancyByPropertyId={occupancyByPropertyId}
+                    nextExpiryByPropertyId={nextExpiryByPropertyId}
+                    selectedEntityName={selectedEntity?.name}
+                    selectedPropertyId={selectedPropertyId}
+                    ownershipPaletteByLabel={ownershipPaletteByLabel}
+                    isLoading={propertiesLoading}
+                    isOwnerTagFiltered={Boolean(ownerTagFilter)}
+                    hasProperties={(propertiesQuery.data?.length ?? 0) > 0}
+                    onSelect={selectProperty}
+                    onEdit={startEdit}
+                    onOwnerTagFilter={applyOwnerTagFilter}
+                  />
+                  <div className="hidden overflow-x-auto rounded-md border border-border bg-white md:block">
+                    <table className="w-full min-w-[640px] border-collapse text-left text-sm tabular-nums">
+                      <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="w-28 px-3 py-2 font-semibold">
+                            Image
+                          </th>
+                          <th className="px-3 py-2 font-semibold">Property</th>
+                          <th className="px-3 py-2 font-semibold">Type</th>
+                          <th className="px-3 py-2 font-semibold">Area</th>
+                          <th className="px-3 py-2 font-semibold">Parking</th>
+                          <th className="w-12 px-3 py-2" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayedProperties.map((property) => {
+                          const isSelected = property.id === selectedPropertyId;
+                          const rowImage = propertyPrimaryImage(property);
+                          return (
+                            <tr
+                              key={property.id}
+                              className={`cursor-pointer border-t border-border transition hover:bg-muted/70 ${
+                                isSelected ? "bg-primary/5" : ""
+                              }`}
+                              onClick={() => selectProperty(property.id)}
                             >
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span data-inline-edit>
+                              <td className="px-3 py-3">
+                                <StoredPropertyImage
+                                  alt={`${property.name} property image`}
+                                  className="h-14 w-24 rounded-md border border-border object-cover"
+                                  image={rowImage}
+                                  placeholderClassName="grid h-14 w-24 place-items-center rounded-md border border-dashed border-border bg-muted/40 text-muted-foreground"
+                                />
+                              </td>
+                              <td
+                                className="px-3 py-3"
+                                onClick={(event) => {
+                                  // Allow inline-edit clicks inside the cell
+                                  // without triggering row selection.
+                                  const target = event.target as HTMLElement;
+                                  if (target.closest("[data-inline-edit]")) {
+                                    event.stopPropagation();
+                                  }
+                                }}
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span data-inline-edit>
+                                    <InlineEditCell
+                                      value={property.name}
+                                      ariaLabel={`Property name for ${property.name}`}
+                                      placeholder="Add property name"
+                                      className="font-medium"
+                                      onSave={(next) =>
+                                        savePropertyField(
+                                          property.id,
+                                          "name",
+                                          next,
+                                        )
+                                      }
+                                    />
+                                  </span>
+                                  {(() => {
+                                    const occupancy = occupancyByPropertyId.get(
+                                      property.id,
+                                    );
+                                    if (!occupancy) {
+                                      return null;
+                                    }
+                                    return (
+                                      <span
+                                        className={occupancyBadgeClassName(
+                                          occupancy.status,
+                                        )}
+                                        title={
+                                          occupancy.status === "unknown"
+                                            ? "No tenancy units recorded for this property yet."
+                                            : `${occupancy.leasedUnits} of ${occupancy.totalUnits} units leased (active or holding over).`
+                                        }
+                                      >
+                                        {occupancyBadgeLabel(occupancy)}
+                                      </span>
+                                    );
+                                  })()}
+                                  {(() => {
+                                    const expiry = nextExpiryByPropertyId.get(
+                                      property.id,
+                                    );
+                                    if (!expiry) {
+                                      return null;
+                                    }
+                                    return (
+                                      <span
+                                        className={nextExpiryChipClassName(
+                                          expiry.daysUntil,
+                                        )}
+                                        title={`Earliest active lease expires ${expiry.date}.`}
+                                      >
+                                        {nextExpiryChipLabel(expiry)}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
+                                <div
+                                  data-inline-edit
+                                  className="text-muted-foreground"
+                                >
                                   <InlineEditCell
-                                    value={property.name}
-                                    ariaLabel={`Property name for ${property.name}`}
-                                    placeholder="Add property name"
-                                    className="font-medium"
+                                    value={property.street_address}
+                                    ariaLabel={`Street address for ${property.name}`}
+                                    placeholder="Add street address"
+                                    formatDisplay={(value) =>
+                                      value
+                                        ? `${value}, ${property.suburb} ${property.state}`
+                                        : ""
+                                    }
                                     onSave={(next) =>
                                       savePropertyField(
                                         property.id,
-                                        "name",
+                                        "street_address",
                                         next,
                                       )
                                     }
                                   />
-                                </span>
-                                {(() => {
-                                  const occupancy = occupancyByPropertyId.get(
-                                    property.id,
-                                  );
-                                  if (!occupancy) {
-                                    return null;
-                                  }
-                                  return (
-                                    <span
-                                      className={occupancyBadgeClassName(
-                                        occupancy.status,
-                                      )}
-                                      title={
-                                        occupancy.status === "unknown"
-                                          ? "No tenancy units recorded for this property yet."
-                                          : `${occupancy.leasedUnits} of ${occupancy.totalUnits} units leased (active or holding over).`
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {propertyOwnershipBadges(
+                                    property,
+                                    selectedEntity?.name,
+                                    ownershipPaletteByLabel,
+                                  )
+                                    .slice(0, 3)
+                                    .map((badge) => {
+                                      const chipClassName = `inline-flex max-w-[14rem] items-center truncate rounded-full border px-2 py-0.5 text-leasium-micro font-semibold leading-4 ${ownershipChipClassName(badge.palette)}`;
+                                      if (!badge.tagKey) {
+                                        return (
+                                          <span
+                                            key={badge.label}
+                                            title={badge.title ?? badge.label}
+                                            className={chipClassName}
+                                          >
+                                            {badge.label}
+                                          </span>
+                                        );
                                       }
-                                    >
-                                      {occupancyBadgeLabel(occupancy)}
-                                    </span>
-                                  );
-                                })()}
-                                {(() => {
-                                  const expiry = nextExpiryByPropertyId.get(
-                                    property.id,
-                                  );
-                                  if (!expiry) {
-                                    return null;
-                                  }
-                                  return (
-                                    <span
-                                      className={nextExpiryChipClassName(
-                                        expiry.daysUntil,
-                                      )}
-                                      title={`Earliest active lease expires ${expiry.date}.`}
-                                    >
-                                      {nextExpiryChipLabel(expiry)}
-                                    </span>
-                                  );
-                                })()}
-                              </div>
-                              <div
-                                data-inline-edit
-                                className="text-muted-foreground"
-                              >
-                                <InlineEditCell
-                                  value={property.street_address}
-                                  ariaLabel={`Street address for ${property.name}`}
-                                  placeholder="Add street address"
-                                  formatDisplay={(value) =>
-                                    value
-                                      ? `${value}, ${property.suburb} ${property.state}`
-                                      : ""
-                                  }
-                                  onSave={(next) =>
-                                    savePropertyField(
-                                      property.id,
-                                      "street_address",
-                                      next,
-                                    )
-                                  }
-                                />
-                              </div>
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                {propertyOwnershipBadges(
-                                  property,
-                                  selectedEntity?.name,
-                                  ownershipPaletteByLabel,
-                                )
-                                  .slice(0, 3)
-                                  .map((badge) => {
-                                    const chipClassName = `inline-flex max-w-[14rem] items-center truncate rounded-full border px-2 py-0.5 text-leasium-micro font-semibold leading-4 ${ownershipChipClassName(badge.palette)}`;
-                                    if (!badge.tagKey) {
+                                      const tagKey = badge.tagKey;
                                       return (
-                                        <span
+                                        <button
                                           key={badge.label}
+                                          type="button"
                                           title={badge.title ?? badge.label}
-                                          className={chipClassName}
+                                          aria-label={`Filter by ownership tag ${badge.label}`}
+                                          className={`${chipClassName} cursor-pointer text-left transition hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary`}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            applyOwnerTagFilter(tagKey);
+                                          }}
                                         >
                                           {badge.label}
-                                        </span>
+                                        </button>
                                       );
-                                    }
-                                    const tagKey = badge.tagKey;
-                                    return (
-                                      <button
-                                        key={badge.label}
-                                        type="button"
-                                        title={badge.title ?? badge.label}
-                                        aria-label={`Filter by ownership tag ${badge.label}`}
-                                        className={`${chipClassName} cursor-pointer text-left transition hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary`}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          applyOwnerTagFilter(tagKey);
-                                        }}
-                                      >
-                                        {badge.label}
-                                      </button>
-                                    );
-                                  })}
-                              </div>
-                            </td>
-                            <td className="px-3 py-3">
-                              {property.property_type.replaceAll("_", " ")}
-                            </td>
-                            <td className="px-3 py-3">
-                              {property.building_sqm ?? "-"}
-                            </td>
-                            <td className="px-3 py-3">
-                              {property.parking_spaces ?? "-"}
-                            </td>
-                            <td className="px-3 py-3">
-                              <SecondaryButton
-                                type="button"
-                                aria-label={`Edit ${property.name}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  startEdit(property);
-                                }}
-                                className="h-8 w-8 px-0"
-                              >
-                                <Pencil size={15} />
-                              </SecondaryButton>
+                                    })}
+                                </div>
+                              </td>
+                              <td className="px-3 py-3">
+                                {property.property_type.replaceAll("_", " ")}
+                              </td>
+                              <td className="px-3 py-3">
+                                {property.building_sqm ?? "-"}
+                              </td>
+                              <td className="px-3 py-3">
+                                {property.parking_spaces ?? "-"}
+                              </td>
+                              <td className="px-3 py-3">
+                                <SecondaryButton
+                                  type="button"
+                                  aria-label={`Edit ${property.name}`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    startEdit(property);
+                                  }}
+                                  className="h-8 w-8 px-0"
+                                >
+                                  <Pencil size={15} />
+                                </SecondaryButton>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {propertiesLoading ? (
+                          <tr>
+                            <td
+                              className="px-3 py-8 text-center text-muted-foreground"
+                              colSpan={6}
+                            >
+                              Checking properties
                             </td>
                           </tr>
-                        );
-                      })}
-                      {propertiesLoading ? (
-                        <tr>
-                          <td
-                            className="px-3 py-8 text-center text-muted-foreground"
-                            colSpan={6}
-                          >
-                            Loading properties...
-                          </td>
-                        </tr>
-                      ) : ownerTagFilter && displayedProperties.length === 0 ? (
-                        <tr>
-                          <td
-                            className="px-3 py-8 text-center text-muted-foreground"
-                            colSpan={6}
-                          >
-                            No properties match this ownership tag.
-                          </td>
-                        </tr>
-                      ) : propertiesQuery.data?.length === 0 ? (
-                        <tr>
-                          <td
-                            className="px-3 py-8 text-center text-muted-foreground"
-                            colSpan={6}
-                          >
-                            No active properties yet.
-                          </td>
-                        </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
-                </div>
+                        ) : ownerTagFilter &&
+                          displayedProperties.length === 0 ? (
+                          <tr>
+                            <td
+                              className="px-3 py-8 text-center text-muted-foreground"
+                              colSpan={6}
+                            >
+                              No properties match this ownership tag.
+                            </td>
+                          </tr>
+                        ) : propertiesQuery.data?.length === 0 ? (
+                          <tr>
+                            <td
+                              className="px-3 py-8 text-center text-muted-foreground"
+                              colSpan={6}
+                            >
+                              No active properties yet.
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               ) : propertyView === "board" ? (
                 <PropertyBoardView
                   properties={displayedProperties}
@@ -5805,7 +5826,7 @@ function Workspace({
                   </h2>
                   <p className="text-sm text-muted-foreground">
                     {unitsWorkspaceLoading
-                      ? "Loading units..."
+                      ? "Updating units"
                       : `${tenancyUnitsQuery.data?.length ?? 0} units`}
                     {tenancyUnitsQuery.data?.length
                       ? ` - ${unitTotals.sqm} sqm - ${unitTotals.parking} parks`
@@ -5861,7 +5882,7 @@ function Workspace({
                               className="px-3 py-8 text-center text-muted-foreground"
                               colSpan={5}
                             >
-                              Loading units...
+                              Updating units
                             </td>
                           </tr>
                         ) : null}
@@ -6082,7 +6103,7 @@ function Workspace({
               ) : (
                 <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                   {propertiesLoading
-                    ? "Loading selected property..."
+                    ? "Preparing selected property"
                     : "Select a property."}
                 </div>
               )}
@@ -6757,6 +6778,206 @@ type PropertyBoardViewProps = {
   onSelect: (propertyId: string) => void;
 };
 
+type PropertyMobileListViewProps = PropertyBoardViewProps & {
+  selectedEntityName?: string;
+  ownershipPaletteByLabel: ReturnType<typeof propertyOwnershipPaletteMap>;
+  isLoading: boolean;
+  isOwnerTagFiltered: boolean;
+  hasProperties: boolean;
+  onEdit: (property: PropertyRecord) => void;
+  onOwnerTagFilter: (tagKey: string) => void;
+};
+
+function PropertyMobileListView({
+  properties,
+  occupancyByPropertyId,
+  nextExpiryByPropertyId,
+  selectedEntityName,
+  selectedPropertyId,
+  ownershipPaletteByLabel,
+  isLoading,
+  isOwnerTagFiltered,
+  hasProperties,
+  onSelect,
+  onEdit,
+  onOwnerTagFilter,
+}: PropertyMobileListViewProps) {
+  if (isLoading) {
+    return (
+      <div className="rounded-md border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground md:hidden">
+        Checking properties
+      </div>
+    );
+  }
+
+  if (!properties.length) {
+    return (
+      <div className="rounded-md border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground md:hidden">
+        {isOwnerTagFiltered && hasProperties
+          ? "No properties match this ownership tag."
+          : "No active properties yet."}
+      </div>
+    );
+  }
+
+  return (
+    <ul aria-label="Property cards" className="grid gap-3 md:hidden">
+      {properties.map((property) => {
+        const image = propertyPrimaryImage(property);
+        const occupancy = occupancyByPropertyId.get(property.id);
+        const expiry = nextExpiryByPropertyId.get(property.id);
+        const isSelected = property.id === selectedPropertyId;
+        const propertyType = property.property_type.replaceAll("_", " ");
+        const areaLabel =
+          property.building_sqm === null || property.building_sqm === undefined
+            ? "Area not set"
+            : `${property.building_sqm} sqm`;
+        const parkingLabel =
+          property.parking_spaces === null ||
+          property.parking_spaces === undefined
+            ? "Parking not set"
+            : `${property.parking_spaces} parks`;
+
+        return (
+          <li
+            key={property.id}
+            className={cn(
+              "rounded-md border bg-white p-3",
+              isSelected ? "border-primary bg-primary/5" : "border-border",
+            )}
+          >
+            <div className="grid gap-3">
+              <div className="flex items-start gap-3">
+                <StoredPropertyImage
+                  alt={`${property.name} property image`}
+                  className="h-20 w-24 shrink-0 rounded-md border border-border object-cover"
+                  image={image}
+                  placeholderClassName="grid h-20 w-24 shrink-0 place-items-center rounded-md border border-dashed border-border bg-muted/40 text-muted-foreground"
+                />
+                <div className="min-w-0 flex-1">
+                  <h3 className="break-words text-sm font-semibold text-foreground">
+                    {property.name}
+                  </h3>
+                  <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">
+                    {property.street_address}
+                    {property.suburb || property.state ? ", " : ""}
+                    {[property.suburb, property.state]
+                      .filter(Boolean)
+                      .join(" ")}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {occupancy ? (
+                      <span
+                        className={occupancyBadgeClassName(occupancy.status)}
+                        title={
+                          occupancy.status === "unknown"
+                            ? "No tenancy units recorded for this property yet."
+                            : `${occupancy.leasedUnits} of ${occupancy.totalUnits} units leased (active or holding over).`
+                        }
+                      >
+                        {occupancyBadgeLabel(occupancy)}
+                      </span>
+                    ) : null}
+                    {expiry ? (
+                      <span
+                        className={nextExpiryChipClassName(expiry.daysUntil)}
+                        title={`Earliest active lease expires ${expiry.date}.`}
+                      >
+                        {nextExpiryChipLabel(expiry)}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              <dl className="grid grid-cols-3 gap-2 text-xs">
+                <div className="min-w-0">
+                  <dt className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                    Type
+                  </dt>
+                  <dd className="break-words text-foreground">
+                    {propertyType}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                    Area
+                  </dt>
+                  <dd className="break-words text-foreground">{areaLabel}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                    Parking
+                  </dt>
+                  <dd className="break-words text-foreground">
+                    {parkingLabel}
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="flex flex-wrap gap-1">
+                {propertyOwnershipBadges(
+                  property,
+                  selectedEntityName,
+                  ownershipPaletteByLabel,
+                )
+                  .slice(0, 3)
+                  .map((badge) => {
+                    const chipClassName = `inline-flex min-h-[32px] max-w-full items-center break-words rounded-full border px-2 py-1 text-left text-leasium-micro font-semibold leading-4 ${ownershipChipClassName(badge.palette)}`;
+                    if (!badge.tagKey) {
+                      return (
+                        <span
+                          key={badge.label}
+                          title={badge.title ?? badge.label}
+                          className={chipClassName}
+                        >
+                          {badge.label}
+                        </span>
+                      );
+                    }
+                    const tagKey = badge.tagKey;
+                    return (
+                      <button
+                        key={badge.label}
+                        type="button"
+                        title={badge.title ?? badge.label}
+                        aria-label={`Filter by ownership tag ${badge.label}`}
+                        className={`${chipClassName} min-h-[44px] cursor-pointer transition hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary`}
+                        onClick={() => onOwnerTagFilter(tagKey)}
+                      >
+                        {badge.label}
+                      </button>
+                    );
+                  })}
+              </div>
+
+              <div className="grid grid-cols-[minmax(0,1fr)_44px] gap-2">
+                <Button
+                  type="button"
+                  className="min-h-[44px] justify-center"
+                  aria-label={`Open property ${property.name}`}
+                  onClick={() => onSelect(property.id)}
+                >
+                  Open property
+                </Button>
+                <SecondaryButton
+                  type="button"
+                  aria-label={`Edit ${property.name}`}
+                  title={`Edit ${property.name}`}
+                  className="h-11 w-11 px-0"
+                  onClick={() => onEdit(property)}
+                >
+                  <Pencil size={16} />
+                </SecondaryButton>
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 const BOARD_COLUMNS: {
   status: PropertyOccupancyStatus | "unknown";
   label: string;
@@ -7211,7 +7432,7 @@ function PropertyCalendarView({
   if (isLoading) {
     return (
       <div className="rounded-md border border-border bg-white p-6 text-center text-sm text-muted-foreground">
-        Loading lease events...
+        Updating lease events
       </div>
     );
   }

@@ -62,6 +62,7 @@ import {
   applyDocumentIntake,
   createDocumentIntake,
   deleteDocumentIntake,
+  getDashboardOverview,
   DocumentIntakeExtraction,
   DocumentIntakeRecord,
   LeaseRecord,
@@ -76,6 +77,7 @@ import {
   listTenancyUnits,
   listTenantOnboardings,
   listTenants,
+  type DashboardOverviewRecord,
   ObligationRecord,
   PropertyRecord,
   RentRollRow,
@@ -86,6 +88,7 @@ import {
 } from "@/lib/api";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
+const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
 const DEMO_MODE_STORAGE_KEY = "leasium.demo_mode";
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type ReviewItemAction = "approve" | "edit" | "ignore";
@@ -103,6 +106,15 @@ type ReviewQueueFilter =
   | "insurance_certificate"
   | "inspection_report"
   | "lease";
+
+function initialSelectedEntityId(mode: "dashboard" | "intake") {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search);
+  const requestedEntityId = mode === "intake" ? params.get("entity_id") : null;
+  return (
+    requestedEntityId ?? window.localStorage.getItem(ENTITY_STORAGE_KEY) ?? ""
+  );
+}
 type LeaseAutoMatchField = {
   field: string;
   current: unknown;
@@ -378,6 +390,13 @@ function csvCell(value: string | number | null | undefined) {
 
 function countLabel(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function overviewStatusCount(
+  counts: Record<string, number> | null | undefined,
+  statuses: string[],
+) {
+  return statuses.reduce((total, status) => total + (counts?.[status] ?? 0), 0);
 }
 
 function safeCurrency(value: unknown) {
@@ -1623,13 +1642,14 @@ function DocumentIntakeApplyOutcomeCard({
                     }. Nothing was posted to Xero.`
                   : isInspection
                     ? `Created ${outcome.workOrderCount ?? outcome.obligationCount} requested work order${
-                        (outcome.workOrderCount ?? outcome.obligationCount) === 1
+                        (outcome.workOrderCount ?? outcome.obligationCount) ===
+                        1
                           ? ""
                           : "s"
                       }. No contractor message was sent.`
-                  : `Created ${outcome.obligationCount} ${taskNoun}${
-                      outcome.obligationCount === 1 ? "" : "s"
-                    }.`}
+                    : `Created ${outcome.obligationCount} ${taskNoun}${
+                        outcome.obligationCount === 1 ? "" : "s"
+                      }.`}
           </div>
           <div className="grid gap-2 text-foreground sm:grid-cols-2">
             <div>
@@ -1945,13 +1965,13 @@ function DocumentIntakeReviewPanel({
         ? "Choose or confirm the property before applying."
         : workflowType === "inspection_report" && obligationApplyCount === 0
           ? "Confirm at least one inspection finding before applying."
-        : canApplyWorkflow &&
-            workflowType !== "lease" &&
-            workflowType !== "purchase_contract" &&
-            workflowType !== "inspection_report" &&
-            obligationApplyCount === 0
-          ? "Confirm at least one obligation due date before applying."
-          : null;
+          : canApplyWorkflow &&
+              workflowType !== "lease" &&
+              workflowType !== "purchase_contract" &&
+              workflowType !== "inspection_report" &&
+              obligationApplyCount === 0
+            ? "Confirm at least one obligation due date before applying."
+            : null;
   const visibleGroups = reviewGroups.filter(
     (group) => groupItems(draft, group.key).length > 0,
   );
@@ -1961,9 +1981,10 @@ function DocumentIntakeReviewPanel({
       ? "Policy dates"
       : workflowType === "lease" && group.key === "key_dates"
         ? "Lease dates"
-        : workflowType === "inspection_report" && group.key === "inspection_findings"
+        : workflowType === "inspection_report" &&
+            group.key === "inspection_findings"
           ? "Work order drafts"
-        : group.title;
+          : group.title;
   const canSelectLease = workflowType !== "lease";
   const scopedLeases = applyTarget.tenancyUnitId
     ? leases.filter(
@@ -2078,9 +2099,7 @@ function DocumentIntakeReviewPanel({
           <div className="grid gap-2 rounded-xl border border-primary/15 bg-primary-soft/60 px-3 py-2 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge tone="primary">{sourceInfo.label}</StatusBadge>
-              <span className="text-muted-foreground">
-                {sourceInfo.detail}
-              </span>
+              <span className="text-muted-foreground">{sourceInfo.detail}</span>
             </div>
             {sourceInfo.guardrail ? (
               <div className="text-muted-foreground">
@@ -2123,9 +2142,7 @@ function DocumentIntakeReviewPanel({
           <div className="grid gap-3 rounded-2xl border border-primary/15 bg-white p-3 shadow-leasiumXs">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold">
-                  Lease upload match
-                </div>
+                <div className="text-sm font-semibold">Lease upload match</div>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Review-only comparison against the lease this tenant portal is
                   scoped to.
@@ -2148,7 +2165,9 @@ function DocumentIntakeReviewPanel({
                 {countLabel(leaseAutoMatch.differences.length, "difference")}
               </StatusBadge>
               <StatusBadge
-                tone={leaseAutoMatch.missingFields.length ? "warning" : "neutral"}
+                tone={
+                  leaseAutoMatch.missingFields.length ? "warning" : "neutral"
+                }
               >
                 {countLabel(
                   leaseAutoMatch.missingFields.length,
@@ -2214,7 +2233,7 @@ function DocumentIntakeReviewPanel({
                         ? "Link the billing document to the right property, unit, or lease. Leasium prepares review work only."
                         : workflowType === "inspection_report"
                           ? "Link the inspection findings to the right property, unit, or lease. Leasium creates requested work orders only after approval."
-                        : "Link the source document and created work to the right property, unit, or lease before applying."}
+                          : "Link the source document and created work to the right property, unit, or lease before applying."}
                 </p>
               </div>
               <StatusBadge
@@ -2589,7 +2608,7 @@ function DocumentIntakeReviewPanel({
                         ? `Prepare ${obligationApplyCount} billing review ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. Nothing will be invoiced or synced. `
                         : workflowType === "inspection_report"
                           ? `Create ${obligationApplyCount} requested work order ${obligationApplyCount === 1 ? "draft" : "drafts"} at ${applyScope}. No contractor message will be sent. `
-                        : `Create ${obligationApplyCount} document-driven ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. `}
+                          : `Create ${obligationApplyCount} document-driven ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. `}
                   {ignoredCount
                     ? `${ignoredCount} ignored item${ignoredCount === 1 ? "" : "s"} will be left out.`
                     : "No ignored items will be included."}
@@ -2645,7 +2664,9 @@ export function Dashboard({
 }: {
   mode?: "dashboard" | "intake";
 }) {
-  const [selectedEntityId, setSelectedEntityId] = useState("");
+  const [selectedEntityId, setSelectedEntityId] = useState(() =>
+    initialSelectedEntityId(mode),
+  );
   const [intakeError, setIntakeError] = useState<string | null>(null);
   const [intakeNotice, setIntakeNotice] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -2705,8 +2726,13 @@ export function Dashboard({
   });
 
   useEffect(() => {
+    if (!entitiesQuery.data) {
+      return;
+    }
     const params = new URLSearchParams(window.location.search);
-    const requestedEntityId = isIntakeWorkspace ? params.get("entity_id") : null;
+    const requestedEntityId = isIntakeWorkspace
+      ? params.get("entity_id")
+      : null;
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
     const accessibleIds = new Set(
       (entitiesQuery.data ?? []).map((entity) => entity.id),
@@ -2718,7 +2744,7 @@ export function Dashboard({
         : stored && accessibleIds.has(stored)
           ? stored
           : firstEntity;
-    if (!selectedEntityId && next) {
+    if (next && (!selectedEntityId || !accessibleIds.has(selectedEntityId))) {
       setSelectedEntityId(next);
     }
   }, [entitiesQuery.data, isIntakeWorkspace, selectedEntityId]);
@@ -2726,6 +2752,7 @@ export function Dashboard({
   useEffect(() => {
     if (selectedEntityId) {
       window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
+      window.dispatchEvent(new Event(ENTITY_CHANGED_EVENT));
     }
   }, [selectedEntityId]);
 
@@ -2745,6 +2772,16 @@ export function Dashboard({
   const selectedEntity = entitiesQuery.data?.find(
     (entity) => entity.id === selectedEntityId,
   );
+  const dashboardOverviewQuery = useQuery<DashboardOverviewRecord>({
+    queryKey: ["dashboard-overview", selectedEntityId, asOf],
+    queryFn: () => getDashboardOverview(selectedEntityId, asOf || undefined),
+    enabled: !demoMode && Boolean(selectedEntityId),
+  });
+  const dashboardOverview = demoMode
+    ? null
+    : (dashboardOverviewQuery.data ?? null);
+  const selectedEntityName =
+    selectedEntity?.name ?? dashboardOverview?.entity.name;
 
   const propertiesQuery = useQuery({
     queryKey: ["dashboard-properties", selectedEntityId],
@@ -2808,6 +2845,9 @@ export function Dashboard({
     onSuccess: (created) => {
       setReviewIntakeId(created.id);
       queryClient.invalidateQueries({
+        queryKey: ["dashboard-overview", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
         queryKey: ["dashboard-document-intakes", selectedEntityId],
       });
     },
@@ -2826,6 +2866,9 @@ export function Dashboard({
         setReviewIntakeId(null);
       }
       setIntakeNotice("Removed from review inbox.");
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-overview", selectedEntityId],
+      });
       queryClient.invalidateQueries({
         queryKey: ["dashboard-document-intakes", selectedEntityId],
       });
@@ -2848,6 +2891,9 @@ export function Dashboard({
     },
     onSuccess: () => {
       setIntakeNotice("Review saved.");
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-overview", selectedEntityId],
+      });
       queryClient.invalidateQueries({
         queryKey: ["dashboard-document-intakes", selectedEntityId],
       });
@@ -2910,6 +2956,9 @@ export function Dashboard({
       });
       setIntakeNotice("Document workflow applied.");
       queryClient.invalidateQueries({
+        queryKey: ["dashboard-overview", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
         queryKey: ["dashboard-document-intakes", selectedEntityId],
       });
       queryClient.invalidateQueries({
@@ -2938,6 +2987,9 @@ export function Dashboard({
     onSuccess: () => {
       setIntakeNotice("Lease match accepted.");
       queryClient.invalidateQueries({
+        queryKey: ["dashboard-overview", selectedEntityId],
+      });
+      queryClient.invalidateQueries({
         queryKey: ["dashboard-document-intakes", selectedEntityId],
       });
       queryClient.invalidateQueries({
@@ -2956,6 +3008,27 @@ export function Dashboard({
   const entitySelectionLoading =
     entitiesLoading ||
     (!demoMode && !selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
+  const overviewDocumentNeedsReviewCount = overviewStatusCount(
+    dashboardOverview?.intake.document_counts,
+    ["ready_for_review", "needs_attention"],
+  );
+  const overviewDocumentFailedCount = overviewStatusCount(
+    dashboardOverview?.intake.document_counts,
+    ["failed"],
+  );
+  const overviewOnboardingSubmittedCount = overviewStatusCount(
+    dashboardOverview?.intake.onboarding_counts,
+    ["submitted"],
+  );
+  const overviewOnboardingSentCount = overviewStatusCount(
+    dashboardOverview?.intake.onboarding_counts,
+    ["sent"],
+  );
+  const overviewOperationsCount =
+    (dashboardOverview?.counts.overdue_obligation_count ?? 0) +
+    (dashboardOverview?.counts.due_soon_obligation_count ?? 0);
+  const overviewBillingBlockerCount =
+    dashboardOverview?.rent_roll.blocked_row_count ?? 0;
   const obligationsLoading =
     entitySelectionLoading ||
     (!demoMode &&
@@ -2990,6 +3063,7 @@ export function Dashboard({
   ];
   const dashboardLoading =
     !demoMode &&
+    !dashboardOverview &&
     (entitySelectionLoading ||
       (Boolean(selectedEntityId) &&
         dashboardDataQueries.some(
@@ -2998,7 +3072,10 @@ export function Dashboard({
   const dashboardRefreshing =
     !demoMode &&
     Boolean(selectedEntityId) &&
-    dashboardDataQueries.some((query) => query.isFetching && !query.isLoading);
+    (dashboardOverviewQuery.isFetching ||
+      dashboardDataQueries.some(
+        (query) => query.isFetching && !query.isLoading,
+      ));
   const dashboardError =
     !demoMode &&
     (entitiesQuery.error ??
@@ -3019,7 +3096,7 @@ export function Dashboard({
   const obligationsTrend = useMemo<DashboardMetricTrend | null>(
     () =>
       computeOpenObligationTrend({
-        records: demoMode ? null : obligationsQuery.data ?? null,
+        records: demoMode ? null : (obligationsQuery.data ?? null),
       }),
     [demoMode, obligationsQuery.data],
   );
@@ -3239,6 +3316,127 @@ export function Dashboard({
     });
   }
   commandCenterItems.sort(commandCenterSort);
+  const overviewCommandCenterItems: CommandCenterItem[] = [];
+  if (dashboardOverview) {
+    if (overviewDocumentNeedsReviewCount) {
+      overviewCommandCenterItems.push({
+        id: "overview-smart-intake-review",
+        area: "Smart Intake",
+        title: `${overviewDocumentNeedsReviewCount} Smart Intake ${
+          overviewDocumentNeedsReviewCount === 1 ? "review" : "reviews"
+        } waiting`,
+        why: "Extracted document data is ready for operator review before any portfolio changes are applied.",
+        href: "/intake",
+        nextStep: "Review documents",
+        chip: "Review first",
+        tone: "primary",
+        score: 0,
+        date: dashboardOverview.as_of,
+        dateLabel: "Waiting",
+        icon: <Sparkles size={16} />,
+      });
+    }
+    if (overviewDocumentFailedCount) {
+      overviewCommandCenterItems.push({
+        id: "overview-smart-intake-failed",
+        area: "Smart Intake",
+        title: `${overviewDocumentFailedCount} document ${
+          overviewDocumentFailedCount === 1 ? "read" : "reads"
+        } failed`,
+        why: "Some uploaded documents could not become source-backed review data and need a quick operator check.",
+        href: "/intake",
+        nextStep: "Fix intake",
+        chip: "Could not read",
+        tone: "danger",
+        score: 6,
+        date: dashboardOverview.as_of,
+        dateLabel: "Needs fix",
+        icon: <FileText size={16} />,
+      });
+    }
+    if (overviewBillingBlockerCount) {
+      overviewCommandCenterItems.push({
+        id: "overview-billing-readiness",
+        area: "Billing",
+        title: `${overviewBillingBlockerCount} billing ${
+          overviewBillingBlockerCount === 1 ? "blocker" : "blockers"
+        } before invoices`,
+        why: "Billing readiness found rows that need operator cleanup before invoices are trusted.",
+        href: "/billing-readiness",
+        nextStep: "Open billing readiness",
+        chip: "Blocked",
+        tone: "danger",
+        score: 18,
+        date: dashboardOverview.as_of,
+        dateLabel: "Blocked",
+        icon: <ReceiptText size={16} />,
+      });
+    }
+    if (overviewOnboardingSubmittedCount) {
+      overviewCommandCenterItems.push({
+        id: "overview-submitted-onboarding",
+        area: "Onboarding",
+        title: `${overviewOnboardingSubmittedCount} submitted onboarding ${
+          overviewOnboardingSubmittedCount === 1 ? "item" : "items"
+        } need review`,
+        why: "Tenant details have arrived and should be reviewed before they become operating data.",
+        href: "/tenants",
+        nextStep: "Review submissions",
+        chip: "Submitted",
+        tone: "primary",
+        score: 28,
+        date: dashboardOverview.as_of,
+        dateLabel: "Submitted",
+        icon: <UserRound size={16} />,
+      });
+    }
+    if (overviewOperationsCount) {
+      overviewCommandCenterItems.push({
+        id: "overview-urgent-operations",
+        area: "Operations",
+        title: `${overviewOperationsCount} urgent ${
+          overviewOperationsCount === 1 ? "date" : "dates"
+        } or task${overviewOperationsCount === 1 ? "" : "s"}`,
+        why: "Lease dates and obligations need attention soon, including overdue or due-soon work.",
+        href: "/operations",
+        nextStep: "Open operations",
+        chip:
+          dashboardOverview.counts.overdue_obligation_count > 0
+            ? "Overdue"
+            : "Due soon",
+        tone:
+          dashboardOverview.counts.overdue_obligation_count > 0
+            ? "danger"
+            : "warning",
+        score: 34,
+        date: dashboardOverview.as_of,
+        dateLabel:
+          dashboardOverview.counts.overdue_obligation_count > 0
+            ? "Overdue"
+            : "Due soon",
+        icon: <AlertTriangle size={16} />,
+      });
+    }
+    if (overviewOnboardingSentCount) {
+      overviewCommandCenterItems.push({
+        id: "overview-onboarding-follow-up",
+        area: "Onboarding",
+        title: `${overviewOnboardingSentCount} tenant onboarding follow-up${
+          overviewOnboardingSentCount === 1 ? "" : "s"
+        } due`,
+        why: "Tenant details are still outstanding and may block contact, billing, and portal readiness.",
+        href: "/tenants",
+        nextStep: "Open tenant queue",
+        chip: "Waiting",
+        tone: "primary",
+        score: 45,
+        date: dashboardOverview.as_of,
+        dateLabel: "Waiting",
+        icon: <CalendarClock size={16} />,
+      });
+    }
+  }
+  overviewCommandCenterItems.sort(commandCenterSort);
   const commandCenterCounts = {
     intake: smartReviewIntakes.length + failedIntakes.length,
     billing: rankedBillingIssues.length,
@@ -3246,12 +3444,66 @@ export function Dashboard({
       rankedSubmittedOnboardings.length + urgentOnboardingFollowUps.length,
     operations: urgentObligations.length,
   };
+  const overviewCommandCenterCounts = {
+    intake: overviewDocumentNeedsReviewCount + overviewDocumentFailedCount,
+    billing: overviewBillingBlockerCount,
+    onboarding: overviewOnboardingSubmittedCount + overviewOnboardingSentCount,
+    operations: overviewOperationsCount,
+  };
+  const commandCenterDetailsReady =
+    demoMode ||
+    Boolean(
+      documentIntakesQuery.data &&
+      rentRollQuery.data &&
+      onboardingQuery.data &&
+      obligationsQuery.data,
+    );
+  const displayedCommandCenterItems =
+    commandCenterDetailsReady || !dashboardOverview
+      ? commandCenterItems
+      : overviewCommandCenterItems;
+  const displayedCommandCenterCounts =
+    commandCenterDetailsReady || !dashboardOverview
+      ? commandCenterCounts
+      : overviewCommandCenterCounts;
   const commandCenterLoading =
     !demoMode &&
+    !dashboardOverview &&
     (documentIntakesLoading ||
       rentRollLoading ||
       onboardingLoading ||
       obligationsLoading);
+  const operationsMetricLoading = obligationsLoading && !dashboardOverview;
+  const operationsMetricCount =
+    demoMode || obligationsQuery.data
+      ? urgentObligations.length
+      : overviewOperationsCount;
+  const operationsMetricChip = operationsMetricCount ? "Act now" : "Clear";
+  const operationsMetricTone = operationsMetricCount ? "warning" : "success";
+  const operationsMetricNextAction =
+    urgentObligations[0]?.title ??
+    (operationsMetricCount
+      ? "Review overdue and due-soon lease work."
+      : "No urgent dates need action.");
+  const billingMetricLoading = rentRollLoading && !dashboardOverview;
+  const billingMetricCount =
+    demoMode || rentRollQuery.data
+      ? billingIssues.length
+      : overviewBillingBlockerCount;
+  const billingMetricNextAction =
+    billingIssues[0]?.blockers[0] ??
+    (billingMetricCount
+      ? "Review blocked billing rows."
+      : "Invoice run is ready from current data.");
+  const reviewMetricLoading = documentIntakesLoading && !dashboardOverview;
+  const reviewMetricCount =
+    demoMode || documentIntakesQuery.data
+      ? needsReviewCount
+      : overviewDocumentNeedsReviewCount;
+  const failedIntakeMetricCount =
+    demoMode || documentIntakesQuery.data
+      ? failedIntakeCount
+      : overviewDocumentFailedCount;
 
   function uploadSmartIntake(file: File | null | undefined) {
     if (!file || !selectedEntityId || documentIntakeMutation.isPending) {
@@ -3336,7 +3588,7 @@ export function Dashboard({
               ? "Smart Intake"
               : demoMode
                 ? "Leasium demo portfolio"
-                : (selectedEntity?.name ?? "Dashboard")
+                : (selectedEntityName ?? "Dashboard")
           }
           description={
             isIntakeWorkspace
@@ -3357,6 +3609,7 @@ export function Dashboard({
               <SecondaryButton
                 type="button"
                 onClick={() => {
+                  dashboardOverviewQuery.refetch();
                   propertiesQuery.refetch();
                   tenantsQuery.refetch();
                   obligationsQuery.refetch();
@@ -3385,6 +3638,7 @@ export function Dashboard({
               type="button"
               onClick={() => {
                 entitiesQuery.refetch();
+                dashboardOverviewQuery.refetch();
                 propertiesQuery.refetch();
                 tenantsQuery.refetch();
                 obligationsQuery.refetch();
@@ -3401,10 +3655,10 @@ export function Dashboard({
 
         {dashboardLoading && !dashboardError ? (
           <SectionPanel
-            title="Loading live portfolio"
+            title="Checking live portfolio"
             description={
-              selectedEntity?.name
-                ? `Checking records for ${selectedEntity.name}.`
+              selectedEntityName
+                ? `Checking records for ${selectedEntityName}.`
                 : "Connecting to the live portfolio and selecting an entity."
             }
             icon={<Loader2 size={17} className="animate-spin text-primary" />}
@@ -3412,7 +3666,7 @@ export function Dashboard({
               dashboardRefreshing ? (
                 <StatusBadge tone="primary">Refreshing</StatusBadge>
               ) : (
-                <StatusBadge tone="neutral">Loading</StatusBadge>
+                <StatusBadge tone="neutral">Checking</StatusBadge>
               )
             }
             className="border-primary/20 bg-primary/5"
@@ -3433,10 +3687,10 @@ export function Dashboard({
 
         {!isIntakeWorkspace ? (
           <DashboardCommandCenter
-            items={commandCenterItems}
+            items={displayedCommandCenterItems}
             loading={commandCenterLoading}
             refreshing={dashboardRefreshing}
-            counts={commandCenterCounts}
+            counts={displayedCommandCenterCounts}
           />
         ) : null}
 
@@ -3451,27 +3705,13 @@ export function Dashboard({
           <DashboardMetricCard
             href="/operations"
             label="Operations"
-            count={obligationsLoading ? "..." : urgentObligations.length}
-            chip={
-              obligationsLoading
-                ? "Loading…"
-                : urgentObligations.length
-                  ? "Act now"
-                  : "Clear"
-            }
-            tone={
-              obligationsLoading
-                ? "neutral"
-                : urgentObligations.length
-                  ? "warning"
-                  : "success"
-            }
+            count={operationsMetricLoading ? "Checking" : operationsMetricCount}
+            chip={operationsMetricLoading ? "Checking" : operationsMetricChip}
+            tone={operationsMetricLoading ? "neutral" : operationsMetricTone}
             nextAction={
-              obligationsLoading
-                ? "Loading key dates."
-                : urgentObligations[0]
-                  ? urgentObligations[0].title
-                  : "No urgent dates need action."
+              operationsMetricLoading
+                ? "Checking key dates."
+                : operationsMetricNextAction
             }
             icon={<AlertTriangle size={17} />}
             trend={obligationsTrend}
@@ -3479,52 +3719,50 @@ export function Dashboard({
           <DashboardMetricCard
             href="/billing-readiness"
             label="Billing blockers"
-            count={rentRollLoading ? "..." : billingIssues.length}
+            count={billingMetricLoading ? "Checking" : billingMetricCount}
             chip={
-              rentRollLoading
-                ? "Loading…"
-                : billingIssues.length
+              billingMetricLoading
+                ? "Checking"
+                : billingMetricCount
                   ? "Blocked"
                   : "Ready"
             }
             tone={
-              rentRollLoading
+              billingMetricLoading
                 ? "neutral"
-                : billingIssues.length
+                : billingMetricCount
                   ? "danger"
                   : "success"
             }
             nextAction={
-              rentRollLoading
-                ? "Loading billing readiness."
-                : billingIssues[0]
-                  ? billingIssues[0].blockers[0]
-                  : "Invoice run is ready from current data."
+              billingMetricLoading
+                ? "Checking billing readiness."
+                : billingMetricNextAction
             }
             icon={<ReceiptText size={17} />}
           />
           <DashboardMetricCard
             href="/intake"
             label="Needs review"
-            count={documentIntakesLoading ? "..." : needsReviewCount}
+            count={reviewMetricLoading ? "Preparing" : reviewMetricCount}
             chip={
-              documentIntakesLoading
-                ? "Loading…"
-                : needsReviewCount
+              reviewMetricLoading
+                ? "Preparing"
+                : reviewMetricCount
                   ? "Review"
                   : "Empty"
             }
             tone={
-              documentIntakesLoading
+              reviewMetricLoading
                 ? "neutral"
-                : needsReviewCount
+                : reviewMetricCount
                   ? "primary"
                   : "neutral"
             }
             nextAction={
-              documentIntakesLoading
-                ? "Loading review queue."
-                : needsReviewCount
+              reviewMetricLoading
+                ? "Preparing review queue."
+                : reviewMetricCount
                   ? "Approve extracted document data."
                   : "Drop documents into Smart Intake."
             }
@@ -3533,25 +3771,25 @@ export function Dashboard({
           <DashboardMetricCard
             href="/intake"
             label="Blocked docs"
-            count={documentIntakesLoading ? "..." : failedIntakeCount}
+            count={reviewMetricLoading ? "Checking" : failedIntakeMetricCount}
             chip={
-              documentIntakesLoading
-                ? "Loading…"
-                : failedIntakeCount
+              reviewMetricLoading
+                ? "Checking"
+                : failedIntakeMetricCount
                   ? "Fix"
                   : "Clear"
             }
             tone={
-              documentIntakesLoading
+              reviewMetricLoading
                 ? "neutral"
-                : failedIntakeCount
+                : failedIntakeMetricCount
                   ? "danger"
                   : "success"
             }
             nextAction={
-              documentIntakesLoading
+              reviewMetricLoading
                 ? "Checking document reads."
-                : failedIntakeCount
+                : failedIntakeMetricCount
                   ? "Review documents Leasium could not read."
                   : "No intake failures right now."
             }
@@ -3621,7 +3859,7 @@ export function Dashboard({
                     )}
                     <span className="text-leasium-body-compact font-semibold leading-5">
                       {documentIntakeMutation.isPending
-                        ? "Uploading document..."
+                        ? "Uploading document"
                         : "Drop a document here"}
                     </span>
                     <span className="max-w-sm text-sm leading-5 text-muted-foreground">
@@ -3707,7 +3945,7 @@ export function Dashboard({
                         tone={needsReviewCount ? "primary" : "neutral"}
                       >
                         {documentIntakesLoading
-                          ? "Loading…"
+                          ? "Preparing"
                           : `${needsReviewCount} waiting`}
                       </StatusBadge>
                     </div>
@@ -3847,6 +4085,7 @@ export function Dashboard({
               <RegisterImportPanel
                 entityId={selectedEntityId}
                 onApplied={() => {
+                  dashboardOverviewQuery.refetch();
                   propertiesQuery.refetch();
                   tenantsQuery.refetch();
                   obligationsQuery.refetch();
@@ -3864,13 +4103,17 @@ export function Dashboard({
                       Waiting on tenants
                     </span>
                     <span className="font-semibold">
-                      {onboardingLoading ? "..." : activeOnboardings.length}
+                      {onboardingLoading
+                        ? "Checking"
+                        : activeOnboardings.length}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Submitted</span>
                     <span className="font-semibold">
-                      {onboardingLoading ? "..." : submittedOnboardings.length}
+                      {onboardingLoading
+                        ? "Updating"
+                        : submittedOnboardings.length}
                     </span>
                   </div>
                   <Link
@@ -4132,7 +4375,6 @@ export function Dashboard({
         <AskLeasiumPanel entityId={selectedEntityId} />
 
         <ActivityFeedPanel entityId={selectedEntityId} />
-
       </div>
     </main>
   );

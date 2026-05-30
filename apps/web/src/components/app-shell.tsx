@@ -10,8 +10,6 @@ import {
   Home,
   Keyboard,
   Menu,
-  Monitor,
-  Moon,
   Search,
   Settings as SettingsIcon,
   Sparkles,
@@ -34,7 +32,7 @@ import { cn } from "@/lib/utils";
 const COMMS_BADGE_ENTITY_KEY = "leasium.entity_id";
 const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
 const APPEARANCE_STORAGE_KEY = "leasium.appearance";
-type AppearanceMode = "system" | "light" | "dark";
+type AppearanceMode = "light";
 
 function useCommsBadge(): { urgent: number; total: number } | null {
   const [entityId, setEntityId] = useState<string | null>(null);
@@ -63,10 +61,17 @@ function useCommsBadge(): { urgent: number; total: number } | null {
     queryKey: ["comms-queue-counts", entityId],
     queryFn: () => getCommsQueueCounts(entityId ?? ""),
     enabled: Boolean(entityId),
-    // The sidebar fires this on every page mount; cache for 60s to keep
-    // the badge fresh without thrashing the API.
-    staleTime: 60_000,
-    refetchOnWindowFocus: true,
+    // The sidebar fires this on every page mount; cache for 5 minutes so the
+    // badge stays fresh without re-running the queue scan on every navigation.
+    // `/comms/queue/counts` runs the full set of queue scanners server-side
+    // (it is far from the "lightweight" call its name implies), so we do NOT
+    // refetch on window focus — re-scanning every time the operator tabs back
+    // to Leasium just hogs a backend worker and slows the page they're loading.
+    // This keeps the root QueryClient's no-focus-refetch policy intact for the
+    // one query that opted out of it. (See backend perf note: the counts
+    // endpoint should compute counts without building full candidate payloads.)
+    staleTime: 300_000,
+    refetchOnWindowFocus: false,
   });
   return countsQuery.data
     ? { urgent: countsQuery.data.urgent, total: countsQuery.data.total }
@@ -277,6 +282,7 @@ const headerUtilityInlineButtonClass = cn(
   "inline-flex",
   headerUtilityButtonClass,
 );
+const shellLinkProps = { prefetch: false };
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -295,6 +301,7 @@ function OperatorUserControl() {
 
   return (
     <Link
+      {...shellLinkProps}
       href="/sign-in"
       className="inline-flex h-11 items-center rounded-lg px-3 text-sm font-semibold text-slate transition duration-200 ease-leasium hover:bg-muted"
     >
@@ -303,50 +310,32 @@ function OperatorUserControl() {
   );
 }
 
-function applyAppearance(mode: AppearanceMode) {
+function applyAppearance(mode: AppearanceMode = "light") {
   if (typeof window === "undefined") return;
-  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const theme =
-    mode === "dark" || (mode === "system" && prefersDark) ? "dark" : "light";
-  document.documentElement.dataset.theme = theme;
+  window.localStorage.setItem(APPEARANCE_STORAGE_KEY, mode);
+  document.documentElement.dataset.theme = "light";
   document.documentElement.dataset.appearance = mode;
-  document.documentElement.style.colorScheme = theme;
+  document.documentElement.style.colorScheme = "light";
 }
 
 function AppearanceToggle() {
-  const [mode, setMode] = useState<AppearanceMode>("system");
+  const [mode, setMode] = useState<AppearanceMode>("light");
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
-    const initial: AppearanceMode =
-      stored === "light" || stored === "dark" || stored === "system"
-        ? stored
-        : "system";
-    setMode(initial);
-    applyAppearance(initial);
+    applyAppearance("light");
 
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    function syncSystemPreference() {
-      const current = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
-      if (!current || current === "system") {
-        applyAppearance("system");
-      }
-    }
     function syncStoredPreference() {
-      const current = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
-      const next: AppearanceMode =
-        current === "light" || current === "dark" || current === "system"
-          ? current
-          : "system";
-      setMode(next);
-      applyAppearance(next);
+      setMode("light");
+      applyAppearance("light");
     }
-    media.addEventListener("change", syncSystemPreference);
-    window.addEventListener("storage", syncStoredPreference);
+    function onStorage(event: StorageEvent) {
+      if (event.key && event.key !== APPEARANCE_STORAGE_KEY) return;
+      syncStoredPreference();
+    }
+    window.addEventListener("storage", onStorage);
     window.addEventListener("leasium:appearance-change", syncStoredPreference);
     return () => {
-      media.removeEventListener("change", syncSystemPreference);
-      window.removeEventListener("storage", syncStoredPreference);
+      window.removeEventListener("storage", onStorage);
       window.removeEventListener(
         "leasium:appearance-change",
         syncStoredPreference,
@@ -354,29 +343,21 @@ function AppearanceToggle() {
     };
   }, []);
 
-  const nextMode: AppearanceMode =
-    mode === "system" ? "light" : mode === "light" ? "dark" : "system";
-  const Icon = mode === "dark" ? Moon : mode === "light" ? Sun : Monitor;
-  const label =
-    mode === "system"
-      ? "Appearance: system"
-      : mode === "light"
-        ? "Appearance: light"
-        : "Appearance: dark";
+  const label = `Appearance: ${mode}. Light mode is locked for MVP`;
 
   return (
     <button
       type="button"
-      onClick={() => {
-        window.localStorage.setItem(APPEARANCE_STORAGE_KEY, nextMode);
-        setMode(nextMode);
-        applyAppearance(nextMode);
-      }}
       aria-label={label}
-      title={`${label}. Click for ${nextMode}.`}
-      className={headerUtilityInlineButtonClass}
+      aria-disabled="true"
+      disabled
+      title={label}
+      className={cn(
+        headerUtilityInlineButtonClass,
+        "disabled:cursor-not-allowed disabled:opacity-80",
+      )}
     >
-      <Icon size={15} />
+      <Sun size={15} />
     </button>
   );
 }
@@ -528,6 +509,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const sidebarContent = (
     <>
       <Link
+        {...shellLinkProps}
         href="/"
         onClick={() => setMobileNavOpen(false)}
         className="flex min-w-0 items-center gap-3 px-4 py-5 md:justify-center md:px-2 lg:justify-start lg:px-4"
@@ -563,9 +545,19 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             : item.label;
           return (
             <Link
+              {...shellLinkProps}
               key={item.href}
               href={item.href}
               onClick={() => setMobileNavOpen(false)}
+              // Intent-based prefetch: warm the route bundle when the operator
+              // hovers or focuses a nav item, so the click feels instant. This
+              // is deliberately narrower than Next's default prefetch-on-render
+              // (disabled via shellLinkProps) — we only fetch the one
+              // destination the cursor is telegraphing, not every sidebar link
+              // on every page. router.prefetch is idempotent/cached, so
+              // repeated hovers are cheap.
+              onMouseEnter={() => router.prefetch(item.href)}
+              onFocus={() => router.prefetch(item.href)}
               // `title` provides a hover tooltip when the sidebar is
               // collapsed to icon-only at `md`. Labels still render at
               // sub-`md` (drawer) and `lg+` (full sidebar).
@@ -585,12 +577,13 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                   "border-l-2 border-primary bg-white/[0.12] pl-[10px] text-white md:border-l-0 md:pl-0 lg:border-l-2 lg:pl-[10px]",
               )}
             >
-              <Icon size={16} className="shrink-0" />
-              <span className="flex-1 truncate md:hidden lg:inline">
+              <Icon key="icon" size={16} className="shrink-0" />
+              <span key="label" className="flex-1 truncate md:hidden lg:inline">
                 {item.label}
               </span>
               {showCommsBadge ? (
                 <span
+                  key="comms-badge"
                   aria-hidden="true"
                   className={cn(
                     "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-leasium-micro font-semibold leading-none md:absolute md:right-0.5 md:top-1 md:h-4 md:min-w-4 md:px-1 md:text-[9px] lg:static lg:h-5 lg:min-w-5 lg:px-1.5 lg:text-leasium-micro",
@@ -719,6 +712,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               <Keyboard size={15} />
             </button>
             <Link
+              {...shellLinkProps}
               href="/notifications"
               aria-label="Open notifications"
               title="Notifications"
@@ -879,6 +873,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                     {filteredActions.map((action) => (
                       <li key={`${action.meta}-${action.label}`}>
                         <Link
+                          {...shellLinkProps}
                           href={action.href}
                           onClick={(event) => {
                             event.preventDefault();

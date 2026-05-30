@@ -102,7 +102,7 @@ export function UpcomingLeaseEventsPanel({
       <div className="grid gap-2 p-4">
         {isLoading && !overview ? (
           <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
-            Loading upcoming events.
+            Preparing upcoming events.
           </div>
         ) : events.length === 0 ? (
           <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">

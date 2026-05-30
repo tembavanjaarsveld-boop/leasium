@@ -384,7 +384,7 @@ function PublicSnapshotContent() {
 
         {snapshotQuery.isLoading ? (
           <SectionPanel
-            title="Loading snapshot"
+            title="Preparing snapshot"
             icon={<Loader2 size={17} className="animate-spin text-primary" />}
           >
             <div className="p-4 text-sm text-muted-foreground">

@@ -1,6 +1,12 @@
 "use client";
 
-import { CheckCircle2, ClipboardList, Link2, Loader2 } from "lucide-react";
+import {
+  CheckCircle2,
+  ClipboardList,
+  Link2,
+  Loader2,
+  ShieldCheck,
+} from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -67,36 +73,6 @@ export function DashboardCommandCenter({
   const shownItems = items.slice(0, 6);
   const totalCount =
     counts.intake + counts.billing + counts.onboarding + counts.operations;
-  const summaryRows = [
-    {
-      label: "Smart Intake",
-      count: counts.intake,
-      detail: "Reviews and failed reads",
-      href: "/intake",
-      tone: counts.intake ? ("primary" as const) : ("success" as const),
-    },
-    {
-      label: "Billing",
-      count: counts.billing,
-      detail: "Readiness blockers",
-      href: "/billing-readiness",
-      tone: counts.billing ? ("danger" as const) : ("success" as const),
-    },
-    {
-      label: "Onboarding",
-      count: counts.onboarding,
-      detail: "Submitted or due",
-      href: "/tenants",
-      tone: counts.onboarding ? ("primary" as const) : ("success" as const),
-    },
-    {
-      label: "Operations",
-      count: counts.operations,
-      detail: "Urgent key dates",
-      href: "/operations",
-      tone: counts.operations ? ("warning" as const) : ("success" as const),
-    },
-  ];
 
   return (
     <SectionPanel
@@ -114,9 +90,9 @@ export function DashboardCommandCenter({
           }
         >
           {loading
-            ? "Loading…"
+            ? "Checking"
             : refreshing
-              ? "Refreshing…"
+              ? "Updating"
               : totalCount
                 ? "Act today"
                 : "Clear"}
@@ -124,13 +100,13 @@ export function DashboardCommandCenter({
       }
       className="border-primary/20"
     >
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="divide-y divide-border lg:border-r lg:border-border">
+      <div>
+        <div className="divide-y divide-border">
           {loading && shownItems.length === 0 ? (
             <EmptyState
               icon={<Loader2 size={18} className="animate-spin" />}
-              title="Loading today's command center."
-              description="Checking Smart Intake, billing readiness, onboarding, and key dates."
+              title="Preparing today's command center"
+              description="Checking review queues, billing readiness, onboarding, and key dates."
             />
           ) : shownItems.length ? (
             shownItems.map((item, index) => (
@@ -182,34 +158,14 @@ export function DashboardCommandCenter({
             />
           )}
         </div>
-        <aside className="grid content-start gap-4 p-4">
-          <div className="rounded-xl bg-primary-soft px-3 py-3 text-sm text-primary-hover">
-            <div className="font-semibold">Review-first guardrail</div>
-            <p className="mt-1 leading-5">
-              Smart Intake is the gate. This surface routes work only; applying
-              stays inside reviewed workflows.
-            </p>
-          </div>
-          <div className="grid gap-3">
-            {summaryRows.map((row) => (
-              <Link
-                key={row.label}
-                href={row.href}
-                className="flex items-center justify-between gap-3 border-b border-border pb-3 text-sm transition last:border-b-0 last:pb-0 hover:text-primary"
-              >
-                <span>
-                  <span className="block font-semibold">{row.label}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {row.detail}
-                  </span>
-                </span>
-                <StatusBadge tone={row.tone}>
-                  {loading && row.count === 0 ? "..." : row.count}
-                </StatusBadge>
-              </Link>
-            ))}
-          </div>
-        </aside>
+        <div className="flex items-start gap-2 border-t border-border bg-primary-soft/40 px-4 py-2.5 text-xs leading-5 text-primary-hover">
+          <ShieldCheck size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>
+            <span className="font-semibold">Review-first.</span> This surface
+            points to the next safe step; changes still stay inside reviewed
+            workflows.
+          </span>
+        </div>
       </div>
     </SectionPanel>
   );

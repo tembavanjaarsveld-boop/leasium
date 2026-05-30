@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { OperatorAuthProvider } from "@/components/operator-auth-provider";
+import { QueryProvider } from "@/components/query-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,12 +27,10 @@ export default function RootLayout({
   const themeScript = `
     (function () {
       try {
-        var mode = window.localStorage.getItem("leasium.appearance") || "system";
-        var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-        var theme = mode === "dark" || (mode === "system" && prefersDark) ? "dark" : "light";
-        document.documentElement.dataset.theme = theme;
-        document.documentElement.dataset.appearance = mode;
-        document.documentElement.style.colorScheme = theme;
+        window.localStorage.setItem("leasium.appearance", "light");
+        document.documentElement.dataset.theme = "light";
+        document.documentElement.dataset.appearance = "light";
+        document.documentElement.style.colorScheme = "light";
       } catch (_) {}
     })();
   `;
@@ -39,7 +38,7 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable}`}
-      data-appearance="system"
+      data-appearance="light"
       data-theme="light"
       suppressHydrationWarning
     >
@@ -47,7 +46,9 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="font-sans antialiased">
-        <OperatorAuthProvider>{children}</OperatorAuthProvider>
+        <QueryProvider>
+          <OperatorAuthProvider>{children}</OperatorAuthProvider>
+        </QueryProvider>
       </body>
     </html>
   );

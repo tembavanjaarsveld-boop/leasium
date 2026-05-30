@@ -12,6 +12,10 @@ __pycache__/
 .mypy_cache/
 node_modules/
 .next/
+apps/web/test-results/
+apps/web/playwright-report/
+.playwright-cli/
+output/playwright/
 dist/
 build/
 *.egg-info/

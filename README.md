@@ -6,6 +6,8 @@ The living product roadmap is tracked in [docs/product-roadmap.md](docs/product-
 Design-facing changes require Remba UX sign-off, tracked in
 [docs/design-governance.md](docs/design-governance.md).
 Deployment notes are tracked in [docs/deployment.md](docs/deployment.md).
+The latest MVP UX/performance pass is recorded in
+[docs/mvp-ux-performance-review-2026-05-30.md](docs/mvp-ux-performance-review-2026-05-30.md).
 
 ## Quick Start
 
@@ -30,8 +32,9 @@ callbacks and SendGrid Event Webhooks.
 ## Deployment
 
 Vercel should deploy the frontend from `apps/web`. Set
-`NEXT_PUBLIC_API_BASE_URL=https://api.leasium.ai/api/v1` in Vercel. The FastAPI
-API is deployed separately and must set `FRONTEND_URL=https://leasium.ai`.
+`NEXT_PUBLIC_API_BASE_URL=/api/v1` in Vercel so the frontend uses the same-origin
+API rewrite from `apps/web/vercel.json`. The FastAPI API is deployed separately
+and must set `FRONTEND_URL=https://leasium.ai`.
 Set `LEASIUM_ACCESS_PASSWORD` in Vercel to enable the temporary private-beta
 password gate. Leave it blank locally to skip the gate.
 
@@ -44,6 +47,8 @@ password gate. Leave it blank locally to skip the gate.
 - `make test` runs the Python test suite.
 - `make lint` runs backend and frontend lint checks.
 - `make format` formats backend and frontend files.
+- `npm --prefix apps/web run audit:live` runs the repeatable live UX/performance
+  audit after a signed-in storage state has been saved.
 
 ## Modules
 

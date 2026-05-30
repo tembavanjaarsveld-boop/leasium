@@ -1469,6 +1469,48 @@ function PortalShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+function TenantPortalTrustState({
+  title,
+  detail,
+  recovery,
+  loading = false,
+}: {
+  title: string;
+  detail: string;
+  recovery?: string;
+  loading?: boolean;
+}) {
+  return (
+    <PortalShell>
+      <div className="grid min-h-[70vh] place-items-center px-5 py-8">
+        <div
+          className="grid max-w-md gap-4 rounded-md border border-border bg-white p-6 text-center"
+          role={loading ? "status" : undefined}
+        >
+          <div className="mx-auto flex size-11 items-center justify-center rounded-full border border-primary/20 bg-primary/5 text-primary">
+            {loading ? (
+              <Loader2 className="animate-spin" size={22} />
+            ) : (
+              <ShieldCheck size={22} />
+            )}
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">{title}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {detail}
+            </p>
+            {recovery ? (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {recovery}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </PortalShell>
+  );
+}
+
 type OnboardingStepState = "complete" | "current" | "waiting" | "locked";
 
 const onboardingStepTone: Record<
@@ -1544,10 +1586,10 @@ function TenantPortalOverviewPanel({
   const latestActivity = recentActivity[0] ?? null;
 
   return (
-    <section className="grid gap-3 rounded-md border border-border bg-white p-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-      <div className="grid gap-3">
+    <section className="grid gap-3 overflow-hidden rounded-md border border-border bg-white p-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid min-w-0 gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <h2 className="text-base font-semibold">Needs Attention</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Current tenant-side items before you scan the full portal.
@@ -1561,10 +1603,10 @@ function TenantPortalOverviewPanel({
           {actionItems.map((item) => (
             <div
               key={item.key}
-              className="rounded-md border border-border bg-muted/30 p-3"
+              className="min-w-0 rounded-md border border-border bg-muted/30 p-3"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="font-medium">{item.title}</div>
+                <div className="min-w-0 font-medium">{item.title}</div>
                 <StatusBadge tone={item.tone}>{label(item.tone)}</StatusBadge>
               </div>
               <p className="mt-2 text-sm text-muted-foreground">
@@ -1575,13 +1617,13 @@ function TenantPortalOverviewPanel({
         </div>
       </div>
 
-      <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm">
-        <div>
+      <div className="grid min-w-0 gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm">
+        <div className="min-w-0">
           <div className="text-xs font-semibold uppercase text-muted-foreground">
             Latest update
           </div>
           {latestActivity ? (
-            <div className="mt-2 grid gap-1">
+            <div className="mt-2 grid min-w-0 gap-1">
               <div className="font-medium">{latestActivity.title}</div>
               <div className="text-muted-foreground">
                 {latestActivity.detail}
@@ -1596,20 +1638,20 @@ function TenantPortalOverviewPanel({
             </div>
           )}
         </div>
-        <div className="grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
-          <div>
+        <div className="grid gap-2 border-t border-border pt-3 text-left sm:grid-cols-3 sm:text-center">
+          <div className="min-w-0">
             <div className="text-lg font-semibold">
               {maintenanceSummary.openCount}
             </div>
             <div className="text-xs text-muted-foreground">Open</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-lg font-semibold">
               {maintenanceSummary.inProgressCount}
             </div>
             <div className="text-xs text-muted-foreground">Working</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-lg font-semibold">
               {maintenanceSummary.completedCount}
             </div>
@@ -3492,26 +3534,21 @@ function TenantPortalContentWithoutAuth({
 
   if (invitePreviewQuery.isLoading) {
     return (
-      <main className="grid min-h-screen place-items-center bg-background p-6">
-        <Loader2 className="animate-spin text-primary" size={28} />
-      </main>
+      <TenantPortalTrustState
+        loading
+        title="Checking your tenant portal invite"
+        detail="We are confirming this secure link before showing any tenant details."
+      />
     );
   }
 
   if (invitePreviewQuery.error || !invitePreviewQuery.data) {
     return (
-      <PortalShell>
-        <div className="grid min-h-[70vh] place-items-center px-5 py-8">
-          <div className="max-w-md rounded-md border border-border bg-white p-6 text-center">
-            <LeasiumMark className="mx-auto mb-4" />
-            <h2 className="text-lg font-semibold">Invite not found</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              This invite link is no longer valid. Ask the property team for a
-              fresh tenant portal link.
-            </p>
-          </div>
-        </div>
-      </PortalShell>
+      <TenantPortalTrustState
+        title="We could not verify this tenant portal link"
+        detail="For your privacy, no tenant details are shown until the property team confirms the link."
+        recovery="Ask the property team to resend your tenant portal invite, then open the newest link."
+      />
     );
   }
 
@@ -3960,25 +3997,20 @@ function TenantPortalContent({
   if (token && !accountPortal) {
     if (invitePreviewQuery.isLoading) {
       return (
-        <main className="grid min-h-screen place-items-center bg-background p-6">
-          <Loader2 className="animate-spin text-primary" size={28} />
-        </main>
+        <TenantPortalTrustState
+          loading
+          title="Checking your tenant portal invite"
+          detail="We are confirming this secure link before showing any tenant details."
+        />
       );
     }
     if (invitePreviewQuery.error || !invitePreviewQuery.data) {
       return (
-        <PortalShell>
-          <div className="grid min-h-[70vh] place-items-center px-5 py-8">
-            <div className="max-w-md rounded-md border border-border bg-white p-6 text-center">
-              <LeasiumMark className="mx-auto mb-4" />
-              <h2 className="text-lg font-semibold">Invite not found</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                This invite link is no longer valid. Ask the property team for a
-                fresh tenant portal link.
-              </p>
-            </div>
-          </div>
-        </PortalShell>
+        <TenantPortalTrustState
+          title="We could not verify this tenant portal link"
+          detail="For your privacy, no tenant details are shown until the property team confirms the link."
+          recovery="Ask the property team to resend your tenant portal invite, then open the newest link."
+        />
       );
     }
     const preview = invitePreviewQuery.data;
@@ -4181,25 +4213,21 @@ function TenantPortalContent({
 
   if (portalQuery.isLoading && !portal) {
     return (
-      <main className="grid min-h-screen place-items-center bg-background p-6">
-        <Loader2 className="animate-spin text-primary" size={28} />
-      </main>
+      <TenantPortalTrustState
+        loading
+        title="Opening your tenant portal"
+        detail="We are checking your account access before showing tenant documents, payments, or maintenance history."
+      />
     );
   }
 
   if ((portalQuery.error && !accountPortal) || !portal) {
     return (
-      <PortalShell>
-        <div className="grid min-h-[70vh] place-items-center px-5 py-8">
-          <div className="max-w-md rounded-md border border-border bg-white p-6 text-center">
-            <LeasiumMark className="mx-auto mb-4" />
-            <h2 className="text-lg font-semibold">Portal unavailable</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Ask the property team for a fresh tenant portal link.
-            </p>
-          </div>
-        </div>
-      </PortalShell>
+      <TenantPortalTrustState
+        title="We could not open this tenant portal"
+        detail="No tenant details were changed. Your portal may need a fresh invite or a tenant account relink."
+        recovery="Ask the property team to resend your tenant portal invite, then open the newest link."
+      />
     );
   }
 

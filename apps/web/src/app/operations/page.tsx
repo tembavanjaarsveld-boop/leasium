@@ -95,6 +95,7 @@ const EMPTY_MEMBERS: SecurityMemberRecord[] = [];
 const WORK_ASSIGNMENT_KEY = "work_assignment";
 const WORK_ASSIGNMENT_TEMPLATE_KEY = "work_assignment_notification";
 const WORK_ASSIGNMENT_TEMPLATE_VERSION = "v1";
+const OPERATIONS_METRIC_LOADING_LABEL = "Checking";
 const OPERATIONS_QUEUE_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not send SendGrid or Twilio messages, send tenant owner or provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records.";
 
@@ -2605,14 +2606,14 @@ function OperationsWorkspace() {
 
         {operationsLoading ? (
           <SectionPanel
-            title="Loading operations"
+            title="Checking operations"
             description={
               selectedEntity
                 ? selectedEntity.name
                 : "Finding the active entity."
             }
             icon={<RefreshCw size={17} className="animate-spin text-primary" />}
-            actions={<StatusBadge tone="neutral">Loading</StatusBadge>}
+            actions={<StatusBadge tone="neutral">Checking</StatusBadge>}
             className="border-primary/20 bg-primary/5"
           >
             <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-3">
@@ -2645,31 +2646,51 @@ function OperationsWorkspace() {
               <MetricCard
                 icon={<AlertTriangle size={17} className="text-primary" />}
                 label="Urgent maintenance"
-                value={operationsLoading ? "..." : urgentMaintenance.length}
+                value={
+                  operationsLoading
+                    ? OPERATIONS_METRIC_LOADING_LABEL
+                    : urgentMaintenance.length
+                }
                 description="High and urgent open work."
               />
               <MetricCard
                 icon={<ShieldCheck size={17} className="text-primary" />}
                 label="Awaiting approval"
-                value={operationsLoading ? "..." : awaitingApproval.length}
+                value={
+                  operationsLoading
+                    ? OPERATIONS_METRIC_LOADING_LABEL
+                    : awaitingApproval.length
+                }
                 description="Quotes or works needing approval."
               />
               <MetricCard
                 icon={<HandCoins size={17} className="text-primary" />}
                 label="Active arrears"
-                value={operationsLoading ? "..." : activeArrears.length}
+                value={
+                  operationsLoading
+                    ? OPERATIONS_METRIC_LOADING_LABEL
+                    : activeArrears.length
+                }
                 description="Open credit-control cases."
               />
               <MetricCard
                 icon={<FileWarning size={17} className="text-primary" />}
                 label="Disputed"
-                value={operationsLoading ? "..." : disputedArrears.length}
+                value={
+                  operationsLoading
+                    ? OPERATIONS_METRIC_LOADING_LABEL
+                    : disputedArrears.length
+                }
                 description="Raised or escalated disputes."
               />
               <MetricCard
                 icon={<Clock3 size={17} className="text-primary" />}
                 label="Reminders due"
-                value={operationsLoading ? "..." : remindersDue.length}
+                value={
+                  operationsLoading
+                    ? OPERATIONS_METRIC_LOADING_LABEL
+                    : remindersDue.length
+                }
                 description="Arrears follow-ups due now."
               />
             </section>
@@ -2789,10 +2810,10 @@ function OperationsWorkspace() {
                 description={selectedEntity?.name ?? "Current entity"}
                 icon={<ClipboardList size={17} className="text-primary" />}
                 actions={
-                  <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end xl:w-auto">
                     <SecondaryButton
                       type="button"
-                      className="h-10 px-3"
+                      className="h-10 w-full px-3 sm:w-auto"
                       disabled={!selectedEntityId || operationsLoading}
                       onClick={downloadQueueCsv}
                     >
@@ -2801,7 +2822,7 @@ function OperationsWorkspace() {
                     </SecondaryButton>
                     <SecondaryButton
                       type="button"
-                      className="h-10 px-3"
+                      className="h-10 w-full px-3 sm:w-auto"
                       disabled={
                         assignmentPending || readyNotificationItems.length === 0
                       }
@@ -2827,14 +2848,14 @@ function OperationsWorkspace() {
                           event.target.value as WorkAssignmentDigestCadence,
                         )
                       }
-                      className="w-36"
+                      className="w-full sm:w-36"
                     >
                       <option value="daily">Daily digest</option>
                       <option value="weekly">Weekly digest</option>
                     </Select>
                     <SecondaryButton
                       type="button"
-                      className="h-10 px-3"
+                      className="h-10 w-full px-3 sm:w-auto"
                       disabled={
                         !selectedEntityId ||
                         workAssignmentDigestMutation.isPending
@@ -2850,7 +2871,7 @@ function OperationsWorkspace() {
                     </SecondaryButton>
                     <SecondaryButton
                       type="button"
-                      className="h-10 px-3"
+                      className="h-10 w-full px-3 sm:w-auto"
                       disabled={
                         !selectedEntityId ||
                         workAssignmentDigestMutation.isPending
@@ -2866,7 +2887,7 @@ function OperationsWorkspace() {
                       onChange={(event) =>
                         setAssigneeFilter(event.target.value as AssigneeFilter)
                       }
-                      className="w-52"
+                      className="w-full sm:w-52"
                     >
                       <option value="all">All open work</option>
                       <option value="unassigned">Unassigned</option>
@@ -4171,7 +4192,7 @@ function WorkAssignmentControl({
         >
           <option value="">
             {membersLoading
-              ? "Loading members"
+              ? "Checking members"
               : hasMembers
                 ? "Choose assignee"
                 : "No members"}

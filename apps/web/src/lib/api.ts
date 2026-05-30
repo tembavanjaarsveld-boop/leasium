@@ -2176,6 +2176,60 @@ export type InsightsOverviewRecord = {
   guardrails: string[];
 };
 
+export type DashboardOverviewEntityRecord = {
+  id: string;
+  name: string;
+};
+
+export type DashboardOverviewCountsRecord = {
+  property_count: number;
+  tenant_count: number;
+  open_obligation_count: number;
+  overdue_obligation_count: number;
+  due_soon_obligation_count: number;
+};
+
+export type DashboardOverviewRentRollRecord = {
+  unit_count: number;
+  occupied_unit_count: number;
+  vacant_unit_count: number;
+  active_lease_count: number;
+  annual_rent_cents: number;
+  charge_rules_total_cents: number;
+  ready_to_bill_count: number;
+  blocked_row_count: number;
+};
+
+export type DashboardOverviewIntakeRecord = {
+  document_counts: Record<string, number>;
+  document_waiting_count: number;
+  onboarding_counts: Record<string, number>;
+  onboarding_waiting_count: number;
+};
+
+export type DashboardOverviewLeaseEventRecord = {
+  id: string;
+  kind: "rent_review" | "lease_expiry" | "obligation" | "tenant_onboarding";
+  date: string | null;
+  lease_id: string | null;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  property_id: string | null;
+  property_name: string | null;
+  tenancy_unit_id: string | null;
+  unit_label: string | null;
+  title: string;
+};
+
+export type DashboardOverviewRecord = {
+  entity: DashboardOverviewEntityRecord;
+  as_of: string;
+  counts: DashboardOverviewCountsRecord;
+  rent_roll: DashboardOverviewRentRollRecord;
+  intake: DashboardOverviewIntakeRecord;
+  upcoming_lease_events: DashboardOverviewLeaseEventRecord[];
+};
+
 export type InsightsSnapshotType = "owner" | "finance" | "lease_events";
 
 export type InsightsSnapshotRecord = {
@@ -2424,17 +2478,76 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const API_ROOT = API_BASE.replace(/\/api\/v1\/?$/, "");
 
-let authTokenProvider: (() => Promise<string | null>) | null = null;
+type AuthTokenProvider = () => Promise<string | null>;
 
-export function setApiAuthTokenProvider(
-  provider: (() => Promise<string | null>) | null,
-) {
+let authTokenProvider: AuthTokenProvider | null = null;
+let cachedAuthToken: { token: string; expiresAt: number } | null = null;
+let pendingAuthToken: Promise<string | null> | null = null;
+
+export function setApiAuthTokenProvider(provider: AuthTokenProvider | null) {
   authTokenProvider = provider;
+  cachedAuthToken = null;
+  pendingAuthToken = null;
+}
+
+export async function primeApiAuthToken() {
+  await cachedToken();
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const token = authTokenProvider ? await authTokenProvider() : null;
+  const token = await cachedToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function cachedToken(): Promise<string | null> {
+  if (!authTokenProvider) {
+    return null;
+  }
+  const now = Date.now();
+  if (cachedAuthToken && cachedAuthToken.expiresAt > now) {
+    return cachedAuthToken.token;
+  }
+  if (pendingAuthToken) {
+    return pendingAuthToken;
+  }
+
+  pendingAuthToken = authTokenProvider()
+    .then((token) => {
+      cachedAuthToken = token
+        ? { token, expiresAt: authTokenCacheExpiry(token) }
+        : null;
+      return token;
+    })
+    .finally(() => {
+      pendingAuthToken = null;
+    });
+  return pendingAuthToken;
+}
+
+function authTokenCacheExpiry(token: string) {
+  const jwtExpiry = jwtExpiryMs(token);
+  if (jwtExpiry) {
+    return Math.max(Date.now(), jwtExpiry - 15_000);
+  }
+  return Date.now() + 55_000;
+}
+
+function jwtExpiryMs(token: string) {
+  const [, payload] = token.split(".");
+  if (!payload) {
+    return null;
+  }
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(
+      normalized.length + ((4 - (normalized.length % 4)) % 4),
+      "=",
+    );
+    const parsed = JSON.parse(atob(padded)) as { exp?: unknown };
+    return typeof parsed.exp === "number" ? parsed.exp * 1000 : null;
+  } catch {
+    return null;
+  }
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -2473,7 +2586,9 @@ async function requestWithAuthOption<T>(
   includeAuth: boolean,
 ): Promise<T> {
   const headers = new Headers(init?.headers);
-  headers.set("Content-Type", "application/json");
+  if (init?.body !== undefined && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   if (includeAuth) {
     for (const [key, value] of Object.entries(await authHeaders())) {
       headers.set(key, value);
@@ -3026,6 +3141,16 @@ export function getInsightsOverview(entityId: string, asOf?: string) {
   }
   return request<InsightsOverviewRecord>(
     `/insights/overview?${params.toString()}`,
+  );
+}
+
+export function getDashboardOverview(entityId: string, asOf?: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  if (asOf) {
+    params.set("as_of", asOf);
+  }
+  return request<DashboardOverviewRecord>(
+    `/dashboard/overview?${params.toString()}`,
   );
 }
 
@@ -4788,7 +4913,9 @@ export function getTenantCommsCorrespondence(tenantId: string) {
   );
 }
 
-export function getMaintenanceWorkOrderCommsCorrespondence(workOrderId: string) {
+export function getMaintenanceWorkOrderCommsCorrespondence(
+  workOrderId: string,
+) {
   return request<CommsMaintenanceWorkOrderCorrespondenceRecord>(
     `/comms/correspondence/maintenance-work-orders/${workOrderId}`,
   );

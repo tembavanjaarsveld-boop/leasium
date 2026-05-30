@@ -868,10 +868,10 @@ function InsightsWorkspace() {
 
         {isOverviewLoading ? (
           <SectionPanel
-            title="Loading live insights"
+            title="Checking live insights"
             description="Preparing the latest portfolio, exception, billing, and owner/entity view."
             icon={<Loader2 size={17} className="animate-spin text-primary" />}
-            actions={<StatusBadge tone="neutral">Loading</StatusBadge>}
+            actions={<StatusBadge tone="neutral">Checking</StatusBadge>}
             className="border-primary/20 bg-primary/5"
           >
             <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">

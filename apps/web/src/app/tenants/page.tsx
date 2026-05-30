@@ -63,6 +63,9 @@ const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 type FilterKey = "all" | "needs_onboarding" | "sent" | "submitted" | "overdue" | "cancelled";
 
+const tenantActionLinkClass =
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted";
+
 type InviteForm = {
   property_id: string;
   tenancy_unit_id: string;
@@ -599,26 +602,46 @@ function TenantWorkspace() {
 
         <section className="grid gap-3 md:grid-cols-4">
           <div className="rounded-md border border-border bg-white p-4">
-            <div className="text-2xl font-semibold">
-              {tenantsLoading ? "..." : counts.all}
+            <div
+              className={cn(
+                "font-semibold",
+                tenantsLoading ? "text-sm" : "text-2xl",
+              )}
+            >
+              {tenantsLoading ? "Checking" : counts.all}
             </div>
             <div className="mt-1 text-sm text-muted-foreground">Tenants</div>
           </div>
           <div className="rounded-md border border-border bg-white p-4">
-            <div className="text-2xl font-semibold">
-              {tenantsLoading ? "..." : counts.sent}
+            <div
+              className={cn(
+                "font-semibold",
+                tenantsLoading ? "text-sm" : "text-2xl",
+              )}
+            >
+              {tenantsLoading ? "Checking" : counts.sent}
             </div>
             <div className="mt-1 text-sm text-muted-foreground">Waiting on tenants</div>
           </div>
           <div className="rounded-md border border-border bg-white p-4">
-            <div className="text-2xl font-semibold">
-              {tenantsLoading ? "..." : counts.submitted}
+            <div
+              className={cn(
+                "font-semibold",
+                tenantsLoading ? "text-sm" : "text-2xl",
+              )}
+            >
+              {tenantsLoading ? "Checking" : counts.submitted}
             </div>
             <div className="mt-1 text-sm text-muted-foreground">Submitted for review</div>
           </div>
           <div className="rounded-md border border-border bg-white p-4">
-            <div className="text-2xl font-semibold">
-              {tenantsLoading ? "..." : counts.overdue}
+            <div
+              className={cn(
+                "font-semibold",
+                tenantsLoading ? "text-sm" : "text-2xl",
+              )}
+            >
+              {tenantsLoading ? "Checking" : counts.overdue}
             </div>
             <div className="mt-1 text-sm text-muted-foreground">Overdue</div>
           </div>
@@ -925,11 +948,14 @@ function TenantWorkspace() {
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap gap-2">
-                        <Link href={`/tenants/${tenant.id}`}>
-                          <SecondaryButton type="button">
-                            <UserRound size={15} />
-                            {onboardingNeedsContactFix(onboarding?.delivery_data) ? "Fix contact" : "Open"}
-                          </SecondaryButton>
+                        <Link
+                          href={`/tenants/${tenant.id}`}
+                          className={tenantActionLinkClass}
+                        >
+                          <UserRound size={15} />
+                          {onboardingNeedsContactFix(onboarding?.delivery_data)
+                            ? "Fix contact"
+                            : "Open"}
                         </Link>
                         {onboarding?.status === "sent" &&
                         onboarding.onboarding_url &&
@@ -978,14 +1004,14 @@ function TenantWorkspace() {
                   ? statusTone(onboarding.status, onboarding.due_date)
                   : "warning";
                 return (
-                  <li key={tenant.id}>
+                  <li key={tenant.id} data-testid="tenant-mobile-row">
                     <button
                       type="button"
                       onClick={() => setDrawerTenantId(tenant.id)}
-                      className="grid w-full gap-1.5 px-3 py-3 text-left transition active:bg-muted/60"
+                      className="grid min-h-11 w-full gap-1.5 px-3 py-3 text-left transition active:bg-muted/60"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-primary">
+                        <span className="min-w-0 break-words font-medium leading-5 text-primary">
                           {tenantName(tenant)}
                         </span>
                         <StatusBadge tone={onboardingTone}>
@@ -1012,6 +1038,41 @@ function TenantWorkspace() {
                         </div>
                       ) : null}
                     </button>
+                    <div className="flex flex-wrap gap-2 px-3 pb-3">
+                      <Link
+                        href={`/tenants/${tenant.id}`}
+                        className={cn(tenantActionLinkClass, "min-w-[8rem] flex-1 rounded-lg px-3")}
+                      >
+                        <UserRound size={15} />
+                        {needsFix ? "Fix contact" : "Open"}
+                      </Link>
+                      {onboarding?.status === "sent" &&
+                      onboarding.onboarding_url &&
+                      !isExpiredDateTime(onboarding.expires_at) ? (
+                        <SecondaryButton
+                          type="button"
+                          className="min-w-[8rem] flex-1 rounded-lg px-3"
+                          onClick={() =>
+                            navigator.clipboard.writeText(
+                              onboarding.onboarding_url,
+                            )
+                          }
+                        >
+                          <ClipboardCopy size={15} />
+                          Copy link
+                        </SecondaryButton>
+                      ) : null}
+                      {onboarding?.status === "sent" ? (
+                        <SecondaryButton
+                          type="button"
+                          className="min-w-[8rem] flex-1 rounded-lg px-3"
+                          onClick={() => cancelMutation.mutate(onboarding.id)}
+                        >
+                          <X size={15} />
+                          Cancel
+                        </SecondaryButton>
+                      ) : null}
+                    </div>
                   </li>
                 );
               })}

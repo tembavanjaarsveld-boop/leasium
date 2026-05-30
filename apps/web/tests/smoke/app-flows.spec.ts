@@ -182,9 +182,15 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   ).toBeVisible();
 
   await page.getByRole("tab", { name: /Review drafts/ }).click();
-  await expect(page.getByText("May rent and outgoings")).toBeVisible();
+  const billingDraftTable = page.locator("table").filter({
+    hasText: "May rent and outgoings",
+  });
+  await expect(billingDraftTable).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /Intake intake-1/ }),
+    billingDraftTable.getByText("May rent and outgoings"),
+  ).toBeVisible();
+  await expect(
+    billingDraftTable.getByRole("link", { name: /Intake intake-1/ }),
   ).toHaveAttribute("href", "/intake?entity_id=entity-1&review=intake-1");
 
   await page.getByRole("tab", { name: /Approve invoices/ }).click();
@@ -2755,7 +2761,7 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText("Fresh portal link copied.")).toBeVisible();
 });
 
-test("tenant detail collapses provider detail on mobile only", async ({
+test("tenant detail keeps provider detail in one responsive surface", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -2764,37 +2770,32 @@ test("tenant detail collapses provider detail on mobile only", async ({
   await expect(
     page.getByRole("heading", { name: /Bright Cafe/ }),
   ).toBeVisible();
-  const providerDetail = page.getByTestId("mobile-provider-detail");
-  const desktopProviderDetail = page.getByTestId("desktop-provider-detail");
+  const providerDetail = page.getByTestId("provider-detail");
   const providerSummary = providerDetail
     .locator("summary")
     .filter({ hasText: "Provider detail" });
   await expect(providerDetail).toBeVisible();
-  await expect(desktopProviderDetail).toBeHidden();
+  await expect(page.getByTestId("provider-detail")).toHaveCount(1);
   await expectTouchTarget(providerSummary);
   const remindersLabel = providerDetail
     .locator("dt")
     .filter({ hasText: /^Reminders$/ });
+  await expect(remindersLabel).toHaveCount(1);
   await expect(remindersLabel).not.toBeVisible();
   await providerSummary.click();
   await expect(remindersLabel).toBeVisible();
   await expect(providerDetail.getByText("Last sent")).toBeVisible();
 
   await page.setViewportSize({ width: 1024, height: 844 });
-  await page.reload();
-  await expect(page.getByTestId("mobile-provider-detail")).toBeHidden();
-  await expect(page.getByTestId("desktop-provider-detail")).toBeVisible();
+  const desktopProviderDetail = page.getByTestId("provider-detail");
+  await expect(desktopProviderDetail).toBeVisible();
+  await expect(desktopProviderDetail).toHaveCount(1);
+  await expect(providerSummary).toBeHidden();
   await expect(
-    page
-      .getByTestId("desktop-provider-detail")
-      .locator("dt")
-      .filter({ hasText: /^Reminders$/ }),
+    desktopProviderDetail.locator("dt").filter({ hasText: /^Reminders$/ }),
   ).toBeVisible();
   await expect(
-    page
-      .getByTestId("desktop-provider-detail")
-      .locator("dt")
-      .filter({ hasText: /^Last sent$/ }),
+    desktopProviderDetail.locator("dt").filter({ hasText: /^Last sent$/ }),
   ).toBeVisible();
 });
 
@@ -4498,7 +4499,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     has: page.getByRole("heading", { name: "Xero sync exception queue" }),
   });
   await expect(
-    exceptionQueuePanel.getByText("Base Rent tax type missing"),
+    exceptionQueuePanel
+      .getByTestId("xero-exception-desktop-row")
+      .filter({ hasText: "Base Rent tax type missing" }),
   ).toBeVisible();
   const forbiddenExceptionExportRequests =
     watchForbiddenXeroProviderRequests(page);
@@ -4685,7 +4688,15 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     ),
   ).toBeVisible();
   expect(forbiddenUnconnectedDiagnosticsRequests).toEqual([]);
-  await expect(page.getByText("Xero is not connected")).toBeVisible();
+  const xeroConnectionPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Xero connection" }),
+  });
+  await expect(
+    xeroConnectionPanel.getByText("Connection source"),
+  ).toBeVisible();
+  await expect(
+    xeroConnectionPanel.getByText("Not connected").first(),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Connect Xero" }),
   ).toBeVisible();
@@ -4703,13 +4714,18 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("Provider connected").first()).toBeVisible();
 
   await page.getByRole("button", { name: "Preview contacts" }).click();
+  const xeroContactPreviewPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Xero contact preview" }),
+  });
   await expect(
-    page.getByText("Xero contact preview", { exact: true }),
+    xeroContactPreviewPanel.getByText("Xero contact preview", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Contacts fetched")).toBeVisible();
-  await expect(page.getByText("Bright Cafe").first()).toBeVisible();
+  await expect(xeroContactPreviewPanel.getByText("Contacts fetched")).toBeVisible();
   await expect(
-    page.getByText("Suggested Xero contact: Bright Cafe"),
+    xeroContactPreviewPanel.getByText("Bright Cafe").first(),
+  ).toBeVisible();
+  await expect(
+    xeroContactPreviewPanel.getByText("Suggested Xero contact: Bright Cafe"),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Apply selected mappings" }).click();
@@ -4729,14 +4745,21 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("No invoice posting").first()).toBeVisible();
 
-  await expect(
-    page.getByText("Base Rent tax type missing").first(),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Apply suggestion" }).click();
+  const baseRentExceptionRow = exceptionQueuePanel
+    .getByTestId("xero-exception-desktop-row")
+    .filter({ hasText: "Base Rent tax type missing" });
+  await expect(baseRentExceptionRow).toBeVisible();
+  await baseRentExceptionRow
+    .getByRole("button", { name: "Apply suggestion" })
+    .click();
   await expect(
     page.getByText("Chart and tax mappings look ready"),
   ).toBeVisible();
-  await expect(page.getByText("Needs Xero approval")).toBeVisible();
+  await expect(
+    exceptionQueuePanel
+      .getByTestId("xero-exception-desktop-row")
+      .filter({ hasText: "Needs Xero approval" }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Preview chart/tax" }).click();
   await expect(page.getByText("1/1 ready").first()).toBeVisible();
@@ -4744,6 +4767,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("GST on Income")).toBeVisible();
 
   await page.getByRole("button", { name: "Review posting" }).click();
+  const xeroInvoicePostingPreviewPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Xero invoice posting preview" }),
+  });
   await expect(page.getByText("Xero invoice posting preview")).toBeVisible();
   await expect(page.getByText("1 ready").first()).toBeVisible();
   await expect(page.getByText("0 blocked").first()).toBeVisible();
@@ -4755,28 +4781,49 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("acct 401 / tax OUTPUT")).toBeVisible();
 
   await page.getByRole("button", { name: "Approve Xero" }).click();
-  await expect(page.getByText("Approved for Xero")).toBeVisible();
   await expect(
-    page.getByText("Xero draft posting was explicitly approved locally."),
+    xeroInvoicePostingPreviewPanel.getByText("Approved for Xero"),
   ).toBeVisible();
   await expect(
-    page.getByText("Run idempotent Xero draft creation when ready."),
+    xeroInvoicePostingPreviewPanel.getByText(
+      "Xero draft posting was explicitly approved locally.",
+    ),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Open Billing handoff" }),
+    exceptionQueuePanel
+      .getByTestId("xero-exception-desktop-row")
+      .filter({ hasText: "Run idempotent Xero draft creation when ready." }),
+  ).toBeVisible();
+  await expect(
+    xeroInvoicePostingPreviewPanel.getByRole("link", {
+      name: "Open Billing handoff",
+    }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Create Xero drafts" }).click();
-  await expect(page.getByText("Xero draft creation result")).toBeVisible();
+  const xeroDraftCreationResultPanel = page.locator("section").filter({
+    has: page.getByText("Xero draft creation result"),
+  });
   await expect(
-    page.getByText("Xero draft invoice was created after explicit approval."),
-  ).toBeVisible();
-  await expect(page.getByText("xero-invoice-smoke-1").first()).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Open dispatch handoff" }),
+    xeroDraftCreationResultPanel.getByText("Xero draft creation result"),
   ).toBeVisible();
   await expect(
-    page.getByText("Xero payment status needs review"),
+    xeroDraftCreationResultPanel.getByText(
+      "Xero draft invoice was created after explicit approval.",
+    ),
+  ).toBeVisible();
+  await expect(
+    xeroDraftCreationResultPanel.getByText("xero-invoice-smoke-1"),
+  ).toBeVisible();
+  await expect(
+    xeroDraftCreationResultPanel.getByRole("link", {
+      name: "Open dispatch handoff",
+    }),
+  ).toBeVisible();
+  await expect(
+    exceptionQueuePanel
+      .getByTestId("xero-exception-desktop-row")
+      .filter({ hasText: "Xero payment status needs review" }),
   ).toBeVisible();
 
   await page.getByRole("link", { name: "Open dispatch handoff" }).click();
@@ -4899,16 +4946,18 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
 
   await page.goto("/billing-readiness");
   await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
-  await expect(page.getByText("Xero DRAFT").first()).toBeVisible();
   const primaryDispatchRow = page.getByRole("row").filter({
     hasText: "INV-1001",
   });
+  await expect(
+    primaryDispatchRow.locator("span").filter({ hasText: /^Xero DRAFT$/ }),
+  ).toBeVisible();
   await primaryDispatchRow
     .getByRole("button", { exact: true, name: "Dispatch" })
     .click();
   await expect(page.getByText("Xero receipt created #1")).toBeVisible();
   await expect(
-    page.getByText("Xero draft and tenant email are recorded."),
+    primaryDispatchRow.getByText("Xero draft and tenant email are recorded."),
   ).toBeVisible();
   await expect(primaryDispatchRow.getByText("Provider history")).toBeVisible();
   await expect(
@@ -4919,9 +4968,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     primaryDispatchRow.getByText("Bank feed was not mutated."),
   ).toBeVisible();
   await page.getByRole("button", { name: /Complete/ }).click();
-  await expect(page.getByText("INV-1001").first()).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "INV-1001" })).toBeVisible();
   await page.getByRole("button", { name: /Unpaid/ }).click();
-  await expect(page.getByText("INV-1002").first()).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "INV-1002" })).toBeVisible();
   await expect(
     page.getByRole("row").filter({ hasText: "INV-1001" }),
   ).toHaveCount(0);

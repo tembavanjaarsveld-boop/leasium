@@ -2020,7 +2020,7 @@ function BillingReadinessWorkspace() {
           onChange={(event) => setSelectedEntityId(event.target.value)}
         >
           <option value="">
-            {entitiesLoading ? "Loading entities..." : "Select entity"}
+            {entitiesLoading ? "Checking entities" : "Select entity"}
           </option>
           {entitiesQuery.data?.map((entity) => (
             <option key={entity.id} value={entity.id}>
@@ -2155,10 +2155,10 @@ function BillingReadinessWorkspace() {
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <KpiCard
             title="Ready to bill"
-            value={billingReadinessLoading ? "..." : counts.ready}
+            value={billingReadinessLoading ? "Checking" : counts.ready}
             detail={
               billingReadinessLoading
-                ? "Loading rent roll readiness checks."
+                ? "Checking rent roll readiness."
                 : `${rentRows.length} rent roll rows checked as at ${formatDate(asOf)}.`
             }
             icon={<CheckCircle2 size={18} />}
@@ -2166,7 +2166,9 @@ function BillingReadinessWorkspace() {
           />
           <KpiCard
             title="Blocked tenancies"
-            value={billingReadinessLoading ? "..." : rowsWithBlockers.length}
+            value={
+              billingReadinessLoading ? "Checking" : rowsWithBlockers.length
+            }
             detail="Tenancies with at least one invoice, Xero, or GST issue."
             icon={<AlertTriangle size={18} />}
             tone={
@@ -2180,7 +2182,9 @@ function BillingReadinessWorkspace() {
           <KpiCard
             title="Missing billing details"
             value={
-              billingReadinessLoading ? "..." : counts.missingBillingDetails
+              billingReadinessLoading
+                ? "Checking"
+                : counts.missingBillingDetails
             }
             detail="Tenant billing contacts or invoice details that need cleanup."
             icon={<ReceiptText size={18} />}
@@ -2194,7 +2198,7 @@ function BillingReadinessWorkspace() {
           />
           <KpiCard
             title="Missing Xero mapping"
-            value={billingReadinessLoading ? "..." : counts.xero}
+            value={billingReadinessLoading ? "Checking" : counts.xero}
             detail="Customer mapping, account code, or tax type issues blocking sync."
             icon={<FileWarning size={18} />}
             tone={
@@ -2207,7 +2211,7 @@ function BillingReadinessWorkspace() {
           />
           <KpiCard
             title="GST checks"
-            value={billingReadinessLoading ? "..." : counts.gst}
+            value={billingReadinessLoading ? "Checking" : counts.gst}
             detail="Tax treatment checks that need attention before invoices are raised."
             icon={<ShieldCheck size={18} />}
             tone={
@@ -2222,7 +2226,7 @@ function BillingReadinessWorkspace() {
 
         {billingReadinessLoading && !billingReadinessError ? (
           <SectionPanel
-            title="Loading billing workspace"
+            title="Checking billing workspace"
             description={
               selectedEntity
                 ? `Checking rent roll, billing drafts, and invoice drafts for ${selectedEntity.name}.`
@@ -2233,7 +2237,7 @@ function BillingReadinessWorkspace() {
               <StatusBadge
                 tone={billingReadinessRefreshing ? "primary" : "neutral"}
               >
-                {billingReadinessRefreshing ? "Refreshing…" : "Loading…"}
+                {billingReadinessRefreshing ? "Refreshing…" : "Checking"}
               </StatusBadge>
             }
             className="border-primary/20 bg-primary/5"
@@ -2344,12 +2348,175 @@ function BillingReadinessWorkspace() {
                     }
                   >
                     {billingDraftsLoading
-                      ? "Loading…"
+                      ? "Checking"
                       : `${billingDrafts.length} draft${billingDrafts.length === 1 ? "" : "s"}`}
                   </StatusBadge>
                 }
               >
-                <div className="overflow-x-auto">
+                <div className="grid gap-3 p-3 md:hidden">
+                  {billingDrafts.map((draft) => {
+                    const source = billingDraftSourceContext(draft);
+                    const isUpdating =
+                      updateDraftMutation.isPending &&
+                      updateDraftMutation.variables?.draftId === draft.id;
+                    const canApprove =
+                      draft.status !== "approved" && draft.status !== "void";
+                    const canVoid = draft.status !== "void";
+                    const invoiceDraft = invoiceDraftByBillingDraftId.get(
+                      draft.id,
+                    );
+                    const isCreatingInvoice =
+                      createInvoiceDraftMutation.isPending &&
+                      createInvoiceDraftMutation.variables === draft.id;
+                    return (
+                      <article
+                        key={draft.id}
+                        data-testid="billing-draft-mobile-card"
+                        className="grid gap-3 rounded-xl border border-border bg-white p-3 text-sm shadow-leasiumXs"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="font-semibold text-foreground">
+                              {draft.title}
+                            </h3>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Due {formatDate(draft.due_date)}
+                            </p>
+                          </div>
+                          <StatusBadge
+                            tone={billingDraftStatusTone(draft.status)}
+                          >
+                            {billingDraftStatusLabel(draft.status)}
+                          </StatusBadge>
+                        </div>
+                        <div className="grid gap-2 rounded-lg border border-border bg-muted/25 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-medium uppercase text-muted-foreground">
+                              Amount
+                            </span>
+                            <span className="font-semibold text-foreground">
+                              {formatMoney(draft.total_cents)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium text-foreground">
+                              {source.primarySource}
+                            </span>
+                            <span>
+                              {" "}
+                              / {source.lineCount} line
+                              {source.lineCount === 1 ? "" : "s"}
+                              {source.extraSources
+                                ? `, ${source.extraSources} more source${
+                                    source.extraSources === 1 ? "" : "s"
+                                  }`
+                                : ""}
+                            </span>
+                          </div>
+                          {draft.notes ? (
+                            <p className="line-clamp-2 text-xs text-muted-foreground">
+                              {draft.notes}
+                            </p>
+                          ) : null}
+                          <div className="flex flex-wrap gap-2 pt-1 text-xs text-muted-foreground">
+                            {source.intakeId && draft.document_intake_id ? (
+                              <Link
+                                href={intakeReviewHref(
+                                  selectedEntityId,
+                                  draft.document_intake_id,
+                                )}
+                                className="inline-flex items-center gap-1 font-medium text-primary hover:text-primary-hover"
+                              >
+                                Intake {source.intakeId}
+                                <ArrowUpRight size={12} />
+                              </Link>
+                            ) : null}
+                            {source.documentId ? (
+                              <span>Document {source.documentId}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-11 rounded-lg px-3"
+                            onClick={() =>
+                              updateDraftMutation.mutate({
+                                draftId: draft.id,
+                                status: "approved",
+                              })
+                            }
+                            disabled={!canApprove || isUpdating}
+                            title="Marks this draft approved for later billing steps. No invoice is posted or synced."
+                          >
+                            {isUpdating ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <CheckCircle2 size={14} />
+                            )}
+                            Approve
+                          </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-11 rounded-lg px-3 text-danger"
+                            onClick={() =>
+                              updateDraftMutation.mutate({
+                                draftId: draft.id,
+                                status: "void",
+                              })
+                            }
+                            disabled={!canVoid || isUpdating}
+                            title="Voids this draft only. No invoice is posted or synced."
+                          >
+                            {isUpdating ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Ban size={14} />
+                            )}
+                            Void
+                          </SecondaryButton>
+                          {invoiceDraft ? (
+                            <StatusBadge
+                              tone={invoiceDraftStatusTone(invoiceDraft.status)}
+                            >
+                              Invoice {shortId(invoiceDraft.id)}
+                            </StatusBadge>
+                          ) : draft.status === "approved" ? (
+                            <SecondaryButton
+                              type="button"
+                              className="min-h-11 rounded-lg px-3"
+                              onClick={() =>
+                                createInvoiceDraftMutation.mutate(draft.id)
+                              }
+                              disabled={isCreatingInvoice}
+                              title="Creates an internal invoice draft only. No PDF, tenant email, or Xero sync."
+                            >
+                              {isCreatingInvoice ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <FileCheck2 size={14} />
+                              )}
+                              Invoice draft
+                            </SecondaryButton>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {!billingDraftsLoading && billingDrafts.length === 0 ? (
+                    <EmptyState
+                      icon={<FileText size={18} />}
+                      title="No billing drafts"
+                      description="Reviewed invoice or admin documents will appear here as source-linked billing drafts before any invoice posting or Xero sync exists."
+                    />
+                  ) : null}
+                  {billingDraftsLoading ? (
+                    <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+                      Checking billing drafts.
+                    </div>
+                  ) : null}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
                       <tr>
@@ -2532,7 +2699,7 @@ function BillingReadinessWorkspace() {
                             className="px-3 py-10 text-center text-sm text-muted-foreground"
                             colSpan={6}
                           >
-                            Loading billing drafts...
+                            Checking billing drafts.
                           </td>
                         </tr>
                       ) : null}
@@ -2558,12 +2725,262 @@ function BillingReadinessWorkspace() {
                     }
                   >
                     {invoiceDraftsLoading
-                      ? "Loading…"
+                      ? "Checking"
                       : `${invoiceDrafts.length} invoice draft${invoiceDrafts.length === 1 ? "" : "s"}`}
                   </StatusBadge>
                 }
               >
-                <div className="overflow-x-auto">
+                <div className="grid gap-3 p-3 md:hidden">
+                  {invoiceDrafts.map((draft) => {
+                    const blockers = invoiceDraftBlockers(draft);
+                    const deliveryBlockers = invoiceDeliveryBlockers(draft);
+                    const deliveryState = invoiceDeliveryState(draft);
+                    const emailPreview = invoiceEmailPreview(draft);
+                    const pdfArtifact = invoicePdfArtifact(draft);
+                    const sendState = invoiceDeliverySend(draft);
+                    const paymentStatus = invoicePaymentStatus(draft);
+                    const previewReady =
+                      deliveryState.pdf_preview_generated === true;
+                    const pdfStored =
+                      deliveryState.pdf_artifact_stored === true ||
+                      Boolean(metadataText(pdfArtifact.document_id));
+                    const emailPrepared =
+                      deliveryState.tenant_email_prepared === true;
+                    const deliveryReady = deliveryState.delivery_ready === true;
+                    const deliverySent =
+                      deliveryState.tenant_email_sent === true ||
+                      metadataText(sendState.status) === "sent";
+                    const paymentLabel =
+                      metadataText(paymentStatus.status) ?? "unpaid";
+                    const isPreparing =
+                      prepareInvoiceDraftMutation.isPending &&
+                      prepareInvoiceDraftMutation.variables === draft.id;
+                    const isUpdatingInvoice =
+                      updateInvoiceDraftMutation.isPending &&
+                      updateInvoiceDraftMutation.variables?.draftId ===
+                        draft.id;
+                    const canPrepare =
+                      draft.status !== "void" && draft.status !== "approved";
+                    const canApprove =
+                      draft.status === "ready_for_approval" && deliveryReady;
+                    const canVoid = draft.status !== "void";
+                    const linkedWorkOrder = maintenanceByInvoiceDraftId.get(
+                      draft.id,
+                    );
+                    const isHighlighted = highlightInvoiceDraftId === draft.id;
+                    return (
+                      <article
+                        key={draft.id}
+                        data-testid="invoice-prep-mobile-card"
+                        className={`grid gap-3 rounded-xl border border-border bg-white p-3 text-sm shadow-leasiumXs ${
+                          isHighlighted ? "border-primary bg-primary/5" : ""
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="font-semibold text-foreground">
+                              {draft.invoice_number ??
+                                `Invoice ${shortId(draft.id)}`}
+                            </h3>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {draft.title}
+                            </p>
+                          </div>
+                          <StatusBadge
+                            tone={invoiceDraftStatusTone(draft.status)}
+                          >
+                            {invoiceDraftStatusLabel(draft.status)}
+                          </StatusBadge>
+                        </div>
+                        <div className="grid gap-2 text-xs">
+                          <div className="flex items-start justify-between gap-3 border-t border-border pt-3">
+                            <span className="font-medium uppercase text-muted-foreground">
+                              Recipient
+                            </span>
+                            <span className="text-right">
+                              <span className="block font-semibold text-foreground">
+                                {draft.recipient_name ??
+                                  "Recipient not confirmed"}
+                              </span>
+                              <span className="block text-muted-foreground">
+                                {draft.recipient_email ??
+                                  "Billing email missing"}
+                              </span>
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium uppercase text-muted-foreground">
+                              Amount
+                            </span>
+                            <span className="font-semibold text-foreground">
+                              {formatMoney(draft.total_cents)}
+                              {draft.gst_cents
+                                ? ` incl GST ${formatMoney(draft.gst_cents)}`
+                                : ""}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium uppercase text-muted-foreground">
+                              Due
+                            </span>
+                            <span>{formatDate(draft.due_date)}</span>
+                          </div>
+                        </div>
+                        {linkedWorkOrder ? (
+                          <Link
+                            href={`/operations/maintenance/${linkedWorkOrder.id}`}
+                            className="inline-flex min-h-11 w-fit items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                          >
+                            <ArrowUpRight size={14} />
+                            Maintenance: {linkedWorkOrder.title}
+                          </Link>
+                        ) : null}
+                        <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                          {blockers.length ? (
+                            blockers.slice(0, 3).map((blocker) => (
+                              <StatusBadge key={blocker} tone="warning">
+                                {blocker}
+                              </StatusBadge>
+                            ))
+                          ) : (
+                            <StatusBadge tone="success">
+                              Ready for invoice approval
+                            </StatusBadge>
+                          )}
+                          <StatusBadge tone={pdfStored ? "primary" : "neutral"}>
+                            {pdfStored ? "PDF stored" : "No PDF"}
+                          </StatusBadge>
+                          <StatusBadge
+                            tone={
+                              deliverySent
+                                ? "success"
+                                : emailPrepared
+                                  ? "primary"
+                                  : "neutral"
+                            }
+                          >
+                            {deliverySent
+                              ? "Email sent"
+                              : emailPrepared
+                                ? "Email draft"
+                                : "No email"}
+                          </StatusBadge>
+                          <StatusBadge
+                            tone={
+                              paymentLabel === "paid" ? "success" : "neutral"
+                            }
+                          >
+                            {paymentLabel.replaceAll("_", " ")}
+                          </StatusBadge>
+                        </div>
+                        {deliveryBlockers.length ? (
+                          <div className="grid gap-1 border-t border-border pt-3 text-xs text-danger">
+                            {deliveryBlockers.slice(0, 2).map((blocker) => (
+                              <span key={blocker}>{blocker}</span>
+                            ))}
+                          </div>
+                        ) : null}
+                        {emailPreview.subject ? (
+                          <p className="line-clamp-2 border-t border-border pt-3 text-xs text-muted-foreground">
+                            {emailPreview.subject}
+                          </p>
+                        ) : null}
+                        <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-11 rounded-lg px-3"
+                            onClick={() =>
+                              prepareInvoiceDraftMutation.mutate(draft.id)
+                            }
+                            disabled={!canPrepare || isPreparing}
+                            title="Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
+                          >
+                            {isPreparing ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Mail size={14} />
+                            )}
+                            Prepare
+                          </SecondaryButton>
+                          {previewReady ? (
+                            <a
+                              href={invoiceDraftPreviewUrl(draft.id)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                            >
+                              <Eye size={14} />
+                              Preview
+                            </a>
+                          ) : null}
+                          {pdfStored &&
+                          metadataText(pdfArtifact.document_id) ? (
+                            <a
+                              href={documentDownloadUrl(
+                                metadataText(pdfArtifact.document_id) ?? "",
+                              )}
+                              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                            >
+                              <ReceiptText size={14} />
+                              PDF
+                            </a>
+                          ) : null}
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-11 rounded-lg px-3"
+                            onClick={() =>
+                              updateInvoiceDraftMutation.mutate({
+                                draftId: draft.id,
+                                status: "approved",
+                              })
+                            }
+                            disabled={!canApprove || isUpdatingInvoice}
+                            title="Approves the internal invoice draft only. No tenant email or Xero sync is run."
+                          >
+                            {isUpdatingInvoice ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <CheckCircle2 size={14} />
+                            )}
+                            Approve
+                          </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-11 rounded-lg px-3 text-danger"
+                            onClick={() =>
+                              updateInvoiceDraftMutation.mutate({
+                                draftId: draft.id,
+                                status: "void",
+                              })
+                            }
+                            disabled={!canVoid || isUpdatingInvoice}
+                            title="Voids this internal invoice draft only."
+                          >
+                            {isUpdatingInvoice ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Ban size={14} />
+                            )}
+                            Void
+                          </SecondaryButton>
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {!invoiceDraftsLoading && invoiceDrafts.length === 0 ? (
+                    <EmptyState
+                      icon={<ReceiptText size={18} />}
+                      title="No invoice drafts"
+                      description="Approve a billing draft, then create an internal invoice draft from it. Delivery and Xero remain separate approval steps."
+                    />
+                  ) : null}
+                  {invoiceDraftsLoading ? (
+                    <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+                      Checking invoice drafts.
+                    </div>
+                  ) : null}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
                       <tr>
@@ -2899,7 +3316,7 @@ function BillingReadinessWorkspace() {
                             className="px-3 py-10 text-center text-sm text-muted-foreground"
                             colSpan={7}
                           >
-                            Loading invoice drafts...
+                            Checking invoice drafts.
                           </td>
                         </tr>
                       ) : null}
@@ -2925,7 +3342,7 @@ function BillingReadinessWorkspace() {
                     }
                   >
                     {invoiceDraftsLoading
-                      ? "Loading…"
+                      ? "Checking"
                       : `${filteredApprovedInvoiceDrafts.length}/${approvedInvoiceDrafts.length} shown`}
                   </StatusBadge>
                 }
@@ -2968,7 +3385,7 @@ function BillingReadinessWorkspace() {
                   />
                 ) : xeroStatusQuery.isLoading ? (
                   <div className="border-b border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-                    Checking accounting freshness...
+                    Checking accounting freshness.
                   </div>
                 ) : null}
                 {xeroStatusQuery.error ? (
@@ -2983,7 +3400,383 @@ function BillingReadinessWorkspace() {
                 {!invoiceDraftsLoading && !xeroStatusQuery.isLoading ? (
                   <MonthEndHandoffPanel handoff={monthEndHandoff} />
                 ) : null}
-                <div className="overflow-x-auto">
+                <div className="grid gap-3 p-3 md:hidden">
+                  {filteredApprovedInvoiceDrafts.map((draft) => {
+                    const review = invoiceDeliveryReview(draft);
+                    const {
+                      emailPreview,
+                      pdfArtifact,
+                      sendState,
+                      xeroSync,
+                      postingPreparation,
+                      providerReceipts,
+                      latestProviderReceipt,
+                      latestProviderRetryCount,
+                      xeroApproved,
+                      xeroExternalStatus,
+                      xeroFailed,
+                      previewReady,
+                      pdfStored,
+                      emailPrepared,
+                      deliveryReady,
+                      deliverySent,
+                      emailFailed,
+                      providerComplete,
+                      paymentLabel,
+                    } = review;
+                    const paymentFreshnessCue = invoicePaymentFreshnessCue(
+                      draft,
+                      xeroAccountingFreshness,
+                    );
+                    const isRecordingDelivery =
+                      recordInvoiceDeliveryMutation.isPending &&
+                      recordInvoiceDeliveryMutation.variables === draft.id;
+                    const isSendingEmail =
+                      sendInvoiceDeliveryEmailMutation.isPending &&
+                      sendInvoiceDeliveryEmailMutation.variables === draft.id;
+                    const isDispatchingProviders =
+                      dispatchInvoiceProvidersMutation.isPending &&
+                      dispatchInvoiceProvidersMutation.variables === draft.id;
+                    const isUpdatingPayment =
+                      updatePaymentStatusMutation.isPending &&
+                      updatePaymentStatusMutation.variables?.draftId ===
+                        draft.id;
+                    const canRecordDelivery = deliveryReady && !deliverySent;
+                    const canDispatchProviders =
+                      deliveryReady && xeroApproved && !providerComplete;
+                    const canMarkPaid = paymentLabel !== "paid";
+                    const linkedWorkOrder = maintenanceByInvoiceDraftId.get(
+                      draft.id,
+                    );
+                    const isHighlighted = highlightInvoiceDraftId === draft.id;
+                    const providerExceptionReason = xeroFailed
+                      ? (metadataText(
+                          postingPreparation.last_provider_reason,
+                        ) ??
+                        metadataText(latestProviderReceipt?.reason) ??
+                        "Xero provider dispatch failed.")
+                      : emailFailed
+                        ? (metadataText(sendState.error) ??
+                          "Tenant invoice email provider delivery failed.")
+                        : null;
+                    return (
+                      <article
+                        key={draft.id}
+                        data-testid="billing-delivery-mobile-card"
+                        className={`grid gap-3 rounded-xl border border-border bg-white p-3 text-sm shadow-leasiumXs ${
+                          isHighlighted ? "border-primary bg-primary/5" : ""
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="font-semibold text-foreground">
+                              {draft.invoice_number ??
+                                `Invoice ${shortId(draft.id)}`}
+                            </h3>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {draft.title}
+                            </p>
+                          </div>
+                          <StatusBadge
+                            tone={
+                              paymentLabel === "paid" ? "success" : "neutral"
+                            }
+                          >
+                            {paymentLabel.replaceAll("_", " ")}
+                          </StatusBadge>
+                        </div>
+                        <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                          <StatusBadge tone="success">Approved</StatusBadge>
+                          <StatusBadge
+                            tone={xeroStatusTone(
+                              xeroExternalStatus ??
+                                metadataText(xeroSync.xero_status),
+                              xeroApproved,
+                            )}
+                          >
+                            {xeroStatusLabel(
+                              xeroSync,
+                              postingPreparation,
+                              xeroApproved,
+                            )}
+                          </StatusBadge>
+                          <StatusBadge tone={pdfStored ? "primary" : "neutral"}>
+                            {pdfStored ? "PDF stored" : "No PDF"}
+                          </StatusBadge>
+                          <StatusBadge
+                            tone={
+                              deliverySent
+                                ? "success"
+                                : emailPrepared
+                                  ? "primary"
+                                  : "neutral"
+                            }
+                          >
+                            {deliverySent
+                              ? "Marked sent"
+                              : emailPrepared
+                                ? "Email draft"
+                                : "No email"}
+                          </StatusBadge>
+                        </div>
+                        <div className="grid gap-2 border-t border-border pt-3 text-xs">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="font-medium uppercase text-muted-foreground">
+                              Recipient
+                            </span>
+                            <span className="text-right">
+                              <span className="block font-semibold text-foreground">
+                                {draft.recipient_name ??
+                                  "Recipient not confirmed"}
+                              </span>
+                              <span className="block text-muted-foreground">
+                                {draft.recipient_email ??
+                                  "Billing email missing"}
+                              </span>
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium uppercase text-muted-foreground">
+                              Due
+                            </span>
+                            <span>
+                              {formatMoney(draft.total_cents)} due{" "}
+                              {formatDate(draft.due_date)}
+                            </span>
+                          </div>
+                        </div>
+                        {emailPreview.subject ? (
+                          <p className="line-clamp-2 text-xs text-muted-foreground">
+                            {emailPreview.subject}
+                          </p>
+                        ) : null}
+                        <div className="grid gap-1 border-t border-border pt-3 text-xs text-muted-foreground">
+                          <div>
+                            {metadataText(sendState.provider)
+                              ? `${metadataText(sendState.provider)}: ${metadataText(sendState.status) ?? "not sent"}`
+                              : "Email is only sent after explicit approval."}
+                          </div>
+                          <div>
+                            {xeroFailed
+                              ? (metadataText(
+                                  postingPreparation.last_provider_reason,
+                                ) ?? "Xero provider failed. Retry when ready.")
+                              : providerComplete
+                                ? "Xero draft and tenant email are recorded."
+                                : xeroApproved
+                                  ? "Dispatch creates or reuses Xero first, then sends email."
+                                  : "Approve Xero posting in Settings before provider dispatch."}
+                          </div>
+                        </div>
+                        {providerExceptionReason ? (
+                          <div className="grid gap-2 border-t border-danger/20 bg-danger-soft pt-3 text-xs">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge tone="danger">
+                                Recovery needed
+                                {latestProviderRetryCount
+                                  ? ` #${latestProviderRetryCount}`
+                                  : ""}
+                              </StatusBadge>
+                              {linkedWorkOrder ? (
+                                <span className="font-semibold text-danger">
+                                  Maintenance-linked invoice
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="text-muted-foreground">
+                              {providerExceptionReason}
+                            </div>
+                            {linkedWorkOrder ? (
+                              <Link
+                                href={`/operations/maintenance/${linkedWorkOrder.id}`}
+                                className="inline-flex min-h-11 w-fit items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                              >
+                                <ArrowUpRight size={13} />
+                                Return to work order
+                              </Link>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {providerReceipts.length > 0 ? (
+                          <div className="grid gap-2 border-t border-border pt-3 text-xs">
+                            <div className="font-semibold text-foreground">
+                              Provider history
+                            </div>
+                            {providerReceipts
+                              .slice(0, 2)
+                              .map((receipt, index) => {
+                                const provider =
+                                  metadataText(receipt.provider) ?? "xero";
+                                const statusValue =
+                                  metadataText(receipt.status) ?? "recorded";
+                                const retryCount =
+                                  typeof receipt.retry_count === "number"
+                                    ? receipt.retry_count
+                                    : index + 1;
+                                return (
+                                  <div
+                                    key={`${provider}-${retryCount}-${metadataText(receipt.received_at) ?? index}`}
+                                    className="flex flex-wrap items-center gap-2"
+                                  >
+                                    <StatusBadge
+                                      tone={
+                                        statusValue === "failed"
+                                          ? "danger"
+                                          : "success"
+                                      }
+                                    >
+                                      {provider} {statusValue} #{retryCount}
+                                    </StatusBadge>
+                                    <span className="text-muted-foreground">
+                                      {formatDateTime(
+                                        metadataText(receipt.received_at),
+                                      )}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        ) : null}
+                        {paymentFreshnessCue ? (
+                          <div className="grid gap-2 border-t border-warning/20 bg-warning-soft pt-3 text-xs">
+                            <StatusBadge tone={paymentFreshnessCue.tone}>
+                              {paymentFreshnessCue.label}
+                            </StatusBadge>
+                            <div className="text-muted-foreground">
+                              {paymentFreshnessCue.detail}
+                            </div>
+                            <Link
+                              href={`/settings?tab=xero&entity_id=${selectedEntityId}`}
+                              className="inline-flex min-h-11 w-fit items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                            >
+                              <ArrowUpRight size={13} />
+                              Review payments
+                            </Link>
+                          </div>
+                        ) : null}
+                        <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                          {previewReady ? (
+                            <a
+                              href={invoiceDraftPreviewUrl(draft.id)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                            >
+                              <Eye size={14} />
+                              Preview
+                            </a>
+                          ) : null}
+                          {pdfStored &&
+                          metadataText(pdfArtifact.document_id) ? (
+                            <a
+                              href={documentDownloadUrl(
+                                metadataText(pdfArtifact.document_id) ?? "",
+                              )}
+                              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                            >
+                              <ReceiptText size={14} />
+                              PDF
+                            </a>
+                          ) : null}
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-11 rounded-lg px-3"
+                            onClick={() =>
+                              dispatchInvoiceProvidersMutation.mutate(draft.id)
+                            }
+                            disabled={
+                              !canDispatchProviders || isDispatchingProviders
+                            }
+                            title="Creates or reuses the Xero DRAFT first, then sends or reuses the tenant email. Payment reconciliation stays separate."
+                          >
+                            {isDispatchingProviders ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <RefreshCw size={14} />
+                            )}
+                            {xeroFailed || emailFailed
+                              ? "Retry dispatch"
+                              : "Dispatch"}
+                          </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-11 rounded-lg px-3"
+                            onClick={() =>
+                              sendInvoiceDeliveryEmailMutation.mutate(draft.id)
+                            }
+                            disabled={!canRecordDelivery || isSendingEmail}
+                            title="Sends the approved invoice email through the configured provider. No Xero sync is run."
+                          >
+                            {isSendingEmail ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Mail size={14} />
+                            )}
+                            Email
+                          </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-11 rounded-lg px-3"
+                            onClick={() =>
+                              recordInvoiceDeliveryMutation.mutate(draft.id)
+                            }
+                            disabled={!canRecordDelivery || isRecordingDelivery}
+                            title="Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
+                          >
+                            {isRecordingDelivery ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Mail size={14} />
+                            )}
+                            Sent
+                          </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-11 rounded-lg px-3"
+                            onClick={() =>
+                              updatePaymentStatusMutation.mutate({
+                                draftId: draft.id,
+                                paymentStatus: "paid",
+                              })
+                            }
+                            disabled={!canMarkPaid || isUpdatingPayment}
+                            title="Marks the approved internal invoice as paid in Leasium only."
+                          >
+                            {isUpdatingPayment ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <ReceiptText size={14} />
+                            )}
+                            Paid
+                          </SecondaryButton>
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {!invoiceDraftsLoading &&
+                  approvedInvoiceDrafts.length === 0 ? (
+                    <EmptyState
+                      icon={<FileCheck2 size={18} />}
+                      title="No approved invoices"
+                      description="Approve an internal invoice draft first. Email sending and payment recording stay explicit, and Xero sync needs its own approval."
+                    />
+                  ) : null}
+                  {!invoiceDraftsLoading &&
+                  approvedInvoiceDrafts.length > 0 &&
+                  filteredApprovedInvoiceDrafts.length === 0 ? (
+                    <EmptyState
+                      icon={<Eye size={18} />}
+                      title="No invoices match this filter"
+                      description="Try another delivery filter to review approved invoice delivery, provider history, and payment status."
+                    />
+                  ) : null}
+                  {invoiceDraftsLoading ? (
+                    <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+                      Checking delivery records.
+                    </div>
+                  ) : null}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
                       <tr>
@@ -3548,7 +4341,7 @@ function BillingReadinessWorkspace() {
                             className="px-3 py-10 text-center text-sm text-muted-foreground"
                             colSpan={5}
                           >
-                            Loading delivery records...
+                            Checking delivery records.
                           </td>
                         </tr>
                       ) : null}
@@ -3565,7 +4358,93 @@ function BillingReadinessWorkspace() {
                 icon={<ReceiptText size={17} className="text-primary" />}
                 className="order-2"
               >
-                <div className="overflow-x-auto">
+                <div className="grid gap-3 p-3 md:hidden">
+                  {rentRows.map((row) => {
+                    const blockers = blockerItems(row);
+                    return (
+                      <article
+                        key={`${row.property_id}-${row.tenancy_unit_id}-${row.lease_id ?? "none"}`}
+                        data-testid="rent-roll-readiness-mobile-card"
+                        className="grid gap-3 rounded-xl border border-border bg-white p-3 text-sm shadow-leasiumXs"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="font-semibold text-foreground">
+                              {row.unit_label}
+                            </h3>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {row.property_name}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {row.tenant_name ?? "Vacant"}
+                            </p>
+                          </div>
+                          {blockers.length ? (
+                            <StatusBadge tone="warning">
+                              {blockers.length} blocker
+                              {blockers.length === 1 ? "" : "s"}
+                            </StatusBadge>
+                          ) : (
+                            <StatusBadge tone="success">Ready</StatusBadge>
+                          )}
+                        </div>
+                        <div className="grid gap-2 border-t border-border pt-3 text-xs">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium uppercase text-muted-foreground">
+                              Rent
+                            </span>
+                            <span className="font-semibold text-foreground">
+                              {formatMoney(row.annual_rent_cents)} /{" "}
+                              {row.rent_frequency ?? "No frequency"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium uppercase text-muted-foreground">
+                              Rules
+                            </span>
+                            <span>
+                              {formatMoney(row.charge_rules_total_cents)} /{" "}
+                              {row.charge_rules?.length ?? 0} rules
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium uppercase text-muted-foreground">
+                              Next due
+                            </span>
+                            <span>{formatDate(row.next_due_date)}</span>
+                          </div>
+                        </div>
+                        {blockers.length ? (
+                          <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                            {blockers.slice(0, 3).map((blocker) => (
+                              <StatusBadge key={blocker.id} tone="warning">
+                                {blockerTitle(blocker)}
+                              </StatusBadge>
+                            ))}
+                            {blockers.length > 3 ? (
+                              <StatusBadge tone="neutral">
+                                {blockers.length - 3} more
+                              </StatusBadge>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                  {!rentRollLoading && rentRows.length === 0 ? (
+                    <EmptyState
+                      icon={<FileText size={18} />}
+                      title="No rent roll rows"
+                      description="Create leases and charge rules for this entity, then return here to check billing readiness."
+                    />
+                  ) : null}
+                  {rentRollLoading ? (
+                    <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+                      Checking rent roll rows.
+                    </div>
+                  ) : null}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">
                       <tr>
@@ -3653,7 +4532,7 @@ function BillingReadinessWorkspace() {
                             className="px-3 py-10 text-center text-sm text-muted-foreground"
                             colSpan={5}
                           >
-                            Loading rent roll checks...
+                            Checking rent roll rows.
                           </td>
                         </tr>
                       ) : null}
@@ -3675,7 +4554,7 @@ function BillingReadinessWorkspace() {
                 {rentRollLoading ? (
                   <EmptyState
                     icon={<Loader2 size={18} className="animate-spin" />}
-                    title="Loading action queue"
+                    title="Checking action queue"
                     description="Checking rent roll rows and readiness blockers for this entity."
                   />
                 ) : blockerGroups.length ? (

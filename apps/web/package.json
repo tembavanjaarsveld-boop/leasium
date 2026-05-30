@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test:smoke": "playwright test",
+    "audit:live": "node scripts/live-ux-audit.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {

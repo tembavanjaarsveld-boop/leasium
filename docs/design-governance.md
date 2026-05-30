@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-05-29
+Last updated: 2026-05-30
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -1314,6 +1314,19 @@ layout), and modal scale magnitude (0.97 → 1 — barely perceptible).
   providers. Review the finding labels, whether photo evidence should
   be previewed directly in the review panel, and whether the operator
   copy should say "draft work orders" or "requested work orders".
+
+### MVP UX/performance pass (2026-05-30) — operator validated
+
+- [x] Dashboard and shell responsiveness improved materially before MVP:
+  the dashboard can paint from a fast overview endpoint while detailed
+  queries continue in the background, selected entity state is available
+  synchronously from storage, persistent navigation no longer prefetches
+  every shell route, and global React Query/auth token caching reduces
+  repeated client work. Temba live-checked the result and reported the
+  site is "a lot faster". Remaining snappiness work is tracked as
+  infrastructure/observability rather than design composition. Detailed
+  notes live in
+  [`docs/mvp-ux-performance-review-2026-05-30.md`](mvp-ux-performance-review-2026-05-30.md).
 
 - Mobile nav drawer (`app-shell.tsx:497`) slides in from the LEFT;
   needs a separate `drawerSlideInLeft` keyframe or a CSS variable

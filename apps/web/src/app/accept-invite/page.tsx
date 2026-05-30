@@ -189,7 +189,7 @@ function ClerkInviteLinker({ token }: { token: string }) {
 export default function AcceptInvitePage() {
   return (
     <InviteShell>
-      <Suspense fallback={<div className="text-sm text-muted-foreground">Loading invite...</div>}>
+      <Suspense fallback={<div className="text-sm text-muted-foreground">Checking invite</div>}>
         <AcceptInviteContent />
       </Suspense>
     </InviteShell>

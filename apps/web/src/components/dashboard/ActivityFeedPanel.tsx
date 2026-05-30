@@ -130,7 +130,7 @@ export function ActivityFeedPanel({ entityId }: { entityId: string }) {
           </div>
         ) : feedQuery.isLoading ? (
           <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
-            Loading recent activity.
+            Checking recent activity.
           </div>
         ) : feedQuery.isError ? (
           <div className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">

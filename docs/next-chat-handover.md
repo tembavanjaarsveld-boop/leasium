@@ -1,6 +1,6 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-05-28
+Last updated: 2026-05-30
 
 ## Current State
 
@@ -10,6 +10,59 @@ Last updated: 2026-05-28
 - Production frontend: `https://leasium.ai` (Vercel). Treat `https://leasium.vercel.app` as a provider alias only, not a product URL.
 - Production API: `https://api.leasium.ai/api/v1` (Render custom domain). `https://leasium-api.onrender.com` is a provider fallback only.
 - Domain cutover note: `api.leasium.ai` now resolves and serves the Render API certificate. Production frontend/API/env/provider links should use `leasium.ai` and `api.leasium.ai`.
+- MVP performance note (2026-05-30): production Vercel should now set
+  `NEXT_PUBLIC_API_BASE_URL=/api/v1`; `apps/web/vercel.json` rewrites same-origin
+  `/api/v1` and `/health` requests to the Render API to reduce browser
+  cross-origin/preflight overhead. Keep `PUBLIC_API_URL=https://api.leasium.ai`
+  on the API service for provider callbacks and generated external links.
+- Dashboard speed pass (2026-05-30): the home screen now has
+  `GET /api/v1/dashboard/overview` for first-paint counts and command-center
+  data, starts from stored `leasium.entity_id`, uses a root React Query cache,
+  warms/dedupes Clerk tokens, and disables persistent shell prefetch. The
+  overview endpoint is an accelerator only; if it fails during a staggered
+  deploy, the dashboard falls back to the existing detailed queries.
+- Live UX audit harness (2026-05-30): run
+  `npm --prefix apps/web run audit:live -- --login` once to save a signed-in
+  browser state, then run
+  `LEASIUM_AUDIT_URL=https://leasium.ai npm --prefix apps/web run audit:live`.
+  Reports land under `output/playwright/live-audit/` with screenshots,
+  slow-request notes, console errors, and overflow checks.
+- Infra snappiness note (2026-05-30): local/product fixes made the site
+  noticeably faster, but remaining delay is likely Render/Neon/Auth/CORS/observability
+  rather than layout. Backend now reuses the Clerk JWKS client, exposes
+  `server-timing` and `x-request-id`, and has configurable DB pool env vars.
+  Next infra checks: confirm Render plan is always-on, API and Neon are in a
+  sensible shared region, DB pool vars match plan limits, and add Speed
+  Insights plus a log drain/Sentry/OpenTelemetry before broad MVP traffic.
+- Detailed record: `docs/mvp-ux-performance-review-2026-05-30.md`.
+- Live audit continuation (2026-05-30, signed-in): ran the harness against
+  `leasium.ai` as `temba@skjcapital.com` across the seven MVP routes, desktop +
+  mobile. No horizontal overflow, no page/console errors, visual layer in good
+  shape. Dominant latency is `GET /api/v1/comms/queue/counts` at ~6.5-8.1s on
+  every page (it runs the full eight-scanner queue scan just for the sidebar
+  badge count). Applied a surgical frontend fix in `app-shell.tsx`
+  (`refetchOnWindowFocus: false`, `staleTime` 60s -> 5min) so the scan stops
+  re-firing on tab focus/navigation; eslint + tsc clean. Backend follow-up to
+  make the counts endpoint actually cheap (count-only queries or ~60s entity
+  cache) is flagged as the top remaining snappiness win - left for a review-first
+  pass since the scanners are shared with the live comms queue. Screenshots +
+  route report under `output/playwright/live-audit/`. This slice is uncommitted.
+- World-class UX pass (2026-05-30): full audit in
+  `docs/leasium-ux-world-class-audit-2026-05-30.md` (benchmark reset to
+  Linear/Stripe/Ramp; verdict: visual craft already B+/A-, the gap is FEEL —
+  perceived speed, editorial focus, flow). Phase A + B kickoff shipped this
+  session, uncommitted, eslint/tsc/ruff/pytest-clean (frontend Playwright smoke
+  blocked in-sandbox by a Next middleware edge-runtime EvalError — run on Mac):
+  (1) `/comms/queue/counts` now per-entity TTL-cached 45s so the badge stops
+  re-running the 8-scanner scan every navigation (+ cache test; 47 comms tests
+  green); (2) nav links prefetch route bundles on hover/focus intent in
+  `app-shell.tsx`; (3) dashboard hero de-duplicated — removed the command-center
+  right-rail summary that duplicated the metric strip; command center now
+  full-width with an inline review-first guardrail (`DashboardCommandCenter.tsx`).
+  Remaining Phase B: urgency differentiation (repeated "Tomorrow" chips) and
+  progressive disclosure of Events / Recent-activity; then Phases C (craft
+  punch-list), D (keyboard/flow), E (motion). Blast radius this session:
+  comms.py, test_comms_api.py, app-shell.tsx, DashboardCommandCenter.tsx.
 - Clerk cutover note: live Vercel was previously serving a publishable key that decoded to `clerk.leasium.vercel.app`. That creates split-domain sessions. The canonical target is a Clerk setup anchored to `leasium.ai` (prefer `clerk.leasium.ai` via Clerk DNS/CNAME, or exact `https://leasium.ai/__clerk` proxy if enabled in Clerk Dashboard and Vercel env).
 - **Latest pushed commit:** run `git log --oneline -12` to confirm before editing. This handover is kept current by the Codex continuation slices, but the local log is the source of truth.
 - **Working tree:** expected clean after each pushed slice. If not, inspect with `git status --short` before editing.

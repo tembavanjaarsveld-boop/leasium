@@ -12,7 +12,7 @@ import {
 } from "@/components/auth-config-notice";
 import { LeasiumMark } from "@/components/brand";
 import { Button } from "@/components/ui";
-import { setApiAuthTokenProvider } from "@/lib/api";
+import { primeApiAuthToken, setApiAuthTokenProvider } from "@/lib/api";
 import { isPublicOperatorPath } from "@/lib/operator-routes";
 
 function clerkProxyUrl() {
@@ -27,7 +27,9 @@ function OperatorAuthLoading() {
         <div className="flex items-center gap-3">
           <LeasiumMark className="h-12 w-12" />
           <div>
-            <div className="text-sm font-semibold text-primary">Leasium operator login</div>
+            <div className="text-sm font-semibold text-primary">
+              Leasium operator login
+            </div>
             <h1 className="text-2xl font-semibold">Checking your session</h1>
           </div>
         </div>
@@ -47,8 +49,12 @@ function OperatorSignInRequired({ returnTo }: { returnTo: string }) {
         <div className="flex items-center gap-3">
           <LeasiumMark className="h-12 w-12" />
           <div>
-            <div className="text-sm font-semibold text-primary">Leasium operator login</div>
-            <h1 className="text-2xl font-semibold">Sign in to open the workspace</h1>
+            <div className="text-sm font-semibold text-primary">
+              Leasium operator login
+            </div>
+            <h1 className="text-2xl font-semibold">
+              Sign in to open the workspace
+            </h1>
           </div>
         </div>
         <div className="flex items-start gap-3 rounded-xl border border-border bg-white p-4 shadow-leasiumXs">
@@ -56,10 +62,13 @@ function OperatorSignInRequired({ returnTo }: { returnTo: string }) {
             <ShieldCheck size={18} />
           </div>
           <div>
-            <h2 className="text-base font-semibold">Operator access is required</h2>
+            <h2 className="text-base font-semibold">
+              Operator access is required
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Use the email address your property team invited. If this login is not
-              recognised, ask an owner or admin to resend your operator invite.
+              Use the email address your property team invited. If this login is
+              not recognised, ask an owner or admin to resend your operator
+              invite.
             </p>
           </div>
         </div>
@@ -89,6 +98,12 @@ function OperatorAuthBridge({ children }: { children: React.ReactNode }) {
     setApiAuthTokenProvider(() => getToken());
     return () => setApiAuthTokenProvider(null);
   }, [getToken]);
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      void primeApiAuthToken();
+    }
+  }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn && pathname === "/") {
@@ -132,7 +147,11 @@ function OperatorAuthBridge({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export function OperatorAuthProvider({ children }: { children: React.ReactNode }) {
+export function OperatorAuthProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   const proxyUrl = clerkProxyUrl();
 

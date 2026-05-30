@@ -3738,35 +3738,35 @@ function PortfolioQaWorkspace() {
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard
             label="Open issues"
-            value={loading ? "..." : issues.length}
+            value={loading ? "Checking" : issues.length}
             detail="Missing fields, blockers, and urgent review items."
             tone={issues.length ? "warning" : "success"}
             icon={<AlertTriangle size={17} />}
           />
           <MetricCard
             label="Contact cleanup"
-            value={loading ? "..." : tenantsNeedingContact.length}
+            value={loading ? "Checking" : tenantsNeedingContact.length}
             detail="Tenants missing emails, ABNs, or named contacts."
             tone={tenantsNeedingContact.length ? "danger" : "success"}
             icon={<UserRound size={17} />}
           />
           <MetricCard
             label="Ready to invite"
-            value={loading ? "..." : readyPrepRows.length}
+            value={loading ? "Preparing" : readyPrepRows.length}
             detail="Leases with a tenant email and no active invite."
             tone={readyPrepRows.length ? "primary" : "neutral"}
             icon={<MailCheck size={17} />}
           />
           <MetricCard
             label="Source trails"
-            value={loading ? "..." : sources.length}
+            value={loading ? "Updating" : sources.length}
             detail="Imported rows, document reviews, and generated sources."
             tone="neutral"
             icon={<FileText size={17} />}
           />
           <MetricCard
             label="Billing drafts"
-            value={loading ? "..." : billingDrafts.length}
+            value={loading ? "Preparing" : billingDrafts.length}
             detail="Internal drafts waiting for review or approval."
             tone={billingDrafts.length ? "primary" : "neutral"}
             icon={<ClipboardList size={17} />}
@@ -3821,7 +3821,7 @@ function PortfolioQaWorkspace() {
             icon={<Loader2 size={17} className="animate-spin text-primary" />}
           >
             <div className="p-4 text-sm text-muted-foreground">
-              Loading QA workspace.
+              Preparing QA workspace.
             </div>
           </SectionPanel>
         ) : null}
