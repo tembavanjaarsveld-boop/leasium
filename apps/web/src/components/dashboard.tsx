@@ -1080,9 +1080,23 @@ function intakeSourceInfo(intake: DocumentIntakeRecord) {
   }
 
   const subject = fieldText(reviewData.inbound_subject);
+  const sender = fieldText(reviewData.inbound_sender);
+  const receivedRaw = fieldText(reviewData.inbound_received_at);
+  const received = receivedRaw
+    ? new Date(receivedRaw).toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "";
+  const detailParts = [
+    sender ? `From ${sender}` : "",
+    subject ? `Subject: ${subject}` : "",
+    received ? `Received ${received}` : "",
+  ].filter(Boolean);
   return {
     label: "Inbound email attachment",
-    detail: subject ? `Email subject: ${subject}` : "Routed from tenant email",
+    detail: detailParts.length > 0 ? detailParts.join(" · ") : "Routed from tenant email",
     guardrail,
   };
 }

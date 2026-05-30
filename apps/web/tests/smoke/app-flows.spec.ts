@@ -2860,7 +2860,10 @@ test("smart intake labels inbound email attachments in review queue", async ({
   await expect(tenantInsuranceCard).toBeHidden();
   await expect(inboundCard.getByText("Inbound email attachment")).toBeVisible();
   await expect(
-    inboundCard.getByText("Email subject: Insurance certificate"),
+    inboundCard.getByText("Subject: Insurance certificate"),
+  ).toBeVisible();
+  await expect(
+    inboundCard.getByText("From broker@inbound.example"),
   ).toBeVisible();
 
   await inboundCard.getByRole("button", { name: "Review" }).click();

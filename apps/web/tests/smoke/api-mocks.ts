@@ -1353,6 +1353,8 @@ const initialDocumentIntakes = [
       candidate: "inbound_email_attachment",
       inbound_message_id: "inbound-email-attachment-1",
       inbound_subject: "Insurance certificate",
+      inbound_sender: "broker@inbound.example",
+      inbound_received_at: "2026-05-27T02:05:00.000Z",
       tenant_id: tenantId,
       guardrail:
         "No tenant data, lease data, provider action, or payment record is changed until an operator applies the Smart Intake review.",

@@ -3026,6 +3026,10 @@ async def _promote_sendgrid_attachments_to_intake(
             "candidate": "inbound_email_attachment",
             "inbound_message_id": str(message.id),
             "inbound_subject": message.subject,
+            "inbound_sender": message.from_address,
+            "inbound_received_at": (
+                message.created_at.isoformat() if message.created_at else None
+            ),
             "guardrail": (
                 "No tenant data, lease data, provider action, or payment record "
                 "is changed until an operator applies the Smart Intake review."

@@ -2334,6 +2334,9 @@ def test_inbound_webhook_routes_attachments_to_smart_intake(
     assert intake.review_data["source"] == "sendgrid_inbound_parse"
     assert intake.review_data["inbound_message_id"] == str(message_id)
     assert intake.review_data["tenant_id"] == str(tenant.id)
+    assert intake.review_data["inbound_sender"] == "docs@inbound.example"
+    assert intake.review_data["inbound_received_at"]
+    assert intake.review_data["inbound_subject"] == "Lease attachment"
     assert "No tenant data, lease data, provider action, or payment record" in (
         intake.review_data["guardrail"]
     )
