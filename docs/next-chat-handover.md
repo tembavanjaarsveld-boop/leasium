@@ -4,6 +4,15 @@ Last updated: 2026-05-30
 
 ## Current State
 
+- Verification sweep (2026-05-30): working tree is **clean** at HEAD
+  `1c2cc08 Add live verifier for review-queue card overflow`. Full
+  health pass green — backend `ruff check apps stewart tests scripts`
+  passed, `.venv/bin/python -m pytest` returned **340 passed, 1 skipped**
+  (the skip is `test_migrations` with no `TEST_DATABASE_URL`), frontend
+  `eslint src` + `tsc --noEmit` clean, and the production `next build`
+  (WASM SWC) succeeded. The older "this slice is uncommitted" notes
+  below predate this HEAD — those slices have since landed; treat the
+  clean tree as the current truth.
 - Repo: `/Users/tembavanjaarsveld/Documents/Stewart`
 - Branch: `main`
 - Remote: `https://github.com/tembavanjaarsveld-boop/leasium.git`
