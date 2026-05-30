@@ -10,7 +10,7 @@
  * dispatch still lands through a later explicit approval flow.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -26,6 +26,7 @@ import {
   Printer,
   ReceiptText,
   RefreshCw,
+  Send,
   ShieldCheck,
   Wallet,
 } from "lucide-react";
@@ -35,6 +36,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
 import {
+  Button,
+  chipClass,
   EmptyState,
   Field,
   Input,
@@ -50,9 +53,12 @@ import {
   listInvoiceDrafts,
   downloadOwnerStatementPdf,
   downloadOwnerStatementPdfPack,
+  getOwnerStatementDispatch,
   getOwnerStatements,
   listEntities,
+  sendOwnerStatement,
   type InvoiceDraftRecord,
+  type OwnerStatementDispatchReceipt,
   type OwnerStatementRecord,
   type OwnerStatementsRecord,
   type XeroAccountingFreshnessRecord,
@@ -263,6 +269,22 @@ function dispatchReviewStatusTone(status: StatementDispatchReviewStatus) {
   if (status === "missing_recipient") return "danger" as const;
   if (status === "locked") return "neutral" as const;
   return "warning" as const;
+}
+
+function dispatchReceiptStatusLabel(status: string) {
+  if (status === "sent") return "Sent";
+  if (status === "delivered") return "Delivered";
+  if (status === "queued") return "Queued";
+  if (status === "failed") return "Failed";
+  if (status === "skipped") return "Skipped";
+  return invoiceEvidenceStatusLabel(status);
+}
+
+function dispatchReceiptStatusTone(status: string) {
+  if (status === "sent" || status === "delivered") return "success" as const;
+  if (status === "failed") return "danger" as const;
+  if (status === "skipped") return "warning" as const;
+  return "primary" as const;
 }
 
 function invoiceEvidenceStatusLabel(status: string) {
@@ -1199,6 +1221,12 @@ function StatementsContent() {
     enabled: Boolean(selectedEntityId && month),
   });
 
+  const dispatchQuery = useQuery({
+    queryKey: ["owner-statement-dispatch", selectedEntityId, month],
+    queryFn: () => getOwnerStatementDispatch({ entityId: selectedEntityId, month }),
+    enabled: Boolean(selectedEntityId && month),
+  });
+
   const invoiceDraftsQuery = useQuery({
     queryKey: ["owner-statement-readiness-invoice-drafts", selectedEntityId],
     queryFn: () => listInvoiceDrafts({ entity_id: selectedEntityId }),
@@ -1233,6 +1261,16 @@ function StatementsContent() {
       null,
     [owners, selectedOwnerIdentity],
   );
+  const receiptsByOwner = useMemo(() => {
+    const map = new Map<string, OwnerStatementDispatchReceipt>();
+    for (const receipt of dispatchQuery.data?.receipts ?? []) {
+      const existing = map.get(receipt.owner_identity);
+      if (!existing || receipt.created_at > existing.created_at) {
+        map.set(receipt.owner_identity, receipt);
+      }
+    }
+    return map;
+  }, [dispatchQuery.data?.receipts]);
   const portfolioTotals = useMemo(() => {
     return owners.reduce(
       (acc, owner) => ({
@@ -1416,6 +1454,9 @@ function StatementsContent() {
             generatedAt={statementsQuery.data?.generated_at ?? null}
             selectedOwnerIdentity={selectedOwnerIdentity}
             onSelectOwner={setSelectedOwnerIdentity}
+            liveReceipt={
+              receiptsByOwner.get(selectedOwner.owner_identity) ?? null
+            }
           />
         ) : null}
 
@@ -1528,6 +1569,7 @@ function StatementPreviewPanel({
   generatedAt,
   selectedOwnerIdentity,
   onSelectOwner,
+  liveReceipt,
 }: {
   owner: OwnerStatementRecord;
   owners: OwnerStatementRecord[];
@@ -1536,14 +1578,47 @@ function StatementPreviewPanel({
   generatedAt: string | null;
   selectedOwnerIdentity: string;
   onSelectOwner: (value: string) => void;
+  liveReceipt: OwnerStatementDispatchReceipt | null;
 }) {
+  const queryClient = useQueryClient();
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
   const [dispatchReceipt, setDispatchReceipt] = useState<string | null>(null);
   const [pdfReceipt, setPdfReceipt] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [confirmingSend, setConfirmingSend] = useState(false);
   const canPrint = owner.invoice_count > 0;
   const dispatchDraft = statementDispatchDraft({ owner, month });
   const recipientReady = Boolean(owner.billing_email);
+  const hasInvoices = owner.invoice_count > 0;
+  const alreadySent = Boolean(liveReceipt);
+  const sendDisabledReason = !recipientReady
+    ? "No billing email"
+    : !hasInvoices
+      ? "Awaiting invoices"
+      : null;
+  const sendMutation = useMutation({
+    mutationFn: () =>
+      sendOwnerStatement({
+        entityId,
+        ownerIdentity: owner.owner_identity,
+        month,
+        resend: alreadySent,
+      }),
+    onSuccess: () => {
+      setConfirmingSend(false);
+      queryClient.invalidateQueries({
+        queryKey: ["owner-statement-dispatch", entityId, month],
+      });
+    },
+  });
+  // Reset the inline confirm + mutation state whenever the selected owner or
+  // month changes so a primed confirm never carries across to another owner.
+  useEffect(() => {
+    setConfirmingSend(false);
+    sendMutation.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner.owner_identity, month]);
+  const sendReceipt = sendMutation.data ?? null;
   const invoiceEvidenceRows = owner.properties.flatMap((property) =>
     property.invoices.map((invoice) => ({
       ...invoice,
@@ -1938,6 +2013,114 @@ function StatementPreviewPanel({
             <ShieldCheck size={14} className="mt-0.5 shrink-0 text-primary" />
             Review only. This does not send owner email, attach a PDF, or update
             provider delivery history.
+          </div>
+
+          <div className="grid gap-3 border-t border-border pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-semibold text-foreground">
+                  Send statement
+                </h4>
+                {liveReceipt ? (
+                  <StatusBadge
+                    tone={dispatchReceiptStatusTone(liveReceipt.status)}
+                  >
+                    {dispatchReceiptStatusLabel(liveReceipt.status)}
+                  </StatusBadge>
+                ) : null}
+              </div>
+              {sendDisabledReason ? (
+                <span className={chipClass("warning", { bordered: true })}>
+                  {sendDisabledReason}
+                </span>
+              ) : null}
+            </div>
+
+            {confirmingSend ? (
+              <div className="grid gap-3 rounded-md border border-warning-strong/30 bg-warning-soft p-3">
+                <p className="text-sm font-medium text-warning-strong">
+                  Send this statement as a real email to{" "}
+                  {owner.billing_email}? This does not post to Xero, reconcile
+                  payments, or dispatch invoices.
+                  {alreadySent
+                    ? " A statement was already sent to this owner for this month; this resends it."
+                    : ""}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => sendMutation.mutate()}
+                    disabled={sendMutation.isPending}
+                  >
+                    {sendMutation.isPending ? (
+                      <RefreshCw size={15} className="animate-spin" />
+                    ) : (
+                      <Send size={15} />
+                    )}
+                    Confirm send
+                  </Button>
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => setConfirmingSend(false)}
+                    disabled={sendMutation.isPending}
+                  >
+                    Cancel
+                  </SecondaryButton>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    sendMutation.reset();
+                    setConfirmingSend(true);
+                  }}
+                  disabled={Boolean(sendDisabledReason)}
+                >
+                  <Send size={15} />
+                  {alreadySent ? "Resend statement" : "Send statement"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  A confirm step appears before any email is sent.
+                </p>
+              </div>
+            )}
+
+            {sendReceipt ? (
+              <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge
+                    tone={dispatchReceiptStatusTone(sendReceipt.status)}
+                  >
+                    {dispatchReceiptStatusLabel(sendReceipt.status)}
+                  </StatusBadge>
+                  {sendReceipt.recipient_email ? (
+                    <span className="text-muted-foreground">
+                      to {sendReceipt.recipient_email}
+                    </span>
+                  ) : null}
+                </div>
+                {sendReceipt.provider_message_id ? (
+                  <div className="text-xs text-muted-foreground">
+                    Provider message id: {sendReceipt.provider_message_id}
+                  </div>
+                ) : null}
+                {(sendReceipt.status === "failed" ||
+                  sendReceipt.status === "skipped") &&
+                sendReceipt.error ? (
+                  <div className="text-xs font-medium text-danger">
+                    {sendReceipt.error}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {sendMutation.isError ? (
+              <p className="text-sm font-medium text-danger">
+                {friendlyError(sendMutation.error)}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

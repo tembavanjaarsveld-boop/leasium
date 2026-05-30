@@ -2621,6 +2621,26 @@ export async function mockLeasiumApi(
     }
     const [year, monthNumber] = month.split("-").map(Number);
     const monthEndDay = new Date(year, monthNumber, 0).getDate();
+    // A second owner with no billing email so the dispatch UI disabled state
+    // ("No billing email") is exercisable. invoice_count stays 0 so this owner
+    // does not change statement-invoice or outstanding totals other specs rely on.
+    if (owners.size > 0 && !owners.has("Eagle Street Property Trust")) {
+      owners.set("Eagle Street Property Trust", {
+        owner_identity: "Eagle Street Property Trust",
+        owner_legal_name: "Eagle Street Property Trust",
+        trustee_name: "Eagle Street Trustee Pty Ltd",
+        trust_name: null,
+        invoice_issuer_name: null,
+        billing_contact_name: null,
+        billing_email: null,
+        property_count: 0,
+        properties: [],
+        invoiced_cents: 0,
+        paid_cents: 0,
+        outstanding_cents: 0,
+        invoice_count: 0,
+      });
+    }
     return {
       entity_id: entityId,
       month,
@@ -7339,6 +7359,54 @@ export async function mockLeasiumApi(
         route,
         ownerStatements(url.searchParams.get("month") ?? "2026-05"),
       );
+      return;
+    }
+
+    if (method === "GET" && path === "/owners/statements/dispatch") {
+      await fulfillJson(route, {
+        entity_id: url.searchParams.get("entity_id") ?? entityId,
+        month: url.searchParams.get("month") ?? "2026-05",
+        receipts: [],
+        guardrail:
+          "Owner statement dispatch is review-first: each send is explicitly approved before any email leaves.",
+        generated_at: "2026-05-25T00:00:00.000Z",
+      });
+      return;
+    }
+
+    if (method === "POST" && path === "/owners/statements/send") {
+      const payload = request.postDataJSON() as {
+        owner_identity?: string;
+        month?: string;
+        approve?: boolean;
+        resend?: boolean;
+      };
+      if (payload.approve !== true) {
+        await fulfillJson(
+          route,
+          { detail: "Owner statement send requires explicit approval." },
+          400,
+        );
+        return;
+      }
+      await fulfillJson(route, {
+        id: "owner-statement-dispatch-1",
+        entity_id: url.searchParams.get("entity_id") ?? entityId,
+        owner_identity: payload.owner_identity ?? "Queen Street Property Trust",
+        month: payload.month ?? "2026-05",
+        channel: "email",
+        provider: "sendgrid",
+        status: "queued",
+        recipient_email: "owners@queenstreet.example",
+        subject: "Owner statement for May 2026 - Queen Street Property Trust",
+        provider_message_id: "sg-smoke-1",
+        error: null,
+        invoice_count: 2,
+        invoiced_cents: 1760000,
+        outstanding_cents: 1760000,
+        created_by_user_id: operatorId,
+        created_at: "2026-05-25T01:00:00.000Z",
+      });
       return;
     }
 

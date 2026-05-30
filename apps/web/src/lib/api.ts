@@ -5022,6 +5022,72 @@ export function downloadOwnerStatementPdfPack({
   return requestBlob(`/owners/statements/pdf-pack?${params.toString()}`);
 }
 
+export type OwnerStatementDispatchReceipt = {
+  id: string;
+  entity_id: string;
+  owner_identity: string;
+  month: string;
+  channel: string;
+  provider: string | null;
+  status: string;
+  recipient_email: string | null;
+  subject: string | null;
+  provider_message_id: string | null;
+  error: string | null;
+  invoice_count: number;
+  invoiced_cents: number;
+  outstanding_cents: number;
+  created_by_user_id: string | null;
+  created_at: string;
+};
+
+export type OwnerStatementDispatchList = {
+  entity_id: string;
+  month: string;
+  receipts: OwnerStatementDispatchReceipt[];
+  guardrail: string;
+  generated_at: string;
+};
+
+export function sendOwnerStatement({
+  entityId,
+  ownerIdentity,
+  month,
+  resend,
+}: {
+  entityId: string;
+  ownerIdentity: string;
+  month: string;
+  resend?: boolean;
+}) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<OwnerStatementDispatchReceipt>(
+    `/owners/statements/send?${params.toString()}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        owner_identity: ownerIdentity,
+        month,
+        approve: true,
+        resend: resend ?? false,
+      }),
+    },
+  );
+}
+
+export function getOwnerStatementDispatch({
+  entityId,
+  month,
+}: {
+  entityId: string;
+  month: string;
+}) {
+  const params = new URLSearchParams({ entity_id: entityId, month });
+  return request<OwnerStatementDispatchList>(
+    `/owners/statements/dispatch?${params.toString()}`,
+  );
+}
+
 // ---- Contractor directory -------------------------------------------------
 
 export const CONTRACTOR_CATEGORIES = [
