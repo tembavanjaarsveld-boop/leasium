@@ -167,7 +167,7 @@ export function ActivityFeedPanel({ entityId }: { entityId: string }) {
                 {bucket.items.map((item) => {
                   const tone = ACTIVITY_KIND_TONE[item.action_kind];
                   const wrapperClass =
-                    "grid gap-1 rounded-md border border-border bg-white p-3 text-sm transition";
+                    "animate-leasium-row-in grid gap-1 rounded-md border border-border bg-white p-3 text-sm transition";
                   const interactiveClass = item.target_href
                     ? " hover:bg-muted/40"
                     : "";
