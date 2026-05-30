@@ -244,12 +244,47 @@ This week / Later headers) for days when many items share a due window.
 **Phase D (keyboard flow on queues) — intentionally not shipped blind.** j/k
 roving navigation + single-key actions is a real interaction feature with
 focus-management, scroll-into-view, and shortcut-conflict edge cases. The
-Playwright smoke can't run in the Cowork sandbox (Next middleware edge-runtime
-EvalError), so shipping it without the interaction test loop would risk exactly
-the kind of jank that undercuts the quality bar. Recommended to build it on the
-Mac where `playwright test` runs, against the command-center list and the
-operations queue. A deeper motion pass (list enter/exit transitions) similarly
-wants visual verification.
+Playwright smoke can't run in this environment, so shipping it without the
+interaction test loop would risk exactly the kind of jank that undercuts the
+quality bar.
+
+### Toolchain unblock (do this first, then Phase D ships verified)
+
+Root cause of the blocked smoke, diagnosed 2026-05-30: `node -v` reports
+`v26.0.0` on **x64** (`process.arch === "x64"`) on this Mac. Next 15.5 then
+looks for `@next/swc-darwin-x64`, which is not installed, and falls back to the
+**WASM** SWC. The WASM-compiled `middleware.ts` throws
+`EvalError: Code generation from strings disallowed for this context` in the
+edge runtime, so `next dev` (and therefore every Playwright smoke) fails before
+serving a page. Fix one of:
+
+- Install an **arm64** Node (if this is Apple Silicon) so the native
+  `@next/swc-darwin-arm64` loads — preferred; or
+- `pnpm add -D @next/swc-darwin-x64@15.5.18` so the native x64 SWC loads and
+  `next dev` stops using the WASM fallback.
+
+Verify with `./node_modules/.bin/next dev` (no `NEXT_TEST_WASM_DIR`) — the
+homepage should compile without the middleware EvalError. Then
+`playwright test` runs and Phase D can be built test-first.
+
+### Phase D build-ready spec (command-center list first, then ops queue)
+
+- Make the ranked list a roving-tabindex listbox: container `role="list"` (or
+  keep links), each row focusable; track `activeIndex` state.
+- Key handling, scoped so it never fires while a text input/textarea/select or
+  the Cmd-K palette is focused: `j` / `ArrowDown` → next, `k` / `ArrowUp` →
+  prev (clamp, don't wrap), `Enter` → navigate `item.href`, `g`+`g` → first,
+  `G` → last. `scrollIntoView({ block: "nearest" })` on move.
+- Reuse the existing `focus-visible` ring (now on the shared primitives) for
+  the active row so keyboard focus is always visible.
+- Tests (Playwright): focus first row, press `j` twice → third row active;
+  `Enter` → URL changes to that row's href; typing `j` inside the global search
+  box does NOT move the selection.
+- Then port the same hook to the operations queue rows.
+
+A deeper motion pass (list enter/exit transitions via the existing
+`useUnmountDelay` + keyframe utilities) similarly wants the visual loop and
+should follow Phase D.
 
 ## Guardrails carried through all phases
 
