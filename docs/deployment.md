@@ -147,6 +147,25 @@ header and an `x-request-id` per request for tracing slow live pages from logs.
 Frontend observability (Vercel Speed Insights) is deferred; it needs an npm
 dependency plus a Vercel env toggle and is not wired up yet.
 
+## Bank Feed (Basiq)
+
+Bank-feed reconciliation (Basiq, AU) is review-first and **off by default**.
+Set these on the API service to enable it:
+
+```bash
+BASIQ_ENABLED=false
+BASIQ_API_KEY=
+```
+
+- `BASIQ_ENABLED` + `BASIQ_API_KEY` are both required before the adapter does
+  anything; until then it soft-skips and the Settings → Bank feed panel stays
+  inert.
+- v1 reconciles operator-imported transactions against unpaid invoices and
+  writes only local invoice payment metadata after explicit per-row approval —
+  it never moves money or mutates a bank/Xero record. Live Basiq OAuth
+  (auto-fetching transactions) is a later slice. No migration is required for
+  v1.
+
 ## Xero Go-Live Checklist
 
 Use the production branded redirect URI everywhere:

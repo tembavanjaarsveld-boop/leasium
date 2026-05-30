@@ -4,6 +4,17 @@ Last updated: 2026-05-30
 
 ## Current State
 
+- 2026-05-30 bank-feed + observability slice (THIS SESSION, after the dispatch/UX
+  push): commits `d78cf27` (bank-feed v1 backend + Sentry scaffolding) and
+  `c3ef6d6` (bank-feed review UI), then this docs commit. Bank-feed reconciliation
+  v1 is review-first and INERT until `BASIQ_ENABLED` + `BASIQ_API_KEY` are set:
+  `/api/v1/basiq/reconciliation-preview|apply` reuse the Xero reconciliation engine
+  (no fork; local-metadata-only, explicit per-row `approved_idempotency_keys`), with
+  a Settings → Bank feed panel for operator-imported transactions. No new migration.
+  Backend Sentry init is a no-op unless `SENTRY_DSN` is set and can never break
+  startup. Full sweep green: ruff clean, pytest 352 passed / 1 skipped, `eslint src`
+  + `tsc` clean, production `next build` succeeded. Committed locally; push to deploy
+  (bank-feed + Sentry stay inert until their env is configured).
 - 2026-05-30 dispatch + UX slice (THIS SESSION): seven feature commits on `main`
   ending `2815dc9`, then this docs commit. Shipped — comms badge-counts
   summary-only fast path (`6e36ffa`); owner statement review-first SendGrid
