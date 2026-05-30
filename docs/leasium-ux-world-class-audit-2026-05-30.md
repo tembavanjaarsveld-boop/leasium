@@ -286,6 +286,23 @@ A deeper motion pass (list enter/exit transitions via the existing
 `useUnmountDelay` + keyframe utilities) similarly wants the visual loop and
 should follow Phase D.
 
+### Phase D shipped + verified against live (2026-05-30)
+
+Since the local smoke stays blocked by Clerk-middleware-in-the-local-edge
+runtime (not the SWC toolchain — confirmed by installing the native x64 SWC and
+still hitting the EvalError), Phase D was verified with the **deploy → live
+Playwright** loop instead: `apps/web/scripts/verify-keyboard-flow.mjs` drives a
+real browser against the deployed `leasium.ai` with the saved audit session.
+
+Command-center keyboard flow is live: `j` / `ArrowDown` and `k` / `ArrowUp`
+move between ranked rows, `Enter` activates the focused row, scoped to the list
+so it never hijacks global keys; a `focus-visible` ring shows the active row.
+Live result: `rows=3 activeBefore=0 afterJ=1 afterK=0 → KEYBOARD_FLOW_PASS`.
+
+Next: port the same handler to the operations queue, then the motion pass — both
+verifiable through the same live loop, or test-first locally once the
+Clerk/local-edge issue is resolved.
+
 ## Guardrails carried through all phases
 
 - No provider mutation (Xero / SendGrid / Twilio / tenant or owner email /
