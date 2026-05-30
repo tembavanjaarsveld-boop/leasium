@@ -26,6 +26,26 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
 - New modules should earn their own page when they become repeated work, not be squeezed into an existing page.
 - Leasium should feel like modern tooling for operators: calm, fast, clear, and confident.
 
+## 2026-05-30 Dispatch + UX Polish Slice (prototype mode)
+
+Per Temba's standing call that Remba is a retired AI reviewer during the
+internal-first prototype phase ("forget Remba, just fling it"), the
+design-facing changes below shipped without a Remba gate. Logged here for
+audit. Each stays within the codex design source of truth (chip system, motion
+scale, typography) and the provider-mutation guardrail.
+
+- Owner statement dispatch UI on `/statements`: per-owner Send/Resend action
+  with a two-step explicit confirm and inline provider receipt. It triggers a
+  real email, so it requires explicit operator approval; no Xero, payment,
+  invoice, or tenant side effects.
+- Portfolio QA blocked-row bulk review: per-blocker-reason breakdown with
+  counts, plain-English explanations, and guided fix links. Read-only.
+- Smart Intake inbound-attachment rows now show From / Subject / Received.
+- World-class UX audit Phase B-E close-out: date-bucket headers (B3), redundant
+  billing-link icon removed (C4), Properties compact-density toggle (C6),
+  Insights guardrail label split (C8), Operations complete/waive confirmation
+  toast (E6). Sidebar restructure (C7) and owner-tag chevrons (C2) deferred.
+
 ## Current Remba Review
 
 Status: pass with fixes. Remba approved the tenant onboarding command center and

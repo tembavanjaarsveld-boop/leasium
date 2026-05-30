@@ -4,6 +4,18 @@ Last updated: 2026-05-30
 
 ## Current State
 
+- 2026-05-30 dispatch + UX slice (THIS SESSION): seven feature commits on `main`
+  ending `2815dc9`, then this docs commit. Shipped — comms badge-counts
+  summary-only fast path (`6e36ffa`); owner statement review-first SendGrid
+  dispatch backend (`486e6cf`) + UI (`63fad2e`); Portfolio QA per-blocker bulk
+  review (`75952c7`); Smart Intake inbound-attachment sender/received cues
+  (`42f8fae`); world-class-audit Phase B-E close-out (`2815dc9`). Full sweep
+  green: backend ruff clean + `pytest` **345 passed / 1 skipped**; frontend
+  `eslint src` + `tsc --noEmit` clean + production `next build` (WASM)
+  succeeded. New migration `20260530_0027_owner_statement_dispatch` must be
+  applied in hosted Neon/Render before the dispatch endpoints work there. Owner
+  statement dispatch is OFF by default (`owner_statement_email_enabled`) and
+  never sends without explicit per-owner approval (`approve=true`).
 - Verification sweep (2026-05-30): working tree is **clean** at HEAD
   `1c2cc08 Add live verifier for review-queue card overflow`. Full
   health pass green — backend `ruff check apps stewart tests scripts`
