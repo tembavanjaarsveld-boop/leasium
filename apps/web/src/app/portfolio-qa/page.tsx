@@ -34,6 +34,7 @@ import {
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
+  chipClass,
   EmptyState,
   Field,
   Input,
@@ -144,6 +145,24 @@ type BulkReviewRow = {
   label: string;
   detail: string;
   blocker: string;
+  blockers: string[];
+  href?: string;
+};
+
+type BlockerReasonRow = {
+  id: string;
+  label: string;
+  detail: string;
+  href?: string;
+};
+
+type BlockerReason = {
+  reason: string;
+  explanation: string;
+  count: number;
+  tone: Tone;
+  href?: string;
+  rows: BlockerReasonRow[];
 };
 
 type CompletionReportStatus = "complete" | "review" | "blocked";
@@ -193,6 +212,8 @@ type TenantPrepRow = {
   ready: boolean;
   blockers: string[];
   onboarding: TenantOnboardingRecord | null;
+  tenantHref: string | null;
+  propertyHref: string;
 };
 
 type TenantContactDraft = {
@@ -1056,6 +1077,8 @@ function buildTenantPrep(
         ready: Boolean(row.lease_id && row.tenant_id && email && !onboarding),
         blockers,
         onboarding,
+        tenantHref: row.tenant_id ? `/tenants/${row.tenant_id}` : null,
+        propertyHref: `/properties?entity_id=${row.entity_id}&property_id=${row.property_id}`,
       } satisfies TenantPrepRow;
     })
     .sort(
@@ -1501,6 +1524,145 @@ function blockerBreakdown(values: string[], limit = 3) {
     .slice(0, limit);
 }
 
+// Plain-English "why it matters" for the blocker phrases the backend emits.
+// Matched case-insensitively as substrings so dynamic charge-type prefixes
+// (e.g. "Rent is missing a Xero account code.") still resolve. Any reason not
+// matched here falls back to its raw blocker text so nothing is ever hidden.
+const BLOCKER_EXPLANATIONS: Array<{ match: string; explanation: string }> = [
+  // Onboarding (from buildTenantPrep)
+  {
+    match: "no tenant email",
+    explanation: "Onboarding invites and invoices can't reach the tenant.",
+  },
+  {
+    match: "no active lease",
+    explanation: "Without a current lease there is nothing to onboard or bill.",
+  },
+  {
+    match: "tenant record missing",
+    explanation: "The lease has no tenant link, so no invite can be addressed.",
+  },
+  {
+    match: "onboarding link expired",
+    explanation: "The previous invite lapsed; recover it before sending again.",
+  },
+  {
+    match: "existing onboarding",
+    explanation: "A workflow is already running for this row; review it first.",
+  },
+  // Invoice readiness (blocks creating a billing draft)
+  {
+    match: "missing a billing email",
+    explanation: "Onboarding invites and invoices can't reach the tenant.",
+  },
+  {
+    match: "tenant billing email missing",
+    explanation: "Onboarding invites and invoices can't reach the tenant.",
+  },
+  {
+    match: "has no current lease",
+    explanation: "Blocks creating a billing draft until a lease is in place.",
+  },
+  {
+    match: "has no charge rules",
+    explanation: "Blocks creating a billing draft with no charges to invoice.",
+  },
+  {
+    match: "has no amount",
+    explanation: "Blocks creating a billing draft until the charge has a value.",
+  },
+  {
+    match: "missing the next due date",
+    explanation: "Blocks scheduling the charge on a billing draft.",
+  },
+  {
+    match: "invoice issuer missing",
+    explanation: "Blocks creating a billing draft without a named issuer.",
+  },
+  {
+    match: "abn missing for property owner",
+    explanation: "Owner/trust billing needs an ABN before invoice approval.",
+  },
+  {
+    match: "trustee missing",
+    explanation: "Trust billing needs a trustee before invoice approval.",
+  },
+  {
+    match: "ownership split incomplete",
+    explanation: "Split ownership needs shares set before invoice approval.",
+  },
+  // Xero readiness (blocks syncing the invoice to Xero)
+  {
+    match: "not connected to xero",
+    explanation: "Blocks syncing the invoice to Xero until connected.",
+  },
+  {
+    match: "missing a xero account code",
+    explanation: "Blocks syncing the invoice to Xero without an account code.",
+  },
+  {
+    match: "missing a xero tax type",
+    explanation: "Blocks syncing the invoice to Xero without a tax type.",
+  },
+  {
+    match: "xero issuer mapping missing",
+    explanation: "Blocks syncing the invoice to Xero without an issuer contact.",
+  },
+  // GST readiness (blocks posting a taxable charge)
+  {
+    match: "not gst registered",
+    explanation: "Blocks posting a taxable charge until GST status is set.",
+  },
+];
+
+function blockerExplanation(reason: string) {
+  const lower = reason.toLowerCase();
+  return (
+    BLOCKER_EXPLANATIONS.find((entry) => lower.includes(entry.match))
+      ?.explanation ?? reason
+  );
+}
+
+// Distinct blocker reasons across ALL rows in a group (uncapped), with a count
+// and the affected rows per reason. Sorted by count desc so the most common
+// reason leads. The group tone colours every reason consistently.
+function groupBlockerReasons(group: BulkReviewGroup): BlockerReason[] {
+  const reasons = new Map<string, BlockerReason>();
+  for (const row of group.rows) {
+    const seen = new Set<string>();
+    for (const raw of row.blockers) {
+      const reason = raw.trim();
+      if (!reason || seen.has(reason)) {
+        continue;
+      }
+      seen.add(reason);
+      const existing = reasons.get(reason);
+      const reasonRow: BlockerReasonRow = {
+        id: row.id,
+        label: row.label,
+        detail: row.detail,
+        href: row.href,
+      };
+      if (existing) {
+        existing.count += 1;
+        existing.rows.push(reasonRow);
+      } else {
+        reasons.set(reason, {
+          reason,
+          explanation: blockerExplanation(reason),
+          count: 1,
+          tone: group.tone,
+          href: row.href,
+          rows: [reasonRow],
+        });
+      }
+    }
+  }
+  return [...reasons.values()].sort(
+    (a, b) => b.count - a.count || a.reason.localeCompare(b.reason),
+  );
+}
+
 function buildBulkReviewGroups({
   tenantPrep,
   issues,
@@ -1554,6 +1716,8 @@ function buildBulkReviewGroups({
         label: `${row.tenantName} / ${row.propertyName}`,
         detail: row.unitLabel,
         blocker: row.blockers.join(" / "),
+        blockers: row.blockers,
+        href: row.tenantHref ?? undefined,
       })),
     },
     {
@@ -1573,6 +1737,8 @@ function buildBulkReviewGroups({
         label: `${row.tenantName} / ${row.propertyName}`,
         detail: row.unitLabel,
         blocker: row.blockers.join(" / "),
+        blockers: row.blockers,
+        href: row.propertyHref,
       })),
     },
     {
@@ -1596,6 +1762,8 @@ function buildBulkReviewGroups({
           ? `Onboarding ${label(row.onboarding.status)}`
           : row.unitLabel,
         blocker: row.blockers.join(" / "),
+        blockers: row.blockers,
+        href: row.tenantHref ?? undefined,
       })),
     },
     {
@@ -1615,6 +1783,8 @@ function buildBulkReviewGroups({
         label: issue.title,
         detail: issue.action,
         blocker: issue.detail,
+        blockers: [issue.detail],
+        href: issue.href,
       })),
     },
     {
@@ -1634,6 +1804,8 @@ function buildBulkReviewGroups({
         label: issue.title,
         detail: issue.action,
         blocker: issue.detail,
+        blockers: [issue.detail],
+        href: issue.href,
       })),
     },
     {
@@ -1653,6 +1825,8 @@ function buildBulkReviewGroups({
         label: draft.title,
         detail: `${formatMoney(draft.total_cents)} / ${label(draft.status)}`,
         blocker: label(draft.status),
+        blockers: [label(draft.status)],
+        href: "/billing-readiness",
       })),
     },
   ];
@@ -2350,6 +2524,142 @@ function blockerTriageText(groups: BulkReviewGroup[]) {
   ].join("\n\n");
 }
 
+function BlockerReasonBreakdown({
+  groups,
+  onOpenTab,
+}: {
+  groups: BulkReviewGroup[];
+  onOpenTab: (tab: QaTab) => void;
+}) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const toggle = (key: string) =>
+    setExpanded((current) => ({ ...current, [key]: !current[key] }));
+
+  return (
+    <div className="mt-3 grid gap-3" data-testid="blocker-reason-breakdown">
+      <div className="text-sm font-semibold text-foreground">
+        Reason breakdown
+      </div>
+      <p className="-mt-2 text-sm text-muted-foreground">
+        Every distinct blocker reason in each group, why it matters, and a
+        guided fix. Review the affected rows before applying any change.
+      </p>
+      {groups.map((group) => {
+        const reasons = groupBlockerReasons(group);
+        if (!reasons.length) {
+          return null;
+        }
+        return (
+          <div
+            key={group.id}
+            data-testid={`reason-group-${group.id}`}
+            className="grid gap-2 rounded-md border border-border bg-white p-3 shadow-leasiumXs"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge tone={group.tone}>{group.count}</StatusBadge>
+              <span className="font-semibold text-foreground">
+                {group.title}
+              </span>
+            </div>
+            <div className="divide-y divide-border">
+              {reasons.map((reason) => {
+                const key = `${group.id}::${reason.reason}`;
+                const isOpen = Boolean(expanded[key]);
+                const fixBody = (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                    {group.actionLabel}
+                    <ArrowRight size={13} />
+                  </span>
+                );
+                return (
+                  <div key={key} className="grid gap-2 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={chipClass(reason.tone, { bordered: true })}>
+                            {reason.count}
+                          </span>
+                          <span className="font-medium text-foreground">
+                            {reason.reason}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {reason.explanation}
+                        </p>
+                      </div>
+                      {reason.href ? (
+                        <Link href={reason.href} className="shrink-0">
+                          {fixBody}
+                        </Link>
+                      ) : group.tab ? (
+                        <button
+                          type="button"
+                          onClick={() => group.tab && onOpenTab(group.tab)}
+                          className="shrink-0"
+                        >
+                          {fixBody}
+                        </button>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggle(key)}
+                      aria-expanded={isOpen}
+                      className="inline-flex w-fit items-center gap-1 text-xs font-semibold text-muted-foreground transition hover:text-primary"
+                    >
+                      {isOpen
+                        ? "Hide affected rows"
+                        : `Show ${reason.count} affected row${
+                            reason.count === 1 ? "" : "s"
+                          }`}
+                    </button>
+                    {isOpen ? (
+                      <div className="grid gap-1 rounded-md border border-border bg-muted/30 p-2">
+                        {reason.rows.map((row, index) => {
+                          const rowBody = (
+                            <>
+                              <span className="truncate font-medium text-foreground">
+                                {row.label}
+                              </span>
+                              {row.detail ? (
+                                <span className="shrink-0 text-muted-foreground">
+                                  {row.detail}
+                                </span>
+                              ) : null}
+                            </>
+                          );
+                          const rowClass =
+                            "flex items-center justify-between gap-2 px-1 py-1 text-xs";
+                          return row.href ? (
+                            <Link
+                              key={`${row.id}-${index}`}
+                              href={row.href}
+                              className={cn(
+                                rowClass,
+                                "transition hover:text-primary",
+                              )}
+                            >
+                              {rowBody}
+                            </Link>
+                          ) : (
+                            <div key={`${row.id}-${index}`} className={rowClass}>
+                              {rowBody}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function BlockerTriagePanel({
   groups,
   onOpenTab,
@@ -2482,6 +2792,11 @@ function BlockerTriagePanel({
                 );
               })}
             </div>
+
+            <BlockerReasonBreakdown
+              groups={activeGroups}
+              onOpenTab={onOpenTab}
+            />
           </>
         )}
       </div>
