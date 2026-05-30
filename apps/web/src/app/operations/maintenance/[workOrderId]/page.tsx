@@ -46,8 +46,10 @@ import {
 import {
   addMaintenanceWorkOrderComment,
   classifyMaintenanceWorkOrder,
+  type CommsCorrespondenceEventRecord,
   documentDownloadUrl,
   type DocumentRecord,
+  getMaintenanceWorkOrderCommsCorrespondence,
   getMaintenanceWorkOrder,
   type InvoiceDraftRecord,
   invoiceDraftPreviewUrl,
@@ -261,8 +263,116 @@ function friendlyError(error: unknown) {
 }
 
 function csvCell(value: string | number | null | undefined) {
-  const text = value == null ? "" : String(value);
+  const raw = value == null ? "" : String(value);
+  const text =
+    typeof value === "string" && /^[\s]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
   return `"${text.replaceAll('"', '""')}"`;
+}
+
+function correspondenceKindLabel(event: CommsCorrespondenceEventRecord) {
+  const kind = event.metadata.kind;
+  if (kind === "maintenance_contractor_forward") return "Contractor forward";
+  if (kind === "maintenance_tenant_forward") return "Tenant forward";
+  return event.event_type;
+}
+
+function correspondenceChannelLabel(event: CommsCorrespondenceEventRecord) {
+  if (event.direction === "internal") return "Internal";
+  if (event.channel === "sms") return "Twilio SMS";
+  if (event.channel === "email") return "SendGrid email";
+  return event.channel ?? "Stored receipt";
+}
+
+function correspondenceStatusTone(status: string | null | undefined): Tone {
+  if (status === "success") return "success";
+  if (status === "error" || status === "failed") return "danger";
+  if (status === "skipped") return "warning";
+  return "neutral";
+}
+
+function correspondenceTargetValue(event: CommsCorrespondenceEventRecord) {
+  if (!event.target_kind || !event.target_id) return "";
+  return `${event.target_kind}:${event.target_id}`;
+}
+
+function correspondenceMetadataString(
+  event: CommsCorrespondenceEventRecord,
+  key: string,
+) {
+  const value = event.metadata[key];
+  return typeof value === "string" ? value : null;
+}
+
+function maintenanceCorrespondenceCsv({
+  events,
+  workOrderId,
+  generatedAt,
+}: {
+  events: CommsCorrespondenceEventRecord[];
+  workOrderId: string;
+  generatedAt: string | null | undefined;
+}) {
+  const guardrail =
+    "Read-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, refresh providers, or mutate maintenance records.";
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Category",
+      "Kind",
+      "Direction",
+      "Channel",
+      "Recipient",
+      "Status",
+      "Provider",
+      "Occurred",
+      "Summary",
+      "Target",
+      "Generated",
+      "Guardrail",
+    ],
+    [
+      "Maintenance correspondence",
+      "All events",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      `${events.length} ${events.length === 1 ? "event" : "events"}`,
+      `maintenance_work_order:${workOrderId}`,
+      formatDateTime(generatedAt),
+      guardrail,
+    ],
+    ...events.map((event) => [
+      "Correspondence event",
+      correspondenceMetadataString(event, "kind") ?? correspondenceKindLabel(event),
+      event.direction,
+      correspondenceChannelLabel(event),
+      event.recipient,
+      event.status,
+      event.provider,
+      formatDateTime(event.occurred_at),
+      event.summary,
+      correspondenceTargetValue(event),
+      formatDateTime(generatedAt),
+      guardrail,
+    ]),
+    [
+      "Export guardrail",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      guardrail,
+      "",
+      "",
+      guardrail,
+    ],
+  ];
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
 async function copyTextToClipboard(text: string) {
@@ -2566,6 +2676,11 @@ function MaintenanceDetailRoute() {
     queryFn: () => getMaintenanceWorkOrder(workOrderId),
     enabled: Boolean(workOrderId),
   });
+  const correspondenceQuery = useQuery({
+    queryKey: ["maintenance-work-order-correspondence", workOrderId],
+    queryFn: () => getMaintenanceWorkOrderCommsCorrespondence(workOrderId),
+    enabled: Boolean(workOrderId),
+  });
   const workOrder = workOrderQuery.data ?? null;
   const entityId = workOrder?.entity_id ?? "";
 
@@ -2886,8 +3001,29 @@ function MaintenanceDetailRoute() {
 
   const refresh = () => {
     workOrderQuery.refetch();
+    correspondenceQuery.refetch();
     documentsQuery.refetch();
     invoiceDraftsQuery.refetch();
+  };
+
+  const downloadCorrespondenceCsv = () => {
+    const correspondence = correspondenceQuery.data;
+    if (!workOrder || !correspondence) {
+      return;
+    }
+    saveBlob(
+      new Blob(
+        [
+          maintenanceCorrespondenceCsv({
+            events: correspondence.events,
+            workOrderId: workOrder.id,
+            generatedAt: correspondence.generated_at,
+          }),
+        ],
+        { type: "text/csv;charset=utf-8" },
+      ),
+      `maintenance-correspondence-${workOrder.id}.csv`,
+    );
   };
 
   const updateMutation = useMutation({
@@ -4652,21 +4788,22 @@ function MaintenanceDetailRoute() {
                 </div>
               </SectionPanel>
 
-              <SectionPanel
-                title="Activity"
-                icon={<History size={17} />}
-                actions={
-                  <SecondaryButton
-                    type="button"
-                    onClick={copyActivityAudit}
-                    disabled={!workOrder}
-                  >
-                    <ClipboardCheck size={15} />
-                    Copy audit
-                  </SecondaryButton>
-                }
-              >
-                <div className="grid gap-3 p-4">
+              <div className="grid gap-5">
+                <SectionPanel
+                  title="Activity"
+                  icon={<History size={17} />}
+                  actions={
+                    <SecondaryButton
+                      type="button"
+                      onClick={copyActivityAudit}
+                      disabled={!workOrder}
+                    >
+                      <ClipboardCheck size={15} />
+                      Copy audit
+                    </SecondaryButton>
+                  }
+                >
+                  <div className="grid gap-3 p-4">
                   {activityAuditReceipt ? (
                     <p className="text-sm font-medium text-success">
                       {activityAuditReceipt}
@@ -4837,13 +4974,155 @@ function MaintenanceDetailRoute() {
                       description="Updates and approval actions will appear here."
                     />
                   ) : null}
-                </div>
-              </SectionPanel>
+                  </div>
+                </SectionPanel>
+                <WorkOrderCorrespondencePanel
+                  events={correspondenceQuery.data?.events ?? []}
+                  guardrails={correspondenceQuery.data?.guardrails ?? []}
+                  isLoading={correspondenceQuery.isLoading}
+                  error={correspondenceQuery.error}
+                  onDownload={downloadCorrespondenceCsv}
+                  downloadDisabled={
+                    !correspondenceQuery.data ||
+                    correspondenceQuery.data.events.length === 0
+                  }
+                />
+              </div>
             </div>
           </>
         ) : null}
       </div>
     </main>
+  );
+}
+
+function WorkOrderCorrespondencePanel({
+  events,
+  guardrails,
+  isLoading,
+  error,
+  onDownload,
+  downloadDisabled,
+}: {
+  events: CommsCorrespondenceEventRecord[];
+  guardrails: string[];
+  isLoading: boolean;
+  error: unknown;
+  onDownload: () => void;
+  downloadDisabled: boolean;
+}) {
+  const countLabel = `${events.length} correspondence ${
+    events.length === 1 ? "event" : "events"
+  }`;
+  const tenantId = events
+    .map((event) => correspondenceMetadataString(event, "tenant_id"))
+    .find((value): value is string => Boolean(value));
+  return (
+    <SectionPanel
+      title="Correspondence"
+      icon={<Mail size={17} />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone="neutral">{countLabel}</StatusBadge>
+          <SecondaryButton
+            type="button"
+            onClick={onDownload}
+            disabled={downloadDisabled}
+          >
+            <Download size={15} />
+            Download correspondence CSV
+          </SecondaryButton>
+        </div>
+      }
+    >
+      <div className="grid gap-3 p-4 text-sm">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 size={15} className="animate-spin text-primary" />
+            Loading correspondence.
+          </div>
+        ) : null}
+        {error ? (
+          <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-danger">
+            {friendlyError(error)}
+          </p>
+        ) : null}
+        {!isLoading && !error && events.length === 0 ? (
+          <EmptyState
+            icon={<Mail size={18} />}
+            title="No correspondence receipts"
+            description="Comms dispatch and dismiss receipts linked to this work order will appear here."
+          />
+        ) : null}
+        {!isLoading && !error && events.length > 0 ? (
+          <div className="grid gap-2">
+            {events.slice(0, 5).map((event) => (
+              <div
+                key={event.id}
+                className="grid gap-2 rounded-md border border-border bg-white px-3 py-3"
+                data-testid="work-order-correspondence-event"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-foreground">
+                      {event.summary ?? event.event_type}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {correspondenceKindLabel(event)}
+                      {event.recipient ? ` to ${event.recipient}` : ""}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      tone={event.channel === "sms" ? "primary" : "neutral"}
+                    >
+                      {correspondenceChannelLabel(event)}
+                    </StatusBadge>
+                    {event.status ? (
+                      <StatusBadge tone={correspondenceStatusTone(event.status)}>
+                        {label(event.status)}
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  {event.provider ? <span>Provider {event.provider}</span> : null}
+                  <span>{formatDateTime(event.occurred_at)}</span>
+                  {correspondenceTargetValue(event) ? (
+                    <span>{correspondenceTargetValue(event)}</span>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/comms"
+            className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+          >
+            <ArrowUpRight size={13} />
+            Open Comms queue
+          </Link>
+          {tenantId ? (
+            <Link
+              href={`/tenants/${encodeURIComponent(tenantId)}`}
+              className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+            >
+              <ArrowUpRight size={13} />
+              Open tenant
+            </Link>
+          ) : null}
+        </div>
+        {guardrails.length ? (
+          <div className="grid gap-1 rounded-md bg-muted/30 p-3 text-xs text-muted-foreground">
+            {guardrails.map((guardrail) => (
+              <p key={guardrail}>{guardrail}</p>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </SectionPanel>
   );
 }
 

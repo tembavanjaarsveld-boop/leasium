@@ -241,7 +241,7 @@ const properties = [
   },
 ];
 
-const tenants = [
+const initialTenants = [
   {
     id: tenantId,
     entity_id: entityId,
@@ -322,6 +322,7 @@ const tenants = [
     },
   },
 ];
+let tenants = jsonClone(initialTenants);
 
 const initialTenantOnboardings = [
   {
@@ -403,7 +404,7 @@ const obligations = [
   },
 ];
 
-const maintenanceWorkOrders = [
+const initialMaintenanceWorkOrders = [
   {
     id: "work-order-1",
     entity_id: entityId,
@@ -576,6 +577,38 @@ const maintenanceWorkOrders = [
     ],
   },
 ];
+let maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);
+
+function maintenanceStatusMatrixWorkOrders() {
+  const base = maintenanceWorkOrders[0];
+  return [
+    { status: "requested", title: "Requested repair", due_date: null, completed_at: null },
+    { status: "triaged", title: "Triaged repair", due_date: "2026-05-21", completed_at: null },
+    { status: "assigned", title: "Assigned repair", due_date: "2026-05-21", completed_at: null },
+    { status: "awaiting_approval", title: "Approval repair", due_date: "2026-05-21", completed_at: null },
+    { status: "approved", title: "Approved repair", due_date: "2026-05-21", completed_at: null },
+    { status: "in_progress", title: "In-progress repair", due_date: "2026-05-22", completed_at: null },
+    { status: "completed", title: "Completed repair", due_date: "2026-05-22", completed_at: "2026-05-22T00:00:00.000Z" },
+    { status: "cancelled", title: "Cancelled repair", due_date: null, completed_at: null },
+  ].map((row, index) => ({
+    ...base,
+    id: `work-order-status-${row.status}`,
+    title: row.title,
+    description: null,
+    status: row.status,
+    priority: "normal",
+    requested_at: `2026-05-19T0${index}:00:00.000Z`,
+    due_date: row.due_date,
+    completed_at: row.completed_at,
+    document_ids: [],
+    photo_document_ids: [],
+    metadata: {
+      comments: [],
+      activity_history: [],
+    },
+    channel_receipts: [],
+  }));
+}
 
 const initialTenantPortalDocuments = [
   {
@@ -1267,6 +1300,85 @@ const initialDocumentIntakes = [
     byte_size: 2345,
     category: "insurance",
   },
+  {
+    id: "intake-inspection-1",
+    entity_id: entityId,
+    document_id: "document-inspection-1",
+    status: "ready_for_review",
+    document_type: "inspection_report",
+    summary: "Inspection report with two maintenance findings ready for review.",
+    confidence: 0.84,
+    extracted_data: {
+      document_type: "inspection_report",
+      summary: "Inspection report with two maintenance findings ready for review.",
+      confidence: 0.84,
+      parties: [],
+      properties: [
+        {
+          name: "Queen Street Retail Centre",
+          address: "12 Queen Street",
+          unit_label: "Shop 3",
+        },
+      ],
+      key_dates: [],
+      money_amounts: [],
+      obligations: [],
+      inspection_findings: [
+        {
+          title: "Repair leaking tap",
+          description: "Kitchen mixer is leaking at the base.",
+          priority: "high",
+          due_date: "2026-06-04",
+          location: "Kitchen",
+          category: "plumbing",
+          confidence: 0.88,
+          source_hint: "Inspection item 4",
+          warnings: [],
+          photo_document_ids: ["document-inspection-photo-1"],
+        },
+        {
+          title: "Replace cracked entry tile",
+          description: "Entry tile has cracked and needs make-safe review.",
+          priority: "normal",
+          due_date: null,
+          location: "Entry",
+          category: "structural",
+          confidence: 0.72,
+          source_hint: "Inspection item 7",
+          warnings: ["Confirm whether tenant damage applies."],
+          photo_document_ids: [],
+        },
+      ],
+      suggested_links: {
+        property_name: "Queen Street Retail Centre",
+        tenant_name: "Bright Cafe Pty Ltd",
+        lease_reference: "Shop 3 lease",
+      },
+      warnings: [],
+      missing_information: [],
+      proposed_actions: [
+        {
+          action: "prepare_maintenance_work_orders",
+          target: "operations",
+          summary: "Review findings before creating work orders.",
+          confidence: 0.82,
+        },
+      ],
+    },
+    review_data: {},
+    openai_response_id: "resp-inspection-smoke",
+    error_message: null,
+    reviewed_at: null,
+    reviewed_by_user_id: null,
+    applied_at: null,
+    applied_by_user_id: null,
+    created_at: "2026-05-28T05:00:00.000Z",
+    updated_at: "2026-05-28T05:00:00.000Z",
+    filename: "queen-street-inspection.txt",
+    content_type: "text/plain",
+    byte_size: 3456,
+    category: "other",
+  },
 ];
 
 const tenancyUnits = [
@@ -1307,6 +1419,9 @@ const tenantPortalSession = (
     tradingName?: string;
     leaseReady?: boolean;
     leaseSigned?: boolean;
+    noComplianceItems?: boolean;
+    maintenanceStatusMatrix?: boolean;
+    activityFeed?: boolean;
   } = {},
 ) => ({
   auth:
@@ -1357,7 +1472,9 @@ const tenantPortalSession = (
       options.leaseReady || options.leaseSigned
         ? "2026-05-21T01:00:00.000Z"
         : null,
-    last_sent_at: "2026-05-18T09:30:00.000Z",
+    last_sent_at: options.activityFeed
+      ? "2026-05-20T12:00:00.000Z"
+      : "2026-05-18T09:30:00.000Z",
     document_count: 1,
     submitted_data:
       options.leaseReady || options.leaseSigned
@@ -1394,38 +1511,42 @@ const tenantPortalSession = (
       "onboarding",
       "other",
     ],
-    items: [
-      {
-        key: "insurance",
-        label: "Insurance",
-        status: tenantPortalDocumentsByCategory("insurance").length
-          ? "received"
-          : "not_on_file",
-        document_count: tenantPortalDocumentsByCategory("insurance").length,
-        latest_document:
-          tenantPortalDocumentsByCategory("insurance")[0] ?? null,
-        due_date: "2027-06-30",
-      },
-      {
-        key: "bank_guarantee",
-        label: "Bank guarantee",
-        status: "not_on_file",
-        document_count: 0,
-        latest_document: null,
-        due_date: null,
-      },
-      {
-        key: "onboarding",
-        label: "Onboarding files",
-        status: tenantPortalDocumentsByCategory("onboarding").length
-          ? "received"
-          : "not_on_file",
-        document_count: tenantPortalDocumentsByCategory("onboarding").length,
-        latest_document:
-          tenantPortalDocumentsByCategory("onboarding")[0] ?? null,
-        due_date: null,
-      },
-    ],
+    items: options.noComplianceItems
+      ? []
+      : [
+          {
+            key: "insurance",
+            label: "Insurance",
+            status: tenantPortalDocumentsByCategory("insurance").length
+              ? "received"
+              : "not_on_file",
+            document_count:
+              tenantPortalDocumentsByCategory("insurance").length,
+            latest_document:
+              tenantPortalDocumentsByCategory("insurance")[0] ?? null,
+            due_date: "2027-06-30",
+          },
+          {
+            key: "bank_guarantee",
+            label: "Bank guarantee",
+            status: "not_on_file",
+            document_count: 0,
+            latest_document: null,
+            due_date: null,
+          },
+          {
+            key: "onboarding",
+            label: "Onboarding files",
+            status: tenantPortalDocumentsByCategory("onboarding").length
+              ? "received"
+              : "not_on_file",
+            document_count:
+              tenantPortalDocumentsByCategory("onboarding").length,
+            latest_document:
+              tenantPortalDocumentsByCategory("onboarding")[0] ?? null,
+            due_date: null,
+          },
+        ],
     uploaded_documents: tenantPortalDocuments,
   },
   invoices: [
@@ -1465,7 +1586,10 @@ const tenantPortalSession = (
     status: "overdue",
     manual_only: true,
   },
-  maintenance_requests: maintenanceWorkOrders
+  maintenance_requests: (options.maintenanceStatusMatrix
+    ? maintenanceStatusMatrixWorkOrders()
+    : maintenanceWorkOrders
+  )
     .filter((workOrder) => workOrder.tenant_id === tenantId)
     .map((workOrder) => ({
       id: workOrder.id,
@@ -1511,7 +1635,14 @@ const tenantPortalSession = (
             }))
         : [],
     })),
-  notification_preferences: tenantPortalNotificationPreferences,
+  notification_preferences: options.activityFeed
+    ? {
+        ...tenantPortalNotificationPreferences,
+        updated_at:
+          tenantPortalNotificationPreferences.updated_at ??
+          "2026-05-21T03:00:00.000Z",
+      }
+    : tenantPortalNotificationPreferences,
   contact_change_requests: [
     {
       id: "contact-request-1",
@@ -1933,6 +2064,10 @@ type MockLeasiumApiOptions = {
   tenantAccountLinked?: boolean;
   tenantAccountLinkedToDifferentTenant?: boolean;
   tenantPortalLeaseReady?: boolean;
+  tenantPortalLeaseSigned?: boolean;
+  tenantPortalNoComplianceItems?: boolean;
+  tenantPortalMaintenanceStatusMatrix?: boolean;
+  tenantPortalActivityFeed?: boolean;
   xeroDiagnosticsBlocked?: boolean;
   xeroDiagnosticsUnauthorized?: boolean;
   xeroDiagnosticsUnauthorizedStatus?: 401 | 403;
@@ -1944,6 +2079,8 @@ export async function mockLeasiumApi(
   page: Page,
   options: MockLeasiumApiOptions = {},
 ) {
+  tenants = jsonClone(initialTenants);
+  maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);
   let xeroTenantId: string | null = null;
   let xeroConnectedAt: string | null = null;
   let xeroProviderConnected = false;
@@ -1962,7 +2099,12 @@ export async function mockLeasiumApi(
   let tenantAccountLinked = options.tenantAccountLinked ?? false;
   let tenantPortalOnboardingSubmitted = false;
   const tenantPortalLeaseReady = options.tenantPortalLeaseReady ?? false;
-  let tenantPortalLeaseSigned = false;
+  let tenantPortalLeaseSigned = options.tenantPortalLeaseSigned ?? false;
+  const tenantPortalNoComplianceItems =
+    options.tenantPortalNoComplianceItems ?? false;
+  const tenantPortalMaintenanceStatusMatrix =
+    options.tenantPortalMaintenanceStatusMatrix ?? false;
+  const tenantPortalActivityFeed = options.tenantPortalActivityFeed ?? false;
   const xeroDiagnosticsBlocked = options.xeroDiagnosticsBlocked ?? false;
   let notificationCenterReadAt: string | null = null;
   let digestReceiptSent = false;
@@ -2009,7 +2151,11 @@ export async function mockLeasiumApi(
   tenantPortalDocuments = initialTenantPortalDocuments.map((document) => ({
     ...document,
   }));
-  if (tenantPortalLeaseReady || options.docusignSkippedLeasePack) {
+  if (
+    tenantPortalLeaseReady ||
+    tenantPortalLeaseSigned ||
+    options.docusignSkippedLeasePack
+  ) {
     tenantPortalDocuments.unshift({
       id: "portal-lease-document-1",
       lease_id: leaseId,
@@ -3420,6 +3566,159 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/comms/outbound-log") {
+      await fulfillJson(route, {
+        entity_id: entityId,
+        generated_at: "2026-05-27T02:10:00.000Z",
+        guardrails: [
+          "This log is read-only and uses already stored comms dispatch audit receipts.",
+          "Opening this log does not send email, send SMS, change queue state, refresh providers, or mutate tenant data.",
+        ],
+        events: [
+          {
+            id: "comms-outbound-sms-failed",
+            source: "comms_audit",
+            direction: "outbound",
+            event_type: "dispatch",
+            channel: "sms",
+            provider: "twilio",
+            recipient: "+61400111222",
+            from_address: null,
+            to_address: null,
+            subject: null,
+            summary: "comms draft sms failed",
+            body_preview: null,
+            target_kind: "inbound_message",
+            target_id: "inbound-sms-1",
+            status: "error",
+            occurred_at: "2026-05-27T02:09:00.000Z",
+            metadata: {
+              kind: "inbound_sms",
+              candidate_id: "inbound_sms:inbound_message:inbound-sms-1",
+              error: "Twilio Messaging is not configured.",
+            },
+          },
+          {
+            id: "comms-outbound-maintenance-queued",
+            source: "comms_audit",
+            direction: "outbound",
+            event_type: "dispatch",
+            channel: "email",
+            provider: "sendgrid",
+            recipient: '=HYPERLINK("https://example.invalid","Cool Air")',
+            from_address: null,
+            to_address: null,
+            subject: null,
+            summary: "contractor update email queued",
+            body_preview: null,
+            target_kind: "maintenance_work_order",
+            target_id: "work/order?1",
+            status: "success",
+            occurred_at: "2026-05-27T02:07:00.000Z",
+            metadata: {
+              kind: "maintenance_contractor_forward",
+              candidate_id:
+                "maintenance_contractor_forward:maintenance_work_order:work/order?1",
+            },
+          },
+          {
+            id: "comms-outbound-email-queued",
+            source: "comms_audit",
+            direction: "outbound",
+            event_type: "dispatch",
+            channel: "email",
+            provider: "sendgrid",
+            recipient: "mia@example.com",
+            from_address: null,
+            to_address: null,
+            subject: null,
+            summary: "comms draft email queued",
+            body_preview: null,
+            target_kind: "arrears_case",
+            target_id: "arrears-1",
+            status: "success",
+            occurred_at: "2026-05-27T02:05:00.000Z",
+            metadata: {
+              kind: "arrears_reminder",
+              candidate_id: "arrears_reminder:arrears_case:arrears-1",
+            },
+          },
+          {
+            id: "comms-outbound-tenant-lifecycle",
+            source: "comms_audit",
+            direction: "outbound",
+            event_type: "dispatch",
+            channel: "email",
+            provider: "sendgrid",
+            recipient: "tenant@example.com",
+            from_address: null,
+            to_address: null,
+            subject: null,
+            summary: "tenant lifecycle email queued",
+            body_preview: null,
+            target_kind: "tenant_onboarding",
+            target_id: "tenant-onboarding-docusign-retry-1",
+            status: "success",
+            occurred_at: "2026-05-27T02:04:00.000Z",
+            metadata: {
+              kind: "tenant_lifecycle_stall",
+              tenant_id: tenantId,
+              candidate_id:
+                "tenant_lifecycle_stall:tenant_onboarding:tenant-onboarding-docusign-retry-1",
+            },
+          },
+          {
+            id: "comms-outbound-compliance",
+            source: "comms_audit",
+            direction: "outbound",
+            event_type: "dispatch",
+            channel: "email",
+            provider: "sendgrid",
+            recipient: "compliance@bright.example",
+            from_address: null,
+            to_address: null,
+            subject: null,
+            summary: "compliance email queued",
+            body_preview: null,
+            target_kind: "obligation",
+            target_id: "obligation-compliance-1",
+            status: "success",
+            occurred_at: "2026-05-27T02:03:00.000Z",
+            metadata: {
+              kind: "compliance_obligation",
+              tenant_id: tenantId,
+              candidate_id:
+                "compliance_obligation:obligation:obligation-compliance-1",
+            },
+          },
+          {
+            id: "comms-outbound-rent-review",
+            source: "comms_audit",
+            direction: "outbound",
+            event_type: "dispatch",
+            channel: "email",
+            provider: "sendgrid",
+            recipient: "tenant@example.com",
+            from_address: null,
+            to_address: null,
+            subject: null,
+            summary: "rent review email queued",
+            body_preview: null,
+            target_kind: "lease",
+            target_id: leaseId,
+            status: "success",
+            occurred_at: "2026-05-27T02:02:00.000Z",
+            metadata: {
+              kind: "rent_review",
+              tenant_id: tenantId,
+              candidate_id: `rent_review:lease:${leaseId}`,
+            },
+          },
+        ],
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/comms/queue") {
       await fulfillJson(route, {
         entity_id: entityId,
@@ -3480,6 +3779,24 @@ export async function mockLeasiumApi(
             generated_at: "2026-05-27T02:00:00.000Z",
           },
           {
+            id: "comms-compliance-obligation-1",
+            kind: "compliance_obligation",
+            target_kind: "obligation",
+            target_id: "obligation-compliance-1",
+            tenant_id: tenantId,
+            tenant_name: "Bright Cafe Pty Ltd",
+            property_name: "Queen Street Retail Centre",
+            unit_label: "Shop 3",
+            recipient_email: "compliance@bright.example",
+            recipient_phone: null,
+            subject: "Annual fire safety certificate due",
+            body: "Hi Bright Cafe team,\n\nThe annual fire safety certificate for Queen Street Retail Centre is due soon. Please upload the latest evidence or reply if you need more time.\n\nThanks,\nThe property team",
+            severity: "warning",
+            due_at: "2026-06-10T00:00:00.000Z",
+            detail: "due soon · evidence required",
+            generated_at: "2026-05-27T02:00:00.000Z",
+          },
+          {
             id: "comms-tenant-lifecycle-stall-1",
             kind: "tenant_lifecycle_stall",
             target_kind: "tenant_onboarding",
@@ -3535,6 +3852,44 @@ export async function mockLeasiumApi(
               "tenant upload completed, document tenant-uploaded-lease-1, activation ready_for_review, lease pending -> active",
             generated_at: "2026-05-27T02:00:00.000Z",
           },
+          {
+            id: "maintenance_contractor_forward:maintenance_work_order:work-order-1",
+            kind: "maintenance_contractor_forward",
+            target_kind: "maintenance_work_order",
+            target_id: "work-order-1",
+            tenant_id: tenantId,
+            tenant_name: "Bright Cafe Pty Ltd",
+            property_name: "Queen Street Retail Centre",
+            unit_label: "Shop 3",
+            recipient_email: "service@coolair.example",
+            recipient_phone: "+61400777888",
+            subject: "Maintenance forward: Air conditioning fault",
+            body: "Hi Cool Air Services,\n\nPlease note the latest tenant-facing update for Air conditioning fault:\nTenant says the front counter unit is still leaking.\n\nPlease confirm the next action or timing before we send anything further.",
+            severity: "warning",
+            due_at: "2026-05-28T00:00:00.000Z",
+            detail:
+              "reviewed forward to contractor from latest tenant-visible activity",
+            generated_at: "2026-05-27T02:00:00.000Z",
+          },
+          {
+            id: "maintenance_tenant_forward:maintenance_work_order:work-order-1",
+            kind: "maintenance_tenant_forward",
+            target_kind: "maintenance_work_order",
+            target_id: "work-order-1",
+            tenant_id: tenantId,
+            tenant_name: "Bright Cafe Pty Ltd",
+            property_name: "Queen Street Retail Centre",
+            unit_label: "Shop 3",
+            recipient_email: "mia@example.com",
+            recipient_phone: "+61400111222",
+            subject: "Maintenance update: Air conditioning fault",
+            body: "Hi Bright Cafe Pty Ltd,\n\nUpdate from Cool Air Services on Air conditioning fault:\nContractor can attend tomorrow morning.\n\nWe will keep this with Operations until the message is reviewed.",
+            severity: "warning",
+            due_at: "2026-05-28T00:00:00.000Z",
+            detail:
+              "reviewed forward to tenant from latest contractor-visible activity",
+            generated_at: "2026-05-27T02:00:00.000Z",
+          },
         ],
       });
       return;
@@ -3543,7 +3898,7 @@ export async function mockLeasiumApi(
     if (method === "GET" && path === "/comms/queue/counts") {
       await fulfillJson(route, {
         entity_id: entityId,
-        total: 6,
+        total: 9,
         urgent: 3,
         by_kind: {
           arrears_reminder: 0,
@@ -3551,9 +3906,11 @@ export async function mockLeasiumApi(
           lease_renewal: 0,
           inbound_email: 1,
           inbound_sms: 1,
-          compliance_obligation: 0,
+          compliance_obligation: 1,
           rent_review: 1,
           tenant_lifecycle_stall: 3,
+          maintenance_contractor_forward: 1,
+          maintenance_tenant_forward: 1,
         },
         generated_at: "2026-05-27T02:00:00.000Z",
       });
@@ -3572,6 +3929,8 @@ export async function mockLeasiumApi(
         candidate_id:
           payload.kind === "inbound_sms"
             ? "comms-inbound-sms-1"
+            : payload.kind === "compliance_obligation"
+              ? "comms-compliance-obligation-1"
             : "comms-rent-review-1",
         kind: payload.kind ?? "rent_review",
         target_kind: payload.target_kind ?? "lease",
@@ -3603,6 +3962,8 @@ export async function mockLeasiumApi(
         candidate_id:
           payload.kind === "inbound_sms"
             ? "comms-inbound-sms-1"
+            : payload.kind === "compliance_obligation"
+              ? "comms-compliance-obligation-1"
             : "comms-rent-review-1",
         kind: payload.kind ?? "rent_review",
         target_kind: payload.target_kind ?? "lease",
@@ -4431,6 +4792,36 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "POST" && path === "/tenants") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const created = {
+        id: `tenant-created-${tenants.length + 1}`,
+        entity_id: String(payload.entity_id ?? entityId),
+        legal_name: String(payload.legal_name ?? "Invited tenant"),
+        trading_name:
+          typeof payload.trading_name === "string" ? payload.trading_name : null,
+        abn: typeof payload.abn === "string" ? payload.abn : null,
+        contact_name:
+          typeof payload.contact_name === "string" ? payload.contact_name : null,
+        contact_email:
+          typeof payload.contact_email === "string"
+            ? payload.contact_email
+            : null,
+        contact_phone:
+          typeof payload.contact_phone === "string" ? payload.contact_phone : null,
+        billing_email:
+          typeof payload.billing_email === "string" ? payload.billing_email : null,
+        notes: typeof payload.notes === "string" ? payload.notes : null,
+        metadata: {},
+        created_at: "2026-05-21T00:00:00.000Z",
+        updated_at: "2026-05-21T00:00:00.000Z",
+        deleted_at: null,
+      } as (typeof tenants)[number];
+      tenants.push(created);
+      await fulfillJson(route, created, 201);
+      return;
+    }
+
     const tenantPatchMatch = path.match(/^\/tenants\/([^/]+)$/);
     if (method === "PATCH" && tenantPatchMatch) {
       const tenantIndex = tenants.findIndex(
@@ -4445,6 +4836,22 @@ export async function mockLeasiumApi(
         } as (typeof tenants)[number];
         tenants.splice(tenantIndex, 1, updated);
         await fulfillJson(route, updated);
+        return;
+      }
+    }
+
+    if (method === "DELETE" && tenantPatchMatch) {
+      const tenantIndex = tenants.findIndex(
+        (tenant) => tenant.id === tenantPatchMatch[1],
+      );
+      if (tenantIndex >= 0) {
+        const deleted = {
+          ...tenants[tenantIndex],
+          deleted_at: "2026-05-21T00:00:00.000Z",
+          updated_at: "2026-05-21T00:00:00.000Z",
+        } as (typeof tenants)[number];
+        tenants.splice(tenantIndex, 1);
+        await fulfillJson(route, deleted);
         return;
       }
     }
@@ -4507,6 +4914,93 @@ export async function mockLeasiumApi(
                 after: "0400 111 222",
               },
             ],
+          },
+        ],
+      });
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === `/comms/correspondence/tenants/${tenantId}`
+    ) {
+      await fulfillJson(route, {
+        entity_id: entityId,
+        tenant_id: tenantId,
+        tenant_name: "Bright Cafe",
+        generated_at: "2026-05-21T02:30:00.000Z",
+        guardrails: [
+          "This timeline is read-only and uses already stored inbound messages and comms audit receipts.",
+          "Opening it does not send email, send SMS, change queue state, refresh providers, or mutate tenant data.",
+        ],
+        events: [
+          {
+            id: "comms-audit-1",
+            source: "comms_audit",
+            direction: "outbound",
+            event_type: "dispatch",
+            channel: "email",
+            provider: "sendgrid",
+            recipient: "mia@example.com",
+            from_address: null,
+            to_address: null,
+            subject: null,
+            summary: "comms draft email queued",
+            body_preview: null,
+            target_kind: "arrears_case",
+            target_id: "arrears-1",
+            status: "success",
+            occurred_at: "2026-05-21T02:20:00.000Z",
+            metadata: {
+              kind: "arrears_reminder",
+              candidate_id: "arrears_reminder:arrears_case:arrears-1",
+            },
+          },
+          {
+            id: "inbound-message-1",
+            source: "inbound_message",
+            direction: "inbound",
+            event_type: "inbound_email",
+            channel: "email",
+            provider: "sendgrid",
+            recipient: null,
+            from_address: '=HYPERLINK("https://example.invalid","Mia")',
+            to_address: "inbound@leasium.example",
+            subject: "Broken tap",
+            summary: "Tenant reports a leaking bathroom tap.",
+            body_preview:
+              "The bathroom tap is leaking again. Can you please help?",
+            target_kind: "inbound_message",
+            target_id: "inbound-message-1",
+            status: "pending",
+            occurred_at: "2026-05-21T02:00:00.000Z",
+            metadata: {
+              classification_kind: "maintenance",
+              attachment_intake_count: 0,
+            },
+          },
+          {
+            id: "comms-audit-2",
+            source: "comms_audit",
+            direction: "outbound",
+            event_type: "dispatch",
+            channel: "email",
+            provider: "sendgrid",
+            recipient: "contractor@example.com",
+            from_address: null,
+            to_address: null,
+            subject: "Maintenance follow-up",
+            summary: "contractor note copied",
+            body_preview: null,
+            target_kind: "maintenance_work_order",
+            target_id: "work/order?1",
+            status: "success",
+            occurred_at: "2026-05-21T01:50:00.000Z",
+            metadata: {
+              kind: "maintenance_tenant_forward",
+              candidate_id:
+                "maintenance_tenant_forward:maintenance_work_order:work/order?1",
+            },
           },
         ],
       });
@@ -4608,12 +5102,13 @@ export async function mockLeasiumApi(
         expires_at?: string | null;
       };
       const row = rentRoll.find((item) => item.lease_id === payload.lease_id);
+      const lease = leases.find((item) => item.id === payload.lease_id);
       const createdAt = "2026-05-21T00:05:00.000Z";
       const created = {
         id: `onboarding-${tenantOnboardings.length + 1}`,
         entity_id: entityId,
         lease_id: payload.lease_id ?? "lease-created",
-        tenant_id: row?.tenant_id ?? tenantId,
+        tenant_id: row?.tenant_id ?? lease?.tenant_id ?? tenantId,
         token: `tenant-token-${tenantOnboardings.length + 1}`,
         status: "draft",
         due_date: payload.due_date ?? "2026-05-28",
@@ -4673,11 +5168,12 @@ export async function mockLeasiumApi(
 
     if (
       method === "POST" &&
-      path === "/tenant-onboarding/onboarding-1/send-portal-invite"
+      /^\/tenant-onboarding\/[^/]+\/send-portal-invite$/.test(path)
     ) {
+      const onboardingId = path.split("/")[2];
       const sentAt = "2026-05-21T00:15:00.000Z";
       tenantOnboardings = tenantOnboardings.map((onboarding) =>
-        onboarding.id === "onboarding-1"
+        onboarding.id === onboardingId
           ? {
               ...onboarding,
               delivery_data: {
@@ -4704,7 +5200,11 @@ export async function mockLeasiumApi(
             }
           : onboarding,
       );
-      await fulfillJson(route, tenantOnboardings[0]);
+      await fulfillJson(
+        route,
+        tenantOnboardings.find((onboarding) => onboarding.id === onboardingId) ??
+          tenantOnboardings[0],
+      );
       return;
     }
 
@@ -4789,7 +5289,13 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/tenant-portal/session") {
-      const baseSession = tenantPortalSession();
+      const baseSession = tenantPortalSession("token", {
+        leaseReady: tenantPortalLeaseReady,
+        leaseSigned: tenantPortalLeaseSigned,
+        noComplianceItems: tenantPortalNoComplianceItems,
+        maintenanceStatusMatrix: tenantPortalMaintenanceStatusMatrix,
+        activityFeed: tenantPortalActivityFeed,
+      });
       if (tenantPortalOnboardingSubmitted) {
         await fulfillJson(route, {
           ...baseSession,
@@ -4832,7 +5338,13 @@ export async function mockLeasiumApi(
       method === "GET" &&
       path === "/tenant-portal/operator-preview/onboarding-1"
     ) {
-      const baseSession = tenantPortalSession();
+      const baseSession = tenantPortalSession("token", {
+        leaseReady: tenantPortalLeaseReady,
+        leaseSigned: tenantPortalLeaseSigned,
+        noComplianceItems: tenantPortalNoComplianceItems,
+        maintenanceStatusMatrix: tenantPortalMaintenanceStatusMatrix,
+        activityFeed: tenantPortalActivityFeed,
+      });
       await fulfillJson(route, {
         ...baseSession,
         auth: {
@@ -4909,10 +5421,16 @@ export async function mockLeasiumApi(
                 tradingName: "Riverfront Books",
                 leaseReady: tenantPortalLeaseReady,
                 leaseSigned: tenantPortalLeaseSigned,
+                noComplianceItems: tenantPortalNoComplianceItems,
+                maintenanceStatusMatrix: tenantPortalMaintenanceStatusMatrix,
+                activityFeed: tenantPortalActivityFeed,
               }
             : {
                 leaseReady: tenantPortalLeaseReady,
                 leaseSigned: tenantPortalLeaseSigned,
+                noComplianceItems: tenantPortalNoComplianceItems,
+                maintenanceStatusMatrix: tenantPortalMaintenanceStatusMatrix,
+                activityFeed: tenantPortalActivityFeed,
               },
         ),
       );
@@ -4926,6 +5444,9 @@ export async function mockLeasiumApi(
         tenantPortalSession("account", {
           leaseReady: tenantPortalLeaseReady,
           leaseSigned: tenantPortalLeaseSigned,
+          noComplianceItems: tenantPortalNoComplianceItems,
+          maintenanceStatusMatrix: tenantPortalMaintenanceStatusMatrix,
+          activityFeed: tenantPortalActivityFeed,
         }),
       );
       return;
@@ -4936,6 +5457,9 @@ export async function mockLeasiumApi(
       const baseSession = tenantPortalSession("account", {
         leaseReady: tenantPortalLeaseReady,
         leaseSigned: tenantPortalLeaseSigned,
+        noComplianceItems: tenantPortalNoComplianceItems,
+        maintenanceStatusMatrix: tenantPortalMaintenanceStatusMatrix,
+        activityFeed: tenantPortalActivityFeed,
       });
       await fulfillJson(route, {
         ...baseSession,
@@ -4976,6 +5500,9 @@ export async function mockLeasiumApi(
         tenantPortalSession("account", {
           leaseReady: true,
           leaseSigned: tenantPortalLeaseSigned,
+          noComplianceItems: tenantPortalNoComplianceItems,
+          maintenanceStatusMatrix: tenantPortalMaintenanceStatusMatrix,
+          activityFeed: tenantPortalActivityFeed,
         }),
       );
       return;
@@ -5165,6 +5692,146 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/maintenance/work-orders/work-order-1") {
+      await fulfillJson(route, maintenanceWorkOrders[0]);
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === "/comms/correspondence/maintenance-work-orders/work-order-1"
+    ) {
+      await fulfillJson(route, {
+        entity_id: entityId,
+        work_order_id: "work-order-1",
+        work_order_title: "Air conditioning fault",
+        generated_at: "2026-05-21T02:35:00.000Z",
+        guardrails: [
+          "This work-order correspondence is read-only and uses already stored comms audit receipts.",
+          "Opening this panel does not send email, send SMS, change queue state, refresh providers, or mutate maintenance records.",
+        ],
+        events: [
+          {
+            id: "work-order-comms-1",
+            source: "comms_audit",
+            direction: "outbound",
+            event_type: "dispatch",
+            channel: "email",
+            provider: "sendgrid",
+            recipient: '=HYPERLINK("https://example.invalid","Cool Air")',
+            from_address: null,
+            to_address: null,
+            subject: null,
+            summary: "contractor forward email queued",
+            body_preview: null,
+            target_kind: "maintenance_work_order",
+            target_id: "work-order-1",
+            status: "success",
+            occurred_at: "2026-05-21T02:30:00.000Z",
+            metadata: {
+              kind: "maintenance_contractor_forward",
+              tenant_id: tenantId,
+              candidate_id:
+                "maintenance_contractor_forward:maintenance_work_order:work-order-1",
+            },
+          },
+          {
+            id: "work-order-comms-2",
+            source: "comms_audit",
+            direction: "outbound",
+            event_type: "dispatch",
+            channel: "sms",
+            provider: "twilio",
+            recipient: "+61400111222",
+            from_address: null,
+            to_address: null,
+            subject: null,
+            summary: "tenant forward sms failed",
+            body_preview: null,
+            target_kind: "maintenance_work_order",
+            target_id: "work-order-1",
+            status: "error",
+            occurred_at: "2026-05-21T02:20:00.000Z",
+            metadata: {
+              kind: "maintenance_tenant_forward",
+              tenant_id: tenantId,
+              error: "Twilio Messaging is not configured.",
+              candidate_id:
+                "maintenance_tenant_forward:maintenance_work_order:work-order-1",
+            },
+          },
+          {
+            id: "work-order-comms-3",
+            source: "comms_audit",
+            direction: "internal",
+            event_type: "dismiss",
+            channel: null,
+            provider: null,
+            recipient: null,
+            from_address: null,
+            to_address: null,
+            subject: null,
+            summary: "contractor forward deferred",
+            body_preview: null,
+            target_kind: "maintenance_work_order",
+            target_id: "work-order-1",
+            status: "success",
+            occurred_at: "2026-05-21T02:10:00.000Z",
+            metadata: {
+              kind: "maintenance_contractor_forward",
+              tenant_id: tenantId,
+              reason: "Contractor already called.",
+              candidate_id:
+                "maintenance_contractor_forward:maintenance_work_order:work-order-1",
+            },
+          },
+        ],
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/maintenance/work-orders/work-order-1/classify"
+    ) {
+      const timestamp = "2026-05-20T02:05:00.000Z";
+      const existingMetadata = jsonRecord(maintenanceWorkOrders[0].metadata);
+      const existingActivityHistory = Array.isArray(
+        existingMetadata.activity_history,
+      )
+        ? existingMetadata.activity_history
+        : [];
+      const metadata = {
+        ...existingMetadata,
+        ai_classification: {
+          category: "hvac",
+          confidence: 0.82,
+          summary:
+            "HVAC issue affecting tenant trading; dispatch a preferred HVAC contractor.",
+          is_urgent: true,
+          warnings: ["Confirm rooftop access with tenant."],
+          suggested_contractor_id: "contractor-hvac-1",
+          suggested_contractor_name: "Brisbane HVAC Response",
+          suggested_contractor_email: "hvac@contractors.example",
+          suggested_contractor_phone: "07 3000 4444",
+          classified_at: timestamp,
+          model_response_id: "resp-maintenance-smoke-1",
+        },
+        activity_history: [
+          ...existingActivityHistory,
+          {
+            timestamp,
+            actor: "ai:maintenance-classifier",
+            source: "ai_classifier",
+            event: "ai_classified",
+            summary: "AI classified work order as hvac.",
+            status: maintenanceWorkOrders[0].status,
+          },
+        ],
+      };
+      Object.assign(maintenanceWorkOrders[0], {
+        metadata,
+        updated_at: timestamp,
+      });
       await fulfillJson(route, maintenanceWorkOrders[0]);
       return;
     }
@@ -6537,6 +7204,119 @@ export async function mockLeasiumApi(
       return;
     }
 
+    const documentIntakeApply = path.match(/^\/document-intakes\/([^/]+)\/apply$/);
+    if (method === "POST" && documentIntakeApply) {
+      const intake = documentIntakes.find(
+        (item) => item.id === documentIntakeApply[1],
+      );
+      if (!intake) {
+        await fulfillJson(route, { detail: "Document intake not found." }, 404);
+        return;
+      }
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const reviewData = jsonRecord(payload.review_data);
+      const now = "2026-05-29T00:00:00.000Z";
+      const findings = Array.isArray(reviewData.inspection_findings)
+        ? reviewData.inspection_findings.filter(
+            (item): item is Record<string, JsonBody> =>
+              typeof item === "object" && item !== null && !Array.isArray(item),
+          )
+        : [];
+      if (intake.document_type === "inspection_report") {
+        const workOrderIds = findings.map(
+          (_finding, index) => `inspection-work-order-${index + 1}`,
+        );
+        findings.forEach((finding, index) => {
+          maintenanceWorkOrders.unshift({
+            ...maintenanceWorkOrders[0],
+            id: workOrderIds[index],
+            entity_id: entityId,
+            property_id: propertyId,
+            tenancy_unit_id: unitId,
+            tenant_id: tenantId,
+            lease_id: leaseId,
+            title:
+              typeof finding.title === "string"
+                ? finding.title
+                : "Inspection finding",
+            description:
+              typeof finding.description === "string"
+                ? finding.description
+                : null,
+            status: "requested",
+            priority:
+              typeof finding.priority === "string"
+                ? finding.priority
+                : "normal",
+            requested_at: now,
+            source_document_id: intake.document_id,
+            source_reference:
+              typeof finding.source_hint === "string"
+                ? finding.source_hint
+                : null,
+            due_date:
+              typeof finding.due_date === "string" ? finding.due_date : null,
+            document_ids: [intake.document_id],
+            photo_document_ids: jsonStringArray(finding.photo_document_ids),
+            metadata: {
+              source: "document_intake",
+              document_intake_id: intake.id,
+              document_type: "inspection_report",
+              guardrail:
+                "Created from reviewed inspection intake only; no contractor dispatch, provider message, billing draft, or Xero action ran.",
+              inspection_finding: {
+                location:
+                  typeof finding.location === "string" ? finding.location : null,
+                category:
+                  typeof finding.category === "string" ? finding.category : null,
+                confidence:
+                  typeof finding.confidence === "number"
+                    ? finding.confidence
+                    : null,
+              },
+              activity_history: [
+                {
+                  timestamp: now,
+                  actor: "user:operator@example.com",
+                  source: "smart_intake_apply",
+                  event: "created_from_inspection_review",
+                  summary: "Work order created from reviewed inspection finding.",
+                  status: "requested",
+                },
+              ],
+            },
+            created_at: now,
+            updated_at: now,
+            deleted_at: null,
+          });
+        });
+        intake.review_data = {
+          ...reviewData,
+          applied: {
+            action: "created_inspection_work_orders",
+            work_order_ids: workOrderIds,
+            work_order_count: workOrderIds.length,
+            obligation_count: workOrderIds.length,
+          },
+        };
+      } else {
+        intake.review_data = {
+          ...reviewData,
+          applied: {
+            action: "created_document_obligations",
+            obligation_ids: ["obligation-smoke-apply"],
+            obligation_count: 1,
+          },
+        };
+      }
+      intake.status = "applied";
+      intake.applied_at = now;
+      intake.applied_by_user_id = operatorId;
+      intake.updated_at = now;
+      await fulfillJson(route, intake);
+      return;
+    }
+
     const leaseMatchAccept = path.match(
       /^\/document-intakes\/([^/]+)\/accept-lease-match$/,
     );
@@ -6610,12 +7390,79 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/tenancy-units") {
-      await fulfillJson(route, tenancyUnits);
+      const propertyIdParam = url.searchParams.get("property_id");
+      await fulfillJson(
+        route,
+        propertyIdParam
+          ? tenancyUnits.filter((unit) => unit.property_id === propertyIdParam)
+          : tenancyUnits,
+      );
+      return;
+    }
+
+    if (method === "POST" && path === "/tenancy-units") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const created = {
+        id: `unit-created-${tenancyUnits.length + 1}`,
+        property_id: String(payload.property_id ?? propertyId),
+        unit_label: String(payload.unit_label ?? "Main premises"),
+        sqm: typeof payload.sqm === "number" ? payload.sqm : null,
+        parking_spaces:
+          typeof payload.parking_spaces === "number"
+            ? payload.parking_spaces
+            : null,
+        metadata: {},
+        created_at: "2026-05-21T00:00:00.000Z",
+        deleted_at: null,
+      } as (typeof tenancyUnits)[number];
+      tenancyUnits.push(created);
+      await fulfillJson(route, created, 201);
       return;
     }
 
     if (method === "GET" && path === "/leases") {
       await fulfillJson(route, leases);
+      return;
+    }
+
+    if (method === "POST" && path === "/leases") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const created = {
+        id: `lease-created-${leases.length + 1}`,
+        tenancy_unit_id: String(payload.tenancy_unit_id ?? unitId),
+        tenant_id: String(payload.tenant_id ?? tenantId),
+        status: String(payload.status ?? "pending"),
+        commencement_date:
+          typeof payload.commencement_date === "string"
+            ? payload.commencement_date
+            : null,
+        expiry_date:
+          typeof payload.expiry_date === "string" ? payload.expiry_date : null,
+        annual_rent_cents:
+          typeof payload.annual_rent_cents === "number"
+            ? payload.annual_rent_cents
+            : null,
+        rent_frequency:
+          typeof payload.rent_frequency === "string"
+            ? payload.rent_frequency
+            : "annual",
+        outgoings_recoverable: Boolean(payload.outgoings_recoverable ?? true),
+        next_review_date:
+          typeof payload.next_review_date === "string"
+            ? payload.next_review_date
+            : null,
+        option_summary:
+          typeof payload.option_summary === "string"
+            ? payload.option_summary
+            : null,
+        security_summary:
+          typeof payload.security_summary === "string"
+            ? payload.security_summary
+            : null,
+        notes: typeof payload.notes === "string" ? payload.notes : null,
+      } as (typeof leases)[number];
+      leases.push(created);
+      await fulfillJson(route, created, 201);
       return;
     }
 

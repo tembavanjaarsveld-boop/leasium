@@ -272,7 +272,11 @@ const GLOBAL_SHORTCUTS = [
 ];
 
 const headerUtilityButtonClass =
-  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-foreground";
+  "h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-foreground";
+const headerUtilityInlineButtonClass = cn(
+  "inline-flex",
+  headerUtilityButtonClass,
+);
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -292,7 +296,7 @@ function OperatorUserControl() {
   return (
     <Link
       href="/sign-in"
-      className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold text-slate transition duration-200 ease-leasium hover:bg-muted"
+      className="inline-flex h-11 items-center rounded-lg px-3 text-sm font-semibold text-slate transition duration-200 ease-leasium hover:bg-muted"
     >
       Sign in
     </Link>
@@ -370,7 +374,7 @@ function AppearanceToggle() {
       }}
       aria-label={label}
       title={`${label}. Click for ${nextMode}.`}
-      className={headerUtilityButtonClass}
+      className={headerUtilityInlineButtonClass}
     >
       <Icon size={15} />
     </button>
@@ -701,7 +705,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               }}
               aria-label="Open search"
               title="Search (Cmd K)"
-              className={headerUtilityButtonClass}
+              className={headerUtilityInlineButtonClass}
             >
               <Search size={15} />
             </button>
@@ -719,7 +723,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               aria-label="Open notifications"
               title="Notifications"
               className={cn(
-                headerUtilityButtonClass,
+                headerUtilityInlineButtonClass,
                 pathname.startsWith("/notifications") &&
                   "bg-primary-soft text-primary hover:bg-primary-soft",
               )}
@@ -728,7 +732,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             </Link>
             <AppearanceToggle />
             {clerkConfigured ? (
-              <div className="flex h-9 shrink-0 items-center pl-1">
+              <div className="flex h-11 shrink-0 items-center pl-1">
                 <OperatorUserControl />
               </div>
             ) : null}

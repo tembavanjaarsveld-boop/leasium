@@ -100,6 +100,7 @@ PORTAL_TOKEN_HEADER = "x-tenant-portal-token"
 PORTAL_TOKEN_QUERY = "portal_token"
 PORTAL_PREFERENCES_KEY = "portal_notification_preferences"
 PORTAL_CONTACT_REQUESTS_KEY = "portal_contact_change_requests"
+PORTAL_COMPLIANCE_CHECKLIST_KEY = "portal_compliance_checklist"
 ACTIVITY_HISTORY_KEY = "activity_history"
 READ_ROLES = {
     UserRole.owner,
@@ -114,6 +115,11 @@ PORTAL_UPLOAD_CATEGORIES = (
     DocumentCategory.lease,
     DocumentCategory.onboarding,
     DocumentCategory.other,
+)
+DEFAULT_PORTAL_COMPLIANCE_CHECKLIST = (
+    "insurance",
+    "bank_guarantee",
+    "onboarding",
 )
 SMART_INTAKE_TENANT_UPLOAD_CATEGORIES = (
     DocumentCategory.insurance,
@@ -1250,6 +1256,25 @@ def _latest_document(
     return rows[0] if rows else None
 
 
+def _portal_compliance_checklist(metadata: dict[str, Any]) -> tuple[str, ...]:
+    raw_checklist = metadata.get(PORTAL_COMPLIANCE_CHECKLIST_KEY)
+    if raw_checklist is None:
+        return DEFAULT_PORTAL_COMPLIANCE_CHECKLIST
+    if not isinstance(raw_checklist, list):
+        return DEFAULT_PORTAL_COMPLIANCE_CHECKLIST
+
+    checklist: list[str] = []
+    for item in raw_checklist:
+        if not isinstance(item, str):
+            continue
+        if item not in DEFAULT_PORTAL_COMPLIANCE_CHECKLIST:
+            continue
+        if item in checklist:
+            continue
+        checklist.append(item)
+    return tuple(checklist)
+
+
 def _compliance(scope: PortalScope, documents: list[StoredDocument]) -> TenantPortalComplianceRead:
     metadata = scope.tenant.tenant_metadata or {}
     insurance_expiry = _parse_iso_date(metadata.get("insurance_expiry_date"))
@@ -1261,52 +1286,60 @@ def _compliance(scope: PortalScope, documents: list[StoredDocument]) -> TenantPo
     if insurance_expiry is not None and insurance_expiry < today:
         insurance_status = "expired"
 
-    items = [
-        TenantPortalComplianceItemRead(
-            key="insurance",
-            label="Insurance",
-            status=insurance_status,
-            document_count=sum(
-                1 for doc in documents if doc.category == DocumentCategory.insurance
-            ),
-            latest_document=_document_read(insurance_document) if insurance_document else None,
-            due_date=insurance_expiry,
-        ),
-        TenantPortalComplianceItemRead(
-            key="bank_guarantee",
-            label="Bank guarantee",
-            status=(
-                "received"
-                if _latest_document(documents, DocumentCategory.bank_guarantee)
-                else "not_on_file"
-            ),
-            document_count=sum(
-                1 for doc in documents if doc.category == DocumentCategory.bank_guarantee
-            ),
-            latest_document=(
-                _document_read(latest)
-                if (latest := _latest_document(documents, DocumentCategory.bank_guarantee))
-                else None
-            ),
-        ),
-        TenantPortalComplianceItemRead(
-            key="onboarding",
-            label="Onboarding files",
-            status=(
-                "received"
-                if _latest_document(documents, DocumentCategory.onboarding)
-                else "not_on_file"
-            ),
-            document_count=sum(
-                1 for doc in documents if doc.category == DocumentCategory.onboarding
-            ),
-            latest_document=(
-                _document_read(latest)
-                if (latest := _latest_document(documents, DocumentCategory.onboarding))
-                else None
-            ),
-        ),
-    ]
+    checklist = _portal_compliance_checklist(metadata)
+    items: list[TenantPortalComplianceItemRead] = []
+    if "insurance" in checklist:
+        items.append(
+            TenantPortalComplianceItemRead(
+                key="insurance",
+                label="Insurance",
+                status=insurance_status,
+                document_count=sum(
+                    1 for doc in documents if doc.category == DocumentCategory.insurance
+                ),
+                latest_document=(
+                    _document_read(insurance_document) if insurance_document else None
+                ),
+                due_date=insurance_expiry,
+            )
+        )
+    if "bank_guarantee" in checklist:
+        latest_bank_guarantee = _latest_document(
+            documents,
+            DocumentCategory.bank_guarantee,
+        )
+        items.append(
+            TenantPortalComplianceItemRead(
+                key="bank_guarantee",
+                label="Bank guarantee",
+                status="received" if latest_bank_guarantee else "not_on_file",
+                document_count=sum(
+                    1
+                    for doc in documents
+                    if doc.category == DocumentCategory.bank_guarantee
+                ),
+                latest_document=(
+                    _document_read(latest_bank_guarantee)
+                    if latest_bank_guarantee
+                    else None
+                ),
+            )
+        )
+    if "onboarding" in checklist:
+        latest_onboarding = _latest_document(documents, DocumentCategory.onboarding)
+        items.append(
+            TenantPortalComplianceItemRead(
+                key="onboarding",
+                label="Onboarding files",
+                status="received" if latest_onboarding else "not_on_file",
+                document_count=sum(
+                    1 for doc in documents if doc.category == DocumentCategory.onboarding
+                ),
+                latest_document=(
+                    _document_read(latest_onboarding) if latest_onboarding else None
+                ),
+            )
+        )
     return TenantPortalComplianceRead(
         accepted_categories=list(PORTAL_UPLOAD_CATEGORIES),
         items=items,

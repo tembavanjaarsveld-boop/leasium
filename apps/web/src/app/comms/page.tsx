@@ -48,10 +48,12 @@ import {
 } from "@/components/ui";
 import {
   type CommsCandidateRecord,
+  type CommsCorrespondenceEventRecord,
   type CommsKind,
   type CommsSeverity,
   dismissCommsCandidate,
   dispatchCommsDraft,
+  getCommsOutboundLog,
   getCommsQueue,
   listEntities,
   uploadDocument,
@@ -63,6 +65,12 @@ const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type CommsFilter = "all" | CommsKind;
+type OutboundLogFilter = "all" | "attention" | "email" | "sms";
+type OutboundLogDownload = {
+  events: CommsCorrespondenceEventRecord[];
+  filterLabel: string;
+  totalEvents: number;
+};
 
 const KIND_LABEL: Record<CommsKind, string> = {
   arrears_reminder: "Arrears reminder",
@@ -73,12 +81,30 @@ const KIND_LABEL: Record<CommsKind, string> = {
   compliance_obligation: "Compliance reminder",
   rent_review: "Rent review",
   tenant_lifecycle_stall: "Tenant lifecycle",
+  maintenance_contractor_forward: "Contractor forward",
+  maintenance_tenant_forward: "Tenant forward",
+};
+
+const OUTBOUND_LOG_FILTERS: OutboundLogFilter[] = [
+  "all",
+  "attention",
+  "email",
+  "sms",
+];
+
+const OUTBOUND_LOG_FILTER_LABEL: Record<OutboundLogFilter, string> = {
+  all: "All receipts",
+  attention: "Needs attention",
+  email: "Email",
+  sms: "SMS",
 };
 const COMMS_KIND_ORDER: CommsKind[] = [
   "arrears_reminder",
   "insurance_expiry",
   "lease_renewal",
   "tenant_lifecycle_stall",
+  "maintenance_contractor_forward",
+  "maintenance_tenant_forward",
   "inbound_email",
   "inbound_sms",
   "compliance_obligation",
@@ -112,7 +138,9 @@ function formatDateTime(value: string | null | undefined) {
 }
 
 function csvCell(value: string | number | null | undefined) {
-  const text = value == null ? "" : String(value);
+  const raw = value == null ? "" : String(value);
+  const text =
+    typeof value === "string" && /^[\s]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
   return `"${text.replaceAll('"', '""')}"`;
 }
 
@@ -221,6 +249,171 @@ function commsQueueReviewCsv({
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
+function commsEventKindLabel(event: CommsCorrespondenceEventRecord) {
+  const kind = event.metadata.kind;
+  if (typeof kind === "string" && kind in KIND_LABEL) {
+    return KIND_LABEL[kind as CommsKind];
+  }
+  return event.event_type;
+}
+
+function commsEventChannelLabel(event: CommsCorrespondenceEventRecord) {
+  if (event.channel === "sms") return "Twilio SMS";
+  if (event.channel === "email") return "SendGrid email";
+  return event.channel ?? "Stored receipt";
+}
+
+function commsTargetValue(event: CommsCorrespondenceEventRecord) {
+  if (!event.target_kind || !event.target_id) return "";
+  return `${event.target_kind}:${event.target_id}`;
+}
+
+function commsEventMetadataString(
+  event: CommsCorrespondenceEventRecord,
+  key: string,
+) {
+  const value = event.metadata[key];
+  return typeof value === "string" ? value : null;
+}
+
+function commsTargetLink(event: CommsCorrespondenceEventRecord) {
+  if (!event.target_kind || !event.target_id) return null;
+  const tenantId = commsEventMetadataString(event, "tenant_id");
+  if (event.target_kind === "arrears_case") {
+    return { href: "/operations?tab=arrears", label: "Open arrears case" };
+  }
+  if (event.target_kind === "maintenance_work_order") {
+    return {
+      href: `/operations/maintenance/${encodeURIComponent(event.target_id)}`,
+      label: "Open work order",
+    };
+  }
+  if (event.target_kind === "inbound_message") {
+    return { href: "/comms", label: "Open comms queue" };
+  }
+  if (event.target_kind === "tenant") {
+    return {
+      href: `/tenants/${encodeURIComponent(event.target_id)}`,
+      label: "Open tenant",
+    };
+  }
+  if (event.target_kind === "tenant_onboarding" || event.target_kind === "lease") {
+    return tenantId
+      ? {
+          href: `/tenants/${encodeURIComponent(tenantId)}`,
+          label: "Open tenant workflow",
+        }
+      : { href: "/tenants", label: "Open tenants" };
+  }
+  if (event.target_kind === "obligation") {
+    return { href: "/operations", label: "Open work queue" };
+  }
+  return null;
+}
+
+function commsEventStatusTone(
+  status: string | null | undefined,
+): StatusTone {
+  if (status === "success") return "success";
+  if (status === "error" || status === "failed") return "danger";
+  if (status === "skipped") return "warning";
+  return "neutral";
+}
+
+function isAttentionOutboundStatus(status: string | null | undefined) {
+  return status === "error" || status === "failed" || status === "skipped";
+}
+
+function matchesOutboundLogFilter(
+  event: CommsCorrespondenceEventRecord,
+  filter: OutboundLogFilter,
+) {
+  if (filter === "all") return true;
+  if (filter === "attention") return isAttentionOutboundStatus(event.status);
+  return event.channel === filter;
+}
+
+function commsOutboundLogCsv({
+  events,
+  generatedAt,
+  filterLabel = "All",
+  totalEvents,
+}: {
+  events: CommsCorrespondenceEventRecord[];
+  generatedAt: string | null | undefined;
+  filterLabel?: string;
+  totalEvents?: number;
+}) {
+  const totalLabel =
+    totalEvents && totalEvents !== events.length
+      ? `${events.length} of ${totalEvents}`
+      : `${events.length}`;
+  const receiptNoun =
+    totalEvents && totalEvents !== events.length
+      ? "receipts"
+      : events.length === 1
+        ? "receipt"
+        : "receipts";
+  const guardrail =
+    "Read-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, or refresh provider state.";
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Category",
+      "Kind",
+      "Channel",
+      "Recipient",
+      "Status",
+      "Provider",
+      "Occurred",
+      "Summary",
+      "Target",
+      "Generated",
+      "Guardrail",
+    ],
+    [
+      "Outbound log",
+      `${filterLabel} dispatch receipts`,
+      "",
+      "",
+      "",
+      "",
+      "",
+      `${totalLabel} ${receiptNoun}`,
+      "",
+      formatDateTime(generatedAt),
+      guardrail,
+    ],
+    ...events.map((event) => [
+      "Dispatch receipt",
+      commsEventKindLabel(event),
+      commsEventChannelLabel(event),
+      event.recipient,
+      event.status,
+      event.provider,
+      formatDateTime(event.occurred_at),
+      event.summary,
+      commsTargetValue(event),
+      formatDateTime(generatedAt),
+      guardrail,
+    ]),
+    [
+      "Export guardrail",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      guardrail,
+      "",
+      "",
+      guardrail,
+    ],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 export default function CommsPage() {
   return (
     <QueryProvider>
@@ -259,6 +452,11 @@ function CommsContent() {
     queryFn: () => getCommsQueue(selectedEntityId),
     enabled: Boolean(selectedEntityId),
   });
+  const outboundLogQuery = useQuery({
+    queryKey: ["comms-outbound-log", selectedEntityId],
+    queryFn: () => getCommsOutboundLog(selectedEntityId),
+    enabled: Boolean(selectedEntityId),
+  });
 
   const [selectedFilter, setSelectedFilter] = useState<CommsFilter>("all");
   const [settledCandidateIds, setSettledCandidateIds] = useState<Set<string>>(
@@ -292,6 +490,8 @@ function CommsContent() {
       compliance_obligation: 0,
       rent_review: 0,
       tenant_lifecycle_stall: 0,
+      maintenance_contractor_forward: 0,
+      maintenance_tenant_forward: 0,
     };
     for (const candidate of candidates) {
       tally[candidate.kind]++;
@@ -326,6 +526,7 @@ function CommsContent() {
       ? `${remainingCount} ${remainingCount === 1 ? "draft" : "drafts"} remaining this session.`
       : `${remainingCount} ${remainingCount === 1 ? "draft" : "drafts"} remaining, ${settledCount} settled this session.`;
   const queueGeneratedLabel = formatDateTime(queueQuery.data?.generated_at);
+  const outboundLogEvents = outboundLogQuery.data?.events ?? [];
   const queueRefreshDisabled = !selectedEntityId || queueQuery.isFetching;
   const downloadReviewCsv = () => {
     if (!queueQuery.data) {
@@ -346,6 +547,29 @@ function CommsContent() {
         { type: "text/csv;charset=utf-8" },
       ),
       `comms-queue-review-${commsQueueReviewDate(queueQuery.data.generated_at)}.csv`,
+    );
+  };
+  const downloadOutboundLogCsv = ({
+    events,
+    filterLabel,
+    totalEvents,
+  }: OutboundLogDownload) => {
+    if (!outboundLogQuery.data) {
+      return;
+    }
+    saveBlob(
+      new Blob(
+        [
+          commsOutboundLogCsv({
+            events,
+            generatedAt: outboundLogQuery.data.generated_at,
+            filterLabel,
+            totalEvents,
+          }),
+        ],
+        { type: "text/csv;charset=utf-8" },
+      ),
+      `comms-outbound-log-${commsQueueReviewDate(outboundLogQuery.data.generated_at)}.csv`,
     );
   };
 
@@ -390,6 +614,7 @@ function CommsContent() {
                 type="button"
                 onClick={() => {
                   void queueQuery.refetch();
+                  void outboundLogQuery.refetch();
                   void queryClient.invalidateQueries({
                     queryKey: ["comms-queue-counts", selectedEntityId],
                   });
@@ -421,6 +646,14 @@ function CommsContent() {
             }
           />
         </section>
+        <OutboundLogPanel
+          events={outboundLogEvents}
+          guardrails={outboundLogQuery.data?.guardrails ?? []}
+          isLoading={outboundLogQuery.isLoading}
+          error={outboundLogQuery.error}
+          onDownload={downloadOutboundLogCsv}
+          downloadDisabled={!outboundLogQuery.data || outboundLogEvents.length === 0}
+        />
         {candidates.length ? (
           <div className="rounded-md border border-border bg-white p-2">
             <div
@@ -501,6 +734,9 @@ function CommsContent() {
               void queryClient.invalidateQueries({
                 queryKey: ["comms-queue-counts", selectedEntityId],
               });
+              void queryClient.invalidateQueries({
+                queryKey: ["comms-outbound-log", selectedEntityId],
+              });
             }}
           />
         ))}
@@ -535,6 +771,197 @@ function Metric({
       </div>
       <div className="mt-1 text-sm text-muted-foreground">{label}</div>
     </div>
+  );
+}
+
+function OutboundLogPanel({
+  events,
+  guardrails,
+  isLoading,
+  error,
+  onDownload,
+  downloadDisabled,
+}: {
+  events: CommsCorrespondenceEventRecord[];
+  guardrails: string[];
+  isLoading: boolean;
+  error: unknown;
+  onDownload: (download: OutboundLogDownload) => void;
+  downloadDisabled: boolean;
+}) {
+  const [selectedOutboundFilter, setSelectedOutboundFilter] =
+    useState<OutboundLogFilter>("all");
+  const counts = useMemo(() => {
+    const tally: Record<OutboundLogFilter, number> = {
+      all: events.length,
+      attention: 0,
+      email: 0,
+      sms: 0,
+    };
+    for (const event of events) {
+      if (isAttentionOutboundStatus(event.status)) tally.attention += 1;
+      if (event.channel === "email") tally.email += 1;
+      if (event.channel === "sms") tally.sms += 1;
+    }
+    return tally;
+  }, [events]);
+  const filteredEvents = useMemo(
+    () =>
+      events.filter((event) =>
+        matchesOutboundLogFilter(event, selectedOutboundFilter),
+      ),
+    [events, selectedOutboundFilter],
+  );
+  const countLabel = `${events.length} dispatch ${
+    events.length === 1 ? "receipt" : "receipts"
+  }`;
+  const selectedFilterLabel = OUTBOUND_LOG_FILTER_LABEL[selectedOutboundFilter];
+  const filterSummaryLabel =
+    selectedOutboundFilter === "all"
+      ? `Showing all ${events.length} dispatch ${
+          events.length === 1 ? "receipt" : "receipts"
+        }.`
+      : `Showing ${filteredEvents.length} of ${events.length} dispatch receipts in ${selectedFilterLabel}.`;
+  const isDownloadDisabled =
+    downloadDisabled || filteredEvents.length === 0 || isLoading || Boolean(error);
+  return (
+    <SectionPanel
+      title="Outbound log"
+      description="Recent dispatch receipts from stored comms audit history."
+      icon={<Send size={17} />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone="neutral">{countLabel}</StatusBadge>
+          <SecondaryButton
+            type="button"
+            onClick={() =>
+              onDownload({
+                events: filteredEvents,
+                filterLabel:
+                  selectedOutboundFilter === "all" ? "All" : selectedFilterLabel,
+                totalEvents: events.length,
+              })
+            }
+            disabled={isDownloadDisabled}
+          >
+            <Download size={15} />
+            Download outbound log CSV
+          </SecondaryButton>
+        </div>
+      }
+    >
+      {isLoading ? (
+        <div className="p-4">
+          <SkeletonRows rows={2} />
+        </div>
+      ) : null}
+      {error ? (
+        <p className="m-4 rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+          {friendlyError(error)}
+        </p>
+      ) : null}
+      {!isLoading && !error && events.length === 0 ? (
+        <div className="p-4 text-sm text-muted-foreground">
+          No dispatch receipts recorded yet.
+        </div>
+      ) : null}
+      {!isLoading && !error && events.length > 0 ? (
+        <div className="border-b border-border bg-muted/10 px-4 py-3">
+          <div
+            className="flex flex-wrap gap-2"
+            role="tablist"
+            aria-label="Filter outbound receipts"
+          >
+            {OUTBOUND_LOG_FILTERS.map((filter) => (
+              <CommsFilterButton
+                key={filter}
+                active={selectedOutboundFilter === filter}
+                label={OUTBOUND_LOG_FILTER_LABEL[filter]}
+                count={counts[filter]}
+                onClick={() => setSelectedOutboundFilter(filter)}
+              />
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {filterSummaryLabel}
+          </p>
+        </div>
+      ) : null}
+      {!isLoading &&
+      !error &&
+      events.length > 0 &&
+      filteredEvents.length === 0 ? (
+        <div className="p-4 text-sm text-muted-foreground">
+          No dispatch receipts in this view.
+        </div>
+      ) : null}
+      {!isLoading && !error && filteredEvents.length > 0 ? (
+        <div className="divide-y divide-border">
+          {filteredEvents.map((event) => {
+            const targetLink = commsTargetLink(event);
+            const occurredLabel = formatDateTime(event.occurred_at);
+            return (
+              <div
+                key={event.id}
+                className="grid gap-2 p-4 text-sm"
+                data-testid="outbound-log-event"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-foreground">
+                      {event.summary ?? event.event_type}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {commsEventKindLabel(event)}
+                      {event.recipient ? ` to ${event.recipient}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      tone={event.channel === "sms" ? "primary" : "neutral"}
+                    >
+                      {commsEventChannelLabel(event)}
+                    </StatusBadge>
+                    {event.status ? (
+                      <StatusBadge tone={commsEventStatusTone(event.status)}>
+                        {event.status}
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {event.provider ? <span>Provider {event.provider}</span> : null}
+                  {occurredLabel ? <span>{occurredLabel}</span> : null}
+                  {commsTargetValue(event) ? (
+                    <span>{commsTargetValue(event)}</span>
+                  ) : null}
+                </div>
+                {targetLink ? (
+                  <div>
+                    <Link
+                      href={targetLink.href}
+                      className="inline-flex min-h-8 items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover"
+                    >
+                      <ExternalLink size={13} />
+                      {targetLink.label}
+                    </Link>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      {guardrails.length > 0 ? (
+        <div className="border-t border-border bg-muted/20 px-4 py-3">
+          {guardrails.map((guardrail) => (
+            <p key={guardrail} className="text-xs text-muted-foreground">
+              {guardrail}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </SectionPanel>
   );
 }
 
@@ -677,7 +1104,14 @@ function CandidateCard({
             href: "/intake",
             label: "Open Smart Intake",
           }
-        : null;
+        : candidate.target_kind === "maintenance_work_order" &&
+            (candidate.kind === "maintenance_contractor_forward" ||
+              candidate.kind === "maintenance_tenant_forward")
+          ? {
+              href: `/operations/maintenance/${candidate.target_id}`,
+              label: "Open work order",
+            }
+          : null;
   const dismissedUntilLabel = formatDateTime(dismissedUntil);
   const dispatchReceiptLabel =
     dispatchedStatus === "skipped"

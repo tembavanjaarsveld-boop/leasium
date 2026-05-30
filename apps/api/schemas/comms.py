@@ -15,7 +15,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 CommsKind = Literal[
     "arrears_reminder",
@@ -26,8 +26,12 @@ CommsKind = Literal[
     "compliance_obligation",
     "rent_review",
     "tenant_lifecycle_stall",
+    "maintenance_contractor_forward",
+    "maintenance_tenant_forward",
 ]
 CommsSeverity = Literal["info", "warning", "danger"]
+CommsCorrespondenceSource = Literal["inbound_message", "comms_audit"]
+CommsCorrespondenceDirection = Literal["inbound", "outbound", "internal"]
 
 
 class CommsCandidate(BaseModel):
@@ -78,6 +82,59 @@ class CommsQueueCountsRead(BaseModel):
     total: int
     urgent: int
     by_kind: dict[CommsKind, int]
+    generated_at: datetime
+
+
+class CommsCorrespondenceEvent(BaseModel):
+    """Read-only event in a tenant-linked correspondence timeline."""
+
+    id: str
+    source: CommsCorrespondenceSource
+    direction: CommsCorrespondenceDirection
+    event_type: str
+    channel: str | None = None
+    provider: str | None = None
+    recipient: str | None = None
+    from_address: str | None = None
+    to_address: str | None = None
+    subject: str | None = None
+    summary: str | None = None
+    body_preview: str | None = None
+    target_kind: str | None = None
+    target_id: UUID | None = None
+    status: str | None = None
+    occurred_at: datetime
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class CommsTenantCorrespondenceRead(BaseModel):
+    """Read-only tenant correspondence timeline response."""
+
+    entity_id: UUID
+    tenant_id: UUID
+    tenant_name: str
+    events: list[CommsCorrespondenceEvent]
+    guardrails: list[str]
+    generated_at: datetime
+
+
+class CommsMaintenanceWorkOrderCorrespondenceRead(BaseModel):
+    """Read-only maintenance work-order correspondence timeline response."""
+
+    entity_id: UUID
+    work_order_id: UUID
+    work_order_title: str
+    events: list[CommsCorrespondenceEvent]
+    guardrails: list[str]
+    generated_at: datetime
+
+
+class CommsOutboundLogRead(BaseModel):
+    """Read-only entity-scoped comms dispatch receipt log."""
+
+    entity_id: UUID
+    events: list[CommsCorrespondenceEvent]
+    guardrails: list[str]
     generated_at: datetime
 
 

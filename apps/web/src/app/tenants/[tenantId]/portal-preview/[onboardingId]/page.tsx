@@ -5,6 +5,8 @@ import {
   ArrowLeft,
   Building2,
   CalendarClock,
+  Clock3,
+  Copy,
   Download,
   FileText,
   Loader2,
@@ -70,6 +72,16 @@ function formatMoney(cents: number, currency = "AUD") {
 
 function label(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function maintenanceEventLabel(value: string) {
+  if (value === "tenant_submitted") {
+    return "Request submitted";
+  }
+  if (value === "comment_added") {
+    return "Team update";
+  }
+  return label(value);
 }
 
 function csvCell(value: string | number | null | undefined) {
@@ -139,8 +151,196 @@ function maintenanceStatusDetail(
   return "Submitted to the property team.";
 }
 
+type TenantPortalPreviewActivityItem = {
+  key: string;
+  title: string;
+  detail: string;
+  timestamp: string;
+  tone: "primary" | "success" | "warning" | "danger" | "neutral";
+};
+
+function buildTenantPortalPreviewActivity(portal: TenantPortalRecord) {
+  const items: TenantPortalPreviewActivityItem[] = [];
+
+  function addActivity(item: TenantPortalPreviewActivityItem | null) {
+    if (item?.timestamp) {
+      items.push(item);
+    }
+  }
+
+  addActivity(
+    portal.onboarding.submitted_at
+      ? {
+          key: `onboarding-${portal.onboarding.id}`,
+          title: "Onboarding sent",
+          detail: "Tenant details were sent to the property team for review.",
+          timestamp: portal.onboarding.submitted_at,
+          tone: "primary",
+        }
+      : portal.onboarding.last_sent_at
+        ? {
+            key: `invite-${portal.onboarding.id}`,
+            title: "Portal invite sent",
+            detail: "The property team sent this tenant portal invite.",
+            timestamp: portal.onboarding.last_sent_at,
+            tone: "neutral",
+          }
+        : null,
+  );
+
+  addActivity(
+    portal.lease_agreement.signed_at
+      ? {
+          key: "lease-signed",
+          title: "Lease signed",
+          detail: "The lease pack has been signed.",
+          timestamp: portal.lease_agreement.signed_at,
+          tone: "success",
+        }
+      : null,
+  );
+
+  portal.lease_agreement.questions.forEach((question) => {
+    addActivity(
+      question.answered_at
+        ? {
+            key: `lease-question-answered-${question.id}`,
+            title: "Lease question answered",
+            detail: question.clause_reference
+              ? `The team responded to the question about ${question.clause_reference}.`
+              : "The team responded to a lease question.",
+            timestamp: question.answered_at,
+            tone: "success",
+          }
+        : question.asked_at
+          ? {
+              key: `lease-question-asked-${question.id}`,
+              title: "Lease question sent",
+              detail: question.clause_reference
+                ? `Question raised for ${question.clause_reference}.`
+                : "A lease question was sent to the property team.",
+              timestamp: question.asked_at,
+              tone: "warning",
+            }
+          : null,
+    );
+  });
+
+  portal.compliance.uploaded_documents.forEach((document) => {
+    addActivity({
+      key: `document-${document.id}`,
+      title: "Document uploaded",
+      detail: `${document.filename} - ${label(document.category)}.`,
+      timestamp: document.created_at,
+      tone: "success",
+    });
+  });
+
+  portal.maintenance_requests.forEach((request) => {
+    if (request.history.length) {
+      request.history.forEach((entry, index) => {
+        addActivity({
+          key: `maintenance-history-${request.id}-${index}`,
+          title: maintenanceEventLabel(entry.event),
+          detail: `${request.title} - ${entry.summary}`,
+          timestamp: entry.timestamp,
+          tone:
+            entry.status === "completed"
+              ? "success"
+              : entry.status === "cancelled"
+                ? "neutral"
+                : "primary",
+        });
+      });
+      return;
+    }
+
+    addActivity({
+      key: `maintenance-${request.id}`,
+      title: "Maintenance request sent",
+      detail: request.title,
+      timestamp: request.requested_at,
+      tone: "primary",
+    });
+  });
+
+  portal.contact_change_requests.forEach((request) => {
+    addActivity(
+      request.applied_at
+        ? {
+            key: `contact-change-applied-${request.id}`,
+            title: "Contact details updated",
+            detail: "Saved contact details were updated.",
+            timestamp: request.applied_at,
+            tone: "success",
+          }
+        : request.dismissed_at
+          ? {
+              key: `contact-change-dismissed-${request.id}`,
+              title: "Contact request closed",
+              detail:
+                "The property team reviewed the contact detail request and left saved details unchanged.",
+              timestamp: request.dismissed_at,
+              tone: "neutral",
+            }
+          : request.submitted_at
+            ? {
+                key: `contact-change-submitted-${request.id}`,
+                title: "Contact request sent",
+                detail:
+                  "Requested contact detail changes are with the property team.",
+                timestamp: request.submitted_at,
+                tone: "warning",
+              }
+            : null,
+    );
+  });
+
+  addActivity(
+    portal.notification_preferences.updated_at
+      ? {
+          key: "notification-preferences",
+          title: "Preferences saved",
+          detail: "Your portal notification preferences were updated.",
+          timestamp: portal.notification_preferences.updated_at,
+          tone: "neutral",
+        }
+      : null,
+  );
+
+  return items
+    .sort(
+      (left, right) =>
+        new Date(right.timestamp).getTime() -
+        new Date(left.timestamp).getTime(),
+    )
+    .slice(0, 6);
+}
+
+function tenantPortalPreviewActivitySummary(
+  activities: TenantPortalPreviewActivityItem[],
+) {
+  if (!activities.length) {
+    return "Tenant portal activity summary\nNo recent portal activity is available yet.";
+  }
+  return [
+    "Tenant portal activity summary",
+    `${activities.length} recent portal update${
+      activities.length === 1 ? "" : "s"
+    }`,
+    "",
+    ...activities.map(
+      (activity) =>
+        `- ${formatDateTime(activity.timestamp)} | ${activity.title} | ${
+          activity.detail
+        }`,
+    ),
+  ].join("\n");
+}
+
 function tenantPortalPreviewCsv(portal: TenantPortalRecord) {
   const tenantName = portal.tenant.trading_name || portal.tenant.legal_name;
+  const recentActivity = buildTenantPortalPreviewActivity(portal);
   const rows: Array<Array<string | number | null | undefined>> = [
     ["Category", "Item", "Status", "Count", "Amount", "Detail", "Guardrail"],
     [
@@ -259,6 +459,15 @@ function tenantPortalPreviewCsv(portal: TenantPortalRecord) {
         PORTAL_PREVIEW_EXPORT_GUARDRAIL,
       ]),
     ]),
+    ...recentActivity.map((activity) => [
+      "Recent Activity",
+      activity.title,
+      label(activity.tone),
+      "",
+      "",
+      `${formatDateTime(activity.timestamp)}; ${activity.detail}`,
+      PORTAL_PREVIEW_EXPORT_GUARDRAIL,
+    ]),
     ...portal.guardrails.map((guardrail) => [
       "Preview guardrail",
       guardrail,
@@ -325,6 +534,65 @@ function DocumentRow({ document }: { document: TenantPortalDocumentRecord }) {
   );
 }
 
+function RecentActivityPanel({
+  activities,
+}: {
+  activities: TenantPortalPreviewActivityItem[];
+}) {
+  const latestActivity = activities[0] ?? null;
+  const copyActivitySummary = () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+    void navigator.clipboard.writeText(
+      tenantPortalPreviewActivitySummary(activities),
+    );
+  };
+
+  return (
+    <SectionPanel
+      title="Recent Activity"
+      icon={<Clock3 size={17} className="text-primary" />}
+      actions={
+        <SecondaryButton
+          type="button"
+          onClick={copyActivitySummary}
+          className="min-h-9 rounded-xl px-3"
+        >
+          <Copy size={15} />
+          Copy summary
+        </SecondaryButton>
+      }
+    >
+      <div className="grid gap-3 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
+          <span className="font-medium">Activity rows</span>
+          <StatusBadge tone={latestActivity?.tone ?? "neutral"}>
+            {activities.length} event{activities.length === 1 ? "" : "s"}
+          </StatusBadge>
+        </div>
+        {activities.length ? (
+          activities.map((activity) => (
+            <div key={activity.key} className="grid gap-1 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-medium">{activity.title}</div>
+                <StatusBadge tone={activity.tone}>
+                  {formatDate(activity.timestamp)}
+                </StatusBadge>
+              </div>
+              <p className="text-muted-foreground">{activity.detail}</p>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-xl border border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
+            Activity will appear here as the tenant portal updates.
+          </div>
+        )}
+      </div>
+    </SectionPanel>
+  );
+}
+
 function PreviewLoaded({
   tenantId,
   portal,
@@ -334,6 +602,7 @@ function PreviewLoaded({
 }) {
   const tenantName = portal.tenant.trading_name || portal.tenant.legal_name;
   const latestContactRequest = portal.contact_change_requests[0] ?? null;
+  const recentActivity = buildTenantPortalPreviewActivity(portal);
   const downloadPreviewCsv = () => {
     const filenameName = slugifyFilename(tenantName || "tenant");
     saveBlob(
@@ -525,6 +794,8 @@ function PreviewLoaded({
           </div>
 
           <div className="grid content-start gap-5">
+            <RecentActivityPanel activities={recentActivity} />
+
             <SectionPanel
               title="Payments"
               icon={<ReceiptText size={17} className="text-primary" />}

@@ -1304,6 +1304,7 @@ export type DocumentIntakeExtraction = {
   key_dates?: Array<Record<string, unknown>> | null;
   money_amounts?: Array<Record<string, unknown>> | null;
   obligations?: Array<Record<string, unknown>> | null;
+  inspection_findings?: Array<Record<string, unknown>> | null;
   suggested_links?: Record<string, unknown> | null;
   warnings?: string[] | null;
   missing_information?: string[] | null;
@@ -4644,7 +4645,9 @@ export type CommsKind =
   | "inbound_sms"
   | "compliance_obligation"
   | "rent_review"
-  | "tenant_lifecycle_stall";
+  | "tenant_lifecycle_stall"
+  | "maintenance_contractor_forward"
+  | "maintenance_tenant_forward";
 export type CommsSeverity = "info" | "warning" | "danger";
 
 export type CommsCandidateRecord = {
@@ -4714,6 +4717,51 @@ export type CommsDismissRecord = {
   dismissed_at: string;
 };
 
+export type CommsCorrespondenceEventRecord = {
+  id: string;
+  source: "inbound_message" | "comms_audit";
+  direction: "inbound" | "outbound" | "internal";
+  event_type: string;
+  channel: string | null;
+  provider: string | null;
+  recipient: string | null;
+  from_address: string | null;
+  to_address: string | null;
+  subject: string | null;
+  summary: string | null;
+  body_preview: string | null;
+  target_kind: string | null;
+  target_id: string | null;
+  status: string | null;
+  occurred_at: string;
+  metadata: Record<string, string | number | boolean | null>;
+};
+
+export type CommsTenantCorrespondenceRecord = {
+  entity_id: string;
+  tenant_id: string;
+  tenant_name: string;
+  events: CommsCorrespondenceEventRecord[];
+  guardrails: string[];
+  generated_at: string;
+};
+
+export type CommsMaintenanceWorkOrderCorrespondenceRecord = {
+  entity_id: string;
+  work_order_id: string;
+  work_order_title: string;
+  events: CommsCorrespondenceEventRecord[];
+  guardrails: string[];
+  generated_at: string;
+};
+
+export type CommsOutboundLogRecord = {
+  entity_id: string;
+  events: CommsCorrespondenceEventRecord[];
+  guardrails: string[];
+  generated_at: string;
+};
+
 export function getCommsQueue(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
   return request<CommsQueueRecord>(`/comms/queue?${params.toString()}`);
@@ -4731,6 +4779,25 @@ export function getCommsQueueCounts(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
   return request<CommsQueueCountsRecord>(
     `/comms/queue/counts?${params.toString()}`,
+  );
+}
+
+export function getTenantCommsCorrespondence(tenantId: string) {
+  return request<CommsTenantCorrespondenceRecord>(
+    `/comms/correspondence/tenants/${tenantId}`,
+  );
+}
+
+export function getMaintenanceWorkOrderCommsCorrespondence(workOrderId: string) {
+  return request<CommsMaintenanceWorkOrderCorrespondenceRecord>(
+    `/comms/correspondence/maintenance-work-orders/${workOrderId}`,
+  );
+}
+
+export function getCommsOutboundLog(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<CommsOutboundLogRecord>(
+    `/comms/outbound-log?${params.toString()}`,
   );
 }
 

@@ -36,6 +36,7 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
         "warnings",
         "missing_information",
         "proposed_actions",
+        "inspection_findings",
     ],
     "properties": {
         "document_type": {
@@ -47,6 +48,7 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
                 "insurance_certificate",
                 "bank_guarantee",
                 "purchase_contract",
+                "inspection_report",
                 "compliance",
                 "notice",
                 "unknown",
@@ -270,6 +272,38 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
                 },
             },
         },
+        "inspection_findings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "title",
+                    "description",
+                    "priority",
+                    "due_date",
+                    "location",
+                    "category",
+                    "confidence",
+                    "source_hint",
+                    "warnings",
+                ],
+                "properties": {
+                    "title": {"type": "string"},
+                    "description": {"type": ["string", "null"]},
+                    "priority": {
+                        "type": ["string", "null"],
+                        "enum": ["low", "normal", "high", "urgent", None],
+                    },
+                    "due_date": {"type": ["string", "null"]},
+                    "location": {"type": ["string", "null"]},
+                    "category": {"type": ["string", "null"]},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "source_hint": {"type": ["string", "null"]},
+                    "warnings": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        },
     },
 }
 
@@ -295,7 +329,8 @@ def extract_document_file(
         "review dates, outgoings amounts and frequency, parking, storage, utilities, "
         "promotion levy or other schedule charges, option notice dates, security "
         "or bank guarantee due dates, key dates, money, obligations, warnings, "
-        "missing information, and proposed actions. Use ISO dates where possible and "
+        "missing information, proposed actions, and inspection findings that should "
+        "become reviewed maintenance work orders. Use ISO dates where possible and "
         "mark uncertainty with lower confidence and warnings."
     )
     content: list[dict[str, str]] = [{"type": "input_text", "text": prompt}]

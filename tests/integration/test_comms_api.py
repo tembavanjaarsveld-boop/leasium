@@ -9,23 +9,28 @@ lease-event drafts.
 import base64
 import hashlib
 import hmac
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from stewart.core.audit import audit_log
 from stewart.core.models import (
     ArrearsCase,
     ArrearsCaseStatus,
     AuditAction,
+    AuditOutcome,
     DocumentIntake,
     DocumentIntakeStatus,
     Entity,
     InboundMessage,
     Lease,
     LeaseStatus,
+    MaintenancePriority,
+    MaintenanceWorkOrder,
+    MaintenanceWorkOrderStatus,
     Obligation,
     ObligationCategory,
     ObligationStatus,
@@ -240,7 +245,581 @@ def test_comms_queue_empty_portfolio_returns_no_candidates(
     assert response.status_code == 200
     body = response.json()
     assert body["candidates"] == []
+
+
+def test_comms_tenant_correspondence_returns_inbound_and_reviewed_actions(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Tenant correspondence is a read-only timeline of local comms evidence."""
+
+    scope = _seed_arrears(session)
+    entity_id = UUID(scope["entity_id"])
+    tenant_id = UUID(scope["tenant_id"])
+    case_id = UUID(scope["case_id"])
+    inbound = InboundMessage(
+        entity_id=entity_id,
+        channel="email",
+        provider="sendgrid",
+        from_address="mia@arrears.example",
+        to_address="inbound@leasium.example",
+        subject="Broken tap",
+        body_text="The bathroom tap is leaking again. Can you please help?",
+        classification_kind="maintenance",
+        classification_summary="Tenant reports a leaking bathroom tap.",
+        attributed_tenant_id=tenant_id,
+        raw_payload={},
+        inbound_metadata={"attachment_intake_count": 0},
+        created_at=datetime(2026, 5, 21, 2, 0, 0),
+    )
+    entity = session.get(Entity, entity_id)
+    assert entity is not None
+    mismatched_entity = Entity(
+        organisation_id=entity.organisation_id,
+        name="Other Entity Pty Ltd",
+    )
+    unrelated_tenant = Tenant(
+        entity_id=entity_id,
+        legal_name="Other Tenant Pty Ltd",
+        contact_email="other@example.test",
+    )
+    session.add_all([inbound, mismatched_entity, unrelated_tenant])
+    session.flush()
+    mismatched_inbound = InboundMessage(
+        entity_id=mismatched_entity.id,
+        channel="email",
+        provider="sendgrid",
+        from_address="cross-entity@example.test",
+        subject="Cross-entity message",
+        body_text="This row has a mismatched entity and attributed tenant.",
+        attributed_tenant_id=tenant_id,
+        raw_payload={},
+        inbound_metadata={},
+        created_at=datetime(2026, 5, 21, 2, 30, 0),
+    )
+    unrelated_inbound = InboundMessage(
+        entity_id=entity_id,
+        channel="email",
+        provider="sendgrid",
+        from_address="other@example.test",
+        subject="Should not show",
+        body_text="Unrelated tenant message.",
+        attributed_tenant_id=unrelated_tenant.id,
+        raw_payload={},
+        inbound_metadata={},
+    )
+    session.add_all([mismatched_inbound, unrelated_inbound])
+    dispatch_row = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity_id,
+        action="dispatch",
+        target_table="arrears_case",
+        target_id=case_id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": f"arrears_reminder:arrears_case:{case_id}",
+            "kind": "arrears_reminder",
+            "channel": "email",
+            "recipient": "mia@arrears.example",
+        },
+        tool_output_summary="comms draft email queued",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    dispatch_row.occurred_at = datetime(2026, 5, 21, 2, 20, 0)
+    dismiss_row = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity_id,
+        action="dismiss",
+        target_table="inbound_message",
+        target_id=inbound.id,
+        tool_name="comms.queue",
+        tool_input={
+            "candidate_id": f"inbound_email:inbound_message:{inbound.id}",
+            "kind": "inbound_email",
+            "channel": "email",
+            "reason": "Already handled by phone.",
+        },
+        tool_output_summary="inbound email deferred",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    dismiss_row.occurred_at = datetime(2026, 5, 21, 2, 10, 0)
+    generic_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity_id,
+        action="dispatch",
+        target_table="arrears_case",
+        target_id=case_id,
+        tool_name="workflow.dispatch",
+        tool_input={
+            "candidate_id": f"arrears_reminder:arrears_case:{case_id}",
+            "kind": "arrears_reminder",
+            "reason": "Non-comms workflow action.",
+        },
+        tool_output_summary="unrelated workflow dispatch",
+        outcome=AuditOutcome.success,
+        data_classification="internal",
+    )
+    generic_dispatch.occurred_at = datetime(2026, 5, 21, 2, 25, 0)
+    session.commit()
+
+    response = client.get(f"/api/v1/comms/correspondence/tenants/{tenant_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["entity_id"] == scope["entity_id"]
+    assert body["tenant_id"] == scope["tenant_id"]
+    assert body["tenant_name"] == "Arrears Cafe"
+    assert any("read-only" in guardrail for guardrail in body["guardrails"])
+    events = body["events"]
+    assert len(events) == 3
+    assert {event["source"] for event in events} == {
+        "inbound_message",
+        "comms_audit",
+    }
+    assert [event["summary"] for event in events] == [
+        "comms draft email queued",
+        "inbound email deferred",
+        "Tenant reports a leaking bathroom tap.",
+    ]
+    assert {event["event_type"] for event in events} >= {
+        "inbound_email",
+        "dispatch",
+        "dismiss",
+    }
+    inbound_event = next(event for event in events if event["source"] == "inbound_message")
+    assert inbound_event["direction"] == "inbound"
+    assert inbound_event["channel"] == "email"
+    assert inbound_event["subject"] == "Broken tap"
+    assert "leaking again" in inbound_event["body_preview"]
+    assert inbound_event["summary"] == "Tenant reports a leaking bathroom tap."
+    dispatch_event = next(
+        event
+        for event in events
+        if event["event_type"] == "dispatch"
+        and event["target_kind"] == "arrears_case"
+    )
+    assert dispatch_event["direction"] == "outbound"
+    assert dispatch_event["provider"] == "sendgrid"
+    assert dispatch_event["recipient"] == "mia@arrears.example"
+    assert dispatch_event["summary"] == "comms draft email queued"
+    dismiss_event = next(event for event in events if event["event_type"] == "dismiss")
+    assert dismiss_event["direction"] == "internal"
+    assert dismiss_event["target_id"] == str(inbound.id)
+    assert "Should not show" not in str(events)
+    assert "Cross-entity message" not in str(events)
+    assert "unrelated workflow dispatch" not in str(events)
+
+
+def test_comms_outbound_log_returns_recent_dispatch_receipts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Outbound log is a read-only view of entity-scoped comms dispatch receipts."""
+
+    scope = _seed_arrears(session)
+    entity_id = UUID(scope["entity_id"])
+    tenant_id = UUID(scope["tenant_id"])
+    lease_id = UUID(scope["lease_id"])
+    case_id = UUID(scope["case_id"])
+    entity = session.get(Entity, entity_id)
+    assert entity is not None
+    other_entity = Entity(
+        organisation_id=entity.organisation_id,
+        name="Other Entity Pty Ltd",
+    )
+    session.add(other_entity)
+    session.flush()
+
+    email_row = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity_id,
+        action="dispatch",
+        target_table="arrears_case",
+        target_id=case_id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": f"arrears_reminder:arrears_case:{case_id}",
+            "kind": "arrears_reminder",
+            "channel": "email",
+            "recipient": "mia@arrears.example",
+        },
+        tool_output_summary="comms draft email queued",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    email_row.occurred_at = datetime(2026, 5, 21, 2, 20, 0)
+    lease_row = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity_id,
+        action="dispatch",
+        target_table="lease",
+        target_id=lease_id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": f"rent_review:lease:{lease_id}",
+            "kind": "rent_review",
+            "channel": "email",
+            "recipient": "mia@arrears.example",
+        },
+        tool_output_summary="rent review email queued",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    lease_row.occurred_at = datetime(2026, 5, 21, 2, 15, 0)
+    sms_row = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity_id,
+        action="dispatch",
+        target_table="inbound_message",
+        target_id=case_id,
+        tool_name="twilio.twilio",
+        tool_input={
+            "candidate_id": f"inbound_sms:inbound_message:{case_id}",
+            "kind": "inbound_sms",
+            "channel": "sms",
+            "recipient": "+61400111222",
+        },
+        tool_output_summary="comms draft sms failed",
+        outcome=AuditOutcome.error,
+        error_message="Twilio Messaging is not configured.",
+        data_classification="confidential",
+    )
+    sms_row.occurred_at = datetime(2026, 5, 21, 2, 30, 0)
+    dismiss_row = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity_id,
+        action="dismiss",
+        target_table="arrears_case",
+        target_id=case_id,
+        tool_name="comms.queue",
+        tool_input={
+            "candidate_id": f"arrears_reminder:arrears_case:{case_id}",
+            "kind": "arrears_reminder",
+            "channel": "email",
+        },
+        tool_output_summary="arrears reminder deferred",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    dismiss_row.occurred_at = datetime(2026, 5, 21, 2, 25, 0)
+    generic_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity_id,
+        action="dispatch",
+        target_table="arrears_case",
+        target_id=case_id,
+        tool_name="workflow.dispatch",
+        tool_input={
+            "candidate_id": f"arrears_reminder:arrears_case:{case_id}",
+            "kind": "arrears_reminder",
+            "reason": "Non-comms workflow action.",
+        },
+        tool_output_summary="unrelated workflow dispatch",
+        outcome=AuditOutcome.success,
+        data_classification="internal",
+    )
+    generic_dispatch.occurred_at = datetime(2026, 5, 21, 2, 35, 0)
+    mismatched_candidate = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity_id,
+        action="dispatch",
+        target_table="arrears_case",
+        target_id=case_id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": f"arrears_reminder:lease:{case_id}",
+            "kind": "arrears_reminder",
+            "channel": "email",
+        },
+        tool_output_summary="mismatched comms dispatch",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    mismatched_candidate.occurred_at = datetime(2026, 5, 21, 2, 40, 0)
+    other_entity_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=other_entity.id,
+        action="dispatch",
+        target_table="arrears_case",
+        target_id=case_id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": f"arrears_reminder:arrears_case:{case_id}",
+            "kind": "arrears_reminder",
+            "channel": "email",
+        },
+        tool_output_summary="other entity comms dispatch",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    other_entity_dispatch.occurred_at = datetime(2026, 5, 21, 2, 45, 0)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/comms/outbound-log",
+        params={"entity_id": str(entity_id)},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["entity_id"] == scope["entity_id"]
+    assert any("read-only" in guardrail for guardrail in body["guardrails"])
+    events = body["events"]
+    assert [event["summary"] for event in events] == [
+        "comms draft sms failed",
+        "comms draft email queued",
+        "rent review email queued",
+    ]
+    assert [event["direction"] for event in events] == [
+        "outbound",
+        "outbound",
+        "outbound",
+    ]
+    sms_event = events[0]
+    assert sms_event["event_type"] == "dispatch"
+    assert sms_event["channel"] == "sms"
+    assert sms_event["provider"] == "twilio"
+    assert sms_event["recipient"] == "+61400111222"
+    assert sms_event["status"] == "error"
+    assert sms_event["target_kind"] == "inbound_message"
+    assert sms_event["metadata"]["kind"] == "inbound_sms"
+    assert sms_event["metadata"]["error"] == "Twilio Messaging is not configured."
+    lease_event = next(event for event in events if event["target_kind"] == "lease")
+    assert lease_event["target_id"] == str(lease_id)
+    assert lease_event["metadata"]["tenant_id"] == str(tenant_id)
+    assert "arrears reminder deferred" not in str(events)
+    assert "unrelated workflow dispatch" not in str(events)
+    assert "mismatched comms dispatch" not in str(events)
+    assert "other entity comms dispatch" not in str(events)
+
+
+def test_comms_maintenance_correspondence_returns_work_order_receipts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Maintenance correspondence is a read-only target-linked receipt timeline."""
+
+    entity = _entity(session)
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Maintenance Tenant Pty Ltd",
+        trading_name="Maintenance Cafe",
+        contact_email="maintenance.tenant@example.test",
+    )
+    session.add(tenant)
+    session.flush()
+    work_order = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        tenant_id=tenant.id,
+        title="Leaking ceiling",
+        status=MaintenanceWorkOrderStatus.in_progress,
+        priority=MaintenancePriority.normal,
+        contractor_name="FixCo",
+        contractor_email="fixco@example.test",
+    )
+    other_work_order = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        title="Other maintenance",
+        status=MaintenanceWorkOrderStatus.in_progress,
+        priority=MaintenancePriority.normal,
+    )
+    other_entity = Entity(
+        organisation_id=entity.organisation_id,
+        name="Maintenance Other Entity Pty Ltd",
+    )
+    session.add_all([work_order, other_work_order, other_entity])
+    session.flush()
+
+    contractor_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dispatch",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": (
+                "maintenance_contractor_forward:"
+                f"maintenance_work_order:{work_order.id}"
+            ),
+            "kind": "maintenance_contractor_forward",
+            "channel": "email",
+            "recipient": "fixco@example.test",
+        },
+        tool_output_summary="contractor forward email queued",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    contractor_dispatch.occurred_at = datetime(2026, 5, 21, 2, 30, 0)
+    tenant_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dispatch",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="twilio.twilio",
+        tool_input={
+            "candidate_id": (
+                f"maintenance_tenant_forward:maintenance_work_order:{work_order.id}"
+            ),
+            "kind": "maintenance_tenant_forward",
+            "channel": "sms",
+            "recipient": "+61400111222",
+        },
+        tool_output_summary="tenant forward sms failed",
+        outcome=AuditOutcome.error,
+        error_message="Twilio Messaging is not configured.",
+        data_classification="confidential",
+    )
+    tenant_dispatch.occurred_at = datetime(2026, 5, 21, 2, 20, 0)
+    dismiss_row = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dismiss",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="comms.dismiss",
+        tool_input={
+            "candidate_id": (
+                "maintenance_contractor_forward:"
+                f"maintenance_work_order:{work_order.id}"
+            ),
+            "kind": "maintenance_contractor_forward",
+            "deferred_until": "2026-05-28",
+            "reason": "Contractor already called.",
+        },
+        tool_output_summary="contractor forward deferred",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    dismiss_row.occurred_at = datetime(2026, 5, 21, 2, 10, 0)
+    generic_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dispatch",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="workflow.dispatch",
+        tool_input={
+            "candidate_id": (
+                "maintenance_contractor_forward:"
+                f"maintenance_work_order:{work_order.id}"
+            ),
+            "kind": "maintenance_contractor_forward",
+        },
+        tool_output_summary="generic maintenance workflow dispatch",
+        outcome=AuditOutcome.success,
+        data_classification="internal",
+    )
+    generic_dispatch.occurred_at = datetime(2026, 5, 21, 2, 40, 0)
+    mismatched_candidate = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dispatch",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": (
+                "maintenance_contractor_forward:"
+                f"maintenance_work_order:{other_work_order.id}"
+            ),
+            "kind": "maintenance_contractor_forward",
+        },
+        tool_output_summary="mismatched maintenance dispatch",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    mismatched_candidate.occurred_at = datetime(2026, 5, 21, 2, 45, 0)
+    other_target_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dispatch",
+        target_table="maintenance_work_order",
+        target_id=other_work_order.id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": (
+                "maintenance_contractor_forward:"
+                f"maintenance_work_order:{other_work_order.id}"
+            ),
+            "kind": "maintenance_contractor_forward",
+        },
+        tool_output_summary="other work order dispatch",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    other_target_dispatch.occurred_at = datetime(2026, 5, 21, 2, 50, 0)
+    other_entity_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=other_entity.id,
+        action="dispatch",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": (
+                "maintenance_contractor_forward:"
+                f"maintenance_work_order:{work_order.id}"
+            ),
+            "kind": "maintenance_contractor_forward",
+        },
+        tool_output_summary="other entity maintenance dispatch",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    other_entity_dispatch.occurred_at = datetime(2026, 5, 21, 2, 55, 0)
+    session.commit()
+
+    response = client.get(
+        f"/api/v1/comms/correspondence/maintenance-work-orders/{work_order.id}",
+    )
+
+    assert response.status_code == 200
+    body = response.json()
     assert body["entity_id"] == str(entity.id)
+    assert body["work_order_id"] == str(work_order.id)
+    assert body["work_order_title"] == "Leaking ceiling"
+    assert any("read-only" in guardrail for guardrail in body["guardrails"])
+    events = body["events"]
+    assert [event["summary"] for event in events] == [
+        "contractor forward email queued",
+        "tenant forward sms failed",
+        "contractor forward deferred",
+    ]
+    assert [event["direction"] for event in events] == [
+        "outbound",
+        "outbound",
+        "internal",
+    ]
+    assert events[0]["provider"] == "sendgrid"
+    assert events[0]["metadata"]["tenant_id"] == str(tenant.id)
+    assert events[1]["provider"] == "twilio"
+    assert events[1]["metadata"]["error"] == "Twilio Messaging is not configured."
+    assert events[2]["event_type"] == "dismiss"
+    assert "generic maintenance workflow dispatch" not in str(events)
+    assert "mismatched maintenance dispatch" not in str(events)
+    assert "other work order dispatch" not in str(events)
+    assert "other entity maintenance dispatch" not in str(events)
 
 
 def _seed_lease_only(session: Session, expiry_in_days: int) -> dict[str, str]:
@@ -557,6 +1136,152 @@ def test_comms_queue_rent_review_skips_far_future_review(
         c for c in response.json()["candidates"] if c["kind"] == "rent_review"
     ]
     assert rent_reviews == []
+
+
+def test_comms_dispatch_rent_review_stamps_lease_metadata(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Approved rent-review emails get a lease-scoped comms stamp."""
+
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Rent Dispatch Tower",
+        street_address="3 Review Lane",
+        property_type=PropertyType.commercial_office,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Level 9")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Rent Dispatch Tenant Pty Ltd",
+        contact_email="rent-dispatch@example.test",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+        annual_rent_cents=120_000_00,
+        next_review_date=date.today() + timedelta(days=20),
+        lease_metadata={
+            "rent_review": {"kind": "fixed_pct", "increase_pct": 3.0},
+        },
+    )
+    session.add(lease)
+    session.commit()
+
+    from apps.api.routers import comms as comms_router
+
+    def fake_send_email(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        return comms_router._CommsEmailResult(
+            status="queued",
+            provider="sendgrid",
+            recipient=recipient_email,
+            provider_message_id="sg-rent-review-1",
+        )
+
+    monkeypatch.setattr(comms_router, "_send_comms_email", fake_send_email)
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": "rent_review",
+            "target_kind": "lease",
+            "target_id": str(lease.id),
+            "subject": "Upcoming rent review",
+            "body": "Please review the proposed annual rent.",
+            "recipient_email": "rent-dispatch@example.test",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["provider_message_id"] == "sg-rent-review-1"
+    session.refresh(lease)
+    comms_stamp = lease.lease_metadata[comms_router.DISMISS_METADATA_KEY][
+        "rent_review"
+    ]
+    assert comms_stamp["dispatched_at"]
+    assert date.fromisoformat(comms_stamp["next_eligible_on"]) > date.today()
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert queue.status_code == 200
+    assert [
+        candidate
+        for candidate in queue.json()["candidates"]
+        if candidate["kind"] == "rent_review"
+    ] == []
+
+
+def test_comms_dismiss_rent_review_stamps_lease_metadata(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Dismissed rent-review candidates record the operator deferral."""
+
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Rent Dismiss Tower",
+        street_address="4 Review Lane",
+        property_type=PropertyType.commercial_office,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Level 10")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Rent Dismiss Tenant Pty Ltd",
+        contact_email="rent-dismiss@example.test",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+        annual_rent_cents=120_000_00,
+        next_review_date=date.today() + timedelta(days=20),
+    )
+    session.add(lease)
+    session.commit()
+
+    response = client.post(
+        "/api/v1/comms/dismiss",
+        json={
+            "kind": "rent_review",
+            "target_kind": "lease",
+            "target_id": str(lease.id),
+            "reason": "operator will confirm CPI rule first",
+        },
+    )
+
+    assert response.status_code == 201
+    deferred_until = response.json()["deferred_until"]
+    session.refresh(lease)
+    from apps.api.routers import comms as comms_router
+
+    comms_stamp = lease.lease_metadata[comms_router.DISMISS_METADATA_KEY][
+        "rent_review"
+    ]
+    assert comms_stamp["deferred_until"] == deferred_until
+    assert comms_stamp["reason"] == "operator will confirm CPI rule first"
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert queue.status_code == 200
+    assert [
+        candidate
+        for candidate in queue.json()["candidates"]
+        if candidate["kind"] == "rent_review"
+    ] == []
 
 
 def _seed_lifecycle_onboarding(
@@ -1172,6 +1897,184 @@ def test_comms_queue_returns_insurance_expiry_candidate(
     assert candidate["body"].startswith("Hi Riley Cover,")
 
 
+def test_comms_queue_returns_maintenance_forward_candidates(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Tenant/contractor timeline rows become reviewed Comms queue drafts."""
+
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Forwarding Plaza",
+        street_address="44 Forward Street",
+        suburb="Brisbane City",
+        state="QLD",
+        postcode="4000",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Shop 8")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Forward Tenant Pty Ltd",
+        trading_name="Forward Books",
+        contact_name="Terry Forward",
+        contact_email="tenant.forward@example.test",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    work_order = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        property_id=prop.id,
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        title="Front door repair",
+        description="Door closer is loose.",
+        status=MaintenanceWorkOrderStatus.in_progress,
+        priority=MaintenancePriority.normal,
+        contractor_name="FixCo",
+        contractor_email="fixco@example.test",
+        work_order_metadata={
+            "activity_history": [
+                {
+                    "timestamp": "2026-05-20T01:00:00+00:00",
+                    "source": "tenant_portal",
+                    "event": "tenant_submitted",
+                    "summary": "Tenant says the front door is sticking again.",
+                    "status": "requested",
+                },
+                {
+                    "timestamp": "2026-05-20T02:00:00+00:00",
+                    "visibility": "contractor",
+                    "event": "contractor_update",
+                    "summary": "Contractor can attend tomorrow morning.",
+                    "status": "assigned",
+                },
+            ],
+        },
+    )
+    session.add(work_order)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+
+    assert response.status_code == 200
+    candidates = [
+        candidate
+        for candidate in response.json()["candidates"]
+        if candidate["target_id"] == str(work_order.id)
+    ]
+    assert {candidate["kind"] for candidate in candidates} == {
+        "maintenance_contractor_forward",
+        "maintenance_tenant_forward",
+    }
+    contractor_forward = next(
+        candidate
+        for candidate in candidates
+        if candidate["kind"] == "maintenance_contractor_forward"
+    )
+    assert contractor_forward["target_kind"] == "maintenance_work_order"
+    assert contractor_forward["recipient_email"] == "fixco@example.test"
+    assert contractor_forward["tenant_name"] == "Forward Books"
+    assert contractor_forward["property_name"] == "Forwarding Plaza"
+    assert contractor_forward["unit_label"] == "Shop 8"
+    assert "Tenant says the front door is sticking again." in contractor_forward["body"]
+    assert contractor_forward["severity"] == "warning"
+    assert "reviewed forward to contractor" in (contractor_forward["detail"] or "")
+
+    tenant_forward = next(
+        candidate
+        for candidate in candidates
+        if candidate["kind"] == "maintenance_tenant_forward"
+    )
+    assert tenant_forward["recipient_email"] == "tenant.forward@example.test"
+    assert "Contractor can attend tomorrow morning." in tenant_forward["body"]
+
+
+def test_comms_dispatch_maintenance_forward_stamps_work_order_metadata(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Approving a maintenance forward routes through the Comms dispatch pipe."""
+
+    entity = _entity(session)
+    work_order = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        title="Dispatch forwarding",
+        status=MaintenanceWorkOrderStatus.in_progress,
+        priority=MaintenancePriority.normal,
+        contractor_name="Dispatch FixCo",
+        contractor_email="dispatch.fixco@example.test",
+        work_order_metadata={
+            "activity_history": [
+                {
+                    "timestamp": "2026-05-20T01:00:00+00:00",
+                    "source": "tenant_portal",
+                    "event": "tenant_submitted",
+                    "summary": "Tenant confirms the leak is active.",
+                    "status": "requested",
+                }
+            ],
+        },
+    )
+    session.add(work_order)
+    session.commit()
+
+    sent: dict[str, str] = {}
+
+    def fake_send_email(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        sent["recipient_email"] = recipient_email
+        sent["subject"] = subject
+        sent["body"] = body
+        sent["candidate_id"] = candidate_id
+        sent["kind"] = kind
+
+        class Result:
+            status = "queued"
+            provider = "sendgrid"
+            recipient = recipient_email
+            provider_message_id = "sg-maintenance-forward"
+            error = None
+
+        return Result()
+
+    monkeypatch.setattr("apps.api.routers.comms._send_comms_email", fake_send_email)
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": "maintenance_contractor_forward",
+            "target_kind": "maintenance_work_order",
+            "target_id": str(work_order.id),
+            "recipient_email": "dispatch.fixco@example.test",
+            "subject": "Forward: Dispatch forwarding",
+            "body": "Tenant confirms the leak is active.",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["status"] == "queued"
+    assert body["candidate_id"] == (
+        f"maintenance_contractor_forward:maintenance_work_order:{work_order.id}"
+    )
+    assert sent["kind"] == "maintenance_contractor_forward"
+    assert sent["recipient_email"] == "dispatch.fixco@example.test"
+
+    session.refresh(work_order)
+    metadata = work_order.work_order_metadata or {}
+    dispatch = metadata.get("maintenance_forwarding_comms")
+    assert dispatch["maintenance_contractor_forward"]["provider_message_id"] == (
+        "sg-maintenance-forward"
+    )
+
+
 def test_inbound_webhook_persists_and_attributes_tenant(
     client: TestClient,
     session: Session,
@@ -1750,6 +2653,169 @@ def test_compliance_evidence_upload_links_document_to_obligation(
     }
     assert document.document_metadata["source"] == "manual_comms_evidence_upload"
     assert document.document_metadata["source_obligation_id"] == str(obligation.id)
+
+
+def test_comms_dispatch_compliance_obligation_stamps_metadata(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Approved compliance reminders record the source obligation handoff."""
+
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Compliance Dispatch House",
+        street_address="66 Evidence Street",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Suite 6")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Compliance Dispatch Tenant Pty Ltd",
+        contact_email="dispatch-compliance@example.test",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+    )
+    session.add(lease)
+    session.flush()
+    obligation = Obligation(
+        entity_id=entity.id,
+        property_id=prop.id,
+        tenancy_unit_id=unit.id,
+        lease_id=lease.id,
+        title="Annual fire safety certificate",
+        category=ObligationCategory.compliance,
+        status=ObligationStatus.due_soon,
+        due_date=date.today() + timedelta(days=20),
+    )
+    session.add(obligation)
+    session.commit()
+
+    from apps.api.routers import comms as comms_router
+
+    def fake_send_email(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        return comms_router._CommsEmailResult(
+            status="queued",
+            provider="sendgrid",
+            recipient=recipient_email,
+            provider_message_id="sg-compliance-1",
+        )
+
+    monkeypatch.setattr(comms_router, "_send_comms_email", fake_send_email)
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": "compliance_obligation",
+            "target_kind": "obligation",
+            "target_id": str(obligation.id),
+            "subject": "Annual fire safety certificate due",
+            "body": "Please send through the latest evidence.",
+            "recipient_email": "dispatch-compliance@example.test",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["provider_message_id"] == "sg-compliance-1"
+    session.refresh(obligation)
+    comms_stamp = obligation.obligation_metadata[comms_router.DISMISS_METADATA_KEY][
+        "compliance_obligation"
+    ]
+    assert comms_stamp["dispatched_at"]
+    assert date.fromisoformat(comms_stamp["next_eligible_on"]) > date.today()
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert queue.status_code == 200
+    assert [
+        candidate
+        for candidate in queue.json()["candidates"]
+        if candidate["kind"] == "compliance_obligation"
+    ] == []
+
+
+def test_comms_dismiss_compliance_obligation_stamps_metadata(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Dismissed compliance reminders keep the obligation audit trail."""
+
+    entity = _entity(session)
+    prop = Property(
+        entity_id=entity.id,
+        name="Compliance Dismiss House",
+        street_address="77 Evidence Street",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add(prop)
+    session.flush()
+    unit = TenancyUnit(property_id=prop.id, unit_label="Suite 7")
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name="Compliance Dismiss Tenant Pty Ltd",
+        contact_email="dismiss-compliance@example.test",
+    )
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+    )
+    session.add(lease)
+    session.flush()
+    obligation = Obligation(
+        entity_id=entity.id,
+        property_id=prop.id,
+        tenancy_unit_id=unit.id,
+        lease_id=lease.id,
+        title="Annual fire safety certificate",
+        category=ObligationCategory.compliance,
+        status=ObligationStatus.due_soon,
+        due_date=date.today() + timedelta(days=20),
+    )
+    session.add(obligation)
+    session.commit()
+
+    response = client.post(
+        "/api/v1/comms/dismiss",
+        json={
+            "kind": "compliance_obligation",
+            "target_kind": "obligation",
+            "target_id": str(obligation.id),
+            "reason": "tenant already sent evidence",
+        },
+    )
+
+    assert response.status_code == 201
+    deferred_until = response.json()["deferred_until"]
+    session.refresh(obligation)
+    from apps.api.routers import comms as comms_router
+
+    comms_stamp = obligation.obligation_metadata[comms_router.DISMISS_METADATA_KEY][
+        "compliance_obligation"
+    ]
+    assert comms_stamp["deferred_until"] == deferred_until
+    assert comms_stamp["reason"] == "tenant already sent evidence"
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert queue.status_code == 200
+    assert [
+        candidate
+        for candidate in queue.json()["candidates"]
+        if candidate["kind"] == "compliance_obligation"
+    ] == []
 
 
 def test_inbound_webhook_classifies_with_ai_triage(

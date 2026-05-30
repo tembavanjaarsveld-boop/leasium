@@ -158,12 +158,10 @@ def send_lease_for_signature(
 ) -> LeaseSignatureResult:
     """Send a lease document to DocuSign for signature.
 
-    Scaffold v1: when DocuSign is not yet configured (the common case
-    until the operator provisions a developer account), the helper
-    returns a ``skipped`` result with a ``not_configured`` error so the
-    operator surface can render a clear receipt. The actual envelope
-    create + recipient routing lands in the next slice once credentials
-    are in hand.
+    When DocuSign is not configured, return a ``skipped`` result with a
+    clear setup error for the operator receipt. When credentials are present,
+    request a JWT access token, create the envelope with the attached lease
+    document, and return the provider envelope id for downstream audit state.
     """
 
     if not is_configured(settings):

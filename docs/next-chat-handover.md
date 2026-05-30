@@ -689,7 +689,8 @@ Previously this session: 2026-05-23 (even later same day): AI inbox v2.1 — pre
 - `apps/api/routers/ai.py` — promote endpoint now takes `settings` Depends; lease_change branch builds a compact `_lease_snapshot(...)` (current expiry / current rent / next review) from the operator-matched lease, calls the extractor, stamps `extracted_data` / `summary` / `confidence` / `openai_response_id` on the DocumentIntake, and chooses `ready_for_review` vs `needs_attention` from the confidence score. Soft-fails to v2.0 behaviour (uploaded status, `review_data["extraction_error"]`) when the API key is unset or the call raises.
 - `tests/integration/test_ai_triage_api.py` — existing `test_promote_lease_change_creates_intake_with_text_document` renamed to `test_promote_lease_change_soft_fails_without_openai_key` and assertions updated for the soft-fail path. Three new tests added: pre-extracts-fields-when-available (asserts ready_for_review + extracted_data + lease_snapshot was passed through), low-confidence-lands-needs_attention, soft-fails-when-extractor-raises. Total file now 10 cases (was 7 after v2).
 - Zero frontend changes (intake review UI already renders the populated groups).
-- Docs: `docs/product-roadmap.md` AI inbox v2.1 entry marked `[~]`.
+- Docs at the time: `docs/product-roadmap.md` AI inbox v2.1 entry marked
+  `[~]`; later closeout below marks v2.1 `[x]` after focused verification.
 
 Mac-side verification for v2.1: `.venv/bin/python -m pytest tests/integration/test_ai_triage_api.py -q` — expect 10 passing.
 
@@ -902,16 +903,15 @@ Behavioural baseline:
   - Smoke fixtures now include multiple properties across shared and separate owner tags, so the chip-click path catches row-selection bubbling and non-matching property visibility regressions.
   - This is still a read-only aggregation of property fields/import metadata, not a new first-class owner/entity table.
 - Property image helper experiment:
-  - `stewart/ai/enrichment.py` adds an OpenAI web-search backed property image candidate helper.
+  - The original OpenAI web-search v1 was pulled after it returned listing page URLs instead of verified direct image file URLs; the current helper is the SerpAPI Google Images v2.
+  - `stewart/ai/enrichment.py` now routes property image candidates through `stewart/integrations/serpapi_image_search.py`.
   - `/api/v1/public-enrichment/property-images/preview` returns reviewable remote image candidates with source/citation/confidence before anything is stored.
   - `/apply` downloads the selected candidate, processes it to a fixed 1600x900 JPEG, creates a property-linked StoredDocument, and stores metadata pointers such as `primary_image.document_id`, `hero_image_document_id`, `image_document_ids`, source/citation/confidence/history.
   - The Portfolio tab renders fixed-size row thumbnails and a selected-property `Property images` panel from the stored-document workflow, with candidate cards and explicit `Apply image` review before apply.
   - This is experimental. If visual quality or source clarity is poor, pull the helper rather than shipping remote metadata-only hotlinks.
   - `.venv/bin/python -m ruff check stewart/ai/enrichment.py apps/api/schemas/enrichment.py apps/api/routers/enrichment.py tests/integration/test_enrichment_api.py`
-  - `.venv/bin/python -m pytest tests/integration/test_enrichment_api.py -q` returned `2 passed`
-  - `./node_modules/.bin/eslint src/components/property-workspace.tsx src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`
-  - `./node_modules/.bin/tsc --noEmit`
-  - Property workspace smoke passed for the thumbnail, image candidate, apply-image, and owner-tag row-conflict paths.
+  - Current local verification: `.venv/bin/python -m pytest tests/integration/test_enrichment_api.py -k property_image -q` returned `4 passed, 3 deselected`.
+  - Current browser verification: `npx playwright test tests/smoke/app-flows.spec.ts -g "property workspace shows the evidence source trail" --workers=1` returned `1 passed`, covering the thumbnail, image candidate, apply-image, and owner-tag row-conflict paths.
 - Contractor SMS and Xero freshness follow-up:
   - Maintenance work-order contractor delivery now supports a reviewed Twilio SMS action beside SendGrid email, with separate send state, receipts, provider history, template key/version, Twilio status callback ingestion, and contractor-visible comments only after successful reviewed sends.
   - `/api/v1/xero/status` now returns local accounting freshness across contact sync, chart/tax validation, invoice posting/dispatch checkpoints, and payment reconciliation, including stale/missing reconciliation cues for open Xero-linked invoices.
@@ -1051,7 +1051,7 @@ Open items at session end:
 - Operator tenant portal preview now mirrors the tenant-friendly `In review` wording and shows a "Not required" checklist row when no onboarding documents are requested.
 - Tenant portal maintenance cards now show a plain-language status detail for requested/triaged/assigned/approval/approved/in-progress/completed/cancelled states; the operator preview mirrors the same copy.
 - Full tenant portal Compliance panel now shows "Not required" and an explicit empty row when no compliance checklist exists, while keeping optional document upload available.
-- Full tenant portal now has a tenant-side Recent Activity panel in the side rail. It derives the latest onboarding, lease-signing, lease-question, document-upload, maintenance-history, and notification-preference events from the existing portal payload; no new backend feed table or mutation path was added.
+- Full tenant portal now has a tenant-side Recent Activity panel in the side rail. It derives the latest onboarding, lease-signing, lease-question, document-upload, maintenance-history, contact-change, and notification-preference events from the existing portal payload; no new backend feed table or mutation path was added. The operator preview now mirrors those rows for local browser proof.
 - Full tenant portal side rail now also shows tenant Contact Details after the full portal unlocks, keeping the tenant's own legal/contact/billing details visible without reopening the setup form. It is read-only for now; tenant-initiated edits should go through a later reviewed proposal path.
 - Tenant-initiated contact change requests are now wired as a reviewed proposal path: tenants can request contact-name/email/phone/billing-email changes from the full portal after unlock; Leasium stores the request in tenant metadata, shows persistent in-review/applied/dismissed status back in the tenant portal and operator portal preview, blocks duplicate pending submissions, surfaces it on tenant detail as `Tenant requests`, and operators explicitly click `Apply request` or `Dismiss` before the request closes.
 - `/statements` now shows a Statement pack readiness panel with ready/incomplete/unpaid/blocked state derived from owner statement totals, local invoice payment metadata, and Xero accounting freshness. The panel links back to Billing Readiness and keeps PDF/export/email as future explicit actions.
@@ -1121,3 +1121,420 @@ Open items at session end:
 - Tenant-uploaded lease activation now shows a source-aware success notice: `Lease activated after tenant-uploaded lease review.`
 - Historical DocuSign docs were cleaned up so the automation strategy and 5-day report no longer describe the flow as scaffold-only or say completion auto-activates leases; they now reflect signed-PDF retention, explicit activation review, and remaining production-readiness work.
 - DocuSign live provider-console verification remains parked until the real integration key/user/account/private key/webhook secret are available. Local provider boundaries and webhook state handling are covered.
+
+## Codex continuation 2026-05-30
+
+- Inspection report intake v1 shipped as a Smart Intake extension. `inspection_report`
+  documents can carry reviewed `inspection_findings`; the review panel now has an
+  Inspections filter and editable finding rows.
+- Applying a reviewed inspection report creates requested maintenance work orders
+  with source document links, optional photo document ids, property/unit/tenant/lease
+  scope, finding confidence/source metadata, and a no-dispatch/no-provider guardrail.
+- The inspection intake path does not send contractor email/SMS, write provider
+  history, create billing drafts, touch Xero, or mutate external providers. Work
+  orders are created only after operator Apply.
+- Verification: `pytest tests/integration/test_document_intake_api.py -k inspection`,
+  backend `ruff` on touched files, and frontend `tsc --noEmit` via
+  `apps/web/node_modules/.bin/tsc`.
+- Broader continuation verification: `pytest tests/integration/test_document_intake_api.py tests/integration/test_maintenance_arrears_api.py -q`
+  passed 47 tests, and `npm run lint -- --max-warnings=0` passed for the web app.
+- Follow-up smoke coverage added for the Smart Intake inspection review path:
+  the mocked queue includes an inspection report, Apply creates mocked
+  work-order rows, the CSV contains the inspection row, and the smoke asserts no
+  contractor/assignment provider dispatch endpoints are hit. Verification:
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "smart intake applies inspection findings"`.
+- The post-Apply outcome now names the created requested work orders, repeats
+  the no-provider/no-billing/no-Xero guardrail, and includes an `Open Operations`
+  handoff to `/operations?tab=maintenance`; the focused smoke clicks through and
+  confirms the created inspection work order is visible in Operations.
+- Owner statement invoice evidence UI v1 was closed from `[~]` to `[x]` after
+  hardening coverage: the selected-owner invoice evidence CSV now includes the
+  local/Xero/reconciliation source trail shown in the table, the smoke test
+  reads the downloaded CSV contents, and backend owner-statement coverage now
+  checks older Xero invoice id and reconciliation-history metadata fallbacks.
+  Remba/accountant review remains open for density and inline-vs-disclosure
+  presentation.
+- AI Inbox v1/v2/v2.2 verification is now complete on this Mac run:
+  `pytest tests/integration/test_ai_triage_api.py -q` passed 18 tests, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "AI inbox"` passed the
+  four browser flows for classify, maintenance promote, vendor/contractor
+  promote, and tenant-contact promote. Roadmap status moved those items to
+  `[x]`; Remba review remains open.
+- Spreadsheet migration template download is now verified and marked `[x]`:
+  `pytest tests/integration/test_register_import_api.py -q` passed 4 tests, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "spreadsheet"` passed
+  the browser flow that downloads `leasium-migration-template.xlsx` before the
+  reviewed dry-run/apply path. Remba/SKJ tuning remains open for workbook tabs,
+  field order, and whether extra AI-fill guidance belongs in-app.
+- Tenant onboarding simplification is still not marked `[x]` because the
+  Clerk-enabled tenant account smoke proof remains external-config dependent.
+  Fresh local verification did pass backend/API coverage
+  (`pytest tests/integration/test_tenant_onboarding_api.py tests/integration/test_tenant_portal_api.py tests/unit/test_docusign.py -q`
+  passed 94 tests), backend lint on the touched onboarding/portal/DocuSign
+  files, focused web lint, and the non-Clerk/public/operator subset of the
+  tenant smoke (5 passed, 5 skipped when `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+  was absent). A fake `pk_test_ZHVtbXk` key was not sufficient: account-scoped
+  tenant portal tests hung at Clerk "Checking sign-in", so final closure still
+  needs a real Clerk publishable key/session or a dedicated mocked-auth harness.
+- Tenant quick-win closeout: added smoke coverage for the tenant detail Delete
+  button, smarter Send invite unit picker, and residential lease business-field
+  hiding. `npx playwright test tests/smoke/app-flows.spec.ts -g "tenant send invite adapts|tenant detail delete|tenant detail hides business identity"`
+  passed 3 tests, and `tsc --noEmit` plus focused eslint passed. Roadmap moved
+  all three tenant quick-win items to `[x]`.
+- Properties multi-view v1 is now verified and marked `[x]`: `npx playwright test tests/smoke/app-flows.spec.ts -g "Properties multi-view"`
+  passed, with focused web typecheck/eslint also passing. Remba review remains
+  open for board density and whether map/calendar should follow later.
+- DetailDrawer / tenant quick-view v1 is now verified and marked `[x]`:
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "tenant list opens the quick-view detail drawer"`
+  passed, with `tsc --noEmit` and focused eslint passing. The larger Properties
+  detail-drawer conversion remains a documented follow-up.
+- AppHeader compact utility toolbar follow-up is now verified and marked `[x]`:
+  the dashboard smoke asserts the selected entity, command search, keyboard
+  shortcuts, notifications, and appearance controls are grouped inside the
+  `Workspace utilities` toolbar. Verification: web `tsc --noEmit`, focused
+  eslint, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "dashboard shows the mocked portfolio"`.
+- AppHeader mobile touch-target polish is now fixed and marked `[x]`: the
+  shared utility button style now uses 44px controls, the Clerk wrapper/sign-in
+  baseline is 44px, and the keyboard-cheatsheet control no longer leaks visible
+  below `sm`. Verification: web `tsc --noEmit`, focused eslint, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "mobile header keeps utility touch targets"`.
+- AI Inbox mobile touch-target polish is now verified and marked `[x]`: the
+  classify-and-deep-link smoke runs at 390px width and measures the "Take it
+  from here" handoff link as a 44px target. Verification: web `tsc --noEmit`,
+  focused eslint, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "AI inbox classifies a pasted message"`.
+- Billing Readiness mobile touch-target polish is now fixed and marked `[x]`:
+  month-end checklist links, payment-review handoffs, Open statements, Preview,
+  PDF, and month-end handoff buttons sit on 44px targets. Verification: web
+  `tsc --noEmit`, focused eslint, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "billing readiness mobile actions"`.
+- Settings mobile tab touch-target polish is now verified and marked `[x]`: the
+  Security, Organisation, and Xero tabs are measured at 390px width. Verification:
+  web `tsc --noEmit`, focused eslint, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "settings mobile tabs"`.
+- Notifications mobile touch-target polish is now verified and marked `[x]`:
+  the 390px smoke measures the 40px filter-chip compromise plus the 44px
+  per-row `Open work` and bottom `Open Work` links. Verification: web
+  `tsc --noEmit`, focused eslint, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "notifications mobile actions"`.
+- Operations mobile touch-target polish is now verified and marked `[x]`: the
+  390px workspace smoke measures Queue/Maintenance/Arrears tabs, workload
+  filter chips, Open tenants, Review, and Review completion; the 390px
+  maintenance-detail smoke measures Operations, Recover in Billing, Preview,
+  and PDF. Verification: web `tsc --noEmit`, focused eslint, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "operations workspace keeps mobile rows compact|maintenance detail mobile billing actions"`.
+- Operations mobile row-density follow-up is also marked `[x]` off the same
+  focused smoke: it verifies closed `Work controls` / `Work-order actions`
+  summaries at 390px, hidden controls before expansion, and the visible
+  completion handoff after expansion. Remba/live-phone review remains open.
+- Tenant detail provider-detail mobile polish is now fixed and marked `[x]`:
+  below `md`, provider detail is a closed `Provider detail` disclosure with a
+  44px summary; at desktop width the same detail is inline. Verification: web
+  `tsc --noEmit`, focused eslint, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "tenant detail collapses provider detail"`.
+- Tenants list mobile card view is now verified and marked `[x]`: the 390px
+  smoke checks the table is visually hidden, the Bright Cafe card shows contact
+  + due state, and tapping it opens the quick-view drawer with full-record
+  handoff. Verification used the same focused typecheck/eslint pass and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "tenant list opens the quick-view detail drawer"`.
+- Inspection report intake v1 is now verified and marked `[x]`: focused
+  backend tests cover inspection work-order creation and cross-entity photo
+  guardrails, backend lint is clean, web typecheck passes, and the Smart Intake
+  smoke applies inspection findings into Operations. Verification:
+  `pytest tests/integration/test_document_intake_api.py -k inspection -q`,
+  backend `ruff`, web `tsc --noEmit`, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "smart intake applies inspection findings"`.
+- Inbound email attachment Smart Intake v1 is now verified and marked `[x]` for
+  the local app path. Backend inbound webhook tests passed, comms lint is clean,
+  web typecheck passes, and the Smart Intake smoke verifies filter/CSV/review
+  labels, extracted policy facts, and the no-mutation guardrail. Verification:
+  `pytest tests/integration/test_comms_api.py -k "inbound" -q`, backend
+  `ruff`, web `tsc --noEmit`, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "smart intake labels inbound email attachments"`.
+  Live MX/SendGrid setup remains an external environment follow-up.
+- Tenant-uploaded insurance auto-update v1 is now verified and marked `[x]`.
+  Backend coverage proves tenant insurance uploads promote into scoped Smart
+  Intake rows, optionally auto-extract with OpenAI, audit extraction failures,
+  apply reviewed expiry data into tenant insurance metadata, refresh portal
+  compliance status, reject missing expiry dates, and correct stale document
+  tenant ids from lease scope. Browser coverage proves tenant-uploaded insurance
+  reviews are labelled/filterable in Smart Intake, entity-aware review links
+  open the exact intake, Operations queue links preserve `entity_id` + `review`,
+  and tenant detail shows confirmed insurance expiry plus the Smart Intake
+  source link. Verification: `pytest tests/integration/test_tenant_portal_api.py -k "insurance_upload or upload_extraction_failure_audits_source_intake" -q`,
+  `pytest tests/integration/test_document_intake_api.py -k "apply_insurance or rejects_insurance_without_expiry" -q`,
+  backend `ruff`, web `tsc --noEmit`, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "operations workspace surfaces maintenance and arrears work|tenant detail shows portal access recovery actions|smart intake labels inbound email attachments in review queue|smart intake deep link selects the review entity"`.
+- Tenant-uploaded lease auto-match runway v1 is now verified and marked `[x]`.
+  Backend coverage proves lease uploads promote into scoped Smart Intake rows,
+  OpenAI extraction adds matched/missing-field recommendations, accepting a
+  clean match stamps tenant-upload signing evidence and activation-review audit
+  without mutating lease status/register values or creating `LeaseIntake`, and
+  acceptance is blocked for differences, active DocuSign envelopes, already
+  signed agreements, missing document scope, or operator-uploaded documents.
+  Browser coverage proves the Smart Intake match panel, no-mutation guardrail,
+  Accept match success path, active DocuSign conflict copy, tenant detail
+  `Tenant upload accepted` label, Smart Intake source link, and explicit
+  Activate lease handoff. Verification:
+  `pytest tests/integration/test_tenant_portal_api.py -k "lease_upload or accept_lease_match" -q`,
+  backend `ruff`, web `tsc --noEmit`, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "smart intake shows tenant lease upload match recommendation|smart intake explains active DocuSign conflict before accepting lease match|tenant detail labels tenant-uploaded lease activation review"`.
+- Portfolio QA completion report + bulk staging v1 is now verified and marked
+  `[x]`, including the continuation summary item. The smoke proof covers the
+  cleanup readiness report, AI-assisted enrichment candidate queue, enrichment
+  CSV, blocked follow-ups, final-readiness verdict, row-level blocker drilldown,
+  cleanup report CSV, reviewed owner-billing staging, reviewed tenant-contact
+  staging, onboarding blocker review, billing cleanup blockers, and source-trail
+  search. Verification: web `tsc --noEmit`, focused `eslint`, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "portfolio QA guides cleanup fixes and source trails"`.
+  Live SKJ tuning remains the follow-up; no automatic enrichment, provider
+  action, or batch mutation runs from the report exports.
+- Comms local channel items closed after scout-assisted verification:
+  Inbound SMS via Twilio webhook, Inbound email AI classification v1, Inbound
+  email parsing v1, and SMS outbound dispatch through Twilio Messaging are all
+  marked `[x]`. Backend coverage passed for SendGrid inbound parse/tenant
+  attribution/shared-secret checks, AI classification stamping, attachment
+  Smart Intake routing/extraction/failure retention, Twilio inbound
+  persistence/phone attribution/signature validation, and inbound-SMS dispatch
+  through Twilio. Browser coverage passed for `/comms` SMS approval with phone
+  recipient/no subject/SMS guide/receipt and Smart Intake inbound attachment
+  review labels/CSV/filtering. Verification: two focused
+  `pytest tests/integration/test_comms_api.py::...` runs (`7 passed` and
+  `5 passed`), backend `ruff`, web `tsc --noEmit`, focused `eslint`, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "comms queue approves inbound SMS with a phone recipient|smart intake labels inbound email attachments in review queue" --workers=1`.
+  At that point the larger Scheduled comms loop umbrella and several
+  compliance/rent-review subitems still needed follow-up; later closeout notes
+  below record the local fixes and newly closed subitems.
+- Xero/Billing/Owner statements local closeout: Xero connection diagnostics
+  and callback feedback, Billing Readiness Xero freshness cues, Billing
+  Readiness month-end finance checklist, Owner statements Billing handoff,
+  Owner monthly statements v1 backend, Owner monthly statements v2 frontend,
+  and the Continue Xero summary are now marked `[x]`. Backend coverage passed
+  for local connection diagnostics and owner statement grouping/month
+  filtering/paid-outstanding/unattributed/evidence behavior; browser coverage
+  passed for Settings diagnostics/OAuth callback feedback/fail-closed provider
+  actions, Billing Readiness handoffs, and Statements invoice evidence,
+  dispatch-review CSV, and review-only dispatch draft downloads. Verification:
+  `pytest tests/integration/test_xero_api.py -k connection_diagnostics -q`
+  (`8 passed`), `pytest tests/integration/test_owners_api.py -q` (`11 passed`),
+  backend `ruff`, web `tsc --noEmit`, focused `eslint`,
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "dashboard shows the mocked portfolio and opens billing readiness|settings shows Xero readiness and records mappings|settings shows Xero OAuth callback success feedback|settings shows Xero OAuth callback error feedback without tab param|settings disables Xero provider actions when diagnostics block capabilities|settings fails closed when Xero diagnostics|settings shows Xero draft creation ready only from diagnostics" --workers=1`
+  (`9 passed`), and `npx playwright test tests/smoke/statements.spec.ts --workers=1`
+  (`3 passed`). Owner statement PDF export remains `[~]` until the
+  Remba/accountant formatting review is done; live Xero provider-console
+  validation remains external.
+- Maintenance/Contractors local closeout: Maintenance activity audit v1,
+  Maintenance status forwarding drafts v1, Maintenance completion recipient
+  review v1, Maintenance categorisation v2, and Contractor directory v1 are now
+  marked `[x]`. The maintenance detail smoke covers the audit strip, audience
+  badges, provider evidence, closeout trail, no-send forwarding drafts,
+  recipient review notes, copy-only completion communications, review-only CSV
+  packet, and Billing handoff. Contractor coverage proves CRUD and the
+  review-only readiness CSV; classifier coverage proves AI category metadata,
+  matched contractor suggestion, missing-key 503, and no-match null suggestion.
+  Verification: `pytest tests/integration/test_contractors_api.py -q`
+  (`4 passed`), focused `pytest tests/integration/test_maintenance_arrears_api.py::...`
+  (`3 passed`), backend `ruff`, web `tsc --noEmit`, focused `eslint`,
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "maintenance detail route shows quote evidence" --workers=1`
+  (`1 passed`), and `npx playwright test tests/smoke/contractors.spec.ts -g "contractor directory exports readiness CSV" --workers=1`
+  (`1 passed`). Follow-up closeout added the missing focused smoke for
+  Maintenance categorisation v3: it clicks Classify with AI, renders the
+  stamped HVAC confidence, Same-day badge, warning, suggested contractor
+  card/contact details, no-dispatch guardrail copy, and Apply-to-contractor
+  Applied state. Verification: red run failed on missing `hvac · 82%` after
+  clicking Classify with AI; after adding the smoke API classify response,
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "maintenance detail AI classification suggests and applies a contractor" --workers=1`
+  passed (`1 passed`). Maintenance categorisation v3 is now `[x]`.
+- Maintenance status forwarding automation closeout: the forwarding automation
+  item is now `[x]`. `/api/v1/comms/queue` now emits
+  `maintenance_contractor_forward` and `maintenance_tenant_forward` candidates
+  from the latest tenant-visible and contractor-visible work-order timeline
+  rows, `/comms` labels them as contractor/tenant forwards with an `Open work
+  order` handoff, and Approve resolves the maintenance work order through the
+  existing explicit Comms dispatch path before any SendGrid send attempt.
+  Queue fetch and CSV export stay read-only. Verification:
+  `pytest tests/integration/test_comms_api.py -q` (`43 passed`), backend
+  `ruff`, web `eslint`, web `tsc --noEmit`, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "comms queue approves inbound SMS" --workers=1`
+  (`1 passed`).
+- Comms compliance/rent-review closeout: Evidence attach on `/comms`
+  compliance candidates, Compliance obligation tracking v1, and Annual rent
+  reviews v1 are now marked `[x]`. The backend now honors
+  `comms_dismiss`/`next_eligible_on` metadata for both `rent_review` lease
+  candidates and `compliance_obligation` obligation candidates, so reviewed
+  dispatches/dismissals do not immediately resurface on the next queue scan.
+  Backend coverage proves rent-review formula/no-formula/far-future queue
+  behavior, rent-review dispatch and dismiss stamps that clear the queue,
+  compliance candidate generation, compliance evidence document linking, and
+  compliance dispatch/dismiss stamps that clear the queue. Browser coverage now
+  includes the compliance reminder card inside `/comms`, the Smart Intake
+  handoff, manual `fire-safety.pdf` evidence upload receipt, and the reviewed
+  SendGrid approval path while SendGrid is unconfigured. Verification:
+  `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py -k "rent_review or compliance_obligation or compliance_evidence" -q`
+  (`9 passed, 32 deselected`), backend `ruff`, web `tsc --noEmit`, focused
+  `eslint`, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "comms queue approves inbound SMS with a phone recipient" --workers=1`
+  (`1 passed`). The broader Scheduled comms loop item remains `[~]` for
+  Remba/operator review of queue density and daily CSV handoff copy.
+- In-app comms badge closeout: the sidebar Work-nav badge item is now `[x]`.
+  Backend `/api/v1/comms/queue/counts` reuses the queue scanners and focused
+  coverage proves urgent/by-kind totals (`1 passed, 40 deselected`). Browser
+  smoke now verifies the Work nav label announces `7 drafts in the comms queue,
+  3 urgent` after the `/comms` mock includes SMS, email, compliance, rent
+  review, and tenant-lifecycle candidates. This keeps the broad Scheduled
+  comms loop `[~]` only for Remba/operator review of density/copy.
+- AI Inbox local closeout: AI inbox v2.1 lease-change pre-extraction and v2.3
+  tenant-contact promote are now `[x]`. Fresh verification:
+  `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_ai_triage_api.py -k "lease_change or tenant_contact" -q`
+  (`8 passed, 10 deselected`, with existing FastAPI 422 deprecation warnings),
+  backend `ruff` for `apps/api/routers/ai.py`, `stewart/ai/lease_change.py`,
+  `stewart/ai/tenant_contact.py`, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "AI inbox tenant contact classification applies selected fields" --workers=1`
+  (`1 passed`). Lease-change remains zero-frontend-change because Smart Intake
+  already renders populated extraction groups from the promoted intake.
+- DocuSign local runway closeout: DocuSign integration runway v1 is now `[x]`.
+  The stale provider-helper docstring was updated to describe the real JWT +
+  envelope-create path rather than the old scaffold-only state. Fresh local
+  verification: `pytest tests/unit/test_docusign.py tests/integration/test_system_api.py tests/integration/test_tenant_onboarding_api.py -k "docusign or activate_lease or send_lease_pack" -q`
+  (`40 passed, 15 deselected`),
+  `OPENAI_API_KEY= pytest tests/integration/test_tenant_portal_api.py tests/integration/test_document_intake_api.py tests/integration/test_comms_api.py -k "docusign or active_docusign or DocuSign" -q`
+  (`8 passed, 101 deselected`), and
+  `pytest tests/unit/test_webhook_auth.py -q` (`4 passed`), plus
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "tenant detail sends lease pack after onboarding approval|tenant detail shows skipped DocuSign setup after lease pack send|tenant detail flags declined DocuSign envelope|settings shows Xero readiness and records mappings|settings explains DocuSign demo endpoint readiness" --workers=1`
+  (`5 passed`). Live DocuSign provider-console verification remains external
+  and is still tracked in `docs/deployment.md` plus
+  `docs/tenant-lifecycle-production-smoke.md`.
+- Tenant portal compliance empty-state closeout: the compliance empty-state
+  item is now `[x]`. The API now treats an explicit empty
+  `tenant_metadata["portal_compliance_checklist"]` as no required tenant
+  checklist while keeping upload categories/supporting files available, and
+  operator preview CSVs include the no-required-documents row. Verification:
+  `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_allows_empty_compliance_checklist -q`
+  (`1 passed`) and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "tenant portal operator preview shows contact review" --workers=1`
+  (`1 passed`). The tenant portal contact-edit umbrella item remains `[~]`;
+  scouts found an account-scoped contact-edit caveat that should not be
+  hand-waved.
+- Tenant portal maintenance status clarity closeout: the status clarity item is
+  now `[x]`. A focused operator-preview smoke uses a maintenance status matrix
+  to prove requested, triaged, assigned, awaiting approval, approved, in
+  progress, completed, and cancelled wording renders in the tenant-visible
+  preview without creating portal accounts or mutating provider/tenant state.
+  Verification:
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "tenant portal operator preview explains every maintenance status" --workers=1`
+  (`1 passed`).
+- Tenant portal activity feed closeout: the activity feed item is now `[x]`.
+  The operator preview mirrors the same derived Recent Activity feed used by
+  the tenant portal side rail and exports activity rows in the preview CSV, so
+  browser proof no longer depends on a live Clerk tenant account. The focused
+  smoke covers invite, document upload, contact request, maintenance history,
+  and notification-preference events plus the copy-summary control and CSV
+  rows. Verification:
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "tenant portal operator preview shows recent activity feed" --workers=1`
+  (`1 passed`).
+- Settings Work notifications density pass: the Security tab's Work
+  notifications section now renders each operator as a compact notification
+  row with identity, email toggle, SMS toggle/phone save, digest cadence, and a
+  collapsed Template defaults disclosure. The latest digest receipt in Settings
+  is deliberately reduced to the scan-critical "Last digest" + send state; the
+  richer receipt/provider history remains in Notifications. Focused smoke now
+  asserts the default row stays at or below 170px wide-desktop height and that
+  Template preview content remains hidden until the disclosure opens.
+  Verification: `./node_modules/.bin/eslint src/app/settings/page.tsx tests/smoke/app-flows.spec.ts`,
+  `./node_modules/.bin/tsc --noEmit`, and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "settings shows Xero readiness and records mappings" --workers=1`
+  (`1 passed`).
+- Communications hub local history v1: tenant detail now has a read-only
+  Correspondence panel after Activity, fed by
+  `/api/v1/comms/correspondence/tenants/{tenant_id}`. The endpoint combines
+  stored inbound messages with reviewed comms audit dispatch/dismiss receipts
+  tied to the tenant, lease, onboarding, arrears, maintenance, and obligation
+  records. The panel shows the latest event type, direction, timestamp,
+  channel, counterparty, subject, summary/body preview, provider badge, and
+  explicit guardrails that opening it does not send email/SMS or mutate queue or
+  tenant state. Regression coverage now excludes cross-entity inbound rows and
+  generic non-comms dispatch audit rows, and asserts newest-first ordering. The
+  broad Communications hub roadmap item stays open for templates, full outbound
+  logs, contractor threads, and record-linked thread workflows.
+  Verification: `.venv/bin/python -m pytest tests/integration/test_comms_api.py -q`
+  (`44 passed`), `.venv/bin/python -m ruff check apps/api/routers/comms.py apps/api/schemas/comms.py tests/integration/test_comms_api.py`,
+  `./node_modules/.bin/eslint 'src/app/tenants/[tenantId]/page.tsx' src/lib/api.ts tests/smoke/api-mocks.ts tests/smoke/app-flows.spec.ts`,
+  `./node_modules/.bin/tsc --noEmit`,
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "tenant detail shows portal access recovery actions" --workers=1`
+  (`1 passed`), and
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "settings shows Xero readiness and records mappings" --workers=1`
+  (`1 passed`).
+- Tenant correspondence CSV export v1: the tenant detail Correspondence panel
+  now has a local `Download correspondence CSV` action beside the event count.
+  It exports the already-loaded timeline only, with event type, direction,
+  timestamp, channel, counterparty, subject, summary, status, provider, target,
+  endpoint guardrails, and an explicit no-send/no-mutation export guardrail.
+  Formula-leading cells are prefixed before CSV quoting so inbound addresses or
+  subjects cannot execute spreadsheet formulas when opened in Excel/Sheets. No
+  backend route, provider call, queue refresh, or tenant mutation is involved.
+  Verification: red/green
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "tenant detail shows portal access recovery actions" --workers=1`
+  (`1 passed`), `./node_modules/.bin/eslint 'src/app/tenants/[tenantId]/page.tsx' tests/smoke/app-flows.spec.ts tests/smoke/api-mocks.ts src/lib/api.ts`,
+  `./node_modules/.bin/tsc --noEmit`, and
+  `.venv/bin/python -m pytest tests/integration/test_comms_api.py -q`
+  (`44 passed`).
+- Tenant correspondence record links v1: correspondence events now derive a
+  local open-record link from `target_kind`/`target_id` where the destination is
+  safely known: arrears opens the Work arrears tab, maintenance opens the work
+  order detail, inbound messages open the Comms queue, tenant/onboarding/lease
+  targets return to the tenant workflow, and obligations open Work. This keeps
+  the tenant timeline read-only while making record-linked correspondence less
+  of a dead end.
+  Verification: red/green
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "tenant detail shows portal access recovery actions" --workers=1`
+  (`1 passed`), `./node_modules/.bin/eslint 'src/app/tenants/[tenantId]/page.tsx' tests/smoke/app-flows.spec.ts tests/smoke/api-mocks.ts src/lib/api.ts`,
+  and `./node_modules/.bin/tsc --noEmit`.
+- Comms outbound log v1: `/api/v1/comms/outbound-log?entity_id=...` now
+  returns a read-only, entity-scoped list of stored comms dispatch receipts from
+  `AuditAction`, using the existing candidate-id guard to exclude dismissals,
+  generic workflow dispatches, mismatched candidate rows, and cross-entity
+  receipts. `/comms` shows the log below the metric cards with compact rows,
+  provider/channel/status context, local target links, guardrail copy, and a
+  review-only CSV export. Viewing/downloading the log does not dispatch,
+  dismiss, upload evidence, refresh providers, or mutate queue state.
+  Verification: red/green
+  `.venv/bin/python -m pytest tests/integration/test_comms_api.py::test_comms_outbound_log_returns_recent_dispatch_receipts -q`
+  (`1 passed`),
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "comms queue approves inbound SMS with a phone recipient" --workers=1`
+  (`1 passed`), `.venv/bin/python -m pytest tests/integration/test_comms_api.py -q`
+  (`45 passed`), `.venv/bin/python -m ruff check apps/api/routers/comms.py apps/api/schemas/comms.py tests/integration/test_comms_api.py`,
+  `./node_modules/.bin/eslint src/app/comms/page.tsx src/lib/api.ts tests/smoke/app-flows.spec.ts tests/smoke/api-mocks.ts`,
+  and `./node_modules/.bin/tsc --noEmit`.
+- Comms outbound log filters v1: the `/comms` outbound log now has compact
+  local filters for all receipts, needs-attention receipts, email, and SMS.
+  The visible count updates by filter, the rows are filtered client-side from
+  the already-loaded audit receipt response, and the CSV export now receives the
+  same visible receipt set plus a filter summary. The panel remains read-only:
+  filtering and exporting do not dispatch, dismiss, upload evidence, refresh
+  providers, mutate queue state, or write provider history.
+  Verification: red/green
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "comms queue approves inbound SMS with a phone recipient" --workers=1`
+  (`1 passed`), `./node_modules/.bin/eslint src/app/comms/page.tsx tests/smoke/app-flows.spec.ts`,
+  and `./node_modules/.bin/tsc --noEmit`.
+- Maintenance correspondence panel v1:
+  `/api/v1/comms/correspondence/maintenance-work-orders/{work_order_id}` now
+  returns a read-only target-linked timeline of stored Comms dispatch/dismiss
+  receipts for `maintenance_contractor_forward` and
+  `maintenance_tenant_forward`, excluding generic workflow dispatches,
+  mismatched candidate ids, wrong-target rows, and cross-entity receipts. The
+  audit receipt helper now accepts real `comms.dismiss` rows as well as the
+  older `comms.queue` test seed shape. Maintenance detail shows a compact
+  Correspondence panel in the right-side context column with provider/channel
+  status, recipients, Comms/tenant handoffs, guardrails, and a local
+  `maintenance-correspondence-{work_order_id}.csv` export. Viewing/exporting
+  does not dispatch, dismiss, upload evidence, refresh providers, mutate queue
+  state, or mutate the work order.
+  Verification: red/green
+  `.venv/bin/python -m pytest tests/integration/test_comms_api.py::test_comms_maintenance_correspondence_returns_work_order_receipts -q`
+  (`1 passed`),
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "maintenance detail route shows quote evidence" --workers=1`
+  (`1 passed`), `.venv/bin/python -m pytest tests/integration/test_comms_api.py -q`
+  (`46 passed`), `.venv/bin/python -m ruff check apps/api/routers/comms.py apps/api/schemas/comms.py tests/integration/test_comms_api.py`,
+  `./node_modules/.bin/eslint 'src/app/operations/maintenance/[workOrderId]/page.tsx' src/lib/api.ts tests/smoke/app-flows.spec.ts tests/smoke/api-mocks.ts`,
+  and `./node_modules/.bin/tsc --noEmit`.

@@ -255,6 +255,132 @@ def test_owner_statements_include_invoice_evidence_without_mutating_metadata(
     assert invoice.invoice_metadata == metadata
 
 
+def test_owner_statements_invoice_evidence_uses_metadata_fallbacks(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Evidence rows should survive older provider metadata shapes."""
+
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="fallback-evidence.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Fallback Evidence Billing",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    session.add(bd)
+    session.flush()
+    prop = Property(
+        entity_id=entity.id,
+        name="Fallback Evidence Property",
+        street_address="3 Evidence Lane",
+        property_type=PropertyType.commercial_retail,
+        owner_legal_name="Fallback Evidence Trustee Pty Ltd",
+        trustee_name="Fallback Evidence Trustee Pty Ltd",
+        trust_name="Fallback Evidence Trust",
+        invoice_issuer_name="Fallback Evidence Trust via Fallback Evidence Trustee Pty Ltd",
+    )
+    session.add(prop)
+    session.flush()
+    session.add_all(
+        [
+            InvoiceDraft(
+                entity_id=entity.id,
+                billing_draft_id=bd.id,
+                property_id=prop.id,
+                document_id=doc.id,
+                status=InvoiceDraftStatus.approved,
+                invoice_number="INV-FALLBACK-DIRECT",
+                title="Direct fallback invoice",
+                currency="AUD",
+                issue_date=date(2026, 4, 4),
+                due_date=date(2026, 4, 18),
+                subtotal_cents=50_000,
+                gst_cents=0,
+                total_cents=50_000,
+                invoice_metadata={
+                    "xero_invoice_id": "xero-direct-fallback-1",
+                    "xero_payment_reconciliation_history": [
+                        {
+                            "reference": "BANK REF DIRECT",
+                            "match_confidence": "low",
+                            "bank_transaction_id": "bank-direct-fallback-1",
+                        }
+                    ],
+                },
+            ),
+            InvoiceDraft(
+                entity_id=entity.id,
+                billing_draft_id=bd.id,
+                property_id=prop.id,
+                document_id=doc.id,
+                status=InvoiceDraftStatus.approved,
+                invoice_number="INV-FALLBACK-POSTING",
+                title="Posting fallback invoice",
+                currency="AUD",
+                issue_date=date(2026, 4, 5),
+                due_date=date(2026, 4, 19),
+                subtotal_cents=60_000,
+                gst_cents=0,
+                total_cents=60_000,
+                invoice_metadata={
+                    "posting_preparation": {"InvoiceID": "xero-posting-fallback-1"},
+                    "xero_payment_reconciliation_history": [
+                        {
+                            "reference": "BANK REF OLD",
+                            "match_confidence": "low",
+                            "bank_transaction_id": "bank-old-fallback-1",
+                        },
+                        {
+                            "reference": "BANK REF LATEST",
+                            "match_confidence": "high",
+                            "bank_transaction_id": "bank-latest-fallback-1",
+                        },
+                    ],
+                },
+            ),
+        ]
+    )
+    session.commit()
+
+    response = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": str(entity.id), "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    owner = response.json()["owners"][0]
+    evidence_by_number = {
+        invoice["invoice_number"]: invoice
+        for invoice in owner["properties"][0]["invoices"]
+    }
+    assert evidence_by_number["INV-FALLBACK-DIRECT"]["xero_invoice_id"] == (
+        "xero-direct-fallback-1"
+    )
+    assert evidence_by_number["INV-FALLBACK-DIRECT"][
+        "reconciliation_bank_transaction_id"
+    ] == "bank-direct-fallback-1"
+    assert evidence_by_number["INV-FALLBACK-POSTING"]["xero_invoice_id"] == (
+        "xero-posting-fallback-1"
+    )
+    assert evidence_by_number["INV-FALLBACK-POSTING"][
+        "reconciliation_reference"
+    ] == "BANK REF LATEST"
+    assert evidence_by_number["INV-FALLBACK-POSTING"][
+        "reconciliation_match_confidence"
+    ] == "high"
+
+
 def test_owner_statements_keeps_owners_separate(
     client: TestClient,
     session: Session,

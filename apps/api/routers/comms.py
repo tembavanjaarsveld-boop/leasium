@@ -16,14 +16,14 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from stewart.ai.document_intake import DocumentExtractionError, extract_document_file
 from stewart.ai.inbox import INBOX_KINDS, InboxTriageError, triage_inbox
@@ -32,6 +32,7 @@ from stewart.core.db import utcnow
 from stewart.core.models import (
     ArrearsCase,
     ArrearsCaseStatus,
+    AuditAction,
     AuditOutcome,
     DocumentCategory,
     DocumentIntake,
@@ -40,6 +41,7 @@ from stewart.core.models import (
     InboundMessage,
     Lease,
     LeaseStatus,
+    MaintenanceWorkOrder,
     Obligation,
     ObligationCategory,
     ObligationStatus,
@@ -55,12 +57,16 @@ from stewart.core.settings import Settings, get_settings
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.comms import (
     CommsCandidate,
+    CommsCorrespondenceEvent,
     CommsDismissCreate,
     CommsDismissRead,
     CommsDispatchCreate,
     CommsDispatchRead,
+    CommsMaintenanceWorkOrderCorrespondenceRead,
+    CommsOutboundLogRead,
     CommsQueueCountsRead,
     CommsQueueRead,
+    CommsTenantCorrespondenceRead,
 )
 from apps.api.webhook_auth import twilio_signature_valid
 
@@ -407,6 +413,192 @@ def _arrears_detail(case: ArrearsCase, today: date) -> str:
 
 def _tenant_display_name(tenant: Tenant) -> str:
     return tenant.trading_name or tenant.legal_name
+
+
+def _maintenance_activity_audience(entry: dict[str, Any]) -> str:
+    visibility = entry.get("visibility")
+    source = entry.get("source")
+    actor = entry.get("actor")
+    event = entry.get("event") or entry.get("action")
+    normalized = " ".join(
+        str(value).lower()
+        for value in (visibility, source, actor, event)
+        if value is not None
+    )
+    if visibility == "tenant" or "tenant_portal" in normalized:
+        return "tenant"
+    if visibility == "contractor":
+        return "contractor"
+    return "internal"
+
+
+def _latest_maintenance_activity(
+    work_order: MaintenanceWorkOrder,
+    audience: str,
+) -> tuple[datetime, str] | None:
+    metadata = work_order.work_order_metadata
+    if not isinstance(metadata, dict):
+        return None
+    raw_history = metadata.get("activity_history")
+    if not isinstance(raw_history, list):
+        return None
+    rows: list[tuple[datetime, str]] = []
+    for entry in raw_history:
+        if not isinstance(entry, dict):
+            continue
+        if _maintenance_activity_audience(entry) != audience:
+            continue
+        timestamp = (
+            _parse_iso_datetime(entry.get("timestamp") or entry.get("at"))
+            or work_order.updated_at
+            or work_order.requested_at
+        )
+        summary = entry.get("summary")
+        if not isinstance(summary, str) or not summary.strip():
+            summary = "Maintenance activity updated."
+        rows.append((timestamp, summary.strip()))
+    if not rows:
+        return None
+    return sorted(rows, key=lambda row: row[0], reverse=True)[0]
+
+
+def _maintenance_forwarding_candidates(
+    entity_id: UUID, session: Session
+) -> list[CommsCandidate]:
+    today = date.today()
+    rows = list(
+        session.scalars(
+            select(MaintenanceWorkOrder)
+            .where(
+                MaintenanceWorkOrder.entity_id == entity_id,
+                MaintenanceWorkOrder.deleted_at.is_(None),
+            )
+            .order_by(MaintenanceWorkOrder.requested_at.desc())
+        ).all()
+    )
+    candidates: list[CommsCandidate] = []
+    now = utcnow()
+    for work_order in rows:
+        metadata = (
+            work_order.work_order_metadata
+            if isinstance(work_order.work_order_metadata, dict)
+            else {}
+        )
+        tenant = (
+            session.get(Tenant, work_order.tenant_id)
+            if work_order.tenant_id is not None
+            else None
+        )
+        tenant_name = _tenant_display_name(tenant) if tenant is not None else None
+        tenant_recipient_email = (
+            (tenant.contact_email or tenant.billing_email)
+            if tenant is not None
+            else None
+        )
+        tenant_recipient_phone = tenant.contact_phone if tenant is not None else None
+        property_name = None
+        if work_order.property_id is not None:
+            prop = session.get(Property, work_order.property_id)
+            if prop is not None and prop.deleted_at is None:
+                property_name = prop.name
+        unit_label = None
+        if work_order.tenancy_unit_id is not None:
+            unit = session.get(TenancyUnit, work_order.tenancy_unit_id)
+            if unit is not None and unit.deleted_at is None:
+                unit_label = unit.unit_label
+
+        tenant_activity = _latest_maintenance_activity(work_order, "tenant")
+        if tenant_activity is not None and not _comms_kind_deferred(
+            metadata,
+            "maintenance_contractor_forward",
+            today,
+        ):
+            _, tenant_summary = tenant_activity
+            contractor_label = work_order.contractor_name or "the contractor"
+            candidates.append(
+                CommsCandidate(
+                    id=(
+                        "maintenance_contractor_forward:"
+                        f"maintenance_work_order:{work_order.id}"
+                    ),
+                    kind="maintenance_contractor_forward",
+                    target_kind="maintenance_work_order",
+                    target_id=work_order.id,
+                    tenant_id=work_order.tenant_id,
+                    tenant_name=tenant_name,
+                    property_name=property_name,
+                    unit_label=unit_label,
+                    recipient_email=work_order.contractor_email,
+                    recipient_phone=work_order.contractor_phone,
+                    subject=f"Maintenance forward: {work_order.title}",
+                    body="\n".join(
+                        [
+                            f"Hi {contractor_label},",
+                            "",
+                            (
+                                "Please note the latest tenant-facing update for "
+                                f"{work_order.title}:"
+                            ),
+                            tenant_summary,
+                            "",
+                            (
+                                "Please confirm the next action or timing before "
+                                "we send anything further."
+                            ),
+                        ]
+                    ),
+                    severity="warning",
+                    due_at=work_order.due_date,
+                    detail="reviewed forward to contractor from latest tenant-visible activity",
+                    generated_at=now,
+                )
+            )
+
+        contractor_activity = _latest_maintenance_activity(work_order, "contractor")
+        if contractor_activity is not None and not _comms_kind_deferred(
+            metadata,
+            "maintenance_tenant_forward",
+            today,
+        ):
+            _, contractor_summary = contractor_activity
+            tenant_label = tenant_name or "there"
+            contractor_label = work_order.contractor_name or "the contractor"
+            candidates.append(
+                CommsCandidate(
+                    id=(
+                        "maintenance_tenant_forward:"
+                        f"maintenance_work_order:{work_order.id}"
+                    ),
+                    kind="maintenance_tenant_forward",
+                    target_kind="maintenance_work_order",
+                    target_id=work_order.id,
+                    tenant_id=work_order.tenant_id,
+                    tenant_name=tenant_name,
+                    property_name=property_name,
+                    unit_label=unit_label,
+                    recipient_email=tenant_recipient_email,
+                    recipient_phone=tenant_recipient_phone,
+                    subject=f"Maintenance update: {work_order.title}",
+                    body="\n".join(
+                        [
+                            f"Hi {tenant_label},",
+                            "",
+                            f"Update from {contractor_label} on {work_order.title}:",
+                            contractor_summary,
+                            "",
+                            (
+                                "We will keep this with Operations until the "
+                                "message is reviewed."
+                            ),
+                        ]
+                    ),
+                    severity="warning",
+                    due_at=work_order.due_date,
+                    detail="reviewed forward to tenant from latest contractor-visible activity",
+                    generated_at=now,
+                )
+            )
+    return candidates
 
 
 def _arrears_candidates(
@@ -771,6 +963,8 @@ def _rent_review_candidates(
     )
     for lease in leases:
         if lease.next_review_date is None:
+            continue
+        if _comms_kind_deferred(lease.lease_metadata or {}, "rent_review", today):
             continue
         unit = session.get(TenancyUnit, lease.tenancy_unit_id)
         if unit is None or unit.deleted_at is not None:
@@ -1258,6 +1452,12 @@ def _compliance_candidates(
         ).all()
     )
     for obligation in rows:
+        if _comms_kind_deferred(
+            obligation.obligation_metadata or {},
+            "compliance_obligation",
+            today,
+        ):
+            continue
         tenant: Tenant | None = None
         property_name: str | None = None
         unit_label: str | None = None
@@ -1491,6 +1691,7 @@ def get_comms_queue(
         + _lease_renewal_candidates(entity_id, session)
         + _rent_review_candidates(entity_id, session)
         + _tenant_lifecycle_stall_candidates(entity_id, session)
+        + _maintenance_forwarding_candidates(entity_id, session)
     )
     return CommsQueueRead(
         entity_id=entity_id,
@@ -1522,6 +1723,7 @@ def get_comms_queue_counts(
         + _lease_renewal_candidates(entity_id, session)
         + _rent_review_candidates(entity_id, session)
         + _tenant_lifecycle_stall_candidates(entity_id, session)
+        + _maintenance_forwarding_candidates(entity_id, session)
     )
     by_kind: dict[str, int] = {
         "arrears_reminder": 0,
@@ -1532,6 +1734,8 @@ def get_comms_queue_counts(
         "compliance_obligation": 0,
         "rent_review": 0,
         "tenant_lifecycle_stall": 0,
+        "maintenance_contractor_forward": 0,
+        "maintenance_tenant_forward": 0,
     }
     urgent = 0
     for candidate in candidates:
@@ -1547,11 +1751,428 @@ def get_comms_queue_counts(
     )
 
 
+def _body_preview(value: str | None, *, limit: int = 180) -> str | None:
+    text = " ".join((value or "").split())
+    if not text:
+        return None
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 1].rstrip()}…"
+
+
+def _primitive_metadata(
+    value: dict[str, Any] | None,
+) -> dict[str, str | int | float | bool | None]:
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, str | int | float | bool | None] = {}
+    for key, item in value.items():
+        if isinstance(item, str | int | float | bool) or item is None:
+            result[str(key)] = item
+    return result
+
+
+def _is_comms_correspondence_audit(row: AuditAction) -> bool:
+    if row.action == "dispatch":
+        provider = row.tool_name.split(".", 1)[0] if row.tool_name else None
+        if provider not in {"sendgrid", "twilio"}:
+            return False
+    elif row.action == "dismiss":
+        if row.tool_name not in {"comms.dismiss", "comms.queue"}:
+            return False
+    else:
+        return False
+    tool_input = _primitive_metadata(row.tool_input)
+    candidate_id = tool_input.get("candidate_id")
+    kind = tool_input.get("kind")
+    if not isinstance(candidate_id, str) or not isinstance(kind, str):
+        return False
+    if not row.target_table or row.target_id is None:
+        return False
+    return candidate_id == f"{kind}:{row.target_table}:{row.target_id}"
+
+
+def _tenant_correspondence_target_ids(
+    tenant: Tenant,
+    session: Session,
+) -> dict[str, set[UUID]]:
+    lease_ids = set(
+        session.scalars(
+            select(Lease.id).where(
+                Lease.tenant_id == tenant.id,
+                Lease.deleted_at.is_(None),
+            )
+        )
+    )
+    inbound_ids = set(
+        session.scalars(
+            select(InboundMessage.id).where(
+                InboundMessage.entity_id == tenant.entity_id,
+                InboundMessage.attributed_tenant_id == tenant.id,
+                InboundMessage.deleted_at.is_(None),
+            )
+        )
+    )
+    arrears_ids = set(
+        session.scalars(
+            select(ArrearsCase.id).where(
+                ArrearsCase.entity_id == tenant.entity_id,
+                ArrearsCase.tenant_id == tenant.id,
+                ArrearsCase.deleted_at.is_(None),
+            )
+        )
+    )
+    onboarding_ids = set(
+        session.scalars(
+            select(TenantOnboarding.id).where(
+                TenantOnboarding.entity_id == tenant.entity_id,
+                TenantOnboarding.tenant_id == tenant.id,
+                TenantOnboarding.deleted_at.is_(None),
+            )
+        )
+    )
+    work_order_criteria = [MaintenanceWorkOrder.tenant_id == tenant.id]
+    if lease_ids:
+        work_order_criteria.append(MaintenanceWorkOrder.lease_id.in_(lease_ids))
+    work_order_ids = set(
+        session.scalars(
+            select(MaintenanceWorkOrder.id).where(
+                MaintenanceWorkOrder.entity_id == tenant.entity_id,
+                or_(*work_order_criteria),
+                MaintenanceWorkOrder.deleted_at.is_(None),
+            )
+        )
+    )
+    obligation_ids: set[UUID] = set()
+    if lease_ids:
+        obligation_ids = set(
+            session.scalars(
+                select(Obligation.id).where(
+                    Obligation.entity_id == tenant.entity_id,
+                    Obligation.lease_id.in_(lease_ids),
+                    Obligation.deleted_at.is_(None),
+                )
+            )
+        )
+    return {
+        "tenant": {tenant.id},
+        "lease": lease_ids,
+        "inbound_message": inbound_ids,
+        "arrears_case": arrears_ids,
+        "tenant_onboarding": onboarding_ids,
+        "maintenance_work_order": work_order_ids,
+        "obligation": obligation_ids,
+    }
+
+
+def _audit_target_metadata(
+    row: AuditAction,
+    session: Session | None,
+) -> dict[str, str]:
+    if session is None or row.target_id is None:
+        return {}
+    tenant_id: UUID | None = None
+    if row.target_table == "tenant":
+        tenant_id = row.target_id
+    elif row.target_table == "lease":
+        lease = session.get(Lease, row.target_id)
+        if lease is not None:
+            tenant_id = lease.tenant_id
+    elif row.target_table == "tenant_onboarding":
+        onboarding = session.get(TenantOnboarding, row.target_id)
+        if onboarding is not None:
+            tenant_id = onboarding.tenant_id
+    elif row.target_table == "obligation":
+        obligation = session.get(Obligation, row.target_id)
+        if obligation is not None and obligation.lease_id is not None:
+            lease = session.get(Lease, obligation.lease_id)
+            if lease is not None:
+                tenant_id = lease.tenant_id
+    elif row.target_table == "arrears_case":
+        case = session.get(ArrearsCase, row.target_id)
+        if case is not None:
+            tenant_id = case.tenant_id
+    elif row.target_table == "maintenance_work_order":
+        work_order = session.get(MaintenanceWorkOrder, row.target_id)
+        if work_order is not None:
+            tenant_id = work_order.tenant_id
+    return {"tenant_id": str(tenant_id)} if tenant_id is not None else {}
+
+
+def _audit_correspondence_event(
+    row: AuditAction,
+    session: Session | None = None,
+) -> CommsCorrespondenceEvent:
+    tool_input = _primitive_metadata(row.tool_input)
+    channel = tool_input.get("channel")
+    kind = tool_input.get("kind")
+    recipient = tool_input.get("recipient")
+    provider = None
+    if row.tool_name:
+        provider = row.tool_name.split(".", 1)[0]
+    direction = "outbound" if row.action == "dispatch" else "internal"
+    metadata = {
+        **tool_input,
+        "kind": str(kind) if kind else None,
+    }
+    if row.error_message:
+        metadata["error"] = row.error_message
+    metadata.update(_audit_target_metadata(row, session))
+    return CommsCorrespondenceEvent(
+        id=str(row.id),
+        source="comms_audit",
+        direction=direction,
+        event_type=row.action,
+        channel=str(channel) if channel else None,
+        provider=provider,
+        recipient=str(recipient) if recipient else None,
+        summary=row.tool_output_summary or row.action,
+        target_kind=row.target_table,
+        target_id=row.target_id,
+        status=row.outcome.value,
+        occurred_at=row.occurred_at,
+        metadata=metadata,
+    )
+
+
+def _inbound_correspondence_event(
+    message: InboundMessage,
+) -> CommsCorrespondenceEvent:
+    metadata = _primitive_metadata(message.inbound_metadata)
+    if message.classification_kind:
+        metadata["classification_kind"] = message.classification_kind
+    if message.classification_confidence is not None:
+        metadata["classification_confidence"] = float(message.classification_confidence)
+    return CommsCorrespondenceEvent(
+        id=str(message.id),
+        source="inbound_message",
+        direction="inbound",
+        event_type=f"inbound_{message.channel}",
+        channel=message.channel,
+        provider=message.provider,
+        from_address=message.from_address,
+        to_address=message.to_address,
+        subject=message.subject,
+        summary=message.classification_summary
+        or message.subject
+        or f"Inbound {message.channel} received",
+        body_preview=_body_preview(message.body_text),
+        target_kind="inbound_message",
+        target_id=message.id,
+        status="processed" if message.processed_at else "pending",
+        occurred_at=message.created_at,
+        metadata=metadata,
+    )
+
+
+@router.get(
+    "/correspondence/tenants/{tenant_id}",
+    response_model=CommsTenantCorrespondenceRead,
+)
+def get_tenant_correspondence(
+    tenant_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> CommsTenantCorrespondenceRead:
+    """Return a read-only tenant-linked communications timeline.
+
+    This does not send providers, regenerate drafts, mutate queue state, or
+    expose unmatched tenant correspondence. It only projects already stored
+    inbound message rows and comms dispatch/dismiss audit receipts.
+    """
+
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is None or tenant.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant not found.",
+        )
+    assert_entity_role(session, user, tenant.entity_id, READ_ROLES)
+
+    inbound_messages = session.scalars(
+        select(InboundMessage)
+        .where(
+            InboundMessage.entity_id == tenant.entity_id,
+            InboundMessage.attributed_tenant_id == tenant.id,
+            InboundMessage.deleted_at.is_(None),
+        )
+        .order_by(InboundMessage.created_at.desc())
+    ).all()
+    target_ids = _tenant_correspondence_target_ids(tenant, session)
+    audit_rows = session.scalars(
+        select(AuditAction)
+        .where(
+            AuditAction.entity_id == tenant.entity_id,
+            AuditAction.action.in_(("dispatch", "dismiss")),
+            AuditAction.target_id.is_not(None),
+        )
+        .order_by(AuditAction.occurred_at.desc())
+    ).all()
+    audit_events = [
+        _audit_correspondence_event(row, session)
+        for row in audit_rows
+        if _is_comms_correspondence_audit(row)
+        and row.target_table in target_ids
+        and row.target_id in target_ids.get(row.target_table or "", set())
+    ]
+    events = [
+        *(_inbound_correspondence_event(message) for message in inbound_messages),
+        *audit_events,
+    ]
+    events.sort(
+        key=lambda event: (
+            event.occurred_at
+            if event.occurred_at.tzinfo is not None
+            else event.occurred_at.replace(tzinfo=UTC)
+        ).timestamp(),
+        reverse=True,
+    )
+    return CommsTenantCorrespondenceRead(
+        entity_id=tenant.entity_id,
+        tenant_id=tenant.id,
+        tenant_name=_tenant_display_name(tenant),
+        events=events,
+        guardrails=[
+            (
+                "This timeline is read-only and uses already stored inbound "
+                "messages and comms audit receipts."
+            ),
+            (
+                "Opening it does not send email, send SMS, change queue state, "
+                "refresh providers, or mutate tenant data."
+            ),
+        ],
+        generated_at=utcnow(),
+    )
+
+
+MAINTENANCE_CORRESPONDENCE_KINDS = {
+    "maintenance_contractor_forward",
+    "maintenance_tenant_forward",
+}
+
+
+def _is_maintenance_correspondence_audit(row: AuditAction) -> bool:
+    if not _is_comms_correspondence_audit(row):
+        return False
+    tool_input = _primitive_metadata(row.tool_input)
+    return tool_input.get("kind") in MAINTENANCE_CORRESPONDENCE_KINDS
+
+
+@router.get(
+    "/correspondence/maintenance-work-orders/{work_order_id}",
+    response_model=CommsMaintenanceWorkOrderCorrespondenceRead,
+)
+def get_maintenance_work_order_correspondence(
+    work_order_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> CommsMaintenanceWorkOrderCorrespondenceRead:
+    """Return stored comms receipts linked to one maintenance work order.
+
+    This is read-only. It only projects already stored comms dispatch/dismiss
+    audit receipts and never sends providers, regenerates drafts, changes queue
+    state, or mutates the maintenance record.
+    """
+
+    work_order = session.get(MaintenanceWorkOrder, work_order_id)
+    if work_order is None or work_order.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Maintenance work order not found.",
+        )
+    assert_entity_role(session, user, work_order.entity_id, READ_ROLES)
+    audit_rows = session.scalars(
+        select(AuditAction)
+        .where(
+            AuditAction.entity_id == work_order.entity_id,
+            AuditAction.action.in_(("dispatch", "dismiss")),
+            AuditAction.target_table == "maintenance_work_order",
+            AuditAction.target_id == work_order.id,
+        )
+        .order_by(AuditAction.occurred_at.desc())
+    ).all()
+    events = [
+        _audit_correspondence_event(row, session)
+        for row in audit_rows
+        if _is_maintenance_correspondence_audit(row)
+    ]
+    return CommsMaintenanceWorkOrderCorrespondenceRead(
+        entity_id=work_order.entity_id,
+        work_order_id=work_order.id,
+        work_order_title=work_order.title,
+        events=events,
+        guardrails=[
+            (
+                "This work-order correspondence is read-only and uses already "
+                "stored comms audit receipts."
+            ),
+            (
+                "Opening this panel does not send email, send SMS, change "
+                "queue state, refresh providers, or mutate maintenance records."
+            ),
+        ],
+        generated_at=utcnow(),
+    )
+
+
+@router.get("/outbound-log", response_model=CommsOutboundLogRead)
+def get_comms_outbound_log(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    limit: int = 20,
+) -> CommsOutboundLogRead:
+    """Return recent stored comms dispatch receipts for the Comms hub.
+
+    This is read-only. It only projects existing audit rows and never sends
+    providers, regenerates drafts, dismisses candidates, or mutates queue state.
+    """
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    normalized_limit = max(0, min(limit, 50))
+    audit_rows = session.scalars(
+        select(AuditAction)
+        .where(
+            AuditAction.entity_id == entity_id,
+            AuditAction.action == "dispatch",
+            AuditAction.target_id.is_not(None),
+        )
+        .order_by(AuditAction.occurred_at.desc())
+    ).all()
+    events = [
+        _audit_correspondence_event(row, session)
+        for row in audit_rows
+        if _is_comms_correspondence_audit(row)
+    ][:normalized_limit]
+    return CommsOutboundLogRead(
+        entity_id=entity_id,
+        events=events,
+        guardrails=[
+            (
+                "This log is read-only and uses already stored comms "
+                "dispatch audit receipts."
+            ),
+            (
+                "Opening this log does not send email, send SMS, change queue "
+                "state, refresh providers, or mutate tenant data."
+            ),
+        ],
+        generated_at=utcnow(),
+    )
+
+
 def _resolve_dispatch_entity_id(
     payload: CommsDispatchCreate, session: Session
 ) -> tuple[
     UUID,
-    ArrearsCase | Tenant | Lease | InboundMessage | Obligation | TenantOnboarding,
+    ArrearsCase
+    | Tenant
+    | Lease
+    | InboundMessage
+    | Obligation
+    | TenantOnboarding
+    | MaintenanceWorkOrder,
 ]:
     """Look up the entity_id for a dispatch target and return the source row.
 
@@ -1632,6 +2253,18 @@ def _resolve_dispatch_entity_id(
                 detail="Tenant onboarding not found.",
             )
         return onboarding.entity_id, onboarding
+    if (
+        payload.kind
+        in ("maintenance_contractor_forward", "maintenance_tenant_forward")
+        and payload.target_kind == "maintenance_work_order"
+    ):
+        work_order = session.get(MaintenanceWorkOrder, payload.target_id)
+        if work_order is None or work_order.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Maintenance work order not found.",
+            )
+        return work_order.entity_id, work_order
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail="Unsupported comms target.",
@@ -1639,8 +2272,21 @@ def _resolve_dispatch_entity_id(
 
 
 def _update_source_after_dispatch(
-    source: ArrearsCase | Tenant | Lease | InboundMessage | Obligation | TenantOnboarding,
+    source: ArrearsCase
+    | Tenant
+    | Lease
+    | InboundMessage
+    | Obligation
+    | TenantOnboarding
+    | MaintenanceWorkOrder,
     kind: str,
+    *,
+    channel: str | None = None,
+    status: str | None = None,
+    provider: str | None = None,
+    recipient: str | None = None,
+    provider_message_id: str | None = None,
+    error: str | None = None,
 ) -> None:
     """Bookkeeping after a draft is dispatched so the candidate doesn't
     re-appear in the queue immediately.
@@ -1697,6 +2343,29 @@ def _update_source_after_dispatch(
         }
         delivery_data[DISMISS_METADATA_KEY] = dismiss
         source.delivery_data = delivery_data
+    elif isinstance(source, MaintenanceWorkOrder):
+        metadata = dict(source.work_order_metadata or {})
+        dispatched_at = utcnow().isoformat()
+        forwarding = dict(metadata.get("maintenance_forwarding_comms") or {})
+        forwarding[kind] = {
+            "dispatched_at": dispatched_at,
+            "channel": channel,
+            "status": status,
+            "provider": provider,
+            "recipient": recipient,
+            "provider_message_id": provider_message_id,
+            "error": error,
+        }
+        metadata["maintenance_forwarding_comms"] = forwarding
+        dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
+        dismiss[kind] = {
+            "dispatched_at": dispatched_at,
+            "next_eligible_on": (
+                today + timedelta(days=DEFAULT_DISMISS_DAYS)
+            ).isoformat(),
+        }
+        metadata[DISMISS_METADATA_KEY] = dismiss
+        source.work_order_metadata = metadata
 
 
 @router.post(
@@ -1772,7 +2441,16 @@ def dispatch_comms_draft(
         summary = f"comms draft email {email_result.status}"
 
     if result_status not in {"failed", "skipped"}:
-        _update_source_after_dispatch(source, payload.kind)
+        _update_source_after_dispatch(
+            source,
+            payload.kind,
+            channel=channel,
+            status=result_status,
+            provider=result_provider,
+            recipient=result_recipient,
+            provider_message_id=result_provider_message_id,
+            error=result_error,
+        )
 
     audit_log(
         session,
@@ -1820,7 +2498,13 @@ def _resolve_dismiss_entity_id(
     payload: CommsDismissCreate, session: Session
 ) -> tuple[
     UUID,
-    ArrearsCase | Tenant | Lease | InboundMessage | Obligation | TenantOnboarding,
+    ArrearsCase
+    | Tenant
+    | Lease
+    | InboundMessage
+    | Obligation
+    | TenantOnboarding
+    | MaintenanceWorkOrder,
 ]:
     """Same resolution as dispatch, but for the dismiss verb."""
 
@@ -1896,6 +2580,18 @@ def _resolve_dismiss_entity_id(
                 detail="Tenant onboarding not found.",
             )
         return onboarding.entity_id, onboarding
+    if (
+        payload.kind
+        in ("maintenance_contractor_forward", "maintenance_tenant_forward")
+        and payload.target_kind == "maintenance_work_order"
+    ):
+        work_order = session.get(MaintenanceWorkOrder, payload.target_id)
+        if work_order is None or work_order.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Maintenance work order not found.",
+            )
+        return work_order.entity_id, work_order
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail="Unsupported comms target.",
@@ -1972,6 +2668,16 @@ def dismiss_comms_candidate(
         }
         delivery_data[DISMISS_METADATA_KEY] = dismiss
         source.delivery_data = delivery_data
+    elif isinstance(source, MaintenanceWorkOrder):
+        metadata = dict(source.work_order_metadata or {})
+        dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
+        dismiss[payload.kind] = {
+            "dismissed_at": utcnow().isoformat(),
+            "deferred_until": deferred_until.isoformat(),
+            "reason": payload.reason,
+        }
+        metadata[DISMISS_METADATA_KEY] = dismiss
+        source.work_order_metadata = metadata
 
     audit_log(
         session,

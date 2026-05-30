@@ -33,6 +33,9 @@ from stewart.core.models import (
     LeaseIntake,
     LeaseIntakeStatus,
     LeaseStatus,
+    MaintenancePriority,
+    MaintenanceWorkOrder,
+    MaintenanceWorkOrderStatus,
     Obligation,
     ObligationCategory,
     ObligationStatus,
@@ -127,6 +130,8 @@ def _document_category(document_type: str | None) -> DocumentCategory:
             return DocumentCategory.bank_guarantee
         case "invoice_admin":
             return DocumentCategory.invoice
+        case "inspection_report":
+            return DocumentCategory.other
         case "tenant_document":
             return DocumentCategory.onboarding
         case _:
@@ -180,6 +185,17 @@ def _int(value: Any) -> int | None:
         return None
 
 
+def _uuid(value: Any) -> UUID | None:
+    if value in {None, ""}:
+        return None
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value))
+    except ValueError:
+        return None
+
+
 def _optional_bool(value: Any) -> bool | None:
     if isinstance(value, bool):
         return value
@@ -201,6 +217,20 @@ def _records(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, dict)]
+
+
+def _uuid_list(value: Any) -> list[UUID]:
+    if not isinstance(value, list):
+        return []
+    ids: list[UUID] = []
+    seen: set[UUID] = set()
+    for item in value:
+        item_id = _uuid(item)
+        if item_id is None or item_id in seen:
+            continue
+        seen.add(item_id)
+        ids.append(item_id)
+    return ids
 
 
 def _reviewed_data(intake: DocumentIntake, payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -2377,6 +2407,188 @@ def _apply_billing_draft_intake(
     return draft
 
 
+def _document_ids_for_entity(
+    document_ids: list[UUID],
+    entity_id: UUID,
+    session: Session,
+) -> list[str]:
+    validated: list[str] = []
+    for document_id in document_ids:
+        document = session.get(StoredDocument, document_id)
+        if document is None or document.deleted_at is not None or document.entity_id != entity_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Inspection photo documents must belong to the intake entity.",
+            )
+        validated.append(str(document.id))
+    return validated
+
+
+def _inspection_priority(value: Any) -> MaintenancePriority:
+    text = (_str(value) or "").lower()
+    try:
+        return MaintenancePriority(text)
+    except ValueError:
+        return MaintenancePriority.normal
+
+
+def _inspection_findings(data: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in _records(data.get("inspection_findings"))
+        if _str(item.get("title"))
+    ]
+
+
+def _inspection_scope(
+    *,
+    intake: DocumentIntake,
+    finding: dict[str, Any],
+    payload: DocumentIntakeApplyRequest,
+    user: CurrentUser,
+    session: Session,
+) -> tuple[UUID | None, UUID | None, UUID | None, UUID | None]:
+    property_id = _uuid(finding.get("property_id")) or payload.property_id
+    tenancy_unit_id = _uuid(finding.get("tenancy_unit_id")) or payload.tenancy_unit_id
+    lease_id = _uuid(finding.get("lease_id")) or payload.lease_id
+    tenant_id = _uuid(finding.get("tenant_id")) or payload.tenant_id
+    property_id, tenancy_unit_id, lease_id = _validate_obligation_scope(
+        entity_id=intake.entity_id,
+        property_id=property_id,
+        tenancy_unit_id=tenancy_unit_id,
+        lease_id=lease_id,
+        user=user,
+        session=session,
+        roles=WRITE_ROLES,
+    )
+    if lease_id is not None:
+        lease = session.get(Lease, lease_id)
+        if lease is not None:
+            if tenant_id is not None and tenant_id != lease.tenant_id:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Inspection finding tenant must match the selected lease.",
+                )
+            tenant_id = lease.tenant_id
+    if tenant_id is not None:
+        tenant = session.get(Tenant, tenant_id)
+        if tenant is None or tenant.deleted_at is not None or tenant.entity_id != intake.entity_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Inspection finding tenant must belong to the intake entity.",
+            )
+    return property_id, tenancy_unit_id, tenant_id, lease_id
+
+
+def _apply_inspection_report_intake(
+    intake: DocumentIntake,
+    data: dict[str, Any],
+    payload: DocumentIntakeApplyRequest,
+    user: CurrentUser,
+    session: Session,
+) -> list[MaintenanceWorkOrder]:
+    findings = _inspection_findings(data)
+    if not findings:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Confirm at least one inspection finding before applying.",
+        )
+
+    work_orders: list[MaintenanceWorkOrder] = []
+    for index, finding in enumerate(findings):
+        property_id, tenancy_unit_id, tenant_id, lease_id = _inspection_scope(
+            intake=intake,
+            finding=finding,
+            payload=payload,
+            user=user,
+            session=session,
+        )
+        photo_document_ids = _document_ids_for_entity(
+            _uuid_list(finding.get("photo_document_ids")),
+            intake.entity_id,
+            session,
+        )
+        title = _str(finding.get("title"))
+        if title is None:
+            continue
+        priority = _inspection_priority(finding.get("priority"))
+        if _bool(finding.get("is_urgent"), False):
+            priority = MaintenancePriority.urgent
+        work_order = MaintenanceWorkOrder(
+            entity_id=intake.entity_id,
+            property_id=property_id,
+            tenancy_unit_id=tenancy_unit_id,
+            tenant_id=tenant_id,
+            lease_id=lease_id,
+            title=title,
+            description=_str(finding.get("description") or finding.get("notes")),
+            status=MaintenanceWorkOrderStatus.requested,
+            priority=priority,
+            source_document_id=intake.document_id,
+            due_date=_date(finding.get("due_date") or finding.get("date")),
+            source_reference=_str(finding.get("source_hint")),
+            attachments={
+                "document_ids": [str(intake.document_id)],
+                "photo_document_ids": photo_document_ids,
+            },
+            work_order_metadata={
+                "source": "document_intake",
+                "document_intake_id": str(intake.id),
+                "document_id": str(intake.document_id),
+                "document_type": "inspection_report",
+                "inspection_finding_index": index,
+                "inspection_finding": {
+                    "location": _str(finding.get("location")),
+                    "category": _str(finding.get("category")),
+                    "confidence": _confidence(finding.get("confidence")),
+                    "source_hint": _str(finding.get("source_hint")),
+                    "warnings": (
+                        finding.get("warnings")
+                        if isinstance(finding.get("warnings"), list)
+                        else []
+                    ),
+                },
+                "guardrail": (
+                    "Created from reviewed inspection intake only; no contractor "
+                    "dispatch, provider message, billing draft, or Xero action ran."
+                ),
+                "activity_history": [
+                    {
+                        "timestamp": utcnow().isoformat(),
+                        "actor": user.actor,
+                        "source": "smart_intake_apply",
+                        "event": "created_from_inspection_review",
+                        "summary": "Work order created from reviewed inspection finding.",
+                        "status": MaintenanceWorkOrderStatus.requested.value,
+                    }
+                ],
+            },
+        )
+        session.add(work_order)
+        session.flush()
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=intake.entity_id,
+            action="create",
+            target_table="maintenance_work_order",
+            target_id=work_order.id,
+            tool_name="smart_intake_apply",
+            tool_input={
+                "document_intake_id": str(intake.id),
+                "document_id": str(intake.document_id),
+                "finding_index": index,
+            },
+            tool_output_summary=(
+                "Created maintenance work order from reviewed inspection finding; "
+                "no contractor dispatch or provider mutation performed."
+            ),
+        )
+        work_orders.append(work_order)
+    return work_orders
+
+
 def _status_for_extraction(extracted: dict[str, Any]) -> DocumentIntakeStatus:
     document_type = extracted.get("document_type")
     if document_type == "unknown":
@@ -2859,6 +3071,46 @@ def apply_document_intake(
                     f"from Smart Intake document {intake.id}."
                 ),
             )
+        session.commit()
+        session.refresh(intake)
+        return _read_intake(intake)
+
+    if document_type == "inspection_report":
+        work_orders = _apply_inspection_report_intake(intake, reviewed, payload, user, session)
+        work_order_ids = [str(work_order.id) for work_order in work_orders]
+        intake.review_data = {
+            **reviewed,
+            "applied": {
+                "action": "created_inspection_work_orders",
+                "work_order_ids": work_order_ids,
+                "work_order_count": len(work_order_ids),
+                "obligation_ids": [],
+                "obligation_count": len(work_order_ids),
+            },
+        }
+        intake.status = DocumentIntakeStatus.applied
+        intake.applied_at = utcnow()
+        intake.applied_by_user_id = user.id
+        intake.document.category = DocumentCategory.other
+        intake.document.document_metadata = {
+            **(intake.document.document_metadata or {}),
+            "applied_document_intake_id": str(intake.id),
+            "applied_work_order_ids": work_order_ids,
+            "applied_document_type": document_type,
+        }
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=intake.entity_id,
+            action="apply",
+            target_table="document_intake",
+            target_id=intake.id,
+            tool_output_summary=(
+                f"Applied inspection report; {len(work_order_ids)} maintenance "
+                "work order(s) created with no provider dispatch."
+            ),
+        )
         session.commit()
         session.refresh(intake)
         return _read_intake(intake)

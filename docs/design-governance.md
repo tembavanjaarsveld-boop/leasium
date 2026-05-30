@@ -165,6 +165,11 @@ Progress notes:
   source. The selected owner evidence can also be downloaded as a local CSV.
   This remains pending Remba review for table density and whether the evidence
   should default expanded or collapsed for finance users.
+- 2026-05-30 follow-up: the selected-owner invoice evidence CSV now includes
+  the same local/Xero/reconciliation source trail shown in the table, and smoke
+  coverage reads the downloaded CSV instead of checking only the filename.
+  Remba/accountant review remains focused on evidence density and whether the
+  table should stay inline or move behind a disclosure.
 - 2026-05-29 follow-up: AppHeader top-right controls now render as one compact
   workspace utility toolbar: entity selector, command search, keyboard
   shortcuts, notifications, appearance, and profile/sign-in share a single
@@ -1296,6 +1301,19 @@ layout), and modal scale magnitude (0.97 → 1 — barely perceptible).
   attached.
 
 ### Deferred from Motion polish v2 — pending decision
+
+### Inspection report intake v1 (2026-05-30) — Remba pending
+
+- [~] Smart Intake now treats inspection reports as a review-first
+  work-order source. OpenAI extraction can return editable inspection
+  findings, the review queue has an Inspections filter, and Apply
+  creates requested maintenance work orders linked to the source
+  document, photo document ids, and selected property/unit/tenant/lease
+  scope. The workflow does not dispatch contractors, send email/SMS,
+  write provider history, create billing drafts, touch Xero, or mutate
+  providers. Review the finding labels, whether photo evidence should
+  be previewed directly in the review panel, and whether the operator
+  copy should say "draft work orders" or "requested work orders".
 
 - Mobile nav drawer (`app-shell.tsx:497`) slides in from the LEFT;
   needs a separate `drawerSlideInLeft` keyframe or a CSS variable

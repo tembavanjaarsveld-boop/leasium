@@ -1186,7 +1186,7 @@ function MonthEndChecklistStrip({ items }: { items: MonthEndChecklistItem[] }) {
                 {item.href && item.actionLabel ? (
                   <Link
                     href={item.href}
-                    className="inline-flex min-h-8 items-center gap-2 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
                   >
                     <ArrowUpRight size={13} />
                     {item.actionLabel}
@@ -1283,7 +1283,7 @@ function MonthEndHandoffPanel({ handoff }: { handoff: MonthEndHandoff }) {
           <SecondaryButton
             type="button"
             onClick={copyHandoff}
-            className="min-h-10 rounded-lg px-3"
+            className="min-h-11 rounded-lg px-3"
           >
             <ClipboardCheck size={14} />
             Copy handoff
@@ -1291,14 +1291,14 @@ function MonthEndHandoffPanel({ handoff }: { handoff: MonthEndHandoff }) {
           <SecondaryButton
             type="button"
             onClick={downloadHandoffCsv}
-            className="min-h-10 rounded-lg px-3"
+            className="min-h-11 rounded-lg px-3"
           >
             <Download size={14} />
             Download handoff CSV
           </SecondaryButton>
           <Link
             href={handoff.statementsHref}
-            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
           >
             <ArrowUpRight size={14} />
             Open statements
@@ -3384,7 +3384,7 @@ function BillingReadinessWorkspace() {
                                   </div>
                                   <Link
                                     href={`/settings?tab=xero&entity_id=${selectedEntityId}`}
-                                    className="inline-flex min-h-8 w-fit items-center gap-2 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                                    className="inline-flex min-h-11 w-fit items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
                                   >
                                     <ArrowUpRight size={13} />
                                     Review payments

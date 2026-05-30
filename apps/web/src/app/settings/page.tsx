@@ -165,7 +165,11 @@ type XeroChargeRuleMappingInput = Pick<
 >;
 type XeroCallbackFeedback =
   | { tone: "success"; title: "Xero connected"; detail: string }
-  | { tone: "danger"; title: "Xero connection needs attention"; detail: string };
+  | {
+      tone: "danger";
+      title: "Xero connection needs attention";
+      detail: string;
+    };
 
 const settingsTabs: Array<{
   id: SettingsTab;
@@ -493,11 +497,13 @@ function diagnosticsReadinessDetailRows(
       detail =
         label === "OAuth"
           ? "Provider setup is ready; start OAuth when the operator approves."
-          : connectionReasons[label] ?? providerBlocked;
+          : (connectionReasons[label] ?? providerBlocked);
     } else if (label === "Draft creation") {
-      detail = "Approve invoice drafts for Xero before creating provider drafts.";
+      detail =
+        "Approve invoice drafts for Xero before creating provider drafts.";
     } else if (label === "Payments") {
-      detail = "Create or link a Xero draft before reviewing provider payments.";
+      detail =
+        "Create or link a Xero draft before reviewing provider payments.";
     } else {
       detail = providerBlocked;
     }
@@ -676,8 +682,12 @@ function xeroExceptionReviewPacket(queue: XeroExceptionQueueRecord) {
             issue.charge_rule_id
               ? `Mapping: account ${issue.current_account_code ?? "-"} -> ${issue.suggested_account_code ?? "-"}; tax ${issue.current_tax_type ?? "-"} -> ${issue.suggested_tax_type ?? "-"}`
               : null,
-            issue.xero_invoice_id ? `Xero invoice: ${issue.xero_invoice_id}` : null,
-            issue.provider_status ? `Provider status: ${issue.provider_status}` : null,
+            issue.xero_invoice_id
+              ? `Xero invoice: ${issue.xero_invoice_id}`
+              : null,
+            issue.provider_status
+              ? `Provider status: ${issue.provider_status}`
+              : null,
             issue.retry_count ? `Retry count: ${issue.retry_count}` : null,
           ]
             .filter(Boolean)
@@ -1823,26 +1833,11 @@ function DigestReceiptSummary({ member }: { member: SecurityMemberRecord }) {
     );
   }
   return (
-    <div className="grid gap-1 text-xs">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold text-foreground">Last digest</span>
-        <StatusBadge tone={receipt.message_sent ? "success" : "neutral"}>
-          {receipt.message_sent ? "Email queued" : "No messages sent"}
-        </StatusBadge>
-      </div>
-      <div className="text-muted-foreground">
-        {formatDateTime(receipt.generated_at)}
-      </div>
-      {receipt.delivery_detail ? (
-        <div className="text-muted-foreground">{receipt.delivery_detail}</div>
-      ) : null}
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
-        <span>
-          {receipt.item_count} {receipt.item_count === 1 ? "item" : "items"}
-        </span>
-        <span>{receipt.follow_up_due_count} follow-up</span>
-        <span>{digestCadenceLabel(receipt.cadence)}</span>
-      </div>
+    <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+      <span className="font-semibold text-foreground">Last digest</span>
+      <StatusBadge tone={receipt.message_sent ? "success" : "neutral"}>
+        {receipt.message_sent ? "Email queued" : "No messages sent"}
+      </StatusBadge>
     </div>
   );
 }
@@ -2737,8 +2732,7 @@ function SettingsWorkspace() {
   const xeroDiagnostics = xeroDiagnosticsQuery.data;
   const xeroDiagnosticsReady = Boolean(xeroDiagnostics);
   const xeroCanStartOauth = xeroDiagnostics?.can_start_oauth ?? false;
-  const xeroCanPreviewContacts =
-    xeroDiagnostics?.can_preview_contacts ?? false;
+  const xeroCanPreviewContacts = xeroDiagnostics?.can_preview_contacts ?? false;
   const xeroCanValidateChartTax =
     xeroDiagnostics?.can_validate_chart_tax ?? false;
   const xeroCanPreviewInvoicePosting =
@@ -3574,7 +3568,7 @@ function SettingsWorkspace() {
 
             <SectionPanel
               title="Work notifications"
-              description="Choose assignment email and digest cadence for each operator without changing their access."
+              description="Choose Work notice channels, SMS recovery, digest cadence, and template defaults per operator."
               icon={<Bell size={17} className="text-primary" />}
               actions={
                 <div className="flex flex-wrap gap-2">
@@ -3636,6 +3630,8 @@ function SettingsWorkspace() {
                   const smsPhone = workAssignmentSmsPhone(member);
                   const smsPhoneDraft = smsPhoneDrafts[member.id] ?? smsPhone;
                   const smsPhoneChanged = smsPhoneDraft.trim() !== smsPhone;
+                  const showSmsPhoneControls =
+                    workSmsEnabled || smsPhoneDraft.trim().length > 0;
                   const updateTemplateDraft = (
                     patch: Partial<NotificationTemplateDraft>,
                   ) =>
@@ -3651,26 +3647,27 @@ function SettingsWorkspace() {
                   return (
                     <div
                       key={`${member.id}-notifications`}
-                      className="grid gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_220px_minmax(320px,420px)] xl:items-start"
+                      className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(170px,.8fr)_minmax(0,2fr)_minmax(205px,.75fr)_minmax(170px,.65fr)] lg:items-start"
                     >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="font-medium">
+                      <div className="min-w-0 lg:pt-1">
+                        <div className="flex items-center gap-2">
+                          <div className="truncate font-medium">
                             {member.display_name}
                           </div>
+                          <StatusBadge tone="neutral">
+                            {currentRole
+                              ? `${roleLabel(currentRole.role)} access`
+                              : "No access"}
+                          </StatusBadge>
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {member.email}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
                           <StatusBadge
                             tone={workEmailEnabled ? "success" : "neutral"}
                           >
-                            {workEmailEnabled
-                              ? "Work email on"
-                              : "Work email off"}
-                          </StatusBadge>
-                          <StatusBadge
-                            tone={
-                              digestCadence === "off" ? "neutral" : "primary"
-                            }
-                          >
-                            {digestCadenceLabel(digestCadence)}
+                            {workEmailEnabled ? "Work email on" : "Email off"}
                           </StatusBadge>
                           <StatusBadge
                             tone={
@@ -3681,27 +3678,22 @@ function SettingsWorkspace() {
                               ? "SMS ready"
                               : "SMS not ready"}
                           </StatusBadge>
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {member.email}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <StatusBadge tone="neutral">
-                            {currentRole
-                              ? `${roleLabel(
-                                  currentRole.role,
-                                )} on selected entity`
-                              : "No selected entity access"}
+                          <StatusBadge
+                            tone={
+                              digestCadence === "off" ? "neutral" : "primary"
+                            }
+                          >
+                            {digestCadenceLabel(digestCadence)}
                           </StatusBadge>
                         </div>
                       </div>
 
-                      <div className="grid gap-3">
-                        <label className="flex min-h-11 items-start gap-3 text-sm">
+                      <div className="grid gap-2 xl:grid-cols-[minmax(160px,.65fr)_minmax(0,1.35fr)]">
+                        <label className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-sm">
                           <input
                             aria-label={`${member.display_name} assignment email notifications`}
                             checked={workEmailEnabled}
-                            className="mt-1 h-4 w-4 accent-primary"
+                            className="h-4 w-4 accent-primary"
                             disabled={!canManageSecurity}
                             onChange={(event) =>
                               memberMutation.mutate({
@@ -3726,17 +3718,17 @@ function SettingsWorkspace() {
                               )}
                               Assignment email
                             </span>
-                            <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                              Immediate notice when assigned work is ready.
+                            <span className="block text-xs leading-5 text-muted-foreground">
+                              Immediate notices
                             </span>
                           </span>
                         </label>
-                        <div className="grid gap-2 rounded-xl border border-border bg-muted/20 p-3">
-                          <label className="flex items-start gap-3 text-sm">
+                        <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-2 sm:grid-cols-[minmax(150px,.75fr)_minmax(0,1fr)_auto] sm:items-center">
+                          <label className="flex min-h-11 items-center gap-3 text-sm">
                             <input
                               aria-label={`${member.display_name} assignment SMS notifications`}
                               checked={workSmsEnabled}
-                              className="mt-1 h-4 w-4 accent-primary"
+                              className="h-4 w-4 accent-primary"
                               disabled={!canManageSecurity}
                               onChange={(event) =>
                                 memberMutation.mutate({
@@ -3757,13 +3749,12 @@ function SettingsWorkspace() {
                                 <Smartphone size={14} />
                                 Assignment SMS
                               </span>
-                              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                                Stores a reviewed operator phone for future SMS
-                                recovery.
+                              <span className="block text-xs leading-5 text-muted-foreground">
+                                Recovery phone
                               </span>
                             </span>
                           </label>
-                          <Field label="SMS phone">
+                          {showSmsPhoneControls ? (
                             <Input
                               aria-label={`${member.display_name} assignment SMS phone`}
                               placeholder="+61400111222"
@@ -3776,10 +3767,14 @@ function SettingsWorkspace() {
                                 }))
                               }
                             />
-                          </Field>
+                          ) : (
+                            <div className="flex min-h-11 items-center rounded-md bg-white px-3 text-xs text-muted-foreground">
+                              Enable SMS to add a phone.
+                            </div>
+                          )}
                           <SecondaryButton
                             type="button"
-                            className="h-9 justify-self-start px-2.5"
+                            className="justify-self-start rounded-lg px-3 text-xs"
                             disabled={!canManageSecurity || !smsPhoneChanged}
                             onClick={() =>
                               memberMutation.mutate({
@@ -3805,7 +3800,10 @@ function SettingsWorkspace() {
                       </div>
 
                       <div className="grid gap-2">
-                        <Field label="Digest cadence">
+                        <label className="grid gap-2 text-sm sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+                          <span className="font-medium text-foreground">
+                            Digest
+                          </span>
                           <Select
                             aria-label={`${member.display_name} work digest`}
                             value={digestCadence}
@@ -3828,214 +3826,230 @@ function SettingsWorkspace() {
                             <option value="weekly">Weekly digest</option>
                             <option value="off">Digest off</option>
                           </Select>
-                        </Field>
+                        </label>
                         <DigestReceiptSummary member={member} />
                       </div>
 
-                      <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3 xl:col-start-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-sm font-medium">
-                            Template defaults
-                          </div>
-                          <StatusBadge
-                            tone={templatesChanged ? "warning" : "neutral"}
-                          >
-                            {templatesChanged ? "Unsaved" : "Current"}
-                          </StatusBadge>
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-[1fr_88px]">
-                          <Field label="Assignment notice">
-                            <Select
-                              aria-label={`${member.display_name} assignment notice template key`}
-                              value={templateDraft.noticeKey}
-                              disabled={!canManageSecurity}
-                              onChange={(event) =>
-                                updateTemplateDraft(
-                                  noticeTemplateChoices.find(
-                                    (template) =>
-                                      template.key === event.target.value,
-                                  )?.default_version
-                                    ? {
-                                        noticeKey: event.target.value,
-                                        noticeVersion:
-                                          noticeTemplateChoices.find(
-                                            (template) =>
-                                              template.key ===
-                                              event.target.value,
-                                          )?.default_version ?? "v1",
-                                      }
-                                    : { noticeKey: event.target.value },
-                                )
-                              }
-                            >
-                              {noticeTemplateChoices.map((template) => (
-                                <option key={template.key} value={template.key}>
-                                  {template.name}
-                                </option>
-                              ))}
-                            </Select>
-                          </Field>
-                          <Field label="Version">
-                            <Input
-                              aria-label={`${member.display_name} assignment notice template version`}
-                              value={templateDraft.noticeVersion}
-                              disabled={!canManageSecurity}
-                              onChange={(event) =>
-                                updateTemplateDraft({
-                                  noticeVersion: event.target.value,
-                                })
-                              }
-                            />
-                          </Field>
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-[1fr_88px]">
-                          <Field label="Digest">
-                            <Select
-                              aria-label={`${member.display_name} digest template key`}
-                              value={templateDraft.digestKey}
-                              disabled={!canManageSecurity}
-                              onChange={(event) =>
-                                updateTemplateDraft(
-                                  digestTemplateChoices.find(
-                                    (template) =>
-                                      template.key === event.target.value,
-                                  )?.default_version
-                                    ? {
-                                        digestKey: event.target.value,
-                                        digestVersion:
-                                          digestTemplateChoices.find(
-                                            (template) =>
-                                              template.key ===
-                                              event.target.value,
-                                          )?.default_version ?? "v1",
-                                      }
-                                    : { digestKey: event.target.value },
-                                )
-                              }
-                            >
-                              {digestTemplateChoices.map((template) => (
-                                <option key={template.key} value={template.key}>
-                                  {template.name}
-                                </option>
-                              ))}
-                            </Select>
-                          </Field>
-                          <Field label="Version">
-                            <Input
-                              aria-label={`${member.display_name} digest template version`}
-                              value={templateDraft.digestVersion}
-                              disabled={!canManageSecurity}
-                              onChange={(event) =>
-                                updateTemplateDraft({
-                                  digestVersion: event.target.value,
-                                })
-                              }
-                            />
-                          </Field>
-                        </div>
-                        <div className="grid gap-2 rounded-lg border border-border bg-white p-3 text-xs">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="font-semibold text-foreground">
-                              Template preview
+                      <details className="overflow-hidden rounded-md border border-border bg-muted/20 lg:open:col-span-4">
+                        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <Tags size={14} className="text-primary" />
+                            <span>Template defaults</span>
+                            <span className="hidden text-xs font-normal text-muted-foreground xl:inline">
+                              Advanced
                             </span>
-                            <StatusBadge tone="primary">
-                              SendGrid email
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            <StatusBadge
+                              tone={templatesChanged ? "warning" : "neutral"}
+                            >
+                              {templatesChanged ? "Unsaved" : "Current"}
                             </StatusBadge>
-                          </div>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-medium text-foreground">
-                                  Notice
-                                </span>
-                                <StatusBadge tone="neutral">
-                                  {templatePreview.noticeVersion}
-                                </StatusBadge>
-                                <StatusBadge
-                                  tone={
-                                    templatePreview.noticeManaged
-                                      ? "primary"
-                                      : "neutral"
+                          </span>
+                        </summary>
+                        <div className="grid gap-3 border-t border-border p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                          <div className="grid gap-2">
+                            <div className="grid gap-2 sm:grid-cols-[1fr_88px]">
+                              <Field label="Assignment notice">
+                                <Select
+                                  aria-label={`${member.display_name} assignment notice template key`}
+                                  value={templateDraft.noticeKey}
+                                  disabled={!canManageSecurity}
+                                  onChange={(event) =>
+                                    updateTemplateDraft(
+                                      noticeTemplateChoices.find(
+                                        (template) =>
+                                          template.key === event.target.value,
+                                      )?.default_version
+                                        ? {
+                                            noticeKey: event.target.value,
+                                            noticeVersion:
+                                              noticeTemplateChoices.find(
+                                                (template) =>
+                                                  template.key ===
+                                                  event.target.value,
+                                              )?.default_version ?? "v1",
+                                          }
+                                        : { noticeKey: event.target.value },
+                                    )
                                   }
                                 >
-                                  {templatePreview.noticeManaged
-                                    ? "Named"
-                                    : "Custom"}
-                                </StatusBadge>
-                              </div>
-                              <div className="mt-1 text-muted-foreground">
-                                {templatePreview.noticeTitle}
-                              </div>
-                              <div className="mt-2 font-medium text-foreground">
-                                {templatePreview.noticeSubject}
-                              </div>
-                              <div className="mt-1 leading-5 text-muted-foreground">
-                                {templatePreview.noticeDetail}
-                              </div>
+                                  {noticeTemplateChoices.map((template) => (
+                                    <option
+                                      key={template.key}
+                                      value={template.key}
+                                    >
+                                      {template.name}
+                                    </option>
+                                  ))}
+                                </Select>
+                              </Field>
+                              <Field label="Version">
+                                <Input
+                                  aria-label={`${member.display_name} assignment notice template version`}
+                                  value={templateDraft.noticeVersion}
+                                  disabled={!canManageSecurity}
+                                  onChange={(event) =>
+                                    updateTemplateDraft({
+                                      noticeVersion: event.target.value,
+                                    })
+                                  }
+                                />
+                              </Field>
                             </div>
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-medium text-foreground">
-                                  Digest
-                                </span>
-                                <StatusBadge tone="neutral">
-                                  {templatePreview.digestVersion}
-                                </StatusBadge>
-                                <StatusBadge
-                                  tone={
-                                    templatePreview.digestManaged
-                                      ? "primary"
-                                      : "neutral"
+                            <div className="grid gap-2 sm:grid-cols-[1fr_88px]">
+                              <Field label="Digest">
+                                <Select
+                                  aria-label={`${member.display_name} digest template key`}
+                                  value={templateDraft.digestKey}
+                                  disabled={!canManageSecurity}
+                                  onChange={(event) =>
+                                    updateTemplateDraft(
+                                      digestTemplateChoices.find(
+                                        (template) =>
+                                          template.key === event.target.value,
+                                      )?.default_version
+                                        ? {
+                                            digestKey: event.target.value,
+                                            digestVersion:
+                                              digestTemplateChoices.find(
+                                                (template) =>
+                                                  template.key ===
+                                                  event.target.value,
+                                              )?.default_version ?? "v1",
+                                          }
+                                        : { digestKey: event.target.value },
+                                    )
                                   }
                                 >
-                                  {templatePreview.digestManaged
-                                    ? "Named"
-                                    : "Custom"}
-                                </StatusBadge>
+                                  {digestTemplateChoices.map((template) => (
+                                    <option
+                                      key={template.key}
+                                      value={template.key}
+                                    >
+                                      {template.name}
+                                    </option>
+                                  ))}
+                                </Select>
+                              </Field>
+                              <Field label="Version">
+                                <Input
+                                  aria-label={`${member.display_name} digest template version`}
+                                  value={templateDraft.digestVersion}
+                                  disabled={!canManageSecurity}
+                                  onChange={(event) =>
+                                    updateTemplateDraft({
+                                      digestVersion: event.target.value,
+                                    })
+                                  }
+                                />
+                              </Field>
+                            </div>
+                          </div>
+                          <div className="grid gap-2 rounded-lg border border-border bg-white p-3 text-xs">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="font-semibold text-foreground">
+                                Template preview
+                              </span>
+                              <StatusBadge tone="primary">
+                                SendGrid email
+                              </StatusBadge>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-medium text-foreground">
+                                    Notice
+                                  </span>
+                                  <StatusBadge tone="neutral">
+                                    {templatePreview.noticeVersion}
+                                  </StatusBadge>
+                                  <StatusBadge
+                                    tone={
+                                      templatePreview.noticeManaged
+                                        ? "primary"
+                                        : "neutral"
+                                    }
+                                  >
+                                    {templatePreview.noticeManaged
+                                      ? "Named"
+                                      : "Custom"}
+                                  </StatusBadge>
+                                </div>
+                                <div className="mt-1 text-muted-foreground">
+                                  {templatePreview.noticeTitle}
+                                </div>
+                                <div className="mt-2 font-medium text-foreground">
+                                  {templatePreview.noticeSubject}
+                                </div>
+                                <div className="mt-1 leading-5 text-muted-foreground">
+                                  {templatePreview.noticeDetail}
+                                </div>
                               </div>
-                              <div className="mt-1 text-muted-foreground">
-                                {templatePreview.digestTitle}
-                              </div>
-                              <div className="mt-2 font-medium text-foreground">
-                                {templatePreview.digestSubject}
-                              </div>
-                              <div className="mt-1 leading-5 text-muted-foreground">
-                                {templatePreview.digestDetail}
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-medium text-foreground">
+                                    Digest
+                                  </span>
+                                  <StatusBadge tone="neutral">
+                                    {templatePreview.digestVersion}
+                                  </StatusBadge>
+                                  <StatusBadge
+                                    tone={
+                                      templatePreview.digestManaged
+                                        ? "primary"
+                                        : "neutral"
+                                    }
+                                  >
+                                    {templatePreview.digestManaged
+                                      ? "Named"
+                                      : "Custom"}
+                                  </StatusBadge>
+                                </div>
+                                <div className="mt-1 text-muted-foreground">
+                                  {templatePreview.digestTitle}
+                                </div>
+                                <div className="mt-2 font-medium text-foreground">
+                                  {templatePreview.digestSubject}
+                                </div>
+                                <div className="mt-1 leading-5 text-muted-foreground">
+                                  {templatePreview.digestDetail}
+                                </div>
                               </div>
                             </div>
                           </div>
+                          <SecondaryButton
+                            type="button"
+                            className="justify-self-start lg:col-start-1"
+                            disabled={!canManageSecurity || !templatesChanged}
+                            onClick={() =>
+                              memberMutation.mutate({
+                                memberId: member.id,
+                                payload: {
+                                  notification_preferences:
+                                    nextNotificationPreferences(member, {
+                                      work_assignment_notice_template_key:
+                                        cleanTemplateDraft.noticeKey,
+                                      work_assignment_notice_template_version:
+                                        cleanTemplateDraft.noticeVersion,
+                                      work_assignment_digest_template_key:
+                                        cleanTemplateDraft.digestKey,
+                                      work_assignment_digest_template_version:
+                                        cleanTemplateDraft.digestVersion,
+                                    }),
+                                },
+                              })
+                            }
+                          >
+                            {isUpdating ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <CheckCircle2 size={14} />
+                            )}
+                            Save templates
+                          </SecondaryButton>
                         </div>
-                        <SecondaryButton
-                          type="button"
-                          className="justify-self-start"
-                          disabled={!canManageSecurity || !templatesChanged}
-                          onClick={() =>
-                            memberMutation.mutate({
-                              memberId: member.id,
-                              payload: {
-                                notification_preferences:
-                                  nextNotificationPreferences(member, {
-                                    work_assignment_notice_template_key:
-                                      cleanTemplateDraft.noticeKey,
-                                    work_assignment_notice_template_version:
-                                      cleanTemplateDraft.noticeVersion,
-                                    work_assignment_digest_template_key:
-                                      cleanTemplateDraft.digestKey,
-                                    work_assignment_digest_template_version:
-                                      cleanTemplateDraft.digestVersion,
-                                  }),
-                              },
-                            })
-                          }
-                        >
-                          {isUpdating ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <CheckCircle2 size={14} />
-                          )}
-                          Save templates
-                        </SecondaryButton>
-                      </div>
+                      </details>
                     </div>
                   );
                 })}
@@ -5050,8 +5064,10 @@ function SettingsWorkspace() {
                             ? "Configured"
                             : "Needs env vars"}
                         </div>
-                        {!(xeroDiagnostics?.provider_configured ??
-                        status.provider.configured) ? (
+                        {!(
+                          xeroDiagnostics?.provider_configured ??
+                          status.provider.configured
+                        ) ? (
                           <p className="mt-1 text-xs text-muted-foreground">
                             Missing{" "}
                             {(

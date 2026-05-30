@@ -101,6 +101,7 @@ type ReviewQueueFilter =
   | "inbound_email_attachment"
   | "lease_match"
   | "insurance_certificate"
+  | "inspection_report"
   | "lease";
 type LeaseAutoMatchField = {
   field: string;
@@ -148,6 +149,8 @@ type DocumentApplyOutcome = {
   billingDraftId?: string | null;
   leaseCount?: number;
   leaseIds?: string[];
+  workOrderCount?: number;
+  workOrderIds?: string[];
   chargeRuleCount?: number;
   chargeRuleIds?: string[];
   chargeRuleSummaries?: AppliedChargeRuleSummary[];
@@ -927,7 +930,8 @@ type ReviewGroupKey =
   | "properties"
   | "key_dates"
   | "money_amounts"
-  | "obligations";
+  | "obligations"
+  | "inspection_findings";
 
 const reviewGroups: Array<{
   key: ReviewGroupKey;
@@ -984,6 +988,19 @@ const reviewGroups: Array<{
       { key: "category", label: "Category" },
     ],
   },
+  {
+    key: "inspection_findings",
+    title: "Inspection findings",
+    fields: [
+      { key: "title", label: "Title" },
+      { key: "description", label: "Description" },
+      { key: "location", label: "Location" },
+      { key: "category", label: "Category" },
+      { key: "priority", label: "Priority" },
+      { key: "due_date", label: "Due", type: "date" },
+      { key: "source_hint", label: "Source" },
+    ],
+  },
 ];
 
 function cloneExtraction(
@@ -1004,6 +1021,7 @@ function intakeReviewData(
     "key_dates",
     "money_amounts",
     "obligations",
+    "inspection_findings",
     "suggested_links",
     "warnings",
     "missing_information",
@@ -1206,6 +1224,7 @@ function documentWorkflowType(
       "compliance",
       "invoice_admin",
       "purchase_contract",
+      "inspection_report",
       "notice",
     ].includes(type)
     ? type
@@ -1222,6 +1241,8 @@ function workflowTaskNoun(workflowType: string | null) {
       return "guarantee task";
     case "compliance":
       return "compliance task";
+    case "inspection_report":
+      return "work order draft";
     case "notice":
       return "notice task";
     default:
@@ -1297,6 +1318,11 @@ function applicableObligationCount(
   data: DocumentIntakeExtraction,
   workflowType: string | null,
 ) {
+  if (workflowType === "inspection_report") {
+    return groupItems(data, "inspection_findings").filter((item) =>
+      fieldText(item.title),
+    ).length;
+  }
   if (workflowType === "lease") {
     return leaseGeneratedTaskCount(data);
   }
@@ -1322,6 +1348,13 @@ function firstApplicableDueDate(
   data: DocumentIntakeExtraction,
   workflowType: string | null,
 ) {
+  if (workflowType === "inspection_report") {
+    return (
+      groupItems(data, "inspection_findings")
+        .map((item) => fieldText(item.due_date ?? item.date))
+        .find(Boolean) ?? null
+    );
+  }
   const obligationDate = groupItems(data, "obligations")
     .map((item) => fieldText(item.due_date ?? item.date))
     .find(Boolean);
@@ -1550,8 +1583,10 @@ function DocumentIntakeApplyOutcomeCard({
 }) {
   const isBilling = outcome.workflowType === "invoice_admin";
   const isPropertySetup = outcome.workflowType === "purchase_contract";
+  const isInspection = outcome.workflowType === "inspection_report";
   const taskNoun = workflowTaskNoun(outcome.workflowType);
   const shownLeaseIds = outcome.leaseIds?.slice(0, 4) ?? [];
+  const shownWorkOrderIds = outcome.workOrderIds?.slice(0, 4) ?? [];
   const shownChargeSummaries = outcome.chargeRuleSummaries?.slice(0, 5) ?? [];
   const shownChargeIds = outcome.chargeRuleIds?.slice(0, 4) ?? [];
   const skippedScheduleRows = outcome.skippedTenancyScheduleRows ?? [];
@@ -1586,6 +1621,12 @@ function DocumentIntakeApplyOutcomeCard({
                   ? `Prepared ${outcome.obligationCount} billing review ${
                       outcome.obligationCount === 1 ? "task" : "tasks"
                     }. Nothing was posted to Xero.`
+                  : isInspection
+                    ? `Created ${outcome.workOrderCount ?? outcome.obligationCount} requested work order${
+                        (outcome.workOrderCount ?? outcome.obligationCount) === 1
+                          ? ""
+                          : "s"
+                      }. No contractor message was sent.`
                   : `Created ${outcome.obligationCount} ${taskNoun}${
                       outcome.obligationCount === 1 ? "" : "s"
                     }.`}
@@ -1649,7 +1690,56 @@ function DocumentIntakeApplyOutcomeCard({
                 </div>
               </>
             ) : null}
+            {isInspection ? (
+              <div>
+                <div className="text-xs font-semibold uppercase text-muted-foreground">
+                  Work orders
+                </div>
+                <div>
+                  {outcome.workOrderCount ?? outcome.obligationCount} requested
+                  work order
+                  {(outcome.workOrderCount ?? outcome.obligationCount) === 1
+                    ? ""
+                    : "s"}{" "}
+                  ready in Operations
+                </div>
+              </div>
+            ) : null}
           </div>
+          {isInspection ? (
+            <div className="grid gap-3 border-t border-success/20 pt-3">
+              {shownWorkOrderIds.length ? (
+                <div>
+                  <div className="text-xs font-semibold uppercase text-success-strong">
+                    Created work orders
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    {shownWorkOrderIds.map((workOrderId) => (
+                      <span
+                        key={workOrderId}
+                        className="rounded-full border border-success/20 bg-white px-2 py-1"
+                      >
+                        {shortRecordId(workOrderId)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div className="rounded-xl border border-success/20 bg-white px-3 py-2 text-sm text-success-strong">
+                No contractor email, SMS, assignment notification, billing
+                draft, Xero action, or provider history was created.
+              </div>
+              <div>
+                <Link
+                  href="/operations?tab=maintenance"
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-success/20 bg-white px-3 text-sm font-medium text-success-strong transition hover:bg-success-soft"
+                >
+                  <ClipboardList size={15} />
+                  Open Operations
+                </Link>
+              </div>
+            </div>
+          ) : null}
           {isPropertySetup &&
           (shownLeaseIds.length > 0 ||
             shownChargeSummaries.length > 0 ||
@@ -1853,9 +1943,12 @@ function DocumentIntakeReviewPanel({
       : workflowType === "purchase_contract" &&
           !hasReviewedPropertyIdentity(reviewedDraft, applyTarget)
         ? "Choose or confirm the property before applying."
+        : workflowType === "inspection_report" && obligationApplyCount === 0
+          ? "Confirm at least one inspection finding before applying."
         : canApplyWorkflow &&
             workflowType !== "lease" &&
             workflowType !== "purchase_contract" &&
+            workflowType !== "inspection_report" &&
             obligationApplyCount === 0
           ? "Confirm at least one obligation due date before applying."
           : null;
@@ -1868,6 +1961,8 @@ function DocumentIntakeReviewPanel({
       ? "Policy dates"
       : workflowType === "lease" && group.key === "key_dates"
         ? "Lease dates"
+        : workflowType === "inspection_report" && group.key === "inspection_findings"
+          ? "Work order drafts"
         : group.title;
   const canSelectLease = workflowType !== "lease";
   const scopedLeases = applyTarget.tenancyUnitId
@@ -2117,6 +2212,8 @@ function DocumentIntakeReviewPanel({
                       ? "Choose an existing property to link, or let Leasium create property setup records from the reviewed contract fields."
                       : workflowType === "invoice_admin"
                         ? "Link the billing document to the right property, unit, or lease. Leasium prepares review work only."
+                        : workflowType === "inspection_report"
+                          ? "Link the inspection findings to the right property, unit, or lease. Leasium creates requested work orders only after approval."
                         : "Link the source document and created work to the right property, unit, or lease before applying."}
                 </p>
               </div>
@@ -2464,8 +2561,9 @@ function DocumentIntakeReviewPanel({
         {!canApplyWorkflow ? (
           <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
             Apply is available for leases, certificates, compliance docs,
-            guarantees, notices, billing docs, and acquisition contracts first.
-            Other documents can be saved as reviewed here for now.
+            guarantees, notices, billing docs, inspection reports, and
+            acquisition contracts first. Other documents can be saved as
+            reviewed here for now.
           </div>
         ) : null}
         {applyBlocker ? (
@@ -2489,6 +2587,8 @@ function DocumentIntakeReviewPanel({
                         } from ${applyScope}. `
                       : workflowType === "invoice_admin"
                         ? `Prepare ${obligationApplyCount} billing review ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. Nothing will be invoiced or synced. `
+                        : workflowType === "inspection_report"
+                          ? `Create ${obligationApplyCount} requested work order ${obligationApplyCount === 1 ? "draft" : "drafts"} at ${applyScope}. No contractor message will be sent. `
                         : `Create ${obligationApplyCount} document-driven ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. `}
                   {ignoredCount
                     ? `${ignoredCount} ignored item${ignoredCount === 1 ? "" : "s"} will be left out.`
@@ -2576,6 +2676,7 @@ export function Dashboard({
     key_dates: true,
     money_amounts: true,
     obligations: true,
+    inspection_findings: true,
   });
   const [demoMode, setDemoMode] = useState(
     () =>
@@ -2789,6 +2890,10 @@ export function Dashboard({
           fieldNumber(applied.created_lease_count) ??
           payload.outcome.leaseCount,
         leaseIds: fieldTextList(applied.lease_ids),
+        workOrderCount:
+          fieldNumber(applied.work_order_count) ??
+          payload.outcome.workOrderCount,
+        workOrderIds: fieldTextList(applied.work_order_ids),
         chargeRuleCount:
           fieldNumber(applied.created_charge_rule_count) ??
           payload.outcome.chargeRuleCount,
@@ -3185,6 +3290,7 @@ export function Dashboard({
         key_dates: true,
         money_amounts: true,
         obligations: true,
+        inspection_findings: true,
       });
     }
   }, [reviewDraftId, selectedReviewIntake]);
@@ -3582,6 +3688,7 @@ export function Dashboard({
                         </option>
                         <option value="lease_match">Lease matches</option>
                         <option value="insurance_certificate">Insurance</option>
+                        <option value="inspection_report">Inspections</option>
                         <option value="lease">Leases</option>
                       </Select>
                       <SecondaryButton
@@ -3832,6 +3939,10 @@ export function Dashboard({
                         reviewData,
                         workflowType,
                       ),
+                      workOrderCount:
+                        workflowType === "inspection_report"
+                          ? applicableObligationCount(reviewData, workflowType)
+                          : undefined,
                       targetLabel:
                         workflowType === "lease"
                           ? reviewedLeaseTargetLabel(

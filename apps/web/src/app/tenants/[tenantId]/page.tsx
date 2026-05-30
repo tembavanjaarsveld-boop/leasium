@@ -66,6 +66,7 @@ import {
   DocumentCategory,
   DocumentIntakeRecord,
   EnrichmentSuggestion,
+  getTenantCommsCorrespondence,
   getTenant,
   getTenantDetail,
   listDocumentIntakes,
@@ -89,10 +90,13 @@ import {
   TenantPayload,
   TenantReviewedChangeRecord,
   TenantRecord,
+  CommsCorrespondenceEventRecord,
+  CommsTenantCorrespondenceRecord,
   unlinkTenantPortalAccount,
   uploadDocument,
   updateTenant,
 } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 import {
   onboardingDeliveryDetail,
   onboardingDeliveryLabel,
@@ -926,6 +930,154 @@ function timestamp(value: string | null | undefined) {
   return Number.isNaN(date) ? 0 : date;
 }
 
+function correspondenceEventLabel(event: CommsCorrespondenceEventRecord) {
+  if (event.event_type === "inbound_email") return "Inbound email";
+  if (event.event_type === "inbound_sms") return "Inbound SMS";
+  if (event.event_type === "dispatch") return "Dispatch";
+  if (event.event_type === "dismiss") return "Dismiss";
+  return event.event_type
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function correspondenceEventTone(
+  event: CommsCorrespondenceEventRecord,
+): "neutral" | "primary" | "success" | "warning" {
+  if (event.direction === "inbound") return "primary";
+  if (event.event_type === "dispatch") return "success";
+  if (event.event_type === "dismiss") return "warning";
+  return "neutral";
+}
+
+function correspondenceCounterparty(event: CommsCorrespondenceEventRecord) {
+  if (event.direction === "inbound") {
+    return event.from_address ?? event.provider ?? "Inbound";
+  }
+  return event.recipient ?? event.provider ?? "Reviewed comms";
+}
+
+function correspondenceTargetLink(
+  event: CommsCorrespondenceEventRecord,
+  tenantId: string,
+) {
+  if (!event.target_kind || !event.target_id) {
+    return null;
+  }
+  if (event.target_kind === "arrears_case") {
+    return { href: "/operations?tab=arrears", label: "Open arrears case" };
+  }
+  if (event.target_kind === "maintenance_work_order") {
+    return {
+      href: `/operations/maintenance/${encodeURIComponent(event.target_id)}`,
+      label: "Open work order",
+    };
+  }
+  if (event.target_kind === "inbound_message") {
+    return { href: "/comms", label: "Open comms queue" };
+  }
+  if (event.target_kind === "tenant") {
+    return {
+      href: `/tenants/${encodeURIComponent(event.target_id)}`,
+      label: "Open tenant",
+    };
+  }
+  if (event.target_kind === "tenant_onboarding" || event.target_kind === "lease") {
+    return { href: `/tenants/${tenantId}`, label: "Open tenant workflow" };
+  }
+  if (event.target_kind === "obligation") {
+    return { href: "/operations", label: "Open work queue" };
+  }
+  return null;
+}
+
+function csvCell(value: string | number | null | undefined) {
+  const text = String(value ?? "");
+  const safeText = /^[=+\-@]/.test(text.trimStart()) ? `'${text}` : text;
+  return `"${safeText.replaceAll('"', '""')}"`;
+}
+
+function slugifyFilename(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+const CORRESPONDENCE_EXPORT_GUARDRAIL =
+  "Review-only export: downloading this file does not send email or SMS, change queue state, refresh providers, mutate tenant data, dispatch providers, write provider history, or fetch document bytes.";
+
+function tenantCorrespondenceCsv(data: CommsTenantCorrespondenceRecord) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Section",
+      "Tenant",
+      "Generated at",
+      "Occurred at",
+      "Event",
+      "Direction",
+      "Channel",
+      "Counterparty",
+      "Subject",
+      "Summary",
+      "Status",
+      "Provider",
+      "Target",
+      "Guardrail",
+    ],
+    ...data.events.map((event) => [
+      "Tenant correspondence",
+      data.tenant_name,
+      data.generated_at,
+      event.occurred_at,
+      correspondenceEventLabel(event),
+      event.direction,
+      event.channel,
+      correspondenceCounterparty(event),
+      event.subject,
+      event.summary,
+      event.status,
+      event.provider,
+      [event.target_kind, event.target_id].filter(Boolean).join(":"),
+      CORRESPONDENCE_EXPORT_GUARDRAIL,
+    ]),
+    ...data.guardrails.map((guardrail) => [
+      "Endpoint guardrail",
+      data.tenant_name,
+      data.generated_at,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      guardrail,
+      "",
+      "",
+      "",
+      CORRESPONDENCE_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Export guardrail",
+      data.tenant_name,
+      data.generated_at,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      CORRESPONDENCE_EXPORT_GUARDRAIL,
+    ],
+  ];
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 function shortId(value: string | null | undefined) {
   return value ? value.slice(0, 8) : null;
 }
@@ -1398,6 +1550,12 @@ function TenantDetail() {
     enabled: Boolean(tenantId),
   });
 
+  const correspondenceQuery = useQuery({
+    queryKey: ["tenant-correspondence", tenantId],
+    queryFn: () => getTenantCommsCorrespondence(tenantId),
+    enabled: Boolean(tenantId),
+  });
+
   const portalAccountsQuery = useQuery({
     queryKey: ["tenant-portal-accounts", tenantId],
     queryFn: () => listTenantPortalAccounts(tenantId),
@@ -1456,6 +1614,7 @@ function TenantDetail() {
   );
 
   const tenantDocuments = documentsQuery.data ?? [];
+  const correspondenceEvents = correspondenceQuery.data?.events ?? [];
   const tenantReviewedChanges = tenantDetail?.reviewed_changes ?? [];
   const pendingContactRequests = tenantReviewedChanges.filter(
     (entry) =>
@@ -1958,6 +2117,20 @@ function TenantDetail() {
   function submitDocument(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     uploadDocumentMutation.mutate();
+  }
+
+  function downloadCorrespondenceCsv() {
+    const data = correspondenceQuery.data;
+    if (!data) {
+      return;
+    }
+    const filenameName = slugifyFilename(data.tenant_name) || tenantId;
+    saveBlob(
+      new Blob([tenantCorrespondenceCsv(data)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      `tenant-correspondence-${filenameName}.csv`,
+    );
   }
 
   if (tenantQuery.isLoading) {
@@ -3331,16 +3504,29 @@ function TenantDetail() {
                           </li>
                         ))}
                       </ol>
-                      <details className="group">
-                        <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
-                          Delivery detail
-                          <ChevronDown
-                            size={12}
-                            className="transition group-open:rotate-180"
-                          />
-                        </summary>
-                        <div className="mt-3 grid gap-3">{providerDetail}</div>
-                      </details>
+                      <div className="md:hidden">
+                        <details
+                          className="group"
+                          data-testid="mobile-provider-detail"
+                        >
+                          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+                            Provider detail
+                            <ChevronDown
+                              size={12}
+                              className="transition group-open:rotate-180"
+                            />
+                          </summary>
+                          <div className="mt-3 grid gap-3">
+                            {providerDetail}
+                          </div>
+                        </details>
+                      </div>
+                      <div
+                        className="hidden gap-3 md:grid"
+                        data-testid="desktop-provider-detail"
+                      >
+                        {providerDetail}
+                      </div>
                       {leaseAgreement ? (
                         <div className="grid gap-3 border-t border-border pt-4 text-xs">
                           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -4063,6 +4249,120 @@ function TenantDetail() {
               </div>
             </SectionPanel>
 
+            <SectionPanel
+              title="Correspondence"
+              icon={<MessageSquare size={17} />}
+              actions={
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <StatusBadge tone="neutral">
+                    {correspondenceEvents.length} events
+                  </StatusBadge>
+                  <SecondaryButton
+                    type="button"
+                    className="h-8"
+                    onClick={downloadCorrespondenceCsv}
+                    disabled={
+                      !correspondenceQuery.data ||
+                      correspondenceEvents.length === 0
+                    }
+                  >
+                    <Download size={14} />
+                    Download correspondence CSV
+                  </SecondaryButton>
+                </div>
+              }
+            >
+              <div className="divide-y divide-border">
+                {correspondenceQuery.isLoading ? (
+                  <SkeletonRows rows={2} />
+                ) : null}
+                {correspondenceEvents.slice(0, 5).map((event) => {
+                  const targetLink = correspondenceTargetLink(event, tenantId);
+                  return (
+                    <div
+                      key={event.id}
+                      className="grid gap-2 p-4 text-sm"
+                      data-testid="correspondence-event"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium">
+                              {correspondenceEventLabel(event)}
+                            </span>
+                            <StatusBadge tone={correspondenceEventTone(event)}>
+                              {event.direction}
+                            </StatusBadge>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {formatDateTime(event.occurred_at)} -{" "}
+                            {event.channel ?? "channel unknown"} -{" "}
+                            {correspondenceCounterparty(event)}
+                          </div>
+                        </div>
+                        {event.provider ? (
+                          <StatusBadge tone="neutral">
+                            {event.provider}
+                          </StatusBadge>
+                        ) : null}
+                      </div>
+                      {event.subject ? (
+                        <div className="truncate font-medium">
+                          {event.subject}
+                        </div>
+                      ) : null}
+                      {event.summary ? (
+                        <div className="text-xs text-muted-foreground">
+                          {event.summary}
+                        </div>
+                      ) : null}
+                      {event.body_preview ? (
+                        <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                          {event.body_preview}
+                        </div>
+                      ) : null}
+                      {targetLink ? (
+                        <div>
+                          <Link
+                            href={targetLink.href}
+                            className="inline-flex min-h-8 items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover"
+                          >
+                            <Link2 size={13} />
+                            {targetLink.label}
+                          </Link>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {!correspondenceQuery.isLoading &&
+                correspondenceEvents.length === 0 ? (
+                  <EmptyState
+                    icon={<MessageSquare size={18} />}
+                    title="No correspondence yet"
+                    description="Inbound messages and reviewed comms receipts will appear here once they are stored."
+                  />
+                ) : null}
+                {correspondenceQuery.data?.guardrails.length ? (
+                  <div className="grid gap-2 p-4 text-xs text-muted-foreground">
+                    {correspondenceQuery.data.guardrails.map((guardrail) => (
+                      <div
+                        key={guardrail}
+                        className="rounded-md border border-border bg-muted/25 px-3 py-2"
+                      >
+                        {guardrail}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {correspondenceQuery.error ? (
+                  <p className="p-4 text-sm text-danger">
+                    {friendlyError(correspondenceQuery.error)}
+                  </p>
+                ) : null}
+              </div>
+            </SectionPanel>
+
             <EvidenceSourceTrail
               title="Source history"
               description="Reviewed onboarding changes, document provenance, and public enrichment citations."
@@ -4094,6 +4394,7 @@ function TenantDetail() {
         leasesQuery.error ||
         onboardingQuery.error ||
         documentsQuery.error ||
+        correspondenceQuery.error ||
         documentIntakesQuery.error ? (
           <p className="text-sm text-danger">
             {friendlyError(
@@ -4103,6 +4404,7 @@ function TenantDetail() {
                 leasesQuery.error ??
                 onboardingQuery.error ??
                 documentsQuery.error ??
+                correspondenceQuery.error ??
                 documentIntakesQuery.error,
             )}
           </p>

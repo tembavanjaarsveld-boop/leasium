@@ -17,6 +17,7 @@ from stewart.core.models import (
     InvoiceDraft,
     Lease,
     LeaseIntake,
+    MaintenanceWorkOrder,
     Obligation,
     Property,
     RentChargeRule,
@@ -32,6 +33,14 @@ def _entity_id(session: Session) -> str:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
     return str(entity.id)
+
+
+def _organisation_id(session: Session) -> str:
+    organisation_id = session.scalar(
+        select(Entity.organisation_id).where(Entity.name == "SKJ Property Pty Ltd")
+    )
+    assert organisation_id is not None
+    return str(organisation_id)
 
 
 def _lease_scope(client: TestClient, session: Session) -> dict[str, str]:
@@ -267,6 +276,51 @@ def _fake_invoice_extraction() -> dict[str, Any]:
                 "action": "prepare_billing_review",
                 "target": "billing",
                 "summary": "Review the invoice amount before creating billing work.",
+                "confidence": 0.82,
+            }
+        ],
+    }
+
+
+def _fake_inspection_extraction(photo_document_id: str | None = None) -> dict[str, Any]:
+    return {
+        **_fake_extraction(),
+        "document_type": "inspection_report",
+        "summary": "Inspection report with two reviewed maintenance findings.",
+        "inspection_findings": [
+            {
+                "title": "Repair leaking tap",
+                "description": "Kitchen tap is leaking at the mixer.",
+                "priority": "high",
+                "due_date": "2026-10-02",
+                "location": "Kitchen",
+                "category": "plumbing",
+                "confidence": 0.88,
+                "source_hint": "Inspection item 4",
+                "warnings": [],
+                "photo_document_ids": [photo_document_id] if photo_document_id else [],
+            },
+            {
+                "title": "Replace cracked tile",
+                "description": "Cracked tile near the entry should be made safe.",
+                "priority": "normal",
+                "due_date": None,
+                "location": "Entry",
+                "category": "structural",
+                "confidence": 0.72,
+                "source_hint": "Inspection item 7",
+                "warnings": ["Confirm whether this is tenant damage."],
+                "photo_document_ids": [],
+            },
+        ],
+        "obligations": [],
+        "warnings": [],
+        "missing_information": [],
+        "proposed_actions": [
+            {
+                "action": "prepare_maintenance_work_orders",
+                "target": "operations",
+                "summary": "Review findings before creating work orders.",
                 "confidence": 0.82,
             }
         ],
@@ -1439,6 +1493,174 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert document.category == "invoice"
     assert str(document.property_id) == scope["property_id"]
     assert document.document_metadata["applied_document_type"] == "invoice_admin"
+
+
+def test_document_intake_apply_inspection_report_creates_work_orders(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    scope = _lease_scope(client, session)
+    entity_id = _entity_id(session)
+    photo = StoredDocument(
+        entity_id=UUID(entity_id),
+        property_id=UUID(scope["property_id"]),
+        tenancy_unit_id=UUID(scope["tenancy_unit_id"]),
+        tenant_id=UUID(scope["tenant_id"]),
+        lease_id=UUID(scope["lease_id"]),
+        filename="inspection-photo.jpg",
+        content_type="image/jpeg",
+        byte_size=12,
+        file_data=b"photo-bytes",
+        category=DocumentCategory.other,
+        notes="Inspection photo",
+        document_metadata={"source": "inspection_report"},
+    )
+    session.add(photo)
+    session.commit()
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        assert filename == "inspection.txt"
+        return _fake_inspection_extraction(str(photo.id)), "resp_inspection_document"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("inspection.txt", b"inspection notes", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+
+    get_response = client.get(f"/api/v1/document-intakes/{intake_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["document_type"] == "inspection_report"
+    assert get_response.json()["extracted_data"]["inspection_findings"][0]["title"] == (
+        "Repair leaking tap"
+    )
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": _fake_inspection_extraction(str(photo.id)),
+            "property_id": scope["property_id"],
+            "tenancy_unit_id": scope["tenancy_unit_id"],
+            "tenant_id": scope["tenant_id"],
+            "lease_id": scope["lease_id"],
+        },
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    applied = body["review_data"]["applied"]
+    assert applied["action"] == "created_inspection_work_orders"
+    assert applied["work_order_count"] == 2
+    assert applied["obligation_count"] == 2
+
+    work_orders = session.scalars(
+        select(MaintenanceWorkOrder).order_by(MaintenanceWorkOrder.created_at)
+    ).all()
+    assert [work_order.title for work_order in work_orders] == [
+        "Repair leaking tap",
+        "Replace cracked tile",
+    ]
+    first = work_orders[0]
+    assert first.priority == "high"
+    assert first.status == "requested"
+    assert str(first.property_id) == scope["property_id"]
+    assert str(first.tenancy_unit_id) == scope["tenancy_unit_id"]
+    assert str(first.tenant_id) == scope["tenant_id"]
+    assert str(first.lease_id) == scope["lease_id"]
+    assert first.source_document_id == UUID(body["document_id"])
+    assert first.document_ids == [UUID(body["document_id"])]
+    assert first.photo_document_ids == [photo.id]
+    assert first.work_order_metadata["document_intake_id"] == intake_id
+    assert first.work_order_metadata["document_type"] == "inspection_report"
+    assert "no contractor dispatch" in first.work_order_metadata["guardrail"]
+
+    intake = session.get(DocumentIntake, UUID(intake_id))
+    assert intake is not None
+    assert intake.status == DocumentIntakeStatus.applied
+    assert intake.document.document_metadata["applied_work_order_ids"] == applied["work_order_ids"]
+
+    work_order_audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.target_table == "maintenance_work_order",
+            AuditAction.target_id == first.id,
+        )
+    )
+    assert work_order_audit is not None
+    assert work_order_audit.tool_name == "smart_intake_apply"
+    assert "no contractor dispatch" in (work_order_audit.tool_output_summary or "")
+
+
+def test_document_intake_apply_inspection_rejects_cross_entity_photo(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _lease_scope(client, session)
+    entity_id = _entity_id(session)
+    other_entity_response = client.post(
+        "/api/v1/entities",
+        json={"organisation_id": _organisation_id(session), "name": "Other Entity"},
+    )
+    assert other_entity_response.status_code == 201
+    photo = StoredDocument(
+        entity_id=UUID(other_entity_response.json()["id"]),
+        filename="other-photo.jpg",
+        content_type="image/jpeg",
+        byte_size=10,
+        file_data=b"other-photo",
+        category=DocumentCategory.other,
+        notes="Other entity photo",
+        document_metadata={},
+    )
+    document = StoredDocument(
+        entity_id=UUID(entity_id),
+        filename="inspection.txt",
+        content_type="text/plain",
+        byte_size=10,
+        file_data=b"inspection",
+        category=DocumentCategory.other,
+        notes="Inspection report",
+        document_metadata={"source": "smart_intake"},
+    )
+    session.add_all([photo, document])
+    session.flush()
+    intake = DocumentIntake(
+        entity_id=UUID(entity_id),
+        document_id=document.id,
+        status=DocumentIntakeStatus.ready_for_review,
+        document_type="inspection_report",
+        summary="Inspection report",
+        confidence=0.8,
+        extracted_data=_fake_inspection_extraction(str(photo.id)),
+        review_data={},
+    )
+    session.add(intake)
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/document-intakes/{intake.id}/apply",
+        json={
+            "review_data": _fake_inspection_extraction(str(photo.id)),
+            "property_id": scope["property_id"],
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Inspection photo documents must belong to the intake entity."
+    )
+    assert session.scalars(select(MaintenanceWorkOrder)).all() == []
 
 
 def test_invoice_sendgrid_receipt_requires_configured_secret(

@@ -35,6 +35,15 @@ test("owner statement preview exposes invoice-level evidence", async ({
   expect(evidenceDownload.suggestedFilename()).toBe(
     "owner-statement-invoice-evidence-2026-05-queen-street-property-trust.csv",
   );
+  const evidenceDownloadPath = await evidenceDownload.path();
+  expect(evidenceDownloadPath).not.toBeNull();
+  const evidenceCsv = await readFile(evidenceDownloadPath!, "utf8");
+  expect(evidenceCsv).toContain('"Owner","Property","Invoice","Title"');
+  expect(evidenceCsv).toContain("Queen Street Property Trust");
+  expect(evidenceCsv).toContain("Queen Street");
+  expect(evidenceCsv).toContain("INV-1001");
+  expect(evidenceCsv).toContain("May rent and outgoings");
+  expect(evidenceCsv).toContain("Local invoice draft");
 
   const invoiceRow = evidence.getByRole("row").filter({ hasText: "INV-1001" });
   await expect(invoiceRow).toContainText("May rent and outgoings");

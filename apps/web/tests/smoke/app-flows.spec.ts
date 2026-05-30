@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
@@ -21,6 +21,37 @@ function watchForbiddenXeroProviderRequests(page: Page) {
     }
   });
   return requests;
+}
+
+function watchForbiddenCommsReadOnlyRequests(page: Page) {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const mutatesLocalComms =
+      request.method() !== "GET" &&
+      (path.startsWith("/api/v1/comms/") ||
+        path.startsWith("/api/v1/documents") ||
+        path.includes("/provider-history") ||
+        path.includes("/provider-dispatch"));
+    const callsProviders =
+      path.includes("/api/v1/sendgrid") ||
+      path.includes("/api/v1/twilio") ||
+      path.includes("/provider-refresh");
+    if (mutatesLocalComms || callsProviders) {
+      requests.push(`${request.method()} ${url.toString()}`);
+    }
+  });
+  return requests;
+}
+
+async function expectTouchTarget(locator: Locator, minSize = 44) {
+  await locator.scrollIntoViewIfNeeded();
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+  expect(box.width).toBeGreaterThanOrEqual(minSize);
+  expect(box.height).toBeGreaterThanOrEqual(minSize);
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
@@ -78,8 +109,24 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByText("Insurance certificate renewal").first(),
   ).toBeVisible();
+  const workspaceToolbar = page.getByRole("toolbar", {
+    name: "Workspace utilities",
+  });
+  await expect(workspaceToolbar).toBeVisible();
+  await expect(workspaceToolbar.getByLabel("Entity")).toHaveValue("entity-1");
   await expect(
-    page.getByRole("toolbar", { name: "Workspace utilities" }),
+    workspaceToolbar.getByRole("button", { name: "Open search" }),
+  ).toBeVisible();
+  await expect(
+    workspaceToolbar.getByRole("button", {
+      name: "Show keyboard shortcuts",
+    }),
+  ).toBeVisible();
+  await expect(
+    workspaceToolbar.getByRole("link", { name: "Open notifications" }),
+  ).toBeVisible();
+  await expect(
+    workspaceToolbar.getByRole("button", { name: /Appearance:/ }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Open search" }).click();
@@ -243,6 +290,98 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(page.getByText("Review only. This does not send")).toBeVisible();
 });
 
+test("mobile header keeps utility touch targets at least 44px", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Open navigation" }),
+  );
+
+  const workspaceToolbar = page.getByRole("toolbar", {
+    name: "Workspace utilities",
+  });
+  await expect(workspaceToolbar).toBeVisible();
+  await expectTouchTarget(
+    workspaceToolbar.getByRole("button", { name: "Open search" }),
+  );
+  await expectTouchTarget(
+    workspaceToolbar.getByRole("link", { name: "Open notifications" }),
+  );
+  await expectTouchTarget(
+    workspaceToolbar.getByRole("button", { name: /Appearance:/ }),
+  );
+  await expect(
+    workspaceToolbar.getByRole("button", {
+      name: "Show keyboard shortcuts",
+    }),
+  ).toBeHidden();
+});
+
+test("billing readiness mobile actions keep 44px touch targets", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/billing-readiness");
+
+  await expect(
+    page.getByRole("heading", { name: "Billing Readiness" }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Month-end checklist" }),
+  ).toBeVisible();
+
+  await expectTouchTarget(page.getByRole("link", { name: "Open recovery" }));
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Review payments" }).first(),
+  );
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Open statements" }).first(),
+  );
+  const staleDispatchRow = page.getByRole("row").filter({
+    hasText: "INV-1001",
+  });
+  await expectTouchTarget(
+    staleDispatchRow.getByRole("link", { name: "Preview" }),
+  );
+  await expectTouchTarget(staleDispatchRow.getByRole("link", { name: "PDF" }));
+});
+
+test("settings mobile tabs keep 44px touch targets", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/settings");
+
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expectTouchTarget(page.getByRole("tab", { name: "Security" }));
+  await expectTouchTarget(page.getByRole("tab", { name: "Organisation" }));
+  await expectTouchTarget(page.getByRole("tab", { name: "Xero" }));
+});
+
+test("notifications mobile actions keep intended touch targets", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/notifications");
+
+  await expect(
+    page.getByRole("heading", { name: "Notifications" }),
+  ).toBeVisible();
+  await expectTouchTarget(page.getByRole("button", { name: /^All 2$/ }), 40);
+  await expectTouchTarget(
+    page.getByRole("button", { name: /Attention 1/ }),
+    40,
+  );
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Open work" }).first(),
+  );
+  await expectTouchTarget(
+    page.getByRole("link", { exact: true, name: "Open Work" }),
+  );
+});
+
 test("dashboard Leasium AI panel answers with cited record", async ({
   page,
 }) => {
@@ -284,7 +423,7 @@ test("Properties multi-view toggles between table and board", async ({
   await page.getByRole("tab", { name: "Board" }).click();
   // Switching to board hides the table headers; columns rendered by
   // occupancy bucket appear instead.
-  await expect(page.locator("table")).toHaveCount(0);
+  await expect(page.locator("table").first()).toBeHidden();
   await expect(page.getByText("Queen Street Retail Centre")).toBeVisible();
   await expect(page.getByText("No units").first()).toBeVisible();
   await expect(page).toHaveURL(/[?&]view=board/);
@@ -296,6 +435,7 @@ test("Properties multi-view toggles between table and board", async ({
 test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/inbox");
 
   await expect(page.getByRole("heading", { name: "AI inbox" })).toBeVisible();
@@ -306,9 +446,9 @@ test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
   await expect(
     page.getByText("Tenant reports a slow kitchen tap leak."),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /Take it from here/ }),
-  ).toBeVisible();
+  const handoffLink = page.getByRole("link", { name: /Take it from here/ });
+  await expect(handoffLink).toBeVisible();
+  await expectTouchTarget(handoffLink);
 });
 
 test("AI inbox promotes a classified message into a maintenance draft", async ({
@@ -343,6 +483,8 @@ test("AI inbox promotes a classified message into a maintenance draft", async ({
 test("comms queue approves inbound SMS with a phone recipient", async ({
   page,
 }) => {
+  const forbiddenOutboundLogRequests =
+    watchForbiddenCommsReadOnlyRequests(page);
   await page.setViewportSize({ width: 900, height: 900 });
   await page.goto("/comms");
 
@@ -351,7 +493,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("link", {
-      name: "Work, 6 drafts in the comms queue, 3 urgent",
+      name: "Work, 9 drafts in the comms queue, 3 urgent",
     }),
   ).toBeVisible();
   await expect(
@@ -362,19 +504,162 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     page.getByRole("button", { name: "Refresh queue" }),
   ).toBeEnabled();
   await expect(
-    page.getByRole("group", { name: "Remaining now: 6" }),
+    page.getByRole("group", { name: "Remaining now: 9" }),
   ).toBeVisible();
   await expect(
     page.getByRole("group", { name: "Settled now: 0" }),
   ).toBeVisible();
   await expect(page.getByRole("group", { name: "Urgent: 3" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "All drafts 6" })).toHaveAttribute(
+  const outboundLogPanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Outbound log" }) });
+  await expect(outboundLogPanel).toBeVisible();
+  await expect(
+    outboundLogPanel.getByText("6 dispatch receipts", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel.getByRole("tab", { name: "All receipts 6" }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    outboundLogPanel.getByRole("tab", { name: "Needs attention 1" }),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel.getByRole("tab", { name: "Email 5" }),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel.getByRole("tab", { name: "SMS 1" }),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel.getByText("Showing all 6 dispatch receipts."),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel.getByText("comms draft sms failed"),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel
+      .getByTestId("outbound-log-event")
+      .filter({ hasText: "comms draft sms failed" })
+      .getByText("Twilio SMS"),
+  ).toBeVisible();
+  await expect(outboundLogPanel.getByText("+61400111222")).toBeVisible();
+  await expect(
+    outboundLogPanel.getByText("contractor update email queued"),
+  ).toBeVisible();
+  const maintenanceOutboundLogRow = outboundLogPanel
+    .getByTestId("outbound-log-event")
+    .filter({ hasText: "contractor update email queued" });
+  await expect(
+    maintenanceOutboundLogRow.getByRole("link", { name: "Open work order" }),
+  ).toHaveAttribute("href", "/operations/maintenance/work%2Forder%3F1");
+  await expect(
+    outboundLogPanel.getByRole("link", { name: "Open arrears case" }),
+  ).toHaveAttribute("href", "/operations?tab=arrears");
+  const lifecycleOutboundLogRow = outboundLogPanel
+    .getByTestId("outbound-log-event")
+    .filter({ hasText: "tenant lifecycle email queued" });
+  await expect(
+    lifecycleOutboundLogRow.getByRole("link", {
+      name: "Open tenant workflow",
+    }),
+  ).toHaveAttribute("href", "/tenants/tenant-1");
+  const complianceOutboundLogRow = outboundLogPanel
+    .getByTestId("outbound-log-event")
+    .filter({ hasText: "compliance email queued" });
+  await expect(
+    complianceOutboundLogRow.getByRole("link", { name: "Open work queue" }),
+  ).toHaveAttribute("href", "/operations");
+  const leaseOutboundLogRow = outboundLogPanel
+    .getByTestId("outbound-log-event")
+    .filter({ hasText: "rent review email queued" });
+  await expect(
+    leaseOutboundLogRow.getByRole("link", { name: "Open tenant workflow" }),
+  ).toHaveAttribute("href", "/tenants/tenant-1");
+  await expect(
+    outboundLogPanel.getByText("Opening this log does not send email"),
+  ).toBeVisible();
+  const outboundLogDownloadPromise = page.waitForEvent("download");
+  await outboundLogPanel
+    .getByRole("button", { name: "Download outbound log CSV" })
+    .click();
+  const outboundLogDownload = await outboundLogDownloadPromise;
+  expect(outboundLogDownload.suggestedFilename()).toBe(
+    "comms-outbound-log-2026-05-27.csv",
+  );
+  const outboundLogDownloadPath = await outboundLogDownload.path();
+  expect(outboundLogDownloadPath).not.toBeNull();
+  const outboundLogCsv = await readFile(outboundLogDownloadPath!, "utf8");
+  expect(outboundLogCsv).toContain("Outbound log");
+  expect(outboundLogCsv).toContain("comms draft sms failed");
+  expect(outboundLogCsv).toContain("contractor update email queued");
+  expect(outboundLogCsv).toContain("maintenance_work_order:work/order?1");
+  expect(outboundLogCsv).toContain(
+    "\"'=HYPERLINK(\"\"https://example.invalid\"\",\"\"Cool Air\"\")\"",
+  );
+  expect(outboundLogCsv).toContain(
+    "Read-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, or refresh provider state.",
+  );
+  await outboundLogPanel
+    .getByRole("tab", { name: "Needs attention 1" })
+    .click();
+  await expect(
+    outboundLogPanel.getByText(
+      "Showing 1 of 6 dispatch receipts in Needs attention.",
+    ),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel.getByText("comms draft sms failed"),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel.getByText("contractor update email queued"),
+  ).not.toBeVisible();
+  const filteredOutboundLogDownloadPromise = page.waitForEvent("download");
+  await outboundLogPanel
+    .getByRole("button", { name: "Download outbound log CSV" })
+    .click();
+  const filteredOutboundLogDownload =
+    await filteredOutboundLogDownloadPromise;
+  const filteredOutboundLogDownloadPath =
+    await filteredOutboundLogDownload.path();
+  expect(filteredOutboundLogDownloadPath).not.toBeNull();
+  const filteredOutboundLogCsv = await readFile(
+    filteredOutboundLogDownloadPath!,
+    "utf8",
+  );
+  expect(filteredOutboundLogCsv).toContain("Needs attention dispatch receipts");
+  expect(filteredOutboundLogCsv).toContain("1 of 6 receipts");
+  expect(filteredOutboundLogCsv).toContain("comms draft sms failed");
+  expect(filteredOutboundLogCsv).not.toContain(
+    "contractor update email queued",
+  );
+  await outboundLogPanel.getByRole("tab", { name: "Email 5" }).click();
+  await expect(
+    outboundLogPanel.getByText("Showing 5 of 6 dispatch receipts in Email."),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel.getByText("contractor update email queued"),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel.getByText("comms draft sms failed"),
+  ).not.toBeVisible();
+  await outboundLogPanel.getByRole("tab", { name: "SMS 1" }).click();
+  await expect(
+    outboundLogPanel.getByText("Showing 1 of 6 dispatch receipts in SMS."),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel.getByText("comms draft sms failed"),
+  ).toBeVisible();
+  await expect(
+    outboundLogPanel.getByText("contractor update email queued"),
+  ).not.toBeVisible();
+  await outboundLogPanel.getByRole("tab", { name: "All receipts 6" }).click();
+  expect(forbiddenOutboundLogRequests).toEqual([]);
+  await expect(page.getByRole("tab", { name: "All drafts 9" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
-  await expect(page.getByText("Showing all 6 drafts.")).toBeVisible();
+  await expect(page.getByText("Showing all 9 drafts.")).toBeVisible();
   await expect(
-    page.getByText("6 drafts remaining this session."),
+    page.getByText("9 drafts remaining this session."),
   ).toBeVisible();
   const commsReviewDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download review CSV" }).click();
@@ -387,8 +672,16 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   const commsReviewCsv = await readFile(commsReviewDownloadPath!, "utf8");
   expect(commsReviewCsv).toContain("Inbound SMS");
   expect(commsReviewCsv).toContain("Inbound email");
+  expect(commsReviewCsv).toContain("Compliance reminder");
+  expect(commsReviewCsv).toContain("Annual fire safety certificate");
   expect(commsReviewCsv).toContain("Rent review");
   expect(commsReviewCsv).toContain("Tenant lifecycle");
+  expect(commsReviewCsv).toContain("Contractor forward");
+  expect(commsReviewCsv).toContain("Tenant forward");
+  expect(commsReviewCsv).toContain(
+    "Tenant says the front counter unit is still leaking.",
+  );
+  expect(commsReviewCsv).toContain("Contractor can attend tomorrow morning.");
   expect(commsReviewCsv).toContain("Twilio SMS");
   expect(commsReviewCsv).toContain("SendGrid email");
   expect(commsReviewCsv).toContain("+61400111222");
@@ -408,22 +701,50 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     "Review-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, or refresh provider state.",
   );
 
-  const smsCard = page.locator("section").filter({ hasText: "Inbound SMS" });
+  const smsCard = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Inbound SMS" }) });
   const emailCard = page
     .locator("section")
     .filter({ hasText: "Inbound email" })
     .first();
   await expect(smsCard).toBeVisible();
   await expect(emailCard).toBeVisible();
+  const contractorForwardCard = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Contractor forward" }) })
+    .first();
+  await page.getByRole("tab", { name: "Contractor forward 1" }).click();
+  await expect(
+    page.getByText("Showing 1 of 9 drafts in Contractor forward."),
+  ).toBeVisible();
+  await expect(contractorForwardCard).toBeVisible();
+  await expect(
+    contractorForwardCard.getByText(
+      "reviewed forward to contractor from latest tenant-visible activity",
+    ),
+  ).toBeVisible();
+  await expect(contractorForwardCard.getByLabel("Email recipient")).toHaveValue(
+    "service@coolair.example",
+  );
+  await expect(contractorForwardCard.getByLabel("Body")).toHaveValue(
+    "Hi Cool Air Services,\n\nPlease note the latest tenant-facing update for Air conditioning fault:\nTenant says the front counter unit is still leaking.\n\nPlease confirm the next action or timing before we send anything further.",
+  );
+  await expect(
+    contractorForwardCard.getByRole("link", { name: "Open work order" }),
+  ).toHaveAttribute("href", "/operations/maintenance/work-order-1");
+  await expect(
+    contractorForwardCard.getByRole("button", { name: "Approve & send" }),
+  ).toBeEnabled();
   await page.getByRole("tab", { name: "Tenant lifecycle 3" }).click();
   await expect(
-    page.getByText("Showing 3 of 6 drafts in Tenant lifecycle."),
+    page.getByText("Showing 3 of 9 drafts in Tenant lifecycle."),
   ).toBeVisible();
   await expect(smsCard).not.toBeVisible();
   await expect(emailCard).not.toBeVisible();
   const lifecycleCard = page
     .locator("section")
-    .filter({ hasText: "Tenant lifecycle" })
+    .filter({ has: page.getByRole("heading", { name: "Tenant lifecycle" }) })
     .first();
   await expect(lifecycleCard).toBeVisible();
   await expect(
@@ -488,12 +809,12 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   ).toHaveAttribute("href", "/tenants/tenant-1");
   await page.getByRole("tab", { name: "Rent review 1" }).click();
   await expect(
-    page.getByText("Showing 1 of 6 drafts in Rent review."),
+    page.getByText("Showing 1 of 9 drafts in Rent review."),
   ).toBeVisible();
   await expect(smsCard).not.toBeVisible();
   const rentReviewCard = page
     .locator("section")
-    .filter({ hasText: "Rent review" })
+    .filter({ has: page.getByRole("heading", { name: "Rent review" }) })
     .first();
   await expect(rentReviewCard).toBeVisible();
   await rentReviewCard.getByRole("button", { name: "Dismiss" }).click();
@@ -501,13 +822,13 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     "Draft deferred until 3 June 2026",
   );
   await expect(
-    page.getByRole("group", { name: "Remaining now: 5" }),
+    page.getByRole("group", { name: "Remaining now: 8" }),
   ).toBeVisible();
   await expect(
     page.getByRole("group", { name: "Settled now: 1" }),
   ).toBeVisible();
   await expect(
-    page.getByText("5 drafts remaining, 1 settled this session."),
+    page.getByText("8 drafts remaining, 1 settled this session."),
   ).toBeVisible();
   await expect(
     rentReviewCard.getByText("Deferred", { exact: true }),
@@ -521,7 +842,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
 
   await page.getByRole("tab", { name: "Inbound SMS 1" }).click();
   await expect(
-    page.getByText("Showing 1 of 6 drafts in Inbound SMS."),
+    page.getByText("Showing 1 of 9 drafts in Inbound SMS."),
   ).toBeVisible();
   await expect(smsCard).toBeVisible();
   await expect(
@@ -584,7 +905,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
 
   await page.getByRole("tab", { name: "Inbound email 1" }).click();
   await expect(
-    page.getByText("Showing 1 of 6 drafts in Inbound email."),
+    page.getByText("Showing 1 of 9 drafts in Inbound email."),
   ).toBeVisible();
   await expect(emailCard).toBeVisible();
   await expect(
@@ -613,13 +934,13 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     smsCard.getByText("Twilio Messaging is not configured yet"),
   ).toBeVisible();
   await expect(
-    page.getByRole("group", { name: "Remaining now: 4" }),
+    page.getByRole("group", { name: "Remaining now: 7" }),
   ).toBeVisible();
   await expect(
     page.getByRole("group", { name: "Settled now: 2" }),
   ).toBeVisible();
   await expect(
-    page.getByText("4 drafts remaining, 2 settled this session."),
+    page.getByText("7 drafts remaining, 2 settled this session."),
   ).toBeVisible();
   await expect(
     smsCard.getByText(
@@ -628,6 +949,49 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   ).toBeVisible();
   await expect(smsCard.getByLabel("Phone recipient")).toBeDisabled();
   await expect(smsCard.getByLabel("Body")).toBeDisabled();
+
+  await page.getByRole("tab", { name: "Compliance reminder 1" }).click();
+  await expect(
+    page.getByText("Showing 1 of 9 drafts in Compliance reminder."),
+  ).toBeVisible();
+  const complianceCard = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Compliance reminder" }) })
+    .first();
+  await expect(complianceCard).toBeVisible();
+  await expect(
+    complianceCard.getByText("Annual fire safety certificate"),
+  ).toBeVisible();
+  await expect(complianceCard.getByLabel("Email recipient")).toHaveValue(
+    "compliance@bright.example",
+  );
+  await expect(
+    complianceCard.getByRole("link", { name: "Upload via Smart Intake" }),
+  ).toHaveAttribute("href", "/intake");
+  const evidenceFileChooserPromise = page.waitForEvent("filechooser");
+  await complianceCard
+    .getByRole("button", { name: "Or attach a file manually" })
+    .click();
+  const evidenceFileChooser = await evidenceFileChooserPromise;
+  await evidenceFileChooser.setFiles({
+    name: "fire-safety.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("fire safety evidence"),
+  });
+  await expect(
+    complianceCard.getByText("Uploaded fire-safety.pdf"),
+  ).toBeVisible();
+  await complianceCard.getByRole("button", { name: "Approve & send" }).click();
+  await expect(complianceCard.getByText("Email send skipped")).toBeVisible();
+  await expect(
+    complianceCard.getByText("SendGrid email to compliance@bright.example."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: "Remaining now: 6" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: "Settled now: 3" }),
+  ).toBeVisible();
 });
 
 test("AI inbox vendor classification offers a contractor picker", async ({
@@ -825,6 +1189,39 @@ test("tenants table inline-edits contact email", async ({ page }) => {
       .filter({ hasText: "inline.edit@example.com" })
       .first(),
   ).toBeVisible();
+});
+
+test("tenant list opens the quick-view detail drawer", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tenants");
+
+  await expect(page.locator("table").first()).toBeHidden();
+  await expect(
+    page.getByRole("heading", { name: "Onboarding command center" }),
+  ).toBeVisible();
+  const brightCafeCard = page
+    .getByRole("button")
+    .filter({ hasText: "Bright Cafe (Bright Cafe Pty Ltd)" })
+    .first();
+  await expect(brightCafeCard).toBeVisible();
+  await expect(brightCafeCard).toContainText("mia@example.com");
+  await expect(brightCafeCard).toContainText(/due/i);
+  await brightCafeCard.click();
+
+  const drawer = page.getByRole("dialog", {
+    name: "Bright Cafe (Bright Cafe Pty Ltd)",
+  });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByText("Contact")).toBeVisible();
+  await expect(drawer.getByText("mia@example.com")).toBeVisible();
+  await expect(drawer.getByText("1 active lease")).toBeVisible();
+  await expect(drawer.getByText("Latest onboarding")).toBeVisible();
+  await expect(
+    drawer.getByRole("link", { name: "Open full record" }),
+  ).toHaveAttribute("href", "/tenants/tenant-1");
+
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
 });
 
 test("keyboard cheatsheet lists global and Go-to shortcuts", async ({
@@ -1219,6 +1616,25 @@ test("operations workspace keeps mobile rows compact", async ({ page }) => {
     page.getByRole("heading", { name: "Operations", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expectTouchTarget(page.getByRole("tab", { name: /Queue/ }));
+  await expectTouchTarget(page.getByRole("tab", { name: /Maintenance/ }));
+  await expectTouchTarget(page.getByRole("tab", { name: /Arrears/ }));
+  await expectTouchTarget(
+    page.getByRole("button", { name: /Show all open work/ }),
+    40,
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: /Show unowned work/ }),
+    40,
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: /Show assignment follow-ups/ }),
+    40,
+  );
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Open tenants" }).first(),
+  );
+  await expectTouchTarget(page.getByRole("link", { name: "Review" }).first());
 
   const queueControls = page
     .locator("summary")
@@ -1251,6 +1667,32 @@ test("operations workspace keeps mobile rows compact", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "Open completion review" }).first(),
   ).toBeVisible();
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Open completion review" }).first(),
+  );
+});
+
+test("maintenance detail mobile billing actions keep 44px touch targets", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/operations/maintenance/work-order-1");
+
+  await expect(
+    page.getByRole("heading", { name: "Air conditioning fault" }),
+  ).toBeVisible();
+  await expectTouchTarget(page.getByRole("link", { name: "Operations" }));
+  await page
+    .getByLabel("Linked maintenance invoice")
+    .selectOption("invoice-draft-failed");
+  await page.getByRole("button", { name: "Link" }).click();
+  await expect(page.getByText("Invoice linked")).toBeVisible();
+  await expect(page.getByText("Billing recovery path")).toBeVisible();
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Recover in Billing" }),
+  );
+  await expectTouchTarget(page.getByRole("link", { name: "Preview" }));
+  await expectTouchTarget(page.getByRole("link", { name: "PDF" }));
 });
 
 test("notification center shows work notices and digest receipts", async ({
@@ -1379,6 +1821,17 @@ test("notification center shows work notices and digest receipts", async ({
 });
 
 test("maintenance detail route shows quote evidence", async ({ page }) => {
+  let commsCorrespondenceMutationRequests = 0;
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (
+      request.method() !== "GET" &&
+      (url.pathname.endsWith("/api/v1/comms/dispatch") ||
+        url.pathname.endsWith("/api/v1/comms/dismiss"))
+    ) {
+      commsCorrespondenceMutationRequests += 1;
+    }
+  });
   await page.goto("/operations/maintenance/work-order-1");
 
   await expect(
@@ -1407,6 +1860,57 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByText("Template maintenance_contractor_update v1").first(),
   ).toBeVisible();
+  const workOrderCorrespondencePanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Correspondence" }) });
+  await expect(workOrderCorrespondencePanel).toBeVisible();
+  await expect(
+    workOrderCorrespondencePanel.getByText("3 correspondence events"),
+  ).toBeVisible();
+  await expect(
+    workOrderCorrespondencePanel.getByText("contractor forward email queued"),
+  ).toBeVisible();
+  await expect(
+    workOrderCorrespondencePanel.getByText("tenant forward sms failed"),
+  ).toBeVisible();
+  await expect(workOrderCorrespondencePanel.getByText("SendGrid email")).toBeVisible();
+  await expect(workOrderCorrespondencePanel.getByText("Twilio SMS")).toBeVisible();
+  await expect(workOrderCorrespondencePanel.getByText("Internal")).toBeVisible();
+  await expect(
+    workOrderCorrespondencePanel.getByRole("link", { name: "Open Comms queue" }),
+  ).toHaveAttribute("href", "/comms");
+  await expect(
+    workOrderCorrespondencePanel.getByRole("link", { name: "Open tenant" }),
+  ).toHaveAttribute("href", "/tenants/tenant-1");
+  await expect(
+    workOrderCorrespondencePanel.getByText("Opening this panel does not send email"),
+  ).toBeVisible();
+  const workOrderCorrespondenceDownloadPromise = page.waitForEvent("download");
+  await workOrderCorrespondencePanel
+    .getByRole("button", { name: "Download correspondence CSV" })
+    .click();
+  const workOrderCorrespondenceDownload =
+    await workOrderCorrespondenceDownloadPromise;
+  expect(workOrderCorrespondenceDownload.suggestedFilename()).toBe(
+    "maintenance-correspondence-work-order-1.csv",
+  );
+  const workOrderCorrespondencePath =
+    await workOrderCorrespondenceDownload.path();
+  expect(workOrderCorrespondencePath).not.toBeNull();
+  const workOrderCorrespondenceCsv = await readFile(
+    workOrderCorrespondencePath!,
+    "utf8",
+  );
+  expect(workOrderCorrespondenceCsv).toContain("maintenance_work_order:work-order-1");
+  expect(workOrderCorrespondenceCsv).toContain("maintenance_contractor_forward");
+  expect(workOrderCorrespondenceCsv).toContain("maintenance_tenant_forward");
+  expect(workOrderCorrespondenceCsv).toContain(
+    "\"'=HYPERLINK(\"\"https://example.invalid\"\",\"\"Cool Air\"\")\"",
+  );
+  expect(workOrderCorrespondenceCsv).toContain(
+    "Read-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, refresh providers, or mutate maintenance records.",
+  );
+  expect(commsCorrespondenceMutationRequests).toBe(0);
   await page
     .getByRole("textbox", { name: "Operational note" })
     .fill(
@@ -1761,6 +2265,42 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("maintenance detail AI classification suggests and applies a contractor", async ({
+  page,
+}) => {
+  await page.goto("/operations/maintenance/work-order-1");
+
+  await expect(
+    page.getByRole("heading", { name: "Air conditioning fault" }),
+  ).toBeVisible();
+  await expect(page.getByText("AI classification")).toBeVisible();
+  await expect(
+    page.getByText("Run the AI categoriser to classify this work order"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Classify with AI" }).click();
+
+  await expect(page.getByText(/hvac.*82%/i)).toBeVisible();
+  await expect(page.getByText("Same-day")).toBeVisible();
+  await expect(
+    page.getByText(
+      "HVAC issue affecting tenant trading; dispatch a preferred HVAC contractor.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("Suggested contractor")).toBeVisible();
+  await expect(page.getByText("Brisbane HVAC Response")).toBeVisible();
+  await expect(page.getByText("hvac@contractors.example")).toBeVisible();
+  await expect(
+    page.getByText("Confirm rooftop access with tenant."),
+  ).toBeVisible();
+  await expect(page.getByText("AI never dispatches anything")).toBeVisible();
+
+  await page.getByRole("button", { name: "Apply to contractor" }).click();
+  await expect(page.getByText("Applied")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Apply to contractor" }),
+  ).toHaveCount(0);
+});
+
 test("spreadsheet intake review supports bulk approval controls", async ({
   page,
 }) => {
@@ -1848,6 +2388,148 @@ test("tenant workspace supports search and the add tenant form", async ({
   ).toBeVisible();
   await expect(page.getByRole("combobox", { name: /^Property/ })).toBeVisible();
   await expect(page.getByRole("combobox", { name: /^Unit/ })).toBeVisible();
+});
+
+test("tenant send invite adapts unit picker before creating records", async ({
+  page,
+}) => {
+  let createdUnitPayload: unknown = null;
+  let portalInviteRequested = false;
+
+  await page.route("**/api/v1/tenancy-units", async (route) => {
+    if (route.request().method() === "POST") {
+      createdUnitPayload = route.request().postDataJSON();
+    }
+    await route.fallback();
+  });
+  await page.route(
+    "**/api/v1/tenant-onboarding/*/send-portal-invite",
+    async (route) => {
+      if (route.request().method() === "POST") {
+        portalInviteRequested = true;
+      }
+      await route.fallback();
+    },
+  );
+
+  await page.goto("/tenants");
+  await page.getByRole("button", { name: "Send invite" }).first().click();
+
+  await page
+    .getByRole("combobox", { name: /^Property/ })
+    .selectOption("property-1");
+  await expect(page.getByText("Shop 3")).toBeVisible();
+
+  await page
+    .getByRole("combobox", { name: /^Property/ })
+    .selectOption("property-3");
+  await expect(page.getByText("No sub-units on this property")).toBeVisible();
+  await expect(page.getByText("Main premises")).toBeVisible();
+  await expect(page.getByRole("combobox", { name: /^Unit/ })).toHaveCount(0);
+
+  await page.getByLabel("Tenant name").fill("New Studio Pty Ltd");
+  await page
+    .getByRole("textbox", { name: "Contact email" })
+    .fill("newstudio@example.com");
+  await page.getByRole("button", { name: "Send invite" }).last().click();
+
+  await expect(page.getByLabel("Tenant name")).toHaveCount(0);
+  expect(createdUnitPayload).toMatchObject({
+    property_id: "property-3",
+    unit_label: "Main premises",
+  });
+  expect(portalInviteRequested).toBe(true);
+});
+
+test("tenant detail delete soft-deletes and returns to tenant list", async ({
+  page,
+}) => {
+  let deletedTenantPath = "";
+  page.on("dialog", async (dialog) => {
+    expect(dialog.message()).toContain("Delete Bright Cafe");
+    expect(dialog.message()).toContain("1 active lease");
+    await dialog.accept();
+  });
+  await page.route("**/api/v1/tenants/tenant-1", async (route) => {
+    if (route.request().method() === "DELETE") {
+      deletedTenantPath = new URL(route.request().url()).pathname;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/tenants/tenant-1");
+  await page.getByRole("button", { name: "Delete tenant" }).click();
+
+  await expect(page).toHaveURL(/\/tenants$/);
+  expect(deletedTenantPath).toBe("/api/v1/tenants/tenant-1");
+  await expect(
+    page.getByRole("heading", { name: "Tenant workspace" }),
+  ).toBeVisible();
+});
+
+test("tenant detail hides business identity fields for residential leases", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/tenants/tenant-1/detail", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        tenant: {
+          id: "tenant-1",
+          entity_id: "entity-1",
+          legal_name: "Bright Cafe Pty Ltd",
+          trading_name: "Bright Cafe",
+          abn: "34123456789",
+          contact_name: "Mia Hart",
+          contact_email: "mia@example.com",
+          contact_phone: "0400 111 222",
+          billing_email: "accounts@bright.example",
+          notes: "Prefers email follow-up.",
+          metadata: {},
+          created_at: "2026-05-01T00:00:00.000Z",
+          deleted_at: null,
+        },
+        leases: [
+          {
+            lease_id: "lease-1",
+            status: "active",
+            property_id: "property-residential-1",
+            property_name: "River Studio",
+            property_address: "4 River Street, Brisbane City, QLD, 4000",
+            property_type: "residential",
+            tenancy_unit_id: "unit-1",
+            unit_label: "Apartment 4",
+            commencement_date: "2025-07-01",
+            expiry_date: "2028-06-30",
+            annual_rent_cents: 4200000,
+            rent_frequency: "monthly",
+            outgoings_recoverable: false,
+            next_review_date: null,
+          },
+        ],
+        activity: [],
+        reviewed_changes: [],
+      }),
+    });
+  });
+
+  await page.goto("/tenants/tenant-1");
+  await expect(
+    page.getByRole("heading", { name: /Bright Cafe/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Edit profile" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Edit tenant profile" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Legal name")).toBeVisible();
+  await expect(page.getByLabel("Trading as")).toHaveCount(0);
+  await expect(page.getByLabel("ABN")).toHaveCount(0);
 });
 
 test("property workspace shows the evidence source trail", async ({ page }) => {
@@ -1955,6 +2637,58 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
     "href",
     "/intake?entity_id=entity-1&review=intake-insurance-1",
   );
+  await expect(
+    page.getByRole("heading", { name: "Correspondence" }),
+  ).toBeVisible();
+  await expect(page.getByText("Inbound email")).toBeVisible();
+  await expect(page.getByText("Broken tap")).toBeVisible();
+  await expect(
+    page.getByText("Tenant reports a leaking bathroom tap."),
+  ).toBeVisible();
+  await expect(page.getByText("Dispatch").first()).toBeVisible();
+  await expect(page.getByText("comms draft email queued")).toBeVisible();
+  const dispatchCorrespondenceEvent = page
+    .getByTestId("correspondence-event")
+    .filter({ hasText: "comms draft email queued" });
+  await expect(
+    dispatchCorrespondenceEvent.getByRole("link", {
+      name: "Open arrears case",
+    }),
+  ).toHaveAttribute("href", "/operations?tab=arrears");
+  const maintenanceCorrespondenceEvent = page
+    .getByTestId("correspondence-event")
+    .filter({ hasText: "contractor note copied" });
+  await expect(
+    maintenanceCorrespondenceEvent.getByRole("link", {
+      name: "Open work order",
+    }),
+  ).toHaveAttribute("href", "/operations/maintenance/work%2Forder%3F1");
+  await expect(
+    page.getByText("Opening it does not send email, send SMS"),
+  ).toBeVisible();
+  const correspondenceDownloadPromise = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download correspondence CSV" })
+    .click();
+  const correspondenceDownload = await correspondenceDownloadPromise;
+  expect(correspondenceDownload.suggestedFilename()).toBe(
+    "tenant-correspondence-bright-cafe.csv",
+  );
+  const correspondenceDownloadPath = await correspondenceDownload.path();
+  expect(correspondenceDownloadPath).not.toBeNull();
+  const correspondenceCsv = await readFile(correspondenceDownloadPath!, "utf8");
+  expect(correspondenceCsv).toContain("Tenant correspondence");
+  expect(correspondenceCsv).toContain("Inbound email");
+  expect(correspondenceCsv).toContain("Broken tap");
+  expect(correspondenceCsv).toContain("comms draft email queued");
+  expect(correspondenceCsv).toContain("arrears_case:arrears-1");
+  expect(correspondenceCsv).toContain("inbound_message:inbound-message-1");
+  expect(correspondenceCsv).toContain(
+    "\"'=HYPERLINK(\"\"https://example.invalid\"\",\"\"Mia\"\")\"",
+  );
+  expect(correspondenceCsv).toContain(
+    "Review-only export: downloading this file does not send email or SMS",
+  );
   await expect(page.getByText("Applied ABN")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Preview portal" }),
@@ -2021,6 +2755,49 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText("Fresh portal link copied.")).toBeVisible();
 });
 
+test("tenant detail collapses provider detail on mobile only", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tenants/tenant-1");
+
+  await expect(
+    page.getByRole("heading", { name: /Bright Cafe/ }),
+  ).toBeVisible();
+  const providerDetail = page.getByTestId("mobile-provider-detail");
+  const desktopProviderDetail = page.getByTestId("desktop-provider-detail");
+  const providerSummary = providerDetail
+    .locator("summary")
+    .filter({ hasText: "Provider detail" });
+  await expect(providerDetail).toBeVisible();
+  await expect(desktopProviderDetail).toBeHidden();
+  await expectTouchTarget(providerSummary);
+  const remindersLabel = providerDetail
+    .locator("dt")
+    .filter({ hasText: /^Reminders$/ });
+  await expect(remindersLabel).not.toBeVisible();
+  await providerSummary.click();
+  await expect(remindersLabel).toBeVisible();
+  await expect(providerDetail.getByText("Last sent")).toBeVisible();
+
+  await page.setViewportSize({ width: 1024, height: 844 });
+  await page.reload();
+  await expect(page.getByTestId("mobile-provider-detail")).toBeHidden();
+  await expect(page.getByTestId("desktop-provider-detail")).toBeVisible();
+  await expect(
+    page
+      .getByTestId("desktop-provider-detail")
+      .locator("dt")
+      .filter({ hasText: /^Reminders$/ }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("desktop-provider-detail")
+      .locator("dt")
+      .filter({ hasText: /^Last sent$/ }),
+  ).toBeVisible();
+});
+
 test("smart intake shows tenant lease upload match recommendation", async ({
   page,
 }) => {
@@ -2034,7 +2811,9 @@ test("smart intake shows tenant lease upload match recommendation", async ({
   await expect(page.getByText("Lease upload match")).toBeVisible();
   await expect(page.getByText("Matched to scoped lease")).toBeVisible();
   await expect(page.getByText("3 matched fields")).toBeVisible();
-  await expect(page.getByText("No lease status or register data")).toBeVisible();
+  await expect(
+    page.getByText("No lease status or register data"),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Accept match" }).click();
   await expect(page.getByText("Lease match accepted.")).toBeVisible();
@@ -2050,7 +2829,9 @@ test("smart intake labels inbound email attachments in review queue", async ({
   const tenantInsuranceCard = page.getByTestId(
     "review-intake-intake-tenant-upload-insurance-1",
   );
-  await expect(tenantInsuranceCard.getByText("Tenant portal upload")).toBeVisible();
+  await expect(
+    tenantInsuranceCard.getByText("Tenant portal upload"),
+  ).toBeVisible();
   await expect(
     tenantInsuranceCard.getByText("Tenant-uploaded insurance review"),
   ).toBeVisible();
@@ -2072,7 +2853,9 @@ test("smart intake labels inbound email attachments in review queue", async ({
   );
   await expect(inboundCard).toBeHidden();
 
-  await page.getByLabel("Review filter").selectOption("inbound_email_attachment");
+  await page
+    .getByLabel("Review filter")
+    .selectOption("inbound_email_attachment");
   await expect(tenantInsuranceCard).toBeHidden();
   await expect(inboundCard.getByText("Inbound email attachment")).toBeVisible();
   await expect(
@@ -2088,14 +2871,93 @@ test("smart intake labels inbound email attachments in review queue", async ({
     page.getByText("inbound-insurance-certificate.txt").nth(1),
   ).toBeVisible();
   await expect(page.getByText("Policy dates")).toBeVisible();
-  await expect(
-    page.locator("textarea").first(),
-  ).toHaveValue("Inbound insurance certificate expires 2027-04-30.");
+  await expect(page.locator("textarea").first()).toHaveValue(
+    "Inbound insurance certificate expires 2027-04-30.",
+  );
   await expect(
     page.getByText(
       "No tenant data, lease data, provider action, or payment record is changed",
     ),
   ).toBeVisible();
+});
+
+test("smart intake applies inspection findings into work orders", async ({
+  page,
+}) => {
+  const forbiddenProviderRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (
+      url.includes("/contractor-delivery/send-email") ||
+      url.includes("/contractor-delivery/send-sms") ||
+      url.includes("/assignment-notification/send-email") ||
+      url.includes("/assignment-notification/send-sms")
+    ) {
+      forbiddenProviderRequests.push(`${request.method()} ${url}`);
+    }
+  });
+
+  await page.goto("/intake");
+
+  await page.getByLabel("Review filter").selectOption("inspection_report");
+  const inspectionCard = page.getByTestId("review-intake-intake-inspection-1");
+  await expect(
+    inspectionCard.getByText("inspection report", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    inspectionCard.getByText(
+      "Inspection report with two maintenance findings ready for review.",
+    ),
+  ).toBeVisible();
+
+  const smartIntakeDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download queue CSV" }).click();
+  const smartIntakeDownload = await smartIntakeDownloadPromise;
+  expect(smartIntakeDownload.suggestedFilename()).toBe(
+    "smart-intake-review-queue-inspection_report.csv",
+  );
+  const smartIntakeDownloadPath = await smartIntakeDownload.path();
+  expect(smartIntakeDownloadPath).not.toBeNull();
+  const smartIntakeCsv = await readFile(smartIntakeDownloadPath!, "utf8");
+  expect(smartIntakeCsv).toContain("queen-street-inspection.txt");
+  expect(smartIntakeCsv).toContain("inspection report");
+
+  await inspectionCard.getByRole("button", { name: "Review" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Review document" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Work order drafts", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('input[value="Repair leaking tap"]')).toBeVisible();
+  await expect(
+    page.locator('input[value="Kitchen mixer is leaking at the base."]'),
+  ).toBeVisible();
+  await expect(page.locator('input[value="Kitchen"]')).toBeVisible();
+  await expect(page.locator('input[value="plumbing"]')).toBeVisible();
+  await expect(page.locator('input[value="high"]')).toBeVisible();
+  await expect(page.locator('input[value="Inspection item 4"]')).toBeVisible();
+  await expect(
+    page.getByText("Create 2 requested work order drafts"),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Apply reviewed items" }).click();
+  await expect(page.getByText("Document workflow applied.")).toBeVisible();
+  await expect(
+    page.getByText("Created 2 requested work orders."),
+  ).toBeVisible();
+  await expect(page.getByText("Created work orders")).toBeVisible();
+  await expect(
+    page.getByText("No contractor email, SMS, assignment notification"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open Operations" }),
+  ).toHaveAttribute("href", "/operations?tab=maintenance");
+  await page.getByRole("link", { name: "Open Operations" }).click();
+  await expect(page).toHaveURL(/\/operations\?tab=maintenance/);
+  await expect(page.getByText("Repair leaking tap").first()).toBeVisible();
+  expect(forbiddenProviderRequests).toEqual([]);
 });
 
 test("smart intake deep link selects the review entity", async ({ page }) => {
@@ -2111,7 +2973,9 @@ test("smart intake deep link selects the review entity", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Review document" }),
   ).toBeVisible();
-  await expect(page.getByText("tenant-uploaded-insurance.txt").nth(1)).toBeVisible();
+  await expect(
+    page.getByText("tenant-uploaded-insurance.txt").nth(1),
+  ).toBeVisible();
   await expect(
     page.getByText("Tenant portal upload", { exact: true }),
   ).toHaveCount(2);
@@ -2426,7 +3290,9 @@ test("tenant detail sends lease pack after onboarding approval", async ({
   await page.reload();
   await expect(page.getByText("Lease signing complete")).toBeVisible();
   await expect(page.getByText("Activation review ready")).toBeVisible();
-  await expect(page.getByText("Lease status: Pending -> Active.")).toBeVisible();
+  await expect(
+    page.getByText("Lease status: Pending -> Active."),
+  ).toBeVisible();
   await expect(
     page.getByText(
       "DocuSign completion does not activate a lease automatically; review and activate explicitly.",
@@ -2562,7 +3428,9 @@ test("tenant detail labels tenant-uploaded lease activation review", async ({
   await expect(page.getByText("Lease signing complete")).toBeVisible();
   await expect(page.getByText("Tenant upload accepted").first()).toBeVisible();
   await expect(page.getByText("Signed PDF retained")).toBeVisible();
-  await expect(page.getByText("Lease status: Pending -> Active.")).toBeVisible();
+  await expect(
+    page.getByText("Lease status: Pending -> Active."),
+  ).toBeVisible();
   await expect(
     page.getByText(
       "Tenant-uploaded lease match does not activate a lease automatically; review and activate explicitly.",
@@ -2724,7 +3592,8 @@ test("tenant detail blocks onboarding apply until lease questions are resolved",
               questions: [
                 {
                   id: "lease-question-1",
-                  question: "Can you confirm the make-good clause before we sign?",
+                  question:
+                    "Can you confirm the make-good clause before we sign?",
                   clause_reference: "Clause 12",
                   status: payload.status ?? "resolved",
                   answer: payload.answer,
@@ -2812,9 +3681,11 @@ test("tenant detail shows skipped DocuSign setup after lease pack send", async (
   ).toBeVisible();
   await expect(page.getByText("DocuSign not sent").first()).toBeVisible();
   await expect(
-    page.getByText(
-      "DocuSign production endpoints are not configured. Set DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before sending live lease envelopes.",
-    ).last(),
+    page
+      .getByText(
+        "DocuSign production endpoints are not configured. Set DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before sending live lease envelopes.",
+      )
+      .last(),
   ).toBeVisible();
   await expect(page.getByText("DocuSign pending")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send again" })).toBeVisible();
@@ -2947,7 +3818,9 @@ test("tenant detail flags declined DocuSign envelope", async ({ page }) => {
 
   await page.goto("/tenants/tenant-1");
 
-  await expect(page.getByText("DocuSign needs attention").first()).toBeVisible();
+  await expect(
+    page.getByText("DocuSign needs attention").first(),
+  ).toBeVisible();
   await expect(page.getByText("Envelope declined.").first()).toBeVisible();
   await page.getByRole("button", { name: "Send again" }).click();
   await expect(
@@ -3153,6 +4026,166 @@ test("tenant lease page confirms signing", async ({ page }) => {
   ).toHaveAttribute("href", "/tenant-portal");
 });
 
+test("tenant portal operator preview shows contact review, maintenance status, and no compliance checklist", async ({
+  page,
+}) => {
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, {
+    tenantPortalNoComplianceItems: true,
+  });
+
+  await page.goto("/tenants/tenant-1/portal-preview/onboarding-1");
+
+  await expect(
+    page.getByRole("heading", { name: "Tenant portal preview" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Operator preview", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/No tenant portal account is created/),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Maintenance" }),
+  ).toBeVisible();
+
+  const contactPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Tenant contact" }),
+  });
+  await expect(contactPanel).toBeVisible();
+  await expect(
+    contactPanel.getByText("accounts@bright.example", { exact: true }),
+  ).toBeVisible();
+  await expect(contactPanel.getByText("Contact change request")).toBeVisible();
+  await expect(
+    contactPanel.getByText("new.accounts@bright.example"),
+  ).toBeVisible();
+
+  const maintenancePanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Maintenance" }),
+  });
+  await expect(
+    maintenancePanel.getByText(
+      "Waiting for property team approval before work starts.",
+    ),
+  ).toBeVisible();
+
+  const compliancePanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Checklist" }),
+  });
+  await expect(compliancePanel.getByText("Required documents")).toBeVisible();
+  await expect(
+    compliancePanel.getByText(
+      "No required document checklist for this onboarding.",
+    ),
+  ).toBeVisible();
+  await expect(compliancePanel.getByText("Not required")).toBeVisible();
+
+  const previewDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download preview CSV" }).click();
+  const previewDownload = await previewDownloadPromise;
+  const previewDownloadPath = await previewDownload.path();
+  expect(previewDownloadPath).not.toBeNull();
+  const previewCsv = await readFile(previewDownloadPath!, "utf8");
+  expect(previewCsv).toContain("Required documents");
+  expect(previewCsv).toContain("Not required");
+  expect(previewCsv).toContain("No required document checklist");
+  await expect(
+    page.getByRole("button", { name: "Submit for review" }),
+  ).toHaveCount(0);
+});
+
+test("tenant portal operator preview explains every maintenance status", async ({
+  page,
+}) => {
+  const maintenanceMatrixOptions = {
+    tenantPortalMaintenanceStatusMatrix: true,
+  };
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, maintenanceMatrixOptions);
+
+  await page.goto("/tenants/tenant-1/portal-preview/onboarding-1");
+
+  const maintenancePanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Maintenance" }),
+  });
+  await expect(maintenancePanel).toBeVisible();
+  await expect(
+    maintenancePanel.getByText("Submitted to the property team."),
+  ).toBeVisible();
+  await expect(
+    maintenancePanel.getByText(/Reviewed by the property team.*Target date/),
+  ).toBeVisible();
+  await expect(
+    maintenancePanel.getByText("Assigned to the right person or contractor."),
+  ).toBeVisible();
+  await expect(
+    maintenancePanel.getByText(
+      "Waiting for property team approval before work starts.",
+    ),
+  ).toBeVisible();
+  await expect(
+    maintenancePanel.getByText("Approved and waiting to be scheduled."),
+  ).toBeVisible();
+  await expect(
+    maintenancePanel.getByText(
+      "A contractor or property team member is working on this.",
+    ),
+  ).toBeVisible();
+  await expect(
+    maintenancePanel.getByText(/Completed .*22 May 2026/),
+  ).toBeVisible();
+  await expect(
+    maintenancePanel.getByText("Closed by the property team."),
+  ).toBeVisible();
+});
+
+test("tenant portal operator preview shows recent activity feed", async ({
+  page,
+}) => {
+  await page.unroute("**/api/v1/**");
+  await mockLeasiumApi(page, {
+    tenantPortalActivityFeed: true,
+  });
+
+  await page.goto("/tenants/tenant-1/portal-preview/onboarding-1");
+
+  const activityPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Recent Activity" }),
+  });
+  await expect(activityPanel).toBeVisible();
+  await expect(
+    activityPanel.getByRole("button", { name: "Copy summary" }),
+  ).toBeVisible();
+  await expect(activityPanel.getByText("6 events")).toBeVisible();
+  await expect(activityPanel.getByText("Preferences saved")).toBeVisible();
+  await expect(activityPanel.getByText("Portal invite sent")).toBeVisible();
+  await expect(activityPanel.getByText("Contact request sent")).toBeVisible();
+  await expect(
+    activityPanel.getByText("Document uploaded").first(),
+  ).toBeVisible();
+  await expect(activityPanel.getByText("Team update")).toBeVisible();
+  await expect(activityPanel.getByText("Request submitted")).toBeVisible();
+  await expect(
+    activityPanel.getByText(
+      "Your portal notification preferences were updated.",
+    ),
+  ).toBeVisible();
+
+  const previewDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download preview CSV" }).click();
+  const previewDownload = await previewDownloadPromise;
+  const previewDownloadPath = await previewDownload.path();
+  expect(previewDownloadPath).not.toBeNull();
+  const previewCsv = await readFile(previewDownloadPath!, "utf8");
+  expect(previewCsv).toContain("Recent Activity");
+  expect(previewCsv).toContain("Preferences saved");
+  expect(previewCsv).toContain("Portal invite sent");
+  expect(previewCsv).toContain("Contact request sent");
+  expect(previewCsv).toContain("Request submitted");
+});
+
 test("tenant portal entry shows signed-out account access when Clerk is configured", async ({
   page,
 }) => {
@@ -3297,15 +4330,72 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByLabel("Owner Operator assignment SMS phone").first(),
   ).toHaveValue("+61400111222");
+  const ownerTemplateDefaults = page
+    .locator("details")
+    .filter({ hasText: "Template defaults" })
+    .first();
+  await expect(ownerTemplateDefaults).toBeVisible();
   await expect(
-    page.getByLabel("Owner Operator assignment notice template key").first(),
+    ownerTemplateDefaults.getByText("Template preview").first(),
+  ).not.toBeVisible();
+  await expect(
+    ownerTemplateDefaults.getByText("Standard assignment notice").first(),
+  ).not.toBeVisible();
+  await expect(
+    ownerTemplateDefaults.getByText("Standard work digest").first(),
+  ).not.toBeVisible();
+  await expect(ownerTemplateDefaults.locator("summary")).not.toContainText(
+    "Standard assignment notice",
+  );
+  await expect(ownerTemplateDefaults.locator("summary")).not.toContainText(
+    "Standard work digest",
+  );
+  const ownerNotificationRow = await page
+    .getByLabel("Owner Operator assignment email notifications")
+    .first()
+    .evaluate((node) => {
+      let current = node.parentElement;
+      while (current) {
+        const hasOwner = current.textContent?.includes("Owner Operator");
+        const hasSmsPhone = Boolean(
+          current.querySelector(
+            '[aria-label="Owner Operator assignment SMS phone"]',
+          ),
+        );
+        const hasTemplateDefaults =
+          current.textContent?.includes("Template defaults");
+        if (hasOwner && hasSmsPhone && hasTemplateDefaults) {
+          const box = current.getBoundingClientRect();
+          return {
+            height: box.height,
+            width: box.width,
+          };
+        }
+        current = current.parentElement;
+      }
+      return null;
+    });
+  expect(ownerNotificationRow).not.toBeNull();
+  expect(ownerNotificationRow?.width).toBeGreaterThan(900);
+  expect(ownerNotificationRow?.height).toBeLessThanOrEqual(170);
+  await ownerTemplateDefaults.locator("summary").click();
+  await expect(
+    ownerTemplateDefaults
+      .getByLabel("Owner Operator assignment notice template key")
+      .first(),
   ).toHaveValue("work_assignment_notification");
   await expect(
-    page.getByLabel("Owner Operator digest template key").first(),
+    ownerTemplateDefaults
+      .getByLabel("Owner Operator digest template key")
+      .first(),
   ).toHaveValue("work_assignment_digest");
-  await expect(page.getByText("Template preview").first()).toBeVisible();
   await expect(
-    page.getByText("New Leasium work assigned to Owner Operator").first(),
+    ownerTemplateDefaults.getByText("Template preview").first(),
+  ).toBeVisible();
+  await expect(
+    ownerTemplateDefaults
+      .getByText("New Leasium work assigned to Owner Operator")
+      .first(),
   ).toBeVisible();
   await expect(page.getByText("Daily digest").first()).toBeVisible();
   await expect(page.getByText("Last digest").first()).toBeVisible();
@@ -3316,7 +4406,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Organisation" }).click();
   await expect(page.getByText("Setup needed").first()).toBeVisible();
-  await expect(page.getByText("Missing production setup").first()).toBeVisible();
+  await expect(
+    page.getByText("Missing production setup").first(),
+  ).toBeVisible();
   await expect(
     page.getByText("DOCUSIGN_WEBHOOK_SECRET", { exact: true }),
   ).toBeVisible();

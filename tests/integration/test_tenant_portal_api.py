@@ -1866,6 +1866,43 @@ def test_tenant_portal_insurance_upload_apply_refreshes_compliance_status(
     assert insurance_item["latest_document"]["id"] == str(document.id)
 
 
+def test_tenant_portal_allows_empty_compliance_checklist(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    tenant.tenant_metadata = {
+        **(tenant.tenant_metadata or {}),
+        "portal_compliance_checklist": [],
+    }
+    session.commit()
+
+    portal_response = client.get(
+        "/api/v1/tenant-portal/session",
+        headers={"x-tenant-portal-token": scope["token"]},
+    )
+
+    assert portal_response.status_code == 200
+    body = portal_response.json()
+    assert body["compliance"]["items"] == []
+    assert body["compliance"]["accepted_categories"] == [
+        "insurance",
+        "bank_guarantee",
+        "lease",
+        "onboarding",
+        "other",
+    ]
+
+    preview_response = client.get(
+        f"/api/v1/tenant-portal/operator-preview/{scope['onboarding_id']}",
+    )
+
+    assert preview_response.status_code == 200
+    assert preview_response.json()["compliance"]["items"] == []
+
+
 def test_tenant_portal_upload_extraction_keeps_tenant_selected_category_until_review(
     client: TestClient,
     session: Session,
