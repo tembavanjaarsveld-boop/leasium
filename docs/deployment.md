@@ -162,9 +162,14 @@ BASIQ_API_KEY=
   inert.
 - v1 reconciles operator-imported transactions against unpaid invoices and
   writes only local invoice payment metadata after explicit per-row approval —
-  it never moves money or mutates a bank/Xero record. Live Basiq OAuth
-  (auto-fetching transactions) is a later slice. No migration is required for
-  v1.
+  it never moves money or mutates a bank/Xero record.
+- The live connection foundation is shipped (migration `20260531_0028` adds the
+  `basiq_connection` table — hosted Neon/Render must apply it). Once
+  `BASIQ_ENABLED` + `BASIQ_API_KEY` are set, use Settings → Bank feed →
+  "Connect bank feed (Basiq)" to create a Basiq user + consent link, then
+  reconcile with the provider source. The fetch is read-only (server token +
+  GETs only) and the key stays server-side. You must create a Basiq developer
+  app to obtain `BASIQ_API_KEY`.
 
 ## Xero Go-Live Checklist
 

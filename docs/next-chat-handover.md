@@ -4,6 +4,16 @@ Last updated: 2026-05-30
 
 ## Current State
 
+- 2026-05-31 live Basiq connection foundation (THIS SESSION): commits `7bcabfb`
+  (backend — `BasiqConnection` model + migration `20260531_0028`, server-token +
+  accounts/transactions fetch behind the soft-skip, connect/status/revoke routes,
+  provider-source wired to the active connection) and `424caa8` (Settings connect
+  UI + provider-source toggle). Inert and READ-ONLY until a Basiq developer app +
+  `BASIQ_API_KEY` are configured; the consent step is an explicit operator click,
+  the key stays server-side. **Hosted Neon/Render must apply migration
+  `20260531_0028`.** Full sweep green: ruff clean, pytest 366 passed / 1 skipped,
+  `eslint src` + `tsc` clean, production `next build` succeeded. Committed locally;
+  push to deploy (stays inert until the Basiq env is set).
 - 2026-05-30 bank-feed + observability slice (THIS SESSION, after the dispatch/UX
   push): commits `d78cf27` (bank-feed v1 backend + Sentry scaffolding) and
   `c3ef6d6` (bank-feed review UI), then this docs commit. Bank-feed reconciliation
