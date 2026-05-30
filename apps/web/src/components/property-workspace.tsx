@@ -2200,6 +2200,18 @@ function Workspace({
     propertiesQuery.data,
     selectedEntity?.name,
   ]);
+  // Only show the Area / Parking columns when at least one visible property
+  // actually has that data. For portfolios that don't track building_sqm or
+  // parking_spaces these rendered as full columns of "-" — dead width and
+  // visual noise. Hiding empty columns keeps the table reading as finished.
+  const showAreaColumn = displayedProperties.some(
+    (property) => property.building_sqm != null,
+  );
+  const showParkingColumn = displayedProperties.some(
+    (property) => property.parking_spaces != null,
+  );
+  const propertyTableColumnCount =
+    4 + (showAreaColumn ? 1 : 0) + (showParkingColumn ? 1 : 0);
   const leaseCalendarEvents = useMemo(() => {
     const visiblePropertyIds = new Set(
       displayedProperties.map((property) => property.id),
@@ -5332,8 +5344,12 @@ function Workspace({
                           </th>
                           <th className="px-3 py-2 font-semibold">Property</th>
                           <th className="px-3 py-2 font-semibold">Type</th>
-                          <th className="px-3 py-2 font-semibold">Area</th>
-                          <th className="px-3 py-2 font-semibold">Parking</th>
+                          {showAreaColumn ? (
+                            <th className="px-3 py-2 font-semibold">Area</th>
+                          ) : null}
+                          {showParkingColumn ? (
+                            <th className="px-3 py-2 font-semibold">Parking</th>
+                          ) : null}
                           <th className="w-12 px-3 py-2" />
                         </tr>
                       </thead>
@@ -5489,12 +5505,16 @@ function Workspace({
                               <td className="px-3 py-3">
                                 {property.property_type.replaceAll("_", " ")}
                               </td>
-                              <td className="px-3 py-3">
-                                {property.building_sqm ?? "-"}
-                              </td>
-                              <td className="px-3 py-3">
-                                {property.parking_spaces ?? "-"}
-                              </td>
+                              {showAreaColumn ? (
+                                <td className="px-3 py-3">
+                                  {property.building_sqm ?? "-"}
+                                </td>
+                              ) : null}
+                              {showParkingColumn ? (
+                                <td className="px-3 py-3">
+                                  {property.parking_spaces ?? "-"}
+                                </td>
+                              ) : null}
                               <td className="px-3 py-3">
                                 <SecondaryButton
                                   type="button"
@@ -5515,7 +5535,7 @@ function Workspace({
                           <tr>
                             <td
                               className="px-3 py-8 text-center text-muted-foreground"
-                              colSpan={6}
+                              colSpan={propertyTableColumnCount}
                             >
                               Checking properties
                             </td>
@@ -5525,7 +5545,7 @@ function Workspace({
                           <tr>
                             <td
                               className="px-3 py-8 text-center text-muted-foreground"
-                              colSpan={6}
+                              colSpan={propertyTableColumnCount}
                             >
                               No properties match this ownership tag.
                             </td>
@@ -5534,7 +5554,7 @@ function Workspace({
                           <tr>
                             <td
                               className="px-3 py-8 text-center text-muted-foreground"
-                              colSpan={6}
+                              colSpan={propertyTableColumnCount}
                             >
                               No active properties yet.
                             </td>

@@ -217,10 +217,18 @@ from strings disallowed`, and a transient :3000 conflict) — unrelated to the
 diff. Run `playwright test tests/smoke/dashboard-command-center.spec.ts`
 locally for the visual/flow confirmation.
 
-Remaining Phase B increments (not yet built): **urgency differentiation** so
-the repeated amber "Tomorrow" chips stop reading as wallpaper (group by
-Today / This week / Later, or vary tone by real due distance), and
-**progressive disclosure** of the long Events / Recent-activity sections.
+Correction after code review: **urgency differentiation already exists.** The
+Needs-attention and Events panels already colour each chip by due distance via
+`obligationTone` (danger overdue / warning ≤14d or high priority / neutral) and
+label it via `dueLabel` (Today / Tomorrow / In Nd / Nd overdue). The "wall of
+Tomorrow" in the audit screenshot was genuine data clustering on 31 May, not a
+flat-tone defect — so per "don't fix what isn't broken" no change was made.
+The only open Phase B refinement is optional **section grouping** (Today /
+This week / Later headers) for days when many items share a due window.
+
+Remaining Phase B increment (not yet built): **progressive disclosure** of the
+long Events / Recent-activity sections (collapse or move to owning surfaces so
+the home screen fits the decision, not the database). Then Phase C punch-list.
 
 ## Guardrails carried through all phases
 

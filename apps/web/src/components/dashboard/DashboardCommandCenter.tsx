@@ -159,7 +159,11 @@ export function DashboardCommandCenter({
           )}
         </div>
         <div className="flex items-start gap-2 border-t border-border bg-primary-soft/40 px-4 py-2.5 text-xs leading-5 text-primary-hover">
-          <ShieldCheck size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <ShieldCheck
+            size={14}
+            className="mt-0.5 shrink-0"
+            aria-hidden="true"
+          />
           <span>
             <span className="font-semibold">Review-first.</span> This surface
             points to the next safe step; changes still stay inside reviewed
