@@ -299,9 +299,14 @@ move between ranked rows, `Enter` activates the focused row, scoped to the list
 so it never hijacks global keys; a `focus-visible` ring shows the active row.
 Live result: `rows=3 activeBefore=0 afterJ=1 afterK=0 → KEYBOARD_FLOW_PASS`.
 
-Next: port the same handler to the operations queue, then the motion pass — both
-verifiable through the same live loop, or test-first locally once the
-Clerk/local-edge issue is resolved.
+The same handler is now ported to the **operations queue** (`[data-ops-row]`)
+and verified live: `rows=72 activeBefore=0 afterJ=1 afterK=0 →
+KEYBOARD_FLOW_PASS`. The verify script is parameterised — point it at any
+surface via `LEASIUM_VERIFY_PATH` + `LEASIUM_VERIFY_SELECTOR`.
+
+Next: the motion pass (list enter/exit transitions) — verifiable through the
+same live loop, or test-first locally once the Clerk/local-edge issue is
+resolved.
 
 ## Guardrails carried through all phases
 

@@ -16,6 +16,10 @@ const baseUrl = (process.env.LEASIUM_AUDIT_URL ?? "https://leasium.ai").replace(
   /\/$/,
   "",
 );
+// Which surface to test: default the dashboard command center; override for the
+// operations queue via LEASIUM_VERIFY_PATH=/operations LEASIUM_VERIFY_SELECTOR=[data-ops-row]
+const verifyPath = process.env.LEASIUM_VERIFY_PATH ?? "/";
+const rowSelector = process.env.LEASIUM_VERIFY_SELECTOR ?? "[data-cc-row]";
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({
@@ -23,7 +27,7 @@ const context = await browser.newContext({
   storageState: storagePath,
 });
 const page = await context.newPage();
-await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded", timeout: 45000 });
+await page.goto(`${baseUrl}${verifyPath}`, { waitUntil: "domcontentloaded", timeout: 45000 });
 
 // Let the dashboard settle.
 await page
@@ -33,7 +37,7 @@ await page
   )
   .catch(() => null);
 await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => null);
-await page.waitForSelector("[data-cc-row]", { timeout: 20000 }).catch(() => null);
+await page.waitForSelector(rowSelector, { timeout: 20000 }).catch(() => null);
 await page.waitForTimeout(2000);
 
 const url = page.url();
@@ -43,29 +47,29 @@ if (/\/(sign-in|welcome|access)/.test(url)) {
   process.exit(2);
 }
 
-const rowCount = await page.locator("[data-cc-row]").count();
+const rowCount = await page.locator(rowSelector).count();
 if (rowCount < 2) {
-  console.log(`INSUFFICIENT_ROWS: found ${rowCount} command-center rows (need >=2 to test)`);
+  console.log(`INSUFFICIENT_ROWS: found ${rowCount} ${rowSelector} rows (need >=2 to test)`);
   await browser.close();
   process.exit(3);
 }
 
 // Focus the first row, then exercise j / k.
-await page.locator("[data-cc-row]").first().focus();
-const activeBefore = await page.evaluate(() => {
-  const rows = Array.from(document.querySelectorAll("[data-cc-row]"));
+await page.locator(rowSelector).first().focus();
+const activeBefore = await page.evaluate((sel) => {
+  const rows = Array.from(document.querySelectorAll(sel));
   return rows.indexOf(document.activeElement);
-});
+}, rowSelector);
 await page.keyboard.press("j");
-const afterJ = await page.evaluate(() => {
-  const rows = Array.from(document.querySelectorAll("[data-cc-row]"));
+const afterJ = await page.evaluate((sel) => {
+  const rows = Array.from(document.querySelectorAll(sel));
   return rows.indexOf(document.activeElement);
-});
+}, rowSelector);
 await page.keyboard.press("k");
-const afterK = await page.evaluate(() => {
-  const rows = Array.from(document.querySelectorAll("[data-cc-row]"));
+const afterK = await page.evaluate((sel) => {
+  const rows = Array.from(document.querySelectorAll(sel));
   return rows.indexOf(document.activeElement);
-});
+}, rowSelector);
 
 console.log(`rows=${rowCount} activeBefore=${activeBefore} afterJ=${afterJ} afterK=${afterK}`);
 const pass = activeBefore === 0 && afterJ === 1 && afterK === 0;
