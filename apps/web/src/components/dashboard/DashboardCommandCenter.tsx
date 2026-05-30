@@ -8,7 +8,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 import {
   EmptyState,
@@ -74,6 +74,34 @@ export function DashboardCommandCenter({
   const totalCount =
     counts.intake + counts.billing + counts.onboarding + counts.operations;
 
+  // Keyboard flow (Phase D): once focus is inside the ranked list, j / ArrowDown
+  // and k / ArrowUp move between rows; Enter activates the focused row natively
+  // (each row is an anchor). The handler lives on the list container, so it only
+  // fires when a row already has focus — it never hijacks global keystrokes, and
+  // Tab / click behaviour is unchanged.
+  function handleListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!["j", "k", "ArrowDown", "ArrowUp"].includes(event.key)) {
+      return;
+    }
+    const rows = Array.from(
+      event.currentTarget.querySelectorAll<HTMLAnchorElement>("[data-cc-row]"),
+    );
+    if (rows.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    const current = rows.findIndex((row) => row === document.activeElement);
+    const forward = event.key === "j" || event.key === "ArrowDown";
+    const next =
+      current < 0
+        ? 0
+        : forward
+          ? Math.min(current + 1, rows.length - 1)
+          : Math.max(current - 1, 0);
+    rows[next]?.focus();
+    rows[next]?.scrollIntoView({ block: "nearest" });
+  }
+
   return (
     <SectionPanel
       title="Daily command center"
@@ -101,7 +129,7 @@ export function DashboardCommandCenter({
       className="border-primary/20"
     >
       <div>
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-border" onKeyDown={handleListKeyDown}>
           {loading && shownItems.length === 0 ? (
             <EmptyState
               icon={<Loader2 size={18} className="animate-spin" />}
@@ -113,8 +141,9 @@ export function DashboardCommandCenter({
               <Link
                 key={item.id}
                 href={item.href}
+                data-cc-row
                 className={[
-                  "group grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 transition hover:bg-muted/55 md:grid-cols-[3.25rem_minmax(0,1fr)_auto] md:items-center",
+                  "group grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 transition hover:bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 md:grid-cols-[3.25rem_minmax(0,1fr)_auto] md:items-center",
                   index === 0 ? "bg-primary-soft/35" : "",
                 ].join(" ")}
               >
