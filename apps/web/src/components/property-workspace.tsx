@@ -7666,11 +7666,11 @@ function PropertyCalendarView({
               <Link
                 key={row.id}
                 href={row.event.href}
-                className="grid gap-2 rounded-md border border-border p-3 text-sm transition hover:bg-muted/50"
+                className="grid min-w-0 gap-2 rounded-md border border-border p-3 text-sm transition hover:bg-muted/50"
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate font-semibold">
+                    <div className="line-clamp-2 break-words font-semibold">
                       {row.event.title}
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
@@ -7678,7 +7678,9 @@ function PropertyCalendarView({
                       {leaseEventKindLabel(row.event.kind)}
                     </div>
                   </div>
-                  <StatusBadge tone={row.tone}>{row.label}</StatusBadge>
+                  <span className="shrink-0">
+                    <StatusBadge tone={row.tone}>{row.label}</StatusBadge>
+                  </span>
                 </div>
                 <div className="text-xs font-semibold text-foreground">
                   {row.action}
