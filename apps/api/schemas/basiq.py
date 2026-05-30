@@ -23,6 +23,8 @@ __all__ = [
     "BasiqReconciliationRequest",
     "BasiqReconciliationResultRead",
     "BasiqReconciliationRead",
+    "BasiqConnectStartRead",
+    "BasiqConnectionStatusRead",
 ]
 
 
@@ -66,4 +68,36 @@ class BasiqReconciliationRead(BaseModel):
     blocked_count: int
     results: list[BasiqReconciliationResultRead]
     reconciled_at: datetime
+    guardrails: list[str]
+
+
+class BasiqConnectStartRead(BaseModel):
+    """Result of starting a Basiq consent connection.
+
+    When Basiq is not configured this is inert: ``configured`` is False, no
+    consent link is minted, and ``missing_config`` lists the env vars to set.
+    The Basiq API key is never echoed here.
+    """
+
+    configured: bool
+    consent_link: str | None = None
+    expires_at: datetime | None = None
+    missing_config: list[str]
+    consent_status: str | None = None
+
+
+class BasiqConnectionStatusRead(BaseModel):
+    """Local-only view of an entity's Basiq consent connection state.
+
+    Computed purely from Leasium configuration and database rows -- loading it
+    never calls Basiq, mints a token, or mutates anything.
+    """
+
+    configured: bool
+    connected: bool
+    consent_status: str | None = None
+    auth_link_expires_at: datetime | None = None
+    last_fetch_at: datetime | None = None
+    can_start_connect: bool
+    can_fetch: bool
     guardrails: list[str]

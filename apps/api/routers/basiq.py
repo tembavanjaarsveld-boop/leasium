@@ -23,9 +23,23 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
-from stewart.core.models import Entity, InvoiceDraft, InvoiceDraftStatus, UserRole
+from stewart.core.models import (
+    BasiqConnection,
+    Entity,
+    InvoiceDraft,
+    InvoiceDraftStatus,
+    UserRole,
+)
 from stewart.core.settings import Settings, get_settings
-from stewart.integrations.basiq import BasiqTransaction, fetch_transactions, is_configured
+from stewart.integrations.basiq import (
+    BasiqIntegrationError,
+    BasiqTransaction,
+    basiq_server_token,
+    create_basiq_auth_link,
+    create_basiq_user,
+    fetch_transactions,
+    is_configured,
+)
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.routers.xero import (
@@ -34,6 +48,8 @@ from apps.api.routers.xero import (
     _xero_invoice_id_from_metadata,
 )
 from apps.api.schemas.basiq import (
+    BasiqConnectionStatusRead,
+    BasiqConnectStartRead,
     BasiqImportedTransaction,
     BasiqReconciliationRead,
     BasiqReconciliationRequest,
@@ -45,6 +61,47 @@ router = APIRouter(prefix="/basiq", tags=["basiq"])
 
 # Finance-capable roles, identical to the Xero reconciliation write gate.
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
+# Read gate mirrors Xero: everyone with entity access can read local status.
+READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
+
+
+def _basiq_missing_config(settings: Settings) -> list[str]:
+    """Return the env vars that must be set before a real Basiq call.
+
+    Mirrors the Xero ``missing_config`` shape so the connect-start surface can
+    stay inert with an actionable hint instead of erroring.
+    """
+
+    missing: list[str] = []
+    if not settings.basiq_enabled:
+        missing.append("BASIQ_ENABLED")
+    if not settings.basiq_api_key:
+        missing.append("BASIQ_API_KEY")
+    return missing
+
+
+def _active_basiq_connection(session: Session, entity_id: UUID) -> BasiqConnection | None:
+    return session.scalar(
+        select(BasiqConnection)
+        .where(
+            BasiqConnection.entity_id == entity_id,
+            BasiqConnection.revoked_at.is_(None),
+            BasiqConnection.deleted_at.is_(None),
+        )
+        .order_by(BasiqConnection.created_at.desc())
+    )
+
+
+# Stable, non-deliverable label domain for synthesised Basiq user emails.
+# Entities carry no billing/contact email column; Basiq only uses this as a
+# user label and Leasium never sends mail to it.
+_BASIQ_USER_EMAIL_DOMAIN = "entities.leasium.invalid"
+
+
+def _basiq_consent_email(entity: Entity) -> str:
+    """Synthesise a stable, non-deliverable Basiq user email for an entity."""
+
+    return f"entity+{entity.id}@{_BASIQ_USER_EMAIL_DOMAIN}"
 
 # How close a statement date must sit to an invoice due date for a single
 # amount-only match to count as medium (rather than low) confidence.
@@ -224,12 +281,20 @@ def _basiq_reconciliation(
     # Resolve the bank-feed transactions to reconcile.
     imported_by_transaction_id: dict[str, BasiqImportedTransaction] = {}
     transactions: list[BasiqTransaction] = []
+    provider_connection: BasiqConnection | None = None
     if payload.source == "imported":
         for imported in payload.transactions:
             imported_by_transaction_id[imported.transaction_id] = imported
             transactions.append(_imported_to_basiq_transaction(imported))
     else:
-        fetch_result = fetch_transactions(settings)
+        # Provider source: resolve the active consent connection (if any) and
+        # pass its Basiq user id in. With no connection, basiq_user_id stays
+        # None and the adapter returns inert empty -- read-only either way.
+        provider_connection = _active_basiq_connection(session, entity.id)
+        fetch_result = fetch_transactions(
+            settings,
+            basiq_user_id=provider_connection.basiq_user_id if provider_connection else None,
+        )
         if fetch_result.status == "failed":
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -238,6 +303,9 @@ def _basiq_reconciliation(
         # "skipped" (unconfigured) and "ok" (no live connection yet) both
         # leave the surface inert with no transactions to reconcile.
         transactions = list(fetch_result.transactions)
+        if fetch_result.status == "ok" and provider_connection is not None:
+            provider_connection.last_fetch_at = reconciled_at
+            provider_connection.updated_by_user_id = user.id
 
     # Candidate matches run only against UNPAID approved invoice drafts.
     approved_drafts = list(
@@ -411,4 +479,208 @@ def apply_basiq_reconciliation(
         user=user,
         session=session,
         settings=settings,
+    )
+
+
+@router.post("/connect-start/{entity_id}", response_model=BasiqConnectStartRead)
+def start_basiq_connect(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> BasiqConnectStartRead:
+    """Begin a Basiq consent connection and return the consent link.
+
+    This is the ONLY route that creates a Basiq user or auth link. It never
+    moves money, never writes to a bank, and never touches Xero. When Basiq is
+    not configured it is inert: returns ``configured=False`` with the missing
+    env vars and performs no HTTP and writes nothing.
+    """
+
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+
+    missing_config = _basiq_missing_config(settings)
+    if missing_config:
+        # Inert: no HTTP, nothing written, just an actionable setup hint.
+        return BasiqConnectStartRead(
+            configured=False,
+            consent_link=None,
+            expires_at=None,
+            missing_config=missing_config,
+            consent_status=None,
+        )
+
+    existing = _active_basiq_connection(session, entity.id)
+    try:
+        token = basiq_server_token(settings)
+        # Reuse the existing Basiq user on re-connect so we never spawn
+        # duplicate users; otherwise create one for this entity.
+        basiq_user_id = (
+            existing.basiq_user_id
+            if existing is not None
+            else create_basiq_user(settings, token, _basiq_consent_email(entity))
+        )
+        consent_link, expires_at = create_basiq_auth_link(settings, token, basiq_user_id)
+    except BasiqIntegrationError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    now = utcnow()
+    # Revoke any prior active connection so the partial-unique index holds.
+    for prior in session.scalars(
+        select(BasiqConnection).where(
+            BasiqConnection.entity_id == entity.id,
+            BasiqConnection.revoked_at.is_(None),
+            BasiqConnection.deleted_at.is_(None),
+        )
+    ):
+        prior.revoked_at = now
+        prior.updated_by_user_id = user.id
+
+    provider_connection = BasiqConnection(
+        entity_id=entity.id,
+        created_by_user_id=user.id,
+        updated_by_user_id=user.id,
+        basiq_user_id=basiq_user_id,
+        consent_status="pending",
+        auth_link_url=consent_link,
+        auth_link_expires_at=expires_at,
+        connection_metadata={"connected_via": "basiq_auth_link", "mode": "consent_pending"},
+    )
+    session.add(provider_connection)
+    session.flush()
+
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="create",
+        target_table="basiq_connection",
+        target_id=provider_connection.id,
+        tool_name="basiq.connect_start",
+        tool_input={"entity_id": str(entity.id)},
+        tool_output_summary=(
+            "Created a Basiq consent link for review; no money, bank record, or Xero "
+            "data was mutated. Bank-feed reads remain read-only and consent is pending."
+        ),
+    )
+    session.commit()
+    return BasiqConnectStartRead(
+        configured=True,
+        consent_link=consent_link,
+        expires_at=expires_at,
+        missing_config=[],
+        consent_status="pending",
+    )
+
+
+@router.get("/connection-status/{entity_id}", response_model=BasiqConnectionStatusRead)
+def basiq_connection_status(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> BasiqConnectionStatusRead:
+    """Local-only Basiq connection status.
+
+    Reads Leasium configuration and database rows only -- it never calls Basiq,
+    mints a token, or mutates anything.
+    """
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+
+    configured = is_configured(settings)
+    provider_connection = _active_basiq_connection(session, entity.id)
+    connected = provider_connection is not None
+    return BasiqConnectionStatusRead(
+        configured=configured,
+        connected=connected,
+        consent_status=(provider_connection.consent_status if connected else None),
+        auth_link_expires_at=(provider_connection.auth_link_expires_at if connected else None),
+        last_fetch_at=(provider_connection.last_fetch_at if connected else None),
+        can_start_connect=configured,
+        can_fetch=configured and connected,
+        guardrails=[
+            "Connection status reads local Leasium configuration and database state only.",
+            "Loading status does not mint a Basiq token, call Basiq, or mutate provider state.",
+            (
+                "Basiq bank-feed access is read-only: Leasium never moves money, writes to a "
+                "bank, or mutates Xero from this connection."
+            ),
+        ],
+    )
+
+
+@router.post("/connection-revoke/{entity_id}", response_model=BasiqConnectionStatusRead)
+def revoke_basiq_connection(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> BasiqConnectionStatusRead:
+    """Locally revoke the active Basiq consent connection.
+
+    Sets ``revoked_at`` on the local row only. It does NOT call any Basiq
+    DELETE and does not touch money, banks, or Xero.
+    """
+
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+
+    now = utcnow()
+    revoked = 0
+    for provider_connection in session.scalars(
+        select(BasiqConnection).where(
+            BasiqConnection.entity_id == entity.id,
+            BasiqConnection.revoked_at.is_(None),
+            BasiqConnection.deleted_at.is_(None),
+        )
+    ):
+        provider_connection.revoked_at = now
+        provider_connection.updated_by_user_id = user.id
+        provider_connection.consent_status = "revoked"
+        revoked += 1
+
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="update",
+        target_table="basiq_connection",
+        target_id=entity.id,
+        tool_name="basiq.connection_revoke",
+        tool_input={"entity_id": str(entity.id)},
+        tool_output_summary=(
+            f"Locally revoked {revoked} Basiq consent connection(s); no Basiq API call, "
+            "money movement, bank write, or Xero mutation was performed."
+        ),
+    )
+    session.commit()
+
+    configured = is_configured(settings)
+    return BasiqConnectionStatusRead(
+        configured=configured,
+        connected=False,
+        consent_status=None,
+        auth_link_expires_at=None,
+        last_fetch_at=None,
+        can_start_connect=configured,
+        can_fetch=False,
+        guardrails=[
+            "Revoke clears the local Basiq connection only; no Basiq DELETE was called.",
+            "No money, bank record, or Xero data was mutated.",
+        ],
     )

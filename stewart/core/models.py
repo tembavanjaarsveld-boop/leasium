@@ -314,6 +314,7 @@ class Entity(Base):
     billing_drafts: Mapped[list["BillingDraft"]] = relationship(back_populates="entity")
     invoice_drafts: Mapped[list["InvoiceDraft"]] = relationship(back_populates="entity")
     xero_connections: Mapped[list["XeroConnection"]] = relationship(back_populates="entity")
+    basiq_connections: Mapped[list["BasiqConnection"]] = relationship(back_populates="entity")
     insights_snapshots: Mapped[list["InsightsSnapshot"]] = relationship(back_populates="entity")
 
 
@@ -371,6 +372,66 @@ Index(
     "xero_connection_tenant_idx",
     XeroConnection.xero_tenant_id,
     postgresql_where=XeroConnection.deleted_at.is_(None),
+)
+
+
+class BasiqConnection(Base):
+    """Per-entity Basiq (AU bank-feed) consent connection.
+
+    Mirrors :class:`XeroConnection` but holds NO token cache: Basiq server
+    tokens have a 60-minute TTL and are re-minted per fetch, so nothing
+    sensitive is persisted here. Only the consent/auth-link state and the
+    Basiq user id needed to re-mint and read transactions are stored.
+    """
+
+    __tablename__ = "basiq_connection"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    updated_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    basiq_user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    consent_status: Mapped[str | None] = mapped_column(Text)
+    auth_link_url: Mapped[str | None] = mapped_column(Text)
+    auth_link_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    connection_id: Mapped[str | None] = mapped_column(Text)
+    connection_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    last_fetch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="basiq_connections")
+    created_by_user: Mapped["AppUser | None"] = relationship(foreign_keys=[created_by_user_id])
+    updated_by_user: Mapped["AppUser | None"] = relationship(foreign_keys=[updated_by_user_id])
+
+
+Index(
+    "basiq_connection_entity_active_idx",
+    BasiqConnection.entity_id,
+    unique=True,
+    postgresql_where=(
+        BasiqConnection.revoked_at.is_(None) & BasiqConnection.deleted_at.is_(None)
+    ),
+    sqlite_where=(BasiqConnection.revoked_at.is_(None) & BasiqConnection.deleted_at.is_(None)),
+)
+Index(
+    "basiq_connection_user_idx",
+    BasiqConnection.basiq_user_id,
+    postgresql_where=BasiqConnection.deleted_at.is_(None),
 )
 
 
