@@ -3131,6 +3131,28 @@ export async function mockLeasiumApi(
     };
   };
 
+  const basiqConnectionStatus = () => ({
+    configured: false,
+    connected: false,
+    consent_status: null,
+    auth_link_expires_at: null,
+    last_fetch_at: null,
+    can_start_connect: false,
+    can_fetch: false,
+    guardrails: [
+      "Connecting a Basiq feed never moves money or writes to the bank.",
+      "Fetching a connected feed only previews local invoice payment changes for review.",
+    ],
+  });
+
+  const basiqConnectStart = () => ({
+    configured: false,
+    consent_link: null,
+    expires_at: null,
+    missing_config: ["BASIQ_ENABLED", "BASIQ_API_KEY"],
+    consent_status: null,
+  });
+
   const xeroChartTaxValidationPreview = () => {
     const chartReady =
       chargeAccountCode === "401" || chargeAccountCode === "200";
@@ -4959,6 +4981,27 @@ export async function mockLeasiumApi(
     ) {
       markInvoicePaymentReconciled("2026-05-19T10:42:00.000Z");
       await fulfillJson(route, xeroPaymentReconciliationResult(true));
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === `/basiq/connection-status/${entityId}`
+    ) {
+      await fulfillJson(route, basiqConnectionStatus());
+      return;
+    }
+
+    if (method === "POST" && path === `/basiq/connect-start/${entityId}`) {
+      await fulfillJson(route, basiqConnectStart());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === `/basiq/connection-revoke/${entityId}`
+    ) {
+      await fulfillJson(route, basiqConnectionStatus());
       return;
     }
 

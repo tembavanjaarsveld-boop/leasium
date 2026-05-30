@@ -2039,6 +2039,25 @@ export type BasiqReconciliationResponse = {
   guardrails: string[];
 };
 
+export type BasiqConnectionStatus = {
+  configured: boolean;
+  connected: boolean;
+  consent_status: string | null;
+  auth_link_expires_at: string | null;
+  last_fetch_at: string | null;
+  can_start_connect: boolean;
+  can_fetch: boolean;
+  guardrails: string[];
+};
+
+export type BasiqConnectStart = {
+  configured: boolean;
+  consent_link: string | null;
+  expires_at: string | null;
+  missing_config: string[];
+  consent_status: string | null;
+};
+
 export type InsightsEntityRecord = {
   id: string;
   name: string;
@@ -3166,16 +3185,18 @@ export function applyXeroPaymentReconciliation(
 export function previewBasiqReconciliation({
   entityId,
   transactions,
+  source = "imported",
 }: {
   entityId: string;
   transactions: BasiqImportedTransaction[];
+  source?: "imported" | "provider";
 }) {
   return request<BasiqReconciliationResponse>(
     `/basiq/reconciliation-preview/${entityId}`,
     {
       method: "POST",
       body: JSON.stringify({
-        source: "imported",
+        source,
         transactions,
         approved_idempotency_keys: [],
       }),
@@ -3187,20 +3208,43 @@ export function applyBasiqReconciliation({
   entityId,
   transactions,
   approvedKeys,
+  source = "imported",
 }: {
   entityId: string;
   transactions: BasiqImportedTransaction[];
   approvedKeys: string[];
+  source?: "imported" | "provider";
 }) {
   return request<BasiqReconciliationResponse>(
     `/basiq/reconciliation-apply/${entityId}`,
     {
       method: "POST",
       body: JSON.stringify({
-        source: "imported",
+        source,
         transactions,
         approved_idempotency_keys: approvedKeys,
       }),
+    },
+  );
+}
+
+export function getBasiqConnectionStatus(entityId: string) {
+  return request<BasiqConnectionStatus>(
+    `/basiq/connection-status/${entityId}`,
+  );
+}
+
+export function startBasiqConnect(entityId: string) {
+  return request<BasiqConnectStart>(`/basiq/connect-start/${entityId}`, {
+    method: "POST",
+  });
+}
+
+export function revokeBasiqConnection(entityId: string) {
+  return request<BasiqConnectionStatus>(
+    `/basiq/connection-revoke/${entityId}`,
+    {
+      method: "POST",
     },
   );
 }

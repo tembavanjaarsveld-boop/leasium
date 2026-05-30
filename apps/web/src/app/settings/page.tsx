@@ -51,12 +51,17 @@ import {
   createSecurityMember,
   createXeroInvoiceDrafts,
   getApiHealth,
+  getBasiqConnectionStatus,
   getSecurityWorkspace,
   getWorkAssignmentNotificationTemplates,
   getXeroConnectionDiagnostics,
   getXeroExceptionQueue,
   getIntegrationStatus,
+  revokeBasiqConnection,
+  startBasiqConnect,
   type ApiHealthRecord,
+  type BasiqConnectionStatus,
+  type BasiqConnectStart,
   type BasiqImportedTransaction,
   type BasiqReconciliationResponse,
   type IntegrationStatusRecord,
@@ -2097,6 +2102,8 @@ function SettingsWorkspace() {
     useState<BasiqReconciliationResponse | null>(null);
   const [basiqApplyResult, setBasiqApplyResult] =
     useState<BasiqReconciliationResponse | null>(null);
+  const [basiqConnectStart, setBasiqConnectStart] =
+    useState<BasiqConnectStart | null>(null);
   const [approvedBasiqKeys, setApprovedBasiqKeys] = useState<
     Record<string, boolean>
   >({});
@@ -2261,6 +2268,12 @@ function SettingsWorkspace() {
   const xeroExceptionQueueQuery = useQuery({
     queryKey: ["xero-exception-queue", selectedEntityId],
     queryFn: () => getXeroExceptionQueue(selectedEntityId),
+    enabled: Boolean(selectedEntityId) && activeTab === "xero",
+  });
+
+  const basiqConnectionStatusQuery = useQuery({
+    queryKey: ["basiq-connection-status", selectedEntityId],
+    queryFn: () => getBasiqConnectionStatus(selectedEntityId),
     enabled: Boolean(selectedEntityId) && activeTab === "xero",
   });
 
@@ -2519,6 +2532,39 @@ function SettingsWorkspace() {
     },
   });
 
+  const basiqProviderPreviewMutation = useMutation({
+    mutationFn: () =>
+      previewBasiqReconciliation({
+        entityId: selectedEntityId,
+        transactions: [],
+        source: "provider",
+      }),
+    onSuccess: (result) => {
+      setBasiqPreview(result);
+      setBasiqApplyResult(null);
+      setApprovedBasiqKeys({});
+    },
+  });
+
+  const basiqConnectMutation = useMutation({
+    mutationFn: () => startBasiqConnect(selectedEntityId),
+    onSuccess: (result) => {
+      setBasiqConnectStart(result);
+      basiqConnectionStatusQuery.refetch();
+    },
+  });
+
+  const basiqRevokeMutation = useMutation({
+    mutationFn: () => revokeBasiqConnection(selectedEntityId),
+    onSuccess: () => {
+      setBasiqConnectStart(null);
+      setBasiqPreview(null);
+      setBasiqApplyResult(null);
+      setApprovedBasiqKeys({});
+      basiqConnectionStatusQuery.refetch();
+    },
+  });
+
   const mappingMutation = useMutation({
     mutationFn: (issue: XeroChargeRuleMappingInput) => {
       if (!issue.charge_rule_id) {
@@ -2724,6 +2770,18 @@ function SettingsWorkspace() {
       .length ?? 0;
   const displayedPaymentReconciliation =
     xeroPaymentApplyResult ?? xeroPaymentPreview;
+  const basiqConnection = basiqConnectionStatusQuery.data;
+  const handleRevokeBasiqConnection = () => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Disconnect the Basiq bank feed for this entity? This revokes the stored consent; no bank data is changed.",
+      )
+    ) {
+      return;
+    }
+    basiqRevokeMutation.mutate();
+  };
   const displayedBasiqReconciliation = basiqApplyResult ?? basiqPreview;
   const approvedBasiqKeyList = (basiqPreview?.results ?? [])
     .filter(
@@ -6999,6 +7057,187 @@ function SettingsWorkspace() {
                   ) : null
                 }
               >
+                <div className="grid gap-3 border-b border-border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm font-semibold">
+                      Bank feed connection
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge
+                        tone={
+                          basiqConnection?.connected
+                            ? "success"
+                            : basiqConnection?.configured
+                              ? "warning"
+                              : "neutral"
+                        }
+                      >
+                        {basiqConnection?.connected
+                          ? "Connected"
+                          : basiqConnection?.configured
+                            ? "Not connected"
+                            : "Not configured"}
+                      </StatusBadge>
+                      <SecondaryButton
+                        type="button"
+                        onClick={() => basiqConnectionStatusQuery.refetch()}
+                        disabled={
+                          !selectedEntityId ||
+                          basiqConnectionStatusQuery.isFetching
+                        }
+                      >
+                        {basiqConnectionStatusQuery.isFetching ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <RefreshCw size={14} />
+                        )}
+                        Refresh status
+                      </SecondaryButton>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Connecting links a Basiq consent so the feed can be fetched
+                    for review. Connecting and fetching never moves money or
+                    writes to the bank — Apply only updates Leasium invoice
+                    payment metadata for approved rows.
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-md border border-border bg-muted/25 p-3">
+                      <div className="text-xs uppercase text-muted-foreground">
+                        Consent status
+                      </div>
+                      <div className="mt-1 font-medium">
+                        {basiqConnection?.consent_status ?? "None"}
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-border bg-muted/25 p-3">
+                      <div className="text-xs uppercase text-muted-foreground">
+                        Auth link expires
+                      </div>
+                      <div className="mt-1 font-medium">
+                        {basiqConnection?.auth_link_expires_at
+                          ? formatDateTime(
+                              basiqConnection.auth_link_expires_at,
+                            )
+                          : "-"}
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-border bg-muted/25 p-3">
+                      <div className="text-xs uppercase text-muted-foreground">
+                        Last fetch
+                      </div>
+                      <div className="mt-1 font-medium">
+                        {basiqConnection?.last_fetch_at
+                          ? formatDateTime(basiqConnection.last_fetch_at)
+                          : "-"}
+                      </div>
+                    </div>
+                  </div>
+                  {basiqConnection && !basiqConnection.configured ? (
+                    <p className="text-xs text-muted-foreground">
+                      Provider not configured. Set BASIQ_ENABLED + BASIQ_API_KEY
+                      to enable the live bank feed.
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      disabled={
+                        !selectedEntityId ||
+                        !basiqConnection?.can_start_connect ||
+                        basiqConnectMutation.isPending
+                      }
+                      onClick={() => basiqConnectMutation.mutate()}
+                    >
+                      {basiqConnectMutation.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <PlugZap size={15} />
+                      )}
+                      Connect bank feed (Basiq)
+                    </Button>
+                    {basiqConnection?.connected ? (
+                      <>
+                        <Button
+                          type="button"
+                          disabled={
+                            !basiqConnection.can_fetch ||
+                            basiqProviderPreviewMutation.isPending
+                          }
+                          onClick={() =>
+                            basiqProviderPreviewMutation.mutate()
+                          }
+                        >
+                          {basiqProviderPreviewMutation.isPending ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <SearchCheck size={15} />
+                          )}
+                          Fetch from connected bank feed
+                        </Button>
+                        <SecondaryButton
+                          type="button"
+                          className="text-danger"
+                          disabled={basiqRevokeMutation.isPending}
+                          onClick={handleRevokeBasiqConnection}
+                        >
+                          {basiqRevokeMutation.isPending ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <Ban size={15} />
+                          )}
+                          Disconnect
+                        </SecondaryButton>
+                      </>
+                    ) : null}
+                  </div>
+                  {basiqConnectStart ? (
+                    basiqConnectStart.consent_link ? (
+                      <div className="grid gap-1 rounded-md border border-border bg-white p-3 text-sm">
+                        <div className="font-medium">Consent ready</div>
+                        <p className="text-xs text-muted-foreground">
+                          Open the Basiq consent in a new tab to authorise the
+                          feed. Leasium does not redirect automatically.
+                        </p>
+                        <a
+                          className="inline-flex w-fit items-center gap-1 font-medium text-primary hover:text-primary-hover"
+                          href={basiqConnectStart.consent_link}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <ExternalLink size={14} />
+                          Open Basiq consent
+                        </a>
+                        {basiqConnectStart.expires_at ? (
+                          <p className="text-xs text-muted-foreground">
+                            Link expires{" "}
+                            {formatDateTime(basiqConnectStart.expires_at)}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {basiqConnectStart.missing_config.length
+                          ? `No consent link. Missing ${basiqConnectStart.missing_config.join(", ")}.`
+                          : "No consent link was returned."}
+                      </p>
+                    )
+                  ) : null}
+                  {basiqConnectMutation.error ? (
+                    <p className="text-xs font-medium text-danger">
+                      {basiqConnectMutation.error instanceof Error
+                        ? basiqConnectMutation.error.message
+                        : "Could not start the Basiq connection."}
+                    </p>
+                  ) : null}
+                  {basiqRevokeMutation.error ? (
+                    <p className="text-xs font-medium text-danger">
+                      {basiqRevokeMutation.error instanceof Error
+                        ? basiqRevokeMutation.error.message
+                        : "Could not disconnect the Basiq feed."}
+                    </p>
+                  ) : null}
+                </div>
                 <div className="grid gap-3 border-b border-border p-4">
                   {displayedBasiqReconciliation &&
                   !displayedBasiqReconciliation.basiq_configured ? (
