@@ -44,6 +44,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  applyBasiqReconciliation,
   applyXeroContactPreview,
   applyXeroPaymentReconciliation,
   approveXeroInvoicePosting,
@@ -56,12 +57,15 @@ import {
   getXeroExceptionQueue,
   getIntegrationStatus,
   type ApiHealthRecord,
+  type BasiqImportedTransaction,
+  type BasiqReconciliationResponse,
   type IntegrationStatusRecord,
   type ProviderStatusRecord,
   getXeroStatus,
   listBrandedCommunicationTemplates,
   listEntities,
   listProperties,
+  previewBasiqReconciliation,
   previewXeroChartTaxValidation,
   previewXeroContactSync,
   previewXeroInvoicePosting,
@@ -2082,6 +2086,20 @@ function SettingsWorkspace() {
     useState<XeroPaymentReconciliationRecord | null>(null);
   const [xeroPaymentApplyResult, setXeroPaymentApplyResult] =
     useState<XeroPaymentReconciliationRecord | null>(null);
+  const [basiqTransactions, setBasiqTransactions] = useState<
+    BasiqImportedTransaction[]
+  >([]);
+  const [basiqDraftAmount, setBasiqDraftAmount] = useState("");
+  const [basiqDraftDate, setBasiqDraftDate] = useState("");
+  const [basiqDraftReference, setBasiqDraftReference] = useState("");
+  const [basiqDraftInvoiceNumber, setBasiqDraftInvoiceNumber] = useState("");
+  const [basiqPreview, setBasiqPreview] =
+    useState<BasiqReconciliationResponse | null>(null);
+  const [basiqApplyResult, setBasiqApplyResult] =
+    useState<BasiqReconciliationResponse | null>(null);
+  const [approvedBasiqKeys, setApprovedBasiqKeys] = useState<
+    Record<string, boolean>
+  >({});
   const [selectedXeroContactMatches, setSelectedXeroContactMatches] = useState<
     Record<string, boolean>
   >({});
@@ -2122,6 +2140,7 @@ function SettingsWorkspace() {
   const xeroContactPreviewPanelRef = useRef<HTMLDivElement>(null);
   const xeroInvoicePostingPanelRef = useRef<HTMLDivElement>(null);
   const xeroPaymentPanelRef = useRef<HTMLDivElement>(null);
+  const basiqReconciliationPanelRef = useRef<HTMLDivElement>(null);
   const xeroChartMappingPanelRef = useRef<HTMLDivElement>(null);
   const xeroExceptionQueuePanelRef = useRef<HTMLDivElement>(null);
 
@@ -2185,6 +2204,14 @@ function SettingsWorkspace() {
     setXeroDraftCreateResult(null);
     setXeroPaymentPreview(null);
     setXeroPaymentApplyResult(null);
+    setBasiqTransactions([]);
+    setBasiqDraftAmount("");
+    setBasiqDraftDate("");
+    setBasiqDraftReference("");
+    setBasiqDraftInvoiceNumber("");
+    setBasiqPreview(null);
+    setBasiqApplyResult(null);
+    setApprovedBasiqKeys({});
     setSelectedXeroContactMatches({});
     setLatestInviteLink(null);
   }, [selectedEntityId]);
@@ -2467,6 +2494,31 @@ function SettingsWorkspace() {
     },
   });
 
+  const basiqPreviewMutation = useMutation({
+    mutationFn: () =>
+      previewBasiqReconciliation({
+        entityId: selectedEntityId,
+        transactions: basiqTransactions,
+      }),
+    onSuccess: (result) => {
+      setBasiqPreview(result);
+      setBasiqApplyResult(null);
+      setApprovedBasiqKeys({});
+    },
+  });
+
+  const basiqApplyMutation = useMutation({
+    mutationFn: (approvedKeys: string[]) =>
+      applyBasiqReconciliation({
+        entityId: selectedEntityId,
+        transactions: basiqTransactions,
+        approvedKeys,
+      }),
+    onSuccess: (result) => {
+      setBasiqApplyResult(result);
+    },
+  });
+
   const mappingMutation = useMutation({
     mutationFn: (issue: XeroChargeRuleMappingInput) => {
       if (!issue.charge_rule_id) {
@@ -2672,6 +2724,54 @@ function SettingsWorkspace() {
       .length ?? 0;
   const displayedPaymentReconciliation =
     xeroPaymentApplyResult ?? xeroPaymentPreview;
+  const displayedBasiqReconciliation = basiqApplyResult ?? basiqPreview;
+  const approvedBasiqKeyList = (basiqPreview?.results ?? [])
+    .filter(
+      (result) =>
+        result.status === "ready" &&
+        result.idempotency_key !== null &&
+        approvedBasiqKeys[result.idempotency_key],
+    )
+    .map((result) => result.idempotency_key as string);
+  const addBasiqTransaction = () => {
+    const dollars = Number.parseFloat(basiqDraftAmount);
+    if (!Number.isFinite(dollars) || !basiqDraftDate.trim()) {
+      return;
+    }
+    const transaction: BasiqImportedTransaction = {
+      transaction_id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `basiq-txn-${Date.now()}`,
+      amount_cents: Math.round(dollars * 100),
+      posted_date: basiqDraftDate.trim(),
+    };
+    // BasiqImportedTransaction has no invoice_number field; the optional
+    // invoice number is carried in `reference` (the field the backend
+    // reads when matching) so nothing the operator types is dropped.
+    const reference = [basiqDraftReference.trim(), basiqDraftInvoiceNumber.trim()]
+      .filter(Boolean)
+      .join(" ");
+    if (reference) {
+      transaction.reference = reference;
+    }
+    setBasiqTransactions((current) => [...current, transaction]);
+    setBasiqDraftAmount("");
+    setBasiqDraftDate("");
+    setBasiqDraftReference("");
+    setBasiqDraftInvoiceNumber("");
+    setBasiqPreview(null);
+    setBasiqApplyResult(null);
+    setApprovedBasiqKeys({});
+  };
+  const removeBasiqTransaction = (transactionId: string) => {
+    setBasiqTransactions((current) =>
+      current.filter((item) => item.transaction_id !== transactionId),
+    );
+    setBasiqPreview(null);
+    setBasiqApplyResult(null);
+    setApprovedBasiqKeys({});
+  };
   const exceptionQueue = xeroExceptionQueueQuery.data;
   const exceptionItems = exceptionQueue?.items ?? [];
   const copyXeroExceptionPacket = async () => {
@@ -6848,6 +6948,423 @@ function SettingsWorkspace() {
                 </SectionPanel>
               </div>
             ) : null}
+
+            <div ref={basiqReconciliationPanelRef}>
+              <SectionPanel
+                title="Bank feed (Basiq)"
+                description="Reconcile imported bank transactions against Leasium invoice metadata before applying any local payment update."
+                icon={<CircleDollarSign size={17} className="text-primary" />}
+                actions={
+                  displayedBasiqReconciliation ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge
+                        tone={
+                          displayedBasiqReconciliation.blocked_count
+                            ? "warning"
+                            : "success"
+                        }
+                      >
+                        {displayedBasiqReconciliation.ready_count +
+                          displayedBasiqReconciliation.applied_count}{" "}
+                        actionable
+                      </StatusBadge>
+                      <StatusBadge
+                        tone={
+                          displayedBasiqReconciliation.blocked_count
+                            ? "danger"
+                            : "neutral"
+                        }
+                      >
+                        {displayedBasiqReconciliation.blocked_count} blocked
+                      </StatusBadge>
+                      <Button
+                        type="button"
+                        disabled={
+                          approvedBasiqKeyList.length === 0 ||
+                          basiqApplyMutation.isPending ||
+                          Boolean(basiqApplyResult)
+                        }
+                        onClick={() =>
+                          basiqApplyMutation.mutate(approvedBasiqKeyList)
+                        }
+                      >
+                        {basiqApplyMutation.isPending ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <CheckCircle2 size={14} />
+                        )}
+                        Apply approved transactions
+                      </Button>
+                    </div>
+                  ) : null
+                }
+              >
+                <div className="grid gap-3 border-b border-border p-4">
+                  {displayedBasiqReconciliation &&
+                  !displayedBasiqReconciliation.basiq_configured ? (
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <StatusBadge tone="warning">
+                        Basiq not connected
+                      </StatusBadge>
+                      <span className="text-muted-foreground">
+                        Reconcile imported transactions manually — no live Basiq
+                        feed is configured yet.
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="text-sm font-semibold">Add transaction</div>
+                  <p className="text-sm text-muted-foreground">
+                    No live Basiq feed yet — enter imported bank transactions to
+                    reconcile against Leasium invoice metadata.
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                    <Field label="Amount (AUD)">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        value={basiqDraftAmount}
+                        onChange={(event) =>
+                          setBasiqDraftAmount(event.target.value)
+                        }
+                        placeholder="880.00"
+                      />
+                    </Field>
+                    <Field label="Posted date">
+                      <Input
+                        type="date"
+                        value={basiqDraftDate}
+                        onChange={(event) =>
+                          setBasiqDraftDate(event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Reference">
+                      <Input
+                        value={basiqDraftReference}
+                        onChange={(event) =>
+                          setBasiqDraftReference(event.target.value)
+                        }
+                        placeholder="Bank reference"
+                      />
+                    </Field>
+                    <Field label="Invoice number (optional)">
+                      <Input
+                        value={basiqDraftInvoiceNumber}
+                        onChange={(event) =>
+                          setBasiqDraftInvoiceNumber(event.target.value)
+                        }
+                        placeholder="INV-1001"
+                      />
+                    </Field>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <SecondaryButton
+                      type="button"
+                      disabled={
+                        !Number.isFinite(Number.parseFloat(basiqDraftAmount)) ||
+                        !basiqDraftDate.trim()
+                      }
+                      onClick={addBasiqTransaction}
+                    >
+                      <UserPlus size={15} />
+                      Add transaction
+                    </SecondaryButton>
+                    <Button
+                      type="button"
+                      disabled={
+                        basiqTransactions.length === 0 ||
+                        basiqPreviewMutation.isPending
+                      }
+                      onClick={() => basiqPreviewMutation.mutate()}
+                    >
+                      {basiqPreviewMutation.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <SearchCheck size={15} />
+                      )}
+                      Preview
+                    </Button>
+                  </div>
+                  {basiqTransactions.length ? (
+                    <ul className="grid gap-2">
+                      {basiqTransactions.map((transaction) => (
+                        <li
+                          key={transaction.transaction_id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/25 px-3 py-2 text-sm"
+                        >
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium">
+                              {formatCurrencyCents(transaction.amount_cents)}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {formatDate(transaction.posted_date)}
+                            </span>
+                            {transaction.reference ? (
+                              <span className="text-xs text-muted-foreground">
+                                Ref {transaction.reference}
+                              </span>
+                            ) : null}
+                          </span>
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-9 px-3 text-danger"
+                            onClick={() =>
+                              removeBasiqTransaction(transaction.transaction_id)
+                            }
+                          >
+                            <Ban size={14} />
+                            Remove
+                          </SecondaryButton>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <EmptyState
+                      icon={<CircleDollarSign size={18} />}
+                      title="No transactions added"
+                      description="Add at least one imported bank transaction, then run a preview to review matches."
+                    />
+                  )}
+                </div>
+                {displayedBasiqReconciliation ? (
+                  <>
+                    <div className="grid gap-3 p-4 md:grid-cols-4">
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Checked transactions
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">
+                          {displayedBasiqReconciliation.checked_transactions}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Ready
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">
+                          {displayedBasiqReconciliation.ready_count}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Applied
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">
+                          {displayedBasiqReconciliation.applied_count}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-muted/25 p-3">
+                        <div className="text-xs uppercase text-muted-foreground">
+                          Reviewed
+                        </div>
+                        <div className="mt-1 font-semibold">
+                          {formatDateTime(
+                            displayedBasiqReconciliation.reconciled_at,
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 border-t border-border px-4 py-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge tone="warning">
+                          Local metadata only
+                        </StatusBadge>
+                        <span className="font-medium">
+                          Imported transactions are compared against Leasium
+                          invoices; Apply updates Leasium payment metadata only.
+                        </span>
+                      </div>
+                      <ul className="grid gap-1 text-xs text-muted-foreground">
+                        {displayedBasiqReconciliation.guardrails.map(
+                          (guardrail) => (
+                            <li key={guardrail} className="flex gap-2">
+                              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                              <span>{guardrail}</span>
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    </div>
+                    <div className="divide-y divide-border border-t border-border">
+                      {displayedBasiqReconciliation.results.map(
+                        (result, index) => {
+                          const approvable =
+                            result.status === "ready" &&
+                            result.idempotency_key !== null &&
+                            !basiqApplyResult;
+                          return (
+                            <div
+                              key={
+                                result.idempotency_key ??
+                                result.bank_transaction_id ??
+                                `${result.invoice_number}-${index}`
+                              }
+                              className="grid gap-3 px-4 py-3 text-sm lg:grid-cols-[170px_1fr_300px]"
+                            >
+                              <div className="flex flex-wrap items-start gap-2">
+                                <StatusBadge
+                                  tone={paymentReconciliationTone(
+                                    result.status,
+                                  )}
+                                >
+                                  {result.status}
+                                </StatusBadge>
+                                <span className="text-xs text-muted-foreground">
+                                  {result.invoice_number ??
+                                    result.invoice_draft_id ??
+                                    "Unmatched transaction"}
+                                </span>
+                                {approvable ? (
+                                  <label className="flex w-full items-center gap-2 text-xs font-medium text-foreground">
+                                    <input
+                                      type="checkbox"
+                                      className="h-4 w-4 rounded border-border-strong text-primary focus-visible:ring-primary/30"
+                                      checked={Boolean(
+                                        approvedBasiqKeys[
+                                          result.idempotency_key as string
+                                        ],
+                                      )}
+                                      onChange={(event) =>
+                                        setApprovedBasiqKeys((current) => ({
+                                          ...current,
+                                          [result.idempotency_key as string]:
+                                            event.target.checked,
+                                        }))
+                                      }
+                                    />
+                                    Approve
+                                  </label>
+                                ) : null}
+                              </div>
+                              <div>
+                                <div className="font-medium">
+                                  {result.reason}
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                                  <StatusBadge
+                                    tone={paymentConfidenceTone(
+                                      result.match_confidence,
+                                    )}
+                                  >
+                                    {result.match_confidence} confidence
+                                  </StatusBadge>
+                                  <StatusBadge tone="neutral">
+                                    No bank write
+                                  </StatusBadge>
+                                  {result.amount_delta_cents ? (
+                                    <StatusBadge tone="warning">
+                                      Delta{" "}
+                                      {formatCurrencyCents(
+                                        result.amount_delta_cents,
+                                      )}
+                                    </StatusBadge>
+                                  ) : (
+                                    <StatusBadge tone="success">
+                                      Amount aligned
+                                    </StatusBadge>
+                                  )}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  Current {result.current_status ?? "unknown"} /
+                                  Proposed {result.proposed_status ?? "unknown"}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {result.match_method}
+                                </div>
+                                {result.reference ||
+                                result.bank_transaction_id ? (
+                                  <div className="mt-1 text-xs text-muted-foreground">
+                                    {[
+                                      result.reference
+                                        ? `Ref ${result.reference}`
+                                        : null,
+                                      result.bank_transaction_id
+                                        ? `Bank ${result.bank_transaction_id}`
+                                        : null,
+                                      result.counterparty,
+                                      result.bank_account_name,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" / ")}
+                                  </div>
+                                ) : null}
+                                {result.idempotency_key ? (
+                                  <div className="mt-1 text-xs text-muted-foreground">
+                                    Key {result.idempotency_key}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="grid gap-1 text-xs text-muted-foreground">
+                                <div>
+                                  Current paid:{" "}
+                                  {result.current_paid_cents === null
+                                    ? "-"
+                                    : formatCurrencyCents(
+                                        result.current_paid_cents,
+                                      )}
+                                </div>
+                                <div>
+                                  Proposed paid:{" "}
+                                  {result.proposed_paid_cents === null
+                                    ? "-"
+                                    : formatCurrencyCents(
+                                        result.proposed_paid_cents,
+                                      )}
+                                </div>
+                                <div>
+                                  Outstanding:{" "}
+                                  {result.outstanding_cents === null
+                                    ? "-"
+                                    : formatCurrencyCents(
+                                        result.outstanding_cents,
+                                      )}
+                                </div>
+                                {result.statement_amount_cents !== null ? (
+                                  <div>
+                                    Statement:{" "}
+                                    {formatCurrencyCents(
+                                      result.statement_amount_cents,
+                                    )}
+                                  </div>
+                                ) : null}
+                                {result.statement_date ? (
+                                  <div>
+                                    Statement date:{" "}
+                                    {formatDate(result.statement_date)}
+                                  </div>
+                                ) : null}
+                                {result.guardrail_flags.length ? (
+                                  <div className="flex flex-wrap gap-1 pt-1">
+                                    {result.guardrail_flags
+                                      .slice(0, 3)
+                                      .map((flag) => (
+                                        <span
+                                          key={flag}
+                                          className="rounded-full bg-muted px-2 py-0.5 text-leasium-micro font-semibold text-muted-foreground"
+                                        >
+                                          {flag.replaceAll("_", " ")}
+                                        </span>
+                                      ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        },
+                      )}
+                      {displayedBasiqReconciliation.results.length === 0 ? (
+                        <EmptyState
+                          icon={<CheckCircle2 size={18} />}
+                          title="No transaction changes"
+                          description="The preview completed, but no invoice payment status changes were ready to review."
+                        />
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
+              </SectionPanel>
+            </div>
 
             <div ref={xeroChartMappingPanelRef}>
               <SectionPanel

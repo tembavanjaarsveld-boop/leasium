@@ -2010,6 +2010,35 @@ export type XeroPaymentReconciliationRecord = {
   guardrails: string[];
 };
 
+export type BasiqImportedTransaction = {
+  transaction_id: string;
+  amount_cents: number;
+  posted_date: string;
+  description?: string;
+  reference?: string;
+  counterparty?: string;
+  account_name?: string;
+  invoice_draft_id?: string | null;
+};
+
+// Basiq reconciliation rows share the Xero payment-reconciliation result
+// shape so the Settings review panel can reuse the same rendering helpers.
+export type BasiqReconciliationResult = XeroPaymentReconciliationResultRecord;
+
+export type BasiqReconciliationResponse = {
+  entity_id: string;
+  source: "imported" | "provider";
+  basiq_configured: boolean;
+  checked_transactions: number;
+  ready_count: number;
+  applied_count: number;
+  skipped_count: number;
+  blocked_count: number;
+  results: BasiqReconciliationResult[];
+  reconciled_at: string;
+  guardrails: string[];
+};
+
 export type InsightsEntityRecord = {
   id: string;
   name: string;
@@ -3130,6 +3159,48 @@ export function applyXeroPaymentReconciliation(
     {
       method: "POST",
       body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function previewBasiqReconciliation({
+  entityId,
+  transactions,
+}: {
+  entityId: string;
+  transactions: BasiqImportedTransaction[];
+}) {
+  return request<BasiqReconciliationResponse>(
+    `/basiq/reconciliation-preview/${entityId}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        source: "imported",
+        transactions,
+        approved_idempotency_keys: [],
+      }),
+    },
+  );
+}
+
+export function applyBasiqReconciliation({
+  entityId,
+  transactions,
+  approvedKeys,
+}: {
+  entityId: string;
+  transactions: BasiqImportedTransaction[];
+  approvedKeys: string[];
+}) {
+  return request<BasiqReconciliationResponse>(
+    `/basiq/reconciliation-apply/${entityId}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        source: "imported",
+        transactions,
+        approved_idempotency_keys: approvedKeys,
+      }),
     },
   );
 }

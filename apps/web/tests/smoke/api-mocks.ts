@@ -3055,6 +3055,82 @@ export async function mockLeasiumApi(
     ],
   });
 
+  const basiqReconciliationResultRow = (applied: boolean) => ({
+    invoice_draft_id: "invoice-draft-1",
+    invoice_number: "INV-1001",
+    status: applied ? "applied" : "ready",
+    reason: applied
+      ? "Payment status was reconciled locally."
+      : "Payment status can be reconciled locally.",
+    current_status: "unpaid",
+    proposed_status: "paid",
+    current_paid_cents: 0,
+    proposed_paid_cents: 880000,
+    outstanding_cents: 0,
+    idempotency_key: "basiq-payment-smoke-1",
+    match_method: "Matched by reference and amount.",
+    match_confidence: "high",
+    amount_delta_cents: 0,
+    bank_transaction_id: "basiq-txn-smoke-1",
+    bank_account_name: "Operating Account",
+    statement_date: "2026-05-19",
+    statement_amount_cents: 880000,
+    counterparty: "Bright Cafe",
+    reference: "INV-1001",
+    guardrail_flags: [
+      "no_bank_feed_mutation",
+      "local_payment_metadata_only",
+      "bank_evidence_stored",
+    ],
+  });
+
+  const basiqReconciliationPreview = () => ({
+    entity_id: entityId,
+    source: "imported",
+    basiq_configured: false,
+    checked_transactions: 1,
+    ready_count: 1,
+    applied_count: 0,
+    skipped_count: 0,
+    blocked_count: 0,
+    reconciled_at: "2026-05-19T10:40:00.000Z",
+    results: [basiqReconciliationResultRow(false)],
+    guardrails: [
+      "Bank-feed preview does not change local invoice payment status.",
+      "Apply only updates Leasium invoice payment metadata for approved transactions; it never mutates a bank feed.",
+      "Imported transactions not approved by an operator are skipped.",
+    ],
+  });
+
+  const basiqReconciliationApply = (approvedKeys: string[]) => {
+    const approved = approvedKeys.includes("basiq-payment-smoke-1");
+    return {
+      entity_id: entityId,
+      source: "imported",
+      basiq_configured: false,
+      checked_transactions: 1,
+      ready_count: approved ? 0 : 1,
+      applied_count: approved ? 1 : 0,
+      skipped_count: approved ? 0 : 1,
+      blocked_count: 0,
+      reconciled_at: "2026-05-19T10:42:00.000Z",
+      results: [
+        approved
+          ? basiqReconciliationResultRow(true)
+          : {
+              ...basiqReconciliationResultRow(false),
+              status: "skipped",
+              reason: "Not approved by operator.",
+            },
+      ],
+      guardrails: [
+        "Bank-feed preview does not change local invoice payment status.",
+        "Apply only updates Leasium invoice payment metadata for approved transactions; it never mutates a bank feed.",
+        "Imported transactions not approved by an operator are skipped.",
+      ],
+    };
+  };
+
   const xeroChartTaxValidationPreview = () => {
     const chartReady =
       chargeAccountCode === "401" || chargeAccountCode === "200";
@@ -4883,6 +4959,24 @@ export async function mockLeasiumApi(
     ) {
       markInvoicePaymentReconciled("2026-05-19T10:42:00.000Z");
       await fulfillJson(route, xeroPaymentReconciliationResult(true));
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === `/basiq/reconciliation-preview/${entityId}`
+    ) {
+      await fulfillJson(route, basiqReconciliationPreview());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === `/basiq/reconciliation-apply/${entityId}`
+    ) {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const approvedKeys = jsonStringArray(payload.approved_idempotency_keys);
+      await fulfillJson(route, basiqReconciliationApply(approvedKeys));
       return;
     }
 
