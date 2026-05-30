@@ -24,7 +24,13 @@ import {
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { InlineEditCell } from "@/components/inline-edit-cell";
@@ -288,6 +294,34 @@ const ASSIGNMENT_EMAIL_DELIVERED_STATUSES = [
   "opened",
 ];
 const ASSIGNMENT_EMAIL_PROBLEM_STATUSES = ["failed", "skipped"];
+
+// Keyboard flow (Phase D, ported from the command center): once focus is inside
+// the operations queue, j / ArrowDown and k / ArrowUp move between row links and
+// Enter opens the focused row natively. Lives on the list container so it only
+// fires when a row already has focus — never hijacks global keys; Tab, click,
+// and the per-row work controls are unchanged.
+function handleQueueKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+  if (!["j", "k", "ArrowDown", "ArrowUp"].includes(event.key)) {
+    return;
+  }
+  const rows = Array.from(
+    event.currentTarget.querySelectorAll<HTMLAnchorElement>("[data-ops-row]"),
+  );
+  if (rows.length === 0) {
+    return;
+  }
+  event.preventDefault();
+  const current = rows.findIndex((row) => row === document.activeElement);
+  const forward = event.key === "j" || event.key === "ArrowDown";
+  const next =
+    current < 0
+      ? 0
+      : forward
+        ? Math.min(current + 1, rows.length - 1)
+        : Math.max(current - 1, 0);
+  rows[next]?.focus();
+  rows[next]?.scrollIntoView({ block: "nearest" });
+}
 
 function assignmentEmailDelivered(assignment: WorkAssignment | null) {
   return ASSIGNMENT_EMAIL_DELIVERED_STATUSES.includes(
@@ -1521,14 +1555,16 @@ function OperationsWorkspace() {
     const mStatus = params.get("maintenance_status");
     if (
       mStatus === "all" ||
-      (mStatus && maintenanceStatuses.includes(mStatus as MaintenanceWorkOrderStatus))
+      (mStatus &&
+        maintenanceStatuses.includes(mStatus as MaintenanceWorkOrderStatus))
     ) {
       setMaintenanceStatus(mStatus as MaintenanceWorkOrderStatus | "all");
     }
     const mPriority = params.get("maintenance_priority");
     if (
       mPriority === "all" ||
-      (mPriority && maintenancePriorities.includes(mPriority as MaintenancePriority))
+      (mPriority &&
+        maintenancePriorities.includes(mPriority as MaintenancePriority))
     ) {
       setMaintenancePriority(mPriority as MaintenancePriority | "all");
     }
@@ -2745,10 +2781,7 @@ function OperationsWorkspace() {
                 }}
                 onApplyView={(filters) => {
                   const nextTab = filters.tab;
-                  if (
-                    nextTab &&
-                    tabs.some((entry) => entry.id === nextTab)
-                  ) {
+                  if (nextTab && tabs.some((entry) => entry.id === nextTab)) {
                     setActiveTab(nextTab as OperationsTab);
                   } else {
                     setActiveTab("queue");
@@ -3028,13 +3061,20 @@ function OperationsWorkspace() {
                     <AssignmentDigestPreview result={digestResult} />
                   ) : null}
                 </div>
-                <div className="divide-y divide-border">
+                <div
+                  className="divide-y divide-border"
+                  onKeyDown={handleQueueKeyDown}
+                >
                   {filteredOpenQueueItems.map((item) => (
                     <div
                       key={item.id}
                       className="grid gap-2 px-4 py-3 sm:gap-3 sm:py-4 xl:grid-cols-[minmax(18rem,1fr)_22rem_auto] xl:items-start"
                     >
-                      <Link href={item.href} className="min-w-0">
+                      <Link
+                        href={item.href}
+                        data-ops-row
+                        className="min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+                      >
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-leasium-body-compact font-medium leading-5 text-foreground">
                             {item.title}
@@ -3475,11 +3515,7 @@ function OperationsWorkspace() {
                                 placeholder="Set status"
                                 options={MAINTENANCE_STATUS_OPTIONS}
                                 onSave={(next) =>
-                                  saveWorkOrderField(
-                                    workOrder,
-                                    "status",
-                                    next,
-                                  )
+                                  saveWorkOrderField(workOrder, "status", next)
                                 }
                               />
                             </span>
