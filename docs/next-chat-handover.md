@@ -284,8 +284,13 @@ before the Ticket 2.2 slice.
 - Verification: `tests/integration/test_contractors_api.py` passed **4 passed**;
   People-record smoke passed **6 passed**; targeted backend ruff, frontend
   `eslint`, web `tsc --noEmit`, and `git diff --check` passed. Review agent
-  approved with no P1/P2 findings. Deployment verification still needs to happen
-  after the commit/push for this slice.
+  approved with no P1/P2 findings.
+- Deployment verification before this docs-sync commit: Vercel production deploy
+  `dpl_A7r27oinhtNVSXA84cuqh7PTmBQn` for `b4af4b4` was **READY**;
+  `https://leasium.ai/contractors/missing-vendor` returned HTTP 200 through the
+  dynamic `/contractors/[contractorId]` route; Render health reported
+  `b4af4b49f03a903276b85930a694483992ceb093` with `source=render`; live OpenAPI
+  includes `/api/v1/contractors/{contractor_id}`.
 
 ### Next
 1. Test production owner invites and secure document downloads with a real Clerk
