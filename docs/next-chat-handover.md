@@ -260,8 +260,12 @@ before the Ticket 2.2 slice.
   branch landed.
 - Verification: `people-record-layout.spec.ts` passed **5 passed**; targeted
   `eslint`, web `tsc --noEmit`, and `git diff --check` passed. Review agent
-  approved with no P1/P2 findings. Deployment verification still needs to happen
-  after the commit/push for this slice.
+  approved with no P1/P2 findings.
+- Deployment verification before this docs-sync commit: Vercel production deploy
+  `dpl_BT5PUVTzN7YvabAZqwaDE6yo1sYQ` for `5b14961` was **READY**;
+  `https://leasium.ai/owners/missing-owner` returned HTTP 200 through the
+  dynamic `/owners/[ownerId]` route; Render health reported
+  `5b1496164e95d46b5756471f5dea77136bc5e78b` with `source=render`.
 
 ### Next
 1. Test production owner invites and secure document downloads with a real Clerk
