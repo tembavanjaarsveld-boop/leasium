@@ -38,6 +38,13 @@ Last updated: 2026-05-31
   read-only suggestion chips and citation source links now use the 44px target
   baseline and shared motion timing. The smoke keeps proving the cited-answer
   flow; no AI/provider mutation path changed.
+- 2026-05-31 Dashboard entity-title de-duplication (THIS SESSION): the live
+  dashboard no longer renders the selected entity name as a giant content H1.
+  The AppHeader entity selector remains the source of entity context, the visible
+  dashboard starts with Daily command center, and the compact demo/refresh
+  controls now sit in that panel header. A screen-reader-only Dashboard H1
+  preserves page structure. Smoke coverage verifies the selector still holds
+  `entity-1` while `Acme Holdings Pty Ltd` is absent as a content heading.
 - 2026-05-31 saved views touch-target polish (THIS SESSION):
   `<SavedViewsMenu>` now uses 44px interactive targets and shared motion timing
   for the trigger, saved-view row actions, save form, and close control. The
@@ -670,7 +677,7 @@ Last updated: 2026-05-31
    `019e6272-9879-786a-aa88-abfd1aa9fa48`, attach the intended custom
    lease file, then explicitly send the lease pack. This is a real
    provider email, so it requires operator approval.
-5. Pick the next ticket from `docs/product-roadmap.md` "Next Build Order" or the Recommended Next Tickets list below. After the 2026-05-27 verification, the natural next slices are owner statement dispatch/PDF formatting review, richer Portfolio QA bulk review for blocked billing/onboarding rows, or the remaining Operations mobile live-review follow-ups.
+5. **Top priority (2026-05-31): the DoorLoop benchmark refocus (P0).** Start with the People-hub + IA execution plan at [`docs/superpowers/plans/2026-05-31-people-hub-and-ia-refocus.md`](superpowers/plans/2026-05-31-people-hub-and-ia-refocus.md), Ticket 1.1 (the `Owner` entity, red test first). Backlog context: `docs/product-roadmap.md` → "DoorLoop benchmark refocus". The older candidates (owner-statement PDF formatting, Portfolio QA bulk review, Operations mobile live-review) drop below this.
 6. Keep all provider actions review-first: no Xero mutation, SendGrid email, Twilio SMS, tenant email, or payment reconciliation should happen without explicit operator approval.
 
 ## Project Map
@@ -1176,6 +1183,14 @@ Treat these as pending UX/design sign-off:
 - Settings Work notification preferences/named-template/SMS selection and Notifications provider-history/direct email/SMS recovery/channel-readiness density.
 
 ## Recommended Next Tickets
+
+**Top priority as of 2026-05-31 — DoorLoop benchmark refocus (P0).** Make Owner a
+first-class entity, gather people into one **People** hub (Tenants · Owners · Vendors ·
+later Prospects), and consolidate the sidebar to 7 hubs. This is the keystone that unlocks
+the owner portal, owner reporting, and distributions. Execution plan (test-first tickets):
+[`docs/superpowers/plans/2026-05-31-people-hub-and-ia-refocus.md`](superpowers/plans/2026-05-31-people-hub-and-ia-refocus.md);
+full analysis: [`docs/doorloop-benchmark-2026-05-31.md`](doorloop-benchmark-2026-05-31.md).
+The list below is the prior backlog, now secondary:
 
 The 2026-05-22 UX-review backlog is done except dark mode. The AI inbox v2 stack through v2.3 (promote → lease-change extraction → contractor matching → tenant-contact promote) and the tenant portal soft-switch are now shipped. Claim-gate polish, co-tenant/additional-login invites, and the operator-side read-only tenant portal preview are also complete. Pick from these in roughly leverage order for the SKJ internal-first-6-months window:
 
@@ -1728,3 +1743,52 @@ Open items at session end:
   (`46 passed`), `.venv/bin/python -m ruff check apps/api/routers/comms.py apps/api/schemas/comms.py tests/integration/test_comms_api.py`,
   `./node_modules/.bin/eslint 'src/app/operations/maintenance/[workOrderId]/page.tsx' src/lib/api.ts tests/smoke/app-flows.spec.ts tests/smoke/api-mocks.ts`,
   and `./node_modules/.bin/tsc --noEmit`.
+
+## Cowork session 2026-05-31 — DoorLoop benchmark + refocus
+
+Research + planning session (no app code changed; **docs only**). Studied DoorLoop's
+product, UX, and information architecture and refocused the backlog around it.
+
+Added/updated (all uncommitted — docs only, additive, safe to review then commit):
+- **NEW** `docs/doorloop-benchmark-2026-05-31.md` — full DoorLoop vs Leasium benchmark +
+  gap analysis (People/Properties IA, feature matrix, AU-localisation, what not to copy).
+- **NEW** `docs/superpowers/plans/2026-05-31-people-hub-and-ia-refocus.md` — test-first P0
+  execution plan (Owner entity → People hub → nav consolidation), with a P1 preview.
+- `docs/product-roadmap.md` — new top section in Next Build Order: "DoorLoop benchmark
+  refocus (2026-05-31)" with P0–P3 `[ ]` items.
+- `docs/design-governance.md` — new "2026-05-31 DoorLoop Benchmark — IA + UX Direction"
+  (prototype-mode direction, not a Remba gate) + a Standing UX Direction bullet.
+- `docs/leasium-codex-design-source-of-truth.md` — §11 nav model refreshed to the shipped
+  nav + the People/Money target; §10.5.1 cap note updated to the People-hub path to 7.
+- `CLAUDE.md` — new §2.10 "People + Properties IA north star (DoorLoop-informed)".
+
+Where to start next session: the People-hub plan, **Ticket 1.1 — `Owner` + `PropertyOwner`
+models + migration** (red test first). Keep it additive — the legacy Property owner-fields
+stay as the backfill source until the Owner read path is proven at parity (Ticket 1.3).
+
+Awaiting Temba: go-ahead to begin building P0; optional calls on the AU payment rail
+(Monoova / Zai / Stripe AU) and whether to formalise a `leasium-ux-standard` skill. The
+literal DoorLoop tutorial transcript could not be machine-pulled (YouTube blocked in the
+sandbox, no browser connected) — the benchmark was reconstructed from DoorLoop's own docs.
+
+## Cowork session 2026-05-31 (cont.) — P0 build started: Owner entity + CRUD API
+
+Built and verified on Temba's Mac via Desktop Commander, **all uncommitted** — review then commit. Additive only; no existing behaviour changed.
+
+**Ticket 1.1 — Owner + PropertyOwner models + migration (DONE, green):**
+- `stewart/core/models.py` (+81): new `Owner` (mirrors the 11 `Property` owner fields) + `PropertyOwner` association (`split_pct`, unique `(property_id, owner_id)`); added `Entity.owners` and `Property.owner_links` relationships.
+- `migrations/versions/20260531_0029_owner_entity.py`: creates `owner` + `property_owner`. `alembic heads` → single head `20260531_0029`; offline `--sql` emits correct DDL. **NOT applied to a live DB** — local Postgres/Docker was down. Apply with `docker compose up -d && .venv/bin/alembic upgrade head`.
+- `tests/integration/test_owner_entity.py`: 2 ORM tests (split round-trip, default split). Red→green.
+
+**Ticket 1.4 — Owner CRUD API (DONE, green):**
+- `apps/api/schemas/owner_entities.py` + `apps/api/routers/owner_entities.py`: list / create / detail / patch / soft-delete at `/api/v1/owners`; `OwnerRead` surfaces linked properties + count. Registered AFTER `owners.router` in `main.py` (+2) so the literal `/owners/statements*` paths keep priority over `/owners/{owner_id}`.
+- `tests/integration/test_owner_entity_api.py`: 4 tests incl. a guard that `/owners/statements` still resolves.
+
+**Evidence:** ruff clean on all changed files; **full integration suite 337 passed / 1 skipped** (was 333; +4 new), no regressions.
+
+**Update (same session, cont.) — Ticket 1.2 + Ticket 1.3 de-risk also done + green (still uncommitted):**
+
+- **Ticket 1.2 — Owner backfill (DONE):** `stewart/core/owner_backfill.py` — idempotent `backfill_owners(session, entity_id=None)` groups by the same identity tuple as the statements router, creates one Owner per identity, links each property at 100%, skips unattributed. Entrypoint `scripts/backfill_owners.py` (`python -m scripts.backfill_owners`). Tests `tests/integration/test_owner_backfill.py` (dedupe/link + idempotency).
+- **Ticket 1.3 — parity proven, endpoint swap DEFERRED:** `tests/integration/test_owner_statement_parity.py` proves the backfilled Owner/PropertyOwner data reproduces the legacy `_owner_identity_tuple` clusters exactly (attributed clusters match; unlinked == unattributed). The live `/owners/statements` endpoint is **unchanged** — the actual read-path swap (`_build_owner_statements` grouping via Owner with an unattributed fallback) is left for review against the real SKJ portfolio; this parity test is its safety net.
+
+Full integration suite now **340 passed / 1 skipped**, ruff clean. Remaining P0: the reviewed statements swap, then Phase 2 (People hub UI — design-facing, paused for your direction). To apply migration + run backfill once Docker is up: `docker compose up -d && .venv/bin/alembic upgrade head && .venv/bin/python -m scripts.backfill_owners`.

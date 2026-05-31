@@ -5289,3 +5289,89 @@ export function dismissCommsCandidate(payload: CommsDismissPayload) {
     body: JSON.stringify(payload),
   });
 }
+
+// ---- Owner directory (People hub) -----------------------------------------
+
+export type OwnerPropertyLink = {
+  property_id: string;
+  property_name: string;
+  split_pct: number;
+};
+
+export type OwnerRecord = {
+  id: string;
+  entity_id: string;
+  legal_name: string | null;
+  abn: string | null;
+  trustee_name: string | null;
+  trust_name: string | null;
+  invoice_issuer_name: string | null;
+  billing_contact_name: string | null;
+  billing_email: string | null;
+  invoice_reference: string | null;
+  gst_registered: boolean | null;
+  xero_contact_id: string | null;
+  created_at: string;
+  updated_at: string;
+  property_count: number;
+  properties: OwnerPropertyLink[];
+};
+
+export type OwnerCreatePayload = {
+  entity_id: string;
+  legal_name?: string | null;
+  abn?: string | null;
+  trustee_name?: string | null;
+  trust_name?: string | null;
+  invoice_issuer_name?: string | null;
+  billing_contact_name?: string | null;
+  billing_email?: string | null;
+  invoice_reference?: string | null;
+  gst_registered?: boolean | null;
+  xero_contact_id?: string | null;
+};
+
+export type OwnerUpdatePayload = Partial<Omit<OwnerCreatePayload, "entity_id">>;
+
+export function listOwners(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<OwnerRecord[]>(`/owners?${params.toString()}`);
+}
+
+export function createOwner(payload: OwnerCreatePayload) {
+  return request<OwnerRecord>("/owners", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getOwner(ownerId: string) {
+  return request<OwnerRecord>(`/owners/${ownerId}`);
+}
+
+export function updateOwner(ownerId: string, payload: OwnerUpdatePayload) {
+  return request<OwnerRecord>(`/owners/${ownerId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteOwner(ownerId: string) {
+  return request<void>(`/owners/${ownerId}`, { method: "DELETE" });
+}
+
+export function attachOwnerProperty(
+  ownerId: string,
+  payload: { property_id: string; split_pct?: number },
+) {
+  return request<OwnerRecord>(`/owners/${ownerId}/properties`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function detachOwnerProperty(ownerId: string, propertyId: string) {
+  return request<void>(`/owners/${ownerId}/properties/${propertyId}`, {
+    method: "DELETE",
+  });
+}

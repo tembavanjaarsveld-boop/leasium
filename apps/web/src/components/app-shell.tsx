@@ -225,6 +225,11 @@ const moduleJumpActions: CommandAction[] = [
     meta: "Billing",
   },
   {
+    href: "/people",
+    label: "Open People hub",
+    meta: "Portfolio",
+  },
+  {
     href: "/tenants",
     label: "Open tenant directory",
     meta: "Portfolio",
@@ -256,6 +261,7 @@ const SHORTCUT_NAV: ShortcutNav[] = [
   { key: "m", href: "/inbox", label: "AI Inbox" },
   { key: "p", href: "/properties", label: "Properties" },
   { key: "t", href: "/tenants", label: "Tenants" },
+  { key: "e", href: "/people", label: "People hub" },
   { key: "o", href: "/operations", label: "Work (Operations)" },
   { key: "r", href: "/contractors", label: "Contractors" },
   { key: "c", href: "/comms", label: "Comms queue" },
