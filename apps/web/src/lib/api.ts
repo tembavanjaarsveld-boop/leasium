@@ -2598,6 +2598,18 @@ function jwtExpiryMs(token: string) {
   }
 }
 
+export class ApiError extends Error {
+  status: number;
+  body: string;
+
+  constructor(message: string, status: number, body: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const detail = await response.text();
@@ -2620,7 +2632,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
     } catch {
       // Keep the raw response text when the API does not return JSON.
     }
-    throw new Error(message);
+    throw new ApiError(message, response.status, detail);
   }
   if (response.status === 204) {
     return undefined as T;

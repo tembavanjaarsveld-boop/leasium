@@ -248,6 +248,21 @@ before the Ticket 2.2 slice.
   `43055333993c3575581bc66a1411d4b12188256f` with `source=render`; live
   OpenAPI includes `/api/v1/owners/statements`.
 
+### Owner detail 404 polish slice
+- Shipped in this continuation after the split-allocation deploy.
+- Frontend API errors now preserve HTTP status through `ApiError` while keeping
+  the existing `Error.message` contract for `friendlyError` callers.
+- `/owners/[ownerId]` now shows a calm `Owner not found` People-record state for
+  404s, with a return action to the owner directory. Non-404 failures still use
+  the existing `Owner unavailable` error path.
+- Red-green proof: the new People-record smoke first failed because the generic
+  unavailable state rendered for a mocked 404, then passed after the status-aware
+  branch landed.
+- Verification: `people-record-layout.spec.ts` passed **5 passed**; targeted
+  `eslint`, web `tsc --noEmit`, and `git diff --check` passed. Review agent
+  approved with no P1/P2 findings. Deployment verification still needs to happen
+  after the commit/push for this slice.
+
 ### Next
 1. Test production owner invites and secure document downloads with a real Clerk
    owner account before broad owner rollout.
@@ -258,8 +273,9 @@ before the Ticket 2.2 slice.
    owner email and touch no providers.
 2. Add richer owner dashboard sections after the shared-document boundary is
    reviewed on real SKJ files.
-3. Add owner-detail route-level 404 polish if that matters before the next owner
-   portal slice.
+3. Decide whether to extend status-aware API errors to other record pages with
+   route-specific not-found states. The shared `ApiError` contract is now in
+   place, but only owner detail uses it so far.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel

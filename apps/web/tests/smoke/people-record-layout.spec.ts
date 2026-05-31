@@ -144,4 +144,33 @@ test.describe("people record layout", () => {
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByLabel("Select entity")).toHaveValue("entity-1");
   });
+
+  test("owner detail shows a not-found state for missing owners", async ({
+    page,
+  }) => {
+    await page.route("**/api/v1/owners/missing-owner", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Owner not found." }),
+      });
+    });
+
+    await page.goto("/owners/missing-owner");
+
+    await expect(
+      page.getByRole("heading", { name: "Owner not found" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText("This owner record may have been deleted"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Back to owners" }),
+    ).toBeVisible();
+    await expect(page.getByText("Owner unavailable")).toHaveCount(0);
+  });
 });

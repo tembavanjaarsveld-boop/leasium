@@ -22,7 +22,12 @@ import {
   SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
-import { getOwner, type OwnerPropertyLink, type OwnerRecord } from "@/lib/api";
+import {
+  ApiError,
+  getOwner,
+  type OwnerPropertyLink,
+  type OwnerRecord,
+} from "@/lib/api";
 import { friendlyError } from "@/lib/utils";
 
 function ownerName(owner: OwnerRecord) {
@@ -66,6 +71,10 @@ function propertySplitLabel(link: OwnerPropertyLink) {
   return `${link.split_pct}%`;
 }
 
+function isNotFoundError(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
+}
+
 function DetailGrid({
   items,
 }: {
@@ -98,6 +107,7 @@ function OwnerPageContent() {
     queryFn: () => getOwner(ownerId ?? ""),
     enabled: Boolean(ownerId),
   });
+  const ownerNotFound = isNotFoundError(ownerQuery.error);
 
   return (
     <main className="min-h-screen">
@@ -117,7 +127,34 @@ function OwnerPageContent() {
           </PeopleRecordLayout>
         ) : null}
 
-        {ownerQuery.error ? (
+        {ownerNotFound ? (
+          <PeopleRecordLayout
+            backHref="/people?tab=owners"
+            backLabel="Owners"
+            title="Owner not found"
+            description="This owner record could not be found in the current workspace."
+          >
+            <SectionPanel>
+              <EmptyState
+                title="No owner record found."
+                description="This owner record may have been deleted or moved. Return to the owner directory to choose another record."
+                icon={<AlertTriangle size={18} />}
+                action={
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => {
+                      window.location.href = "/people?tab=owners";
+                    }}
+                  >
+                    Back to owners
+                  </SecondaryButton>
+                }
+              />
+            </SectionPanel>
+          </PeopleRecordLayout>
+        ) : null}
+
+        {ownerQuery.error && !ownerNotFound ? (
           <PeopleRecordLayout
             backHref="/people?tab=owners"
             backLabel="Owners"
