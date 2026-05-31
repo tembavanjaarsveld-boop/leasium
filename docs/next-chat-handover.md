@@ -49,7 +49,8 @@ current at `d2e5907` before this slice.
 ### Ticket 1.3 slice
 - `/api/v1/owners/statements` now groups statement buckets from
   `Owner`/`PropertyOwner` links instead of the legacy `Property.owner_*`
-  identity tuple. Legacy fields remain as a backfill source only.
+  identity tuple. Legacy fields remain as a backfill source only. Code commit:
+  `d1822ef`.
 - Properties with no active `PropertyOwner` link remain visible under a single
   `Unattributed` statement bucket, even when legacy owner text is still present
   on the property.
@@ -68,14 +69,15 @@ current at `d2e5907` before this slice.
   passed **18 passed**; owner-adjacent integration slice passed **30 passed**;
   targeted `ruff check` passed; full backend integration passed **346 passed /
   1 skipped**.
+- Deployment verification: Vercel production deploy for `d1822ef` is **READY**
+  on `leasium.ai`; Render health reports
+  `d1822ef99e5c357a8fbcdc9b7418283a8f0c0fe2` from `api.leasium.ai`.
 
 ### Next
-1. Finish verification for Ticket 1.3, commit to `main`, push, and verify Render
-   deploys the backend commit.
-2. Before using shared-ownership splits in production statements, add a dedicated
+1. Before using shared-ownership splits in production statements, add a dedicated
    split-allocation ticket: `PropertyOwner.split_pct` exists, but this Ticket 1.3
    deliberately changed grouping only.
-3. Start Ticket 2.2 — consistent people record-page shape (Tenant/Owner/Vendor
+2. Start Ticket 2.2 — consistent people record-page shape (Tenant/Owner/Vendor
    share header → tabs → actions).
 
 ### Operating rule
