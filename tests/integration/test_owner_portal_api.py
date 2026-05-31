@@ -17,6 +17,7 @@ from stewart.core.models import (
     PropertyOwner,
     PropertyType,
     StoredDocument,
+    Tenant,
 )
 
 
@@ -100,6 +101,17 @@ def _seed_owner_portal_owner(session: Session) -> Owner:
     return owner
 
 
+def _linked_owner_property(session: Session, owner: Owner) -> Property:
+    prop = session.scalar(
+        select(Property)
+        .join(PropertyOwner, PropertyOwner.property_id == Property.id)
+        .where(PropertyOwner.owner_id == owner.id)
+        .order_by(Property.name.asc())
+    )
+    assert prop is not None
+    return prop
+
+
 def test_owner_portal_preview_returns_read_only_owner_summary(
     client: TestClient,
     session: Session,
@@ -145,12 +157,100 @@ def test_owner_portal_preview_returns_read_only_owner_summary(
     assert "invoices" not in body["statement"]["properties"][0]
     assert body["guardrails"] == [
         (
-            "Read-only owner portal preview: viewing this page does not send "
-            "owner email, download or send PDFs, write Xero data, reconcile "
-            "payments, dispatch invoices, refresh providers, or mutate "
-            "provider history."
-        )
+            "Read-only owner portal: opening this page does not send owner "
+            "email, dispatch invoices, write Xero data, reconcile payments, "
+            "refresh providers, or mutate provider history."
+        ),
+        (
+            "Shared document downloads are account-scoped and limited to files "
+            "explicitly shared by the property team for this owner; no owner "
+            "statement PDFs are generated or sent from the portal."
+        ),
     ]
+
+
+def test_owner_portal_lists_only_explicit_owner_visible_property_documents(
+    client: TestClient,
+    session: Session,
+) -> None:
+    owner = _seed_owner_portal_owner(session)
+    entity = _entity(session)
+    linked_property = _linked_owner_property(session, owner)
+    tenant = Tenant(entity_id=entity.id, legal_name="Tenant Private Pty Ltd")
+    unlinked_property = Property(
+        entity_id=entity.id,
+        name="Unlinked Owner Property",
+        street_address="9 Other Street",
+        property_type=PropertyType.commercial_office,
+    )
+    session.add_all([tenant, unlinked_property])
+    session.flush()
+    visible_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        filename="owner-visible-report.pdf",
+        content_type="application/pdf",
+        byte_size=len(b"owner visible"),
+        file_data=b"owner visible",
+        category=DocumentCategory.other,
+        notes="Quarterly property report",
+        document_metadata={
+            "source": "operator_upload",
+            "owner_portal_visible": True,
+        },
+    )
+    hidden_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        filename="internal-only.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.other,
+        document_metadata={"source": "operator_upload"},
+    )
+    tenant_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        tenant_id=tenant.id,
+        filename="tenant-private.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.other,
+        document_metadata={"owner_portal_visible": True},
+    )
+    cross_property_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=unlinked_property.id,
+        filename="other-owner.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.other,
+        document_metadata={"owner_portal_visible": True},
+    )
+    session.add_all([visible_doc, hidden_doc, tenant_doc, cross_property_doc])
+    session.commit()
+
+    response = client.get(
+        f"/api/v1/owner-portal/{owner.id}",
+        params={"month": "2026-05"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body["documents"]) == 1
+    document = body["documents"][0]
+    assert document["id"] == str(visible_doc.id)
+    assert document["property_id"] == str(linked_property.id)
+    assert document["property_name"] == linked_property.name
+    assert document["filename"] == "owner-visible-report.pdf"
+    assert document["content_type"] == "application/pdf"
+    assert document["byte_size"] == len(b"owner visible")
+    assert document["category"] == "other"
+    assert document["notes"] == "Quarterly property report"
+    assert document["source_label"] == "Shared by property team"
+    assert "source" not in document
+    assert document["created_at"]
+    assert "file_data" not in document
 
 
 def test_owner_portal_preview_hides_deleted_owners(

@@ -17,6 +17,8 @@ from stewart.core.models import (
     Entity,
     InvoiceDraft,
     InvoiceDraftStatus,
+    Lease,
+    LeaseStatus,
     Owner,
     OwnerPortalAccount,
     OwnerPortalAccountStatus,
@@ -25,6 +27,10 @@ from stewart.core.models import (
     PropertyOwner,
     PropertyType,
     StoredDocument,
+    TenancyUnit,
+    Tenant,
+    TenantOnboarding,
+    TenantOnboardingStatus,
 )
 from stewart.core.settings import Settings, get_settings
 
@@ -112,6 +118,16 @@ def _account_by_provider(session: Session, provider_id: str) -> OwnerPortalAccou
     )
     assert account is not None
     return account
+
+
+def _linked_owner_property(session: Session, owner: Owner) -> Property:
+    prop = session.scalar(
+        select(Property)
+        .join(PropertyOwner, PropertyOwner.property_id == Property.id)
+        .where(PropertyOwner.owner_id == owner.id)
+    )
+    assert prop is not None
+    return prop
 
 
 def test_operator_can_create_hashed_owner_portal_invite(
@@ -292,3 +308,204 @@ def test_owner_portal_account_claim_and_bearer_session_are_scoped(
         headers={"Authorization": "Bearer owner-subject-one"},
     )
     assert revoked_session.status_code == 401
+
+
+def test_owner_portal_account_downloads_only_visible_linked_property_documents(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    app.dependency_overrides[get_settings] = _owner_account_settings
+    owner = _seed_owner(session)
+    invite = _create_invite(client, owner)
+
+    def fake_identity(authorization, settings):  # noqa: ANN001, ARG001
+        return ClerkIdentity(
+            provider_id="owner-subject-one",
+            verified_email="owner@example.test",
+        )
+
+    monkeypatch.setattr(owner_portal_router, "_owner_portal_identity", fake_identity)
+
+    claim_response = client.post(
+        "/api/v1/owner-portal/account/claim",
+        headers={"Authorization": "Bearer owner-subject-one"},
+        json={"portal_token": invite["portal_token"]},
+    )
+    assert claim_response.status_code == 200, claim_response.text
+
+    entity = _entity(session)
+    linked_property = _linked_owner_property(session, owner)
+    unlinked_property = Property(
+        entity_id=entity.id,
+        name="Other Owner Property",
+        street_address="22 Other Street",
+        property_type=PropertyType.commercial_office,
+    )
+    session.add(unlinked_property)
+    session.flush()
+    tenant = Tenant(entity_id=entity.id, legal_name="Tenant Private Pty Ltd")
+    unit = TenancyUnit(property_id=linked_property.id, unit_label="Suite 1")
+    session.add_all([tenant, unit])
+    session.flush()
+    lease = Lease(
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+    )
+    session.add(lease)
+    session.flush()
+    onboarding = TenantOnboarding(
+        entity_id=entity.id,
+        lease_id=lease.id,
+        tenant_id=tenant.id,
+        token="owner-docs-tenant-token",
+        status=TenantOnboardingStatus.sent,
+    )
+    session.add(onboarding)
+    session.flush()
+    visible_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        filename="owner-visible-report.pdf",
+        content_type="application/pdf",
+        byte_size=len(b"owner visible"),
+        file_data=b"owner visible",
+        category=DocumentCategory.other,
+        document_metadata={
+            "source": "operator_upload",
+            "owner_portal_visible": True,
+        },
+    )
+    hidden_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        filename="internal-only.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.other,
+        document_metadata={"source": "operator_upload"},
+    )
+    tenant_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        tenant_id=tenant.id,
+        filename="tenant-private.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.other,
+        document_metadata={"owner_portal_visible": True},
+    )
+    unit_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        tenancy_unit_id=unit.id,
+        filename="unit-private.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.other,
+        document_metadata={"owner_portal_visible": True},
+    )
+    lease_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        lease_id=lease.id,
+        filename="lease-private.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.lease,
+        document_metadata={"owner_portal_visible": True},
+    )
+    onboarding_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        tenant_id=tenant.id,
+        lease_id=lease.id,
+        tenant_onboarding_id=onboarding.id,
+        filename="onboarding-private.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.onboarding,
+        document_metadata={"owner_portal_visible": True},
+    )
+    invoice_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        filename="invoice-private.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+        document_metadata={"owner_portal_visible": True},
+    )
+    cross_property_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=unlinked_property.id,
+        filename="other-owner.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.other,
+        document_metadata={"owner_portal_visible": True},
+    )
+    session.add_all(
+        [
+            visible_doc,
+            hidden_doc,
+            tenant_doc,
+            unit_doc,
+            lease_doc,
+            onboarding_doc,
+            invoice_doc,
+            cross_property_doc,
+        ]
+    )
+    session.commit()
+
+    download_response = client.get(
+        f"/api/v1/owner-portal/account/documents/{visible_doc.id}/download",
+        headers={"Authorization": "Bearer owner-subject-one"},
+    )
+    assert download_response.status_code == 200, download_response.text
+    assert download_response.content == b"owner visible"
+    assert download_response.headers["content-type"] == "application/pdf"
+    assert (
+        "owner-visible-report.pdf"
+        in download_response.headers["content-disposition"]
+    )
+
+    hidden_response = client.get(
+        f"/api/v1/owner-portal/account/documents/{hidden_doc.id}/download",
+        headers={"Authorization": "Bearer owner-subject-one"},
+    )
+    assert hidden_response.status_code == 404
+
+    for blocked_document in [
+        tenant_doc,
+        unit_doc,
+        lease_doc,
+        onboarding_doc,
+        invoice_doc,
+    ]:
+        blocked_response = client.get(
+            f"/api/v1/owner-portal/account/documents/{blocked_document.id}/download",
+            headers={"Authorization": "Bearer owner-subject-one"},
+        )
+        assert blocked_response.status_code == 404
+
+    cross_property_response = client.get(
+        f"/api/v1/owner-portal/account/documents/{cross_property_doc.id}/download",
+        headers={"Authorization": "Bearer owner-subject-one"},
+    )
+    assert cross_property_response.status_code == 404
+
+    account = _account_by_provider(session, "owner-subject-one")
+    account.status = OwnerPortalAccountStatus.revoked
+    account.revoked_at = account.linked_at
+    session.commit()
+
+    revoked_response = client.get(
+        f"/api/v1/owner-portal/account/documents/{visible_doc.id}/download",
+        headers={"Authorization": "Bearer owner-subject-one"},
+    )
+    assert revoked_response.status_code == 401

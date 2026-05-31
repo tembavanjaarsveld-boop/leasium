@@ -30,6 +30,9 @@ import {
 } from "@/lib/api";
 import { friendlyError } from "@/lib/utils";
 
+import { OwnerPortalDocumentsPanel } from "../owner-portal-dashboard-sections";
+import { ownerPortalAuthLabel } from "../owner-portal-account-ui";
+
 function formatMoney(cents: number): string {
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
@@ -247,7 +250,9 @@ function OwnerPortalView({ portal }: { portal: OwnerPortalRecord }) {
             ) : null}
           </div>
         </div>
-        <StatusBadge tone="primary">{portal.auth.mode}</StatusBadge>
+        <StatusBadge tone="primary">
+          {ownerPortalAuthLabel(portal.auth.mode)}
+        </StatusBadge>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -311,6 +316,11 @@ function OwnerPortalView({ portal }: { portal: OwnerPortalRecord }) {
               />
             )}
           </SectionPanel>
+
+          <OwnerPortalDocumentsPanel
+            accountMode={false}
+            documents={portal.documents}
+          />
 
           <GuardrailPanel guardrails={portal.guardrails} />
         </div>

@@ -171,14 +171,43 @@ before the Ticket 2.2 slice.
   confirms migration `20260531_0030` is applied enough for the new table read
   path instead of failing with a missing-table error.
 
+### Owner portal secure-documents slice
+- First owner document-share slice is implemented pending commit/deploy.
+- Backend: `OwnerPortalRead` now includes `documents`, populated only from
+  property-level `StoredDocument` rows whose
+  `document_metadata.owner_portal_visible` is exactly `true`, whose
+  `property_id` is linked to the owner through `PropertyOwner`, and whose
+  tenant/unit/lease/onboarding fields are empty. Invoice-category documents are
+  excluded from this first slice.
+- Backend: signed-in owner accounts can download those files through
+  `GET /api/v1/owner-portal/account/documents/{document_id}/download`. The route
+  reuses the owner portal bearer account boundary; unflagged, cross-property,
+  tenant/lease/onboarding, deleted, and revoked-account access stays blocked.
+- Frontend: `/owner-portal` and operator preview `/owner-portal/[ownerId]` show
+  a `Shared documents` panel with owner-safe source labels. Account sessions get
+  a download button; operator preview shows `Account download only`.
+- Guardrails: no owner email, SendGrid/Twilio send, Xero/Basiq/provider write,
+  provider refresh, payment reconciliation, invoice dispatch, owner-statement
+  PDF generation, upload, or provider-history mutation was added.
+- Red-green proof: backend document-list test first failed with missing
+  `documents`; backend account-download test first failed with 404; frontend
+  smokes first failed on missing `Shared documents`. All passed after the slice.
+- Verification so far: owner portal backend + auth + statement parity tests
+  **11 passed**; targeted backend ruff clean; targeted frontend eslint clean;
+  `./node_modules/.bin/tsc --noEmit` clean; owner portal account/preview smokes
+  **4 passed**; production-style `next build` succeeded. A parallel attempt to
+  run Playwright and `next build` corrupted `.next`; rerunning them sequentially
+  after clearing the generated cache passed cleanly.
+
 ### Next
 1. Before using shared-ownership splits in production statements, add a dedicated
    split-allocation ticket: `PropertyOwner.split_pct` exists, but this Ticket 1.3
    deliberately changed grouping only.
-2. Deploy and verify the owner portal account-auth slice: Render must apply
-   Alembic `20260531_0030`, and production owner invites should be tested with a
-   real Clerk owner account before broad rollout.
-3. Add owner-detail route-level 404 polish if that matters before the next owner
+2. Test production owner invites and secure document downloads with a real Clerk
+   owner account before broad owner rollout.
+3. Add richer owner dashboard sections after the shared-document boundary is
+   reviewed on real SKJ files.
+4. Add owner-detail route-level 404 polish if that matters before the next owner
    portal slice.
 
 ### Operating rule

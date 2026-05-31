@@ -279,8 +279,10 @@ Equifax/illion; RTBA/state RTAs).
   can generate a local no-send claim link, the public invite page shows only
   owner display name/email/expiry before claim, account claim consumes the token
   through Clerk bearer auth, and account reads use `/owner-portal/account/session`
-  without an owner id in the URL. Secure document share and richer owner
-  dashboard sections remain next.
+  without an owner id in the URL. The first secure document-share slice now
+  lists property-level files explicitly marked `owner_portal_visible` and lets
+  signed-in owner accounts download only those linked-property files through an
+  account-scoped endpoint. Richer owner dashboard sections remain next.
 - [ ] **Tenant self-serve payments on AU rails.** PayTo / PayID / BPAY / direct debit
   (Monoova / Zai / Stripe AU). Tenants pay in-portal; reconciliation stays review-first
   through the existing Basiq/Xero engine. DoorLoop's #1 value driver, AU-correct.

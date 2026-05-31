@@ -24,6 +24,8 @@ import type {
   OwnerPortalStatementPropertyRecord,
 } from "@/lib/api";
 
+import { OwnerPortalDocumentsPanel } from "./owner-portal-dashboard-sections";
+
 export function ownerPortalStatementMonth() {
   return new Date().toISOString().slice(0, 7);
 }
@@ -64,6 +66,10 @@ function formatSplit(split: number): string {
   return `${split.toLocaleString("en-AU", {
     maximumFractionDigits: 3,
   })}%`;
+}
+
+export function ownerPortalAuthLabel(mode: OwnerPortalRecord["auth"]["mode"]) {
+  return mode === "owner_portal_account" ? "Owner account" : "Operator preview";
 }
 
 export function OwnerPortalShell({
@@ -317,7 +323,9 @@ export function OwnerPortalAccountView({
               ) : null}
             </div>
           </div>
-          <StatusBadge tone="primary">{portal.auth.mode}</StatusBadge>
+          <StatusBadge tone="primary">
+            {ownerPortalAuthLabel(portal.auth.mode)}
+          </StatusBadge>
         </section>
 
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -383,6 +391,11 @@ export function OwnerPortalAccountView({
                 />
               )}
             </SectionPanel>
+
+            <OwnerPortalDocumentsPanel
+              accountMode={portal.auth.mode === "owner_portal_account"}
+              documents={portal.documents}
+            />
 
             <GuardrailPanel guardrails={portal.guardrails} />
           </div>

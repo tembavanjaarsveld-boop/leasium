@@ -93,6 +93,19 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   provider history. Remba should review the claim copy, signed-in recovery
   states, and whether the account dashboard density should match the operator
   preview or be softened for owners.
+- **Owner portal shared documents** (`/owner-portal`, `/owner-portal/[ownerId]`):
+  the first secure document-share slice adds a `Shared documents` panel to owner
+  account and operator-preview surfaces. It shows only safe metadata for
+  property-level `StoredDocument` rows explicitly marked
+  `owner_portal_visible: true`, linked to the owner by `PropertyOwner`, and not
+  scoped to a tenant, unit, lease, onboarding, or invoice PDF. Owner downloads
+  use bearer-scoped
+  `/api/v1/owner-portal/account/documents/{document_id}/download`; operator
+  preview shows rows without a download action. Opening the portal still sends
+  no owner email, dispatches no invoices, writes no Xero/Basiq/provider data,
+  reconciles no payments, and mutates no provider history. Remba should review
+  whether `Shared documents` is clear enough and whether future document groups
+  need stronger owner-facing labels.
 - **Canvas darkening** (globals.css, commit `65c1da8`): `--leasium-bg` #f6f8fb→#edf0f6 and `--leasium-slate-100` #f2f4f7→#e9edf3 so white cards lift off the background. Hierarchy preserved: cards (#fff) > canvas > muted/hover > border. Light mode only; dark-mode token untouched. Dial the canvas value if it reads too strong/weak on real data. Design source of truth §6 updated to match.
 - **Card elevation**: new `leasiumCard` Tailwind shadow — a tight contact layer + a soft ambient lift (`0 1px 2px /0.06, 0 4px 12px -2px /0.08`) — applied to `SectionPanel` and `DashboardMetricCard` so cards separate from the darker canvas; buttons/rows keep `leasiumXs`. Subtle border retained. Dial via the `leasiumCard` token in `apps/web/tailwind.config.ts`.
 

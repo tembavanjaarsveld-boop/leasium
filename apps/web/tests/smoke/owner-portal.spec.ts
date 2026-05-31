@@ -64,8 +64,23 @@ const OWNER_PORTAL_RESPONSE = {
     outstanding_cents: 1760000,
     invoice_count: 2,
   },
+  documents: [
+    {
+      id: "document-owner-visible-1",
+      property_id: "property-1",
+      property_name: "Queen Street Retail Centre",
+      filename: "owner-visible-report.pdf",
+      content_type: "application/pdf",
+      byte_size: 13,
+      category: "other",
+      notes: "Quarterly property report",
+      source_label: "Shared by property team",
+      created_at: "2026-05-31T00:00:00.000Z",
+    },
+  ],
   guardrails: [
-    "Read-only owner portal preview: viewing this page does not send owner email, download or send PDFs, write Xero data, reconcile payments, dispatch invoices, refresh providers, or mutate provider history.",
+    "Read-only owner portal: opening this page does not send owner email, dispatch invoices, write Xero data, reconcile payments, refresh providers, or mutate provider history.",
+    "Shared document downloads are account-scoped and limited to files explicitly shared by the property team for this owner; no owner statement PDFs are generated or sent from the portal.",
   ],
   generated_at: "2026-05-31T00:00:00.000Z",
 };
@@ -103,7 +118,20 @@ test("owner portal preview renders read-only owner statement data", async ({
   await expect(page.getByText("King Street Offices").first()).toBeVisible();
   await expect(page.getByText("$17,600").first()).toBeVisible();
   await expect(
-    page.getByText("Read-only owner portal preview", { exact: false }),
+    page.getByRole("heading", { name: "Shared documents" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("owner-visible-report.pdf", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByText("Quarterly property report")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download owner-visible-report.pdf" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Operator preview")).toBeVisible();
+  await expect(page.getByText("operator_preview")).toHaveCount(0);
+  await expect(page.getByText("operator_upload")).toHaveCount(0);
+  await expect(
+    page.getByText("Read-only owner portal", { exact: false }),
   ).toBeVisible();
   expect(attemptedSends).toEqual([]);
 });

@@ -7,6 +7,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
+from stewart.core.models import DocumentCategory
 
 
 class OwnerPortalAuthRead(BaseModel):
@@ -118,6 +119,21 @@ class OwnerPortalStatementRead(BaseModel):
     invoice_count: int
 
 
+class OwnerPortalDocumentRead(BaseModel):
+    """Owner-visible property document metadata without raw file bytes."""
+
+    id: UUID
+    property_id: UUID
+    property_name: str
+    filename: str
+    content_type: str | None
+    byte_size: int
+    category: DocumentCategory
+    notes: str | None
+    source_label: str
+    created_at: datetime
+
+
 class OwnerPortalRead(BaseModel):
     """Read response for an operator-previewed owner portal."""
 
@@ -125,5 +141,6 @@ class OwnerPortalRead(BaseModel):
     owner: OwnerPortalOwnerRead
     properties: list[OwnerPortalPropertyRead] = Field(default_factory=list)
     statement: OwnerPortalStatementRead | None = None
+    documents: list[OwnerPortalDocumentRead] = Field(default_factory=list)
     guardrails: list[str] = Field(default_factory=list)
     generated_at: datetime

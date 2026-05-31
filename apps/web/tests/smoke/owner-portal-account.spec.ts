@@ -55,8 +55,35 @@ const OWNER_PORTAL_ACCOUNT_RESPONSE = {
     outstanding_cents: 550000,
     invoice_count: 1,
   },
+  documents: [
+    {
+      id: "document-owner-visible-1",
+      property_id: "property-1",
+      property_name: "Owner Portal Plaza",
+      filename: "owner-visible-report.pdf",
+      content_type: "application/pdf",
+      byte_size: 13,
+      category: "other",
+      notes: "Quarterly property report",
+      source_label: "Shared by property team",
+      created_at: "2026-05-31T00:00:00.000Z",
+    },
+    {
+      id: "document-owner-visible-2",
+      property_id: "property-2",
+      property_name: "Annex Offices",
+      filename: "owner-visible-report.pdf",
+      content_type: "application/pdf",
+      byte_size: 17,
+      category: "other",
+      notes: null,
+      source_label: "Shared by property team",
+      created_at: "2026-05-31T00:00:00.000Z",
+    },
+  ],
   guardrails: [
-    "Read-only owner portal preview: viewing this page does not send owner email, download or send PDFs, write Xero data, reconcile payments, dispatch invoices, refresh providers, or mutate provider history.",
+    "Read-only owner portal: opening this page does not send owner email, dispatch invoices, write Xero data, reconcile payments, refresh providers, or mutate provider history.",
+    "Shared document downloads are account-scoped and limited to files explicitly shared by the property team for this owner; no owner statement PDFs are generated or sent from the portal.",
   ],
   generated_at: "2026-05-31T00:00:00.000Z",
 };
@@ -130,15 +157,64 @@ test("owner account entry opens a linked owner portal without owner id", async (
       body: JSON.stringify(OWNER_PORTAL_ACCOUNT_RESPONSE),
     });
   });
+  const downloads: string[] = [];
+  await page.route(
+    "**/api/v1/owner-portal/account/documents/*/download",
+    async (route) => {
+      const authHeader = route.request().headers().authorization;
+      if (!authHeader && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+        throw new Error("Owner document download must send a bearer token.");
+      }
+      downloads.push(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/pdf",
+        headers: {
+          "Content-Disposition":
+            "attachment; filename*=UTF-8''owner-visible-report.pdf",
+        },
+        body: "owner visible",
+      });
+    },
+  );
 
   await page.goto("/owner-portal?month=2026-05");
 
   await expect(
     page.getByRole("heading", { name: "Owner portal" }),
   ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("owner_portal_account")).toBeVisible();
+  await expect(page.getByText("Owner account", { exact: true })).toBeVisible();
+  await expect(page.getByText("owner_portal_account")).toHaveCount(0);
   await expect(page.getByText("Owner Portal Plaza").first()).toBeVisible();
   await expect(page.getByText("$5,500").first()).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Shared documents" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("owner-visible-report.pdf", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByText("Quarterly property report")).toBeVisible();
+  await expect(page.getByText("operator_upload")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: "Download owner-visible-report.pdf for Owner Portal Plaza",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Download owner-visible-report.pdf for Annex Offices",
+    }),
+  ).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page
+    .getByRole("button", {
+      name: "Download owner-visible-report.pdf for Owner Portal Plaza",
+    })
+    .click();
+  expect((await download).suggestedFilename()).toBe(
+    "owner-visible-report.pdf",
+  );
+  expect(downloads).toHaveLength(1);
   await expect(page.getByText("operator_preview")).toHaveCount(0);
 });
 

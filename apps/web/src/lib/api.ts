@@ -5254,11 +5254,25 @@ export type OwnerPortalStatementRecord = {
   invoice_count: number;
 };
 
+export type OwnerPortalDocumentRecord = {
+  id: string;
+  property_id: string;
+  property_name: string;
+  filename: string;
+  content_type: string | null;
+  byte_size: number;
+  category: DocumentCategory;
+  notes: string | null;
+  source_label: string;
+  created_at: string;
+};
+
 export type OwnerPortalRecord = {
   auth: OwnerPortalAuthRecord;
   owner: OwnerPortalOwnerRecord;
   properties: OwnerPortalPropertyRecord[];
   statement: OwnerPortalStatementRecord | null;
+  documents: OwnerPortalDocumentRecord[];
   guardrails: string[];
   generated_at: string;
 };
@@ -5364,6 +5378,25 @@ export function getOwnerPortalAccountSession(
     });
   }
   return request<OwnerPortalRecord>(path);
+}
+
+export async function downloadOwnerPortalAccountDocument(
+  documentId: string,
+  authToken?: string | null,
+) {
+  const path = `/owner-portal/account/documents/${encodeURIComponent(
+    documentId,
+  )}/download`;
+  if (authToken) {
+    const response = await fetch(`${API_BASE}${path}`, {
+      headers: ownerPortalBearerHeaders(authToken),
+    });
+    if (!response.ok) {
+      await parseResponse<never>(response);
+    }
+    return response.blob();
+  }
+  return requestBlob(path);
 }
 
 // ---- Contractor directory -------------------------------------------------

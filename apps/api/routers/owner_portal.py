@@ -6,9 +6,10 @@ import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.auth import (
@@ -19,12 +20,14 @@ from stewart.core.auth import (
 )
 from stewart.core.db import utcnow
 from stewart.core.models import (
+    DocumentCategory,
     Owner,
     OwnerPortalAccount,
     OwnerPortalAccountStatus,
     OwnerPortalInvite,
     Property,
     PropertyOwner,
+    StoredDocument,
     UserRole,
 )
 from stewart.core.settings import Settings, get_settings
@@ -35,6 +38,7 @@ from apps.api.schemas.owner_portal import (
     OwnerPortalAccountClaimCreate,
     OwnerPortalAccountLifecycleRead,
     OwnerPortalAuthRead,
+    OwnerPortalDocumentRead,
     OwnerPortalInvitePreviewRead,
     OwnerPortalInviteRead,
     OwnerPortalOwnerRead,
@@ -57,10 +61,15 @@ READ_ROLES = {
 
 OWNER_PORTAL_GUARDRAILS = [
     (
-        "Read-only owner portal preview: viewing this page does not send owner "
-        "email, download or send PDFs, write Xero data, reconcile payments, "
-        "dispatch invoices, refresh providers, or mutate provider history."
-    )
+        "Read-only owner portal: opening this page does not send owner email, "
+        "dispatch invoices, write Xero data, reconcile payments, refresh "
+        "providers, or mutate provider history."
+    ),
+    (
+        "Shared document downloads are account-scoped and limited to files "
+        "explicitly shared by the property team for this owner; no owner "
+        "statement PDFs are generated or sent from the portal."
+    ),
 ]
 
 OWNER_PORTAL_INVITE_GUARDRAILS = [
@@ -71,6 +80,7 @@ OWNER_PORTAL_INVITE_GUARDRAILS = [
     )
 ]
 OWNER_PORTAL_INVITE_TTL_DAYS = 30
+OWNER_PORTAL_DOCUMENT_VISIBLE_KEY = "owner_portal_visible"
 
 
 def _current_statement_month() -> str:
@@ -276,6 +286,159 @@ def _linked_properties(owner: Owner, session: Session) -> list[OwnerPortalProper
     ]
 
 
+def _document_source_label_from_metadata(metadata: dict[str, object] | None) -> str:
+    metadata = metadata or {}
+    source = metadata.get("source")
+    if source == "operator_upload":
+        return "Shared by property team"
+    if source == "property_document":
+        return "Property document"
+    return "Shared file"
+
+
+def _document_is_explicitly_owner_visible(document: StoredDocument) -> bool:
+    metadata = document.document_metadata or {}
+    return metadata.get(OWNER_PORTAL_DOCUMENT_VISIBLE_KEY) is True
+
+
+def _document_is_property_level(document: StoredDocument) -> bool:
+    return (
+        document.property_id is not None
+        and document.tenancy_unit_id is None
+        and document.tenant_id is None
+        and document.lease_id is None
+        and document.tenant_onboarding_id is None
+        and document.category != DocumentCategory.invoice
+    )
+
+
+def _document_read(
+    document: StoredDocument,
+    property_name: str,
+) -> OwnerPortalDocumentRead:
+    assert document.property_id is not None
+    return OwnerPortalDocumentRead(
+        id=document.id,
+        property_id=document.property_id,
+        property_name=property_name,
+        filename=document.filename,
+        content_type=document.content_type,
+        byte_size=document.byte_size,
+        category=document.category,
+        notes=document.notes,
+        source_label=_document_source_label_from_metadata(document.document_metadata),
+        created_at=document.created_at,
+    )
+
+
+def _owner_portal_documents(
+    owner: Owner,
+    session: Session,
+    properties: list[OwnerPortalPropertyRead],
+) -> list[OwnerPortalDocumentRead]:
+    property_names = {row.property_id: row.property_name for row in properties}
+    if not property_names:
+        return []
+
+    rows = session.execute(
+        select(
+            StoredDocument.id,
+            StoredDocument.property_id,
+            Property.name.label("property_name"),
+            StoredDocument.filename,
+            StoredDocument.content_type,
+            StoredDocument.byte_size,
+            StoredDocument.category,
+            StoredDocument.notes,
+            StoredDocument.document_metadata,
+            StoredDocument.created_at,
+        )
+        .join(Property, Property.id == StoredDocument.property_id)
+        .join(PropertyOwner, PropertyOwner.property_id == StoredDocument.property_id)
+        .where(
+            StoredDocument.entity_id == owner.entity_id,
+            StoredDocument.property_id.in_(list(property_names)),
+            StoredDocument.tenancy_unit_id.is_(None),
+            StoredDocument.tenant_id.is_(None),
+            StoredDocument.lease_id.is_(None),
+            StoredDocument.tenant_onboarding_id.is_(None),
+            StoredDocument.category != DocumentCategory.invoice,
+            StoredDocument.deleted_at.is_(None),
+            PropertyOwner.owner_id == owner.id,
+            Property.entity_id == owner.entity_id,
+            Property.deleted_at.is_(None),
+        )
+        .order_by(StoredDocument.created_at.desc(), StoredDocument.filename.asc())
+    ).all()
+
+    visible_documents: list[OwnerPortalDocumentRead] = []
+    for row in rows:
+        if (row.document_metadata or {}).get(OWNER_PORTAL_DOCUMENT_VISIBLE_KEY) is not True:
+            continue
+        assert row.property_id is not None
+        visible_documents.append(
+            OwnerPortalDocumentRead(
+                id=row.id,
+                property_id=row.property_id,
+                property_name=row.property_name,
+                filename=row.filename,
+                content_type=row.content_type,
+                byte_size=row.byte_size,
+                category=row.category,
+                notes=row.notes,
+                source_label=_document_source_label_from_metadata(row.document_metadata),
+                created_at=row.created_at,
+            )
+        )
+    return visible_documents
+
+
+def _owner_portal_document(
+    owner: Owner,
+    document_id: UUID,
+    session: Session,
+) -> StoredDocument:
+    scoped_document = session.execute(
+        select(StoredDocument.id, StoredDocument.document_metadata)
+        .join(Property, Property.id == StoredDocument.property_id)
+        .join(PropertyOwner, PropertyOwner.property_id == StoredDocument.property_id)
+        .where(
+            StoredDocument.id == document_id,
+            StoredDocument.entity_id == owner.entity_id,
+            StoredDocument.property_id.is_not(None),
+            StoredDocument.tenancy_unit_id.is_(None),
+            StoredDocument.tenant_id.is_(None),
+            StoredDocument.lease_id.is_(None),
+            StoredDocument.tenant_onboarding_id.is_(None),
+            StoredDocument.category != DocumentCategory.invoice,
+            StoredDocument.deleted_at.is_(None),
+            PropertyOwner.owner_id == owner.id,
+            Property.entity_id == owner.entity_id,
+            Property.deleted_at.is_(None),
+        )
+    ).one_or_none()
+    if scoped_document is None or (
+        scoped_document.document_metadata or {}
+    ).get(OWNER_PORTAL_DOCUMENT_VISIBLE_KEY) is not True:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found.",
+        )
+
+    document = session.scalar(
+        select(StoredDocument).where(
+            StoredDocument.id == scoped_document.id,
+            StoredDocument.deleted_at.is_(None),
+        )
+    )
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found.",
+        )
+    return document
+
+
 def _statement_matches_owner(
     owner: Owner,
     statement: OwnerStatementRead,
@@ -347,6 +510,7 @@ def _portal_read(
         owner=_owner_read(owner),
         properties=properties,
         statement=statement,
+        documents=_owner_portal_documents(owner, session, properties),
         guardrails=OWNER_PORTAL_GUARDRAILS,
         generated_at=owner_statements.generated_at,
     )
@@ -628,6 +792,28 @@ def get_owner_portal_account_session(
             boundary="owner_portal_account",
             detail="Access is scoped to the owner linked to this owner portal account.",
         ),
+    )
+
+
+@router.get("/account/documents/{document_id}/download")
+def download_owner_portal_account_document(
+    document_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> Response:
+    identity = _owner_portal_identity(authorization, settings)
+    account = _active_owner_portal_account(identity.provider_id, session)
+    owner = _owner_for_account(account, session)
+    document = _owner_portal_document(owner, document_id, session)
+    return Response(
+        content=document.file_data,
+        media_type=document.content_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename*=UTF-8''{quote(document.filename)}"
+            )
+        },
     )
 
 
