@@ -288,7 +288,7 @@ Equifax/illion; RTBA/state RTAs).
   Tenants/Vendors live under **People**, Billing / Statements / Xero / Basiq group under
   the new `/money` hub, Comms is treated as **Work**, and hub alias redirects preserve
   moved-route entry points. Honours the §10.5.1 seven-item sidebar cap.
-- [ ] **Account operating mode gate (self-managed owner vs managing agent).** The shipped
+- [~] **Account operating mode gate (self-managed owner vs managing agent).** SHIPPED pending Remba — `cb4704f` (backend: `operating_mode` on Organisation, default `self_managed_owner`, owner/admin PATCH) + `1996aa7` (frontend: People→Owners hub hidden for self-managed, Settings mode toggle + a "Your entities & trusts" fallback keeping owner-entity CRUD reachable, owner-statement palette/shortcut gating). Remaining follow-up: gate the Money-hub owner-statement *dispatch* surface. Background: the shipped
   People → Owners hub + owner statements/disbursements/owner-portal/trust accounting are the
   *managing-agent* framing. A self-managed owner-operator (SKJ, and most 2–20-property owners)
   has no third-party owner and should not see the Owners hub. Add a first-class

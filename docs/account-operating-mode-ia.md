@@ -86,6 +86,13 @@ ships is not.
 
 ## Status
 
+**Update 2026-05-31 — SHIPPED** (`cb4704f` backend + `1996aa7` frontend): the gate
+is live — Organisation `operating_mode` (default `self_managed_owner`), an
+owner/admin Settings toggle, the People → Owners hub hidden for self-managed with
+the owner directory relocated to Settings → "Your entities & trusts", and
+owner-statement palette/shortcut gating. Remaining follow-up: gate the Money-hub
+owner-statement *dispatch* surface. Onboarding segmentation itself is still future.
+
 Decision recorded 2026-05-31 (prototype mode — no Remba gate per the current
 stance). Onboarding segmentation itself is future work (post-SKJ). The
 operating-mode gate should be **designed into the P0 Owner/People build now**.
