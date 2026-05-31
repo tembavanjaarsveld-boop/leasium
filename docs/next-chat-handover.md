@@ -134,13 +134,44 @@ before the Ticket 2.2 slice.
   returned HTTP 200; Render health reported
   `b47b7a3b10a2b90f267991fd7c229de9ab4a3993` with `source=render`.
 
+### Owner portal account-auth slice
+- First true owner-account boundary is implemented after the read-only preview.
+- Backend: migration `20260531_0030_owner_portal_accounts.py` adds
+  `owner_portal_invite` and `owner_portal_account` tables. Invites store only a
+  SHA-256 token hash; the raw token is returned once in the operator response.
+- New backend routes:
+  `POST /api/v1/owner-portal/{owner_id}/invite`,
+  `GET /api/v1/owner-portal/invites/{token}/preview`,
+  `POST /api/v1/owner-portal/account/claim`,
+  `GET /api/v1/owner-portal/account/status`, and
+  `GET /api/v1/owner-portal/account/session?month=YYYY-MM`.
+- Frontend: `/owner-portal/invite/[token]` renders only safe claim context
+  before account claim, and `/owner-portal` opens an already linked owner
+  account without an owner id in the URL. Existing
+  `/owner-portal/[ownerId]?month=YYYY-MM` remains operator-preview only.
+- Guardrails: owner invite creation is local only; no owner email, PDF
+  generation/dispatch, Xero write, Basiq/provider refresh, payment
+  reconciliation, invoice dispatch, or provider-history mutation is triggered.
+- Red-green proof: backend auth tests failed first on missing account models /
+  endpoints; frontend smoke failed first on missing account routes, then passed.
+- Verification so far: focused owner backend slice passed **26 passed**; targeted
+  backend ruff clean; frontend owner account + preview smokes passed **4
+  passed**; targeted frontend eslint clean; `./node_modules/.bin/tsc --noEmit`
+  clean; production-style `next build` succeeded; Postgres offline migration SQL
+  for `20260531_0029:20260531_0030` generated successfully; in-app browser
+  sanity checked the safe invite page and account dashboard against a local mock.
+  Local `alembic upgrade head` still needs a running local Postgres (the desktop
+  session refused `localhost:5432`).
+
 ### Next
 1. Before using shared-ownership splits in production statements, add a dedicated
    split-allocation ticket: `PropertyOwner.split_pct` exists, but this Ticket 1.3
    deliberately changed grouping only.
-2. Add true owner portal account/token auth before treating `/owner-portal` as a
-   public owner login surface; optionally add owner-detail route-level 404 polish
-   if that matters before the auth slice.
+2. Deploy and verify the owner portal account-auth slice: Render must apply
+   Alembic `20260531_0030`, and production owner invites should be tested with a
+   real Clerk owner account before broad rollout.
+3. Add owner-detail route-level 404 polish if that matters before the next owner
+   portal slice.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel
@@ -170,7 +201,11 @@ Handover from a Cowork (Claude) session. Prod is healthy and current. Everything
 2. Confirm **Render** deployed `5685c90`+ and migration `20260531_0029` applied (owner/property_owner tables in prod Neon). The frontend was verified; the backend (Render) was not checked this session.
 3. **Populate owners** in each env: `.venv/bin/python -m scripts.backfill_owners` (local) and against prod once Render is healthy. Until then `/people` Owners shows empty with a "run backfill" hint — expected, not a bug.
 
-### NEXT TICKETS (priority) — plan: `docs/superpowers/plans/2026-05-31-people-hub-and-ia-refocus.md`
+### HISTORICAL NEXT TICKETS (superseded by latest sections above) — plan: `docs/superpowers/plans/2026-05-31-people-hub-and-ia-refocus.md`
+These were the takeover tasks at the start of 2026-05-31. Phase 3, Ticket 1.3,
+Ticket 2.2, and the read-only owner portal slice have now shipped; use the
+latest "Next" block above for current continuation.
+
 1. **Phase 3 — nav consolidation to 7 hubs.** Fold Tenants + Vendors *inline* under `/people` (they link out today), add a **Money** hub (Billing · Statements · Xero · Basiq), route Comms under **Work**, promote People to the sidebar and drop the standalone Tenants item → Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings). Honour the §10.5.1 seven-item cap; add redirects for moved routes. Test-first.
 2. **Ticket 1.3 — `/owners/statements` read-path swap (DEFERRED; do with eyes on real data).** Change ONLY the grouping in `_build_owner_statements` (`apps/api/routers/owners.py`) to group by `Owner`/`PropertyOwner`, with an unattributed fallback for properties lacking an owner link. Keep `tests/integration/test_owner_statement_parity.py` green — it is the safety net. Requires the backfill to have run.
 3. **Ticket 2.2 — consistent people record-page shape** (Tenant/Owner/Vendor share header → tabs → actions).

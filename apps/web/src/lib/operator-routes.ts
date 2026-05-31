@@ -9,6 +9,8 @@ export const publicOperatorPathPrefixes = [
   "/onboarding/",
   "/tenant-portal",
   "/tenant-portal/",
+  "/owner-portal",
+  "/owner-portal/",
   "/snapshots/",
   "/welcome",
   "/icon.svg",

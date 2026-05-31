@@ -115,6 +115,8 @@ def test_owner_portal_preview_returns_read_only_owner_summary(
     body = response.json()
     assert body["auth"] == {
         "mode": "operator_preview",
+        "token_source": "bearer",
+        "owner_auth_configured": True,
         "boundary": "operator_session",
         "detail": (
             "Read-only operator preview scoped by entity role; no owner portal "

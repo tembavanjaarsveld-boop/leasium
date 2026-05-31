@@ -5206,7 +5206,9 @@ export function getOwnerStatementDispatch({
 // ---- Owner portal preview -------------------------------------------------
 
 export type OwnerPortalAuthRecord = {
-  mode: string;
+  mode: "operator_preview" | "owner_portal_account";
+  token_source: "bearer";
+  owner_auth_configured: boolean;
   boundary: string;
   detail: string;
 };
@@ -5270,6 +5272,98 @@ export function getOwnerPortal(ownerId: string, month?: string) {
   return request<OwnerPortalRecord>(
     `/owner-portal/${encodeURIComponent(ownerId)}${suffix}`,
   );
+}
+
+export type OwnerPortalInviteRecord = {
+  owner_id: string;
+  owner_display_name: string;
+  claim_email: string;
+  portal_token: string;
+  claim_url: string;
+  expires_at: string;
+  guardrails: string[];
+};
+
+export type OwnerPortalInvitePreviewRecord = {
+  owner_display_name: string;
+  claim_email: string;
+  expires_at: string;
+  claimable: boolean;
+};
+
+export type OwnerPortalAccountLifecycleRecord = {
+  status: "unlinked" | "active" | "revoked";
+  owner_id: string | null;
+  owner_name: string | null;
+  email: string | null;
+  linked_at: string | null;
+  last_seen_at: string | null;
+  revoked_at: string | null;
+  recovery_hint: string;
+};
+
+function ownerPortalBearerHeaders(token: string) {
+  return { Authorization: `Bearer ${token}` };
+}
+
+export function createOwnerPortalInvite(ownerId: string) {
+  return request<OwnerPortalInviteRecord>(
+    `/owner-portal/${encodeURIComponent(ownerId)}/invite`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function getOwnerPortalInvitePreview(token: string) {
+  return publicRequest<OwnerPortalInvitePreviewRecord>(
+    `/owner-portal/invites/${encodeURIComponent(token)}/preview`,
+  );
+}
+
+export function claimOwnerPortalAccount(
+  portalToken: string,
+  authToken?: string | null,
+) {
+  const init: RequestInit = {
+    method: "POST",
+    body: JSON.stringify({ portal_token: portalToken }),
+  };
+  if (authToken) {
+    return publicRequest<OwnerPortalRecord>("/owner-portal/account/claim", {
+      ...init,
+      headers: ownerPortalBearerHeaders(authToken),
+    });
+  }
+  return request<OwnerPortalRecord>("/owner-portal/account/claim", init);
+}
+
+export function getOwnerPortalAccountStatus(authToken?: string | null) {
+  if (authToken) {
+    return publicRequest<OwnerPortalAccountLifecycleRecord>(
+      "/owner-portal/account/status",
+      {
+        headers: ownerPortalBearerHeaders(authToken),
+      },
+    );
+  }
+  return request<OwnerPortalAccountLifecycleRecord>(
+    "/owner-portal/account/status",
+  );
+}
+
+export function getOwnerPortalAccountSession(
+  month: string,
+  authToken?: string | null,
+) {
+  const params = new URLSearchParams({ month });
+  const path = `/owner-portal/account/session?${params.toString()}`;
+  if (authToken) {
+    return publicRequest<OwnerPortalRecord>(path, {
+      headers: ownerPortalBearerHeaders(authToken),
+    });
+  }
+  return request<OwnerPortalRecord>(path);
 }
 
 // ---- Contractor directory -------------------------------------------------

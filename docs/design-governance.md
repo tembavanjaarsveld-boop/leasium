@@ -59,9 +59,9 @@ Design-facing follow-ups (prototype-mode, not gated):
 
 1. People hub IA + a consistent people record-page shape.
 2. Nav consolidation to 7 hubs (introduce the **People** and **Money** groupings).
-3. Owner portal surface (read-only first) once the `Owner` entity lands.
-   First operator-preview slice is shipped; public owner login/account claiming
-   remains the next auth slice.
+3. Owner portal surface once the `Owner` entity lands. The operator-preview
+   slice is shipped, and the first public account/claim gate is now in
+   prototype behind no-send/no-provider guardrails.
 
 Frontend work on these should run through the checked-in UI skills in
 `docs/external-skills/` (web-design-guidelines, composition-patterns, and the hallmark
@@ -82,7 +82,17 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   not create owner accounts, send owner email, download/send PDFs, write Xero
   data, reconcile payments, dispatch invoices, refresh providers, or mutate
   provider history. Remba should review whether the owner-facing density and
-  access-boundary language are clear before public owner auth is added.
+  access-boundary language are clear before broad owner rollout.
+- **Owner portal account gate** (`/owner-portal`, `/owner-portal/invite/[token]`):
+  first public owner-account prototype. The invite page renders only safe claim
+  context (owner display name, claim email, expiry, claimable state) before any
+  statement/property data is fetched. Account reads use bearer-scoped
+  `/api/v1/owner-portal/account/session?month=YYYY-MM`, not an owner id in the
+  URL. Invite creation is local only and sends no owner email, generates no PDF,
+  writes no Xero/Basiq/provider data, reconciles no payments, and mutates no
+  provider history. Remba should review the claim copy, signed-in recovery
+  states, and whether the account dashboard density should match the operator
+  preview or be softened for owners.
 - **Canvas darkening** (globals.css, commit `65c1da8`): `--leasium-bg` #f6f8fb→#edf0f6 and `--leasium-slate-100` #f2f4f7→#e9edf3 so white cards lift off the background. Hierarchy preserved: cards (#fff) > canvas > muted/hover > border. Light mode only; dark-mode token untouched. Dial the canvas value if it reads too strong/weak on real data. Design source of truth §6 updated to match.
 - **Card elevation**: new `leasiumCard` Tailwind shadow — a tight contact layer + a soft ambient lift (`0 1px 2px /0.06, 0 4px 12px -2px /0.08`) — applied to `SectionPanel` and `DashboardMetricCard` so cards separate from the darker canvas; buttons/rows keep `leasiumXs`. Subtle border retained. Dial via the `leasiumCard` token in `apps/web/tailwind.config.ts`.
 

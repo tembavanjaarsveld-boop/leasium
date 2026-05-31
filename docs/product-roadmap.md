@@ -68,7 +68,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Owner statement preview v1: `/statements` now has an owner-selectable finance review pack with owner contact context, monthly totals, property lines, copyable review summary, and a print/save-PDF action while keeping owner dispatch as an explicit future step. Pending Remba review.
 - [x] Owner statement dispatch review v1: the statement preview now includes a recipient-readiness and owner-facing email draft panel with copy-to-clipboard support plus a local `owner-statement-dispatch-draft-{month}-{owner}.txt` download for the selected owner, and the dispatch approval queue has a local `owner-statement-dispatch-review-{month}.csv` download covering owner, status, recipient, subject, invoice/property counts, outstanding amount, approval runway, and no-send/no-provider guardrails. This prepares for a later reviewed SendGrid dispatch path without sending email, downloading PDF packs, writing Xero data, reconciling payments, or writing provider history. Pending Remba review.
 - [x] Owner statement invoice evidence UI v1: the selected owner statement preview now surfaces invoice-level evidence rows with invoice number/title, property, due date, amount, paid/outstanding, payment status, and local/Xero/reconciliation evidence source, plus a local invoice-evidence CSV download for the selected owner/month that includes the same source trail. This matches the backend JSON/PDF/ZIP evidence artifacts without sending owner email or mutating providers. Pending Remba review.
-- [~] Owner portal read-only preview v1: new operator-preview endpoint `GET /api/v1/owner-portal/{owner_id}` and route `/owner-portal/[ownerId]` show one owner identity, linked properties/splits, monthly statement totals, statement property lines, and explicit no-send/no-provider guardrails. This is not public owner login yet; true owner account/token auth remains the next portal slice. Pending Remba review.
+- [~] Owner portal account/token v1: owner portal now has the read-only operator preview (`GET /api/v1/owner-portal/{owner_id}` + `/owner-portal/[ownerId]`) plus first account-auth scaffolding: local no-send owner claim invites, public safe invite preview, one-time Clerk bearer claim, bearer-only `/owner-portal/account/session`, `/owner-portal` account entry, and `/owner-portal/invite/[token]` claim gate. Pending Remba review and production migration/backfill verification before broad owner rollout.
 - [x] Insights overview v1: the Insights workspace now has a read-only backend overview for portfolio health, live exceptions, automation activity, billing risk, owner/entity snapshots, and a local `insights-review-packet-{as_of}.csv` export covering live exceptions, automation activity, finance/accounting readiness, owner/entity gaps, lease events, snapshot history, and no-provider-mutation guardrails. No record mutation, invoice posting, Xero sync, provider refresh, SendGrid/Twilio send, payment reconciliation apply, billing draft generation, provider dispatch, or provider-history write runs from the overview export.
 - [x] Shareable Insights snapshots v1: operators can freeze owner, finance, and lease-event snapshots from the live Insights overview into revocable public links with hashed tokens, expiry, public read-only rendering, and no live portfolio mutation.
 - [x] Spreadsheet portfolio import dry-run v1: `.xlsx` source-of-truth workbooks can be parsed into a no-mutation import plan for properties, units, tenants, leases, charge rules, obligations, and operational tasks, with row-level blockers/warnings and feature-candidate flags for vendors, legal entities, head leases, security originals, arrears, and issue/action queues.
@@ -274,11 +274,13 @@ Equifax/illion; RTBA/state RTAs).
 
 **P1 — reaches the standard (AU-correct):**
 
-- [~] **Owner portal (read-only first).** Operator-preview foundation implemented:
-  `/api/v1/owner-portal/{owner_id}` + `/owner-portal/[ownerId]` expose owner identity,
-  linked properties/splits, statement totals, and no-send/no-provider guardrails.
-  Owner login/account claiming, secure document share, and richer owner dashboard
-  sections remain next.
+- [~] **Owner portal account foundation.** Operator-preview foundation remains in
+  place, and the first secure owner-account slice is now implemented: operators
+  can generate a local no-send claim link, the public invite page shows only
+  owner display name/email/expiry before claim, account claim consumes the token
+  through Clerk bearer auth, and account reads use `/owner-portal/account/session`
+  without an owner id in the URL. Secure document share and richer owner
+  dashboard sections remain next.
 - [ ] **Tenant self-serve payments on AU rails.** PayTo / PayID / BPAY / direct debit
   (Monoova / Zai / Stripe AU). Tenants pay in-portal; reconciliation stays review-first
   through the existing Basiq/Xero engine. DoorLoop's #1 value driver, AU-correct.

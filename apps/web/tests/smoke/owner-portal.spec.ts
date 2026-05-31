@@ -5,6 +5,8 @@ import { mockLeasiumApi } from "./api-mocks";
 const OWNER_PORTAL_RESPONSE = {
   auth: {
     mode: "operator_preview",
+    token_source: "bearer",
+    owner_auth_configured: true,
     boundary: "operator_session",
     detail:
       "Read-only operator preview scoped by entity role; no owner portal account is created.",

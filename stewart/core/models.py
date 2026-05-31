@@ -173,6 +173,11 @@ class TenantPortalAccountStatus(enum.StrEnum):
     revoked = "revoked"
 
 
+class OwnerPortalAccountStatus(enum.StrEnum):
+    active = "active"
+    revoked = "revoked"
+
+
 class DocumentCategory(enum.StrEnum):
     lease = "lease"
     insurance = "insurance"
@@ -301,6 +306,12 @@ class Entity(Base):
     lease_intakes: Mapped[list["LeaseIntake"]] = relationship(back_populates="entity")
     tenant_onboardings: Mapped[list["TenantOnboarding"]] = relationship(back_populates="entity")
     tenant_portal_accounts: Mapped[list["TenantPortalAccount"]] = relationship(
+        back_populates="entity"
+    )
+    owner_portal_invites: Mapped[list["OwnerPortalInvite"]] = relationship(
+        back_populates="entity"
+    )
+    owner_portal_accounts: Mapped[list["OwnerPortalAccount"]] = relationship(
         back_populates="entity"
     )
     branded_communication_templates: Mapped[
@@ -1329,9 +1340,144 @@ class Owner(Base):
 
     entity: Mapped[Entity] = relationship(back_populates="owners")
     property_links: Mapped[list["PropertyOwner"]] = relationship(back_populates="owner")
+    portal_invites: Mapped[list["OwnerPortalInvite"]] = relationship(
+        back_populates="owner"
+    )
+    portal_accounts: Mapped[list["OwnerPortalAccount"]] = relationship(
+        back_populates="owner"
+    )
 
 
 Index("owner_entity_idx", Owner.entity_id, postgresql_where=Owner.deleted_at.is_(None))
+
+
+class OwnerPortalInvite(Base):
+    __tablename__ = "owner_portal_invite"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    owner_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("owner.id"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_email: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    invite_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="owner_portal_invites")
+    owner: Mapped[Owner] = relationship(back_populates="portal_invites")
+
+
+Index(
+    "owner_portal_invite_token_hash_idx",
+    OwnerPortalInvite.token_hash,
+    unique=True,
+    postgresql_where=OwnerPortalInvite.deleted_at.is_(None),
+    sqlite_where=OwnerPortalInvite.deleted_at.is_(None),
+)
+Index(
+    "owner_portal_invite_entity_idx",
+    OwnerPortalInvite.entity_id,
+    postgresql_where=OwnerPortalInvite.deleted_at.is_(None),
+)
+Index(
+    "owner_portal_invite_owner_idx",
+    OwnerPortalInvite.owner_id,
+    postgresql_where=OwnerPortalInvite.deleted_at.is_(None),
+)
+
+
+class OwnerPortalAccount(Base):
+    __tablename__ = "owner_portal_account"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    owner_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("owner.id"), nullable=False
+    )
+    owner_portal_invite_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("owner_portal_invite.id")
+    )
+    auth_provider: Mapped[str] = mapped_column(Text, nullable=False, default="clerk")
+    auth_provider_id: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[OwnerPortalAccountStatus] = mapped_column(
+        Enum(OwnerPortalAccountStatus, name="owner_portal_account_status"),
+        nullable=False,
+        default=OwnerPortalAccountStatus.active,
+    )
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    account_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="owner_portal_accounts")
+    owner: Mapped[Owner] = relationship(back_populates="portal_accounts")
+    invite: Mapped[OwnerPortalInvite | None] = relationship()
+
+
+Index(
+    "owner_portal_account_auth_provider_owner_active_idx",
+    OwnerPortalAccount.auth_provider,
+    OwnerPortalAccount.auth_provider_id,
+    OwnerPortalAccount.owner_id,
+    unique=True,
+    postgresql_where=(
+        (OwnerPortalAccount.status == OwnerPortalAccountStatus.active)
+        & OwnerPortalAccount.revoked_at.is_(None)
+        & OwnerPortalAccount.deleted_at.is_(None)
+    ),
+    sqlite_where=(
+        (OwnerPortalAccount.status == OwnerPortalAccountStatus.active)
+        & OwnerPortalAccount.revoked_at.is_(None)
+        & OwnerPortalAccount.deleted_at.is_(None)
+    ),
+)
+Index(
+    "owner_portal_account_auth_provider_idx",
+    OwnerPortalAccount.auth_provider,
+    OwnerPortalAccount.auth_provider_id,
+    postgresql_where=OwnerPortalAccount.deleted_at.is_(None),
+)
+Index(
+    "owner_portal_account_entity_idx",
+    OwnerPortalAccount.entity_id,
+    postgresql_where=OwnerPortalAccount.deleted_at.is_(None),
+)
+Index(
+    "owner_portal_account_owner_idx",
+    OwnerPortalAccount.owner_id,
+    postgresql_where=OwnerPortalAccount.deleted_at.is_(None),
+)
 
 
 class PropertyOwner(Base):
