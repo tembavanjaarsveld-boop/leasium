@@ -427,10 +427,10 @@ Drop this into the global CSS file.
   --leasium-slate-300: #98A2B3;
   --leasium-slate-200: #D0D5DD;
   --leasium-slate-150: #E4E7EC;
-  --leasium-slate-100: #F2F4F7;
+  --leasium-slate-100: #E9EDF3;
   --leasium-slate-50: #F6F8FB;
 
-  --leasium-bg: #F6F8FB;
+  --leasium-bg: #EDF0F6;
   --leasium-surface: #FFFFFF;
   --leasium-border: #E4E7EC;
   --leasium-border-strong: #D0D5DD;

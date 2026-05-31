@@ -5,6 +5,18 @@ Owner: Temba (solo, commits direct to `main`)
 Source: [`docs/doorloop-benchmark-2026-05-31.md`](../../doorloop-benchmark-2026-05-31.md)
 Backlog: `docs/product-roadmap.md` → "DoorLoop benchmark refocus (2026-05-31)"
 
+## Status — 2026-05-31 (shipped to prod)
+
+- Ticket 1.1 (Owner + PropertyOwner models + migration `20260531_0029`): **SHIPPED** (`5685c90`).
+- Ticket 1.4 (Owner CRUD API) + owner↔property link endpoints: **SHIPPED** (`5685c90`).
+- Ticket 1.2 (idempotent backfill + `scripts.backfill_owners`): **SHIPPED** (`5685c90`).
+- Ticket 1.3 (statement read-path cutover): parity test **PROVEN** (`tests/integration/test_owner_statement_parity.py`); the endpoint swap itself is **DEFERRED** — do it with eyes on real SKJ data.
+- Ticket 2.1 (`/people` hub): **SHIPPED** (`d0bd122`) — Owners directory live; Tenants/Vendors compact + link-out; Prospects stub.
+- Ticket 2.2 (consistent people record-page shape): **TODO**.
+- Phase 3 (nav consolidation to 7 hubs): **TODO — next**.
+
+Verified: backend 344 passed / 1 skipped + ruff clean; frontend eslint/tsc + Vercel prod build green. Migration applies on Render deploy; run `scripts.backfill_owners` to populate owners.
+
 ## Why this plan
 
 DoorLoop's legibility comes from two spines — **Properties → Units** and one **People**

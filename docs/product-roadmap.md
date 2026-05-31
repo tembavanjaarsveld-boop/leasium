@@ -252,14 +252,15 @@ Equifax/illion; RTBA/state RTAs).
 
 **P0 — structural keystone (do first; low net-new features, unlocks the rest):**
 
-- [ ] **Owner as a first-class entity.** New `Owner` model + migration; backfill from the
-  11 Property owner-fields; Property ↔ Owner link supporting ownership splits; owner
-  statements read from `Owner` instead of the computed property-tuple. Additive and
-  review-first — keep the existing fields until the read path is cut over.
-- [ ] **People hub IA.** New `/people` surface with Tenants · Owners · Vendors tabs (+ a
-  stubbed Prospects tab), consolidating today's Tenants / Contractors / Statements
-  destinations. Consistent record-page shape across all four people types.
-- [ ] **Navigation consolidation to 7 hubs.** Dashboard · Smart Intake · Properties ·
+- [x] **Owner as a first-class entity.** SHIPPED (commit `5685c90`): `Owner` + `PropertyOwner`
+  models, migration `20260531_0029`, `/api/v1/owners` CRUD + property-link attach/detach,
+  idempotent `scripts.backfill_owners`, and a statement-grouping parity test. Legacy
+  `Property.owner_*` fields kept as the backfill source until the read-path swap (below).
+- [~] **People hub IA.** SHIPPED to prod (commit `d0bd122`): `/people` with a live Owners
+  directory (on the new API), Tenants/Vendors compact + link-out, Prospects stub, `?tab=`
+  URL state, palette + `G E`. Remaining: fold Tenants/Vendors *inline* and a consistent
+  record-page shape (Ticket 2.2) — tracked under Navigation consolidation.
+- [ ] **Navigation consolidation to 7 hubs (next ticket).** Dashboard · Smart Intake · Properties ·
   People · Work · Money · Insights (+ Settings). Folds Billing / Statements / Xero / Basiq
   into **Money** and Comms into **Work**. Honours the §10.5.1 seven-item sidebar cap.
 

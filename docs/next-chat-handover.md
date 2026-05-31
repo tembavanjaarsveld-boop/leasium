@@ -2,6 +2,44 @@
 
 Last updated: 2026-05-31
 
+## Codex Takeover — 2026-05-31 (READ THIS FIRST)
+
+Handover from a Cowork (Claude) session. Prod is healthy and current. Everything below is **on `main` and deployed** unless marked DEFERRED/TODO.
+
+### Prod state (verified this session)
+- `main` tip before this doc-sync commit: `65c1da8`. The Vercel **production** deploy for `65c1da8` is **READY** and serving `leasium.ai` (verified via the Vercel API).
+- Commits newest→oldest: `65c1da8` darken canvas · `d0bd122` People hub · `ff00a18` dashboard heading polish (Temba) · `5685c90` Owner entity backend · `a524ba6` UX polish + DoorLoop research docs.
+
+### What shipped this session (DoorLoop benchmark P0)
+1. **Owner is a first-class entity** (`5685c90`): `stewart/core/models.py` `Owner` (mirrors the 11 legacy `Property.owner_*` fields) + `PropertyOwner` (`split_pct`, unique `(property_id, owner_id)`), `Entity.owners`/`Property.owner_links`; migration `20260531_0029_owner_entity.py`; `apps/api/routers/owner_entities.py` + `schemas/owner_entities.py` → `/api/v1/owners` CRUD + `POST/DELETE /owners/{id}/properties` (registered AFTER `owners.router` so `/owners/statements*` keeps route priority); `stewart/core/owner_backfill.py` + `scripts/backfill_owners.py`.
+2. **People hub** (`d0bd122`): `apps/web/src/app/people/page.tsx` — Owners directory (live on the API), Tenants/Vendors compact + link-out, Prospects stub, `?tab=` URL state; Owner client in `apps/web/src/lib/api.ts`; palette + `G E` in `app-shell.tsx`; smoke `apps/web/tests/smoke/people-hub.spec.ts`.
+3. **Darker canvas** (`65c1da8`): `--leasium-bg` #f6f8fb→#edf0f6, `--leasium-slate-100` #f2f4f7→#e9edf3 (globals.css). Cards lift; hierarchy preserved (cards > canvas > muted > border). Light mode only.
+
+### Verification
+- Backend: full integration suite **344 passed / 1 skipped**, ruff clean (Temba's Mac via Desktop Commander).
+- Frontend: eslint + tsc clean; **Vercel prod build passed** (strongest signal). Caveat: the People hub Playwright smoke is written but its *local* run times out on Next cold-compile (the known x64-Node WASM-SWC edge-runtime issue documented later in this file) — re-run `cd apps/web && ./node_modules/.bin/playwright test tests/smoke/people-hub.spec.ts` after the arm64-Node fix.
+
+### DO FIRST
+1. `git pull` (tip should be this doc-sync commit on top of `65c1da8`).
+2. Confirm **Render** deployed `5685c90`+ and migration `20260531_0029` applied (owner/property_owner tables in prod Neon). The frontend was verified; the backend (Render) was not checked this session.
+3. **Populate owners** in each env: `.venv/bin/python -m scripts.backfill_owners` (local) and against prod once Render is healthy. Until then `/people` Owners shows empty with a "run backfill" hint — expected, not a bug.
+
+### NEXT TICKETS (priority) — plan: `docs/superpowers/plans/2026-05-31-people-hub-and-ia-refocus.md`
+1. **Phase 3 — nav consolidation to 7 hubs.** Fold Tenants + Vendors *inline* under `/people` (they link out today), add a **Money** hub (Billing · Statements · Xero · Basiq), route Comms under **Work**, promote People to the sidebar and drop the standalone Tenants item → Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings). Honour the §10.5.1 seven-item cap; add redirects for moved routes. Test-first.
+2. **Ticket 1.3 — `/owners/statements` read-path swap (DEFERRED; do with eyes on real data).** Change ONLY the grouping in `_build_owner_statements` (`apps/api/routers/owners.py`) to group by `Owner`/`PropertyOwner`, with an unattributed fallback for properties lacking an owner link. Keep `tests/integration/test_owner_statement_parity.py` green — it is the safety net. Requires the backfill to have run.
+3. **Ticket 2.2 — consistent people record-page shape** (Tenant/Owner/Vendor share header → tabs → actions).
+4. P1: owner portal (read-only) → tenant payments (AU rails: PayTo/PayID/BPAY) → installable PWA.
+
+### GUARDRAILS (non-negotiable — `CLAUDE.md`)
+- Review-first providers: no Xero write / SendGrid / Twilio / tenant email / payment reconciliation without explicit operator approval.
+- `Owner` is the model of record; legacy `Property.owner_*` fields are a **backfill source only**.
+- Additive + test-first (no production code without a failing test). Commits land directly on `main`, no PRs, no Claude/Codex attribution lines.
+
+### TOOLCHAIN (Temba's Mac, via Desktop Commander)
+- Backend: `.venv/bin/python -m pytest`, `.venv/bin/python -m ruff check ...`, `.venv/bin/alembic upgrade head` (`uv` unavailable).
+- Frontend (in `apps/web`): `./node_modules/.bin/{eslint,tsc,playwright,next}`. Local Playwright/`next dev` hits the x64-Node WASM-SWC edge-runtime issue — prefer arm64 LTS Node + clean `pnpm install`; the Vercel build is the reliable frontend gate. Verify prod deploys via the Vercel API (team `team_5auiJ5DlpnIlF4Qyb3uA6dEz`, project `prj_8fAMsCvYv1Pm728oFXLVFE9ccgRZ`).
+- Local infra: `docker compose up -d` → `.venv/bin/alembic upgrade head` → `.venv/bin/python -m scripts.seed`.
+
 ## Current State
 
 - 2026-05-31 frontend Speed Insights slice (THIS SESSION): Vercel Speed

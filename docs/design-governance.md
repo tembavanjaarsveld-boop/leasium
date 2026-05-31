@@ -65,6 +65,13 @@ Frontend work on these should run through the checked-in UI skills in
 `docs/external-skills/` (web-design-guidelines, composition-patterns, and the hallmark
 slop-test) so the new surfaces stay consistent with the design system.
 
+## 2026-05-31 People hub + canvas darkening (shipped to prod, prototype mode)
+
+Shipped to prod (no Remba gate, prototype mode):
+
+- **People hub** (`/people`, commit `d0bd122`): one surface for Tenants · Owners · Vendors · Prospects(stub). Owners is a live directory on the new `/api/v1/owners`; Tenants/Vendors are compact read-only with a link to their full workspaces; `?tab=` URL state; reachable via command palette + `G E`. Sidebar unchanged (still 7 items) — full consolidation (fold Tenants/Vendors inline + a Money hub) is the next IA ticket.
+- **Canvas darkening** (globals.css, commit `65c1da8`): `--leasium-bg` #f6f8fb→#edf0f6 and `--leasium-slate-100` #f2f4f7→#e9edf3 so white cards lift off the background. Hierarchy preserved: cards (#fff) > canvas > muted/hover > border. Light mode only; dark-mode token untouched. Dial the canvas value if it reads too strong/weak on real data. Design source of truth §6 updated to match.
+
 ## 2026-05-30/31 Dispatch + UX Polish Slice (prototype mode)
 
 Per Temba's standing call that Remba is a retired AI reviewer during the
