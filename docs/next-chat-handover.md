@@ -348,6 +348,30 @@ before the Ticket 2.2 slice.
   filtered-list selection both failed red, then passed after the gates were
   tightened. The full Properties UX smoke passed **8 passed**.
 
+### Tenant portal operator preview error polish slice
+- Shipped 2026-06-01 after the Property workspace deep-link polish slice.
+- `/tenants/[tenantId]/portal-preview/[onboardingId]` now imports the shared
+  `ApiError` status contract for the primary operator-preview read. 404s render
+  `Tenant portal preview not found` with a return path to the tenant record;
+  non-404 failures render `Tenant portal preview unavailable` with the API
+  message.
+- This is a read-only operator-preview UI change. It does not change tenant
+  invite preview, tenant portal claim, account/session, uploads, document
+  downloads, notification preferences, email, SMS, Xero, Basiq, reconciliation,
+  provider refresh, or provider-history mutation paths.
+- Red-green proof: the new tenant-portal smoke first failed because missing and
+  broken operator previews both stayed on the old generic unavailable state;
+  after the status-aware branch, the focused smoke passed **2 passed**. Review
+  then found the shared React Query `staleTime` could keep a successfully loaded
+  preview fresh for five minutes; the app-link return regression failed red on
+  stale `Bright Cafe` content, then passed after the operator-preview query was
+  set to revalidate on mount without retrying record errors.
+- Agent reconnaissance also found a larger follow-up risk in tenant portal
+  account/session cache boundaries: stale account data can remain visible after
+  refetch failures or user/token switches because account query keys are broad.
+  Treat that as the next test-first tenant-portal hardening slice, separate from
+  this operator-preview route polish.
+
 ### Account operating-mode frontend gate slice
 - Shipped after the vendor-detail polish. Backend commit `cb4704f` already
   added `Organisation.operating_mode` (default `self_managed_owner`) plus the
@@ -430,9 +454,11 @@ before the Ticket 2.2 slice.
    owner email and touch no providers.
 2. Add richer owner dashboard sections after the shared-document boundary is
    reviewed on real SKJ files.
-3. Decide whether to continue the status-aware not-found pattern into tenant
-   portal preview routes. Owner, Vendor, Tenant, maintenance work-order detail,
-   and property workspace deep links now use the shared `ApiError` contract.
+3. Harden tenant portal account/session cache boundaries so stale tenant account
+   data cannot render after session refetch failures, user switches, or token
+   changes. The operator preview route now uses the shared `ApiError` contract;
+   the remaining tenant-portal risk is account/session scoping rather than the
+   preview route.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel

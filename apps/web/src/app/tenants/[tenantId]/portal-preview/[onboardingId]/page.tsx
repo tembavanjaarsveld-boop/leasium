@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowLeft,
   Building2,
   CalendarClock,
@@ -28,13 +29,14 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  ApiError,
   documentDownloadUrl,
   getTenantPortalOperatorPreview,
   TenantPortalDocumentRecord,
   TenantPortalRecord,
 } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
-import { cn } from "@/lib/utils";
+import { cn, friendlyError } from "@/lib/utils";
 
 const LINK_BUTTON_CLASSES =
   "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition hover:bg-muted";
@@ -116,6 +118,10 @@ function statusTone(status: string) {
     return "warning" as const;
   }
   return "neutral" as const;
+}
+
+function isNotFoundError(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
 }
 
 function maintenanceStatusDetail(
@@ -921,7 +927,11 @@ function TenantPortalOperatorPreview() {
     queryKey: ["tenant-portal-operator-preview", onboardingId],
     queryFn: () => getTenantPortalOperatorPreview(onboardingId),
     enabled: Boolean(onboardingId),
+    refetchOnMount: "always",
+    retry: false,
+    staleTime: 0,
   });
+  const previewNotFound = isNotFoundError(previewQuery.error);
 
   if (previewQuery.isLoading) {
     return (
@@ -943,14 +953,26 @@ function TenantPortalOperatorPreview() {
             <ArrowLeft size={15} />
             Back to tenant
           </Link>
-          <SectionPanel title="Preview unavailable">
+          <SectionPanel
+            title={
+              previewNotFound
+                ? "Tenant portal preview not found"
+                : "Tenant portal preview unavailable"
+            }
+          >
             <EmptyState
-              icon={<ShieldCheck size={18} />}
-              title="Tenant portal preview is unavailable"
+              icon={<AlertTriangle size={18} />}
+              title={
+                previewNotFound
+                  ? "Tenant portal preview not found"
+                  : "Tenant portal preview unavailable"
+              }
               description={
-                previewQuery.error instanceof Error
-                  ? previewQuery.error.message
-                  : "Try again from the tenant record."
+                previewNotFound
+                  ? "This tenant portal preview may have been deleted or moved. Return to the tenant record to choose another onboarding."
+                  : previewQuery.error
+                    ? friendlyError(previewQuery.error)
+                    : "Try again from the tenant record."
               }
             />
           </SectionPanel>
