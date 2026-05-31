@@ -162,6 +162,14 @@ before the Ticket 2.2 slice.
   sanity checked the safe invite page and account dashboard against a local mock.
   Local `alembic upgrade head` still needs a running local Postgres (the desktop
   session refused `localhost:5432`).
+- Deployment verification before this docs-sync commit: Vercel production deploy
+  `dpl_3Gk5FKHGQXo1xgJiGuftCddsZhGY` for `ae6fabb` was **READY** and aliased to
+  `leasium.ai`; `https://leasium.ai/owner-portal` returned HTTP 200; Render
+  health reported `ae6fabb14efe14110d15fe60d062d67454359762` with
+  `source=render`; live OpenAPI includes all five account/invite routes; the
+  public invite preview endpoint returned a clean 404 for a fake token, which
+  confirms migration `20260531_0030` is applied enough for the new table read
+  path instead of failing with a missing-table error.
 
 ### Next
 1. Before using shared-ownership splits in production statements, add a dedicated

@@ -158,6 +158,11 @@ Update:
 - `docs/design-governance.md` — record public owner account gate and no-provider/no-send boundary.
 - `docs/next-chat-handover.md` — latest status, commits, verification, and remove/annotate stale Phase 3 "next" pointer.
 
-- [ ] **Step 4: Commit, push, verify deploy**
+- [x] **Step 4: Commit, push, verify deploy**
+
+Code commit `ae6fabb` is on `origin/main`. Vercel production deploy
+`dpl_3Gk5FKHGQXo1xgJiGuftCddsZhGY` is READY, Render health reports `ae6fabb`,
+and the live fake-token invite preview returns 404 rather than a missing-table
+error, confirming the new table read path is present in production.
 
 Commit directly on `main`, push, then verify Vercel production deployment and Render health.
