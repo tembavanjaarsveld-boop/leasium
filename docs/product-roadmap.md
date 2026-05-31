@@ -279,6 +279,16 @@ Equifax/illion; RTBA/state RTAs).
   Tenants/Vendors live under **People**, Billing / Statements / Xero / Basiq group under
   the new `/money` hub, Comms is treated as **Work**, and hub alias redirects preserve
   moved-route entry points. Honours the §10.5.1 seven-item sidebar cap.
+- [ ] **Account operating mode gate (self-managed owner vs managing agent).** The shipped
+  People → Owners hub + owner statements/disbursements/owner-portal/trust accounting are the
+  *managing-agent* framing. A self-managed owner-operator (SKJ, and most 2–20-property owners)
+  has no third-party owner and should not see the Owners hub. Add a first-class
+  `operating_mode` on the account (default existing accounts → `self_managed_owner`) and gate
+  the People → Owners nav item + agent-only modules on `managing_agent`. Keep the Owner entity
+  + entity-grouped statements for self-managed owners (their owning trusts live as **Entities**,
+  not as People → Owners). Asked at onboarding for non-SKJ users; build the gate into the
+  current Owner/People work now rather than retrofitting. Decision + gated-nav sketch:
+  [`account-operating-mode-ia.md`](account-operating-mode-ia.md).
 
 **P1 — reaches the standard (AU-correct):**
 

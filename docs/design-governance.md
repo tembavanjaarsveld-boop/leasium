@@ -26,6 +26,7 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
 - New modules should earn their own page when they become repeated work, not be squeezed into an existing page.
 - Leasium should feel like modern tooling for operators: calm, fast, clear, and confident.
 - **Navigation legibility is the standard (DoorLoop-informed, 2026-05-31):** organise around two spines — Properties → Units and a single People hub — with fewer destinations and consistent record pages. See the dated section below.
+- **Account operating mode gates the Owners hub (2026-05-31):** the People → Owners hub + owner statements/disbursements/owner-portal/trust accounting are *managing-agent* framing. A self-managed owner-operator has no third-party owner and must not see the Owners hub — gate it on an account `operating_mode` (default `self_managed_owner`), set at onboarding; keep entity-grouped statements via Entities for owner-operators. Design the gate into the P0 People/Owner work rather than retrofitting. Decision + sketch: [account-operating-mode-ia.md](account-operating-mode-ia.md).
 
 ## 2026-05-31 DoorLoop Benchmark — IA + UX Direction (prototype mode)
 
