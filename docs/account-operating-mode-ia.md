@@ -86,15 +86,19 @@ ships is not.
 
 ## Status
 
-**Update 2026-05-31 — SHIPPED** (`cb4704f` backend + `1996aa7` frontend): the gate
-is live — Organisation `operating_mode` (default `self_managed_owner`), an
-owner/admin Settings toggle, the People → Owners hub hidden for self-managed with
-the owner directory relocated to Settings → "Your entities & trusts", and
-owner-statement palette/shortcut gating. Remaining follow-up: gate the Money-hub
-owner-statement *dispatch* surface. Onboarding segmentation itself is still future.
+**Update 2026-05-31 — SHIPPED pending Remba** (`cb4704f` backend,
+`1996aa7` frontend, `ce271e1` command/provider-guard tests): the gate is live.
+Organisation `operating_mode` defaults to `self_managed_owner`; Settings has an
+owner/admin toggle; People → Owners is hidden for self-managed accounts and shown
+for managing-agent/hybrid accounts; the owner directory remains reachable for
+self-managed accounts under Settings → "Your entities & trusts"; owner-statement
+palette/shortcut entry points are hidden for self-managed accounts. Onboarding
+segmentation itself is still future work.
+
+Remaining follow-up: gate deeper agent-only modules that are still directly
+reachable, especially the Money-hub owner-statement dispatch surface plus owner
+portal, disbursement, and trust-accounting entry points.
 
 Decision recorded 2026-05-31 (prototype mode — no Remba gate per the current
-stance). Onboarding segmentation itself is future work (post-SKJ). The
-operating-mode gate should be **designed into the P0 Owner/People build now**.
-Not yet built. Market-validated pattern (DoorLoop / AppFolio / PropertyMe all
+stance). Market-validated pattern (DoorLoop / AppFolio / PropertyMe all
 distinguish manager vs landlord accounts).

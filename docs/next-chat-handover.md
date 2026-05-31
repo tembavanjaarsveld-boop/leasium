@@ -91,10 +91,9 @@ before the Ticket 2.2 slice.
 - Review agents found two functional issues before commit: missing tenant anchor
   targets and stale-entity vendor lookup. Both are now covered in
   `apps/web/tests/smoke/people-record-layout.spec.ts`.
-- Known follow-up: owner detail currently renders a normal client error state for
-  missing owners because the shared web API wrapper collapses HTTP status codes
-  into `Error`; a route-level 404 can be added later if the API helper exposes
-  status metadata.
+- Later follow-up resolved: owner and vendor detail pages now use the shared
+  `ApiError` status contract for calm record-level 404 states; see the slices
+  below.
 - Verification:
   `people-record-layout.spec.ts` passed **4 passed**; adjacent
   `people-hub.spec.ts` + `nav-consolidation.spec.ts` passed **8 passed**;
@@ -291,6 +290,41 @@ before the Ticket 2.2 slice.
   dynamic `/contractors/[contractorId]` route; Render health reported
   `b4af4b49f03a903276b85930a694483992ceb093` with `source=render`; live OpenAPI
   includes `/api/v1/contractors/{contractor_id}`.
+
+### Account operating-mode frontend gate slice
+- Shipped after the vendor-detail polish. Backend commit `cb4704f` already
+  added `Organisation.operating_mode` (default `self_managed_owner`) plus the
+  owner/admin-gated `PATCH /api/v1/security/organisation/operating-mode`.
+- Frontend commit `1996aa7` gates the People → Owners hub by operating mode:
+  `self_managed_owner` hides the Owners tab and falls back from
+  `/people?tab=owners` to Tenants; `managing_agent` and `hybrid` keep the Owners
+  tab and default the People hub to Owners.
+- Settings → Organisation now has an owner/admin operating-mode selector. For
+  self-managed accounts, owner-entity CRUD remains reachable in Settings under
+  **Your entities & trusts** using the shared `OwnersDirectory`; this keeps
+  owner/entity data available without framing those records as third-party owner
+  clients.
+- AppHeader now hides owner-statement command-palette and `G F` shortcut entry
+  points for self-managed accounts. Commit `ce271e1` adds explicit smoke
+  coverage for those command/shortcut gates and a Settings provider-call guard.
+- Guardrails: the frontend write is limited to the local organisation
+  operating-mode PATCH. The tests assert the Settings mode change does not call
+  SendGrid, Twilio, Xero, Basiq, provider dispatch/refresh, or provider-history
+  endpoints.
+- Remaining follow-up: gate deeper agent-only modules that are still directly
+  reachable, especially Money-hub owner-statement dispatch surfaces and owner
+  portal/disbursement/trust-accounting entry points.
+- Verification:
+  `./node_modules/.bin/playwright test tests/smoke/people-hub.spec.ts tests/smoke/settings.spec.ts tests/smoke/app-flows.spec.ts --grep "operating mode|people hub|keyboard" --workers=1`
+  passed **6 passed**; `./node_modules/.bin/tsc --noEmit` passed; targeted
+  frontend `eslint` passed; `.venv/bin/python -m pytest tests/integration/test_security_api.py -q`
+  passed **14 passed**; targeted backend `ruff` passed; `git diff --check`
+  passed. Review agent found no P1/P2 issues.
+- Deployment verification before this docs-sync commit: Vercel production deploy
+  `dpl_EV1PJhmj9ckaMJEyGbasZMA5Tap9` for `ce271e1` was **READY**;
+  `https://leasium.ai/people` and `https://leasium.ai/settings` returned HTTP
+  200; Render health reported
+  `ce271e174c41ea00fe46748becbf42abc9e6a0dd` with `source=render`.
 
 ### Next
 1. Test production owner invites and secure document downloads with a real Clerk
