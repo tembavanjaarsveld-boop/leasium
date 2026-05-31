@@ -87,17 +87,23 @@ ships is not.
 ## Status
 
 **Update 2026-05-31 — SHIPPED pending Remba** (`cb4704f` backend,
-`1996aa7` frontend, `ce271e1` command/provider-guard tests): the gate is live.
+`1996aa7` frontend, `ce271e1` command/provider-guard tests, `add20ac`
+owner-statement dispatch deep gate): the gate is live.
 Organisation `operating_mode` defaults to `self_managed_owner`; Settings has an
 owner/admin toggle; People → Owners is hidden for self-managed accounts and shown
 for managing-agent/hybrid accounts; the owner directory remains reachable for
 self-managed accounts under Settings → "Your entities & trusts"; owner-statement
-palette/shortcut entry points are hidden for self-managed accounts. Onboarding
-segmentation itself is still future work.
+palette/shortcut entry points are hidden for self-managed accounts. The Money hub
+labels statements as **Entity statements** for self-managed accounts, `/statements`
+keeps local entity/trust reporting while hiding owner dispatch drafts/queues/send
+controls, missing owner billing emails do not block self-managed local signoff,
+and both owner-statement dispatch receipt reads and sends are 403-gated unless
+the account is `managing_agent`/`hybrid`. Onboarding segmentation itself is still
+future work.
 
 Remaining follow-up: gate deeper agent-only modules that are still directly
-reachable, especially the Money-hub owner-statement dispatch surface plus owner
-portal, disbursement, and trust-accounting entry points.
+reachable, especially owner portal, disbursement, and trust-accounting entry
+points.
 
 Decision recorded 2026-05-31 (prototype mode — no Remba gate per the current
 stance). Market-validated pattern (DoorLoop / AppFolio / PropertyMe all

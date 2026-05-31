@@ -307,24 +307,42 @@ before the Ticket 2.2 slice.
 - AppHeader now hides owner-statement command-palette and `G F` shortcut entry
   points for self-managed accounts. Commit `ce271e1` adds explicit smoke
   coverage for those command/shortcut gates and a Settings provider-call guard.
+- Commit `add20ac` gates the deeper owner-statement dispatch surface by operating
+  mode. Self-managed accounts keep `/statements` as **Entity statements** for
+  local trust/entity reporting, while owner email send controls, dispatch drafts,
+  dispatch approval queues, and dispatch receipt reads are available only to
+  `managing_agent`/`hybrid` accounts. Missing owner billing emails no longer block
+  self-managed local statement signoff.
 - Guardrails: the frontend write is limited to the local organisation
   operating-mode PATCH. The tests assert the Settings mode change does not call
   SendGrid, Twilio, Xero, Basiq, provider dispatch/refresh, or provider-history
-  endpoints.
+  endpoints. The statement dispatch guard returns 403 before SendGrid for
+  self-managed accounts, and the self-managed smoke asserts no
+  `/owners/statements/dispatch` or `/owners/statements/send` request leaves the
+  page.
 - Remaining follow-up: gate deeper agent-only modules that are still directly
-  reachable, especially Money-hub owner-statement dispatch surfaces and owner
-  portal/disbursement/trust-accounting entry points.
+  reachable, especially owner portal/disbursement/trust-accounting entry points.
 - Verification:
   `./node_modules/.bin/playwright test tests/smoke/people-hub.spec.ts tests/smoke/settings.spec.ts tests/smoke/app-flows.spec.ts --grep "operating mode|people hub|keyboard" --workers=1`
   passed **6 passed**; `./node_modules/.bin/tsc --noEmit` passed; targeted
   frontend `eslint` passed; `.venv/bin/python -m pytest tests/integration/test_security_api.py -q`
   passed **14 passed**; targeted backend `ruff` passed; `git diff --check`
-  passed. Review agent found no P1/P2 issues.
+  passed. For `add20ac`:
+  `./node_modules/.bin/playwright test tests/smoke/statements.spec.ts tests/smoke/nav-consolidation.spec.ts tests/smoke/owner-statement-dispatch.spec.ts tests/smoke/app-flows.spec.ts --grep "self-managed|money hub|owner statement dispatch|keyboard|dashboard shows" --workers=1`
+  passed **8 passed**; `./node_modules/.bin/tsc --noEmit` passed; targeted
+  frontend `eslint` passed; `.venv/bin/python -m pytest tests/integration/test_owners_api.py -q -k "send_owner_statement"`
+  passed **5 passed / 19 deselected**; targeted backend `ruff` passed; `git diff --check`
+  passed. Review agent found and rechecked two P2s; follow-up review found no
+  P1/P2 issues.
 - Deployment verification before this docs-sync commit: Vercel production deploy
   `dpl_EV1PJhmj9ckaMJEyGbasZMA5Tap9` for `ce271e1` was **READY**;
   `https://leasium.ai/people` and `https://leasium.ai/settings` returned HTTP
   200; Render health reported
   `ce271e174c41ea00fe46748becbf42abc9e6a0dd` with `source=render`.
+  Deep-gate code deploy `dpl_4Bq154R6tULSkvW5CkzGWppB3htp` for `add20ac` is
+  **READY**; Render health reports
+  `add20ac43e3382607b70d030ab749030a3219178`; `https://leasium.ai/statements`
+  and `https://leasium.ai/money` returned HTTP 200.
 
 ### Next
 1. Test production owner invites and secure document downloads with a real Clerk
