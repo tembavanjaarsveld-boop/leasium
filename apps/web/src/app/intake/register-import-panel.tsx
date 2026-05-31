@@ -31,10 +31,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import { saveBlob } from "@/lib/download";
-
-function friendlyError(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong.";
-}
+import { friendlyError } from "@/lib/utils";
 
 function actionTone(item: RegisterImportActionItem) {
   if (item.blockers.length) {

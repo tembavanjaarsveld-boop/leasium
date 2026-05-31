@@ -938,8 +938,11 @@ walked away.
 
 - **Hard ceiling: 7 items in the sidebar at any time.** Current shipped
   state is 8 (Dashboard, Smart Intake, Properties, Tenants, Work, Billing,
-  Insights, Settings) pending a Properties+Tenants → Portfolio
-  consolidation that gets us to 7.
+  Insights, Settings). The 2026-05-31 DoorLoop-informed plan reaches 7 by
+  introducing a **People** hub (Tenants · Owners · Vendors · later Prospects)
+  and a **Money** hub (Billing · Statements · Xero · Basiq) — see §11 and the
+  `product-roadmap.md` DoorLoop refocus. This supersedes the earlier
+  Properties+Tenants → Portfolio idea.
 - Anything beyond the ceiling lives in the Cmd-K command palette
   (`commandActions` in `apps/web/src/components/app-shell.tsx`).
 - Keyboard `G`-shortcuts (`SHORTCUT_NAV`) MAY exceed the sidebar list —
@@ -1167,24 +1170,40 @@ the same drift twice.
 
 ## 11. Navigation model
 
-Use this primary navigation:
+Shipped primary navigation (2026-05-31):
 
 ```txt
 Dashboard
-Lease Inbox
+Smart Intake
 Properties
 Tenants
-Tasks
-Billing Readiness
-Reports
+Work
+Billing
+Insights
+Settings
+```
+
+**Target navigation (DoorLoop-informed, in progress** — see `design-governance.md`
+2026-05-31 and the `product-roadmap.md` DoorLoop refocus). Consolidate to 7 hubs by
+introducing a **People** hub and a **Money** hub:
+
+```txt
+Dashboard
+Smart Intake
+Properties      (Properties → Units · Leases · Portfolios · Documents)
+People          (Tenants · Owners · Vendors · later Prospects)
+Work            (Maintenance · Arrears · Tasks · Comms)
+Money           (Billing · Invoices · Owner statements · Xero · Bank feeds)
+Insights
 Settings
 ```
 
 ### Navigation notes
 
-- **Lease Inbox** should be a major item, not hidden, because Smart Intake is the product wedge.
-- **Billing Readiness** should be clear because billing blockers are a high-value workflow.
-- **Tasks** should aggregate lease events, onboarding work, review items, and operational follow-up.
+- **Smart Intake** stays a top-level item — it is the product wedge.
+- **People** is one hub for every human/relationship (Tenants · Owners · Vendors · later Prospects), each sharing one record-page shape. This is the headline DoorLoop-informed change.
+- **Money** groups the finance sprawl (Billing / Statements / Xero / Basiq); **Work** groups operations + comms.
+- New human/relationship surfaces live under People, not as new top-level items (§10.5.1 cap).
 - Use global search / command palette with `Cmd+K` or `Ctrl+K`.
 
 ### Command palette actions

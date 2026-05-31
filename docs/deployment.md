@@ -144,8 +144,12 @@ Sentry init is guarded so a missing package or bad DSN can never break API
 startup. Regardless of Sentry, the API already emits a `server-timing` response
 header and an `x-request-id` per request for tracing slow live pages from logs.
 
-Frontend observability (Vercel Speed Insights) is deferred; it needs an npm
-dependency plus a Vercel env toggle and is not wired up yet.
+Frontend observability uses Vercel Speed Insights. The web app mounts
+`<SpeedInsights />` from `@vercel/speed-insights/next` in the root layout, so
+Core Web Vitals start flowing after a Vercel deployment with Speed Insights
+enabled for the project. The default configuration is enough for Leasium's
+current single frontend; no tenant, document, provider payload, or business
+event data is sent through this client-side web-vitals path.
 
 ## Bank Feed (Basiq)
 

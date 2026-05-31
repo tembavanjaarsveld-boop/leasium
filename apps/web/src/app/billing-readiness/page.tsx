@@ -3357,7 +3357,7 @@ function BillingReadinessWorkspace() {
                           type="button"
                           aria-pressed={isActive}
                           onClick={() => setDeliveryFilter(filter.id)}
-                          className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition duration-200 ease-leasium ${
+                          className={`inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition duration-200 ease-leasium ${
                             isActive
                               ? "border-primary bg-primary text-primary-foreground"
                               : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground"

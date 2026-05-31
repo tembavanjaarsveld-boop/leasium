@@ -57,7 +57,7 @@ import {
   onboardingReminderLabel,
   onboardingReminderTone,
 } from "@/lib/delivery";
-import { cn } from "@/lib/utils";
+import { cn, friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
@@ -110,10 +110,6 @@ function tenantName(tenant: TenantRecord) {
   return tenant.trading_name
     ? `${tenant.trading_name} (${tenant.legal_name})`
     : tenant.legal_name;
-}
-
-function friendlyError(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong.";
 }
 
 function dateOnly(value: Date) {

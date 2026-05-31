@@ -1,5 +1,10 @@
 import { expect, type Locator, test } from "@playwright/test";
 
+import type { PropertyRecord } from "../../src/lib/api";
+import {
+  propertyMatchesOwnershipTag,
+  propertyOwnershipBadges,
+} from "../../src/lib/property-ownership";
 import { mockLeasiumApi } from "./api-mocks";
 
 async function expectTouchTarget(locator: Locator, minSize = 44) {
@@ -99,4 +104,30 @@ test("properties table density toggle trims row padding in compact mode", async 
       ),
     )
     .toBe("compact");
+});
+
+test("property owner chips display ownership chains with cleaner arrows", async () => {
+  const property = {
+    ownership_structure: "split",
+    ownership_split: "50% Queen Street Property Trust -> Trustee Pty Ltd",
+    owner_legal_name: null,
+    trust_name: null,
+    invoice_issuer_name: null,
+    metadata: {},
+  } as PropertyRecord;
+
+  const [badge] = propertyOwnershipBadges(property, "Acme Holdings Pty Ltd");
+
+  expect(badge).toMatchObject({
+    label: "Queen Street Property Trust › Trustee Pty Ltd",
+    tagKey: "queen street property trust -> trustee pty ltd",
+    title: "Queen Street Property Trust -> Trustee Pty Ltd",
+  });
+  expect(
+    propertyMatchesOwnershipTag(
+      property,
+      "Acme Holdings Pty Ltd",
+      "queen street property trust -> trustee pty ltd",
+    ),
+  ).toBe(true);
 });

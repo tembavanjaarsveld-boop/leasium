@@ -558,8 +558,9 @@ textarea {
 
 /* Subtle list-row entrance. A fast opacity + 6px rise so rows resolve in
    smoothly rather than snapping — used on secondary, below-the-fold panels
-   (e.g. recent activity) so it never delays first paint on the primary
-   surfaces. The global prefers-reduced-motion block above pins this to ~0ms. */
+   (e.g. upcoming lease events and recent activity) so it never delays first
+   paint on the primary surfaces. The global prefers-reduced-motion block above
+   pins this to ~0ms. */
 @keyframes leasiumRowFadeIn {
   from {
     opacity: 0;

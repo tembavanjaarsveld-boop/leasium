@@ -35,12 +35,9 @@ import {
   type RegisterImportDryRunRecord,
 } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
+import { friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
-
-function friendlyError(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong.";
-}
 
 function valueLabel(value: unknown) {
   if (value === null || value === undefined || value === "") {

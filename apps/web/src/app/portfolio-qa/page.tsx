@@ -43,6 +43,7 @@ import {
   SectionPanel,
   Select,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   createBillingDraftsFromChargeRules,
@@ -68,16 +69,15 @@ import {
   type TenantOnboardingRecord,
 } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
-import { cn } from "@/lib/utils";
+import { cn, friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
-type Tone = "neutral" | "success" | "warning" | "danger" | "primary";
 type QaTab = "issues" | "contacts" | "sources" | "onboarding" | "billing";
 
 type QaIssue = {
   id: string;
-  severity: Tone;
+  severity: StatusTone;
   area: string;
   title: string;
   detail: string;
@@ -112,7 +112,7 @@ type BlockedFollowup = {
   title: string;
   detail: string;
   tab: QaTab;
-  tone: Tone;
+  tone: StatusTone;
 };
 
 type ReviewSummaryRow = {
@@ -120,7 +120,7 @@ type ReviewSummaryRow = {
   label: string;
   count: number;
   detail: string;
-  tone: Tone;
+  tone: StatusTone;
   actionLabel?: string;
   tab?: QaTab;
   href?: string;
@@ -131,7 +131,7 @@ type BulkReviewGroup = {
   title: string;
   detail: string;
   count: number;
-  tone: Tone;
+  tone: StatusTone;
   tab?: QaTab;
   href?: string;
   actionLabel: string;
@@ -160,7 +160,7 @@ type BlockerReason = {
   reason: string;
   explanation: string;
   count: number;
-  tone: Tone;
+  tone: StatusTone;
   href?: string;
   rows: BlockerReasonRow[];
 };
@@ -170,7 +170,7 @@ type CompletionReportStatus = "complete" | "review" | "blocked";
 type ReadinessVerdict = {
   title: string;
   detail: string;
-  tone: Tone;
+  tone: StatusTone;
 };
 
 type CleanupReportingGate = {
@@ -178,14 +178,14 @@ type CleanupReportingGate = {
   label: string;
   status: string;
   detail: string;
-  tone: Tone;
+  tone: StatusTone;
 };
 
 type CleanupNextAction = {
   id: string;
   title: string;
   detail: string;
-  tone: Tone;
+  tone: StatusTone;
   actionLabel: string;
   tab?: QaTab;
   href?: string;
@@ -269,10 +269,6 @@ const tabs: Array<{ id: QaTab; label: string; description: string }> = [
     description: "Prepare internal drafts",
   },
 ];
-
-function friendlyError(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong.";
-}
 
 function dateOnly(value: Date) {
   const year = value.getFullYear();
@@ -720,7 +716,7 @@ function severityTone(issue: QaIssue) {
 }
 
 function issueSortRank(issue: QaIssue) {
-  const ranks: Record<Tone, number> = {
+  const ranks: Record<StatusTone, number> = {
     danger: 0,
     warning: 1,
     primary: 2,
@@ -730,8 +726,8 @@ function issueSortRank(issue: QaIssue) {
   return ranks[issue.severity];
 }
 
-function toneRank(tone: Tone) {
-  const ranks: Record<Tone, number> = {
+function toneRank(tone: StatusTone) {
+  const ranks: Record<StatusTone, number> = {
     danger: 5,
     warning: 4,
     primary: 3,
@@ -1849,7 +1845,7 @@ function MetricCard({
   label: string;
   value: string | number;
   detail: string;
-  tone?: Tone;
+  tone?: StatusTone;
   icon: ReactNode;
 }) {
   const tones = {

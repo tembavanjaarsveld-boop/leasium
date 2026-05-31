@@ -45,3 +45,48 @@ test("mobile operations loading and queue actions stay readable", async ({
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+test("maintenance detail loading states use structured skeleton rows", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/maintenance/work-orders/work-order-1")) {
+      await page.waitForTimeout(2500);
+    }
+    if (
+      path.endsWith(
+        "/comms/correspondence/maintenance-work-orders/work-order-1",
+      )
+    ) {
+      await page.waitForTimeout(5000);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/operations/maintenance/work-order-1");
+
+  await expect(page.getByLabel("Loading…").first()).toBeVisible();
+  await expect(
+    page.getByText("Loading work order.", { exact: true }),
+  ).toHaveCount(0);
+
+  await expect(
+    page.getByRole("heading", { name: "Air conditioning fault" }),
+  ).toBeVisible();
+  const correspondencePanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Correspondence" }),
+    })
+    .first();
+
+  await expect(correspondencePanel.getByLabel("Loading…")).toBeVisible();
+  await expect(
+    correspondencePanel.getByText("Loading correspondence.", { exact: true }),
+  ).toHaveCount(0);
+
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});

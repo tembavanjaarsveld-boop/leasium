@@ -128,7 +128,7 @@ export function SavedViewsMenu({
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+          "inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition duration-200 ease-leasium",
           activeView
             ? "border-primary/40 bg-primary/5 text-primary"
             : "border-border bg-white text-foreground hover:bg-muted/60",
@@ -141,6 +141,19 @@ export function SavedViewsMenu({
       </button>
       {open ? (
         <div className="absolute left-0 z-30 mt-1 w-80 overflow-hidden rounded-lg border border-border bg-white shadow-leasiumSm">
+          <div className="flex min-h-12 items-center justify-between border-b border-border px-3 py-1">
+            <span className="text-leasium-micro font-medium uppercase tracking-wide text-muted-foreground">
+              Saved views
+            </span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close saved views menu"
+              className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-foreground"
+            >
+              <X size={12} />
+            </button>
+          </div>
           <div className="max-h-72 overflow-y-auto">
             {views.length === 0 ? (
               <div className="px-3 py-3 text-xs text-muted-foreground">
@@ -171,7 +184,7 @@ export function SavedViewsMenu({
                               }
                             }}
                             onBlur={() => handleRenameCommit(view.id)}
-                            className="my-1 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus-visible:border-primary"
+                            className="my-1 min-h-11 flex-1 rounded-md border border-border bg-white px-2 text-sm outline-none focus-visible:border-primary"
                             aria-label="Rename saved view"
                           />
                         ) : (
@@ -179,7 +192,7 @@ export function SavedViewsMenu({
                             type="button"
                             onClick={() => applyView(view)}
                             className={cn(
-                              "flex flex-1 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted/50",
+                              "flex min-h-11 flex-1 items-center justify-between gap-2 rounded-md px-2 text-left text-sm transition duration-200 ease-leasium hover:bg-muted/50",
                               isActive && "bg-primary/5 text-primary",
                             )}
                           >
@@ -195,7 +208,7 @@ export function SavedViewsMenu({
                                 setRenamingId(view.id);
                                 setRenameDraft(view.name);
                               }}
-                              className="rounded-md px-1.5 py-1 text-leasium-micro text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                              className="inline-flex min-h-11 items-center rounded-md px-2 text-leasium-micro text-muted-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-foreground"
                               aria-label={`Rename ${view.name}`}
                             >
                               Rename
@@ -203,7 +216,7 @@ export function SavedViewsMenu({
                             <button
                               type="button"
                               onClick={() => handleDelete(view.id)}
-                              className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground transition hover:bg-danger/10 hover:text-danger"
+                              className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground transition duration-200 ease-leasium hover:bg-danger/10 hover:text-danger"
                               aria-label={`Delete ${view.name}`}
                             >
                               <Trash2 size={12} />
@@ -233,12 +246,12 @@ export function SavedViewsMenu({
                 }
                 disabled={!hasActiveFilters}
                 aria-label="Save current view as"
-                className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+                className="min-h-11 flex-1 rounded-md border border-border bg-white px-2 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-50"
               />
               <button
                 type="submit"
                 disabled={!saveName.trim() || !hasActiveFilters}
-                className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-11 items-center gap-1 rounded-md border border-primary/30 bg-primary px-3 text-xs font-semibold text-primary-foreground transition duration-200 ease-leasium hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <BookmarkPlus size={12} /> Save
               </button>
@@ -249,14 +262,6 @@ export function SavedViewsMenu({
               </p>
             ) : null}
           </form>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-label="Close saved views menu"
-            className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground"
-          >
-            <X size={12} />
-          </button>
         </div>
       ) : null}
     </div>

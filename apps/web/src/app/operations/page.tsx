@@ -46,6 +46,7 @@ import {
   SectionPanel,
   Select,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   type ArrearsCaseRecord,
@@ -86,7 +87,7 @@ import {
   type WorkAssignmentRenderedMessagePreviewRecord,
 } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
-import { cn } from "@/lib/utils";
+import { cn, friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_PROPERTIES: PropertyRecord[] = [];
@@ -155,7 +156,6 @@ const escalationStatuses: ArrearsEscalationStatus[] = [
 ];
 
 type OperationsTab = (typeof tabs)[number]["id"];
-type Tone = "neutral" | "success" | "warning" | "danger" | "primary";
 
 type QueueItem =
   | {
@@ -164,7 +164,7 @@ type QueueItem =
       title: string;
       description: string;
       dueDate: string | null;
-      tone: Tone;
+      tone: StatusTone;
       chip: string;
       href: string;
       record: ObligationRecord;
@@ -176,7 +176,7 @@ type QueueItem =
       title: string;
       description: string;
       dueDate: string | null;
-      tone: Tone;
+      tone: StatusTone;
       chip: string;
       href: string;
       record: TenantOnboardingRecord;
@@ -188,7 +188,7 @@ type QueueItem =
       title: string;
       description: string;
       dueDate: string | null;
-      tone: Tone;
+      tone: StatusTone;
       chip: string;
       href: string;
       record: DocumentIntakeRecord;
@@ -200,7 +200,7 @@ type QueueItem =
       title: string;
       description: string;
       dueDate: string | null;
-      tone: Tone;
+      tone: StatusTone;
       chip: string;
       href: string;
       record: MaintenanceWorkOrderRecord;
@@ -212,7 +212,7 @@ type QueueItem =
       title: string;
       description: string;
       dueDate: string | null;
-      tone: Tone;
+      tone: StatusTone;
       chip: string;
       href: string;
       record: ArrearsCaseRecord;
@@ -266,7 +266,7 @@ type AssignmentNoticeInboxItem = {
   href: string;
   title: string;
   group: AssignmentNoticeGroup;
-  tone: Tone;
+  tone: StatusTone;
   statusLabel: string;
   summary: string;
   meta: string;
@@ -363,7 +363,7 @@ function assignmentNoticeGroup(
   return null;
 }
 
-function assignmentNoticeTone(group: AssignmentNoticeGroup): Tone {
+function assignmentNoticeTone(group: AssignmentNoticeGroup): StatusTone {
   if (group === "attention") {
     return "danger";
   }
@@ -499,10 +499,6 @@ const emptyArrearsForm: ArrearsFormState = {
   promise_to_pay_amount: "",
   notes: "",
 };
-
-function friendlyError(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong.";
-}
 
 function dateOnly(value: Date) {
   const year = value.getFullYear();
@@ -1017,7 +1013,7 @@ function assignmentWorkflowPlan({
 }: {
   assignee: SecurityMemberRecord | null;
   dueDate: string | null | undefined;
-  tone: Tone;
+  tone: StatusTone;
   now: Date;
 }) {
   if (!assignee) {
@@ -1088,7 +1084,7 @@ function assignmentMetadata({
   title: string;
   kind: string;
   dueDate: string | null | undefined;
-  tone: Tone;
+  tone: StatusTone;
 }) {
   const now = new Date().toISOString();
   const nowDate = new Date(now);
@@ -1211,7 +1207,7 @@ function activityMeta(entry: {
   ].filter((item): item is string => Boolean(item));
 }
 
-function obligationTone(obligation: ObligationRecord): Tone {
+function obligationTone(obligation: ObligationRecord): StatusTone {
   const days = dueRank(obligation.due_date);
   if (["completed", "waived"].includes(obligation.status)) {
     return "success";
@@ -1225,7 +1221,7 @@ function obligationTone(obligation: ObligationRecord): Tone {
   return "neutral";
 }
 
-function onboardingTone(onboarding: TenantOnboardingRecord): Tone {
+function onboardingTone(onboarding: TenantOnboardingRecord): StatusTone {
   if (["applied", "reviewed", "cancelled"].includes(onboarding.status)) {
     return "success";
   }
@@ -1251,7 +1247,7 @@ function intakeIsOpen(intake: DocumentIntakeRecord) {
   ].includes(intake.status);
 }
 
-function intakeTone(intake: DocumentIntakeRecord): Tone {
+function intakeTone(intake: DocumentIntakeRecord): StatusTone {
   if (intake.status === "failed") {
     return "danger";
   }
@@ -1268,7 +1264,7 @@ function maintenanceIsOpen(workOrder: MaintenanceWorkOrderRecord) {
   return !["completed", "cancelled"].includes(workOrder.status);
 }
 
-function maintenanceTone(workOrder: MaintenanceWorkOrderRecord): Tone {
+function maintenanceTone(workOrder: MaintenanceWorkOrderRecord): StatusTone {
   if (workOrder.status === "completed") {
     return "success";
   }
@@ -1292,7 +1288,7 @@ function arrearsIsOpen(arrearsCase: ArrearsCaseRecord) {
   return !["resolved", "written_off", "closed"].includes(arrearsCase.status);
 }
 
-function arrearsTone(arrearsCase: ArrearsCaseRecord): Tone {
+function arrearsTone(arrearsCase: ArrearsCaseRecord): StatusTone {
   if (!arrearsIsOpen(arrearsCase)) {
     return "success";
   }
@@ -1363,7 +1359,7 @@ function queueKindLabel(task: QueueItem) {
   return labels[task.kind];
 }
 
-function queueKindTone(task: QueueItem): Tone {
+function queueKindTone(task: QueueItem): StatusTone {
   if (task.kind === "document_intake" || task.kind === "arrears") {
     return "primary";
   }
@@ -1494,7 +1490,7 @@ function buildQueueItems(
     completed: !arrearsIsOpen(arrearsCase),
   }));
 
-  const toneRank: Record<Tone, number> = {
+  const toneRank: Record<StatusTone, number> = {
     danger: 0,
     warning: 1,
     primary: 2,
@@ -2268,7 +2264,7 @@ function OperationsWorkspace() {
     title: string,
     kind: string,
     dueDate: string | null | undefined,
-    tone: Tone,
+    tone: StatusTone,
   ) {
     const assignee = assigneeId
       ? (assignableMembers.find((member) => member.id === assigneeId) ?? null)
@@ -2967,7 +2963,7 @@ function OperationsWorkspace() {
               >
                 <div className="border-b border-border bg-muted/30 px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="inline-flex min-h-10 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
+                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
                       <UserRound size={14} className="text-primary" />
                       Team workload
                     </span>
@@ -2976,7 +2972,7 @@ function OperationsWorkspace() {
                       aria-label={`Show all open work, ${openQueueItems.length}`}
                       onClick={() => setAssigneeFilter("all")}
                       className={cn(
-                        "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                        "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                         assigneeFilter === "all"
                           ? "border-primary/30 bg-primary-soft text-primary-hover"
                           : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -2992,7 +2988,7 @@ function OperationsWorkspace() {
                       aria-label={`Show unowned work, ${unassignedWorkCount}`}
                       onClick={() => setAssigneeFilter("unassigned")}
                       className={cn(
-                        "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                        "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                         assigneeFilter === "unassigned"
                           ? "border-primary/30 bg-primary-soft text-primary-hover"
                           : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -3003,7 +2999,7 @@ function OperationsWorkspace() {
                         {unassignedWorkCount}
                       </span>
                     </button>
-                    <span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
                       Assigned
                       <span className="text-foreground">
                         {assignedWorkCount}
@@ -3014,7 +3010,7 @@ function OperationsWorkspace() {
                       aria-label={`Show assignment follow-ups, ${followUpDueCount}`}
                       onClick={() => setAssigneeFilter("follow_up")}
                       className={cn(
-                        "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                        "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                         assigneeFilter === "follow_up"
                           ? "border-primary/30 bg-primary-soft text-primary-hover"
                           : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -3031,7 +3027,7 @@ function OperationsWorkspace() {
                         aria-label={`Show my work, ${myWorkCount}`}
                         onClick={() => setAssigneeFilter("me")}
                         className={cn(
-                          "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                          "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                           assigneeFilter === "me"
                             ? "border-primary/30 bg-primary-soft text-primary-hover"
                             : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -3051,7 +3047,7 @@ function OperationsWorkspace() {
                           aria-label={`Show ${row.label} work, ${row.count}`}
                           onClick={() => setAssigneeFilter(filter)}
                           className={cn(
-                            "inline-flex min-h-10 max-w-full items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                            "inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
                             active
                               ? "border-primary/30 bg-primary-soft text-primary-hover"
                               : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",

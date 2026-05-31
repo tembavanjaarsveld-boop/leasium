@@ -65,6 +65,7 @@ import {
   type XeroStatusRecord,
 } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
+import { friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const DISPATCH_APPROVAL_EXPORT_GUARDRAIL =
@@ -191,11 +192,6 @@ function formatDate(value: string | null): string {
     month: "short",
     year: "numeric",
   }).format(new Date(value));
-}
-
-function friendlyError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Something went wrong.";
 }
 
 function metadataRecord(value: unknown): Record<string, unknown> {

@@ -39,6 +39,7 @@ import {
 import { UpcomingLeaseEventsPanel } from "@/components/dashboard/UpcomingLeaseEventsPanel";
 import { RegisterImportPanel } from "@/app/intake/register-import-panel";
 import { saveBlob } from "@/lib/download";
+import { friendlyError } from "@/lib/utils";
 import {
   EvidenceSourceTrail,
   type EvidenceFieldChange,
@@ -56,6 +57,7 @@ import {
   Select,
   SkeletonRows,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   acceptDocumentIntakeLeaseMatch,
@@ -90,7 +92,6 @@ import {
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
 const DEMO_MODE_STORAGE_KEY = "leasium.demo_mode";
-type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type ReviewItemAction = "approve" | "edit" | "ignore";
 type ReviewApplyTarget = {
   propertyId: string;
@@ -246,10 +247,6 @@ function formatMoney(cents: number | null | undefined) {
     currency: "AUD",
     maximumFractionDigits: 0,
   }).format(cents / 100);
-}
-
-function friendlyError(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong.";
 }
 
 function dueRank(value: string | null | undefined) {

@@ -34,6 +34,7 @@ import {
   Select,
   SkeletonRows,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   CONTRACTOR_CATEGORIES,
@@ -45,6 +46,7 @@ import {
   listEntities,
 } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
+import { friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
@@ -54,18 +56,11 @@ const PRIORITY_LABEL: Record<number, string> = {
   3: "Backup",
 };
 
-type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
-
 const PRIORITY_TONE: Record<number, StatusTone> = {
   1: "success",
   2: "neutral",
   3: "warning",
 };
-
-function friendlyError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Something went wrong.";
-}
 
 function csvCell(value: string | number | null | undefined) {
   const text = value == null ? "" : String(value);

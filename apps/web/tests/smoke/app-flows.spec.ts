@@ -169,8 +169,14 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByRole("heading", { name: "Billing Readiness" }),
   ).toBeVisible();
+  const billingActionQueue = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Billing action queue" }),
+    })
+    .first();
   await expect(
-    page.getByText("Xero mapping needs review").first(),
+    billingActionQueue.getByText("Xero mapping needs review").first(),
   ).toBeVisible();
   await expect(page.getByRole("tab", { name: /Fix blockers/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /Review drafts/ })).toBeVisible();
@@ -194,14 +200,27 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   ).toHaveAttribute("href", "/intake?entity_id=entity-1&review=intake-1");
 
   await page.getByRole("tab", { name: /Approve invoices/ }).click();
+  const invoicePrep = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Invoice preparation" }),
+    })
+    .first();
+  await expect(invoicePrep).toBeVisible();
+  const invoicePrepTable = invoicePrep.locator("table");
+  const invoicePrepRow = invoicePrepTable
+    .getByRole("row")
+    .filter({ hasText: "INV-1001" })
+    .first();
   await expect(
-    page.getByRole("heading", { name: "Invoice preparation" }),
+    invoicePrepRow.getByText("INV-1001", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("INV-1001").first()).toBeVisible();
-  await expect(page.getByText("invoice_delivery v1").first()).toBeVisible();
-  await page.getByText("Message preview").first().click();
   await expect(
-    page.getByText("Please find your invoice attached.").first(),
+    invoicePrepRow.getByText("invoice_delivery v1").first(),
+  ).toBeVisible();
+  await invoicePrepRow.getByText("Message preview").first().click();
+  await expect(
+    invoicePrepRow.getByText("Please find your invoice attached.").first(),
   ).toBeVisible();
 
   await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
@@ -218,7 +237,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     page.getByText("Owner statements", { exact: true }).first(),
   ).toBeVisible();
   await expect(
-    page.getByText("ready for preview and dispatch review"),
+    page.getByText("1 owner need billing email before dispatch"),
   ).toBeVisible();
   await expect(page.getByText("Needs Xero approval").first()).toBeVisible();
   const primaryDispatchRow = page.getByRole("row").filter({
@@ -305,6 +324,13 @@ test("mobile header keeps utility touch targets at least 44px", async ({
   await expectTouchTarget(
     page.getByRole("button", { name: "Open navigation" }),
   );
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  const closeNavigation = page.getByRole("button", {
+    name: "Close navigation",
+  });
+  await expect(closeNavigation).toBeVisible();
+  await expectTouchTarget(closeNavigation);
+  await closeNavigation.click();
 
   const workspaceToolbar = page.getByRole("toolbar", {
     name: "Workspace utilities",
@@ -340,6 +366,45 @@ test("billing readiness mobile actions keep 44px touch targets", async ({
     page.getByRole("heading", { name: "Month-end checklist" }),
   ).toBeVisible();
 
+  const deliveryPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Delivery & payments" }),
+  });
+  const deliveryFilterButton = (name: RegExp) =>
+    deliveryPanel.getByRole("button", { name });
+  const forbiddenFilterRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const callsBasiq = path.includes("/basiq");
+    const mutatesBillingOrProvider =
+      request.method() !== "GET" &&
+      (path.includes("/billing-drafts") ||
+        path.includes("/invoice-drafts") ||
+        path.includes("/invoice-delivery") ||
+        path.includes("/provider-dispatch") ||
+        path.includes("/payments/reconciliation") ||
+        path.includes("/xero/"));
+    if (callsBasiq || mutatesBillingOrProvider) {
+      forbiddenFilterRequests.push(`${request.method()} ${url.toString()}`);
+    }
+  });
+
+  await expectTouchTarget(deliveryFilterButton(/^All\b/));
+  await expectTouchTarget(
+    deliveryFilterButton(/^Needs action\b/),
+  );
+  await expectTouchTarget(
+    deliveryFilterButton(/^Ready to dispatch\b/),
+  );
+  await expectTouchTarget(deliveryFilterButton(/^Complete\b/));
+  await expectTouchTarget(deliveryFilterButton(/^Unpaid\b/));
+  await deliveryFilterButton(/^Needs action\b/).click();
+  await deliveryFilterButton(/^Ready to dispatch\b/).click();
+  await deliveryFilterButton(/^Complete\b/).click();
+  await deliveryFilterButton(/^Unpaid\b/).click();
+  await deliveryFilterButton(/^All\b/).click();
+  expect(forbiddenFilterRequests).toEqual([]);
+
   await expectTouchTarget(page.getByRole("link", { name: "Open recovery" }));
   await expectTouchTarget(
     page.getByRole("link", { name: "Review payments" }).first(),
@@ -347,13 +412,16 @@ test("billing readiness mobile actions keep 44px touch targets", async ({
   await expectTouchTarget(
     page.getByRole("link", { name: "Open statements" }).first(),
   );
-  const staleDispatchRow = page.getByRole("row").filter({
-    hasText: "INV-1001",
-  });
+  const staleDispatchCard = page
+    .getByTestId("billing-delivery-mobile-card")
+    .filter({ hasText: "INV-1001" })
+    .first();
   await expectTouchTarget(
-    staleDispatchRow.getByRole("link", { name: "Preview" }),
+    staleDispatchCard.getByRole("link", { name: "Preview" }),
   );
-  await expectTouchTarget(staleDispatchRow.getByRole("link", { name: "PDF" }));
+  await expectTouchTarget(
+    staleDispatchCard.getByRole("link", { name: "PDF" }),
+  );
 });
 
 test("settings mobile tabs keep 44px touch targets", async ({ page }) => {
@@ -375,11 +443,44 @@ test("notifications mobile actions keep intended touch targets", async ({
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
-  await expectTouchTarget(page.getByRole("button", { name: /^All 2$/ }), 40);
-  await expectTouchTarget(
-    page.getByRole("button", { name: /Attention 1/ }),
-    40,
-  );
+  const workNoticeCenter = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Work notice center" }),
+  });
+  for (const filterName of [
+    /^All 2$/,
+    /^Attention 1$/,
+    /^In flight 1$/,
+    /^Ready 0$/,
+    /^Follow-up due 1$/,
+    /^Failed email 1$/,
+    /^All channels 2$/,
+    /^Email 2$/,
+    /^SMS 2$/,
+    /^In-app 0$/,
+  ]) {
+    await expectTouchTarget(
+      workNoticeCenter.getByRole("button", { name: filterName }),
+    );
+  }
+  const digestHistory = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Digest history" }),
+  });
+  for (const filterName of [
+    /^All 1$/,
+    /^Needs send 1$/,
+    /^Sent 0$/,
+    /^Failed 0$/,
+    /^Skipped 0$/,
+    /^Recovery 0$/,
+    /^All channels 1$/,
+    /^Email 0$/,
+    /^SMS 0$/,
+    /^Preview only 1$/,
+  ]) {
+    await expectTouchTarget(
+      digestHistory.getByRole("button", { name: filterName }),
+    );
+  }
   await expectTouchTarget(
     page.getByRole("link", { name: "Open work" }).first(),
   );
@@ -401,6 +502,13 @@ test("dashboard Leasium AI panel answers with cited record", async ({
     askPanel.getByText(/Read-only — Leasium AI will never act on a question/),
   ).toBeVisible();
 
+  for (const suggestion of [
+    "Which leases expire in the next 90 days?",
+    "Which properties are vacant right now?",
+  ]) {
+    await expectTouchTarget(askPanel.getByRole("button", { name: suggestion }));
+  }
+
   await askPanel
     .getByRole("button", { name: "Which properties are vacant right now?" })
     .click();
@@ -411,11 +519,11 @@ test("dashboard Leasium AI panel answers with cited record", async ({
     ),
   ).toBeVisible();
   await expect(askPanel.getByText("Sources")).toBeVisible();
-  await expect(
-    askPanel.getByRole("link", {
-      name: /Property · Queen Street Retail Centre/,
-    }),
-  ).toBeVisible();
+  const sourceLink = askPanel.getByRole("link", {
+    name: /Property · Queen Street Retail Centre/,
+  });
+  await expect(sourceLink).toBeVisible();
+  await expectTouchTarget(sourceLink);
 });
 
 test("Properties multi-view toggles between table and board", async ({
@@ -1141,15 +1249,55 @@ test("tenants saved views capture and re-apply filter combos", async ({
   await page.getByRole("button", { name: "Submitted" }).click();
 
   // Open the saved-views menu, name it, save.
-  await page
+  const savedViewsTrigger = page
     .getByRole("button", { name: /^(Saved views|Custom view|No saved views)/ })
-    .click();
+    .first();
+  await expectTouchTarget(savedViewsTrigger);
+  await savedViewsTrigger.click();
   const nameInput = page.getByLabel("Save current view as");
   await expect(nameInput).toBeEnabled();
+  await expectTouchTarget(nameInput);
   await nameInput.fill("Submitted only");
-  await page.getByRole("button", { name: /Save/ }).first().click();
+  const saveCurrentView = page.getByRole("button", { name: /Save/ }).first();
+  await expectTouchTarget(saveCurrentView);
+  await saveCurrentView.click();
 
   // The chip should now reflect the saved view name.
+  await expect(
+    page.getByRole("button", { name: /^Submitted only/ }).first(),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: /^Submitted only/ }).first().click();
+  const activeSavedViewButton = page
+    .getByRole("button", { name: /^Submitted only$/ })
+    .first();
+  await expectTouchTarget(activeSavedViewButton);
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Rename Submitted only" }),
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Delete Submitted only" }),
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Close saved views menu" }),
+  );
+
+  await page.getByRole("button", { name: "Rename Submitted only" }).click();
+  const renameInput = page.getByLabel("Rename saved view");
+  await expectTouchTarget(renameInput);
+  await renameInput.fill("Submitted only");
+  await renameInput.press("Enter");
+
+  await page.getByRole("button", { name: "Delete Submitted only" }).click();
+  await expect(
+    page.getByRole("button", { name: "Close saved views menu" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^Submitted only$/ }),
+  ).toHaveCount(0);
+
+  await nameInput.fill("Submitted only");
+  await saveCurrentView.click();
   await expect(
     page.getByRole("button", { name: /^Submitted only/ }).first(),
   ).toBeVisible();
@@ -1160,6 +1308,25 @@ test("tenants saved views capture and re-apply filter combos", async ({
 
   // Reopen the menu and re-apply the saved view; filter pill should
   // highlight Submitted again.
+  await page
+    .getByRole("button", { name: /^(Saved views|Custom view)/ })
+    .click();
+  await expectTouchTarget(
+    page.getByRole("button", { name: /^Submitted only$/ }).first(),
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Rename Submitted only" }),
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Delete Submitted only" }),
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Close saved views menu" }),
+  );
+  await page.getByRole("button", { name: "Close saved views menu" }).click();
+  await expect(
+    page.getByRole("button", { name: /^Submitted only$/ }),
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: /^(Saved views|Custom view)/ })
     .click();
@@ -1434,7 +1601,9 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   await expect(
     billingPanel.getByText("Billing readiness blockers"),
   ).toBeVisible();
-  await expect(billingPanel.getByText("Missing Xero tax type")).toBeVisible();
+  await expect(
+    billingPanel.getByRole("link", { name: /Billing readiness blockers/ }),
+  ).toHaveAttribute("href", "/billing-readiness");
 
   await page
     .getByRole("button", {
@@ -1627,15 +1796,15 @@ test("operations workspace keeps mobile rows compact", async ({ page }) => {
   await expectTouchTarget(page.getByRole("tab", { name: /Arrears/ }));
   await expectTouchTarget(
     page.getByRole("button", { name: /Show all open work/ }),
-    40,
   );
   await expectTouchTarget(
     page.getByRole("button", { name: /Show unowned work/ }),
-    40,
   );
   await expectTouchTarget(
     page.getByRole("button", { name: /Show assignment follow-ups/ }),
-    40,
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: /Show my work/ }),
   );
   await expectTouchTarget(
     page.getByRole("link", { name: "Open tenants" }).first(),
@@ -2259,7 +2428,9 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByText("Maintenance: Air conditioning fault"),
   ).toBeVisible();
-  await expect(page.getByText("Maintenance-linked invoice")).toBeVisible();
+  await expect(
+    page.getByRole("table").getByText("Maintenance-linked invoice"),
+  ).toBeVisible();
   await expect(page.getByText("Contractor Cool Air Services")).toBeVisible();
   await expect(
     page.getByText(
@@ -2566,8 +2737,13 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
   await expect(page.getByTestId("selected-property-image")).toHaveClass(
     /object-cover/,
   );
-  await expect(page.getByText("Queen Street Warehouse")).toBeVisible();
-  await expect(page.getByText("Eagle Street Office")).toBeVisible();
+  const propertyTable = page.getByRole("table").first();
+  await expect(
+    propertyTable.getByRole("row", { name: /Queen Street Warehouse/ }),
+  ).toBeVisible();
+  await expect(
+    propertyTable.getByRole("row", { name: /Eagle Street Office/ }),
+  ).toBeVisible();
 
   await page
     .getByRole("row", { name: /Queen Street Warehouse/ })
@@ -2589,13 +2765,20 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Clear ownership tag filter" }),
   ).toBeVisible();
+  const filteredPropertyTable = page.getByRole("table").first();
   await expect(
-    page.getByText("Queen Street Retail Centre").first(),
+    filteredPropertyTable.getByRole("row", {
+      name: /Queen Street Retail Centre/,
+    }),
   ).toBeVisible();
-  await expect(page.getByText("Queen Street Warehouse").first()).toBeVisible();
-  await expect(page.getByText("Eagle Street Office")).toHaveCount(0);
   await expect(
-    page.getByText("Queen Street Property Trust").first(),
+    filteredPropertyTable.getByRole("row", { name: /Queen Street Warehouse/ }),
+  ).toBeVisible();
+  await expect(
+    filteredPropertyTable.getByRole("row", { name: /Eagle Street Office/ }),
+  ).toHaveCount(0);
+  await expect(
+    filteredPropertyTable.getByText("Queen Street Property Trust").first(),
   ).toBeVisible();
 
   await page.getByRole("tab", { name: /Documents/ }).click();

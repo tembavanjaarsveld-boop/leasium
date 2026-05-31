@@ -34,6 +34,7 @@ import {
   SectionPanel,
   Select,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   AutomationActivityRecord,
@@ -49,11 +50,10 @@ import {
   revokeInsightsSnapshot,
 } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
-import { cn } from "@/lib/utils";
+import { cn, friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
-type Tone = "neutral" | "success" | "warning" | "danger" | "primary";
 type AccountingReadinessView = NonNullable<
   InsightsOverviewRecord["finance_snapshot"]["accounting_readiness"]
 > & {
@@ -62,10 +62,6 @@ type AccountingReadinessView = NonNullable<
   source_label?: string | null;
   generated_source?: string | null;
 };
-
-function friendlyError(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong.";
-}
 
 function dateOnly(value: Date) {
   const year = value.getFullYear();
@@ -270,7 +266,7 @@ function MetricCard({
   label: string;
   value: string | number;
   detail: string;
-  tone?: Tone;
+  tone?: StatusTone;
   icon: ReactNode;
 }) {
   const tones = {
@@ -327,7 +323,7 @@ function ExceptionRow({ item }: { item: LiveExceptionRecord }) {
 }
 
 function ActivityRow({ item }: { item: AutomationActivityRecord }) {
-  const tone: Tone = item.outcome === "success" ? "success" : "warning";
+  const tone: StatusTone = item.outcome === "success" ? "success" : "warning";
   return (
     <div className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="min-w-0">

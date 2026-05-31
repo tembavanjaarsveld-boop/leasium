@@ -164,6 +164,28 @@ the real provider in tests.
 canonical state for "what is shipped and what's in progress". When in
 doubt, read them before assuming.
 
+### 2.10 People + Properties IA north star (DoorLoop-informed)
+
+Leasium's information architecture is converging on two spines — borrowed from
+DoorLoop's *legibility*, not its feature set: **Properties → Units** and a single
+**People** hub holding **Tenants · Owners · Vendors** (and, later, **Prospects**),
+tied together by **Leases**. Two durable rules for any agent touching the data model
+or navigation:
+
+- **Owner is a first-class entity, not property metadata.** Once the `Owner` entity
+  lands, treat the legacy 11 Property owner-fields as a backfill source, not the model
+  of record.
+- **Navigation stays consolidated.** Honour the 7-item sidebar cap (design source of
+  truth §10.5.1); new human/relationship surfaces live under the People hub, not as new
+  top-level items. Reuse one consistent record-page shape (header → tabs → same action
+  patterns) across Tenant / Owner / Vendor / Property.
+
+Keep what already makes Leasium better than DoorLoop: Smart Intake (document-first AI),
+the review-first provider guardrails (§2.1), and AU / Xero / commercial-lease depth.
+Localise every US analog (Xero not QuickBooks; PayTo/PayID/BPAY not ACH; REA/Domain;
+Equifax/illion). Full benchmark: `docs/doorloop-benchmark-2026-05-31.md`. Design-facing
+IA/nav changes follow the current `docs/design-governance.md` stance (prototype mode today).
+
 ---
 
 ## How these two sections interact

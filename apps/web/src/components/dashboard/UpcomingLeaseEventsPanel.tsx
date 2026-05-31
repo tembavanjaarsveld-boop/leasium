@@ -2,6 +2,7 @@
 
 import { CalendarClock } from "lucide-react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
 
 import {
   SectionPanel,
@@ -71,17 +72,24 @@ const DATE_BUCKET_ORDER: DateBucketKey[] = [
   "week",
   "later",
 ];
+const COLLAPSED_EVENT_LIMIT = 5;
+const EMPTY_LEASE_EVENTS: LeaseEventRecord[] = [];
 
-function dateBucketFor(date: string | null): DateBucketKey {
+function daysUntil(date: string | null) {
   if (!date) {
-    return "later";
+    return null;
   }
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const due = new Date(`${date.slice(0, 10)}T00:00:00`);
-  const diffDays = Math.round(
-    (due.getTime() - today.getTime()) / 86_400_000,
-  );
+  return Math.round((due.getTime() - today.getTime()) / 86_400_000);
+}
+
+function dateBucketFor(date: string | null): DateBucketKey {
+  const diffDays = daysUntil(date);
+  if (diffDays === null) {
+    return "later";
+  }
   if (diffDays < 0) {
     return "overdue";
   }
@@ -94,6 +102,37 @@ function dateBucketFor(date: string | null): DateBucketKey {
   return "later";
 }
 
+function leaseEventUrgencyLabel(event: LeaseEventRecord) {
+  const diffDays = daysUntil(event.date);
+  if (diffDays === null) {
+    return event.chip;
+  }
+  if (diffDays < 0) {
+    return `${Math.abs(diffDays)}d overdue`;
+  }
+  if (diffDays === 0) {
+    return "Due today";
+  }
+  if (diffDays === 1) {
+    return "Due tomorrow";
+  }
+  if (diffDays <= 7) {
+    return `Due in ${diffDays}d`;
+  }
+  return event.chip;
+}
+
+function leaseEventUrgencyTone(event: LeaseEventRecord): StatusTone {
+  const diffDays = daysUntil(event.date);
+  if (diffDays !== null && diffDays < 0) {
+    return "danger";
+  }
+  if (diffDays !== null && diffDays <= 7) {
+    return "warning";
+  }
+  return "neutral";
+}
+
 export function UpcomingLeaseEventsPanel({
   overview,
   isLoading,
@@ -102,7 +141,15 @@ export function UpcomingLeaseEventsPanel({
   isLoading: boolean;
 }) {
   const snapshot = overview?.lease_event_snapshot;
-  const events = snapshot?.next_events ?? [];
+  const events = snapshot?.next_events ?? EMPTY_LEASE_EVENTS;
+  const [expanded, setExpanded] = useState(false);
+  const visibleEvents = useMemo(
+    () =>
+      expanded || events.length <= COLLAPSED_EVENT_LIMIT
+        ? events
+        : events.slice(0, COLLAPSED_EVENT_LIMIT),
+    [events, expanded],
+  );
   const summaryParts: string[] = [];
   if (snapshot) {
     if (snapshot.next_expiry_count > 0) {
@@ -151,42 +198,53 @@ export function UpcomingLeaseEventsPanel({
             here as they are entered.
           </div>
         ) : (
-          DATE_BUCKET_ORDER.map((bucket) => {
-            const bucketEvents = events.filter(
-              (event) => dateBucketFor(event.date) === bucket,
-            );
-            if (bucketEvents.length === 0) {
-              return null;
-            }
-            return (
-              <div key={bucket} className="grid gap-2">
-                <div className="px-0.5 text-leasium-micro font-semibold uppercase tracking-wide text-muted-foreground">
-                  {DATE_BUCKET_LABEL[bucket]}
-                </div>
-                {bucketEvents.map((event) => (
-                  <Link
-                    key={event.id}
-                    href={event.href || "/properties"}
-                    className="grid gap-1 rounded-md border border-border bg-white p-3 text-sm transition hover:bg-muted/40"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge tone={leaseEventKindTone(event.kind)}>
-                          {leaseEventKindLabel(event.kind)}
+          <>
+            {DATE_BUCKET_ORDER.map((bucket) => {
+              const bucketEvents = visibleEvents.filter(
+                (event) => dateBucketFor(event.date) === bucket,
+              );
+              if (bucketEvents.length === 0) {
+                return null;
+              }
+              return (
+                <div key={bucket} className="grid gap-2">
+                  <div className="px-0.5 text-leasium-micro font-semibold uppercase tracking-wide text-muted-foreground">
+                    {DATE_BUCKET_LABEL[bucket]}
+                  </div>
+                  {bucketEvents.map((event) => (
+                    <Link
+                      key={event.id}
+                      href={event.href || "/properties"}
+                      className="animate-leasium-row-in grid gap-1 rounded-md border border-border bg-white p-3 text-sm transition duration-200 ease-leasium hover:bg-muted/40"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge tone={leaseEventKindTone(event.kind)}>
+                            {leaseEventKindLabel(event.kind)}
+                          </StatusBadge>
+                          <span className="font-medium text-foreground">
+                            {event.title}
+                          </span>
+                        </div>
+                        <StatusBadge tone={leaseEventUrgencyTone(event)}>
+                          {leaseEventUrgencyLabel(event)}
                         </StatusBadge>
-                        <span className="font-medium text-foreground">
-                          {event.title}
-                        </span>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {event.chip}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            );
-          })
+                    </Link>
+                  ))}
+                </div>
+              );
+            })}
+            {events.length > COLLAPSED_EVENT_LIMIT ? (
+              <button
+                type="button"
+                onClick={() => setExpanded((value) => !value)}
+                className="mt-1 inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-white px-3 text-sm font-medium text-muted-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-foreground"
+              >
+                {expanded ? "Show fewer" : `Show all ${events.length}`}
+              </button>
+            ) : null}
+          </>
         )}
       </div>
     </SectionPanel>

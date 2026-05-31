@@ -30,7 +30,14 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
@@ -123,6 +130,51 @@ const SEVERITY_LABEL: Record<CommsSeverity, string> = {
   danger: "Urgent",
 };
 const SMS_SINGLE_SEGMENT_GUIDE = 160;
+
+function isEditableKeyboardTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(
+    target.closest("input, textarea, select, button, a, [contenteditable='true']"),
+  );
+}
+
+function handleCommsDraftListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+  if (isEditableKeyboardTarget(event.target)) {
+    return;
+  }
+
+  const rows = Array.from(
+    event.currentTarget.querySelectorAll<HTMLElement>("[data-comms-row]"),
+  );
+  if (rows.length === 0) {
+    return;
+  }
+  const current = rows.findIndex((row) => row === document.activeElement);
+
+  if (["j", "k", "ArrowDown", "ArrowUp"].includes(event.key)) {
+    event.preventDefault();
+    const forward = event.key === "j" || event.key === "ArrowDown";
+    const next =
+      current < 0
+        ? 0
+        : forward
+          ? Math.min(current + 1, rows.length - 1)
+          : Math.max(current - 1, 0);
+    rows[next]?.focus();
+    rows[next]?.scrollIntoView({ block: "nearest" });
+    return;
+  }
+
+  if (event.key === "Enter" && current >= 0) {
+    const firstEditable = rows[current]?.querySelector<HTMLElement>(
+      "input:not(:disabled), textarea:not(:disabled), select:not(:disabled)",
+    );
+    if (firstEditable) {
+      event.preventDefault();
+      firstEditable.focus();
+    }
+  }
+}
 
 function friendlyError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -255,6 +307,17 @@ function commsEventKindLabel(event: CommsCorrespondenceEventRecord) {
     return KIND_LABEL[kind as CommsKind];
   }
   return event.event_type;
+}
+
+function commsDraftRowLabel(candidate: CommsCandidateRecord) {
+  const context = [
+    candidate.tenant_name,
+    candidate.property_name,
+    candidate.unit_label,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return `Review ${KIND_LABEL[candidate.kind]} draft${context ? ` for ${context}` : ""}`;
 }
 
 function commsEventChannelLabel(event: CommsCorrespondenceEventRecord) {
@@ -717,29 +780,48 @@ function CommsContent() {
           />
         ) : null}
 
-        {filteredCandidates.map((candidate) => (
-          <CandidateCard
-            key={candidate.id}
-            candidate={candidate}
-            entityId={selectedEntityId}
-            onSettled={(candidateId) => {
-              setSettledCandidateIds((previous) => {
-                const next = new Set(previous);
-                next.add(candidateId);
-                return next;
-              });
-              void queryClient.invalidateQueries({
-                queryKey: ["comms-queue", selectedEntityId],
-              });
-              void queryClient.invalidateQueries({
-                queryKey: ["comms-queue-counts", selectedEntityId],
-              });
-              void queryClient.invalidateQueries({
-                queryKey: ["comms-outbound-log", selectedEntityId],
-              });
-            }}
-          />
-        ))}
+        {!queueQuery.isLoading &&
+        filteredCandidates.length > 0 &&
+        !queueQuery.error ? (
+          <div
+            role="list"
+            aria-label="Comms draft review queue"
+            className="grid gap-4"
+            onKeyDown={handleCommsDraftListKeyDown}
+          >
+            {filteredCandidates.map((candidate) => (
+              <div
+                key={candidate.id}
+                role="listitem"
+                tabIndex={0}
+                data-comms-row
+                aria-label={commsDraftRowLabel(candidate)}
+                className="rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+              >
+                <CandidateCard
+                  candidate={candidate}
+                  entityId={selectedEntityId}
+                  onSettled={(candidateId) => {
+                    setSettledCandidateIds((previous) => {
+                      const next = new Set(previous);
+                      next.add(candidateId);
+                      return next;
+                    });
+                    void queryClient.invalidateQueries({
+                      queryKey: ["comms-queue", selectedEntityId],
+                    });
+                    void queryClient.invalidateQueries({
+                      queryKey: ["comms-queue-counts", selectedEntityId],
+                    });
+                    void queryClient.invalidateQueries({
+                      queryKey: ["comms-outbound-log", selectedEntityId],
+                    });
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </main>
   );

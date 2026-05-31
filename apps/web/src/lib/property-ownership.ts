@@ -34,6 +34,7 @@ export type OwnershipTagSummary = {
   key: string;
   label: string;
   palette: OwnershipChipPalette;
+  title?: string;
   propertyCount: number;
   properties: OwnershipTagProperty[];
   sources: string[];
@@ -65,6 +66,10 @@ function metadataTextValue(metadata: Record<string, unknown>, key: string) {
 
 export function normaliseOwnerLabel(value: string) {
   return value.toLowerCase().replace(/&/g, "and").replace(/\s+/g, " ").trim();
+}
+
+export function ownerTagDisplayLabel(value: string) {
+  return value.replace(/\s*->\s*/g, " › ");
 }
 
 function ownerLabelHash(value: string) {
@@ -332,7 +337,7 @@ export function propertyOwnershipBadges(
 
   const visibleLabels = labels.slice(0, 2);
   const badges: OwnershipChip[] = visibleLabels.map((label) => ({
-    label,
+    label: ownerTagDisplayLabel(label),
     palette: ownerPaletteForLabel(
       label,
       property,
@@ -386,8 +391,9 @@ export function propertyOwnershipTagDirectory(
       }
       tags.set(key, {
         key,
-        label: entry.label,
+        label: ownerTagDisplayLabel(entry.label),
         palette: paletteByLabel.get(key) ?? "slate",
+        title: entry.label,
         propertyCount: 1,
         properties: [linkedProperty],
         sources: [entry.source],

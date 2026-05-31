@@ -25,6 +25,7 @@ import {
   SectionPanel,
   Select,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   getWorkAssignmentNotificationCenter,
@@ -46,7 +47,6 @@ import { cn } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
-type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type NoticeFilter = "all" | WorkAssignmentNoticeGroup | "follow_up" | "failed";
 type DeliveryChannelFilter = "all" | "email" | "sms" | "in_app" | "preview";
 type DigestFilter =
@@ -538,7 +538,7 @@ function FilterButton({
       type="button"
       aria-pressed={active}
       className={cn(
-        "inline-flex min-h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
+        "inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
         active && "border-primary/25 bg-primary-soft text-primary",
       )}
       onClick={onClick}

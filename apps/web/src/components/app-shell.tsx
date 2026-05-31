@@ -659,7 +659,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => setMobileNavOpen(false)}
-                className="grid h-9 w-9 place-items-center rounded-lg text-leasium-slate-300 transition hover:bg-white/5 hover:text-white"
+                className="grid h-11 w-11 place-items-center rounded-xl text-leasium-slate-300 transition duration-200 ease-leasium hover:bg-white/5 hover:text-white"
                 aria-label="Close navigation"
               >
                 <X size={16} />

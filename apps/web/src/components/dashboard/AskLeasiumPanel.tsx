@@ -162,7 +162,7 @@ export function AskLeasiumPanel({ entityId }: { entityId: string }) {
                   type="button"
                   onClick={() => handleSuggestion(suggestion)}
                   disabled={disabled}
-                  className="rounded-full border border-border bg-muted/30 px-2.5 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:bg-primary/5 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex min-h-11 items-center rounded-full border border-border bg-muted/30 px-3 text-xs text-muted-foreground transition duration-200 ease-leasium hover:border-primary/40 hover:bg-primary/5 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {suggestion}
                 </button>
@@ -205,7 +205,7 @@ export function AskLeasiumPanel({ entityId }: { entityId: string }) {
                         <Link
                           key={`${citation.kind}-${citation.target_id}`}
                           href={citation.href}
-                          className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs text-primary transition hover:border-primary/60 hover:bg-primary/10"
+                          className="inline-flex min-h-11 items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-3 text-xs text-primary transition duration-200 ease-leasium hover:border-primary/60 hover:bg-primary/10"
                         >
                           <Link2 size={11} />
                           <span>{label}</span>
@@ -215,7 +215,7 @@ export function AskLeasiumPanel({ entityId }: { entityId: string }) {
                     return (
                       <span
                         key={`${citation.kind}-${citation.target_id}`}
-                        className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground"
+                        className="inline-flex min-h-11 items-center gap-1 rounded-full border border-border bg-muted/40 px-3 text-xs text-muted-foreground"
                       >
                         {label}
                       </span>

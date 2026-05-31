@@ -54,7 +54,7 @@ import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { useUnmountDelay } from "@/lib/use-unmount-delay";
-import { cn } from "@/lib/utils";
+import { cn, friendlyError as baseFriendlyError } from "@/lib/utils";
 import {
   Button,
   Field,
@@ -1177,7 +1177,7 @@ function friendlyError(error: unknown) {
   if (error.message.includes("Property not found")) {
     return "That property is no longer available. Select another property to continue.";
   }
-  return error.message;
+  return baseFriendlyError(error);
 }
 
 function ReviewFields({
@@ -5019,7 +5019,11 @@ function Workspace({
                     </span>
                     <span
                       className={`inline-flex max-w-[18rem] items-center truncate rounded-full border px-2 py-0.5 text-leasium-micro font-semibold leading-4 ${ownershipChipClassName(activeOwnerTag?.palette ?? "slate")}`}
-                      title={activeOwnerTag?.label ?? ownerTagFilter}
+                      title={
+                        activeOwnerTag?.title ??
+                        activeOwnerTag?.label ??
+                        ownerTagFilter
+                      }
                     >
                       {activeOwnerTag?.label ?? ownerTagFilter}
                     </span>

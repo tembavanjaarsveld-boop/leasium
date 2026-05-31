@@ -1,9 +1,102 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-05-30
+Last updated: 2026-05-31
 
 ## Current State
 
+- 2026-05-31 frontend Speed Insights slice (THIS SESSION): Vercel Speed
+  Insights is wired in the Next root layout with
+  `@vercel/speed-insights/next`, the pnpm lockfile records the dependency, and
+  a static Playwright smoke test guards the root-layout mount. Verified the
+  new smoke test red -> green locally. This is non-Basiq and only starts
+  collecting Core Web Vitals after the next Vercel deployment with Speed
+  Insights enabled for the project.
+- 2026-05-31 Comms keyboard review flow (THIS SESSION): `/comms` draft cards
+  now render as a scoped focusable review list. `j`/`k` and Arrow Up/Down move
+  between focused draft rows, Enter focuses the first editable field, and the
+  handler exits inside inputs, textareas, selects, links, and buttons so body
+  editing and approval controls keep native behaviour. Smoke coverage verifies
+  keyboard movement and confirms no comms mutation request fires.
+- 2026-05-31 Dashboard motion polish (THIS SESSION): command-center rows and
+  activity-feed rows now use the shared 200ms `ease-leasium` transition timing
+  for list feedback, and Upcoming lease-event rows now join Activity feed on
+  the reduced-motion-safe row-enter animation. The command-center hero keeps
+  instant first paint. Source smoke guards the token pattern; this stayed
+  frontend-only and did not touch provider or Basiq paths.
+- 2026-05-31 Dashboard event urgency/progressive-disclosure polish (THIS
+  SESSION): upcoming
+  lease-event rows now derive near-term urgency labels from the event date, so
+  same-bucket chips read `Due today`, `Due tomorrow`, or `Due in Nd` instead of
+  repeating raw `Tomorrow` text across rent-review / expiry rows. The same
+  panel now keeps long event lists to the first five rows until the operator
+  clicks `Show all`, matching the Recent activity feed's disclosure pattern.
+  Recent activity's existing `Show all` control also now uses the 44px
+  touch-target baseline. Browser smoke covers the repeated-tomorrow, long-list,
+  and Recent activity disclosure cases; no provider, Basiq, or API mutation
+  path touched.
+- 2026-05-31 Dashboard Leasium AI touch-target polish (THIS SESSION): the
+  read-only suggestion chips and citation source links now use the 44px target
+  baseline and shared motion timing. The smoke keeps proving the cited-answer
+  flow; no AI/provider mutation path changed.
+- 2026-05-31 saved views touch-target polish (THIS SESSION):
+  `<SavedViewsMenu>` now uses 44px interactive targets and shared motion timing
+  for the trigger, saved-view row actions, save form, and close control. The
+  close action now sits in the menu header so it cannot intercept first-row
+  Delete/Rename clicks, and the tenants smoke flow checks those actions while
+  still proving saved filters re-apply through existing tenant filter state/URL
+  semantics. Frontend-only; no Basiq, provider, bank-feed, comms dispatch, or
+  API mutation path touched.
+- 2026-05-31 Clerk auth light-appearance guard (THIS SESSION): the shared
+  `clerkEmailOnlyAppearance` now pins light Clerk variables plus Leasium
+  card/input/button/link classes for Sign in / Sign up, preserving email-only
+  auth while preventing stale dark OS/browser appearance from bleeding into the
+  light auth shell. Source smoke guards the tokens. No auth routing, Clerk
+  session, invite, Basiq, provider, or API mutation path changed.
+- 2026-05-31 App shell mobile drawer close target (THIS SESSION): the mobile
+  drawer's Close navigation button now uses the same 44px target baseline and
+  shared motion timing as the hamburger/utility controls. The mobile header
+  smoke opens the drawer and measures both open and close targets. Frontend-only;
+  no Basiq, provider, bank-feed, comms dispatch, or API mutation path touched.
+- 2026-05-31 maintenance detail loading-state polish (THIS SESSION):
+  `/operations/maintenance/[workOrderId]` now reuses `SkeletonRows` for the
+  initial work-order load and Correspondence panel load, replacing the raw
+  spinner-plus-copy rows. The Operations UX smoke delays both reads and guards
+  the accessible skeleton pattern. Frontend-only; no Basiq, provider, bank-feed,
+  comms dispatch, or API mutation path touched.
+- 2026-05-31 Notifications filter touch-target polish (THIS SESSION):
+  the Work notice and Digest history filter buttons now use the 44px target
+  baseline instead of the prior 40px filter-chip compromise. The mobile smoke
+  measures every status/channel filter in both panels plus the existing Open
+  work/Open Work links, without clicking send, retry, export, refresh, or
+  mark-reviewed actions.
+- 2026-05-31 Operations workload filter touch-target polish (THIS SESSION):
+  the queue workload filters now use the 44px target baseline for Open,
+  Unassigned, Follow-up due, My work, and per-member filter buttons. Team
+  workload / Assigned chips match that height for visual alignment. The smoke
+  measures stable filters only and does not click digest, assignment, notice,
+  provider, or mutation actions.
+- 2026-05-31 Billing Readiness delivery-filter touch-target polish (THIS
+  SESSION): Dispatch & reconcile filter buttons now use the 44px target baseline
+  for All, Needs action, Ready to dispatch, Complete, and Unpaid. The smoke
+  measures and clicks only those read-only filters under a no-mutation request
+  guard, then measures existing recovery/payment/statement and mobile invoice
+  handoffs without clicking dispatch, email, payment, provider, or
+  reconciliation actions.
+- 2026-05-31 owner-tag chevron polish (THIS SESSION): property ownership chips
+  now render raw chain labels like `A -> B -> C` as cleaner `A › B › C` display
+  text while keeping the original string in the chip title and normalized
+  `owner_tag` filter key. This closes the deferred C2 craft item without
+  changing property data, matching, or URL semantics.
+- 2026-05-31 helper consolidation (THIS SESSION): after re-checking Claude's
+  UX audit/source notes, `/contractors`, `/inbox`, `/insights`,
+  `/notifications`, `/intake/spreadsheet`, and the embedded Smart Intake
+  register-import panel, `/operations` plus maintenance detail,
+  `/portfolio-qa`, `/tenants`, tenant detail, `/statements`, and the dashboard
+  shell now use shared `friendlyError` and/or `StatusTone` imports instead of
+  local redeclarations. This follows the deferred external-review cleanup item.
+  The property workspace also delegates generic Error-message handling to the
+  shared helper while keeping its entity/property-specific recovery copy; no
+  visible UX or provider behavior changed.
 - 2026-05-31 live Basiq connection foundation (THIS SESSION): commits `7bcabfb`
   (backend — `BasiqConnection` model + migration `20260531_0028`, server-token +
   accounts/transactions fetch behind the soft-skip, connect/status/revoke routes,
@@ -101,15 +194,16 @@ Last updated: 2026-05-30
   `app-shell.tsx`; (3) dashboard hero de-duplicated — removed the command-center
   right-rail summary that duplicated the metric strip; command center now
   full-width with an inline review-first guardrail (`DashboardCommandCenter.tsx`).
-  Remaining Phase B: urgency differentiation (repeated "Tomorrow" chips) and
-  progressive disclosure of Events / Recent-activity; then Phases C (craft
-  punch-list), D (keyboard/flow), E (motion). Blast radius this session:
-  comms.py, test_comms_api.py, app-shell.tsx, DashboardCommandCenter.tsx.
+  Phase B progressive disclosure is now covered for Recent activity and
+  Upcoming lease events; remaining UX-audit follow-ups start at Phase C
+  (craft punch-list), D (keyboard/flow), and E (motion). Blast radius this
+  session: comms.py, test_comms_api.py, app-shell.tsx,
+  DashboardCommandCenter.tsx plus dashboard panel follow-ups.
 - Clerk cutover note: live Vercel was previously serving a publishable key that decoded to `clerk.leasium.vercel.app`. That creates split-domain sessions. The canonical target is a Clerk setup anchored to `leasium.ai` (prefer `clerk.leasium.ai` via Clerk DNS/CNAME, or exact `https://leasium.ai/__clerk` proxy if enabled in Clerk Dashboard and Vercel env).
 - **Latest pushed commit:** run `git log --oneline -12` to confirm before editing. This handover is kept current by the Codex continuation slices, but the local log is the source of truth.
 - **Working tree:** expected clean after each pushed slice. If not, inspect with `git status --short` before editing.
 - **Mac tooling change (2026-05-24):** Node v26 installed via Homebrew; Desktop Commander MCP server (`@wonderwhy-er/desktop-commander`) is configured in Claude Desktop. Future Claude sessions in this workspace have `mcp__Desktop_Commander__*` tools available — they execute commands directly on the Mac (pytest, ruff, alembic, git, next dev, playwright). Sandbox-can't-write-git and no-local-Node constraints from prior sessions no longer apply.
-- The 2026-05-22 UX-review backlog is fully landed except Tier 2 (g) dark mode (deliberately deprioritised under the SKJ internal-first-6-months direction). All shipped items are marked `[x]` or `[~]` in `docs/product-roadmap.md`. Known dark-mode issue for that later pass: the login/sign-in screen can render dark cards and disabled invite controls with poor contrast inside the otherwise light page shell.
+- The 2026-05-22 UX-review backlog is fully landed except Tier 2 (g) dark mode (deliberately deprioritised under the SKJ internal-first-6-months direction). All shipped items are marked `[x]` or `[~]` in `docs/product-roadmap.md`. Known dark-mode issue for that later pass: re-check real Clerk auth widget rendering under dark OS/browser settings. The local shared Clerk appearance now pins light variables/classes, but the full dark-mode pass should still validate live Clerk-rendered states.
 - Visual polish + brand sweep (2026-05-23): nine commits resolving Tickets 1-5 of the polish plan after the competitive UX rating identified visual polish as Leasium's weakest dimension vs Re-Leased / PropertyMe / PropertyTree. Codex source-of-truth amendments in §3 (owner tag palette + two-tier naming), §4 (Body Compact 15px + Micro 11px), §5 (motion scale 150/200/300 + ease-in/toggle), §8 (empty-state convention), §9 (chip system). Tailwind config gained 36 owner-tag tokens, 11 short-alias variants, transition durations, exit easings, four custom fontSize steps. `globals.css` gained six @keyframes (drawer in/out left/right, modal in/out, backdrop in/out) and matching utility classes. New `useUnmountDelay` hook drives drawer/modal exit animations on 8 surfaces. New `chipClass()` helper in `components/ui.tsx` collapses every chip/pill/badge declaration through one tone × density × bordered surface. EmptyState component gained an `icon` slot; ~40 high-traffic empty states opt-in. Remba had been retired from the loop ("forget Remba, this is a prototype" at slice mid-point) so commits land without the [~] pending markers used in earlier slices.
 - 2026-05-23 Remba sign-off note: the Token consistency pass v1 + Motion polish v1 items in `docs/design-governance.md` flipped `[~]` → `[x]` mid-session before Remba was retired. The follow-up Polish v2-v7 work landed without governance markers per the prototype-mode call.
 - Behavioural baseline added at `CLAUDE.md` (repo root): the Forrest Chang / Andrej Karpathy four-principle file (~110k stars) plus Leasium-specific guardrails (provider mutation rule, Remba review, internal-first-6-months, push-to-Vercel review path, Mac/venv tooling notes). Future Claude Code / Codex sessions pick it up automatically.
@@ -1309,12 +1403,13 @@ Open items at session end:
   web `tsc --noEmit`, focused eslint, and
   `npx playwright test tests/smoke/app-flows.spec.ts -g "settings mobile tabs"`.
 - Notifications mobile touch-target polish is now verified and marked `[x]`:
-  the 390px smoke measures the 40px filter-chip compromise plus the 44px
-  per-row `Open work` and bottom `Open Work` links. Verification: web
+  the 390px smoke measures the 44px Work notice and Digest history filter
+  controls plus the per-row `Open work` and bottom `Open Work` links.
+  Verification: web
   `tsc --noEmit`, focused eslint, and
   `npx playwright test tests/smoke/app-flows.spec.ts -g "notifications mobile actions"`.
 - Operations mobile touch-target polish is now verified and marked `[x]`: the
-  390px workspace smoke measures Queue/Maintenance/Arrears tabs, workload
+  390px workspace smoke measures Queue/Maintenance/Arrears tabs, 44px workload
   filter chips, Open tenants, Review, and Review completion; the 390px
   maintenance-detail smoke measures Operations, Recover in Billing, Preview,
   and PDF. Verification: web `tsc --noEmit`, focused eslint, and

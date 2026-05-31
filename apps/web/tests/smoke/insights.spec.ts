@@ -57,19 +57,21 @@ test("insights splits the Xero-status guardrail into label and caption", async (
 }) => {
   await page.goto("/insights");
 
-  const guardrails = page
-    .locator("div")
-    .filter({ has: page.getByText("Guardrails", { exact: true }) })
-    .last();
-  await expect(guardrails).toBeVisible();
+  const financeSnapshot = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Finance Snapshot" }),
+    })
+    .first();
+  await expect(financeSnapshot).toBeVisible();
 
   // C8: the leading status clause and the guardrail caption render as two
   // distinct elements rather than one run-on sentence.
-  const statusLabel = guardrails.getByText("Loading Xero status", {
+  const statusLabel = financeSnapshot.getByText("Loading Xero status", {
     exact: true,
   });
   await expect(statusLabel).toBeVisible();
-  const caption = guardrails.getByText(
+  const caption = financeSnapshot.getByText(
     "does not refresh tokens, call Xero, post invoices, or reconcile payments.",
     { exact: true },
   );

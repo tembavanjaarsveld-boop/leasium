@@ -167,7 +167,7 @@ export function ActivityFeedPanel({ entityId }: { entityId: string }) {
                 {bucket.items.map((item) => {
                   const tone = ACTIVITY_KIND_TONE[item.action_kind];
                   const wrapperClass =
-                    "animate-leasium-row-in grid gap-1 rounded-md border border-border bg-white p-3 text-sm transition";
+                    "animate-leasium-row-in grid gap-1 rounded-md border border-border bg-white p-3 text-sm transition duration-200 ease-leasium";
                   const interactiveClass = item.target_href
                     ? " hover:bg-muted/40"
                     : "";
@@ -226,7 +226,7 @@ export function ActivityFeedPanel({ entityId }: { entityId: string }) {
           <button
             type="button"
             onClick={() => setExpanded((value) => !value)}
-            className="mt-1 inline-flex min-h-9 items-center justify-center rounded-lg border border-border bg-white px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            className="mt-1 inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-white px-3 text-sm font-medium text-muted-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-foreground"
           >
             {expanded ? "Show fewer" : `Show all ${total}`}
           </button>

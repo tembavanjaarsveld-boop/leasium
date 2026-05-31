@@ -196,12 +196,12 @@ export function DashboardCommandCenter({
                     href={item.href}
                     data-cc-row
                     className={[
-                      "group grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 transition hover:bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 md:grid-cols-[3.25rem_minmax(0,1fr)_auto] md:items-center",
+                      "group grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 transition duration-200 ease-leasium hover:bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 md:grid-cols-[3.25rem_minmax(0,1fr)_auto] md:items-center",
                       index === 0 ? "bg-primary-soft/35" : "",
                     ].join(" ")}
                   >
                     <div className="flex justify-center self-center">
-                      <span className="inline-flex h-8 min-w-10 items-center justify-center rounded-full border border-border bg-white px-2 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition group-hover:border-primary/30 group-hover:text-primary">
+                      <span className="inline-flex h-8 min-w-10 items-center justify-center rounded-full border border-border bg-white px-2 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition duration-200 ease-leasium group-hover:border-primary/30 group-hover:text-primary">
                         #{index + 1}
                       </span>
                     </div>

@@ -1,6 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 
 import { mockLeasiumApi } from "./api-mocks";
+
+async function expectTouchTarget(locator: Locator) {
+  await locator.scrollIntoViewIfNeeded();
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(box.width).toBeGreaterThanOrEqual(44);
+}
 
 test("dashboard command center prepares work without raw loading counters", async ({
   page,
@@ -141,6 +150,217 @@ test("dashboard groups upcoming lease events under a date-bucket header", async 
   ).toBeVisible();
 });
 
+test("dashboard clarifies repeated near-term event chips", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.demo_mode", "false");
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
+
+    const fixedNow = new Date("2026-05-31T12:00:00.000Z").valueOf();
+    const RealDate = Date;
+    class FixedDate extends RealDate {
+      constructor(...args: ConstructorParameters<DateConstructor>) {
+        if (args.length === 0) {
+          super(fixedNow);
+        } else {
+          super(...args);
+        }
+      }
+
+      static now() {
+        return fixedNow;
+      }
+    }
+    Object.setPrototypeOf(FixedDate, RealDate);
+    globalThis.Date = FixedDate as DateConstructor;
+  });
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/insights/overview**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        lease_event_snapshot: {
+          active_lease_count: 2,
+          next_review_count: 1,
+          next_expiry_count: 1,
+          overdue_obligation_count: 0,
+          due_soon_obligation_count: 0,
+          tenant_onboarding_waiting_count: 0,
+          next_events: [
+            {
+              id: "review-tomorrow",
+              kind: "rent_review",
+              title: "Bright Cafe Pty Ltd rent review",
+              date: "2026-06-01",
+              chip: "Tomorrow",
+              href: "/properties",
+              target: null,
+              rank: 1,
+            },
+            {
+              id: "expiry-tomorrow",
+              kind: "lease_expiry",
+              title: "Harbour Retail lease expiry",
+              date: "2026-06-01",
+              chip: "Tomorrow",
+              href: "/properties",
+              target: null,
+              rank: 2,
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  await page.goto("/");
+
+  const eventsPanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Upcoming lease events" }),
+    })
+    .first();
+
+  await expect(eventsPanel.getByText("Due tomorrow")).toHaveCount(2);
+  await expect(eventsPanel.getByText("Tomorrow", { exact: true })).toHaveCount(
+    0,
+  );
+});
+
+test("dashboard keeps long upcoming event lists collapsed until requested", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.demo_mode", "false");
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
+
+    const fixedNow = new Date("2026-05-31T12:00:00.000Z").valueOf();
+    const RealDate = Date;
+    class FixedDate extends RealDate {
+      constructor(...args: ConstructorParameters<DateConstructor>) {
+        if (args.length === 0) {
+          super(fixedNow);
+        } else {
+          super(...args);
+        }
+      }
+
+      static now() {
+        return fixedNow;
+      }
+    }
+    Object.setPrototypeOf(FixedDate, RealDate);
+    globalThis.Date = FixedDate as DateConstructor;
+  });
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/insights/overview**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        lease_event_snapshot: {
+          active_lease_count: 7,
+          next_review_count: 4,
+          next_expiry_count: 3,
+          overdue_obligation_count: 0,
+          due_soon_obligation_count: 0,
+          tenant_onboarding_waiting_count: 0,
+          next_events: Array.from({ length: 7 }, (_, index) => ({
+            id: `event-${index + 1}`,
+            kind: index % 2 === 0 ? "rent_review" : "lease_expiry",
+            title: `Lease event ${index + 1}`,
+            date: `2026-06-${String(index + 1).padStart(2, "0")}`,
+            chip: `Jun ${index + 1}`,
+            href: "/properties",
+            target: null,
+            rank: index + 1,
+          })),
+        },
+      },
+    });
+  });
+
+  await page.goto("/");
+
+  const eventsPanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Upcoming lease events" }),
+    })
+    .first();
+
+  await expect(eventsPanel.getByText("Lease event 1")).toBeVisible();
+  await expect(eventsPanel.getByText("Lease event 5")).toBeVisible();
+  await expect(eventsPanel.getByText("Lease event 6")).toHaveCount(0);
+  await expect(eventsPanel.getByText("Lease event 7")).toHaveCount(0);
+
+  await eventsPanel.getByRole("button", { name: "Show all 7" }).click();
+  await expect(eventsPanel.getByText("Lease event 7")).toBeVisible();
+
+  await eventsPanel.getByRole("button", { name: "Show fewer" }).click();
+  await expect(eventsPanel.getByText("Lease event 6")).toHaveCount(0);
+});
+
+test("dashboard recent activity disclosure keeps its control touch-friendly", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.demo_mode", "false");
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
+  });
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/activity-feed**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        items: Array.from({ length: 10 }, (_, index) => ({
+          id: `activity-${index + 1}`,
+          occurred_at: new Date(
+            Date.now() - index * 15 * 60_000,
+          ).toISOString(),
+          actor: index % 2 === 0 ? "Temba van Jaarsveld" : "System",
+          actor_kind: index % 2 === 0 ? "operator" : "system",
+          action: "review",
+          action_kind: "review",
+          action_label: "Reviewed",
+          summary: `Reviewed dashboard activity ${index + 1}.`,
+          target_table: "document_intake",
+          target_id: `activity-target-${index + 1}`,
+          target_label: `Activity item ${index + 1}`,
+          target_href: "/intake",
+          tool_name: null,
+          outcome: "success",
+          error_message: null,
+        })),
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+  });
+
+  await page.goto("/");
+
+  const activityPanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Recent activity" }),
+    })
+    .first();
+
+  await expect(activityPanel.getByText("Activity item 1")).toBeVisible();
+  await expect(activityPanel.getByText("Activity item 8")).toBeVisible();
+  await expect(activityPanel.getByText("Activity item 9")).toHaveCount(0);
+
+  const showAll = activityPanel.getByRole("button", { name: "Show all 10" });
+  await expect(showAll).toBeVisible();
+  await expectTouchTarget(showAll);
+  await showAll.click();
+
+  await expect(activityPanel.getByText("Activity item 10")).toBeVisible();
+
+  const showFewer = activityPanel.getByRole("button", { name: "Show fewer" });
+  await expectTouchTarget(showFewer);
+});
+
 test("dashboard overview clears first-paint loading before detailed fan-out settles", async ({
   page,
 }) => {
@@ -189,7 +409,7 @@ test("dashboard overview clears first-paint loading before detailed fan-out sett
       .locator("a")
       .filter({ has: page.getByText("Billing blockers", { exact: true }) })
       .first();
-    await expect(billingCard).toContainText("2");
+    await expect(billingCard).toContainText(/Billing blockers\s*5\s*Blocked/);
   } finally {
     releaseDetailed?.();
     await page.unrouteAll({ behavior: "ignoreErrors" });

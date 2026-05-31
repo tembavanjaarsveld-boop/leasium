@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-05-30
+Last updated: 2026-05-31
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -25,8 +25,47 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
 - Tenant work belongs in the tenant workspace: tenant search, contact/billing details, onboarding state, leases, documents, and activity.
 - New modules should earn their own page when they become repeated work, not be squeezed into an existing page.
 - Leasium should feel like modern tooling for operators: calm, fast, clear, and confident.
+- **Navigation legibility is the standard (DoorLoop-informed, 2026-05-31):** organise around two spines — Properties → Units and a single People hub — with fewer destinations and consistent record pages. See the dated section below.
 
-## 2026-05-30 Dispatch + UX Polish Slice (prototype mode)
+## 2026-05-31 DoorLoop Benchmark — IA + UX Direction (prototype mode)
+
+Source analysis: [`doorloop-benchmark-2026-05-31.md`](doorloop-benchmark-2026-05-31.md).
+Per the standing prototype-mode call ("forget Remba, just fling it"), this is recorded as
+design *direction*, not a gated review. We borrow DoorLoop's ease-of-navigation; we do not
+clone its look or feature set.
+
+What we are taking from DoorLoop's UX:
+
+- **Two spines, one People hub.** Organise around **Properties → Units** and a single
+  **People** hub (Tenants · Owners · Vendors · later Prospects), tied together by
+  **Leases**. This is the headline change and the thing operators find legible.
+- **Fewer destinations, grouped nav with sub-menus.** Collapse ~15 surfaces into 7 hubs
+  (Dashboard · Smart Intake · Properties · People · Work · Money · Insights, + Settings).
+  Clicking a hub reveals its sub-menu; global search reaches any record. Honour the
+  §10.5.1 seven-item cap in the design source of truth.
+- **Consistent record pages.** Tenant, Owner, Vendor and Property share one shape:
+  header → tabs (Overview / Financials / Tasks / Notes / Files / Activity) → the same
+  action patterns. Predictability *is* the simplicity.
+- **One Notes store + one Files store**, aggregated and searchable across the app, rather
+  than notes/files trapped inside each individual record.
+- **Plain-English empty/loading/error states and obvious primary actions** — already in the
+  Remba gate checklist; DoorLoop is the external proof point.
+
+What we are deliberately NOT taking: per-unit pricing pressure on density decisions,
+autonomous tenant-facing AI surfaces (Leasium stays review-first), and DoorLoop's
+US-centric labels (we localise to Xero/BAS, PayTo/PayID/BPAY, RTBA/state RTAs).
+
+Design-facing follow-ups (prototype-mode, not gated):
+
+1. People hub IA + a consistent people record-page shape.
+2. Nav consolidation to 7 hubs (introduce the **People** and **Money** groupings).
+3. Owner portal surface (read-only first) once the `Owner` entity lands.
+
+Frontend work on these should run through the checked-in UI skills in
+`docs/external-skills/` (web-design-guidelines, composition-patterns, and the hallmark
+slop-test) so the new surfaces stay consistent with the design system.
+
+## 2026-05-30/31 Dispatch + UX Polish Slice (prototype mode)
 
 Per Temba's standing call that Remba is a retired AI reviewer during the
 internal-first prototype phase ("forget Remba, just fling it"), the
@@ -44,7 +83,78 @@ scale, typography) and the provider-mutation guardrail.
 - World-class UX audit Phase B-E close-out: date-bucket headers (B3), redundant
   billing-link icon removed (C4), Properties compact-density toggle (C6),
   Insights guardrail label split (C8), Operations complete/waive confirmation
-  toast (E6). Sidebar restructure (C7) and owner-tag chevrons (C2) deferred.
+  toast (E6). Owner-tag chain labels now display with cleaner chevrons while
+  preserving raw filter keys and titles. Sidebar restructure (C7) remains
+  deferred.
+- Comms queue keyboard review flow: focused draft rows support `j`/`k` and
+  Arrow Up/Down navigation plus Enter-to-edit while skipping all inputs,
+  textareas, selects, links, and buttons so review shortcuts never steal
+  message editing. No dispatch, dismiss, provider call, or local queue mutation
+  runs from keyboard movement alone.
+- Dashboard list-row motion token normalization: command-center, Upcoming lease
+  events, and activity-feed rows now use the shared 200ms `ease-leasium`
+  transition timing. The secondary Upcoming/Activity rows also share the
+  reduced-motion-safe row-enter animation, while the primary command-center hero
+  keeps instant first paint.
+- Dashboard event urgency differentiation: near-term lease-event chips now
+  read as `Due today`, `Due tomorrow`, or `Due in Nd` instead of repeating raw
+  short labels like `Tomorrow` across unrelated rent-review / expiry rows.
+- Dashboard progressive disclosure: Recent activity keeps its audit-log list
+  collapsed by default, and Upcoming lease events now shows the first five
+  events with `Show all` / `Show fewer` controls so long first-viewport lists
+  do not push the rest of the dashboard below the fold. Both disclosure
+  controls now use 44px touch targets and the shared motion timing.
+- Dashboard AI touch targets: the read-only Leasium AI suggestion chips now
+  meet the 44px target baseline while keeping the same question text, answer
+  flow, citations, and no-mutation guardrail. Citation source links now use the
+  same touch-target baseline.
+- Saved views touch-target polish: the Tenants/Properties/Operations
+  `<SavedViewsMenu>` keeps the localStorage-backed saved-filter contract and URL
+  filter re-apply semantics, while its trigger, Apply/Rename/Delete controls,
+  save form, and close control now meet the 44px target baseline and shared
+  200ms `ease-leasium` motion timing. The close control now sits in the menu
+  header so it cannot intercept first-row actions. No provider, Basiq,
+  bank-feed, comms dispatch, or API mutation path changed.
+- Clerk auth appearance guard: shared Sign in / Sign up Clerk widgets now pin
+  light theme variables and Leasium input/button/card classes inside
+  `clerkEmailOnlyAppearance`, preserving the email-only flow while preventing
+  stale OS/browser dark appearance from rendering dark cards or low-contrast
+  invite controls on the otherwise light auth shell. Frontend-only; no auth
+  routing, Clerk session, invite, or provider behavior changed.
+- App shell mobile drawer close target: the mobile drawer's Close navigation
+  button now shares the 44px target baseline and 200ms `ease-leasium` timing
+  used by the hamburger and utility controls. The existing mobile header smoke
+  now opens the drawer and measures both open and close controls.
+- Maintenance detail loading polish: `/operations/maintenance/[workOrderId]`
+  now uses the shared `SkeletonRows` primitive for the initial work-order wait
+  and the Correspondence panel wait instead of raw spinner-plus-copy rows.
+  Smoke coverage delays both reads and guards the accessible skeleton pattern.
+- Notifications filter touch-target polish: the Work notice and Digest history
+  filter buttons now use the full 44px target baseline instead of the previous
+  40px filter-chip compromise. The mobile smoke measures every status/channel
+  filter in both panels without touching send, retry, refresh, export, or
+  mark-reviewed actions.
+- Operations workload filter touch-target polish: the Operations queue workload
+  strip now uses the same 44px target baseline for Open, Unassigned, Follow-up
+  due, My work, and per-member filter buttons. The companion static workload
+  chips were lifted to the same height for visual alignment. The smoke only
+  measures filter controls and does not trigger digest, assignment, notice, or
+  provider actions.
+- Billing Readiness delivery-filter touch-target polish: the Dispatch &
+  reconcile filter buttons now use the same 44px target baseline for All, Needs
+  action, Ready to dispatch, Complete, and Unpaid. The mobile smoke measures and
+  clicks those read-only filters, then measures existing recovery, payment, and
+  statement handoffs without clicking dispatch, email, payment, provider, or
+  reconciliation actions.
+- Helper consolidation, aligned to the deferred external-review cleanup:
+  `/contractors`, `/inbox`, `/insights`, `/notifications`, and
+  `/operations` plus maintenance detail, the Smart Intake register-import
+  surfaces, `/portfolio-qa`, `/tenants`, tenant detail, `/statements`, and the
+  dashboard shell now import the shared `friendlyError` helper and/or canonical
+  `StatusTone` union instead of carrying local redeclarations. The property
+  workspace now delegates generic Error-message handling to the shared helper
+  while retaining its entity/property-specific recovery copy. No visible
+  workflow, layout, copy, provider, or Basiq behavior changed.
 
 ## Current Remba Review
 
@@ -621,11 +731,11 @@ Seventy-third 2026-05-23 follow-up: Tenants page CTA reframed from "+ Add tenant
 
 Seventy-second 2026-05-23 follow-up: Mobile-polish v2 — AI Inbox classification CTA. On `/inbox`, the "Take it from here" Link inside the classification card is the operator's primary handoff button — it deep-links to whichever Leasium surface the AI suggested (Operations, Tenants, Properties, etc.) so the reviewed workflow takes over. It was rendered with `px-3 py-1.5 text-xs` (~32px tall), which is well below 44px HIG and feels small even on desktop given its weight. Bumped to `min-h-11 px-3 text-sm` so it sits at 44px and matches other primary actions. No other change on the surface — Try sample / Reset / Classify use Button/SecondaryButton baselines that already meet HIG. Remba should review whether the "Take it from here" button should also gain a primary-blue background (currently `bg-primary/5`, a faint tint) given its weight in the user's flow.
 
-Seventy-first 2026-05-23 follow-up: Mobile-polish v2 — Billing Readiness surface touch targets. Same code-driven HIG pass as Operations and Notifications. Six primary action Links across `/billing-readiness` (the Open recovery anchor in the dispatch block, the Recover-in-Billing variants in the prep section, the Preview/PDF actions per invoice draft, and the bottom-of-section foundation links) move from `min-h-9` to `min-h-11`. The single delivery-status filter pill (Approved / Sent / Failed / Skipped switching) moves from `min-h-9` to `min-h-10`, matching the filter-chip compromise already used in `/notifications` and `/operations`. The dense `SecondaryButton` action rows with `min-h-9 rounded-lg px-3` overrides on invoice draft cards were verified as dead code — `SecondaryButton` baseline `min-h-11` wins — so no visible change in those clusters. Remba should review (a) whether the filter pill should also reach 44px on mobile only via a `min-h-10 md:min-h-9` pattern (for full HIG on touch while keeping desktop density), and (b) whether the per-invoice action rows should also wrap or stack at narrow widths now that buttons are uniformly 44px.
+Seventy-first 2026-05-23 follow-up: Mobile-polish v2 — Billing Readiness surface touch targets. Same code-driven HIG pass as Operations and Notifications. Six primary action Links across `/billing-readiness` (the Open recovery anchor in the dispatch block, the Recover-in-Billing variants in the prep section, the Preview/PDF actions per invoice draft, and the bottom-of-section foundation links) move from `min-h-9` to `min-h-11`. The Dispatch & reconcile delivery filter buttons (All / Needs action / Ready to dispatch / Complete / Unpaid) now also use `min-h-11`, superseding the earlier 40px filter-chip compromise. The dense `SecondaryButton` action rows with `min-h-9 rounded-lg px-3` overrides on invoice draft cards were verified as dead code — `SecondaryButton` baseline `min-h-11` wins — so no visible change in those clusters. Remba should review whether the taller filter row and per-invoice action rows still feel appropriately dense on real phones now that buttons are uniformly 44px.
 
-Seventieth 2026-05-23 follow-up: Mobile-polish v2 — Operations surface touch targets. `/operations` and `/operations/maintenance/[workOrderId]` get the same code-driven touch-target pass as Notifications. On the queue page: three primary action Links (Open tenants for onboarding rows, Review for document intake rows, Review completion on maintenance rows) move `min-h-9` → `min-h-11`; seven workload filter pill chips (Open / Unassigned / Assigned / Follow-up due / My work / per-member workload buttons) move `min-h-9` → `min-h-10`, the same filter-chip compromise used in `/notifications`. On the work-order detail page: the Operations back link moves `min-h-10` → `min-h-11`; four invoice-handoff Links (Open in Billing, Recover in Billing, Preview, PDF) and the documents Download anchor move `min-h-9` → `min-h-11`. The dense `SecondaryButton` action rows with `min-h-9 px-3` overrides were verified as dead code — `SecondaryButton` baseline is `min-h-11` and CSS `min-height` wins — so no visual change there. The three-tab Operations strip (Queue / Maintenance / Arrears) was already mobile-correct (`min-h-16` per tile, single-column stacking on mobile). Remba should review (a) whether the 40px workload chip compromise feels consistent across Operations + Notifications or if those chips should also reach 44px on mobile only, and (b) whether the invoice-handoff cluster on the work-order detail page wants a tighter layout once buttons are uniformly 44px tall.
+Seventieth 2026-05-23 follow-up: Mobile-polish v2 — Operations surface touch targets. `/operations` and `/operations/maintenance/[workOrderId]` get the same code-driven touch-target pass as Notifications. On the queue page: three primary action Links (Open tenants for onboarding rows, Review for document intake rows, Review completion on maintenance rows) move `min-h-9` → `min-h-11`; workload filter pill chips (Open / Unassigned / Follow-up due / My work / per-member workload buttons) now use `min-h-11`, and the companion Team workload / Assigned chips match that height for row alignment. On the work-order detail page: the Operations back link moves `min-h-10` → `min-h-11`; four invoice-handoff Links (Open in Billing, Recover in Billing, Preview, PDF) and the documents Download anchor move `min-h-9` → `min-h-11`. The dense `SecondaryButton` action rows with `min-h-9 px-3` overrides were verified as dead code — `SecondaryButton` baseline is `min-h-11` and CSS `min-height` wins — so no visual change there. The three-tab Operations strip (Queue / Maintenance / Arrears) was already mobile-correct (`min-h-16` per tile, single-column stacking on mobile). Remba should review whether the taller workload filter row still feels appropriately dense on real phones and whether the invoice-handoff cluster on the work-order detail page wants a tighter layout once buttons are uniformly 44px tall.
 
-Sixty-ninth 2026-05-23 follow-up: Mobile-polish v2 — Notifications surface touch targets. Three buttons in `/notifications` now meet 44px Apple HIG: the unread/group filter chip (line 534) went `min-h-9` → `min-h-10` (40px, deliberate filter-pill compromise — taller would make the filter row feel heavy with multiple chips); the per-row "Open work" Link (line 938) went `min-h-9` → `min-h-11` (primary action, full HIG); the bottom-of-page "Open Work" Link (line 1482) went `min-h-10` → `min-h-11`. A wider audit of the row's `SecondaryButton` instances with `h-9 px-2.5` overrides showed those are dead code — `SecondaryButton` baseline is `min-h-11` and CSS `min-height` wins over `height`, so the buttons are already 44px tall. No visible layout or density change. Code-driven only; the broader phone-walk review of Notifications, Operations, Billing Readiness, and AI Inbox in [`docs/mobile-ux-review-2026-05-23.md`](mobile-ux-review-2026-05-23.md) still pending. Remba should review whether the filter-chip 40px compromise feels right or whether the chips should also sit at 44px on mobile only (`min-h-10 md:min-h-9`).
+Sixty-ninth 2026-05-23 follow-up: Mobile-polish v2 — Notifications surface touch targets. The Work notice and Digest history filter buttons now use the 44px Apple HIG baseline (`min-h-11`), superseding the earlier 40px filter-chip compromise. The per-row "Open work" Link and bottom-of-page "Open Work" Link also sit at 44px. A wider audit of the row's `SecondaryButton` instances with `h-9 px-2.5` overrides showed those are dead code — `SecondaryButton` baseline is `min-h-11` and CSS `min-height` wins over `height`, so the buttons were already 44px tall. Code-driven only; the broader phone-walk review of Notifications, Operations, Billing Readiness, and AI Inbox in [`docs/mobile-ux-review-2026-05-23.md`](mobile-ux-review-2026-05-23.md) still pending. Remba should review whether the taller filter rows still feel appropriately dense on real phones.
 
 Sixty-eighth 2026-05-23 follow-up: Mobile-polish v2 — Tenant detail onboarding row collapses provider detail on mobile. Below `md`, the Delivery / Reminders / Expires / Applied 4-column sub-grid + onboarding delivery detail copy + reminder schedule sub-card + delivery timeline strip are now wrapped in a closed-by-default `<details>` disclosure labelled "Provider detail" (chevron-down icon that rotates on open). The onboarding row's status badge, due date, action button cluster (Copy onboarding link / Resend / Cancel / Apply / Invite to portal), and Submitted-for-review section all remain always visible. Desktop ≥md still renders the metadata always-on in its existing layout — the same JSX is reused via a `providerDetail` const inside the map iteration so the two modes don't drift. Remba should review (a) the `Provider detail` summary copy — is it the right shorthand for that bundle of metadata, or should it be `Delivery + reminders`?, (b) whether the disclosure should also collapse on `<sm` tablets rather than just `<md`, and (c) whether collapsing makes the onboarding row feel like data is hidden vs. just decluttered.
 

@@ -22,6 +22,7 @@ import {
   SectionPanel,
   Select,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   type InboxPromoteKind,
@@ -38,11 +39,9 @@ import {
   promoteInboxMessage,
   triageInboxMessage,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
-
-type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 
 const KIND_LABEL: Record<InboxTriageKind, string> = {
   maintenance_request: "Maintenance request",
@@ -92,11 +91,6 @@ of hours but the cabinet base is starting to swell.
 Thanks,
 Sarah (tenant, Acme Bakery)
 `;
-
-function friendlyError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Something went wrong.";
-}
 
 function confidenceLabel(confidence: number): string {
   if (confidence >= 0.8) return "High confidence";

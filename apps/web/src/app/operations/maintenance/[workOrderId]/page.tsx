@@ -41,7 +41,9 @@ import {
   SecondaryButton,
   SectionPanel,
   Select,
+  SkeletonRows,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   addMaintenanceWorkOrderComment,
@@ -70,8 +72,8 @@ import {
   type WorkAssignmentNoticeChannelReceiptRecord,
 } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
+import { friendlyError } from "@/lib/utils";
 
-type Tone = "neutral" | "success" | "warning" | "danger" | "primary";
 type ContractorEmailTemplateKey =
   | "custom"
   | "attendance_window"
@@ -113,7 +115,7 @@ type ActivityTimelineEntry = {
   meta: string[];
   audience: ActivityAudience;
   audienceLabel: string;
-  tone: Tone;
+  tone: StatusTone;
 };
 
 type ActivityAuditCard = {
@@ -121,7 +123,7 @@ type ActivityAuditCard = {
   badge: string;
   value: string;
   detail: string;
-  tone: Tone;
+  tone: StatusTone;
 };
 
 type CompletionReviewAudience = "owner" | "tenant" | "contractor";
@@ -155,7 +157,7 @@ type LiveReviewCard = {
   title: string;
   statusLabel: string;
   detail: string;
-  tone: Tone;
+  tone: StatusTone;
   icon: ReactNode;
 };
 
@@ -164,7 +166,7 @@ type LiveActionReviewItem = {
   title: string;
   statusLabel: string;
   detail: string;
-  tone: Tone;
+  tone: StatusTone;
   href: string | null;
   actionLabel: string;
   icon: ReactNode;
@@ -177,7 +179,7 @@ type LiveReviewHandoffStep = {
   title: string;
   statusLabel: string;
   detail: string;
-  tone: Tone;
+  tone: StatusTone;
   actionLabel: string;
   href?: string | null;
 };
@@ -255,13 +257,6 @@ function formatMoney(cents: number | null | undefined) {
   }).format(cents / 100);
 }
 
-function friendlyError(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
-
 function csvCell(value: string | number | null | undefined) {
   const raw = value == null ? "" : String(value);
   const text =
@@ -283,7 +278,7 @@ function correspondenceChannelLabel(event: CommsCorrespondenceEventRecord) {
   return event.channel ?? "Stored receipt";
 }
 
-function correspondenceStatusTone(status: string | null | undefined): Tone {
+function correspondenceStatusTone(status: string | null | undefined): StatusTone {
   if (status === "success") return "success";
   if (status === "error" || status === "failed") return "danger";
   if (status === "skipped") return "warning";
@@ -400,7 +395,7 @@ async function copyTextToClipboard(text: string) {
   return copied;
 }
 
-function statusTone(workOrder: MaintenanceWorkOrderRecord): Tone {
+function statusTone(workOrder: MaintenanceWorkOrderRecord): StatusTone {
   if (workOrder.status === "completed") {
     return "success";
   }
@@ -484,7 +479,7 @@ function templateVersionLabel(
   return `Template ${templateKey ?? templateVersion}`;
 }
 
-function invoiceStatusTone(status: InvoiceDraftRecord["status"]): Tone {
+function invoiceStatusTone(status: InvoiceDraftRecord["status"]): StatusTone {
   if (status === "approved") {
     return "success";
   }
@@ -815,7 +810,7 @@ function reopenedMaintenanceStatus(workOrder: MaintenanceWorkOrderRecord) {
     : "in_progress";
 }
 
-function contractorEmailTone(statusValue: string | null): Tone {
+function contractorEmailTone(statusValue: string | null): StatusTone {
   if (["queued", "sent", "delivered", "opened"].includes(statusValue ?? "")) {
     return "success";
   }
@@ -1010,7 +1005,7 @@ function invoiceBillingHandoff(
     filter: "needs_action",
   });
 
-  let tone: Tone = "warning";
+  let tone: StatusTone = "warning";
   let label = "Billing handoff";
   let message =
     "Billing Readiness owns invoice delivery, Xero dispatch, and payment follow-up.";
@@ -1140,7 +1135,7 @@ function invoiceRecoveryPath(draft: InvoiceDraftRecord) {
   const emailFailed = metadataText(sendState.status) === "failed";
   const paymentLabel = metadataText(paymentStatus.status) ?? "unpaid";
   const reasons = invoiceRecoveryReasons(draft);
-  const steps: Array<{ label: string; detail: string; tone: Tone }> = [];
+  const steps: Array<{ label: string; detail: string; tone: StatusTone }> = [];
 
   if (draft.status !== "approved") {
     steps.push({
@@ -1192,7 +1187,7 @@ function invoiceRecoveryPath(draft: InvoiceDraftRecord) {
     });
   }
 
-  const tone: Tone = steps.some((step) => step.tone === "danger")
+  const tone: StatusTone = steps.some((step) => step.tone === "danger")
     ? "danger"
     : steps.some((step) => step.tone === "warning")
       ? "warning"
@@ -1214,7 +1209,7 @@ function maintenanceCompletionReadiness(
   const checks: Array<{
     label: string;
     detail: string;
-    tone: Tone;
+    tone: StatusTone;
     blocking: boolean;
   }> = [];
   if (workOrder.status === "cancelled") {
@@ -1331,7 +1326,7 @@ function maintenanceCompletionReadiness(
       : blockers.length
         ? "Needs operations action"
         : "Ready to close Operations";
-  const tone: Tone =
+  const tone: StatusTone =
     workOrder.status === "completed"
       ? "success"
       : blockers.length
@@ -1835,7 +1830,7 @@ function activityAudienceLabel(audience: ActivityAudience) {
   return labels[audience];
 }
 
-function activityAudienceTone(audience: ActivityAudience): Tone {
+function activityAudienceTone(audience: ActivityAudience): StatusTone {
   if (audience === "tenant") {
     return "primary";
   }
@@ -1848,7 +1843,7 @@ function activityAudienceTone(audience: ActivityAudience): Tone {
   return "neutral";
 }
 
-function activityTone(status: string | null, audience: ActivityAudience): Tone {
+function activityTone(status: string | null, audience: ActivityAudience): StatusTone {
   const normalized = status?.toLowerCase();
   if (["failed", "declined", "cancelled"].includes(normalized ?? "")) {
     return "danger";
@@ -2091,7 +2086,7 @@ function completionReviewPacketSummary({
     ...completionReadiness.blockers,
     ...pendingRows.map((row) => row.statusLabel),
   ]);
-  const tone: Tone =
+  const tone: StatusTone =
     rows.length === 0 ? "neutral" : blockers.length ? "warning" : "success";
   const statusLabel =
     rows.length === 0
@@ -3549,10 +3544,7 @@ function MaintenanceDetailRoute() {
 
         {workOrderQuery.isLoading ? (
           <SectionPanel>
-            <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-              <Loader2 size={16} className="animate-spin text-primary" />
-              Loading work order.
-            </div>
+            <SkeletonRows rows={4} />
           </SectionPanel>
         ) : null}
 
@@ -5037,10 +5029,7 @@ function WorkOrderCorrespondencePanel({
     >
       <div className="grid gap-3 p-4 text-sm">
         {isLoading ? (
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Loader2 size={15} className="animate-spin text-primary" />
-            Loading correspondence.
-          </div>
+          <SkeletonRows rows={3} />
         ) : null}
         {error ? (
           <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-danger">
@@ -5216,7 +5205,7 @@ type AiClassification = {
   classified_at?: string | null;
 };
 
-function aiCategoryTone(category: string | null | undefined): Tone {
+function aiCategoryTone(category: string | null | undefined): StatusTone {
   if (!category) return "neutral";
   if (category === "urgent") return "danger";
   if (category === "plumbing" || category === "electrical") return "primary";

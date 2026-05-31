@@ -1,8 +1,15 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 import { mockLeasiumApi } from "./api-mocks";
 
 test.use({ colorScheme: "dark" });
+
+const clerkAppearancePath = path.join(
+  process.cwd(),
+  "src/lib/clerk-appearance.ts",
+);
 
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
@@ -63,4 +70,19 @@ test("MVP appearance stays light under dark OS and stale dark preference", async
   await expect(page.getByText("Light active")).toBeVisible();
   await expect(page.getByRole("button", { name: /^System$/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Dark$/ })).toHaveCount(0);
+});
+
+test("Clerk auth screens pin light appearance tokens", async () => {
+  const source = await readFile(clerkAppearancePath, "utf8");
+
+  expect(source).toContain("variables:");
+  expect(source).toContain("colorBackground");
+  expect(source).toContain("colorInputBackground");
+  expect(source).toContain("colorText");
+  expect(source).toContain("colorTextSecondary");
+  expect(source).toContain("colorPrimary");
+  expect(source).toContain("formFieldInput");
+  expect(source).toContain("bg-white text-foreground");
+  expect(source).toContain("formButtonPrimary");
+  expect(source).toContain("bg-primary");
 });
