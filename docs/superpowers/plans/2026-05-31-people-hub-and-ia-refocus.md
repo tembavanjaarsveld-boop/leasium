@@ -14,7 +14,9 @@ Backlog: `docs/product-roadmap.md` → "DoorLoop benchmark refocus (2026-05-31)"
   groups by `Owner`/`PropertyOwner`, with unlinked properties in an
   `Unattributed` fallback; parity test still guards the backfilled SKJ data.
 - Ticket 2.1 (`/people` hub): **SHIPPED** (`d0bd122`) — Owners directory live; Tenants/Vendors now inline after Phase 3; Prospects stub.
-- Ticket 2.2 (consistent people record-page shape): **TODO**.
+- Ticket 2.2 (consistent people record-page shape): **SHIPPED pending Remba review** —
+  Tenant, Owner, and Vendor records share one People record shell with the same
+  Overview · Financials · Tasks · Notes · Files · Activity section links.
 - Phase 3 (nav consolidation to 7 hubs): **SHIPPED pending Remba review** — sidebar is Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings); `/money` hub added; Comms routes under Work; hub alias redirects added.
 
 Verified: backend 344 passed / 1 skipped + ruff clean; frontend eslint/tsc + Vercel prod build green. Migration applies on Render deploy; run `scripts.backfill_owners` to populate owners.
@@ -111,12 +113,19 @@ and distributions (P1+). Net-new feature count is low; it's mostly a structural 
 - **Verify:** smoke green; `eslint`/`tsc` clean.
 
 ### Ticket 2.2 — Consistent people record-page shape
+- **Status:** Shipped pending Remba review. `PeopleRecordLayout` now wraps the tenant
+  detail page and powers new `/owners/[ownerId]` and `/contractors/[contractorId]`
+  detail routes. `/people` inline rows link into those records, People owns `/owners`
+  in the sidebar, and vendor detail recovers if a stale selected entity points at the
+  wrong contractor list.
 - **Red first:** smoke asserts Tenant, Owner, and Vendor detail pages all expose the same
   tab set (Overview / Financials / Tasks / Notes / Files / Activity) in the same order.
 - **Implementation:** extract a shared `PeopleRecordLayout` (header → tabs → actions);
   adopt it on tenant detail, the new owner detail, and contractor detail. Don't rebuild the
   inner panels — wrap the existing ones.
-- **Verify:** smoke green; visual pass via UI skills.
+- **Verify:** smoke green; adjacent People/nav smoke green; `eslint`, `tsc`, and
+  production-style `next build` green. Review agents checked spec and React/App Router
+  risks; P1/P2 functional findings were fixed.
 
 ---
 

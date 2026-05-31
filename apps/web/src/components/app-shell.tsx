@@ -122,7 +122,7 @@ const navItems: NavItem[] = [
   {
     href: "/people",
     label: "People",
-    matchPaths: ["/people", "/tenants", "/contractors"],
+    matchPaths: ["/people", "/tenants", "/owners", "/contractors"],
     icon: Users,
     shortcut: "G E",
   },

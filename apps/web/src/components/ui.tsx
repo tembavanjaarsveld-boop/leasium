@@ -174,6 +174,7 @@ export function SectionPanel({
   actions,
   className,
   children,
+  ...props
 }: HTMLAttributes<HTMLDivElement> & {
   title?: string;
   description?: string;
@@ -182,6 +183,7 @@ export function SectionPanel({
 }) {
   return (
     <section
+      {...props}
       className={cn(
         "overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumCard",
         className,

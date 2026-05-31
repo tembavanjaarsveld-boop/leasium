@@ -262,8 +262,9 @@ Equifax/illion; RTBA/state RTAs).
   unchanged. The parity test remains as the safety net for the backfilled SKJ data.
 - [~] **People hub IA.** SHIPPED pending Remba review: `/people` with a live Owners
   directory (on the new API), Tenants/Vendors inline under the same hub, Prospects stub,
-  `?tab=` URL state, sidebar slot, palette actions, and `G E`. Remaining: consistent
-  record-page shape (Ticket 2.2).
+  `?tab=` URL state, sidebar slot, palette actions, and `G E`. Tenant, Owner, and
+  Vendor records now share the same People record shell and section links, with new
+  `/owners/[ownerId]` and `/contractors/[contractorId]` detail routes.
 - [~] **Navigation consolidation to 7 hubs.** SHIPPED pending Remba review: sidebar is now
   Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings).
   Tenants/Vendors live under **People**, Billing / Statements / Xero / Basiq group under

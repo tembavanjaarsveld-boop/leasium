@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  ArrowLeft,
   CalendarClock,
   Check,
   ChevronDown,
@@ -39,6 +38,7 @@ import {
   type EvidenceSourceDocument,
   type EvidenceSourceLocation,
 } from "@/components/evidence-drawer";
+import { PeopleRecordLayout } from "@/components/people-record-layout";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -2202,158 +2202,152 @@ function TenantDetail() {
     <main className="min-h-screen">
       <AppHeader />
 
-      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
-        <section className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <Link
-              href="/tenants"
-              className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft size={14} />
-              Tenants
-            </Link>
-            <h2 className="text-xl font-semibold">{tenantName(tenant)}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Onboarding, leases, access, documents, and source history.
+      <div className="mx-auto max-w-7xl px-5 py-5">
+        <PeopleRecordLayout
+          backHref="/people?tab=tenants"
+          backLabel="Tenants"
+          title={tenantName(tenant)}
+          description="Onboarding, leases, access, documents, and source history."
+          actions={
+            <>
+              <SecondaryButton type="button" onClick={startEdit}>
+                <Edit3 size={15} />
+                Edit profile
+              </SecondaryButton>
+              <SecondaryButton
+                type="button"
+                onClick={() => {
+                  const activeLeases = linkedLeases.filter(
+                    (lease) =>
+                      lease.status === "active" ||
+                      lease.status === "holding_over",
+                  ).length;
+                  const warning =
+                    activeLeases > 0
+                      ? `\n\n${activeLeases} active lease${
+                          activeLeases === 1 ? "" : "s"
+                        } will stay on file but lose their tenant link.`
+                      : "";
+                  if (
+                    typeof window === "undefined" ||
+                    window.confirm(
+                      `Delete ${tenantName(tenant)}? This soft-deletes the tenant and can be restored from the database if needed.${warning}`,
+                    )
+                  ) {
+                    deleteTenantMutation.mutate();
+                  }
+                }}
+                disabled={deleteTenantMutation.isPending}
+                className="text-danger hover:bg-danger/5"
+                aria-label="Delete tenant"
+              >
+                {deleteTenantMutation.isPending ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Trash2 size={15} />
+                )}
+                Delete tenant
+              </SecondaryButton>
+            </>
+          }
+          summary={
+            <section className="grid gap-4 bg-white/60 py-4 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="grid gap-1 px-1">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+                  <ShieldCheck size={14} />
+                  Onboarding
+                </div>
+                <div className="text-sm font-semibold">
+                  {primaryProgressStep?.title ?? "Not started"}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {primaryOnboarding
+                    ? sentenceStatus(primaryOnboarding.status)
+                    : "No invite sent"}
+                </div>
+              </div>
+              <div className="grid gap-1 px-1">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+                  <Send size={14} />
+                  Lease pack
+                </div>
+                <div className="text-sm font-semibold">
+                  {primarySigningStatus
+                    ? primarySigningStatus.label
+                    : primaryOnboardingLeaseDocuments.length
+                      ? "Lease attached"
+                      : primaryOnboarding?.status === "applied"
+                        ? "Needs lease file"
+                        : "Pending approval"}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {primarySigningStatus
+                    ? primarySigningStatus.detail
+                    : primaryOnboarding
+                      ? primaryProgressStep?.detail
+                      : "Starts after onboarding"}
+                </div>
+              </div>
+              <div className="grid gap-1 px-1">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+                  <KeyRound size={14} />
+                  Portal
+                </div>
+                <div className="text-sm font-semibold">
+                  {hasActivePortalAccount
+                    ? `${activePortalAccountCount} active login${
+                        activePortalAccountCount === 1 ? "" : "s"
+                      }`
+                    : "No active login"}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {portalAccounts.length
+                    ? `${portalAccounts.length} linked record${
+                        portalAccounts.length === 1 ? "" : "s"
+                      }`
+                    : "Account-first onboarding"}
+                </div>
+              </div>
+              <div className="grid gap-1 px-1">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+                  <Link2 size={14} />
+                  Lease
+                </div>
+                <div className="text-sm font-semibold">
+                  {activeLeaseCount
+                    ? `${activeLeaseCount} active`
+                    : linkedLeases.length
+                      ? "No active lease"
+                      : "No lease linked"}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {activeLeaseCount ? formatMoney(activeLeaseRentCents) : "-"}
+                </div>
+              </div>
+              <div className="grid gap-1 px-1">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+                  <FileText size={14} />
+                  Documents
+                </div>
+                <div className="text-sm font-semibold">
+                  {tenantDocuments.length
+                    ? `${tenantDocuments.length} on file`
+                    : "No documents"}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {documentsAwaitingReview
+                    ? `${documentsAwaitingReview} awaiting review`
+                    : "Review clear"}
+                </div>
+              </div>
+            </section>
+          }
+        >
+          {deleteTenantMutation.error ? (
+            <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+              {friendlyError(deleteTenantMutation.error)}
             </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <SecondaryButton type="button" onClick={startEdit}>
-              <Edit3 size={15} />
-              Edit profile
-            </SecondaryButton>
-            <SecondaryButton
-              type="button"
-              onClick={() => {
-                const activeLeases = linkedLeases.filter(
-                  (lease) =>
-                    lease.status === "active" ||
-                    lease.status === "holding_over",
-                ).length;
-                const warning =
-                  activeLeases > 0
-                    ? `\n\n${activeLeases} active lease${
-                        activeLeases === 1 ? "" : "s"
-                      } will stay on file but lose their tenant link.`
-                    : "";
-                if (
-                  typeof window === "undefined" ||
-                  window.confirm(
-                    `Delete ${tenantName(tenant)}? This soft-deletes the tenant and can be restored from the database if needed.${warning}`,
-                  )
-                ) {
-                  deleteTenantMutation.mutate();
-                }
-              }}
-              disabled={deleteTenantMutation.isPending}
-              className="text-danger hover:bg-danger/5"
-              aria-label="Delete tenant"
-            >
-              {deleteTenantMutation.isPending ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
-                <Trash2 size={15} />
-              )}
-              Delete tenant
-            </SecondaryButton>
-          </div>
-        </section>
-        {deleteTenantMutation.error ? (
-          <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-            {friendlyError(deleteTenantMutation.error)}
-          </p>
-        ) : null}
-
-        <section className="grid gap-4 border-y border-border bg-white/60 py-4 sm:grid-cols-2 xl:grid-cols-5">
-          <div className="grid gap-1 px-1">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
-              <ShieldCheck size={14} />
-              Onboarding
-            </div>
-            <div className="text-sm font-semibold">
-              {primaryProgressStep?.title ?? "Not started"}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {primaryOnboarding
-                ? sentenceStatus(primaryOnboarding.status)
-                : "No invite sent"}
-            </div>
-          </div>
-          <div className="grid gap-1 px-1">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
-              <Send size={14} />
-              Lease pack
-            </div>
-            <div className="text-sm font-semibold">
-              {primarySigningStatus
-                ? primarySigningStatus.label
-                : primaryOnboardingLeaseDocuments.length
-                  ? "Lease attached"
-                  : primaryOnboarding?.status === "applied"
-                    ? "Needs lease file"
-                    : "Pending approval"}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {primarySigningStatus
-                ? primarySigningStatus.detail
-                : primaryOnboarding
-                  ? primaryProgressStep?.detail
-                  : "Starts after onboarding"}
-            </div>
-          </div>
-          <div className="grid gap-1 px-1">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
-              <KeyRound size={14} />
-              Portal
-            </div>
-            <div className="text-sm font-semibold">
-              {hasActivePortalAccount
-                ? `${activePortalAccountCount} active login${
-                    activePortalAccountCount === 1 ? "" : "s"
-                  }`
-                : "No active login"}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {portalAccounts.length
-                ? `${portalAccounts.length} linked record${
-                    portalAccounts.length === 1 ? "" : "s"
-                  }`
-                : "Account-first onboarding"}
-            </div>
-          </div>
-          <div className="grid gap-1 px-1">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
-              <Link2 size={14} />
-              Lease
-            </div>
-            <div className="text-sm font-semibold">
-              {activeLeaseCount
-                ? `${activeLeaseCount} active`
-                : linkedLeases.length
-                  ? "No active lease"
-                  : "No lease linked"}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {activeLeaseCount ? formatMoney(activeLeaseRentCents) : "-"}
-            </div>
-          </div>
-          <div className="grid gap-1 px-1">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
-              <FileText size={14} />
-              Documents
-            </div>
-            <div className="text-sm font-semibold">
-              {tenantDocuments.length
-                ? `${tenantDocuments.length} on file`
-                : "No documents"}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {documentsAwaitingReview
-                ? `${documentsAwaitingReview} awaiting review`
-                : "Review clear"}
-            </div>
-          </div>
-        </section>
+          ) : null}
 
         {editing && form ? (
           <SectionPanel
@@ -2462,7 +2456,7 @@ function TenantDetail() {
 
         <section className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.85fr)]">
           <div className="order-2 grid gap-5 lg:order-2">
-            <SectionPanel title="Profile" icon={<UserRound size={17} />}>
+            <SectionPanel id="overview" title="Profile" icon={<UserRound size={17} />}>
               <dl className="grid gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <div>
                   <dt className="text-xs text-muted-foreground">Legal name</dt>
@@ -2874,6 +2868,7 @@ function TenantDetail() {
             </SectionPanel>
 
             <SectionPanel
+              id="notes"
               title="Public facts"
               icon={<Sparkles size={17} />}
               actions={
@@ -2952,7 +2947,7 @@ function TenantDetail() {
               </div>
             </SectionPanel>
 
-            <SectionPanel title="Documents" icon={<FileText size={17} />}>
+            <SectionPanel id="files" title="Documents" icon={<FileText size={17} />}>
               <form
                 className="grid gap-3 border-b border-border p-4"
                 onSubmit={submitDocument}
@@ -3144,6 +3139,7 @@ function TenantDetail() {
 
           <div className="order-1 grid gap-5 lg:order-1">
             <SectionPanel
+              id="tasks"
               title="Onboarding workflow"
               icon={<ShieldCheck size={17} />}
             >
@@ -4117,7 +4113,11 @@ function TenantDetail() {
               </div>
             </SectionPanel>
 
-            <SectionPanel title="Linked leases" icon={<Link2 size={17} />}>
+            <SectionPanel
+              id="financials"
+              title="Linked leases"
+              icon={<Link2 size={17} />}
+            >
               <div className="divide-y divide-border">
                 {linkedLeases.map((lease) => {
                   const activeOnboarding = tenantOnboardings.find(
@@ -4228,7 +4228,7 @@ function TenantDetail() {
               </div>
             </SectionPanel>
 
-            <SectionPanel title="Activity">
+            <SectionPanel id="activity" title="Activity">
               <div className="grid gap-2 p-4 text-sm">
                 {(tenantDetail?.activity ?? []).slice(0, 10).map((item) => (
                   <div
@@ -4418,6 +4418,7 @@ function TenantDetail() {
             )}
           </p>
         ) : null}
+        </PeopleRecordLayout>
       </div>
     </main>
   );

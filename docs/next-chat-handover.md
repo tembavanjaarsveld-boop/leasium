@@ -4,8 +4,8 @@ Last updated: 2026-05-31
 
 ## Codex continuation — 2026-05-31 (latest)
 
-Continuation from the Codex takeover. Branch `main` was pulled and was already
-current at `d2e5907` before this slice.
+Continuation from the Codex takeover. Branch `main` was current at `b7ec1f7`
+before the Ticket 2.2 slice.
 
 ### Prod checks completed
 - Render health endpoint is serving `d2e590798e09c89bee402c81c2600efce5148946`
@@ -73,12 +73,41 @@ current at `d2e5907` before this slice.
   on `leasium.ai`; Render health reports
   `d1822ef99e5c357a8fbcdc9b7418283a8f0c0fe2` from `api.leasium.ai`.
 
+### Ticket 2.2 slice
+- Tenant, Owner, and Vendor detail records now share the same People record
+  shell: header/actions plus Overview · Financials · Tasks · Notes · Files ·
+  Activity section links.
+- New shared component: `apps/web/src/components/people-record-layout.tsx`.
+  The links are plain in-page anchors, not ARIA tab widgets.
+- Tenant detail keeps its existing inner panels and now exposes stable section
+  anchors for the shared shell.
+- New detail routes:
+  `/owners/[ownerId]` reads `getOwner(ownerId)` and stays read-only/provider-safe;
+  `/contractors/[contractorId]` reads contractor lists across entities and repairs
+  stale selected-entity state before showing a vendor record.
+- `/people` inline Tenant/Owner/Vendor rows now link into their records, and the
+  sidebar marks `/owners/*` as part of People.
+- Review agents found two functional issues before commit: missing tenant anchor
+  targets and stale-entity vendor lookup. Both are now covered in
+  `apps/web/tests/smoke/people-record-layout.spec.ts`.
+- Known follow-up: owner detail currently renders a normal client error state for
+  missing owners because the shared web API wrapper collapses HTTP status codes
+  into `Error`; a route-level 404 can be added later if the API helper exposes
+  status metadata.
+- Verification:
+  `people-record-layout.spec.ts` passed **4 passed**; adjacent
+  `people-hub.spec.ts` + `nav-consolidation.spec.ts` passed **8 passed**;
+  targeted `eslint` clean; `./node_modules/.bin/tsc --noEmit` clean;
+  production-style
+  `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  succeeded.
+
 ### Next
 1. Before using shared-ownership splits in production statements, add a dedicated
    split-allocation ticket: `PropertyOwner.split_pct` exists, but this Ticket 1.3
    deliberately changed grouping only.
-2. Start Ticket 2.2 — consistent people record-page shape (Tenant/Owner/Vendor
-   share header → tabs → actions).
+2. Continue with P1 owner portal read-only first, or add the owner-detail
+   route-level 404 polish if that matters before the portal surface.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel

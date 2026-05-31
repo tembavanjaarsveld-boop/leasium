@@ -12,6 +12,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowUpRight,
   Building2,
   Loader2,
   Plus,
@@ -21,6 +22,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
@@ -49,6 +51,7 @@ import {
 import { friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
+const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
 
 type TabKey = "tenants" | "owners" | "vendors" | "prospects";
 
@@ -58,6 +61,9 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "vendors", label: "Vendors" },
   { key: "prospects", label: "Prospects" },
 ];
+
+const recordLinkClass =
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2";
 
 function isTabKey(value: string | null): value is TabKey {
   return (
@@ -102,6 +108,7 @@ function PeopleContent() {
     if (!selectedEntityId) return;
     if (typeof window === "undefined") return;
     window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
+    window.dispatchEvent(new Event(ENTITY_CHANGED_EVENT));
   }, [selectedEntityId]);
   useEffect(() => {
     if (selectedEntityId) return;
@@ -109,7 +116,11 @@ function PeopleContent() {
     if (first) setSelectedEntityId(first);
   }, [entitiesQuery.data, selectedEntityId]);
 
-  const [activeTab, setActiveTab] = useState<TabKey>("owners");
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    if (typeof window === "undefined") return "owners";
+    const tab = new URL(window.location.href).searchParams.get("tab");
+    return isTabKey(tab) ? tab : "owners";
+  });
   useEffect(() => {
     if (typeof window === "undefined") return;
     const tab = new URL(window.location.href).searchParams.get("tab");
@@ -320,7 +331,11 @@ function OwnerCard({
           </p>
         ) : null}
 
-        <div className="flex items-center justify-end">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Link href={`/owners/${owner.id}`} className={recordLinkClass}>
+            <ArrowUpRight size={15} />
+            Open record
+          </Link>
           <SecondaryButton
             type="button"
             onClick={() => {
@@ -490,12 +505,16 @@ function TenantsTab({ entityId }: { entityId: string }) {
                     : "Billing email not set"}
                 </p>
               </div>
-              <div className="flex items-start justify-start md:justify-end">
+              <div className="flex flex-wrap items-start justify-start gap-2 md:justify-end">
                 <StatusBadge
                   tone={tenant.contact_email ? "success" : "warning"}
                 >
                   {tenant.contact_email ? "Contact ready" : "Needs contact"}
                 </StatusBadge>
+                <Link href={`/tenants/${tenant.id}`} className={recordLinkClass}>
+                  <ArrowUpRight size={15} />
+                  Open record
+                </Link>
               </div>
             </li>
           ))}
@@ -555,10 +574,17 @@ function VendorsTab({ entityId }: { entityId: string }) {
                   {contractor.email || contractor.phone || "No contact"}
                 </p>
               </div>
-              <div className="flex items-start justify-start md:justify-end">
+              <div className="flex flex-wrap items-start justify-start gap-2 md:justify-end">
                 <StatusBadge tone={contractor.email ? "success" : "warning"}>
                   {contractor.email ? "Contact ready" : "Needs contact"}
                 </StatusBadge>
+                <Link
+                  href={`/contractors/${contractor.id}`}
+                  className={recordLinkClass}
+                >
+                  <ArrowUpRight size={15} />
+                  Open record
+                </Link>
               </div>
             </li>
           ))}
