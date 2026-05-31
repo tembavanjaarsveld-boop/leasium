@@ -189,3 +189,67 @@ test("settings exports communication template override review CSV", async ({
     "Review-only export: downloading this file does not wire stored templates into send paths, add edit controls, send notifications, run digests, send invoices, send tenant onboarding messages, send contractor updates, mutate preferences, or write provider history.",
   );
 });
+
+test("settings can switch operating mode without orphaning self-managed owner records", async ({
+  page,
+}) => {
+  const operatingModePayloads: unknown[] = [];
+  await page.route(
+    (url) => url.pathname.endsWith("/owners"),
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "[]",
+      });
+    },
+  );
+  await page.route(
+    "**/api/v1/security/organisation/operating-mode",
+    async (route) => {
+      operatingModePayloads.push(route.request().postDataJSON());
+      await route.fallback();
+    },
+  );
+
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Organisation" }).click();
+
+  const operatingModeSelect = page.getByLabel("Account operating mode");
+  await expect(
+    page.getByRole("heading", { name: "Operating mode" }),
+  ).toBeVisible();
+  await expect(operatingModeSelect).toHaveValue("self_managed_owner");
+  await expect(page.getByText("Your entities & trusts")).toBeVisible();
+  await expect(page.getByText("No owners yet.")).toBeVisible();
+
+  await operatingModeSelect.selectOption("hybrid");
+
+  await expect.poll(() => operatingModePayloads.length).toBe(1);
+  expect(operatingModePayloads[0]).toEqual({ operating_mode: "hybrid" });
+  await expect(operatingModeSelect).toHaveValue("hybrid");
+  await expect(page.getByText("Your entities & trusts")).toHaveCount(0);
+});
+
+test("settings operating-mode control is disabled without manage-security", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { canManageSecurity: false });
+
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Organisation" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Operating mode" }),
+  ).toBeVisible();
+  const operatingModeSelect = page.getByLabel("Account operating mode");
+  await expect(operatingModeSelect).toHaveValue("self_managed_owner");
+  await expect(operatingModeSelect).toBeDisabled();
+  await expect(
+    page.getByText("Only an owner or admin can change the operating mode."),
+  ).toBeVisible();
+});

@@ -9,45 +9,24 @@
  * stay at the seven-hub cap in design source of truth s10.5.1.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  ArrowUpRight,
-  Building2,
-  Loader2,
-  Plus,
-  Sparkles,
-  Trash2,
-  UserPlus,
-  Users,
-  Wrench,
-} from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowUpRight, Sparkles, Users, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { OwnersDirectory } from "@/components/owners-directory";
 import { QueryProvider } from "@/components/query-provider";
 import {
-  Button,
   EmptyState,
-  Field,
-  Input,
   PageHeader,
-  SecondaryButton,
   SectionPanel,
   Select,
   SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
-import {
-  createOwner,
-  deleteOwner,
-  listContractors,
-  listEntities,
-  listOwners,
-  listTenants,
-  type OwnerRecord,
-} from "@/lib/api";
+import { listContractors, listEntities, listTenants } from "@/lib/api";
+import { useOperatingMode } from "@/lib/use-operating-mode";
 import { friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -55,12 +34,19 @@ const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
 
 type TabKey = "tenants" | "owners" | "vendors" | "prospects";
 
-const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: "tenants", label: "Tenants" },
-  { key: "owners", label: "Owners" },
-  { key: "vendors", label: "Vendors" },
-  { key: "prospects", label: "Prospects" },
-];
+// The People → Owners *hub* is managing_agent framing ("owner clients"); a
+// self_managed_owner has no third-party owners, so the tab is dropped for that
+// mode (docs/account-operating-mode-ia.md). Their owner-entity CRUD still lives
+// in Settings → Entities via the shared OwnersDirectory.
+function tabsForMode(showOwners: boolean): Array<{ key: TabKey; label: string }> {
+  const tabs: Array<{ key: TabKey; label: string }> = [
+    { key: "tenants", label: "Tenants" },
+  ];
+  if (showOwners) tabs.push({ key: "owners", label: "Owners" });
+  tabs.push({ key: "vendors", label: "Vendors" });
+  tabs.push({ key: "prospects", label: "Prospects" });
+  return tabs;
+}
 
 const recordLinkClass =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2";
@@ -71,16 +57,6 @@ function isTabKey(value: string | null): value is TabKey {
     value === "owners" ||
     value === "vendors" ||
     value === "prospects"
-  );
-}
-
-function ownerName(owner: OwnerRecord) {
-  return (
-    owner.legal_name ||
-    owner.trust_name ||
-    owner.trustee_name ||
-    owner.invoice_issuer_name ||
-    "Unnamed owner"
   );
 }
 
@@ -116,16 +92,31 @@ function PeopleContent() {
     if (first) setSelectedEntityId(first);
   }, [entitiesQuery.data, selectedEntityId]);
 
+  const { operatingMode, isResolved } = useOperatingMode();
+  const showOwners = operatingMode !== "self_managed_owner";
+  const TABS = tabsForMode(showOwners);
+
+  // Default toward "tenants": until the mode resolves we assume self-managed
+  // (Owners hidden), so the initial tab must not be "owners" or it would render
+  // a hub the user shouldn't see. Once resolved, a managing agent with no
+  // explicit ?tab still lands on Owners via the effect below.
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
-    if (typeof window === "undefined") return "owners";
+    if (typeof window === "undefined") return "tenants";
     const tab = new URL(window.location.href).searchParams.get("tab");
-    return isTabKey(tab) ? tab : "owners";
+    return isTabKey(tab) && tab !== "owners" ? tab : "tenants";
   });
   useEffect(() => {
     if (typeof window === "undefined") return;
     const tab = new URL(window.location.href).searchParams.get("tab");
-    if (isTabKey(tab)) setActiveTab(tab);
-  }, []);
+    // Honour an explicit ?tab only if it resolves to a tab this mode exposes;
+    // a hand-typed ?tab=owners under self_managed_owner falls back to tenants.
+    if (isTabKey(tab) && (tab !== "owners" || showOwners)) {
+      setActiveTab(tab);
+    } else if (!tab && showOwners) {
+      setActiveTab("owners");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showOwners]);
 
   function selectTab(tab: TabKey) {
     setActiveTab(tab);
@@ -165,7 +156,7 @@ function PeopleContent() {
           aria-label="People types"
           className="flex flex-wrap gap-2"
         >
-          {TABS.map((tab) => {
+          {(isResolved ? TABS : tabsForMode(false)).map((tab) => {
             const isActive = tab.key === activeTab;
             return (
               <button
@@ -186,7 +177,7 @@ function PeopleContent() {
           })}
         </div>
 
-        {activeTab === "owners" ? (
+        {activeTab === "owners" && showOwners ? (
           <OwnersDirectory entityId={selectedEntityId} />
         ) : null}
         {activeTab === "tenants" ? (
@@ -198,260 +189,6 @@ function PeopleContent() {
         {activeTab === "prospects" ? <ProspectsTab /> : null}
       </div>
     </main>
-  );
-}
-
-function OwnersDirectory({ entityId }: { entityId: string }) {
-  const queryClient = useQueryClient();
-  const [showCreate, setShowCreate] = useState(false);
-  const ownersQuery = useQuery({
-    queryKey: ["owners", entityId],
-    queryFn: () => listOwners(entityId),
-    enabled: Boolean(entityId),
-  });
-  const owners = ownersQuery.data ?? [];
-
-  function refresh() {
-    queryClient.invalidateQueries({ queryKey: ["owners", entityId] });
-  }
-
-  return (
-    <div className="grid gap-4">
-      <div className="flex items-center justify-end">
-        <Button type="button" onClick={() => setShowCreate((prev) => !prev)}>
-          <Plus size={16} />
-          {showCreate ? "Close form" : "Add owner"}
-        </Button>
-      </div>
-
-      {showCreate ? (
-        <AddOwnerForm
-          entityId={entityId}
-          onSaved={() => {
-            setShowCreate(false);
-            refresh();
-          }}
-        />
-      ) : null}
-
-      {ownersQuery.isLoading ? (
-        <SectionPanel>
-          <SkeletonRows rows={4} />
-        </SectionPanel>
-      ) : null}
-
-      {ownersQuery.error ? (
-        <p className="rounded-md border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
-          {friendlyError(ownersQuery.error)}
-        </p>
-      ) : null}
-
-      {!ownersQuery.isLoading && owners.length === 0 && !ownersQuery.error ? (
-        <EmptyState
-          icon={<Building2 size={18} />}
-          title="No owners yet."
-          description="Owners are now a first-class record. Add one here, or run the backfill (scripts.backfill_owners) to create owners from your existing property fields."
-        />
-      ) : null}
-
-      {owners.map((owner) => (
-        <OwnerCard key={owner.id} owner={owner} onChanged={refresh} />
-      ))}
-    </div>
-  );
-}
-
-function OwnerCard({
-  owner,
-  onChanged,
-}: {
-  owner: OwnerRecord;
-  onChanged: () => void;
-}) {
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteOwner(owner.id),
-    onSuccess: () => onChanged(),
-  });
-
-  return (
-    <SectionPanel
-      title={ownerName(owner)}
-      icon={<Building2 size={17} />}
-      description={
-        owner.trust_name && owner.trustee_name
-          ? `Trustee: ${owner.trustee_name}`
-          : undefined
-      }
-    >
-      <div className="grid gap-3 p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge tone={owner.property_count > 0 ? "success" : "neutral"}>
-            {owner.property_count}{" "}
-            {owner.property_count === 1 ? "property" : "properties"}
-          </StatusBadge>
-          {owner.abn ? (
-            <StatusBadge tone="neutral">ABN {owner.abn}</StatusBadge>
-          ) : null}
-          {owner.gst_registered ? (
-            <StatusBadge tone="neutral">GST registered</StatusBadge>
-          ) : null}
-        </div>
-
-        <dl className="grid gap-1 text-sm text-muted-foreground">
-          {owner.billing_email ? (
-            <div>Billing email: {owner.billing_email}</div>
-          ) : null}
-          {owner.invoice_reference ? (
-            <div>Invoice ref: {owner.invoice_reference}</div>
-          ) : null}
-        </dl>
-
-        {owner.properties.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {owner.properties.map((link) => (
-              <span
-                key={link.property_id}
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-3 py-1 text-xs text-foreground"
-              >
-                {link.property_name}
-                <span className="text-muted-foreground">{link.split_pct}%</span>
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            No linked properties yet.
-          </p>
-        )}
-
-        {deleteMutation.error ? (
-          <p className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-            <AlertTriangle size={16} />
-            {friendlyError(deleteMutation.error)}
-          </p>
-        ) : null}
-
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Link href={`/owners/${owner.id}`} className={recordLinkClass}>
-            <ArrowUpRight size={15} />
-            Open record
-          </Link>
-          <SecondaryButton
-            type="button"
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Remove owner "${ownerName(owner)}"? Linked properties stay; only the owner record is soft-deleted.`,
-                )
-              ) {
-                deleteMutation.mutate();
-              }
-            }}
-            disabled={deleteMutation.isPending}
-          >
-            {deleteMutation.isPending ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <Trash2 size={15} />
-            )}
-            Remove
-          </SecondaryButton>
-        </div>
-      </div>
-    </SectionPanel>
-  );
-}
-
-function AddOwnerForm({
-  entityId,
-  onSaved,
-}: {
-  entityId: string;
-  onSaved: () => void;
-}) {
-  const [legalName, setLegalName] = useState("");
-  const [trustName, setTrustName] = useState("");
-  const [abn, setAbn] = useState("");
-  const [billingEmail, setBillingEmail] = useState("");
-
-  const createMutation = useMutation({
-    mutationFn: () =>
-      createOwner({
-        entity_id: entityId,
-        legal_name: legalName.trim() || null,
-        trust_name: trustName.trim() || null,
-        abn: abn.trim() || null,
-        billing_email: billingEmail.trim() || null,
-      }),
-    onSuccess: () => onSaved(),
-  });
-
-  const canSubmit = Boolean(entityId && (legalName.trim() || trustName.trim()));
-  const error = createMutation.error as Error | null;
-
-  return (
-    <SectionPanel
-      title="Add owner"
-      icon={<UserPlus size={17} />}
-      description="Give the owner a legal name or trust name. You can link properties and splits after it's created."
-    >
-      <form
-        className="grid gap-3 p-4 md:grid-cols-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (canSubmit) createMutation.mutate();
-        }}
-      >
-        <Field label="Legal name">
-          <Input
-            value={legalName}
-            onChange={(event) => setLegalName(event.target.value)}
-            placeholder="SKJ Holdings Pty Ltd"
-          />
-        </Field>
-        <Field label="Trust name (optional)">
-          <Input
-            value={trustName}
-            onChange={(event) => setTrustName(event.target.value)}
-            placeholder="SKJ Family Trust"
-          />
-        </Field>
-        <Field label="ABN (optional)">
-          <Input
-            value={abn}
-            onChange={(event) => setAbn(event.target.value)}
-            placeholder="11 222 333 444"
-          />
-        </Field>
-        <Field label="Billing email (optional)">
-          <Input
-            type="email"
-            value={billingEmail}
-            onChange={(event) => setBillingEmail(event.target.value)}
-            placeholder="owners@example.com"
-          />
-        </Field>
-        {error ? (
-          <p className="md:col-span-2 flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-            <AlertTriangle size={16} />
-            {friendlyError(error)}
-          </p>
-        ) : null}
-        <div className="md:col-span-2 flex items-center justify-end">
-          <Button
-            type="submit"
-            disabled={!canSubmit || createMutation.isPending}
-          >
-            {createMutation.isPending ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Plus size={16} />
-            )}
-            {createMutation.isPending ? "Saving…" : "Save owner"}
-          </Button>
-        </div>
-      </form>
-    </SectionPanel>
   );
 }
 

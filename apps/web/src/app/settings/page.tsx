@@ -31,6 +31,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { OwnersDirectory } from "@/components/owners-directory";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -65,6 +66,7 @@ import {
   type BasiqImportedTransaction,
   type BasiqReconciliationResponse,
   type IntegrationStatusRecord,
+  type OperatingMode,
   type ProviderStatusRecord,
   getXeroStatus,
   listBrandedCommunicationTemplates,
@@ -76,6 +78,7 @@ import {
   previewXeroInvoicePosting,
   previewXeroPaymentReconciliation,
   resendSecurityMemberInvite,
+  setOperatingMode,
   startXeroOAuth,
   updateSecurityMember,
   updateChargeRule,
@@ -115,6 +118,7 @@ import {
   ownershipChipClassName,
   propertyOwnershipTagDirectory,
 } from "@/lib/property-ownership";
+import { friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const APPEARANCE_STORAGE_KEY = "leasium.appearance";
@@ -2280,6 +2284,13 @@ function SettingsWorkspace() {
   const securityQuery = useQuery({
     queryKey: ["security-workspace"],
     queryFn: getSecurityWorkspace,
+  });
+
+  const operatingModeMutation = useMutation({
+    mutationFn: (mode: OperatingMode) => setOperatingMode(mode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["security-workspace"] });
+    },
   });
 
   const notificationTemplateCatalogQuery = useQuery({
@@ -4514,6 +4525,77 @@ function SettingsWorkspace() {
                 </div>
               </div>
             </SectionPanel>
+
+            <SectionPanel
+              title="Operating mode"
+              description="Self-managed owners run their own portfolio. Managing-agent and hybrid accounts show owner-client, disbursement, and owner-portal surfaces."
+              icon={<Building2 size={17} className="text-primary" />}
+            >
+              <div className="grid gap-3 p-4 md:max-w-md">
+                <Field label="Account operating mode">
+                  <Select
+                    value={
+                      securityQuery.data?.organisation.operating_mode ??
+                      "self_managed_owner"
+                    }
+                    onChange={(event) =>
+                      operatingModeMutation.mutate(
+                        event.target.value as OperatingMode,
+                      )
+                    }
+                    disabled={
+                      !securityQuery.data?.can_manage_security ||
+                      operatingModeMutation.isPending
+                    }
+                  >
+                    <option value="self_managed_owner">
+                      Self-managed owner
+                    </option>
+                    <option value="managing_agent">Managing agent</option>
+                    <option value="hybrid">Hybrid</option>
+                  </Select>
+                </Field>
+                {!securityQuery.data?.can_manage_security ? (
+                  <p className="text-sm text-muted-foreground">
+                    Only an owner or admin can change the operating mode.
+                  </p>
+                ) : null}
+                {operatingModeMutation.error ? (
+                  <p className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+                    <AlertTriangle size={16} />
+                    {friendlyError(operatingModeMutation.error)}
+                  </p>
+                ) : null}
+              </div>
+            </SectionPanel>
+
+            {(securityQuery.data?.organisation.operating_mode ??
+              "self_managed_owner") === "self_managed_owner" ? (
+              <section className="grid gap-3" aria-labelledby="entity-owners-title">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2
+                      id="entity-owners-title"
+                      className="text-lg font-semibold leading-7 text-foreground"
+                    >
+                      Your entities & trusts
+                    </h2>
+                    <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                      Owning companies, trusts, and SPVs used for entity-grouped
+                      statements and tax.
+                    </p>
+                  </div>
+                  <StatusBadge tone="neutral">Self-managed</StatusBadge>
+                </div>
+                {selectedEntityId ? (
+                  <OwnersDirectory entityId={selectedEntityId} />
+                ) : (
+                  <p className="rounded-md border border-border bg-muted/25 p-4 text-sm text-muted-foreground">
+                    Select an entity to manage its owning entities.
+                  </p>
+                )}
+              </section>
+            ) : null}
 
             <SectionPanel
               title="Communication templates"

@@ -8,6 +8,8 @@ type JsonBody =
   | JsonBody[]
   | { [key: string]: JsonBody };
 
+type MockOperatingMode = "self_managed_owner" | "managing_agent" | "hybrid";
+
 type XeroContactMapping = {
   target_type: "tenant" | "property";
   target_id: string;
@@ -1815,7 +1817,10 @@ const tenantPortalSession = (
   ],
 });
 
-const securityWorkspace = () => ({
+const securityWorkspace = (
+  operatingMode: MockOperatingMode = "self_managed_owner",
+  canManageSecurity = true,
+) => ({
   auth: {
     auth_mode: "dev",
     dev_auth_active: true,
@@ -1839,6 +1844,7 @@ const securityWorkspace = () => ({
     name: "Acme Holdings",
     country_code: "AU",
     timezone: "Australia/Brisbane",
+    operating_mode: operatingMode,
     created_at: "2026-05-01T00:00:00.000Z",
   },
   members: [
@@ -1940,8 +1946,24 @@ const securityWorkspace = () => ({
       role: "owner",
     },
   ],
-  can_manage_security: true,
+  can_manage_security: canManageSecurity,
 });
+
+// GET /me returns the same auth + organisation shape (incl. operating_mode) as
+// /security/workspace via the shared SecurityOrganisationRead on the backend.
+const securityMe = (
+  operatingMode: MockOperatingMode = "self_managed_owner",
+  canManageSecurity = true,
+) => {
+  const workspace = securityWorkspace(operatingMode, canManageSecurity);
+  return {
+    auth: workspace.auth,
+    current_user: workspace.current_user,
+    organisation: workspace.organisation,
+    roles: workspace.current_user_roles,
+    can_manage_security: workspace.can_manage_security,
+  };
+};
 
 const securityBootstrapStatus = () => ({
   available: true,
@@ -2215,6 +2237,8 @@ type MockLeasiumApiOptions = {
   tenantPortalNoComplianceItems?: boolean;
   tenantPortalMaintenanceStatusMatrix?: boolean;
   tenantPortalActivityFeed?: boolean;
+  operatingMode?: MockOperatingMode;
+  canManageSecurity?: boolean;
   xeroDiagnosticsBlocked?: boolean;
   xeroDiagnosticsUnauthorized?: boolean;
   xeroDiagnosticsUnauthorizedStatus?: 401 | 403;
@@ -2233,6 +2257,8 @@ export async function mockLeasiumApi(
   let xeroProviderConnected = false;
   let chargeAccountCode: string | null = "401";
   let chargeTaxType: string | null = null;
+  let operatingMode = options.operatingMode ?? "self_managed_owner";
+  const canManageSecurity = options.canManageSecurity ?? true;
   let xeroDraftApproved = false;
   let xeroDraftCreated = false;
   let xeroPaymentApplied = false;
@@ -3808,7 +3834,35 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/security/workspace") {
-      await fulfillJson(route, securityWorkspace());
+      await fulfillJson(
+        route,
+        securityWorkspace(operatingMode, canManageSecurity),
+      );
+      return;
+    }
+
+    if (method === "GET" && path === "/me") {
+      await fulfillJson(route, securityMe(operatingMode, canManageSecurity));
+      return;
+    }
+
+    if (method === "PATCH" && path === "/security/organisation/operating-mode") {
+      const payload = request.postDataJSON() as {
+        operating_mode?: MockOperatingMode;
+      };
+      if (
+        payload.operating_mode !== "self_managed_owner" &&
+        payload.operating_mode !== "managing_agent" &&
+        payload.operating_mode !== "hybrid"
+      ) {
+        await fulfillJson(route, { detail: "Invalid operating mode." }, 422);
+        return;
+      }
+      operatingMode = payload.operating_mode;
+      await fulfillJson(
+        route,
+        securityWorkspace(operatingMode, canManageSecurity).organisation,
+      );
       return;
     }
 

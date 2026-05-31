@@ -31,23 +31,9 @@ const OWNERS = [
 ];
 
 test("people hub renders tabs and the owners directory", async ({ page }) => {
-  await mockLeasiumApi(page);
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
 
-  // Layer a /owners mock over the catch-all (most-recent route wins first).
-  await page.route(
-    (url) => url.pathname.endsWith("/owners"),
-    async (route) => {
-      if (route.request().method() !== "GET") {
-        await route.fallback();
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(OWNERS),
-      });
-    },
-  );
+  await mockOwners(page);
 
   await page.goto("/people");
 
@@ -66,3 +52,61 @@ test("people hub renders tabs and the owners directory", async ({ page }) => {
   await page.getByRole("tab", { name: "Prospects" }).click();
   await expect(page.getByText(/Prospects are on the roadmap/i)).toBeVisible();
 });
+
+test("self-managed people hub hides owner-client tab and falls back from owner URLs", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "self_managed_owner" });
+
+  let ownerRequests = 0;
+  await page.route(
+    (url) => url.pathname.endsWith("/owners"),
+    async (route) => {
+      if (route.request().method() === "GET") ownerRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(OWNERS),
+      });
+    },
+  );
+
+  await page.goto("/people?tab=owners");
+
+  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Owners" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Tenants" })).toBeVisible();
+  await expect(page.getByText("Bright Cafe Pty Ltd")).toBeVisible();
+  await expect(page.getByText("SKJ Holdings Pty Ltd")).toHaveCount(0);
+  expect(ownerRequests).toBe(0);
+});
+
+test("hybrid people hub uses managing-agent owner-client framing", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "hybrid" });
+  await mockOwners(page);
+
+  await page.goto("/people");
+
+  await expect(page.getByRole("tab", { name: "Owners" })).toBeVisible();
+  await expect(page.getByText("SKJ Holdings Pty Ltd")).toBeVisible();
+});
+
+async function mockOwners(page: Parameters<typeof mockLeasiumApi>[0]) {
+  // Layer a /owners mock over the catch-all (most-recent route wins first).
+  await page.route(
+    (url) => url.pathname.endsWith("/owners"),
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(OWNERS),
+      });
+    },
+  );
+}

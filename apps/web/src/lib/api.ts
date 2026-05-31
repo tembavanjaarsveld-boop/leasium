@@ -406,6 +406,11 @@ export type SecurityAuthStatusRecord = {
   next_steps: string[];
 };
 
+export type OperatingMode =
+  | "self_managed_owner"
+  | "managing_agent"
+  | "hybrid";
+
 export type SecurityWorkspaceRecord = {
   auth: SecurityAuthStatusRecord;
   current_user: {
@@ -419,6 +424,7 @@ export type SecurityWorkspaceRecord = {
     name: string;
     country_code: string;
     timezone: string;
+    operating_mode: OperatingMode;
     created_at: string;
   };
   members: SecurityMemberRecord[];
@@ -2722,6 +2728,16 @@ export function listEntities() {
 
 export function getSecurityWorkspace() {
   return request<SecurityWorkspaceRecord>("/security/workspace");
+}
+
+export function setOperatingMode(mode: OperatingMode) {
+  return request<SecurityWorkspaceRecord["organisation"]>(
+    "/security/organisation/operating-mode",
+    {
+      method: "PATCH",
+      body: JSON.stringify({ operating_mode: mode }),
+    },
+  );
 }
 
 export function getCurrentOperator(authToken?: string | null) {

@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LeasiumMark } from "@/components/brand";
 import { getCommsQueueCounts } from "@/lib/api";
+import { useOperatingMode } from "@/lib/use-operating-mode";
 import { useUnmountDelay } from "@/lib/use-unmount-delay";
 import { cn } from "@/lib/utils";
 
@@ -285,9 +286,6 @@ const SHORTCUT_NAV: ShortcutNav[] = [
   { key: "q", href: "/portfolio-qa", label: "Portfolio QA" },
   { key: "s", href: "/settings", label: "Settings" },
 ];
-const SHORTCUT_LEGEND = SHORTCUT_NAV.map((entry) =>
-  entry.key.toUpperCase(),
-).join("/");
 
 const GLOBAL_SHORTCUTS = [
   { combo: "Cmd / Ctrl + K", label: "Open command search" },
@@ -401,13 +399,41 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const cheatsheetRender = useUnmountDelay(cheatsheetOpen, 200);
   const mobileNavRender = useUnmountDelay(mobileNavOpen, 300);
   const commsBadge = useCommsBadge();
+  const { operatingMode } = useOperatingMode();
   const shortcutTimeoutRef = useRef<number | null>(null);
+
+  // Owner statements are issued/disbursed to *third-party* owners — agent-only
+  // framing (docs/account-operating-mode-ia.md). For a self_managed_owner, hide
+  // the agent-framed entry points (Cmd-K action + the f→/statements shortcut)
+  // while leaving the /statements route itself reachable.
+  const hideOwnerStatementEntry = operatingMode === "self_managed_owner";
+  const gatedCommandActions = useMemo(
+    () =>
+      hideOwnerStatementEntry
+        ? commandActions.filter(
+            (action) => action.href !== "/statements",
+          )
+        : commandActions,
+    [hideOwnerStatementEntry],
+  );
+  const gatedShortcutNav = useMemo(
+    () =>
+      hideOwnerStatementEntry
+        ? SHORTCUT_NAV.filter((entry) => entry.href !== "/statements")
+        : SHORTCUT_NAV,
+    [hideOwnerStatementEntry],
+  );
+  const shortcutLegend = useMemo(
+    () => gatedShortcutNav.map((entry) => entry.key.toUpperCase()).join("/"),
+    [gatedShortcutNav],
+  );
+
   const filteredActions = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) {
-      return commandActions.slice(0, 8);
+      return gatedCommandActions.slice(0, 8);
     }
-    return commandActions
+    return gatedCommandActions
       .filter(
         (action) =>
           action.label.toLowerCase().includes(needle) ||
@@ -415,7 +441,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           action.href.toLowerCase().includes(needle),
       )
       .slice(0, 8);
-  }, [query]);
+  }, [query, gatedCommandActions]);
 
   // Toggle a body class so globals.css can apply the sidebar gutter
   // only when AppHeader is on the page (auth/setup pages skip it).
@@ -489,7 +515,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
 
       // While a G shortcut is pending, the next key triggers nav.
       if (shortcutPending) {
-        const target = SHORTCUT_NAV.find(
+        const target = gatedShortcutNav.find(
           (entry) => entry.key === event.key.toLowerCase(),
         );
         clearShortcutWindow();
@@ -505,7 +531,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       window.removeEventListener("keydown", onKeyDown);
       clearShortcutWindow();
     };
-  }, [commandOpen, router, shortcutPending]);
+  }, [commandOpen, router, shortcutPending, gatedShortcutNav]);
 
   function isNavActive(item: NavItem): boolean {
     if (item.href === "/") {
@@ -754,7 +780,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         </div>
         {shortcutPending ? (
           <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-border bg-white px-4 py-1.5 text-xs font-medium text-muted-foreground shadow-leasiumSm">
-            G… press a letter to jump ({SHORTCUT_LEGEND})
+            G… press a letter to jump ({shortcutLegend})
           </div>
         ) : null}
         {cheatsheetRender.shouldRender ? (
@@ -822,7 +848,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                     Go to (press G, then…)
                   </div>
                   <div className="grid gap-1.5">
-                    {SHORTCUT_NAV.map((entry) => (
+                    {gatedShortcutNav.map((entry) => (
                       <div
                         key={entry.key}
                         className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-sm"
