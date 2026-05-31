@@ -47,6 +47,7 @@ import {
 } from "@/components/ui";
 import {
   addMaintenanceWorkOrderComment,
+  ApiError,
   classifyMaintenanceWorkOrder,
   type CommsCorrespondenceEventRecord,
   documentDownloadUrl,
@@ -127,6 +128,10 @@ type ActivityAuditCard = {
 };
 
 type CompletionReviewAudience = "owner" | "tenant" | "contractor";
+
+function isNotFoundError(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
+}
 
 type CompletionReviewRow = {
   audience: CompletionReviewAudience;
@@ -2670,13 +2675,16 @@ function MaintenanceDetailRoute() {
     queryKey: ["maintenance-work-order", workOrderId],
     queryFn: () => getMaintenanceWorkOrder(workOrderId),
     enabled: Boolean(workOrderId),
+    retry: false,
   });
   const correspondenceQuery = useQuery({
     queryKey: ["maintenance-work-order-correspondence", workOrderId],
     queryFn: () => getMaintenanceWorkOrderCommsCorrespondence(workOrderId),
     enabled: Boolean(workOrderId),
   });
-  const workOrder = workOrderQuery.data ?? null;
+  const workOrderNotFound = isNotFoundError(workOrderQuery.error);
+  const workOrderLoadError = workOrderNotFound ? null : workOrderQuery.error;
+  const workOrder = workOrderQuery.error ? null : (workOrderQuery.data ?? null);
   const entityId = workOrder?.entity_id ?? "";
 
   const propertiesQuery = useQuery({
@@ -3502,13 +3510,24 @@ function MaintenanceDetailRoute() {
       <AppHeader />
       <div className="mx-auto grid max-w-6xl gap-5 px-5 py-5">
         <PageHeader
-          title={workOrder?.title ?? "Maintenance work order"}
+          title={
+            workOrder?.title ??
+            (workOrderNotFound
+              ? "Work order not found"
+              : workOrderLoadError
+                ? "Work order unavailable"
+                : "Maintenance work order")
+          }
           description={
             workOrder
               ? `${propertyName(properties, workOrder.property_id)} - ${tenantName(
                   tenants,
                   workOrder.tenant_id,
                 )}`
+              : workOrderNotFound
+                ? "This work order could not be found in the current workspace."
+                : workOrderLoadError
+                  ? "The work order could not be loaded."
               : "Loading work-order context."
           }
           actions={
@@ -3548,12 +3567,31 @@ function MaintenanceDetailRoute() {
           </SectionPanel>
         ) : null}
 
-        {workOrderQuery.error ? (
+        {workOrderNotFound ? (
+          <SectionPanel>
+            <EmptyState
+              icon={<AlertTriangle size={18} />}
+              title="No work order found."
+              description="This work order may have been deleted or moved. Return to Work to choose another job."
+              action={
+                <Link
+                  href="/operations"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                >
+                  <ArrowLeft size={16} />
+                  Back to Work
+                </Link>
+              }
+            />
+          </SectionPanel>
+        ) : null}
+
+        {workOrderLoadError ? (
           <SectionPanel>
             <EmptyState
               icon={<AlertTriangle size={18} />}
               title="Work order unavailable"
-              description={friendlyError(workOrderQuery.error)}
+              description={friendlyError(workOrderLoadError)}
             />
           </SectionPanel>
         ) : null}

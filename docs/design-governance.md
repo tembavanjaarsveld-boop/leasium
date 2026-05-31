@@ -80,6 +80,12 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   failures stay on `Tenant unavailable` with the API message. Remba should
   review whether the missing-record copy and directory handoff are plain enough
   for operators.
+- **Work record error states**: maintenance work-order detail now follows the
+  same status-aware pattern. 404s render `Work order not found` with a return
+  action to Work and suppress stale cached work-order detail, while non-404
+  primary read failures stay on `Work order unavailable` with the API message.
+  Remba should review whether the Work label and missing-record copy are clear
+  enough.
 - **Navigation consolidation to 7 hubs** (Phase 3): sidebar is Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings). The standalone Tenants and Billing items are removed; People carries Tenants/Owners/Vendors; Work is active for Comms; Money groups Billing Readiness, Owner statements, Xero, and Basiq. Hub alias redirects (`/people/tenants`, `/people/vendors`, `/work`, `/work/comms`, `/money/*`) preserve moved-route entry points while the existing workspaces stay alive for deep links. Remba should review the People vs Properties split, Money label, and whether the command palette makes the folded destinations discoverable enough.
 - **Money hub** (`/money`): a focused finance hub with tabs for Billing · Statements · Xero · Basiq and review-first handoffs to the existing finance workspaces. It does not call providers, preview reconciliation, dispatch invoices, send owner email, or mutate Xero/Basiq state.
 - **Owner portal read-only preview** (`/owner-portal/[ownerId]`): portal-style,

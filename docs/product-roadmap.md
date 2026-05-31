@@ -90,6 +90,12 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   People-record `Tenant not found` state only for 404s, and keeps non-404 load
   failures on a `Tenant unavailable` path with the API message. Pending Remba
   review of the tenant error-state copy.
+- [~] Maintenance work-order status-aware error polish:
+  `/operations/maintenance/[workOrderId]` now uses the shared `ApiError` status
+  contract on the primary work-order read, renders `Work order not found` only
+  for 404s, suppresses cached work-order detail when a refresh later fails, and
+  keeps non-404 failures on `Work order unavailable` with the API message.
+  Pending Remba review of the Work error-state copy.
 - [~] Owner portal account/token v1: owner portal now has the read-only operator preview (`GET /api/v1/owner-portal/{owner_id}` + `/owner-portal/[ownerId]`) plus first account-auth scaffolding: local no-send owner claim invites, public safe invite preview, one-time Clerk bearer claim, bearer-only `/owner-portal/account/session`, `/owner-portal` account entry, and `/owner-portal/invite/[token]` claim gate. Pending Remba review and production migration/backfill verification before broad owner rollout.
 - [x] Insights overview v1: the Insights workspace now has a read-only backend overview for portfolio health, live exceptions, automation activity, billing risk, owner/entity snapshots, and a local `insights-review-packet-{as_of}.csv` export covering live exceptions, automation activity, finance/accounting readiness, owner/entity gaps, lease events, snapshot history, and no-provider-mutation guardrails. No record mutation, invoice posting, Xero sync, provider refresh, SendGrid/Twilio send, payment reconciliation apply, billing draft generation, provider dispatch, or provider-history write runs from the overview export.
 - [x] Shareable Insights snapshots v1: operators can freeze owner, finance, and lease-event snapshots from the live Insights overview into revocable public links with hashed tokens, expiry, public read-only rendering, and no live portfolio mutation.

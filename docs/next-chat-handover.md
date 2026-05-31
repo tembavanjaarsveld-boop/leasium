@@ -307,6 +307,23 @@ before the Ticket 2.2 slice.
   the focused smoke passed **3 passed**, including the review-found mixed
   500/404 primary-read edge case where the non-404 API message must win.
 
+### Maintenance detail status-aware error polish slice
+- Shipped 2026-06-01 after the Tenant detail status-aware slice.
+- `/operations/maintenance/[workOrderId]` now imports the shared `ApiError`
+  status contract and uses it on the primary work-order read. 404s render a
+  `Work order not found` page/header with a return action to Work; non-404
+  failures render `Work order unavailable` with the API message.
+- The slice leaves correspondence, documents, invoice drafts, properties, and
+  tenants child queries on their existing paths and touches no provider, email,
+  SMS, Xero, Basiq, reconciliation, or backend mutation code.
+- Red-green proof: the new Operations smoke first failed because both mocked
+  404 and 500 primary-read failures stayed on the generic unavailable card/page
+  heading; after the status-aware branch, the focused smoke passed **2 passed**.
+  A follow-up review found cached data could coexist with a primary-read error;
+  the added refresh regression failed red on stale `Air conditioning fault`
+  content, then passed after primary-read errors began suppressing cached
+  work-order data.
+
 ### Account operating-mode frontend gate slice
 - Shipped after the vendor-detail polish. Backend commit `cb4704f` already
   added `Organisation.operating_mode` (default `self_managed_owner`) plus the
@@ -389,10 +406,9 @@ before the Ticket 2.2 slice.
    owner email and touch no providers.
 2. Add richer owner dashboard sections after the shared-document boundary is
    reviewed on real SKJ files.
-3. Decide whether to continue the status-aware not-found pattern beyond People
-   records, e.g. property detail, maintenance detail, and tenant portal preview
-   routes. Owner, Vendor, and Tenant detail now use the shared `ApiError`
-   contract.
+3. Decide whether to continue the status-aware not-found pattern into property
+   workspace and tenant portal preview routes. Owner, Vendor, Tenant, and
+   maintenance work-order detail now use the shared `ApiError` contract.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel

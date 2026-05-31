@@ -90,3 +90,102 @@ test("maintenance detail loading states use structured skeleton rows", async ({
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+test("maintenance detail shows a record-level not-found state", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+  await page.route(
+    "**/api/v1/maintenance/work-orders/missing-work-order",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Work order not found." }),
+      });
+    },
+  );
+
+  await page.goto("/operations/maintenance/missing-work-order");
+
+  await expect(
+    page.getByRole("heading", { name: "Work order not found" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByText("This work order may have been deleted"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Back to Work" }),
+  ).toHaveAttribute("href", "/operations");
+  await expect(page.getByText("Work order unavailable")).toHaveCount(0);
+});
+
+test("maintenance detail keeps generic failures on unavailable state", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+  await page.route(
+    "**/api/v1/maintenance/work-orders/broken-work-order",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Work order service unavailable." }),
+      });
+    },
+  );
+
+  await page.goto("/operations/maintenance/broken-work-order");
+
+  await expect(
+    page.getByRole("heading", { name: "Work order unavailable" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Work order service unavailable.")).toBeVisible();
+  await expect(page.getByText("Work order not found")).toHaveCount(0);
+});
+
+test("maintenance detail hides stale work-order data after a not-found refresh", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+  let failPrimaryRead = false;
+  await page.route(
+    "**/api/v1/maintenance/work-orders/work-order-1",
+    async (route) => {
+      if (route.request().method() !== "GET" || !failPrimaryRead) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Work order not found." }),
+      });
+    },
+  );
+
+  await page.goto("/operations/maintenance/work-order-1");
+  await expect(
+    page.getByRole("heading", { name: "Air conditioning fault" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Edit work-order details")).toBeVisible();
+
+  failPrimaryRead = true;
+  await page.getByRole("button", { name: "Refresh" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Work order not found" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("heading", { name: "Air conditioning fault" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Edit work-order details")).toHaveCount(0);
+});
