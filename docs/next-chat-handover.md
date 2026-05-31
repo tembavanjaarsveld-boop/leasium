@@ -1,6 +1,39 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-05-31
+Last updated: 2026-06-01
+
+## Codex continuation — 2026-06-01 (latest)
+
+Continuation from the tenant portal account cache hardening slice.
+
+### Tenant portal backend account-scope hardening
+- Backend tenant portal reads now keep the durable account boundary all the way
+  through shared portal endpoints: if a request carries a valid Clerk bearer
+  account token plus a stale portal token, the account wins and token data
+  cannot steer reads or writes to another tenant/onboarding.
+- Account session documents, invoice rows, invoice-PDF downloads, and ordinary
+  document downloads are now scoped by entity + property + unit + tenant +
+  lease, not by tenant alone. This blocks old same-tenant lease artifacts from
+  leaking into the current portal.
+- Lease-scoped signed documents retained by DocuSign remain visible/downloadable
+  even when older rows lack property/unit columns; they still need the current
+  tenant + lease boundary.
+- Reclaiming an old consumed invite can no longer repoint an already relinked
+  active tenant account back to stale onboarding. It returns the current account
+  scope instead.
+- If an active account points at a cancelled/deleted onboarding but a current
+  same-tenant onboarding exists, account session falls forward to the current
+  valid onboarding instead of 404ing.
+- Red-green proof was captured in
+  `tests/integration/test_tenant_portal_api.py` with regressions for
+  stale mixed bearer/token reads, stale mixed bearer/token maintenance writes,
+  same-tenant old-lease documents/invoices, consumed old invite reclaim, and
+  cancelled-onboarding fallback.
+- Verification so far: focused new regressions **6 passed**; full tenant portal
+  backend integration file **51 passed**; targeted backend ruff clean; `git
+  diff --check` clean. Provider guardrails unchanged: no SendGrid/Twilio/Xero,
+  payment reconciliation, provider dispatch, or provider history mutation paths
+  were touched.
 
 ## Codex continuation — 2026-05-31 (latest)
 

@@ -703,6 +703,364 @@ def test_tenant_portal_account_claim_and_bearer_session_are_scoped(
     assert work_order.work_order_metadata["auth_mode"] == "tenant_portal_account"
 
 
+def test_tenant_portal_session_prefers_account_bearer_over_stale_token(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+
+    response = client.get(
+        "/api/v1/tenant-portal/session",
+        headers={
+            "Authorization": "Bearer tenant-subject-one",
+            "x-tenant-portal-token": scope["other_token"],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["auth"]["mode"] == "tenant_portal_account"
+    assert body["tenant"]["id"] == scope["tenant_id"]
+    assert body["onboarding"]["id"] == scope["onboarding_id"]
+
+
+def test_tenant_portal_account_write_prefers_bearer_over_stale_token(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+
+    response = client.post(
+        "/api/v1/tenant-portal/maintenance-requests",
+        headers={
+            "Authorization": "Bearer tenant-subject-one",
+            "x-tenant-portal-token": scope["other_token"],
+        },
+        json={
+            "title": "Bearer scoped issue",
+            "description": "The account session should win over a stale token.",
+            "priority": "normal",
+        },
+    )
+
+    assert response.status_code == 201
+    work_order = session.get(MaintenanceWorkOrder, UUID(response.json()["id"]))
+    assert work_order is not None
+    assert work_order.tenant_id == UUID(scope["tenant_id"])
+    assert work_order.lease_id == UUID(scope["lease_id"])
+    assert work_order.work_order_metadata["auth_boundary"] == "tenant_portal_account"
+    assert work_order.work_order_metadata["auth_mode"] == "tenant_portal_account"
+    assert work_order.work_order_metadata["tenant_onboarding_id"] == scope["onboarding_id"]
+
+
+def test_tenant_portal_account_session_excludes_same_tenant_other_lease_artifacts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    tenant_id = UUID(scope["tenant_id"])
+    entity_id = UUID(scope["entity_id"])
+    property_id = UUID(scope["property_id"])
+
+    old_unit = TenancyUnit(property_id=property_id, unit_label="Shop 1 Old")
+    session.add(old_unit)
+    session.flush()
+    old_lease = Lease(
+        tenancy_unit_id=old_unit.id,
+        tenant_id=tenant_id,
+        status=LeaseStatus.expired,
+        commencement_date=datetime(2022, 7, 1, tzinfo=UTC).date(),
+        expiry_date=datetime(2025, 6, 30, tzinfo=UTC).date(),
+    )
+    session.add(old_lease)
+    session.flush()
+    old_onboarding = TenantOnboarding(
+        entity_id=entity_id,
+        lease_id=old_lease.id,
+        tenant_id=tenant_id,
+        token="portal-token-same-tenant-old-lease",
+        status=TenantOnboardingStatus.applied,
+        due_date=datetime(2025, 5, 29, tzinfo=UTC).date(),
+        expires_at=datetime.now(UTC) + timedelta(days=14),
+        last_sent_at=datetime.now(UTC),
+        submitted_data={},
+        review_data={},
+        delivery_data={},
+    )
+    session.add(old_onboarding)
+    session.flush()
+    old_document = StoredDocument(
+        entity_id=entity_id,
+        property_id=property_id,
+        tenancy_unit_id=old_unit.id,
+        tenant_id=tenant_id,
+        lease_id=old_lease.id,
+        tenant_onboarding_id=old_onboarding.id,
+        filename="old-lease-insurance.txt",
+        content_type="text/plain",
+        byte_size=10,
+        file_data=b"old-lease",
+        category=DocumentCategory.insurance,
+        document_metadata={"source": "tenant_onboarding"},
+    )
+    session.add(old_document)
+    session.flush()
+    old_billing_draft = BillingDraft(
+        entity_id=entity_id,
+        property_id=property_id,
+        tenancy_unit_id=old_unit.id,
+        tenant_id=tenant_id,
+        lease_id=old_lease.id,
+        document_id=old_document.id,
+        status=BillingDraftStatus.approved,
+        title="Old lease rent",
+        total_cents=220000,
+        billing_metadata={},
+    )
+    session.add(old_billing_draft)
+    session.flush()
+    old_invoice = InvoiceDraft(
+        entity_id=entity_id,
+        billing_draft_id=old_billing_draft.id,
+        property_id=property_id,
+        tenancy_unit_id=old_unit.id,
+        tenant_id=tenant_id,
+        lease_id=old_lease.id,
+        document_id=old_document.id,
+        status=InvoiceDraftStatus.approved,
+        invoice_number="INV-OLD-LEASE",
+        title="Old lease rent",
+        currency="AUD",
+        total_cents=220000,
+        invoice_metadata={},
+    )
+    session.add(old_invoice)
+    session.flush()
+    old_invoice_document = StoredDocument(
+        entity_id=entity_id,
+        property_id=property_id,
+        tenancy_unit_id=old_unit.id,
+        tenant_id=tenant_id,
+        lease_id=old_lease.id,
+        filename="INV-OLD-LEASE.pdf",
+        content_type="application/pdf",
+        byte_size=15,
+        file_data=b"old-invoice-pdf",
+        category=DocumentCategory.invoice,
+        document_metadata={
+            "source": "invoice_draft_pdf_artifact",
+            "invoice_draft_id": str(old_invoice.id),
+        },
+    )
+    session.add(old_invoice_document)
+    session.flush()
+    old_invoice.invoice_metadata = {
+        "pdf_artifact": {"document_id": str(old_invoice_document.id)}
+    }
+    session.commit()
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+
+    account_session = client.get(
+        "/api/v1/tenant-portal/account/session",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+
+    assert account_session.status_code == 200
+    body = account_session.json()
+    assert body["lease"]["lease_id"] == scope["lease_id"]
+    assert body["onboarding"]["id"] == scope["onboarding_id"]
+    document_ids = {
+        document["id"] for document in body["compliance"]["uploaded_documents"]
+    }
+    assert scope["document_id"] in document_ids
+    assert str(old_document.id) not in document_ids
+    invoice_ids = {invoice["id"] for invoice in body["invoices"]}
+    assert scope["invoice_id"] in invoice_ids
+    assert str(old_invoice.id) not in invoice_ids
+
+    old_document_download = client.get(
+        f"/api/v1/tenant-portal/documents/{old_document.id}/download",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+    assert old_document_download.status_code == 404
+
+    old_invoice_download = client.get(
+        f"/api/v1/tenant-portal/documents/{old_invoice_document.id}/download",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+    assert old_invoice_download.status_code == 404
+
+
+def test_tenant_portal_account_session_keeps_lease_scoped_signed_documents(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    signed_lease = StoredDocument(
+        entity_id=UUID(scope["entity_id"]),
+        tenant_id=UUID(scope["tenant_id"]),
+        lease_id=UUID(scope["lease_id"]),
+        tenant_onboarding_id=UUID(scope["onboarding_id"]),
+        filename="signed-lease.pdf",
+        content_type="application/pdf",
+        byte_size=16,
+        file_data=b"signed-lease-pdf",
+        category=DocumentCategory.lease,
+        document_metadata={"source": "docusign_signed_lease"},
+    )
+    session.add(signed_lease)
+    session.commit()
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+
+    account_session = client.get(
+        "/api/v1/tenant-portal/account/session",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+
+    assert account_session.status_code == 200
+    document_ids = {
+        document["id"]
+        for document in account_session.json()["compliance"]["uploaded_documents"]
+    }
+    assert str(signed_lease.id) in document_ids
+
+    download_response = client.get(
+        f"/api/v1/tenant-portal/documents/{signed_lease.id}/download",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+    assert download_response.status_code == 200
+    assert download_response.content == b"signed-lease-pdf"
+
+
+def test_tenant_portal_account_claim_consumed_old_invite_does_not_repoint_relinked_account(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    provider_id = "tenant-subject-one"
+    fresh_onboarding = TenantOnboarding(
+        entity_id=UUID(scope["entity_id"]),
+        lease_id=UUID(scope["lease_id"]),
+        tenant_id=UUID(scope["tenant_id"]),
+        token="portal-token-same-tenant-fresh-link",
+        status=TenantOnboardingStatus.sent,
+        due_date=datetime(2026, 6, 15, tzinfo=UTC).date(),
+        expires_at=datetime.now(UTC) + timedelta(days=14),
+        last_sent_at=datetime.now(UTC),
+        submitted_data={},
+        review_data={},
+        delivery_data={},
+    )
+    session.add(fresh_onboarding)
+    session.commit()
+
+    old_claim = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["token"]},
+    )
+    assert old_claim.status_code == 200
+    assert old_claim.json()["onboarding"]["id"] == scope["onboarding_id"]
+
+    fresh_claim = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": fresh_onboarding.token},
+    )
+    assert fresh_claim.status_code == 200
+    assert fresh_claim.json()["onboarding"]["id"] == str(fresh_onboarding.id)
+
+    old_reclaim = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["token"]},
+    )
+
+    assert old_reclaim.status_code == 200
+    assert old_reclaim.json()["onboarding"]["id"] == str(fresh_onboarding.id)
+    account = _account_by_provider(session, provider_id)
+    session.refresh(account)
+    assert account.tenant_onboarding_id == fresh_onboarding.id
+    assert account.account_metadata["tenant_onboarding_id"] == str(fresh_onboarding.id)
+
+
+def test_tenant_portal_account_session_falls_forward_from_cancelled_onboarding(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    provider_id = "tenant-subject-one"
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+
+    old_onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert old_onboarding is not None
+    old_onboarding.status = TenantOnboardingStatus.cancelled
+    replacement_onboarding = TenantOnboarding(
+        entity_id=UUID(scope["entity_id"]),
+        lease_id=UUID(scope["lease_id"]),
+        tenant_id=UUID(scope["tenant_id"]),
+        token="portal-token-same-tenant-replacement",
+        status=TenantOnboardingStatus.sent,
+        due_date=datetime(2026, 6, 22, tzinfo=UTC).date(),
+        expires_at=datetime.now(UTC) + timedelta(days=14),
+        last_sent_at=datetime.now(UTC),
+        submitted_data={},
+        review_data={},
+        delivery_data={},
+    )
+    session.add(replacement_onboarding)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/tenant-portal/account/session",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tenant"]["id"] == scope["tenant_id"]
+    assert body["lease"]["lease_id"] == scope["lease_id"]
+    assert body["onboarding"]["id"] == str(replacement_onboarding.id)
+
+
 def test_tenant_portal_account_self_edits_contact_details(
     client: TestClient,
     session: Session,

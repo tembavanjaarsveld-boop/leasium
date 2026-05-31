@@ -460,15 +460,7 @@ def _portal_scope_for_request(
     header_token: str | None = None,
     form_token: str | None = None,
 ) -> PortalScope:
-    has_token = any(
-        _clean_token(value) is not None
-        for value in (
-            header_token or request.headers.get(PORTAL_TOKEN_HEADER),
-            form_token,
-            request.query_params.get(PORTAL_TOKEN_QUERY),
-        )
-    )
-    if authorization and authorization.startswith("Bearer ") and not has_token:
+    if authorization and authorization.startswith("Bearer "):
         provider_id = _tenant_portal_provider_id(authorization, settings)
         account = _active_tenant_portal_account(provider_id, session)
         return _account_scope(account, session)
@@ -575,7 +567,13 @@ def _latest_account_onboarding(
 ) -> TenantOnboarding | None:
     if account.tenant_onboarding_id is not None:
         onboarding = session.get(TenantOnboarding, account.tenant_onboarding_id)
-        if onboarding is not None:
+        if (
+            onboarding is not None
+            and onboarding.deleted_at is None
+            and onboarding.status != TenantOnboardingStatus.cancelled
+            and onboarding.entity_id == account.entity_id
+            and onboarding.tenant_id == account.tenant_id
+        ):
             return onboarding
     return session.scalar(
         select(TenantOnboarding)
@@ -1006,6 +1004,15 @@ def _tenant_documents(scope: PortalScope, session: Session) -> list[StoredDocume
             .where(
                 StoredDocument.entity_id == scope.onboarding.entity_id,
                 StoredDocument.tenant_id == scope.tenant.id,
+                StoredDocument.lease_id == scope.lease.id,
+                or_(
+                    StoredDocument.property_id == scope.property.id,
+                    StoredDocument.property_id.is_(None),
+                ),
+                or_(
+                    StoredDocument.tenancy_unit_id == scope.unit.id,
+                    StoredDocument.tenancy_unit_id.is_(None),
+                ),
                 StoredDocument.category != DocumentCategory.invoice,
                 StoredDocument.deleted_at.is_(None),
             )
@@ -1037,7 +1044,10 @@ def _portal_invoices(scope: PortalScope, session: Session) -> list[InvoiceDraft]
             select(InvoiceDraft)
             .where(
                 InvoiceDraft.entity_id == scope.onboarding.entity_id,
+                InvoiceDraft.property_id == scope.property.id,
+                InvoiceDraft.tenancy_unit_id == scope.unit.id,
                 InvoiceDraft.tenant_id == scope.tenant.id,
+                InvoiceDraft.lease_id == scope.lease.id,
                 InvoiceDraft.status == InvoiceDraftStatus.approved,
                 InvoiceDraft.deleted_at.is_(None),
             )
@@ -1602,7 +1612,10 @@ def _invoice_document_allowed(
         and invoice.deleted_at is None
         and invoice.status == InvoiceDraftStatus.approved
         and invoice.entity_id == scope.onboarding.entity_id
+        and invoice.property_id == scope.property.id
+        and invoice.tenancy_unit_id == scope.unit.id
         and invoice.tenant_id == scope.tenant.id
+        and invoice.lease_id == scope.lease.id
         and _invoice_pdf_document_id(invoice) == document.id
     )
 
@@ -1618,6 +1631,15 @@ def _portal_document(
         or document.deleted_at is not None
         or document.entity_id != scope.onboarding.entity_id
         or document.tenant_id != scope.tenant.id
+        or document.lease_id != scope.lease.id
+        or (
+            document.property_id is not None
+            and document.property_id != scope.property.id
+        )
+        or (
+            document.tenancy_unit_id is not None
+            and document.tenancy_unit_id != scope.unit.id
+        )
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
     if document.category == DocumentCategory.invoice and not _invoice_document_allowed(
@@ -1719,7 +1741,8 @@ def claim_tenant_portal_account(
     # active, revoked, or unlinked) may proceed. The existing revoked /
     # unlinked / relink logic further down then produces the right
     # response (403 revoked, 200 relink, etc.). Anyone else gets 410.
-    if token_scope.onboarding.token_consumed_at is not None:
+    token_was_consumed = token_scope.onboarding.token_consumed_at is not None
+    if token_was_consumed:
         prior_link = session.scalar(
             select(TenantPortalAccount).where(
                 TenantPortalAccount.auth_provider == "clerk",
@@ -1827,6 +1850,19 @@ def claim_tenant_portal_account(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Tenant portal account scope is inconsistent.",
             )
+        if (
+            token_was_consumed
+            and account.tenant_onboarding_id is not None
+            and account.tenant_onboarding_id != token_scope.onboarding.id
+        ):
+            account.last_seen_at = now
+            account.account_metadata = {
+                **(account.account_metadata or {}),
+                "last_claimed_at": now.isoformat(),
+            }
+            session.commit()
+            session.refresh(account)
+            return _portal_read(_account_scope(account, session), session)
         account.tenant_onboarding_id = token_scope.onboarding.id
         account.email = (
             account.email
