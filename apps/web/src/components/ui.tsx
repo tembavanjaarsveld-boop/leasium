@@ -183,7 +183,7 @@ export function SectionPanel({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumXs",
+        "overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumCard",
         className,
       )}
     >

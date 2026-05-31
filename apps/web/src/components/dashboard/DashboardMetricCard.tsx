@@ -152,7 +152,7 @@ export function DashboardMetricCard({
   return (
     <Link
       href={href}
-      className="group rounded-2xl border border-border bg-white p-4 shadow-leasiumXs transition duration-200 ease-leasium hover:border-primary/40 hover:shadow-leasiumSm"
+      className="group rounded-2xl border border-border bg-white p-4 shadow-leasiumCard transition duration-200 ease-leasium hover:border-primary/40 hover:shadow-leasiumMd"
     >
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm font-semibold text-muted-foreground">

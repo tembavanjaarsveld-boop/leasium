@@ -154,6 +154,10 @@ const config: Config = {
       },
       boxShadow: {
         leasiumXs: "0 1px 2px rgba(16, 24, 40, 0.05)",
+        // Dedicated card elevation: a tight contact layer + a soft ambient
+        // lift so white cards separate from the canvas without looking heavy.
+        leasiumCard:
+          "0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px -2px rgba(16, 24, 40, 0.08)",
         leasiumSm:
           "0 1px 3px rgba(16, 24, 40, 0.10), 0 1px 2px rgba(16, 24, 40, 0.06)",
         leasiumMd: "0 8px 24px rgba(16, 24, 40, 0.08)",
