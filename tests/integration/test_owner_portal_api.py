@@ -12,6 +12,8 @@ from stewart.core.models import (
     Entity,
     InvoiceDraft,
     InvoiceDraftStatus,
+    OperatingMode,
+    Organisation,
     Owner,
     Property,
     PropertyOwner,
@@ -27,7 +29,23 @@ def _entity(session: Session) -> Entity:
     return entity
 
 
-def _seed_owner_portal_owner(session: Session) -> Owner:
+def _set_operating_mode(
+    session: Session,
+    mode: OperatingMode = OperatingMode.managing_agent,
+) -> None:
+    entity = _entity(session)
+    organisation = session.get(Organisation, entity.organisation_id)
+    assert organisation is not None
+    organisation.operating_mode = mode.value
+    session.flush()
+
+
+def _seed_owner_portal_owner(
+    session: Session,
+    *,
+    operating_mode: OperatingMode = OperatingMode.managing_agent,
+) -> Owner:
+    _set_operating_mode(session, operating_mode)
     entity = _entity(session)
     doc = StoredDocument(
         entity_id=entity.id,
@@ -112,6 +130,24 @@ def _linked_owner_property(session: Session, owner: Owner) -> Property:
     return prop
 
 
+def test_owner_portal_preview_forbidden_for_self_managed_accounts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    owner = _seed_owner_portal_owner(
+        session,
+        operating_mode=OperatingMode.self_managed_owner,
+    )
+
+    response = client.get(
+        f"/api/v1/owner-portal/{owner.id}",
+        params={"month": "2026-05"},
+    )
+
+    assert response.status_code == 403
+    assert "managing-agent or hybrid accounts" in response.json()["detail"]
+
+
 def test_owner_portal_preview_returns_read_only_owner_summary(
     client: TestClient,
     session: Session,
@@ -182,6 +218,7 @@ def test_owner_portal_statement_matches_duplicate_shared_owner_by_owner_id(
 ) -> None:
     """Duplicate-label co-owners on the same property get their own split."""
 
+    _set_operating_mode(session)
     entity = _entity(session)
     doc = StoredDocument(
         entity_id=entity.id,

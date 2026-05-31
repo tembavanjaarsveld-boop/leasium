@@ -19,6 +19,8 @@ from stewart.core.models import (
     InvoiceDraftStatus,
     Lease,
     LeaseStatus,
+    OperatingMode,
+    Organisation,
     Owner,
     OwnerPortalAccount,
     OwnerPortalAccountStatus,
@@ -45,7 +47,24 @@ def _entity(session: Session) -> Entity:
     return entity
 
 
-def _seed_owner(session: Session, *, email: str = "owner@example.test") -> Owner:
+def _set_operating_mode(
+    session: Session,
+    mode: OperatingMode = OperatingMode.managing_agent,
+) -> None:
+    entity = _entity(session)
+    organisation = session.get(Organisation, entity.organisation_id)
+    assert organisation is not None
+    organisation.operating_mode = mode.value
+    session.flush()
+
+
+def _seed_owner(
+    session: Session,
+    *,
+    email: str = "owner@example.test",
+    operating_mode: OperatingMode = OperatingMode.managing_agent,
+) -> Owner:
+    _set_operating_mode(session, operating_mode)
     entity = _entity(session)
     doc = StoredDocument(
         entity_id=entity.id,
@@ -130,6 +149,25 @@ def _linked_owner_property(session: Session, owner: Owner) -> Property:
     return prop
 
 
+def test_operator_cannot_create_owner_portal_invite_for_self_managed_accounts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    owner = _seed_owner(
+        session,
+        operating_mode=OperatingMode.self_managed_owner,
+    )
+
+    response = client.post(f"/api/v1/owner-portal/{owner.id}/invite")
+
+    assert response.status_code == 403
+    assert "managing-agent or hybrid accounts" in response.json()["detail"]
+    invite = session.scalar(
+        select(OwnerPortalInvite).where(OwnerPortalInvite.owner_id == owner.id)
+    )
+    assert invite is None
+
+
 def test_operator_can_create_hashed_owner_portal_invite(
     client: TestClient,
     session: Session,
@@ -161,6 +199,23 @@ def test_operator_can_create_hashed_owner_portal_invite(
     assert invite.consumed_at is None
 
 
+def test_operator_can_create_owner_portal_invite_for_hybrid_accounts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    owner = _seed_owner(session, operating_mode=OperatingMode.hybrid)
+
+    body = _create_invite(client, owner)
+
+    assert body["owner_id"] == str(owner.id)
+    assert body["claim_email"] == "owner@example.test"
+    invite = session.scalar(
+        select(OwnerPortalInvite).where(OwnerPortalInvite.owner_id == owner.id)
+    )
+    assert invite is not None
+    assert invite.consumed_at is None
+
+
 def test_owner_portal_invite_preview_is_safe_before_claim(
     client: TestClient,
     session: Session,
@@ -178,6 +233,46 @@ def test_owner_portal_invite_preview_is_safe_before_claim(
     assert body["claim_email"] == "owner@example.test"
     assert body["expires_at"].startswith(invite["expires_at"].removesuffix("Z"))
     assert body["claimable"] is True
+
+
+def test_owner_portal_account_claim_forbidden_for_self_managed_accounts(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    app.dependency_overrides[get_settings] = _owner_account_settings
+    owner = _seed_owner(session)
+    invite = _create_invite(client, owner)
+    _set_operating_mode(session, OperatingMode.self_managed_owner)
+    session.commit()
+
+    def fake_identity(authorization, settings):  # noqa: ANN001, ARG001
+        return ClerkIdentity(
+            provider_id="owner-subject-one",
+            verified_email="owner@example.test",
+        )
+
+    monkeypatch.setattr(owner_portal_router, "_owner_portal_identity", fake_identity)
+
+    response = client.post(
+        "/api/v1/owner-portal/account/claim",
+        headers={"Authorization": "Bearer owner-subject-one"},
+        json={"portal_token": invite["portal_token"]},
+    )
+
+    assert response.status_code == 403
+    assert "managing-agent or hybrid accounts" in response.json()["detail"]
+    stored_invite = session.scalar(
+        select(OwnerPortalInvite).where(OwnerPortalInvite.owner_id == owner.id)
+    )
+    assert stored_invite is not None
+    assert stored_invite.consumed_at is None
+    account = session.scalar(
+        select(OwnerPortalAccount).where(
+            OwnerPortalAccount.auth_provider_id == "owner-subject-one"
+        )
+    )
+    assert account is None
 
 
 def test_owner_portal_claim_requires_matching_clerk_email(
@@ -308,6 +403,64 @@ def test_owner_portal_account_claim_and_bearer_session_are_scoped(
         headers={"Authorization": "Bearer owner-subject-one"},
     )
     assert revoked_session.status_code == 401
+
+
+def test_owner_portal_account_reads_forbidden_for_self_managed_accounts(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    app.dependency_overrides[get_settings] = _owner_account_settings
+    owner = _seed_owner(session)
+    invite = _create_invite(client, owner)
+
+    def fake_identity(authorization, settings):  # noqa: ANN001, ARG001
+        return ClerkIdentity(
+            provider_id="owner-subject-one",
+            verified_email="owner@example.test",
+        )
+
+    monkeypatch.setattr(owner_portal_router, "_owner_portal_identity", fake_identity)
+
+    claim_response = client.post(
+        "/api/v1/owner-portal/account/claim",
+        headers={"Authorization": "Bearer owner-subject-one"},
+        json={"portal_token": invite["portal_token"]},
+    )
+    assert claim_response.status_code == 200, claim_response.text
+
+    linked_property = _linked_owner_property(session, owner)
+    visible_doc = StoredDocument(
+        entity_id=owner.entity_id,
+        property_id=linked_property.id,
+        filename="owner-visible-report.pdf",
+        content_type="application/pdf",
+        byte_size=len(b"owner visible"),
+        file_data=b"owner visible",
+        category=DocumentCategory.other,
+        document_metadata={"owner_portal_visible": True},
+    )
+    session.add(visible_doc)
+    _set_operating_mode(session, OperatingMode.self_managed_owner)
+    session.commit()
+
+    for response in [
+        client.get(
+            "/api/v1/owner-portal/account/status",
+            headers={"Authorization": "Bearer owner-subject-one"},
+        ),
+        client.get(
+            "/api/v1/owner-portal/account/session",
+            params={"month": "2026-05"},
+            headers={"Authorization": "Bearer owner-subject-one"},
+        ),
+        client.get(
+            f"/api/v1/owner-portal/account/documents/{visible_doc.id}/download",
+            headers={"Authorization": "Bearer owner-subject-one"},
+        ),
+    ]:
+        assert response.status_code == 403
+        assert "managing-agent or hybrid accounts" in response.json()["detail"]
 
 
 def test_owner_portal_account_downloads_only_visible_linked_property_documents(

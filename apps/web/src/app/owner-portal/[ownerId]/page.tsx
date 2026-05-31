@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   WalletCards,
 } from "lucide-react";
+import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
@@ -28,6 +29,10 @@ import {
   type OwnerPortalRecord,
   type OwnerPortalStatementPropertyRecord,
 } from "@/lib/api";
+import {
+  isManagingAgentOperatingMode,
+  useOperatingMode,
+} from "@/lib/use-operating-mode";
 import { friendlyError } from "@/lib/utils";
 
 import { OwnerPortalDocumentsPanel } from "../owner-portal-dashboard-sections";
@@ -375,6 +380,8 @@ function OwnerPortalView({ portal }: { portal: OwnerPortalRecord }) {
 function OwnerPortalContent() {
   const params = useParams<{ ownerId?: string | string[] }>();
   const searchParams = useSearchParams();
+  const { operatingMode, isResolved } = useOperatingMode();
+  const showOwnerPortalPreview = isManagingAgentOperatingMode(operatingMode);
   const ownerId = Array.isArray(params.ownerId)
     ? params.ownerId[0]
     : params.ownerId;
@@ -383,7 +390,7 @@ function OwnerPortalContent() {
   const portalQuery = useQuery({
     queryKey: ["owner-portal", ownerId, month],
     queryFn: () => getOwnerPortal(ownerId ?? "", month ?? ""),
-    enabled: Boolean(ownerId && month),
+    enabled: Boolean(ownerId && month && showOwnerPortalPreview),
   });
 
   if (!month) {
@@ -396,6 +403,38 @@ function OwnerPortalContent() {
               Statement month is required. Open an owner portal link with a
               month in YYYY-MM format.
             </p>
+          </div>
+        </SectionPanel>
+      </div>
+    );
+  }
+
+  if (!isResolved) {
+    return (
+      <div className="mx-auto max-w-6xl px-5 py-6">
+        <SectionPanel title="Owner portal">
+          <SkeletonRows rows={4} />
+        </SectionPanel>
+      </div>
+    );
+  }
+
+  if (!showOwnerPortalPreview) {
+    return (
+      <div className="mx-auto max-w-3xl px-5 py-8">
+        <SectionPanel title="Owner portal unavailable">
+          <div className="grid gap-3 p-4 text-sm leading-6 text-muted-foreground">
+            <p>
+              Owner portal previews are available only for managing-agent or
+              hybrid accounts. Self-managed accounts use local entity
+              statements instead of landlord-client portals.
+            </p>
+            <Link
+              className="inline-flex min-h-11 w-fit items-center justify-center rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+              href="/statements"
+            >
+              Open entity statements
+            </Link>
           </div>
         </SectionPanel>
       </div>

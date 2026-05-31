@@ -21,6 +21,9 @@ from stewart.core.auth import (
 from stewart.core.db import utcnow
 from stewart.core.models import (
     DocumentCategory,
+    Entity,
+    OperatingMode,
+    Organisation,
     Owner,
     OwnerPortalAccount,
     OwnerPortalAccountStatus,
@@ -93,6 +96,25 @@ def _owner_portal_token_hash(token: str) -> str:
 
 def _new_owner_portal_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def _assert_owner_portal_operating_mode(session: Session, entity_id: UUID) -> None:
+    operating_mode = session.scalar(
+        select(Organisation.operating_mode)
+        .join(Entity, Entity.organisation_id == Organisation.id)
+        .where(Entity.id == entity_id)
+    )
+    if (operating_mode or OperatingMode.self_managed_owner.value) not in {
+        OperatingMode.managing_agent.value,
+        OperatingMode.hybrid.value,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Owner portal access is available only for managing-agent "
+                "or hybrid accounts."
+            ),
+        )
 
 
 def _is_expired(expires_at: datetime) -> bool:
@@ -541,6 +563,7 @@ def create_owner_portal_invite(
         owner.entity_id,
         {UserRole.owner, UserRole.admin, UserRole.finance},
     )
+    _assert_owner_portal_operating_mode(session, owner.entity_id)
     claim_email = _claim_email(owner)
     token = _new_owner_portal_token()
     now = utcnow()
@@ -601,6 +624,7 @@ def claim_owner_portal_account(
     identity = _owner_portal_identity(authorization, settings)
     invite = _invite_for_token(payload.portal_token, session)
     owner = _owner_for_invite(invite, session)
+    _assert_owner_portal_operating_mode(session, owner.entity_id)
     provider_id = identity.provider_id
 
     if invite.consumed_at is not None:
@@ -713,6 +737,7 @@ def get_owner_portal_account_status(
         .order_by(OwnerPortalAccount.updated_at.desc())
     )
     if account is not None:
+        _assert_owner_portal_operating_mode(session, account.entity_id)
         owner = session.get(Owner, account.owner_id)
         return OwnerPortalAccountLifecycleRead(
             status="active",
@@ -739,6 +764,7 @@ def get_owner_portal_account_status(
         .order_by(OwnerPortalAccount.updated_at.desc())
     )
     if revoked_account is not None:
+        _assert_owner_portal_operating_mode(session, revoked_account.entity_id)
         owner = session.get(Owner, revoked_account.owner_id)
         return OwnerPortalAccountLifecycleRead(
             status="revoked",
@@ -780,6 +806,7 @@ def get_owner_portal_account_session(
     identity = _owner_portal_identity(authorization, settings)
     account = _active_owner_portal_account(identity.provider_id, session)
     owner = _owner_for_account(account, session)
+    _assert_owner_portal_operating_mode(session, owner.entity_id)
     account.last_seen_at = utcnow()
     session.commit()
     session.refresh(account)
@@ -807,6 +834,7 @@ def download_owner_portal_account_document(
     identity = _owner_portal_identity(authorization, settings)
     account = _active_owner_portal_account(identity.provider_id, session)
     owner = _owner_for_account(account, session)
+    _assert_owner_portal_operating_mode(session, owner.entity_id)
     document = _owner_portal_document(owner, document_id, session)
     return Response(
         content=document.file_data,
@@ -840,6 +868,7 @@ def get_owner_portal_preview(
             status_code=status.HTTP_404_NOT_FOUND, detail="Owner not found."
         )
     assert_entity_role(session, user, owner.entity_id, READ_ROLES)
+    _assert_owner_portal_operating_mode(session, owner.entity_id)
 
     return _portal_read(
         owner,

@@ -88,7 +88,7 @@ const OWNER_PORTAL_RESPONSE = {
 test("owner portal preview renders read-only owner statement data", async ({
   page,
 }) => {
-  await mockLeasiumApi(page);
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
   const attemptedSends: string[] = [];
 
   await page.route("**/api/v1/owners/statements/send**", async (route) => {
@@ -134,4 +134,32 @@ test("owner portal preview renders read-only owner statement data", async ({
     page.getByText("Read-only owner portal", { exact: false }),
   ).toBeVisible();
   expect(attemptedSends).toEqual([]);
+});
+
+test("self-managed accounts do not open operator owner portal previews", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+  const ownerPortalRequests: string[] = [];
+
+  await page.route("**/api/v1/owner-portal/owner-1**", async (route) => {
+    ownerPortalRequests.push(route.request().url());
+    await route.fulfill({
+      status: 500,
+      body: "self-managed owner portal preview must stay gated",
+    });
+  });
+
+  await page.goto("/owner-portal/owner-1?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Owner portal unavailable" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByText("managing-agent or hybrid accounts", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open entity statements" }),
+  ).toHaveAttribute("href", "/statements");
+  expect(ownerPortalRequests).toEqual([]);
 });
