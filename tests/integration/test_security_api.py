@@ -109,6 +109,7 @@ def test_security_workspace_lists_current_operator_and_auth_boundary(
     assert me_body["current_user"]["email"] == get_settings().dev_user_email
     assert me_body["roles"][0]["entity_id"] == str(entity.id)
     assert me_body["can_manage_security"] is True
+    assert me_body["organisation"]["operating_mode"] == "self_managed_owner"
 
     response = client.get("/api/v1/security/workspace")
 
@@ -118,6 +119,7 @@ def test_security_workspace_lists_current_operator_and_auth_boundary(
     assert body["auth"]["dev_auth_active"] is True
     assert body["auth"]["operator_login_enforced"] is False
     assert body["organisation"]["name"] == "SKJ Capital"
+    assert body["organisation"]["operating_mode"] == "self_managed_owner"
     assert body["current_user"]["email"] == get_settings().dev_user_email
     assert body["can_manage_security"] is True
     assert body["members"][0]["notification_preferences"] == {
@@ -645,3 +647,59 @@ def test_current_operator_cannot_remove_own_last_admin_role(
     assert response.json()["detail"] == (
         "Keep at least one owner or admin role on your own account."
     )
+
+
+def test_owner_can_set_operating_mode(
+    client: TestClient,
+    session: Session,
+) -> None:
+    response = client.patch(
+        "/api/v1/security/organisation/operating-mode",
+        json={"operating_mode": "managing_agent"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["operating_mode"] == "managing_agent"
+
+    me_response = client.get("/api/v1/me")
+    assert me_response.status_code == 200
+    assert me_response.json()["organisation"]["operating_mode"] == "managing_agent"
+
+    audit_actions = session.scalars(
+        select(AuditAction.action).where(
+            AuditAction.target_table == "organisation",
+            AuditAction.tool_name == "security.set_operating_mode",
+        )
+    ).all()
+    assert audit_actions == ["update"]
+
+
+def test_set_operating_mode_requires_owner_or_admin(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    settings = get_settings()
+    role = session.get(UserEntityRole, (settings.dev_user_id, entity.id))
+    assert role is not None
+    role.role = UserRole.viewer
+    session.commit()
+
+    response = client.patch(
+        "/api/v1/security/organisation/operating-mode",
+        json={"operating_mode": "managing_agent"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Only owners and admins can manage operator access."
+
+
+def test_set_operating_mode_rejects_unknown_value(
+    client: TestClient,
+) -> None:
+    response = client.patch(
+        "/api/v1/security/organisation/operating-mode",
+        json={"operating_mode": "nonsense"},
+    )
+
+    assert response.status_code == 422

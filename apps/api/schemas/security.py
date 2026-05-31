@@ -5,7 +5,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from stewart.core.models import OperatorInviteStatus, UserRole
+from stewart.core.models import OperatingMode, OperatorInviteStatus, UserRole
 
 from apps.api.schemas.common import ApiModel
 
@@ -73,7 +73,12 @@ class SecurityOrganisationRead(ApiModel):
     name: str
     country_code: str
     timezone: str
+    operating_mode: str
     created_at: datetime
+
+
+class SecurityOperatingModeUpdate(BaseModel):
+    operating_mode: OperatingMode
 
 
 class SecurityMemberRead(ApiModel):

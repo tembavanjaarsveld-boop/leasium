@@ -75,6 +75,12 @@ class UserRole(enum.StrEnum):
     agent = "agent"
 
 
+class OperatingMode(enum.StrEnum):
+    self_managed_owner = "self_managed_owner"
+    managing_agent = "managing_agent"
+    hybrid = "hybrid"
+
+
 class OperatorInviteStatus(enum.StrEnum):
     not_sent = "not_sent"
     sent = "sent"
@@ -273,6 +279,9 @@ class Organisation(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     country_code: Mapped[str] = mapped_column(String(2), nullable=False, default="AU")
     timezone: Mapped[str] = mapped_column(Text, nullable=False, default="Australia/Brisbane")
+    operating_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=OperatingMode.self_managed_owner.value
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
