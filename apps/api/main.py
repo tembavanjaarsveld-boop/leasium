@@ -31,6 +31,7 @@ from apps.api.routers import (
     maintenance,
     obligations,
     organisations,
+    owner_entities,
     owners,
     properties,
     register_imports,
@@ -163,3 +164,4 @@ app.include_router(activity_feed.router, prefix="/api/v1")
 app.include_router(comms.router, prefix="/api/v1")
 app.include_router(contractors.router, prefix="/api/v1")
 app.include_router(owners.router, prefix="/api/v1")
+app.include_router(owner_entities.router, prefix="/api/v1")

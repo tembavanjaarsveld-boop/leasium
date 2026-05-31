@@ -316,6 +316,7 @@ class Entity(Base):
     xero_connections: Mapped[list["XeroConnection"]] = relationship(back_populates="entity")
     basiq_connections: Mapped[list["BasiqConnection"]] = relationship(back_populates="entity")
     insights_snapshots: Mapped[list["InsightsSnapshot"]] = relationship(back_populates="entity")
+    owners: Mapped[list["Owner"]] = relationship(back_populates="entity")
 
 
 Index("entity_org_idx", Entity.organisation_id, postgresql_where=Entity.deleted_at.is_(None))
@@ -588,6 +589,7 @@ class Property(Base):
     tenancy_units: Mapped[list["TenancyUnit"]] = relationship(back_populates="property")
     obligations: Mapped[list["Obligation"]] = relationship(back_populates="property")
     documents: Mapped[list["StoredDocument"]] = relationship(back_populates="property")
+    owner_links: Mapped[list["PropertyOwner"]] = relationship(back_populates="property")
 
 
 Index("property_entity_idx", Property.entity_id, postgresql_where=Property.deleted_at.is_(None))
@@ -1287,6 +1289,85 @@ Index(
     Contractor.entity_id,
     postgresql_where=Contractor.deleted_at.is_(None),
 )
+
+
+class Owner(Base):
+    """First-class property owner / investor (DoorLoop benchmark P0).
+
+    Replaces the legacy per-``Property`` owner fields as the model of record.
+    The 11 ``Property.owner_*`` columns remain as a backfill source until the
+    read paths (owner statements, billing identity) are cut over; see
+    ``docs/superpowers/plans/2026-05-31-people-hub-and-ia-refocus.md``.
+    """
+
+    __tablename__ = "owner"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    legal_name: Mapped[str | None] = mapped_column(Text)
+    abn: Mapped[str | None] = mapped_column(Text)
+    trustee_name: Mapped[str | None] = mapped_column(Text)
+    trust_name: Mapped[str | None] = mapped_column(Text)
+    invoice_issuer_name: Mapped[str | None] = mapped_column(Text)
+    billing_contact_name: Mapped[str | None] = mapped_column(Text)
+    billing_email: Mapped[str | None] = mapped_column(Text)
+    invoice_reference: Mapped[str | None] = mapped_column(Text)
+    gst_registered: Mapped[bool | None] = mapped_column(Boolean)
+    xero_contact_id: Mapped[str | None] = mapped_column(Text)
+    owner_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="owners")
+    property_links: Mapped[list["PropertyOwner"]] = relationship(back_populates="owner")
+
+
+Index("owner_entity_idx", Owner.entity_id, postgresql_where=Owner.deleted_at.is_(None))
+
+
+class PropertyOwner(Base):
+    """Association of a property to an owner with an ownership split percentage.
+
+    Supports shared ownership: a property can carry multiple owners whose
+    ``split_pct`` values sum to 100. ``Numeric(6, 3)`` keeps splits like 33.333
+    exact; ``asdecimal=False`` returns a plain float for the API/JSON layer.
+    """
+
+    __tablename__ = "property_owner"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    property_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("property.id"), nullable=False
+    )
+    owner_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("owner.id"), nullable=False
+    )
+    split_pct: Mapped[float] = mapped_column(
+        Numeric(6, 3, asdecimal=False), nullable=False, default=100
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    property: Mapped[Property] = relationship(back_populates="owner_links")
+    owner: Mapped[Owner] = relationship(back_populates="property_links")
+
+    __table_args__ = (
+        UniqueConstraint("property_id", "owner_id", name="property_owner_unique"),
+    )
+
+
+Index("property_owner_owner_idx", PropertyOwner.owner_id)
+Index("property_owner_property_idx", PropertyOwner.property_id)
 
 
 class StoredDocument(Base):
