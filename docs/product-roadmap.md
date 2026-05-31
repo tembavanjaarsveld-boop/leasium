@@ -255,7 +255,11 @@ Equifax/illion; RTBA/state RTAs).
 - [x] **Owner as a first-class entity.** SHIPPED (commit `5685c90`): `Owner` + `PropertyOwner`
   models, migration `20260531_0029`, `/api/v1/owners` CRUD + property-link attach/detach,
   idempotent `scripts.backfill_owners`, and a statement-grouping parity test. Legacy
-  `Property.owner_*` fields kept as the backfill source until the read-path swap (below).
+  `Property.owner_*` fields are now a backfill source only.
+- [x] **Owner statement read-path cutover.** SHIPPED: `/api/v1/owners/statements` now groups
+  by `Owner`/`PropertyOwner` links, keeps unlinked properties visible in an
+  `Unattributed` fallback bucket, and leaves statement PDF/dispatch/provider guardrails
+  unchanged. The parity test remains as the safety net for the backfilled SKJ data.
 - [~] **People hub IA.** SHIPPED pending Remba review: `/people` with a live Owners
   directory (on the new API), Tenants/Vendors inline under the same hub, Prospects stub,
   `?tab=` URL state, sidebar slot, palette actions, and `G E`. Remaining: consistent

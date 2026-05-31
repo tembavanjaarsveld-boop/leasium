@@ -2,10 +2,11 @@
 
 v1 of the owner monthly statements feature from the automation strategy
 (`docs/automation-strategy-2026-05-23.md`). Backend-only — exposes a
-read endpoint that groups properties by owner identity (derived from
-existing `Property` columns; no `owner` table) and rolls up invoice totals
-for a month. v2 wires a frontend statements page; v3 adds PDF generation;
-v4 dispatches drafts through the comms queue.
+read endpoint that groups properties by first-class `Owner` / `PropertyOwner`
+links and rolls up invoice totals for a month. Legacy `Property` owner fields
+remain only as the backfill source for Owner records. v2 wires a frontend
+statements page; v3 adds PDF generation; v4 dispatches drafts through the
+comms queue.
 
 Read-only — never mutates, never sends.
 """
@@ -28,8 +29,10 @@ from stewart.core.db import utcnow
 from stewart.core.models import (
     InvoiceDraft,
     InvoiceDraftStatus,
+    Owner,
     OwnerStatementDispatch,
     Property,
+    PropertyOwner,
     UserRole,
 )
 from stewart.core.settings import get_settings
@@ -137,6 +140,20 @@ def _identity_label(prop: Property) -> str:
         return prop.owner_legal_name.strip()
     if prop.invoice_issuer_name:
         return prop.invoice_issuer_name.strip()
+    return "Unattributed"
+
+
+def _owner_entity_label(owner: Owner) -> str:
+    if owner.trust_name and owner.trustee_name:
+        return f"{owner.trust_name.strip()} (Trustee: {owner.trustee_name.strip()})"
+    if owner.trust_name:
+        return owner.trust_name.strip()
+    if owner.trustee_name:
+        return owner.trustee_name.strip()
+    if owner.legal_name:
+        return owner.legal_name.strip()
+    if owner.invoice_issuer_name:
+        return owner.invoice_issuer_name.strip()
     return "Unattributed"
 
 
@@ -302,35 +319,72 @@ def _build_owner_statements(
         assert invoice.property_id is not None  # filtered above
         invoices_by_property.setdefault(invoice.property_id, []).append(invoice)
 
-    # Group properties by owner identity.
-    owners_by_identity: dict[
-        tuple[str | None, str | None, str | None, str | None],
-        dict[str, Any],
-    ] = {}
+    # Group properties by the first-class Owner model. Legacy Property owner
+    # fields are now only a backfill source; unlinked properties stay visible
+    # in a single operator-facing fallback bucket.
+    properties_by_id = {prop.id: prop for prop in properties}
+    property_ids = list(properties_by_id)
+    owners_by_identity: dict[UUID | str, dict[str, Any]] = {}
+    linked_property_ids: set[UUID] = set()
+    if property_ids:
+        owner_links = session.execute(
+            select(PropertyOwner.property_id, Owner)
+            .join(Owner, PropertyOwner.owner_id == Owner.id)
+            .where(
+                PropertyOwner.property_id.in_(property_ids),
+                Owner.entity_id == entity_id,
+                Owner.deleted_at.is_(None),
+            )
+        ).all()
+        for property_id, owner in owner_links:
+            prop = properties_by_id.get(property_id)
+            if prop is None:
+                continue
+            bucket = owners_by_identity.setdefault(
+                owner.id,
+                {
+                    "label": _owner_entity_label(owner),
+                    "owner": owner,
+                    "properties": [],
+                },
+            )
+            bucket["properties"].append(prop)
+            linked_property_ids.add(property_id)
+
+    unattributed = owners_by_identity.setdefault(
+        "unattributed",
+        {
+            "label": "Unattributed",
+            "owner": None,
+            "properties": [],
+        },
+    )
     for prop in properties:
-        identity = _owner_identity_tuple(prop)
-        bucket = owners_by_identity.setdefault(
-            identity,
-            {
-                "label": _identity_label(prop),
-                "sample": prop,
-                "properties": [],
-            },
-        )
-        # Prefer a richer label as more properties roll in (e.g., one
-        # property has trust_name set, another doesn't — use the
-        # trust-named property's label).
-        if (
-            bucket["label"] == "Unattributed"
-            and _identity_label(prop) != "Unattributed"
-        ):
-            bucket["label"] = _identity_label(prop)
-            bucket["sample"] = prop
-        bucket["properties"].append(prop)
+        if prop.id not in linked_property_ids:
+            unattributed["properties"].append(prop)
+    if not unattributed["properties"]:
+        owners_by_identity.pop("unattributed", None)
+
+    label_counts: dict[str, int] = {}
+    for bucket in owners_by_identity.values():
+        label_key = bucket["label"].casefold()
+        label_counts[label_key] = label_counts.get(label_key, 0) + 1
+    used_identity_labels: set[str] = set()
+    for bucket in owners_by_identity.values():
+        owner: Owner | None = bucket["owner"]
+        label = bucket["label"]
+        if owner is not None and label_counts[label.casefold()] > 1:
+            owner_name = owner.legal_name.strip() if owner.legal_name else ""
+            if owner_name and owner_name.casefold() not in label.casefold():
+                label = f"{label} ({owner_name})"
+            if label.casefold() in used_identity_labels:
+                label = f"{bucket['label']} ({str(owner.id)[:8]})"
+            bucket["label"] = label
+        used_identity_labels.add(bucket["label"].casefold())
 
     statements: list[OwnerStatementRead] = []
     for bucket in owners_by_identity.values():
-        sample: Property = bucket["sample"]
+        owner: Owner | None = bucket["owner"]
         props: list[Property] = bucket["properties"]
 
         property_lines: list[OwnerPropertyLine] = []
@@ -375,12 +429,12 @@ def _build_owner_statements(
         statements.append(
             OwnerStatementRead(
                 owner_identity=bucket["label"],
-                owner_legal_name=sample.owner_legal_name,
-                trustee_name=sample.trustee_name,
-                trust_name=sample.trust_name,
-                invoice_issuer_name=sample.invoice_issuer_name,
-                billing_contact_name=sample.billing_contact_name,
-                billing_email=sample.billing_email,
+                owner_legal_name=owner.legal_name if owner else None,
+                trustee_name=owner.trustee_name if owner else None,
+                trust_name=owner.trust_name if owner else None,
+                invoice_issuer_name=owner.invoice_issuer_name if owner else None,
+                billing_contact_name=owner.billing_contact_name if owner else None,
+                billing_email=owner.billing_email if owner else None,
                 property_count=len(props),
                 properties=property_lines,
                 invoiced_cents=owner_invoiced,
@@ -716,11 +770,12 @@ def get_owner_statements(
 ) -> OwnerStatementsRead:
     """Return per-owner monthly statements for `entity_id`.
 
-    Groups properties by owner identity tuple, then for each owner sums
+    Groups properties by Owner/PropertyOwner links, then for each owner sums
     the InvoiceDraft totals whose `issue_date` falls in the target month.
-    Paid totals come from `invoice_metadata.paid_cents` (written by Xero
-    reconciliation). Outstanding = invoiced - paid, floored at zero so a
-    payment overshoot doesn't show negative.
+    Unlinked properties remain visible in an Unattributed bucket. Paid totals
+    come from `invoice_metadata.paid_cents` (written by Xero reconciliation).
+    Outstanding = invoiced - paid, floored at zero so a payment overshoot
+    doesn't show negative.
     """
 
     assert_entity_role(session, user, entity_id, READ_ROLES)

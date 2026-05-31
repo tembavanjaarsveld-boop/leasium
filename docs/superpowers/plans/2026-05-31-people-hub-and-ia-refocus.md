@@ -10,7 +10,9 @@ Backlog: `docs/product-roadmap.md` → "DoorLoop benchmark refocus (2026-05-31)"
 - Ticket 1.1 (Owner + PropertyOwner models + migration `20260531_0029`): **SHIPPED** (`5685c90`).
 - Ticket 1.4 (Owner CRUD API) + owner↔property link endpoints: **SHIPPED** (`5685c90`).
 - Ticket 1.2 (idempotent backfill + `scripts.backfill_owners`): **SHIPPED** (`5685c90`).
-- Ticket 1.3 (statement read-path cutover): parity test **PROVEN** (`tests/integration/test_owner_statement_parity.py`); the endpoint swap itself is **DEFERRED** — do it with eyes on real SKJ data.
+- Ticket 1.3 (statement read-path cutover): **SHIPPED** — `/owners/statements`
+  groups by `Owner`/`PropertyOwner`, with unlinked properties in an
+  `Unattributed` fallback; parity test still guards the backfilled SKJ data.
 - Ticket 2.1 (`/people` hub): **SHIPPED** (`d0bd122`) — Owners directory live; Tenants/Vendors now inline after Phase 3; Prospects stub.
 - Ticket 2.2 (consistent people record-page shape): **TODO**.
 - Phase 3 (nav consolidation to 7 hubs): **SHIPPED pending Remba review** — sidebar is Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings); `/money` hub added; Comms routes under Work; hub alias redirects added.
@@ -34,8 +36,11 @@ and distributions (P1+). Net-new feature count is low; it's mostly a structural 
 3. **No "done" without fresh evidence** — paste the passing test / lint / build output.
 4. **Review-first guardrail holds** (`CLAUDE.md` §2.1): no Xero write, SendGrid, Twilio,
    tenant email, or payment reconciliation without explicit operator approval.
-5. **Additive + reversible**: keep legacy Property owner-fields until the Owner read path
-   is proven at parity. No destructive migration in this plan.
+5. **Additive + reversible**: legacy Property owner-fields remain as backfill source
+   fields; no destructive migration in this plan.
+6. **Agent-first execution**: use agents wherever they can materially help with
+   parallel reconnaissance, bounded implementation, or review/verification; keep
+   immediate blockers local and verify every agent result before shipping.
 
 ## Tooling (Temba's Mac, via Desktop Commander)
 
@@ -76,9 +81,13 @@ and distributions (P1+). Net-new feature count is low; it's mostly a structural 
 - **Red first:** `test_owner_statements_parity_owner_entity_vs_legacy_tuple` — for the
   seeded month, statements computed from `Owner` rows == statements computed from the
   legacy property-tuple grouping (same owners, same property lines, same totals).
-- **Implementation:** switch `/api/v1/owners/statements` to read from `Owner`/`PropertyOwner`
-  while leaving the legacy fields intact as backfill source. Keep all dispatch/PDF behaviour
-  and the no-send guardrail unchanged.
+- **Implementation:** shipped. `/api/v1/owners/statements` now reads from
+  `Owner`/`PropertyOwner` while leaving the legacy fields intact as backfill
+  source only. Dispatch/PDF behaviour and the no-send guardrail stayed unchanged.
+- **Follow-up:** split-aware allocation is deliberately out of scope for this
+  grouping cutover. Before shared-ownership statements are used in production,
+  add a separate ticket to apply `PropertyOwner.split_pct` to property-line and
+  owner totals.
 - **Verify:** parity test green; existing `test_owner_statements*` still pass.
 
 ### Ticket 1.4 — Owner CRUD API + minimal Owner detail

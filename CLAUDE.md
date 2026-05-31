@@ -75,6 +75,22 @@ These guidelines are working if: fewer unnecessary changes in diffs,
 fewer rewrites due to overcomplication, and clarifying questions come
 before implementation rather than after mistakes.
 
+### 1.5 Agent-first execution
+
+**Use agents where they can materially help.**
+
+- Default to spawning agents for bounded sidecar work, independent code
+  reconnaissance, focused implementation slices with disjoint write sets,
+  and review/verification tasks that can run while the main thread keeps
+  moving.
+- Keep the immediate critical-path blocker local when waiting for an
+  agent would slow the work down.
+- Give agents exact scope, files or responsibilities, constraints, and
+  expected output. Tell coding agents they are not alone in the codebase
+  and must not revert unrelated changes.
+- Review and verify agent output before claiming status, committing, or
+  moving to the next ticket.
+
 ---
 
 ## 2. Leasium specifics

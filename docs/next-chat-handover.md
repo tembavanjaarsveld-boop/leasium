@@ -46,13 +46,43 @@ current at `d2e5907` before this slice.
   `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
   succeeded.
 
+### Ticket 1.3 slice
+- `/api/v1/owners/statements` now groups statement buckets from
+  `Owner`/`PropertyOwner` links instead of the legacy `Property.owner_*`
+  identity tuple. Legacy fields remain as a backfill source only.
+- Properties with no active `PropertyOwner` link remain visible under a single
+  `Unattributed` statement bucket, even when legacy owner text is still present
+  on the property.
+- Distinct Owner rows that share the same display label now get disambiguated
+  statement identities so PDF download and dispatch review can target each one.
+- Statement PDF, ZIP pack, dispatch receipt, SendGrid guardrail, and no-provider
+  mutation behaviour were left unchanged.
+- Agent-first operating rule is now recorded in `CLAUDE.md`, this handover, and
+  the active superpowers plan.
+- Red-green proof:
+  `test_owner_statements_group_by_owner_entity_not_legacy_tuple` and
+  `test_owner_statements_unattributed_bucket` failed under the legacy grouping,
+  then passed after the cutover.
+- Verification:
+  `tests/integration/test_owner_statement_parity.py tests/integration/test_owners_api.py`
+  passed **18 passed**; owner-adjacent integration slice passed **30 passed**;
+  targeted `ruff check` passed; full backend integration passed **346 passed /
+  1 skipped**.
+
 ### Next
-1. After this Phase 3 slice lands on `main`, verify the Vercel production
-   deployment for the resulting commit.
-2. After prod is verified, start Ticket 1.3 (`/owners/statements` read-path
-   swap) with eyes on the now-backfilled real data. Change only the grouping in
-   `_build_owner_statements`; keep
-   `tests/integration/test_owner_statement_parity.py` green.
+1. Finish verification for Ticket 1.3, commit to `main`, push, and verify Render
+   deploys the backend commit.
+2. Before using shared-ownership splits in production statements, add a dedicated
+   split-allocation ticket: `PropertyOwner.split_pct` exists, but this Ticket 1.3
+   deliberately changed grouping only.
+3. Start Ticket 2.2 — consistent people record-page shape (Tenant/Owner/Vendor
+   share header → tabs → actions).
+
+### Operating rule
+- Use agents wherever they can materially advance the work: parallel
+  reconnaissance, bounded implementation slices with disjoint write sets, and
+  review/verification lanes. Keep immediate blockers local, and review/verify
+  agent output before claiming status or committing.
 
 ## Codex Takeover — 2026-05-31 (READ THIS FIRST)
 
@@ -86,6 +116,8 @@ Handover from a Cowork (Claude) session. Prod is healthy and current. Everything
 - Review-first providers: no Xero write / SendGrid / Twilio / tenant email / payment reconciliation without explicit operator approval.
 - `Owner` is the model of record; legacy `Property.owner_*` fields are a **backfill source only**.
 - Additive + test-first (no production code without a failing test). Commits land directly on `main`, no PRs, no Claude/Codex attribution lines.
+- Agent-first execution: use agents for bounded parallel work whenever useful,
+  while keeping immediate blockers local and verifying every agent result.
 
 ### TOOLCHAIN (Temba's Mac, via Desktop Commander)
 - Backend: `.venv/bin/python -m pytest`, `.venv/bin/python -m ruff check ...`, `.venv/bin/alembic upgrade head` (`uv` unavailable).

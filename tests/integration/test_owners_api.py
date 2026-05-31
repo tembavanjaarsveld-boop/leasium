@@ -16,7 +16,9 @@ from stewart.core.models import (
     Entity,
     InvoiceDraft,
     InvoiceDraftStatus,
+    Owner,
     Property,
+    PropertyOwner,
     PropertyType,
     StoredDocument,
 )
@@ -33,6 +35,22 @@ def _entity(session: Session) -> Entity:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
     return entity
+
+
+def _link_owner_from_property_fields(session: Session, prop: Property) -> Owner:
+    owner = Owner(
+        entity_id=prop.entity_id,
+        legal_name=prop.owner_legal_name,
+        trustee_name=prop.trustee_name,
+        trust_name=prop.trust_name,
+        invoice_issuer_name=prop.invoice_issuer_name,
+        billing_email=prop.billing_email,
+        billing_contact_name=prop.billing_contact_name,
+    )
+    session.add(owner)
+    session.flush()
+    session.add(PropertyOwner(property_id=prop.id, owner_id=owner.id))
+    return owner
 
 
 def _seed_owner_with_invoices(
@@ -70,6 +88,17 @@ def _seed_owner_with_invoices(
     )
     session.add(bd)
     session.flush()
+    owner = Owner(
+        entity_id=entity.id,
+        legal_name=trustee_name,
+        trustee_name=trustee_name,
+        trust_name=trust_name,
+        invoice_issuer_name=f"{trust_name} via {trustee_name}",
+        billing_email=billing_email,
+        billing_contact_name=billing_contact_name,
+    )
+    session.add(owner)
+    session.flush()
 
     property_ids: list[str] = []
     for property_name, invoice_specs in properties:
@@ -87,6 +116,7 @@ def _seed_owner_with_invoices(
         )
         session.add(prop)
         session.flush()
+        session.add(PropertyOwner(property_id=prop.id, owner_id=owner.id))
         property_ids.append(str(prop.id))
 
         for issue_date, total_cents, paid_cents in invoice_specs:
@@ -201,6 +231,7 @@ def test_owner_statements_include_invoice_evidence_without_mutating_metadata(
     )
     session.add(prop)
     session.flush()
+    _link_owner_from_property_fields(session, prop)
     metadata = {
         "payment_status": {
             "status": "partially_paid",
@@ -298,6 +329,7 @@ def test_owner_statements_invoice_evidence_uses_metadata_fallbacks(
     )
     session.add(prop)
     session.flush()
+    _link_owner_from_property_fields(session, prop)
     session.add_all(
         [
             InvoiceDraft(
@@ -421,6 +453,199 @@ def test_owner_statements_keeps_owners_separate(
     assert owners[1]["outstanding_cents"] == 200_000
 
 
+def test_owner_statements_group_by_owner_entity_not_legacy_tuple(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """PropertyOwner links, not legacy Property fields, define statement owners."""
+
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="owner-entity-cutover.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Owner entity cutover",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    session.add(bd)
+    owner_a = Owner(
+        entity_id=entity.id,
+        legal_name="Alpha Owner Pty Ltd",
+        trustee_name="Alpha Trustee Pty Ltd",
+        trust_name="Alpha Trust",
+        invoice_issuer_name="Alpha Trust via Alpha Trustee Pty Ltd",
+        billing_email="alpha@example.test",
+    )
+    owner_b = Owner(
+        entity_id=entity.id,
+        legal_name="Beta Owner Pty Ltd",
+        trustee_name="Beta Trustee Pty Ltd",
+        trust_name="Beta Trust",
+        invoice_issuer_name="Beta Trust via Beta Trustee Pty Ltd",
+        billing_email="beta@example.test",
+    )
+    session.add_all([owner_a, owner_b])
+    session.flush()
+
+    shared_legacy_fields = {
+        "owner_legal_name": "Legacy Shared Pty Ltd",
+        "trustee_name": "Legacy Trustee Pty Ltd",
+        "trust_name": "Legacy Trust",
+        "invoice_issuer_name": "Legacy Trust via Legacy Trustee Pty Ltd",
+    }
+    for owner, property_name, total_cents in [
+        (owner_a, "Alpha Linked Property", 500_000),
+        (owner_b, "Beta Linked Property", 200_000),
+    ]:
+        prop = Property(
+            entity_id=entity.id,
+            name=property_name,
+            street_address=f"{property_name} street",
+            property_type=PropertyType.commercial_retail,
+            **shared_legacy_fields,
+        )
+        session.add(prop)
+        session.flush()
+        session.add(PropertyOwner(property_id=prop.id, owner_id=owner.id))
+        session.add(
+            InvoiceDraft(
+                entity_id=entity.id,
+                billing_draft_id=bd.id,
+                property_id=prop.id,
+                document_id=doc.id,
+                status=InvoiceDraftStatus.approved,
+                title=f"Invoice {property_name}",
+                currency="AUD",
+                issue_date=date(2026, 4, 12),
+                subtotal_cents=total_cents,
+                gst_cents=0,
+                total_cents=total_cents,
+                invoice_metadata={},
+            )
+        )
+    session.commit()
+
+    response = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": str(entity.id), "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    owners = response.json()["owners"]
+    assert len(owners) == 2
+    assert [owner["trust_name"] for owner in owners] == ["Alpha Trust", "Beta Trust"]
+    assert [owner["invoiced_cents"] for owner in owners] == [500_000, 200_000]
+    assert {owner["billing_email"] for owner in owners} == {
+        "alpha@example.test",
+        "beta@example.test",
+    }
+
+
+def test_owner_statement_identity_disambiguates_duplicate_owner_labels_for_pdf(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Distinct Owner rows with the same label remain selectable."""
+
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="duplicate-owner-labels.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Duplicate owner labels",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    session.add(bd)
+    owner_a = Owner(
+        entity_id=entity.id,
+        legal_name="Duplicate Owner A Pty Ltd",
+        trust_name="Duplicate Trust",
+    )
+    owner_b = Owner(
+        entity_id=entity.id,
+        legal_name="Duplicate Owner B Pty Ltd",
+        trust_name="Duplicate Trust",
+    )
+    session.add_all([owner_a, owner_b])
+    session.flush()
+
+    for owner, property_name, total_cents in [
+        (owner_a, "First Duplicate Property", 500_000),
+        (owner_b, "Second Duplicate Property", 200_000),
+    ]:
+        prop = Property(
+            entity_id=entity.id,
+            name=property_name,
+            street_address=f"{property_name} street",
+            property_type=PropertyType.commercial_retail,
+        )
+        session.add(prop)
+        session.flush()
+        session.add(PropertyOwner(property_id=prop.id, owner_id=owner.id))
+        session.add(
+            InvoiceDraft(
+                entity_id=entity.id,
+                billing_draft_id=bd.id,
+                property_id=prop.id,
+                document_id=doc.id,
+                status=InvoiceDraftStatus.approved,
+                title=f"Invoice {property_name}",
+                currency="AUD",
+                issue_date=date(2026, 4, 12),
+                subtotal_cents=total_cents,
+                gst_cents=0,
+                total_cents=total_cents,
+                invoice_metadata={},
+            )
+        )
+    session.commit()
+
+    statements_response = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": str(entity.id), "month": "2026-04"},
+    )
+
+    assert statements_response.status_code == 200
+    owners = statements_response.json()["owners"]
+    assert len(owners) == 2
+    identities = [owner["owner_identity"] for owner in owners]
+    assert len(set(identities)) == 2
+
+    pdf_response = client.get(
+        "/api/v1/owners/statements/pdf",
+        params={
+            "entity_id": str(entity.id),
+            "month": "2026-04",
+            "owner_identity": identities[1],
+        },
+    )
+    assert pdf_response.status_code == 200
+    text = "\n".join(
+        page.extract_text() or ""
+        for page in PdfReader(BytesIO(pdf_response.content)).pages
+    )
+    assert "Second Duplicate Property" in text
+    assert "First Duplicate Property" not in text
+
+
 def test_owner_statements_excludes_other_months(
     client: TestClient,
     session: Session,
@@ -474,7 +699,7 @@ def test_owner_statements_unattributed_bucket(
     client: TestClient,
     session: Session,
 ) -> None:
-    """A property with no owner identification falls into 'Unattributed'."""
+    """A property with no Owner link falls into 'Unattributed'."""
 
     entity = _entity(session)
     doc = StoredDocument(
@@ -500,6 +725,10 @@ def test_owner_statements_unattributed_bucket(
         name="Unowned Property",
         street_address="123 Nowhere Lane",
         property_type=PropertyType.commercial_retail,
+        owner_legal_name="Legacy Owner Text Pty Ltd",
+        trustee_name="Legacy Trustee Text Pty Ltd",
+        trust_name="Legacy Owner Text Trust",
+        invoice_issuer_name="Legacy Owner Text Trust via Trustee",
     )
     session.add(prop)
     session.flush()
@@ -605,6 +834,7 @@ def test_owner_statement_pdf_wraps_long_finance_evidence_rows(
     )
     session.add(prop)
     session.flush()
+    _link_owner_from_property_fields(session, prop)
     for index in range(12):
         session.add(
             InvoiceDraft(
@@ -753,6 +983,7 @@ def test_owner_statement_exports_include_invoice_evidence(
     )
     session.add(prop)
     session.flush()
+    _link_owner_from_property_fields(session, prop)
     session.add(
         InvoiceDraft(
             entity_id=entity.id,

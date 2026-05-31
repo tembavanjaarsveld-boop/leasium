@@ -1,9 +1,9 @@
 """Schemas for owner-grouped statements.
 
-The owner concept is derived from existing Property fields (`owner_legal_name`,
-`trustee_name`, `trust_name`, `invoice_issuer_name`) — no dedicated owner
-table exists. The v1 statements endpoint groups properties by an identity
-tuple computed from those fields and rolls up invoice totals per month.
+Owner statements group properties through first-class `Owner` /
+`PropertyOwner` links. Legacy Property owner fields remain as the backfill
+source for Owner records, while unlinked properties roll into the
+operator-facing `Unattributed` fallback bucket.
 """
 
 from __future__ import annotations
