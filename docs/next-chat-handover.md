@@ -208,15 +208,51 @@ before the Ticket 2.2 slice.
   `Owner account`, `Operator preview`, `source_label`, and the account document
   download path.
 
+### Owner statement split-allocation slice
+- In progress in this continuation. Plan:
+  `docs/superpowers/plans/2026-05-31-owner-statement-split-allocation.md`.
+- Backend: `/api/v1/owners/statements` now carries `PropertyOwner.split_pct`
+  into statement aggregation, so shared-property invoice totals are allocated
+  by owner split instead of duplicated into every linked owner. Unlinked
+  properties still fall into `Unattributed` at 100%.
+- The allocated values flow through owner statement JSON, owner portal
+  statement projections, owner statement PDFs, statement pack manifests, and
+  invoice evidence CSVs because they all read from the same statement builder.
+- Guardrails unchanged: this is a read-path change only; statement send/dispatch
+  remains explicit approval only, and no owner email, Xero/Basiq/provider write,
+  payment reconciliation, provider refresh, or provider-history mutation was
+  added.
+- Red-green proof:
+  `test_owner_statements_allocates_shared_property_totals_by_split_pct` first
+  failed because both 60/40 owners received the full invoice, then passed after
+  allocation. Owner portal expectations were updated for the fixture's 40/60
+  linked-property splits.
+- Rounding guard: `test_owner_statements_allocates_split_rounding_residue_once`
+  covers a one-cent 50/50 split so allocation cannot create duplicate cents.
+- Review fixes: allocated invoice evidence now keeps
+  `paid_cents + outstanding_cents == total_cents` whenever the source invoice
+  balances, caps allocated paid cents at each owner's allocated total for tiny
+  split percentages, normalises invalid over-100 linked split totals defensively
+  so they cannot duplicate full invoices, and owner statements include a stable
+  `owner_id` so owner portal previews match duplicate-label co-owners on the
+  same shared property by id rather than by display text alone.
+- Verification so far:
+  `.venv/bin/python -m pytest tests/integration/test_owners_api.py tests/integration/test_owner_portal_api.py tests/integration/test_owner_portal_auth_api.py tests/integration/test_owner_statement_parity.py -q`
+  passed **35 passed**; targeted backend ruff passed; web `tsc --noEmit` and
+  targeted `eslint src/lib/api.ts` passed; `apps/web` statements smoke passed
+  **3 passed**.
+
 ### Next
-1. Before using shared-ownership splits in production statements, add a dedicated
-   split-allocation ticket: `PropertyOwner.split_pct` exists, but this Ticket 1.3
-   deliberately changed grouping only.
-2. Test production owner invites and secure document downloads with a real Clerk
+1. Test production owner invites and secure document downloads with a real Clerk
    owner account before broad owner rollout.
-3. Add richer owner dashboard sections after the shared-document boundary is
+   This is blocked in Codex without operator input: it needs a real operator
+   Clerk session, a chosen production owner, a matching owner Clerk account, an
+   eligible `owner_portal_visible` document, and explicit approval because invite
+   creation/account claim mutate production state, even though they send no
+   owner email and touch no providers.
+2. Add richer owner dashboard sections after the shared-document boundary is
    reviewed on real SKJ files.
-4. Add owner-detail route-level 404 polish if that matters before the next owner
+3. Add owner-detail route-level 404 polish if that matters before the next owner
    portal slice.
 
 ### Operating rule

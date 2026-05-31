@@ -5072,6 +5072,7 @@ export type OwnerPropertyLineRecord = {
 };
 
 export type OwnerStatementRecord = {
+  owner_id: string | null;
   owner_identity: string;
   owner_legal_name: string | null;
   trustee_name: string | null;

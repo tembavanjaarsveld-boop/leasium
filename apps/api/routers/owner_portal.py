@@ -447,6 +447,8 @@ def _statement_matches_owner(
     statement_property_ids = {line.property_id for line in statement.properties}
     if statement_property_ids != property_ids:
         return False
+    if statement.owner_id is not None:
+        return statement.owner_id == owner.id
     if statement.owner_identity == _owner_display_name(owner):
         return True
     return (

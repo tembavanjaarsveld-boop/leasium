@@ -150,10 +150,17 @@ def test_owner_portal_preview_returns_read_only_owner_summary(
     assert body["statement"]["owner_identity"] == "SKJ Holdings Pty Ltd"
     assert body["statement"]["property_count"] == 2
     assert body["statement"]["invoice_count"] == 2
-    assert body["statement"]["invoiced_cents"] == 1_760_000
+    assert body["statement"]["invoiced_cents"] == 880_000
     assert body["statement"]["paid_cents"] == 0
-    assert body["statement"]["outstanding_cents"] == 1_760_000
+    assert body["statement"]["outstanding_cents"] == 880_000
     assert len(body["statement"]["properties"]) == 2
+    assert [
+        (row["property_name"], row["invoiced_cents"], row["outstanding_cents"])
+        for row in body["statement"]["properties"]
+    ] == [
+        ("Queen Street Retail Centre", 528_000, 528_000),
+        ("King Street Offices", 352_000, 352_000),
+    ]
     assert "invoices" not in body["statement"]["properties"][0]
     assert body["guardrails"] == [
         (
@@ -167,6 +174,83 @@ def test_owner_portal_preview_returns_read_only_owner_summary(
             "statement PDFs are generated or sent from the portal."
         ),
     ]
+
+
+def test_owner_portal_statement_matches_duplicate_shared_owner_by_owner_id(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Duplicate-label co-owners on the same property get their own split."""
+
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="owner-portal-duplicate-split.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    draft = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Owner portal duplicate split billing",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    owner_a = Owner(
+        entity_id=entity.id,
+        legal_name="Duplicate Shared Owner Pty Ltd",
+        billing_email="shared-a@example.test",
+    )
+    owner_b = Owner(
+        entity_id=entity.id,
+        legal_name="Duplicate Shared Owner Pty Ltd",
+        billing_email="shared-b@example.test",
+    )
+    prop = Property(
+        entity_id=entity.id,
+        name="Duplicate Shared Property",
+        street_address="20 Shared Street",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add_all([draft, owner_a, owner_b, prop])
+    session.flush()
+    session.add_all(
+        [
+            PropertyOwner(property_id=prop.id, owner_id=owner_a.id, split_pct=60),
+            PropertyOwner(property_id=prop.id, owner_id=owner_b.id, split_pct=40),
+        ]
+    )
+    session.add(
+        InvoiceDraft(
+            entity_id=entity.id,
+            billing_draft_id=draft.id,
+            property_id=prop.id,
+            document_id=doc.id,
+            status=InvoiceDraftStatus.approved,
+            title="Duplicate shared owner invoice",
+            currency="AUD",
+            issue_date=date(2026, 5, 15),
+            subtotal_cents=100_000,
+            gst_cents=0,
+            total_cents=100_000,
+            invoice_metadata={"paid_cents": 0},
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        f"/api/v1/owner-portal/{owner_b.id}",
+        params={"month": "2026-05"},
+    )
+
+    assert response.status_code == 200, response.text
+    statement = response.json()["statement"]
+    assert statement["owner_identity"].startswith("Duplicate Shared Owner Pty Ltd")
+    assert statement["invoiced_cents"] == 40_000
+    assert statement["properties"][0]["invoiced_cents"] == 40_000
 
 
 def test_owner_portal_lists_only_explicit_owner_visible_property_documents(

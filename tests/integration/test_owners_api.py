@@ -3,8 +3,14 @@
 from datetime import date
 from io import BytesIO
 from typing import Any, TypedDict
+from uuid import uuid4
 from zipfile import ZipFile
 
+from apps.api.routers.owners import (
+    _allocated_cents_by_split,
+    _allocated_invoice_evidence_line,
+)
+from apps.api.schemas.owners import OwnerInvoiceEvidenceLine
 from fastapi.testclient import TestClient
 from pypdf import PdfReader
 from sqlalchemy import select
@@ -548,6 +554,383 @@ def test_owner_statements_group_by_owner_entity_not_legacy_tuple(
         "alpha@example.test",
         "beta@example.test",
     }
+
+
+def test_owner_statements_allocates_shared_property_totals_by_split_pct(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Shared property invoices are allocated by PropertyOwner.split_pct."""
+
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="shared-split.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Shared split billing",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    owner_a = Owner(entity_id=entity.id, legal_name="Alpha Split Pty Ltd")
+    owner_b = Owner(entity_id=entity.id, legal_name="Beta Split Pty Ltd")
+    prop = Property(
+        entity_id=entity.id,
+        name="Shared Split Property",
+        street_address="10 Split Street",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add_all([bd, owner_a, owner_b, prop])
+    session.flush()
+    session.add_all(
+        [
+            PropertyOwner(property_id=prop.id, owner_id=owner_a.id, split_pct=60),
+            PropertyOwner(property_id=prop.id, owner_id=owner_b.id, split_pct=40),
+        ]
+    )
+    session.add(
+        InvoiceDraft(
+            entity_id=entity.id,
+            billing_draft_id=bd.id,
+            property_id=prop.id,
+            document_id=doc.id,
+            status=InvoiceDraftStatus.approved,
+            title="Shared split invoice",
+            currency="AUD",
+            issue_date=date(2026, 4, 15),
+            subtotal_cents=100_000,
+            gst_cents=0,
+            total_cents=100_000,
+            invoice_metadata={"paid_cents": 25_000},
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": str(entity.id), "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    owners = {owner["owner_identity"]: owner for owner in response.json()["owners"]}
+    assert set(owners) == {"Alpha Split Pty Ltd", "Beta Split Pty Ltd"}
+
+    alpha = owners["Alpha Split Pty Ltd"]
+    assert alpha["invoiced_cents"] == 60_000
+    assert alpha["paid_cents"] == 15_000
+    assert alpha["outstanding_cents"] == 45_000
+    assert alpha["invoice_count"] == 1
+    assert alpha["properties"][0]["invoiced_cents"] == 60_000
+    assert alpha["properties"][0]["paid_cents"] == 15_000
+    assert alpha["properties"][0]["outstanding_cents"] == 45_000
+    alpha_invoice = alpha["properties"][0]["invoices"][0]
+    assert alpha_invoice["total_cents"] == 60_000
+    assert alpha_invoice["paid_cents"] == 15_000
+    assert alpha_invoice["outstanding_cents"] == 45_000
+
+    beta = owners["Beta Split Pty Ltd"]
+    assert beta["invoiced_cents"] == 40_000
+    assert beta["paid_cents"] == 10_000
+    assert beta["outstanding_cents"] == 30_000
+    assert beta["invoice_count"] == 1
+    assert beta["properties"][0]["invoiced_cents"] == 40_000
+    assert beta["properties"][0]["paid_cents"] == 10_000
+    assert beta["properties"][0]["outstanding_cents"] == 30_000
+    beta_invoice = beta["properties"][0]["invoices"][0]
+    assert beta_invoice["total_cents"] == 40_000
+    assert beta_invoice["paid_cents"] == 10_000
+    assert beta_invoice["outstanding_cents"] == 30_000
+
+
+def test_owner_statements_allocates_split_rounding_residue_once(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Rounding on sub-cent split shares does not duplicate cents."""
+
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="split-rounding.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Split rounding billing",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    owner_a = Owner(entity_id=entity.id, legal_name="Rounding Owner A Pty Ltd")
+    owner_b = Owner(entity_id=entity.id, legal_name="Rounding Owner B Pty Ltd")
+    prop = Property(
+        entity_id=entity.id,
+        name="Rounding Split Property",
+        street_address="11 Split Street",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add_all([bd, owner_a, owner_b, prop])
+    session.flush()
+    session.add_all(
+        [
+            PropertyOwner(property_id=prop.id, owner_id=owner_a.id, split_pct=50),
+            PropertyOwner(property_id=prop.id, owner_id=owner_b.id, split_pct=50),
+        ]
+    )
+    session.add(
+        InvoiceDraft(
+            entity_id=entity.id,
+            billing_draft_id=bd.id,
+            property_id=prop.id,
+            document_id=doc.id,
+            status=InvoiceDraftStatus.approved,
+            title="One cent shared invoice",
+            currency="AUD",
+            issue_date=date(2026, 4, 16),
+            subtotal_cents=1,
+            gst_cents=0,
+            total_cents=1,
+            invoice_metadata={"paid_cents": 1},
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": str(entity.id), "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    owners = response.json()["owners"]
+    assert len(owners) == 2
+    assert sorted(owner["invoiced_cents"] for owner in owners) == [0, 1]
+    assert sorted(owner["paid_cents"] for owner in owners) == [0, 1]
+    assert sum(owner["invoiced_cents"] for owner in owners) == 1
+    assert sum(owner["paid_cents"] for owner in owners) == 1
+    assert sum(
+        owner["properties"][0]["invoices"][0]["total_cents"] for owner in owners
+    ) == 1
+    assert sum(
+        owner["properties"][0]["invoices"][0]["paid_cents"] for owner in owners
+    ) == 1
+
+
+def test_owner_statements_preserves_allocated_invoice_balance(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Allocated evidence keeps paid + outstanding equal to total when source does."""
+
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="split-balance.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Split balance billing",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    owner_a = Owner(entity_id=entity.id, legal_name="Balance Owner A Pty Ltd")
+    owner_b = Owner(entity_id=entity.id, legal_name="Balance Owner B Pty Ltd")
+    prop = Property(
+        entity_id=entity.id,
+        name="Balance Split Property",
+        street_address="12 Split Street",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add_all([bd, owner_a, owner_b, prop])
+    session.flush()
+    session.add_all(
+        [
+            PropertyOwner(property_id=prop.id, owner_id=owner_a.id, split_pct=50),
+            PropertyOwner(property_id=prop.id, owner_id=owner_b.id, split_pct=50),
+        ]
+    )
+    session.add(
+        InvoiceDraft(
+            entity_id=entity.id,
+            billing_draft_id=bd.id,
+            property_id=prop.id,
+            document_id=doc.id,
+            status=InvoiceDraftStatus.approved,
+            title="Balanced shared invoice",
+            currency="AUD",
+            issue_date=date(2026, 4, 17),
+            subtotal_cents=100,
+            gst_cents=0,
+            total_cents=100,
+            invoice_metadata={
+                "payment_status": {
+                    "status": "partially_paid",
+                    "paid_cents": 33,
+                    "outstanding_cents": 67,
+                }
+            },
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": str(entity.id), "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    owners = response.json()["owners"]
+    assert len(owners) == 2
+    for owner in owners:
+        invoice = owner["properties"][0]["invoices"][0]
+        assert invoice["paid_cents"] + invoice["outstanding_cents"] == invoice[
+            "total_cents"
+        ]
+        assert owner["paid_cents"] + owner["outstanding_cents"] == owner[
+            "invoiced_cents"
+        ]
+    assert sum(owner["paid_cents"] for owner in owners) == 33
+    assert sum(owner["outstanding_cents"] for owner in owners) == 67
+
+
+def test_owner_statements_caps_allocated_paid_to_allocated_total(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Small split percentages cannot allocate more paid cents than total cents."""
+
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="split-paid-cap.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Split paid cap billing",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    owners = [
+        Owner(entity_id=entity.id, legal_name="Cap Owner One Pty Ltd"),
+        Owner(entity_id=entity.id, legal_name="Cap Owner Three Pty Ltd"),
+        Owner(entity_id=entity.id, legal_name="Cap Owner Ninety Six Pty Ltd"),
+    ]
+    prop = Property(
+        entity_id=entity.id,
+        name="Paid Cap Split Property",
+        street_address="13 Split Street",
+        property_type=PropertyType.commercial_retail,
+    )
+    session.add_all([bd, *owners, prop])
+    session.flush()
+    for owner, split_pct in zip(owners, [1, 3, 96], strict=True):
+        session.add(
+            PropertyOwner(property_id=prop.id, owner_id=owner.id, split_pct=split_pct)
+        )
+    session.add(
+        InvoiceDraft(
+            entity_id=entity.id,
+            billing_draft_id=bd.id,
+            property_id=prop.id,
+            document_id=doc.id,
+            status=InvoiceDraftStatus.approved,
+            title="Paid cap shared invoice",
+            currency="AUD",
+            issue_date=date(2026, 4, 18),
+            subtotal_cents=51,
+            gst_cents=0,
+            total_cents=51,
+            invoice_metadata={
+                "payment_status": {
+                    "status": "partially_paid",
+                    "paid_cents": 40,
+                    "outstanding_cents": 11,
+                }
+            },
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": str(entity.id), "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    statements = response.json()["owners"]
+    assert len(statements) == 3
+    for statement in statements:
+        invoice = statement["properties"][0]["invoices"][0]
+        assert invoice["paid_cents"] <= invoice["total_cents"]
+        assert invoice["paid_cents"] + invoice["outstanding_cents"] == invoice[
+            "total_cents"
+        ]
+    assert sum(statement["invoiced_cents"] for statement in statements) == 51
+    assert sum(statement["paid_cents"] for statement in statements) == 40
+    assert sum(statement["outstanding_cents"] for statement in statements) == 11
+
+
+def test_owner_statement_split_allocator_caps_paid_with_fixed_residue_order() -> None:
+    """Allocator keeps paid within total even when residue ordering differs."""
+
+    line = OwnerInvoiceEvidenceLine(
+        invoice_draft_id=uuid4(),
+        invoice_number="INV-SPLIT-CAP",
+        title="Paid cap helper invoice",
+        issue_date=date(2026, 4, 18),
+        due_date=date(2026, 4, 30),
+        total_cents=51,
+        paid_cents=40,
+        outstanding_cents=11,
+        payment_status="partially_paid",
+    )
+    entries = [
+        {"bucket_key": "a-small", "split_pct": 1.0},
+        {"bucket_key": "b-middle", "split_pct": 3.0},
+        {"bucket_key": "c-large", "split_pct": 96.0},
+    ]
+
+    allocated = _allocated_invoice_evidence_line(line, entries[0], entries)
+
+    assert allocated.total_cents == 0
+    assert allocated.paid_cents == 0
+    assert allocated.outstanding_cents == 0
+
+
+def test_owner_statement_split_allocator_normalizes_over_allocated_links() -> None:
+    """Invalid split totals over 100 do not duplicate the source cents."""
+
+    entries = [
+        {"bucket_key": "first", "split_pct": 100.0},
+        {"bucket_key": "second", "split_pct": 100.0},
+    ]
+
+    allocations = _allocated_cents_by_split(100_000, entries)
+
+    assert sorted(allocations.values()) == [50_000, 50_000]
+    assert sum(allocations.values()) == 100_000
 
 
 def test_owner_statement_identity_disambiguates_duplicate_owner_labels_for_pdf(

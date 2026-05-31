@@ -18,6 +18,7 @@ import re
 import textwrap
 import zipfile
 from datetime import date
+from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from io import BytesIO
 from typing import Annotated, Any
 from uuid import UUID
@@ -275,6 +276,96 @@ def _invoice_evidence_line(invoice: InvoiceDraft) -> OwnerInvoiceEvidenceLine:
     )
 
 
+def _allocated_cents_by_split(
+    cents: int,
+    entries: list[dict[str, Any]],
+    *,
+    caps: dict[UUID | str, int] | None = None,
+) -> dict[UUID | str, int]:
+    """Allocate cents across linked owners without creating or losing residue."""
+
+    rows: list[tuple[UUID | str, int, Decimal]] = []
+    split_total = sum(Decimal(str(entry["split_pct"])) for entry in entries)
+    denominator = split_total if split_total > Decimal("100") else Decimal("100")
+    floor_total = 0
+    for entry in entries:
+        split_pct = Decimal(str(entry["split_pct"]))
+        raw_share = Decimal(cents) * split_pct / denominator
+        floor_share = int(raw_share.to_integral_value(rounding=ROUND_FLOOR))
+        if caps is not None:
+            floor_share = min(floor_share, caps[entry["bucket_key"]])
+        rows.append((entry["bucket_key"], floor_share, raw_share - floor_share))
+        floor_total += floor_share
+
+    target_basis = min(split_total, Decimal("100"))
+    target_total = int(
+        (Decimal(cents) * target_basis / Decimal("100")).quantize(
+            Decimal("1"),
+            rounding=ROUND_HALF_UP,
+        )
+    )
+    if caps is not None:
+        target_total = min(target_total, sum(caps.values()))
+    allocations = {key: floor_share for key, floor_share, _fraction in rows}
+    residue = target_total - floor_total
+    if residue > 0:
+        for key, _floor_share, _fraction in sorted(
+            rows,
+            key=lambda item: (-item[2], str(item[0])),
+        ):
+            if residue <= 0:
+                break
+            if caps is not None and allocations[key] >= caps[key]:
+                continue
+            allocations[key] += 1
+            residue -= 1
+    elif residue < 0:
+        for key, _floor_share, _fraction in sorted(
+            rows,
+            key=lambda item: (item[2], str(item[0])),
+        ):
+            if residue >= 0:
+                break
+            if allocations[key] > 0:
+                allocations[key] -= 1
+                residue += 1
+    return allocations
+
+
+def _allocated_invoice_evidence_line(
+    line: OwnerInvoiceEvidenceLine,
+    entry: dict[str, Any],
+    entries: list[dict[str, Any]],
+) -> OwnerInvoiceEvidenceLine:
+    if len(entries) == 1 and float(entry["split_pct"]) == 100:
+        return line
+    bucket_key = entry["bucket_key"]
+    total_allocations = _allocated_cents_by_split(
+        line.total_cents,
+        entries,
+    )
+    total_cents = total_allocations[bucket_key]
+    paid_cents = _allocated_cents_by_split(
+        line.paid_cents,
+        entries,
+        caps=total_allocations,
+    )[bucket_key]
+    if line.paid_cents + line.outstanding_cents == line.total_cents:
+        outstanding_cents = max(0, total_cents - paid_cents)
+    else:
+        outstanding_cents = _allocated_cents_by_split(
+            line.outstanding_cents,
+            entries,
+        )[bucket_key]
+    return line.model_copy(
+        update={
+            "total_cents": total_cents,
+            "paid_cents": paid_cents,
+            "outstanding_cents": outstanding_cents,
+        }
+    )
+
+
 def _build_owner_statements(
     entity_id: UUID,
     session: Session,
@@ -325,10 +416,11 @@ def _build_owner_statements(
     properties_by_id = {prop.id: prop for prop in properties}
     property_ids = list(properties_by_id)
     owners_by_identity: dict[UUID | str, dict[str, Any]] = {}
+    property_entries_by_property: dict[UUID, list[dict[str, Any]]] = {}
     linked_property_ids: set[UUID] = set()
     if property_ids:
         owner_links = session.execute(
-            select(PropertyOwner.property_id, Owner)
+            select(PropertyOwner.property_id, PropertyOwner.split_pct, Owner)
             .join(Owner, PropertyOwner.owner_id == Owner.id)
             .where(
                 PropertyOwner.property_id.in_(property_ids),
@@ -336,7 +428,7 @@ def _build_owner_statements(
                 Owner.deleted_at.is_(None),
             )
         ).all()
-        for property_id, owner in owner_links:
+        for property_id, split_pct, owner in owner_links:
             prop = properties_by_id.get(property_id)
             if prop is None:
                 continue
@@ -348,7 +440,13 @@ def _build_owner_statements(
                     "properties": [],
                 },
             )
-            bucket["properties"].append(prop)
+            entry = {
+                "bucket_key": owner.id,
+                "property": prop,
+                "split_pct": float(split_pct),
+            }
+            bucket["properties"].append(entry)
+            property_entries_by_property.setdefault(property_id, []).append(entry)
             linked_property_ids.add(property_id)
 
     unattributed = owners_by_identity.setdefault(
@@ -361,7 +459,13 @@ def _build_owner_statements(
     )
     for prop in properties:
         if prop.id not in linked_property_ids:
-            unattributed["properties"].append(prop)
+            entry = {
+                "bucket_key": "unattributed",
+                "property": prop,
+                "split_pct": 100.0,
+            }
+            unattributed["properties"].append(entry)
+            property_entries_by_property.setdefault(prop.id, []).append(entry)
     if not unattributed["properties"]:
         owners_by_identity.pop("unattributed", None)
 
@@ -385,16 +489,25 @@ def _build_owner_statements(
     statements: list[OwnerStatementRead] = []
     for bucket in owners_by_identity.values():
         owner: Owner | None = bucket["owner"]
-        props: list[Property] = bucket["properties"]
+        props: list[dict[str, Any]] = bucket["properties"]
 
         property_lines: list[OwnerPropertyLine] = []
         owner_invoiced = 0
         owner_paid = 0
         owner_outstanding = 0
         owner_count = 0
-        for prop in props:
+        for entry in props:
+            prop: Property = entry["property"]
             prop_invoices = invoices_by_property.get(prop.id, [])
-            invoice_lines = [_invoice_evidence_line(inv) for inv in prop_invoices]
+            split_entries = property_entries_by_property.get(prop.id, [entry])
+            invoice_lines = [
+                _allocated_invoice_evidence_line(
+                    _invoice_evidence_line(inv),
+                    entry,
+                    split_entries,
+                )
+                for inv in prop_invoices
+            ]
             invoice_lines.sort(
                 key=lambda line: (
                     line.issue_date or date.min,
@@ -428,6 +541,7 @@ def _build_owner_statements(
 
         statements.append(
             OwnerStatementRead(
+                owner_id=owner.id if owner else None,
                 owner_identity=bucket["label"],
                 owner_legal_name=owner.legal_name if owner else None,
                 trustee_name=owner.trustee_name if owner else None,

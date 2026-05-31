@@ -47,6 +47,7 @@ class OwnerPropertyLine(BaseModel):
 class OwnerStatementRead(BaseModel):
     """A single owner's monthly statement."""
 
+    owner_id: UUID | None = None
     owner_identity: str
     owner_legal_name: str | None = None
     trustee_name: str | None = None
