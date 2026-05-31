@@ -112,6 +112,7 @@
   ) !important;
 }
 
+:root[data-theme="dark"] .bg-white\/90,
 :root[data-theme="dark"] .bg-white\/80,
 :root[data-theme="dark"] .bg-white\/75,
 :root[data-theme="dark"] .bg-white\/70,

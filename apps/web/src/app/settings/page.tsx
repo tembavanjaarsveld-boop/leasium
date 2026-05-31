@@ -16,6 +16,8 @@ import {
   KeyRound,
   Loader2,
   MailCheck,
+  Monitor,
+  Moon,
   PlugZap,
   RefreshCw,
   SearchCheck,
@@ -44,6 +46,18 @@ import {
   Select,
   StatusBadge,
 } from "@/components/ui";
+import {
+  APPEARANCE_CHANGED_EVENT,
+  APPEARANCE_STORAGE_KEY,
+  appearanceModeFromEvent,
+  applyAppearancePreference,
+  createAppearanceChangeEvent,
+  labelAppearanceMode,
+  readAppearancePreference,
+  SYSTEM_DARK_QUERY,
+  type AppearanceMode,
+  type ResolvedAppearance,
+} from "@/lib/appearance";
 import {
   applyBasiqReconciliation,
   applyXeroContactPreview,
@@ -121,12 +135,10 @@ import {
 import { friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
-const APPEARANCE_STORAGE_KEY = "leasium.appearance";
 const EMPTY_XERO_ISSUES: XeroMappingIssueRecord[] = [];
 const EMPTY_BRANDED_TEMPLATES: BrandedCommunicationTemplateRecord[] = [];
 
 type SettingsTab = "security" | "organisation" | "xero";
-type AppearanceMode = "light";
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type PanelRef = { current: HTMLDivElement | null };
 type NotificationTemplateDraft = {
@@ -218,36 +230,41 @@ function formatDateTime(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
-function applyAppearancePreference(mode: AppearanceMode) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(APPEARANCE_STORAGE_KEY, mode);
-  document.documentElement.dataset.theme = "light";
-  document.documentElement.dataset.appearance = mode;
-  document.documentElement.style.colorScheme = "light";
-}
-
 function SettingsAppearancePanel() {
-  const [mode, setMode] = useState<AppearanceMode>("light");
+  const [mode, setMode] = useState<AppearanceMode>("system");
+  const [resolved, setResolved] = useState<ResolvedAppearance>("light");
+  const modeRef = useRef<AppearanceMode>("system");
 
   useEffect(() => {
-    function syncLightPreference() {
-      setMode("light");
-      applyAppearancePreference("light");
+    function syncPreference(event?: Event) {
+      const nextMode = event
+        ? appearanceModeFromEvent(event) ?? readAppearancePreference()
+        : readAppearancePreference();
+      const nextResolved = applyAppearancePreference(nextMode);
+      modeRef.current = nextMode;
+      setMode(nextMode);
+      setResolved(nextResolved);
     }
     function onStorage(event: StorageEvent) {
       if (event.key && event.key !== APPEARANCE_STORAGE_KEY) return;
-      syncLightPreference();
+      syncPreference();
+    }
+    function onSystemPreferenceChange() {
+      if (modeRef.current === "system") syncPreference();
     }
 
-    syncLightPreference();
+    syncPreference();
+    const mediaQuery =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia(SYSTEM_DARK_QUERY)
+        : null;
     window.addEventListener("storage", onStorage);
-    window.addEventListener("leasium:appearance-change", syncLightPreference);
+    window.addEventListener(APPEARANCE_CHANGED_EVENT, syncPreference);
+    mediaQuery?.addEventListener("change", onSystemPreferenceChange);
     return () => {
       window.removeEventListener("storage", onStorage);
-      window.removeEventListener(
-        "leasium:appearance-change",
-        syncLightPreference,
-      );
+      window.removeEventListener(APPEARANCE_CHANGED_EVENT, syncPreference);
+      mediaQuery?.removeEventListener("change", onSystemPreferenceChange);
     };
   }, []);
 
@@ -258,25 +275,49 @@ function SettingsAppearancePanel() {
     icon: ReactNode;
   }> = [
     {
+      mode: "system",
+      label: "System",
+      detail: `Follow this device. Currently ${resolved}.`,
+      icon: <Monitor size={16} />,
+    },
+    {
       mode: "light",
       label: "Light",
-      detail: "Locked for the MVP workspace.",
+      detail: "Use the bright operator workspace.",
       icon: <Sun size={16} />,
+    },
+    {
+      mode: "dark",
+      label: "Dark",
+      detail: "Use the low-light operator workspace.",
+      icon: <Moon size={16} />,
     },
   ];
 
   function chooseAppearance(nextMode: AppearanceMode) {
-    window.localStorage.setItem(APPEARANCE_STORAGE_KEY, nextMode);
-    applyAppearancePreference(nextMode);
-    window.dispatchEvent(new Event("leasium:appearance-change"));
+    const nextResolved = applyAppearancePreference(nextMode);
+    modeRef.current = nextMode;
+    setMode(nextMode);
+    setResolved(nextResolved);
+    window.dispatchEvent(createAppearanceChangeEvent(nextMode));
   }
+
+  const activeLabel = labelAppearanceMode(mode);
 
   return (
     <SectionPanel
       title="Appearance"
-      description="Light workspace appearance for the MVP release."
-      icon={<Sun size={17} className="text-primary" />}
-      actions={<StatusBadge tone="neutral">Light active</StatusBadge>}
+      description="Choose a workspace appearance or follow this device."
+      icon={
+        mode === "dark" ? (
+          <Moon size={17} className="text-primary" />
+        ) : mode === "system" ? (
+          <Monitor size={17} className="text-primary" />
+        ) : (
+          <Sun size={17} className="text-primary" />
+        )
+      }
+      actions={<StatusBadge tone="neutral">{activeLabel} active</StatusBadge>}
     >
       <div className="grid gap-3 p-4 sm:max-w-md">
         {options.map((option) => {
@@ -285,6 +326,7 @@ function SettingsAppearancePanel() {
             <button
               key={option.mode}
               type="button"
+              aria-label={`${option.label} appearance`}
               aria-pressed={isActive}
               onClick={() => chooseAppearance(option.mode)}
               className={`grid gap-2 rounded-md border p-3 text-left transition hover:bg-muted/60 ${

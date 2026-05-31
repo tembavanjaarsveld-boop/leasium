@@ -234,6 +234,51 @@ Text Inverse:        #FFFFFF
 Focus Ring:          #245BFF
 ```
 
+### Dark mode tokens
+
+Dark mode is an operator-workspace theme, not a separate brand. It uses
+the same semantic names as light mode so components stay on shared
+tokens. The app applies both `.dark` and `data-theme="dark"` on the root
+element; current CSS selectors key from `data-theme` while the `.dark`
+class keeps Tailwind `dark:` variants available for new code.
+
+```txt
+Blue:                #8EA5FF
+Blue Hover:          #B7C5FF
+Blue Pressed:        #D8E0FF
+Blue Soft:           #182554
+
+Teal:                #42E3CF
+Teal Hover:          #84F0E3
+Teal Soft:           #0F3A37
+
+Navy 900:            #050814
+Navy 800:            #E6EAF3
+Slate 700:           #D7DEEA
+Slate 600:           #C3CCDB
+Slate 500:           #AAB5C8
+Slate 400:           #8F9BAD
+Slate 300:           #68758A
+Slate 200:           #344054
+Slate 150:           #243044
+Slate 100:           #182133
+Slate 50:            #0D1424
+
+App Background:      #0D1424
+Surface:             #121A2A
+Border:              #263247
+Strong Border:       #3A465B
+
+Success:             #32D583
+Success Soft:        #0F2F24
+Warning:             #FDB022
+Warning Soft:        #342610
+Danger:              #F97066
+Danger Soft:         #351716
+Info:                #84CAFF
+Info Soft:           #102A43
+```
+
 ### Colour rules
 
 - Blue is the primary action and brand colour.
@@ -464,6 +509,44 @@ Drop this into the global CSS file.
   --leasium-shadow-lg: 0 20px 48px rgba(16, 24, 40, 0.12);
 
   --leasium-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-theme="dark"] {
+  --leasium-blue: #8EA5FF;
+  --leasium-blue-hover: #B7C5FF;
+  --leasium-blue-pressed: #D8E0FF;
+  --leasium-blue-soft: #182554;
+
+  --leasium-teal: #42E3CF;
+  --leasium-teal-hover: #84F0E3;
+  --leasium-teal-soft: #0F3A37;
+
+  --leasium-navy-900: #050814;
+  --leasium-navy-800: #E6EAF3;
+
+  --leasium-slate-700: #D7DEEA;
+  --leasium-slate-600: #C3CCDB;
+  --leasium-slate-500: #AAB5C8;
+  --leasium-slate-400: #8F9BAD;
+  --leasium-slate-300: #68758A;
+  --leasium-slate-200: #344054;
+  --leasium-slate-150: #243044;
+  --leasium-slate-100: #182133;
+  --leasium-slate-50: #0D1424;
+
+  --leasium-bg: #0D1424;
+  --leasium-surface: #121A2A;
+  --leasium-border: #263247;
+  --leasium-border-strong: #3A465B;
+
+  --leasium-success: #32D583;
+  --leasium-success-soft: #0F2F24;
+  --leasium-warning: #FDB022;
+  --leasium-warning-soft: #342610;
+  --leasium-danger: #F97066;
+  --leasium-danger-soft: #351716;
+  --leasium-info: #84CAFF;
+  --leasium-info-soft: #102A43;
 }
 
 body {

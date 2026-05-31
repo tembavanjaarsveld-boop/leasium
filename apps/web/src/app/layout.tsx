@@ -27,11 +27,29 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const themeScript = `
     (function () {
+      var key = "leasium.appearance";
+      var stored = null;
       try {
-        window.localStorage.setItem("leasium.appearance", "light");
-        document.documentElement.dataset.theme = "light";
-        document.documentElement.dataset.appearance = "light";
-        document.documentElement.style.colorScheme = "light";
+        stored = window.localStorage.getItem(key);
+      } catch (_) {}
+      var mode =
+        stored === "light" || stored === "dark" || stored === "system"
+          ? stored
+          : "system";
+      var prefersDark =
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var resolved = mode === "dark" || (mode === "system" && prefersDark)
+        ? "dark"
+        : "light";
+      try {
+        document.documentElement.dataset.theme = resolved;
+        document.documentElement.dataset.appearance = mode;
+        document.documentElement.style.colorScheme = resolved;
+        document.documentElement.classList.toggle("dark", resolved === "dark");
+      } catch (_) {}
+      try {
+        window.localStorage.setItem(key, mode);
       } catch (_) {}
     })();
   `;
@@ -39,7 +57,7 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable}`}
-      data-appearance="light"
+      data-appearance="system"
       data-theme="light"
       suppressHydrationWarning
     >

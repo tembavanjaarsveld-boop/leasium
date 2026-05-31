@@ -10,6 +10,8 @@ import {
   Home,
   Keyboard,
   Menu,
+  Monitor,
+  Moon,
   Search,
   Settings as SettingsIcon,
   Sparkles,
@@ -25,6 +27,19 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LeasiumMark } from "@/components/brand";
+import {
+  APPEARANCE_CHANGED_EVENT,
+  APPEARANCE_STORAGE_KEY,
+  appearanceModeFromEvent,
+  applyAppearancePreference,
+  createAppearanceChangeEvent,
+  labelAppearanceMode,
+  nextAppearanceMode,
+  readAppearancePreference,
+  SYSTEM_DARK_QUERY,
+  type AppearanceMode,
+  type ResolvedAppearance,
+} from "@/lib/appearance";
 import { getCommsQueueCounts } from "@/lib/api";
 import { useOperatingMode } from "@/lib/use-operating-mode";
 import { useUnmountDelay } from "@/lib/use-unmount-delay";
@@ -32,8 +47,6 @@ import { cn } from "@/lib/utils";
 
 const COMMS_BADGE_ENTITY_KEY = "leasium.entity_id";
 const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
-const APPEARANCE_STORAGE_KEY = "leasium.appearance";
-type AppearanceMode = "light";
 
 function useCommsBadge(): { urgent: number; total: number } | null {
   const [entityId, setEntityId] = useState<string | null>(null);
@@ -328,54 +341,67 @@ function OperatorUserControl() {
   );
 }
 
-function applyAppearance(mode: AppearanceMode = "light") {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(APPEARANCE_STORAGE_KEY, mode);
-  document.documentElement.dataset.theme = "light";
-  document.documentElement.dataset.appearance = mode;
-  document.documentElement.style.colorScheme = "light";
-}
-
 function AppearanceToggle() {
-  const [mode, setMode] = useState<AppearanceMode>("light");
+  const [mode, setMode] = useState<AppearanceMode>("system");
+  const [resolved, setResolved] = useState<ResolvedAppearance>("light");
+  const modeRef = useRef<AppearanceMode>("system");
 
   useEffect(() => {
-    applyAppearance("light");
-
-    function syncStoredPreference() {
-      setMode("light");
-      applyAppearance("light");
+    function syncPreference(event?: Event) {
+      const nextMode = event
+        ? appearanceModeFromEvent(event) ?? readAppearancePreference()
+        : readAppearancePreference();
+      const nextResolved = applyAppearancePreference(nextMode);
+      modeRef.current = nextMode;
+      setMode(nextMode);
+      setResolved(nextResolved);
     }
     function onStorage(event: StorageEvent) {
       if (event.key && event.key !== APPEARANCE_STORAGE_KEY) return;
-      syncStoredPreference();
+      syncPreference();
     }
+    function onSystemPreferenceChange() {
+      if (modeRef.current === "system") syncPreference();
+    }
+
+    syncPreference();
+    const mediaQuery =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia(SYSTEM_DARK_QUERY)
+        : null;
     window.addEventListener("storage", onStorage);
-    window.addEventListener("leasium:appearance-change", syncStoredPreference);
+    window.addEventListener(APPEARANCE_CHANGED_EVENT, syncPreference);
+    mediaQuery?.addEventListener("change", onSystemPreferenceChange);
     return () => {
       window.removeEventListener("storage", onStorage);
-      window.removeEventListener(
-        "leasium:appearance-change",
-        syncStoredPreference,
-      );
+      window.removeEventListener(APPEARANCE_CHANGED_EVENT, syncPreference);
+      mediaQuery?.removeEventListener("change", onSystemPreferenceChange);
     };
   }, []);
 
-  const label = `Appearance: ${mode}. Light mode is locked for MVP`;
+  function chooseAppearance(nextMode: AppearanceMode) {
+    const nextResolved = applyAppearancePreference(nextMode);
+    modeRef.current = nextMode;
+    setMode(nextMode);
+    setResolved(nextResolved);
+    window.dispatchEvent(createAppearanceChangeEvent(nextMode));
+  }
+
+  const nextMode = nextAppearanceMode(mode);
+  const Icon = mode === "system" ? Monitor : resolved === "dark" ? Moon : Sun;
+  const label = `Appearance: ${mode} (${resolved}). Switch to ${labelAppearanceMode(
+    nextMode,
+  ).toLowerCase()}`;
 
   return (
     <button
       type="button"
       aria-label={label}
-      aria-disabled="true"
-      disabled
+      onClick={() => chooseAppearance(nextMode)}
       title={label}
-      className={cn(
-        headerUtilityInlineButtonClass,
-        "disabled:cursor-not-allowed disabled:opacity-80",
-      )}
+      className={headerUtilityInlineButtonClass}
     >
-      <Sun size={15} />
+      <Icon size={15} />
     </button>
   );
 }

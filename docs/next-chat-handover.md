@@ -52,6 +52,26 @@ Continuation from the tenant portal account cache hardening slice.
   backend integration file passed **52 passed**; frontend helper smoke passed
   **4 passed**.
 
+### Dark mode v1
+- Workspace appearance now supports `system`, `light`, and `dark` from one
+  shared helper (`apps/web/src/lib/appearance.ts`). The root first-paint script
+  resolves stored/system preference before React loads, writes
+  `data-appearance`, `data-theme`, `color-scheme`, and toggles the root `.dark`
+  class.
+- AppHeader's appearance control is enabled and cycles System -> Light -> Dark;
+  Settings exposes all three choices and syncs with the header via the existing
+  `leasium:appearance-change` event.
+- `apps/web/src/app/globals.css` keeps the existing `data-theme="dark"` token
+  overrides and now also covers the `bg-white/90` shell toolbar escape hatch.
+  Tailwind is configured with class-based dark mode for future `dark:` variants.
+- Design docs/roadmap now record the dark token set and the shipped v1 scope.
+  Clerk sign-in/sign-up widgets remain pinned to the light Leasium appearance
+  object; live hosted Clerk dark-OS rendering is still a manual/Remba review
+  item before calling dark mode design-complete.
+- Verification so far: appearance smoke passed **8 passed**, including Dashboard,
+  Smart Intake, Properties, People/Tenants, and Operations at desktop + mobile
+  widths, plus blocked-storage first-paint/manual-change regressions.
+
 ## Codex continuation — 2026-05-31 (latest)
 
 Continuation from the Codex takeover. Branch `main` was current at `b7ec1f7`
