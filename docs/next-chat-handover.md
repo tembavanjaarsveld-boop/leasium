@@ -172,7 +172,8 @@ before the Ticket 2.2 slice.
   path instead of failing with a missing-table error.
 
 ### Owner portal secure-documents slice
-- First owner document-share slice is implemented pending commit/deploy.
+- First owner document-share slice is shipped. Code commit: `8c4ae0e`
+  (`Add owner portal secure documents`).
 - Backend: `OwnerPortalRead` now includes `documents`, populated only from
   property-level `StoredDocument` rows whose
   `document_metadata.owner_portal_visible` is exactly `true`, whose
@@ -192,12 +193,20 @@ before the Ticket 2.2 slice.
 - Red-green proof: backend document-list test first failed with missing
   `documents`; backend account-download test first failed with 404; frontend
   smokes first failed on missing `Shared documents`. All passed after the slice.
-- Verification so far: owner portal backend + auth + statement parity tests
+- Verification: owner portal backend + auth + statement parity tests
   **11 passed**; targeted backend ruff clean; targeted frontend eslint clean;
   `./node_modules/.bin/tsc --noEmit` clean; owner portal account/preview smokes
   **4 passed**; production-style `next build` succeeded. A parallel attempt to
   run Playwright and `next build` corrupted `.next`; rerunning them sequentially
   after clearing the generated cache passed cleanly.
+- Deployment verification: Render health reports
+  `8c4ae0eef985e114ef94fe95b3e9b66632f6485c` with `source=render`; live OpenAPI
+  includes `/api/v1/owner-portal/account/documents/{document_id}/download`;
+  `https://leasium.ai/owner-portal` returns HTTP 200. Vercel API auth is not
+  available in this desktop session, so frontend production proof used the
+  public URL and deployed static chunks; those chunks include `Shared documents`,
+  `Owner account`, `Operator preview`, `source_label`, and the account document
+  download path.
 
 ### Next
 1. Before using shared-ownership splits in production statements, add a dedicated

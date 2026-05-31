@@ -179,6 +179,14 @@ Run focused backend tests, backend ruff, targeted frontend eslint, `tsc --noEmit
 
 Update roadmap, design governance, and next-chat handover with the shipped secure document-share scope, guardrails, commit, deploy status, and any local migration caveats.
 
-- [ ] **Step 4: Commit and deploy**
+- [x] **Step 4: Commit and deploy**
 
 Commit directly on `main`, push, then verify Vercel production deployment and Render health.
+
+Committed as `8c4ae0e` (`Add owner portal secure documents`) and pushed to
+`origin/main`. Production verification: Render health reports
+`8c4ae0eef985e114ef94fe95b3e9b66632f6485c` with `source=render`; live OpenAPI
+includes `/api/v1/owner-portal/account/documents/{document_id}/download`;
+`https://leasium.ai/owner-portal` returns HTTP 200; deployed Next.js chunks
+contain `Shared documents`, `Owner account`, `Operator preview`, `source_label`,
+and the account document download path.
