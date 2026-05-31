@@ -288,7 +288,7 @@ Equifax/illion; RTBA/state RTAs).
   Tenants/Vendors live under **People**, Billing / Statements / Xero / Basiq group under
   the new `/money` hub, Comms is treated as **Work**, and hub alias redirects preserve
   moved-route entry points. Honours the §10.5.1 seven-item sidebar cap.
-- [~] **Account operating mode gate (self-managed owner vs managing agent).** SHIPPED pending Remba — `cb4704f` (backend: `operating_mode` on Organisation, default `self_managed_owner`, owner/admin PATCH) + `1996aa7`/`ce271e1` (frontend: People→Owners hub hidden for self-managed, Settings mode toggle + a "Your entities & trusts" fallback keeping owner-entity CRUD reachable, owner-statement palette/shortcut gating with provider-call guard tests) + `add20ac` (Money/Statements dispatch deep gate: self-managed sees Entity statements/local reports only; dispatch queues/drafts/send + dispatch receipt reads are agent/hybrid-only). Remaining follow-up: gate deeper owner-portal/disbursement/trust-accounting entry points. Background: the shipped
+- [~] **Account operating mode gate (self-managed owner vs managing agent).** SHIPPED pending Remba — `cb4704f` (backend: `operating_mode` on Organisation, default `self_managed_owner`, owner/admin PATCH) + `1996aa7`/`ce271e1` (frontend: People→Owners hub hidden for self-managed, Settings mode toggle + a "Your entities & trusts" fallback keeping owner-entity CRUD reachable, owner-statement palette/shortcut gating with provider-call guard tests) + `add20ac` (Money/Statements dispatch deep gate: self-managed sees Entity statements/local reports only; dispatch queues/drafts/send + dispatch receipt reads are agent/hybrid-only) + `147eae1` (owner-portal deep gate: self-managed cannot open operator portal previews, create/claim owner portal invites, read linked owner account sessions/status, or download owner-visible account documents; hybrid stays enabled). Remaining follow-up: gate deeper disbursement/trust-accounting entry points once those routes exist. Background: the shipped
   People → Owners hub + owner statements/disbursements/owner-portal/trust accounting are the
   *managing-agent* framing. A self-managed owner-operator (SKJ, and most 2–20-property owners)
   has no third-party owner and should not see the Owners hub. Add a first-class
@@ -309,7 +309,9 @@ Equifax/illion; RTBA/state RTAs).
   without an owner id in the URL. The first secure document-share slice now
   lists property-level files explicitly marked `owner_portal_visible` and lets
   signed-in owner accounts download only those linked-property files through an
-  account-scoped endpoint. Richer owner dashboard sections remain next.
+  account-scoped endpoint. These owner-client portal paths are now
+  managing-agent/hybrid-only under the operating-mode gate. Richer owner
+  dashboard sections remain next.
 - [ ] **Tenant self-serve payments on AU rails.** PayTo / PayID / BPAY / direct debit
   (Monoova / Zai / Stripe AU). Tenants pay in-portal; reconciliation stays review-first
   through the existing Basiq/Xero engine. DoorLoop's #1 value driver, AU-correct.

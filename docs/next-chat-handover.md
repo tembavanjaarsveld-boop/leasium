@@ -313,15 +313,24 @@ before the Ticket 2.2 slice.
   dispatch approval queues, and dispatch receipt reads are available only to
   `managing_agent`/`hybrid` accounts. Missing owner billing emails no longer block
   self-managed local statement signoff.
+- Commit `147eae1` gates the owner-portal surface by operating mode. Self-managed
+  accounts cannot open operator owner-portal previews, create owner portal
+  invites, claim owner portal accounts, read linked owner account status/session
+  data, or download owner-visible account documents. Managing-agent and hybrid
+  accounts keep the existing owner portal behavior; the public invite preview
+  remains safe pre-claim context only.
 - Guardrails: the frontend write is limited to the local organisation
   operating-mode PATCH. The tests assert the Settings mode change does not call
   SendGrid, Twilio, Xero, Basiq, provider dispatch/refresh, or provider-history
   endpoints. The statement dispatch guard returns 403 before SendGrid for
   self-managed accounts, and the self-managed smoke asserts no
   `/owners/statements/dispatch` or `/owners/statements/send` request leaves the
-  page.
+  page. The owner-portal guard returns 403 before invite/account mutations,
+  `last_seen_at` writes, or document byte responses in self-managed mode, and
+  the self-managed smoke asserts no operator preview request leaves the page.
 - Remaining follow-up: gate deeper agent-only modules that are still directly
-  reachable, especially owner portal/disbursement/trust-accounting entry points.
+  reachable, especially disbursement/trust-accounting entry points once those
+  route surfaces exist.
 - Verification:
   `./node_modules/.bin/playwright test tests/smoke/people-hub.spec.ts tests/smoke/settings.spec.ts tests/smoke/app-flows.spec.ts --grep "operating mode|people hub|keyboard" --workers=1`
   passed **6 passed**; `./node_modules/.bin/tsc --noEmit` passed; targeted
@@ -333,7 +342,12 @@ before the Ticket 2.2 slice.
   frontend `eslint` passed; `.venv/bin/python -m pytest tests/integration/test_owners_api.py -q -k "send_owner_statement"`
   passed **5 passed / 19 deselected**; targeted backend `ruff` passed; `git diff --check`
   passed. Review agent found and rechecked two P2s; follow-up review found no
-  P1/P2 issues.
+  P1/P2 issues. For `147eae1`:
+  `.venv/bin/python -m pytest tests/integration/test_owner_portal_api.py tests/integration/test_owner_portal_auth_api.py -q`
+  passed **16 passed**; `./node_modules/.bin/playwright test tests/smoke/owner-portal.spec.ts tests/smoke/owner-portal-account.spec.ts --workers=1`
+  passed **5 passed**; frontend `tsc --noEmit`, targeted frontend `eslint`,
+  targeted backend `ruff`, and `git diff --check` passed. Review agent found no
+  P1/P2 issues and the hybrid green-path test gap was closed before commit.
 - Deployment verification before this docs-sync commit: Vercel production deploy
   `dpl_EV1PJhmj9ckaMJEyGbasZMA5Tap9` for `ce271e1` was **READY**;
   `https://leasium.ai/people` and `https://leasium.ai/settings` returned HTTP
@@ -342,7 +356,12 @@ before the Ticket 2.2 slice.
   Deep-gate code deploy `dpl_4Bq154R6tULSkvW5CkzGWppB3htp` for `add20ac` is
   **READY**; Render health reports
   `add20ac43e3382607b70d030ab749030a3219178`; `https://leasium.ai/statements`
-  and `https://leasium.ai/money` returned HTTP 200.
+  and `https://leasium.ai/money` returned HTTP 200. Owner-portal deep-gate code
+  deploy `dpl_ATgTm2j74BDy86R7KKi1JWPnbqQJ` for `147eae1` is **READY** and
+  aliased to `leasium.ai`; Render health reports
+  `147eae15d3209bc021c7bcc2c43a45798ff803e5`; `https://leasium.ai/owner-portal`,
+  `https://leasium.ai/owner-portal/owner-1?month=2026-05`, and
+  `https://leasium.ai/statements` returned HTTP 200.
 
 ### Next
 1. Test production owner invites and secure document downloads with a real Clerk

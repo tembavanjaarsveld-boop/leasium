@@ -88,7 +88,7 @@ ships is not.
 
 **Update 2026-05-31 — SHIPPED pending Remba** (`cb4704f` backend,
 `1996aa7` frontend, `ce271e1` command/provider-guard tests, `add20ac`
-owner-statement dispatch deep gate): the gate is live.
+owner-statement dispatch deep gate, `147eae1` owner-portal deep gate): the gate is live.
 Organisation `operating_mode` defaults to `self_managed_owner`; Settings has an
 owner/admin toggle; People → Owners is hidden for self-managed accounts and shown
 for managing-agent/hybrid accounts; the owner directory remains reachable for
@@ -98,12 +98,15 @@ labels statements as **Entity statements** for self-managed accounts, `/statemen
 keeps local entity/trust reporting while hiding owner dispatch drafts/queues/send
 controls, missing owner billing emails do not block self-managed local signoff,
 and both owner-statement dispatch receipt reads and sends are 403-gated unless
-the account is `managing_agent`/`hybrid`. Onboarding segmentation itself is still
-future work.
+the account is `managing_agent`/`hybrid`. Owner portal operator preview, invite
+creation, account claim, linked account status/session reads, and account document
+downloads are also 403-gated unless the account is `managing_agent`/`hybrid`;
+the public invite preview remains safe pre-claim context only. Onboarding
+segmentation itself is still future work.
 
 Remaining follow-up: gate deeper agent-only modules that are still directly
-reachable, especially owner portal, disbursement, and trust-accounting entry
-points.
+reachable, especially disbursement and trust-accounting entry points once those
+route surfaces exist.
 
 Decision recorded 2026-05-31 (prototype mode — no Remba gate per the current
 stance). Market-validated pattern (DoorLoop / AppFolio / PropertyMe all
