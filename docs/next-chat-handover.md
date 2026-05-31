@@ -77,6 +77,7 @@ before the Ticket 2.2 slice.
 - Tenant, Owner, and Vendor detail records now share the same People record
   shell: header/actions plus Overview · Financials · Tasks · Notes · Files ·
   Activity section links.
+- Code commit: `aa4374b` (`Align people record pages`).
 - New shared component: `apps/web/src/components/people-record-layout.tsx`.
   The links are plain in-page anchors, not ARIA tab widgets.
 - Tenant detail keeps its existing inner panels and now exposes stable section
@@ -101,6 +102,10 @@ before the Ticket 2.2 slice.
   production-style
   `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
   succeeded.
+- Deployment verification before this docs-sync commit: Vercel production deploy
+  `dpl_A7xtmu8hdZ3ftHpi7hegNd2ohXyA` for `aa4374b` was **READY** and aliased to
+  `leasium.ai`; `https://leasium.ai` returned HTTP 200; Render health reported
+  `aa4374b9cc05d52582aab57884b2d43a33e8410d` with `source=render`.
 
 ### Next
 1. Before using shared-ownership splits in production statements, add a dedicated
