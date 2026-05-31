@@ -1061,7 +1061,7 @@ def test_tenant_portal_account_session_falls_forward_from_cancelled_onboarding(
     assert body["onboarding"]["id"] == str(replacement_onboarding.id)
 
 
-def test_tenant_portal_account_self_edits_contact_details(
+def test_tenant_portal_account_contact_change_request_waits_for_operator_apply(
     client: TestClient,
     session: Session,
 ) -> None:
@@ -1087,24 +1087,96 @@ def test_tenant_portal_account_self_edits_contact_details(
             "contact_email": "avery.updated@example.test",
             "contact_phone": "+61 400 333 444",
             "billing_email": "billing.updated@example.test",
+            "notes": "Please update my account contact.",
         },
     )
 
     assert update_response.status_code == 200
     body = update_response.json()
-    assert body["tenant"]["contact_name"] == "Avery Updated"
-    assert body["tenant"]["contact_email"] == "avery.updated@example.test"
-    assert body["tenant"]["contact_phone"] == "+61 400 333 444"
-    assert body["tenant"]["billing_email"] == "billing.updated@example.test"
-    assert body["contact_change_requests"][0]["status"] == "applied"
-    assert body["contact_change_requests"][0]["applied_at"] is not None
+    assert body["auth"]["mode"] == "tenant_portal_account"
+    assert body["tenant"]["contact_name"] == "Avery Tenant"
+    assert body["tenant"]["contact_email"] == "avery@portal-one.example"
+    assert body["tenant"]["contact_phone"] == "+61 400 111 222"
+    assert body["tenant"]["billing_email"] == "accounts@portal-one.example"
+    assert body["contact_change_requests"][0]["status"] == "submitted"
+    assert body["contact_change_requests"][0]["applied_at"] is None
+    assert body["contact_change_requests"][0]["changes"][0]["after"] == "Avery Updated"
 
     tenant = session.get(Tenant, UUID(scope["tenant_id"]))
     assert tenant is not None
+    assert tenant.contact_name == "Avery Tenant"
+    assert tenant.contact_email == "avery@portal-one.example"
+    assert tenant.contact_phone == "+61 400 111 222"
+    assert tenant.billing_email == "accounts@portal-one.example"
+    requests = tenant.tenant_metadata["portal_contact_change_requests"]
+    assert requests[0]["status"] == "submitted"
+
+    detail_response = client.get(f"/api/v1/tenants/{scope['tenant_id']}/detail")
+    assert detail_response.status_code == 200
+    change_request = detail_response.json()["reviewed_changes"][0]
+    assert change_request["source"] == "tenant_portal_contact_request"
+    assert change_request["status"] == "submitted"
+
+    apply_response = client.post(
+        f"/api/v1/tenants/{scope['tenant_id']}/contact-change-requests/{requests[0]['id']}/apply",
+        json={"notes": "Reviewed with signed-in tenant."},
+    )
+
+    assert apply_response.status_code == 200
+    assert apply_response.json()["contact_email"] == "avery.updated@example.test"
+    session.refresh(tenant)
     assert tenant.contact_name == "Avery Updated"
     assert tenant.contact_email == "avery.updated@example.test"
     assert tenant.contact_phone == "+61 400 333 444"
     assert tenant.billing_email == "billing.updated@example.test"
+    assert tenant.tenant_metadata["portal_contact_change_requests"][0]["status"] == "applied"
+
+
+def test_tenant_portal_account_contact_change_request_blocks_duplicate_pending_submission(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    onboarding.status = TenantOnboardingStatus.applied
+    session.commit()
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+
+    first_response = client.post(
+        "/api/v1/tenant-portal/contact-change-requests",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={
+            "contact_email": "first-account-request@example.test",
+            "notes": "First account-scoped request.",
+        },
+    )
+    assert first_response.status_code == 200
+    assert first_response.json()["contact_change_requests"][0]["status"] == "submitted"
+
+    duplicate_response = client.post(
+        "/api/v1/tenant-portal/contact-change-requests",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"contact_phone": "+61 400 999 000"},
+    )
+
+    assert duplicate_response.status_code == 409
+    assert duplicate_response.json()["detail"] == (
+        "A contact change request is already in review. Wait for the "
+        "property team to apply or close it before sending another."
+    )
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    assert tenant.contact_email == "avery@portal-one.example"
+    requests = tenant.tenant_metadata["portal_contact_change_requests"]
+    assert [request["status"] for request in requests] == ["submitted"]
 
 
 def test_tenant_portal_account_blocks_conflicting_and_revoked_logins(

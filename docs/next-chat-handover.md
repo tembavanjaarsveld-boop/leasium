@@ -35,6 +35,23 @@ Continuation from the tenant portal account cache hardening slice.
   payment reconciliation, provider dispatch, or provider history mutation paths
   were touched.
 
+### Tenant portal contact-edit review-first closeout
+- Account-scoped tenant contact changes now follow the same review-first path as
+  token-scoped contact changes. Signed-in tenants can submit proposed contact
+  name/email/phone/billing-email changes with a note, but the canonical tenant
+  record only mutates after an operator applies the request.
+- The previous account-only self-edit branch was removed. Duplicate pending
+  submissions are blocked for account users too, and the tenant detail
+  `Tenant requests` read path sees account-submitted requests as
+  `tenant_portal_contact_request` rows.
+- The tenant portal UI no longer switches account users to `Edit details` /
+  `Save details`; it keeps review-first `Request change` / `Send request`
+  language while still using bearer auth for account sessions.
+- Verification: account review-first + duplicate backend regressions and the
+  existing token review-first test passed **3 passed**; full tenant portal
+  backend integration file passed **52 passed**; frontend helper smoke passed
+  **4 passed**.
+
 ## Codex continuation — 2026-05-31 (latest)
 
 Continuation from the Codex takeover. Branch `main` was current at `b7ec1f7`

@@ -2045,10 +2045,6 @@ function ContactDetailsPanel({
     (request) => request.status === "submitted",
   );
   const latestContactRequest = portal.contact_change_requests[0] ?? null;
-  const contactSelfEdit = portal.auth.mode === "tenant_portal_account";
-  const reviewPendingContactRequests = contactSelfEdit
-    ? []
-    : pendingContactRequests;
 
   const contactChangeMutation = useMutation({
     mutationFn: async () => {
@@ -2099,11 +2095,10 @@ function ContactDetailsPanel({
           </div>
         ) : null}
         <p className="text-xs leading-5 text-muted-foreground">
-          {contactSelfEdit
-            ? "These details are used for portal updates and property team follow-up."
-            : "If something looks wrong, send a note to the property team before signing or paying anything that depends on these details."}
+          If something looks wrong, send a note to the property team before
+          signing or paying anything that depends on these details.
         </p>
-        {reviewPendingContactRequests.length ? (
+        {pendingContactRequests.length ? (
           <div className="grid gap-2 rounded-md border border-warning/30 bg-warning/5 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="font-medium">Change request in review</div>
@@ -2114,7 +2109,7 @@ function ContactDetailsPanel({
               saved details will update here once they apply it.
             </p>
             <div className="grid gap-1 text-xs">
-              {reviewPendingContactRequests[0].changes.map((change) => (
+              {pendingContactRequests[0].changes.map((change) => (
                 <div key={change.field}>
                   <span className="font-medium">{change.label}</span>:{" "}
                   {String(change.after ?? "-")}
@@ -2134,7 +2129,7 @@ function ContactDetailsPanel({
             detail changes.
           </div>
         ) : null}
-        {reviewPendingContactRequests.length ? null : changeOpen ? (
+        {pendingContactRequests.length ? null : changeOpen ? (
           <form
             className="grid gap-3 rounded-md border border-border bg-muted/30 p-3"
             onSubmit={(event) => {
@@ -2142,9 +2137,7 @@ function ContactDetailsPanel({
               contactChangeMutation.mutate();
             }}
           >
-            <div className="text-sm font-semibold">
-              {contactSelfEdit ? "Edit contact details" : "Request a change"}
-            </div>
+            <div className="text-sm font-semibold">Request a change</div>
             <div className="grid gap-3">
               <Field label="Contact name">
                 <Input
@@ -2180,16 +2173,14 @@ function ContactDetailsPanel({
                   }
                 />
               </Field>
-              {contactSelfEdit ? null : (
-                <Field label="Note for the property team">
-                  <Input
-                    value={changeForm.notes ?? ""}
-                    onChange={(event) =>
-                      setChangeField("notes", event.target.value)
-                    }
-                  />
-                </Field>
-              )}
+              <Field label="Note for the property team">
+                <Input
+                  value={changeForm.notes ?? ""}
+                  onChange={(event) =>
+                    setChangeField("notes", event.target.value)
+                  }
+                />
+              </Field>
             </div>
             {contactChangeMutation.error ? (
               <p className="text-sm text-danger">
@@ -2209,7 +2200,7 @@ function ContactDetailsPanel({
                 ) : (
                   <Send size={16} />
                 )}
-                {contactSelfEdit ? "Save details" : "Send request"}
+                Send request
               </Button>
             </div>
           </form>
@@ -2217,7 +2208,7 @@ function ContactDetailsPanel({
           <div className="justify-self-start">
             <SecondaryButton type="button" onClick={() => setChangeOpen(true)}>
               <PenLine size={15} />
-              {contactSelfEdit ? "Edit details" : "Request change"}
+              Request change
             </SecondaryButton>
           </div>
         )}

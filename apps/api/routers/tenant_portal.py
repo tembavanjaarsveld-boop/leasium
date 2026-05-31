@@ -2391,35 +2391,6 @@ def create_contact_change_request(
         )
 
     now = utcnow()
-    if scope.auth.mode == "tenant_portal_account":
-        for change in changes:
-            field = change.get("field")
-            if isinstance(field, str):
-                setattr(scope.tenant, field, change.get("after"))
-        _append_contact_change_request(
-            scope.tenant,
-            changes=changes,
-            actor=scope.auth.actor,
-            status_value="applied",
-            notes=payload.notes,
-            now=now,
-        )
-        audit_log(
-            session,
-            actor=scope.auth.actor,
-            entity_id=scope.onboarding.entity_id,
-            action="update",
-            target_table="tenant",
-            target_id=scope.tenant.id,
-            tool_name="tenant_portal.contact_self_edit",
-            tool_input={"fields": [change["field"] for change in changes]},
-            tool_output_summary="Tenant portal account applied contact detail edits.",
-            data_classification="confidential",
-        )
-        session.commit()
-        session.refresh(scope.tenant)
-        return _portal_read(scope, session)
-
     raw_existing_requests = (scope.tenant.tenant_metadata or {}).get(
         PORTAL_CONTACT_REQUESTS_KEY
     )

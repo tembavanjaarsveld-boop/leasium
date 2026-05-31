@@ -159,3 +159,18 @@ test("tenant portal account reads are user-scoped and fail closed on refresh", a
   expect(publishAccountPortal).toBeGreaterThan(-1);
   expect(clearBeforePublish).toBeLessThan(publishAccountPortal);
 });
+
+test("tenant portal contact changes stay review-first for account users", async () => {
+  const text = await source("src/app/tenant-portal/tenant-portal-content.tsx");
+
+  expect(text).not.toContain("contactSelfEdit");
+  expect(text).not.toContain("Edit contact details");
+  expect(text).not.toContain("Edit details");
+  expect(text).not.toContain("Save details");
+  expect(text).toContain("Request a change");
+  expect(text).toContain("Send request");
+  expect(text).toContain("Note for the property team");
+  expect(text).toContain('portal.auth.mode === "tenant_portal_account"');
+  expect(text).toContain("getAccountAuthToken");
+  expect(text).toContain("authToken");
+});
