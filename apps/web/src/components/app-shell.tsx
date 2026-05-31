@@ -92,11 +92,14 @@ type CommandAction = {
   meta: string;
 };
 
-// Primary nav trimmed 2026-05-23 (external design review): 13 → 8 items.
+// Primary nav trimmed 2026-05-23 (external design review): 13 → 8 items,
+// then consolidated 2026-05-31 (DoorLoop benchmark refocus): 8 → 7
+// primary hubs plus Settings.
 // Reachable via Cmd-K command palette but not in sidebar:
 //   AI Inbox (folds conceptually into Smart Intake)
-//   Contractors, Comms (folded under Work)
-//   Statements (folded under Billing)
+//   Tenants, Contractors (folded under People)
+//   Contractors, Comms (folded under Work where task-shaped)
+//   Billing Readiness, Statements (folded under Money)
 //   Portfolio QA (cleanup workspace — palette-only)
 // G-shortcuts for the removed items still work via SHORTCUT_NAV below
 // so keyboard users keep their muscle memory while the IA settles.
@@ -117,22 +120,23 @@ const navItems: NavItem[] = [
     shortcut: "G P",
   },
   {
-    href: "/tenants",
-    label: "Tenants",
-    matchPaths: ["/tenants"],
+    href: "/people",
+    label: "People",
+    matchPaths: ["/people", "/tenants", "/contractors"],
     icon: Users,
-    shortcut: "G T",
+    shortcut: "G E",
   },
   {
     href: "/operations",
     label: "Work",
-    matchPaths: ["/operations"],
+    matchPaths: ["/operations", "/comms", "/notifications", "/tasks"],
     icon: Wrench,
     shortcut: "G O",
   },
   {
-    href: "/billing-readiness",
-    label: "Billing",
+    href: "/money",
+    label: "Money",
+    matchPaths: ["/money", "/billing-readiness", "/statements"],
     icon: Wallet,
     shortcut: "G B",
   },
@@ -159,12 +163,12 @@ const frequentActions: CommandAction[] = [
   {
     href: "/tenants",
     label: "Add tenant",
-    meta: "Portfolio",
+    meta: "People",
   },
   {
     href: "/billing-readiness",
     label: "Review billing blockers",
-    meta: "Billing",
+    meta: "Money",
   },
   {
     href: "/operations",
@@ -222,17 +226,27 @@ const moduleJumpActions: CommandAction[] = [
   {
     href: "/statements",
     label: "Open owner statements",
-    meta: "Billing",
+    meta: "Money",
   },
   {
     href: "/people",
     label: "Open People hub",
-    meta: "Portfolio",
+    meta: "People",
   },
   {
-    href: "/tenants",
+    href: "/people?tab=tenants",
     label: "Open tenant directory",
-    meta: "Portfolio",
+    meta: "People",
+  },
+  {
+    href: "/money",
+    label: "Open Money hub",
+    meta: "Money",
+  },
+  {
+    href: "/billing-readiness",
+    label: "Open Billing Readiness",
+    meta: "Money",
   },
   {
     href: "/portfolio-qa",
@@ -260,10 +274,10 @@ const SHORTCUT_NAV: ShortcutNav[] = [
   { key: "i", href: "/intake", label: "Smart Intake" },
   { key: "m", href: "/inbox", label: "AI Inbox" },
   { key: "p", href: "/properties", label: "Properties" },
-  { key: "t", href: "/tenants", label: "Tenants" },
+  { key: "t", href: "/people?tab=tenants", label: "Tenants" },
   { key: "e", href: "/people", label: "People hub" },
   { key: "o", href: "/operations", label: "Work (Operations)" },
-  { key: "r", href: "/contractors", label: "Contractors" },
+  { key: "r", href: "/people?tab=vendors", label: "Vendors" },
   { key: "c", href: "/comms", label: "Comms queue" },
   { key: "f", href: "/statements", label: "Owner statements" },
   { key: "b", href: "/billing-readiness", label: "Billing Readiness" },

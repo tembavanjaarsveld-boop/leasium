@@ -5,16 +5,13 @@
  *
  * One surface for every human/relationship in the portfolio: Tenants, Owners,
  * Vendors, and (later) Prospects. Owners is the new first-class directory backed
- * by /api/v1/owners; Tenants and Vendors render compact read-only lists with a
- * link out to their full workspaces until the Phase 3 nav consolidation absorbs
- * them inline. Reachable via the command palette + "G E" while it earns a
- * sidebar slot (design source of truth s10.5.1 keeps the sidebar at 7 items).
+ * by /api/v1/owners; Tenants and Vendors render inline here so the sidebar can
+ * stay at the seven-hub cap in design source of truth s10.5.1.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  ArrowRight,
   Building2,
   Loader2,
   Plus,
@@ -24,7 +21,6 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
@@ -91,7 +87,10 @@ export default function PeoplePage() {
 }
 
 function PeopleContent() {
-  const entitiesQuery = useQuery({ queryKey: ["entities"], queryFn: listEntities });
+  const entitiesQuery = useQuery({
+    queryKey: ["entities"],
+    queryFn: listEntities,
+  });
 
   const [selectedEntityId, setSelectedEntityId] = useState("");
   useEffect(() => {
@@ -267,7 +266,11 @@ function OwnerCard({
     <SectionPanel
       title={ownerName(owner)}
       icon={<Building2 size={17} />}
-      description={owner.trust_name && owner.trustee_name ? `Trustee: ${owner.trustee_name}` : undefined}
+      description={
+        owner.trust_name && owner.trustee_name
+          ? `Trustee: ${owner.trustee_name}`
+          : undefined
+      }
     >
       <div className="grid gap-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -300,9 +303,7 @@ function OwnerCard({
                 className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-3 py-1 text-xs text-foreground"
               >
                 {link.property_name}
-                <span className="text-muted-foreground">
-                  {link.split_pct}%
-                </span>
+                <span className="text-muted-foreground">{link.split_pct}%</span>
               </span>
             ))}
           </div>
@@ -370,9 +371,7 @@ function AddOwnerForm({
     onSuccess: () => onSaved(),
   });
 
-  const canSubmit = Boolean(
-    entityId && (legalName.trim() || trustName.trim()),
-  );
+  const canSubmit = Boolean(entityId && (legalName.trim() || trustName.trim()));
   const error = createMutation.error as Error | null;
 
   return (
@@ -424,7 +423,10 @@ function AddOwnerForm({
           </p>
         ) : null}
         <div className="md:col-span-2 flex items-center justify-end">
-          <Button type="submit" disabled={!canSubmit || createMutation.isPending}>
+          <Button
+            type="submit"
+            disabled={!canSubmit || createMutation.isPending}
+          >
             {createMutation.isPending ? (
               <Loader2 size={16} className="animate-spin" />
             ) : (
@@ -450,34 +452,51 @@ function TenantsTab({ entityId }: { entityId: string }) {
     <SectionPanel
       title="Tenants"
       icon={<Users size={17} />}
-      description="Compact view. Open the full tenant workspace for onboarding, leases, documents, and portal controls."
-      actions={
-        <Link
-          href="/tenants"
-          className="inline-flex items-center gap-1 text-sm font-semibold text-primary-hover hover:underline"
-        >
-          Open tenant workspace
-          <ArrowRight size={15} />
-        </Link>
-      }
+      description="Tenant relationships, contacts, billing details, and portal-ready records."
     >
       <div className="p-4">
         {tenantsQuery.isLoading ? <SkeletonRows rows={3} /> : null}
-        {!tenantsQuery.isLoading && tenants.length === 0 ? (
+        {tenantsQuery.error ? (
+          <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {friendlyError(tenantsQuery.error)}
+          </p>
+        ) : null}
+        {!tenantsQuery.isLoading &&
+        tenants.length === 0 &&
+        !tenantsQuery.error ? (
           <p className="text-sm text-muted-foreground">No tenants yet.</p>
         ) : null}
         <ul className="grid gap-2">
           {tenants.map((tenant) => (
             <li
               key={tenant.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm"
+              className="grid gap-2 rounded-lg border border-border bg-white px-3 py-3 text-sm md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto]"
             >
-              <span className="font-medium text-foreground">
-                {tenant.legal_name}
-              </span>
-              <span className="text-muted-foreground">
-                {tenant.contact_email || tenant.contact_name || "No contact"}
-              </span>
+              <div className="min-w-0">
+                <p className="truncate font-medium text-foreground">
+                  {tenant.legal_name}
+                </p>
+                <p className="truncate text-muted-foreground">
+                  {tenant.trading_name || tenant.abn || "No trading name"}
+                </p>
+              </div>
+              <div className="min-w-0 text-muted-foreground">
+                <p className="truncate">
+                  {tenant.contact_email || tenant.contact_name || "No contact"}
+                </p>
+                <p className="truncate">
+                  {tenant.billing_email
+                    ? `Billing: ${tenant.billing_email}`
+                    : "Billing email not set"}
+                </p>
+              </div>
+              <div className="flex items-start justify-start md:justify-end">
+                <StatusBadge
+                  tone={tenant.contact_email ? "success" : "warning"}
+                >
+                  {tenant.contact_email ? "Contact ready" : "Needs contact"}
+                </StatusBadge>
+              </div>
             </li>
           ))}
         </ul>
@@ -498,36 +517,49 @@ function VendorsTab({ entityId }: { entityId: string }) {
     <SectionPanel
       title="Vendors"
       icon={<Wrench size={17} />}
-      description="Compact view of the contractor directory. Open the full directory to add categories, priority, and contact details."
-      actions={
-        <Link
-          href="/contractors"
-          className="inline-flex items-center gap-1 text-sm font-semibold text-primary-hover hover:underline"
-        >
-          Open vendor directory
-          <ArrowRight size={15} />
-        </Link>
-      }
+      description="Maintenance vendors, categories, priority, and contact readiness."
     >
       <div className="p-4">
         {contractorsQuery.isLoading ? <SkeletonRows rows={3} /> : null}
-        {!contractorsQuery.isLoading && contractors.length === 0 ? (
+        {contractorsQuery.error ? (
+          <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {friendlyError(contractorsQuery.error)}
+          </p>
+        ) : null}
+        {!contractorsQuery.isLoading &&
+        contractors.length === 0 &&
+        !contractorsQuery.error ? (
           <p className="text-sm text-muted-foreground">No vendors yet.</p>
         ) : null}
         <ul className="grid gap-2">
           {contractors.map((contractor) => (
             <li
               key={contractor.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm"
+              className="grid gap-2 rounded-lg border border-border bg-white px-3 py-3 text-sm md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto]"
             >
-              <span className="font-medium text-foreground">
-                {contractor.name}
-              </span>
-              <span className="text-muted-foreground">
-                {contractor.categories.length > 0
-                  ? contractor.categories.join(", ")
-                  : "No categories"}
-              </span>
+              <div className="min-w-0">
+                <p className="truncate font-medium text-foreground">
+                  {contractor.name}
+                </p>
+                <p className="truncate text-muted-foreground">
+                  {contractor.company_name || "Independent vendor"}
+                </p>
+              </div>
+              <div className="min-w-0 text-muted-foreground">
+                <p className="truncate">
+                  {contractor.categories.length > 0
+                    ? contractor.categories.join(", ")
+                    : "No categories"}
+                </p>
+                <p className="truncate">
+                  {contractor.email || contractor.phone || "No contact"}
+                </p>
+              </div>
+              <div className="flex items-start justify-start md:justify-end">
+                <StatusBadge tone={contractor.email ? "success" : "warning"}>
+                  {contractor.email ? "Contact ready" : "Needs contact"}
+                </StatusBadge>
+              </div>
             </li>
           ))}
         </ul>

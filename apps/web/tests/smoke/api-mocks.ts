@@ -324,6 +324,37 @@ const initialTenants = [
 ];
 let tenants = jsonClone(initialTenants);
 
+const contractors = [
+  {
+    id: "contractor-1",
+    entity_id: entityId,
+    name: "Bright Spark Electrical",
+    company_name: "Bright Spark Electrical Pty Ltd",
+    categories: ["electrical"],
+    email: "service@brightspark.example",
+    phone: "07 3000 2222",
+    service_radius_km: 20,
+    priority: 1,
+    notes: "Preferred electrical contractor.",
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-05-01T00:00:00.000Z",
+  },
+  {
+    id: "contractor-2",
+    entity_id: entityId,
+    name: "Cool Air Services",
+    company_name: null,
+    categories: ["hvac"],
+    email: "service@coolair.example",
+    phone: "07 3000 1111",
+    service_radius_km: 15,
+    priority: 2,
+    notes: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-05-01T00:00:00.000Z",
+  },
+];
+
 const initialTenantOnboardings = [
   {
     id: "onboarding-1",
@@ -4984,10 +5015,7 @@ export async function mockLeasiumApi(
       return;
     }
 
-    if (
-      method === "GET" &&
-      path === `/basiq/connection-status/${entityId}`
-    ) {
+    if (method === "GET" && path === `/basiq/connection-status/${entityId}`) {
       await fulfillJson(route, basiqConnectionStatus());
       return;
     }
@@ -4997,10 +5025,7 @@ export async function mockLeasiumApi(
       return;
     }
 
-    if (
-      method === "POST" &&
-      path === `/basiq/connection-revoke/${entityId}`
-    ) {
+    if (method === "POST" && path === `/basiq/connection-revoke/${entityId}`) {
       await fulfillJson(route, basiqConnectionStatus());
       return;
     }
@@ -5165,6 +5190,11 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/tenants") {
       await fulfillJson(route, tenants);
+      return;
+    }
+
+    if (method === "GET" && path === "/contractors") {
+      await fulfillJson(route, contractors);
       return;
     }
 

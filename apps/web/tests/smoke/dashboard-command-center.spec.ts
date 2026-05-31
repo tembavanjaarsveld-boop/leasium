@@ -83,9 +83,9 @@ test("entity bootstrap stays warm across operator navigation", async ({
     page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
   ).toHaveCount(0);
 
-  await page.locator('nav a[href="/tenants"]').first().click();
-  await expect(page).toHaveURL(/\/tenants$/);
-  await expect(page.getByText("Find tenants")).toBeVisible();
+  await page.locator('nav a[href="/people"]').first().click();
+  await expect(page).toHaveURL(/\/people$/);
+  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
 
   await expect.poll(() => entityRequests.length).toBe(1);
 });
@@ -146,9 +146,7 @@ test("dashboard groups upcoming lease events under a date-bucket header", async 
 
   // B3: the seeded rent-review event renders under one of the lightweight
   // date-bucket headers (the exact bucket is relative to today's date).
-  await expect(eventsPanel).toContainText(
-    "Bright Cafe Pty Ltd rent review",
-  );
+  await expect(eventsPanel).toContainText("Bright Cafe Pty Ltd rent review");
   await expect(
     eventsPanel.getByText(/^(Overdue|Today|This week|Later)$/).first(),
   ).toBeVisible();
@@ -318,9 +316,7 @@ test("dashboard recent activity disclosure keeps its control touch-friendly", as
       json: {
         items: Array.from({ length: 10 }, (_, index) => ({
           id: `activity-${index + 1}`,
-          occurred_at: new Date(
-            Date.now() - index * 15 * 60_000,
-          ).toISOString(),
+          occurred_at: new Date(Date.now() - index * 15 * 60_000).toISOString(),
           actor: index % 2 === 0 ? "Temba van Jaarsveld" : "System",
           actor_kind: index % 2 === 0 ? "operator" : "system",
           action: "review",

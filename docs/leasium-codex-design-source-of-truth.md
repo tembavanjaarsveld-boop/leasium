@@ -936,13 +936,14 @@ walked away.
 
 ### 10.5.1 Primary navigation cap
 
-- **Hard ceiling: 7 items in the sidebar at any time.** Current shipped
-  state is 8 (Dashboard, Smart Intake, Properties, Tenants, Work, Billing,
-  Insights, Settings). The 2026-05-31 DoorLoop-informed plan reaches 7 by
-  introducing a **People** hub (Tenants · Owners · Vendors · later Prospects)
-  and a **Money** hub (Billing · Statements · Xero · Basiq) — see §11 and the
-  `product-roadmap.md` DoorLoop refocus. This supersedes the earlier
-  Properties+Tenants → Portfolio idea.
+- **Hard ceiling: 7 primary items in the sidebar at any time, plus
+  Settings.** Current shipped state is 7 primary hubs (Dashboard,
+  Smart Intake, Properties, People, Work, Money, Insights) with Settings
+  separated as the utility destination. The 2026-05-31 DoorLoop-informed
+  consolidation introduced a **People** hub (Tenants · Owners · Vendors ·
+  later Prospects) and a **Money** hub (Billing · Statements · Xero · Basiq)
+  — see §11 and the `product-roadmap.md` DoorLoop refocus. This supersedes
+  the earlier Properties+Tenants → Portfolio idea.
 - Anything beyond the ceiling lives in the Cmd-K command palette
   (`commandActions` in `apps/web/src/components/app-shell.tsx`).
 - Keyboard `G`-shortcuts (`SHORTCUT_NAV`) MAY exceed the sidebar list —
@@ -1170,33 +1171,20 @@ the same drift twice.
 
 ## 11. Navigation model
 
-Shipped primary navigation (2026-05-31):
+Shipped primary navigation (2026-05-31 DoorLoop refocus):
 
 ```txt
 Dashboard
 Smart Intake
 Properties
-Tenants
-Work
-Billing
-Insights
-Settings
-```
-
-**Target navigation (DoorLoop-informed, in progress** — see `design-governance.md`
-2026-05-31 and the `product-roadmap.md` DoorLoop refocus). Consolidate to 7 hubs by
-introducing a **People** hub and a **Money** hub:
-
-```txt
-Dashboard
-Smart Intake
-Properties      (Properties → Units · Leases · Portfolios · Documents)
 People          (Tenants · Owners · Vendors · later Prospects)
 Work            (Maintenance · Arrears · Tasks · Comms)
 Money           (Billing · Invoices · Owner statements · Xero · Bank feeds)
 Insights
 Settings
 ```
+
+Primary hub count is 7; Settings remains visible as the utility destination.
 
 ### Navigation notes
 

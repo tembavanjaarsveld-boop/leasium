@@ -2,6 +2,58 @@
 
 Last updated: 2026-05-31
 
+## Codex continuation — 2026-05-31 (latest)
+
+Continuation from the Codex takeover. Branch `main` was pulled and was already
+current at `d2e5907` before this slice.
+
+### Prod checks completed
+- Render health endpoint is serving `d2e590798e09c89bee402c81c2600efce5148946`
+  with `source=render`.
+- Live OpenAPI includes `/api/v1/owners`, `/api/v1/owners/{owner_id}`,
+  `/api/v1/owners/{owner_id}/properties`, and `/api/v1/owners/statements`.
+- Neon production project `snowy-boat-02653440` is at Alembic
+  `20260531_0029`; `owner` and `property_owner` tables exist.
+- Prod owner backfill was run additively through Neon: **17 owners** and
+  **20 property_owner links** for **20 active properties**. A second idempotence
+  run created `0` owners and `0` links.
+- Local backfill could not run in this desktop session because Docker is not
+  installed and local Postgres on `localhost:5432` refused connections. Run
+  `.venv/bin/python -m scripts.backfill_owners` locally once the DB is up.
+
+### Phase 3 slice
+- Sidebar consolidated to 7 primary hubs + Settings:
+  Dashboard · Smart Intake · Properties · People · Work · Money · Insights.
+- `/people` now has Tenants and Vendors inline instead of link-out actions;
+  Owners remains backed by `/api/v1/owners`; Prospects remains a stub.
+- New `/money` hub groups Billing · Statements · Xero · Basiq with review-first
+  handoffs to the existing finance workspaces.
+- Work is active for `/comms`, and hub alias redirects were added:
+  `/people/tenants`, `/people/vendors`, `/work`, `/work/comms`,
+  `/money/billing`, `/money/statements`, `/money/xero`, `/money/basiq`.
+- Existing heavy workspaces (`/tenants`, `/contractors`, `/billing-readiness`,
+  `/statements`, `/comms`) remain reachable for deep links and detailed work.
+- New smoke: `apps/web/tests/smoke/nav-consolidation.spec.ts`.
+
+### Verification for this slice
+- Red-green: `./node_modules/.bin/playwright test tests/smoke/nav-consolidation.spec.ts --workers=1`
+  failed first for missing People/Money/inline tabs, then passed **3 passed**.
+- Adjacent smokes:
+  `people-hub.spec.ts` + dashboard entity bootstrap **2 passed**; app-shell
+  command/comms/shortcut checks **3 passed**.
+- Frontend checks: focused `eslint` clean, `./node_modules/.bin/tsc --noEmit`
+  clean, `git diff --check` clean, production-style
+  `NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/next build`
+  succeeded.
+
+### Next
+1. After this Phase 3 slice lands on `main`, verify the Vercel production
+   deployment for the resulting commit.
+2. After prod is verified, start Ticket 1.3 (`/owners/statements` read-path
+   swap) with eyes on the now-backfilled real data. Change only the grouping in
+   `_build_owner_statements`; keep
+   `tests/integration/test_owner_statement_parity.py` green.
+
 ## Codex Takeover — 2026-05-31 (READ THIS FIRST)
 
 Handover from a Cowork (Claude) session. Prod is healthy and current. Everything below is **on `main` and deployed** unless marked DEFERRED/TODO.

@@ -11,9 +11,9 @@ Backlog: `docs/product-roadmap.md` → "DoorLoop benchmark refocus (2026-05-31)"
 - Ticket 1.4 (Owner CRUD API) + owner↔property link endpoints: **SHIPPED** (`5685c90`).
 - Ticket 1.2 (idempotent backfill + `scripts.backfill_owners`): **SHIPPED** (`5685c90`).
 - Ticket 1.3 (statement read-path cutover): parity test **PROVEN** (`tests/integration/test_owner_statement_parity.py`); the endpoint swap itself is **DEFERRED** — do it with eyes on real SKJ data.
-- Ticket 2.1 (`/people` hub): **SHIPPED** (`d0bd122`) — Owners directory live; Tenants/Vendors compact + link-out; Prospects stub.
+- Ticket 2.1 (`/people` hub): **SHIPPED** (`d0bd122`) — Owners directory live; Tenants/Vendors now inline after Phase 3; Prospects stub.
 - Ticket 2.2 (consistent people record-page shape): **TODO**.
-- Phase 3 (nav consolidation to 7 hubs): **TODO — next**.
+- Phase 3 (nav consolidation to 7 hubs): **SHIPPED pending Remba review** — sidebar is Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings); `/money` hub added; Comms routes under Work; hub alias redirects added.
 
 Verified: backend 344 passed / 1 skipped + ruff clean; frontend eslint/tsc + Vercel prod build green. Migration applies on Render deploy; run `scripts.backfill_owners` to populate owners.
 
@@ -114,6 +114,10 @@ and distributions (P1+). Net-new feature count is low; it's mostly a structural 
 ## Phase 3 — Navigation consolidation to 7 hubs
 
 ### Ticket 3.1 — Sidebar → Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings)
+- **Status:** Shipped pending Remba review. Smoke `apps/web/tests/smoke/nav-consolidation.spec.ts`
+  guards the seven-hub sidebar, inline People tabs, Money hub, and legacy finance
+  links. Existing heavy workspaces remain reachable while the hubs become the
+  primary IA.
 - **Red first:** smoke asserts the sidebar shows exactly 7 primary items + Settings, that
   **People** and **Money** hubs navigate, and that legacy deep links (`/tenants`,
   `/contractors`, `/statements`, `/billing-readiness`) still resolve (redirect or hub

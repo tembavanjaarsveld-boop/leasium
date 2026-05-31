@@ -256,13 +256,15 @@ Equifax/illion; RTBA/state RTAs).
   models, migration `20260531_0029`, `/api/v1/owners` CRUD + property-link attach/detach,
   idempotent `scripts.backfill_owners`, and a statement-grouping parity test. Legacy
   `Property.owner_*` fields kept as the backfill source until the read-path swap (below).
-- [~] **People hub IA.** SHIPPED to prod (commit `d0bd122`): `/people` with a live Owners
-  directory (on the new API), Tenants/Vendors compact + link-out, Prospects stub, `?tab=`
-  URL state, palette + `G E`. Remaining: fold Tenants/Vendors *inline* and a consistent
-  record-page shape (Ticket 2.2) — tracked under Navigation consolidation.
-- [ ] **Navigation consolidation to 7 hubs (next ticket).** Dashboard · Smart Intake · Properties ·
-  People · Work · Money · Insights (+ Settings). Folds Billing / Statements / Xero / Basiq
-  into **Money** and Comms into **Work**. Honours the §10.5.1 seven-item sidebar cap.
+- [~] **People hub IA.** SHIPPED pending Remba review: `/people` with a live Owners
+  directory (on the new API), Tenants/Vendors inline under the same hub, Prospects stub,
+  `?tab=` URL state, sidebar slot, palette actions, and `G E`. Remaining: consistent
+  record-page shape (Ticket 2.2).
+- [~] **Navigation consolidation to 7 hubs.** SHIPPED pending Remba review: sidebar is now
+  Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings).
+  Tenants/Vendors live under **People**, Billing / Statements / Xero / Basiq group under
+  the new `/money` hub, Comms is treated as **Work**, and hub alias redirects preserve
+  moved-route entry points. Honours the §10.5.1 seven-item sidebar cap.
 
 **P1 — reaches the standard (AU-correct):**
 

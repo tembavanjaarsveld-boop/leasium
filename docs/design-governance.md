@@ -65,11 +65,13 @@ Frontend work on these should run through the checked-in UI skills in
 `docs/external-skills/` (web-design-guidelines, composition-patterns, and the hallmark
 slop-test) so the new surfaces stay consistent with the design system.
 
-## 2026-05-31 People hub + canvas darkening (shipped to prod, prototype mode)
+## 2026-05-31 People hub + nav consolidation + canvas darkening (prototype mode)
 
-Shipped to prod (no Remba gate, prototype mode):
+Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba review:
 
-- **People hub** (`/people`, commit `d0bd122`): one surface for Tenants · Owners · Vendors · Prospects(stub). Owners is a live directory on the new `/api/v1/owners`; Tenants/Vendors are compact read-only with a link to their full workspaces; `?tab=` URL state; reachable via command palette + `G E`. Sidebar unchanged (still 7 items) — full consolidation (fold Tenants/Vendors inline + a Money hub) is the next IA ticket.
+- **People hub** (`/people`, commit `d0bd122`, then Phase 3 update): one surface for Tenants · Owners · Vendors · Prospects(stub). Owners is a live directory on the new `/api/v1/owners`; Tenants/Vendors now render inline under the same hub instead of carrying link-out actions; `?tab=` URL state; reachable from the sidebar, command palette, and `G E`. Remba should review whether the inline Tenant/Vendor density is enough before the shared record-page shape lands.
+- **Navigation consolidation to 7 hubs** (Phase 3): sidebar is Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings). The standalone Tenants and Billing items are removed; People carries Tenants/Owners/Vendors; Work is active for Comms; Money groups Billing Readiness, Owner statements, Xero, and Basiq. Hub alias redirects (`/people/tenants`, `/people/vendors`, `/work`, `/work/comms`, `/money/*`) preserve moved-route entry points while the existing workspaces stay alive for deep links. Remba should review the People vs Properties split, Money label, and whether the command palette makes the folded destinations discoverable enough.
+- **Money hub** (`/money`): a focused finance hub with tabs for Billing · Statements · Xero · Basiq and review-first handoffs to the existing finance workspaces. It does not call providers, preview reconciliation, dispatch invoices, send owner email, or mutate Xero/Basiq state.
 - **Canvas darkening** (globals.css, commit `65c1da8`): `--leasium-bg` #f6f8fb→#edf0f6 and `--leasium-slate-100` #f2f4f7→#e9edf3 so white cards lift off the background. Hierarchy preserved: cards (#fff) > canvas > muted/hover > border. Light mode only; dark-mode token untouched. Dial the canvas value if it reads too strong/weak on real data. Design source of truth §6 updated to match.
 - **Card elevation**: new `leasiumCard` Tailwind shadow — a tight contact layer + a soft ambient lift (`0 1px 2px /0.06, 0 4px 12px -2px /0.08`) — applied to `SectionPanel` and `DashboardMetricCard` so cards separate from the darker canvas; buttons/rows keep `leasiumXs`. Subtle border retained. Dial via the `leasiumCard` token in `apps/web/tailwind.config.ts`.
 
