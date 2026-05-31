@@ -166,6 +166,8 @@ Expected: all checks pass.
 
 Update `docs/product-roadmap.md` and `docs/next-chat-handover.md` to state that owner statement shared-property totals are allocated by `PropertyOwner.split_pct`, while provider send/dispatch remains approval-only and unchanged.
 
-- [ ] **Step 4: Commit and deploy**
+- [x] **Step 4: Commit and deploy**
 
 Commit directly on `main`, push, then verify Render health and live OpenAPI still expose `/api/v1/owners/statements`.
+
+Actual: code commit `4305533` (`Allocate owner statements by ownership split`) was pushed to `main`. Vercel production deploy `dpl_5G4GWVCp1Q8gXyQpkpujX6JwMcov` reached **READY**; `https://leasium.ai/statements` returned HTTP 200; Render health reported `43055333993c3575581bc66a1411d4b12188256f` with `source=render`; live OpenAPI still exposes `/api/v1/owners/statements`.

@@ -209,7 +209,8 @@ before the Ticket 2.2 slice.
   download path.
 
 ### Owner statement split-allocation slice
-- In progress in this continuation. Plan:
+- Shipped in this continuation. Code commit: `4305533`
+  (`Allocate owner statements by ownership split`). Plan:
   `docs/superpowers/plans/2026-05-31-owner-statement-split-allocation.md`.
 - Backend: `/api/v1/owners/statements` now carries `PropertyOwner.split_pct`
   into statement aggregation, so shared-property invoice totals are allocated
@@ -236,11 +237,16 @@ before the Ticket 2.2 slice.
   so they cannot duplicate full invoices, and owner statements include a stable
   `owner_id` so owner portal previews match duplicate-label co-owners on the
   same shared property by id rather than by display text alone.
-- Verification so far:
+- Verification:
   `.venv/bin/python -m pytest tests/integration/test_owners_api.py tests/integration/test_owner_portal_api.py tests/integration/test_owner_portal_auth_api.py tests/integration/test_owner_statement_parity.py -q`
   passed **35 passed**; targeted backend ruff passed; web `tsc --noEmit` and
   targeted `eslint src/lib/api.ts` passed; `apps/web` statements smoke passed
   **3 passed**.
+- Deployment verification before this docs-sync commit: Vercel production deploy
+  `dpl_5G4GWVCp1Q8gXyQpkpujX6JwMcov` for `4305533` was **READY**;
+  `https://leasium.ai/statements` returned HTTP 200; Render health reported
+  `43055333993c3575581bc66a1411d4b12188256f` with `source=render`; live
+  OpenAPI includes `/api/v1/owners/statements`.
 
 ### Next
 1. Test production owner invites and secure document downloads with a real Clerk
