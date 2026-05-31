@@ -101,8 +101,12 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Daily command center" }),
   ).toBeVisible();
+  await expect(page.getByLabel("Entity")).toHaveValue("entity-1");
+  await expect(
+    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+  ).toHaveCount(0);
   await expect(
     page.getByText("Queen Street Retail Centre").first(),
   ).toBeVisible();

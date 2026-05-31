@@ -2780,9 +2780,6 @@ export function Dashboard({
     );
   }, [isIntakeWorkspace]);
 
-  const selectedEntity = entitiesQuery.data?.find(
-    (entity) => entity.id === selectedEntityId,
-  );
   const dashboardOverviewQuery = useQuery<DashboardOverviewRecord>({
     queryKey: ["dashboard-overview", selectedEntityId, asOf],
     queryFn: () => getDashboardOverview(selectedEntityId, asOf || undefined),
@@ -2791,9 +2788,6 @@ export function Dashboard({
   const dashboardOverview = demoMode
     ? null
     : (dashboardOverviewQuery.data ?? null);
-  const selectedEntityName =
-    selectedEntity?.name ?? dashboardOverview?.entity.name;
-
   const propertiesQuery = useQuery({
     queryKey: ["dashboard-properties", selectedEntityId],
     queryFn: () => listProperties(selectedEntityId),
@@ -3593,49 +3587,43 @@ export function Dashboard({
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
-        <PageHeader
-          title={
-            isIntakeWorkspace
-              ? "Smart Intake"
-              : demoMode
-                ? "Leasium demo portfolio"
-                : (selectedEntityName ?? "Dashboard")
-          }
-          description={
-            isIntakeWorkspace
-              ? "Drop a document. Review what Leasium found. Apply only what you approve."
-              : "Your lease operations command centre for review queues, key dates, billing blockers, and tenant workflow."
-          }
-          actions={
-            <>
-              {!isIntakeWorkspace || demoMode ? (
+        {isIntakeWorkspace ? (
+          <PageHeader
+            title="Smart Intake"
+            description="Drop a document. Review what Leasium found. Apply only what you approve."
+            actions={
+              <>
+                {demoMode ? (
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => setDemoMode((current) => !current)}
+                  >
+                    <Layers3 size={15} />
+                    View live portfolio
+                  </SecondaryButton>
+                ) : null}
                 <SecondaryButton
                   type="button"
-                  onClick={() => setDemoMode((current) => !current)}
+                  onClick={() => {
+                    dashboardOverviewQuery.refetch();
+                    propertiesQuery.refetch();
+                    tenantsQuery.refetch();
+                    obligationsQuery.refetch();
+                    rentRollQuery.refetch();
+                    onboardingQuery.refetch();
+                    documentIntakesQuery.refetch();
+                  }}
+                  disabled={!selectedEntityId}
                 >
-                  <Layers3 size={15} />
-                  {demoMode ? "View live portfolio" : "View demo portfolio"}
+                  <RefreshCw size={15} />
+                  Refresh
                 </SecondaryButton>
-              ) : null}
-              <SecondaryButton
-                type="button"
-                onClick={() => {
-                  dashboardOverviewQuery.refetch();
-                  propertiesQuery.refetch();
-                  tenantsQuery.refetch();
-                  obligationsQuery.refetch();
-                  rentRollQuery.refetch();
-                  onboardingQuery.refetch();
-                  documentIntakesQuery.refetch();
-                }}
-                disabled={!selectedEntityId}
-              >
-                <RefreshCw size={15} />
-                Refresh
-              </SecondaryButton>
-            </>
-          }
-        />
+              </>
+            }
+          />
+        ) : (
+          <h1 className="sr-only">Dashboard</h1>
+        )}
 
         {dashboardError ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
@@ -3668,8 +3656,8 @@ export function Dashboard({
           <SectionPanel
             title="Checking live portfolio"
             description={
-              selectedEntityName
-                ? `Checking records for ${selectedEntityName}.`
+              selectedEntityId
+                ? "Checking portfolio records."
                 : "Connecting to the live portfolio and selecting an entity."
             }
             icon={<Loader2 size={17} className="animate-spin text-primary" />}
@@ -3702,6 +3690,33 @@ export function Dashboard({
             loading={commandCenterLoading}
             refreshing={dashboardRefreshing}
             counts={displayedCommandCenterCounts}
+            actions={
+              <>
+                <SecondaryButton
+                  type="button"
+                  onClick={() => setDemoMode((current) => !current)}
+                >
+                  <Layers3 size={15} />
+                  {demoMode ? "View live portfolio" : "View demo portfolio"}
+                </SecondaryButton>
+                <SecondaryButton
+                  type="button"
+                  onClick={() => {
+                    dashboardOverviewQuery.refetch();
+                    propertiesQuery.refetch();
+                    tenantsQuery.refetch();
+                    obligationsQuery.refetch();
+                    rentRollQuery.refetch();
+                    onboardingQuery.refetch();
+                    documentIntakesQuery.refetch();
+                  }}
+                  disabled={!selectedEntityId}
+                >
+                  <RefreshCw size={15} />
+                  Refresh
+                </SecondaryButton>
+              </>
+            }
           />
         ) : null}
 

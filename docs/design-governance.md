@@ -108,6 +108,13 @@ scale, typography) and the provider-mutation guardrail.
   meet the 44px target baseline while keeping the same question text, answer
   flow, citations, and no-mutation guardrail. Citation source links now use the
   same touch-target baseline.
+- Dashboard entity-title de-duplication: the live dashboard no longer repeats
+  the selected entity as a large content H1 because the AppHeader entity selector
+  already owns that context. Daily command center is now the first visible
+  content heading and carries the compact demo/refresh controls in its header; a
+  screen-reader-only Dashboard H1 preserves page structure. Smoke coverage
+  guards that the entity remains selected in the shell control and is not
+  rendered as a content heading.
 - Saved views touch-target polish: the Tenants/Properties/Operations
   `<SavedViewsMenu>` keeps the localStorage-backed saved-filter contract and URL
   filter re-apply semantics, while its trigger, Apply/Rename/Delete controls,

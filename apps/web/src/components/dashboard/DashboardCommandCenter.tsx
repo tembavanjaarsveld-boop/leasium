@@ -103,11 +103,13 @@ export function DashboardCommandCenter({
   loading,
   refreshing,
   counts,
+  actions,
 }: {
   items: CommandCenterItem[];
   loading: boolean;
   refreshing: boolean;
   counts: CommandCenterCounts;
+  actions?: ReactNode;
 }) {
   const shownItems = items.slice(0, 6);
   const totalCount =
@@ -147,23 +149,26 @@ export function DashboardCommandCenter({
       description="Ranked operator actions across reviews, billing, onboarding, and key dates."
       icon={<ClipboardList size={17} className="text-primary" />}
       actions={
-        <StatusBadge
-          tone={
-            loading
-              ? "neutral"
-              : totalCount
-                ? (shownItems[0]?.tone ?? "warning")
-                : "success"
-          }
-        >
-          {loading
-            ? "Checking"
-            : refreshing
-              ? "Updating"
-              : totalCount
-                ? "Act today"
-                : "Clear"}
-        </StatusBadge>
+        <>
+          {actions}
+          <StatusBadge
+            tone={
+              loading
+                ? "neutral"
+                : totalCount
+                  ? (shownItems[0]?.tone ?? "warning")
+                  : "success"
+            }
+          >
+            {loading
+              ? "Checking"
+              : refreshing
+                ? "Updating"
+                : totalCount
+                  ? "Act today"
+                  : "Clear"}
+          </StatusBadge>
+        </>
       }
       className="border-primary/20"
     >

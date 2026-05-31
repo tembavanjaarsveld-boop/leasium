@@ -76,8 +76,12 @@ test("entity bootstrap stays warm across operator navigation", async ({
 
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Daily command center" }),
   ).toBeVisible();
+  await expect(page.getByLabel("Entity")).toHaveValue("entity-1");
+  await expect(
+    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+  ).toHaveCount(0);
 
   await page.locator('nav a[href="/tenants"]').first().click();
   await expect(page).toHaveURL(/\/tenants$/);
