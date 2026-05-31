@@ -106,6 +106,97 @@ test("properties table density toggle trims row padding in compact mode", async 
     .toBe("compact");
 });
 
+test("property deep link shows a record-level not-found state", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/premises/missing-property", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Property not found." }),
+    });
+  });
+
+  await page.goto("/properties?entity_id=entity-1&property_id=missing-property");
+
+  await expect(
+    page.getByRole("heading", { name: "Property not found" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByText("This property may have been deleted or moved"),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/property_id=missing-property/);
+  await expect(
+    page.getByAltText("Queen Street Retail Centre primary image"),
+  ).toHaveCount(0);
+  await expect(page.getByText("Property unavailable")).toHaveCount(0);
+});
+
+test("property deep link keeps non-404 failures on unavailable state", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/premises/broken-property", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Property service unavailable." }),
+    });
+  });
+
+  await page.goto("/properties?entity_id=entity-1&property_id=broken-property");
+
+  await expect(
+    page.getByRole("heading", { name: "Property unavailable" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Property service unavailable.")).toBeVisible();
+  await expect(page).toHaveURL(/property_id=broken-property/);
+  await expect(page.getByText("Property not found")).toHaveCount(0);
+});
+
+test("property missing deep link does not widen selected-property child queries", async ({
+  page,
+}) => {
+  const childRequests: string[] = [];
+  await page.route("**/api/v1/{obligations,charge-rules}**", async (route) => {
+    const url = new URL(route.request().url());
+    childRequests.push(`${url.pathname}${url.search}`);
+    await route.fallback();
+  });
+
+  await page.goto("/properties?entity_id=entity-1&property_id=missing-property");
+
+  await expect(
+    page.getByRole("heading", { name: "Property not found" }),
+  ).toBeVisible({ timeout: 15_000 });
+  expect(
+    childRequests.filter((url) => !url.includes("property_id=")),
+  ).toEqual([]);
+});
+
+test("property filtered deep link keeps selection inside the filtered list", async ({
+  page,
+}) => {
+  await page.goto(
+    "/properties?entity_id=entity-1&owner_tag=queen%20street%20property%20trust&property_id=property-3",
+  );
+
+  await expect(
+    page.getByText("2 properties tagged Queen Street Property Trust"),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page).not.toHaveURL(/property_id=property-3/);
+  await expect(
+    page.getByAltText("Eagle Street Office primary image"),
+  ).toHaveCount(0);
+});
+
 test("property owner chips display ownership chains with cleaner arrows", async () => {
   const property = {
     ownership_structure: "split",

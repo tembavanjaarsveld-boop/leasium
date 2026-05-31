@@ -57,6 +57,7 @@ import { useUnmountDelay } from "@/lib/use-unmount-delay";
 import { cn, friendlyError as baseFriendlyError } from "@/lib/utils";
 import {
   Button,
+  EmptyState,
   Field,
   Input,
   SecondaryButton,
@@ -82,6 +83,8 @@ import {
   deleteTenancyUnit,
   downloadDocumentBlob,
   EnrichmentSuggestion,
+  ApiError,
+  getProperty,
   getLeaseIntake,
   getInsightsOverview,
   InsightsOverviewRecord,
@@ -1180,6 +1183,10 @@ function friendlyError(error: unknown) {
   return baseFriendlyError(error);
 }
 
+function isNotFoundError(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
+}
+
 function ReviewFields({
   title,
   items,
@@ -1878,6 +1885,7 @@ function Workspace({
   const propertyDocumentInputRef = useRef<HTMLInputElement>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string>("");
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
+  const [requestedPropertyId, setRequestedPropertyId] = useState<string>("");
   const [ownerTagFilter, setOwnerTagFilter] = useState<string>("");
   const [occupancyFilter, setOccupancyFilter] = useState<
     PropertyOccupancyStatus | "all"
@@ -1947,10 +1955,35 @@ function Workspace({
     queryFn: () => listProperties(selectedEntityId),
     enabled: Boolean(selectedEntityId),
   });
+  const propertyRecords = useMemo(
+    () => (propertiesQuery.error ? [] : (propertiesQuery.data ?? [])),
+    [propertiesQuery.data, propertiesQuery.error],
+  );
+  const requestedPropertyMissingFromList = Boolean(
+    requestedPropertyId &&
+      propertiesQuery.data &&
+      !propertiesQuery.error &&
+      !propertyRecords.some((property) => property.id === requestedPropertyId),
+  );
+  const requestedPropertySelectionPending = Boolean(
+    requestedPropertyId && !selectedPropertyId,
+  );
+  const selectedPropertyScopedQueriesEnabled =
+    Boolean(selectedPropertyId) && !requestedPropertyMissingFromList;
+  const entityScopedPropertyChildrenEnabled =
+    Boolean(selectedEntityId) &&
+    !requestedPropertyMissingFromList &&
+    !requestedPropertySelectionPending;
+  const requestedPropertyQuery = useQuery({
+    queryKey: ["property", requestedPropertyId],
+    queryFn: () => getProperty(requestedPropertyId),
+    enabled: requestedPropertyMissingFromList,
+    retry: false,
+  });
   const tenancyUnitsQuery = useQuery({
     queryKey: ["tenancy-units", selectedPropertyId],
     queryFn: () => listTenancyUnits(selectedPropertyId),
-    enabled: Boolean(selectedPropertyId),
+    enabled: selectedPropertyScopedQueriesEnabled,
   });
   const tenantsQuery = useQuery({
     queryKey: ["tenants", selectedEntityId],
@@ -1960,16 +1993,18 @@ function Workspace({
   const leasesQuery = useQuery({
     queryKey: ["leases", selectedPropertyId],
     queryFn: () => listLeasesByProperty(selectedPropertyId),
-    enabled: Boolean(selectedPropertyId),
+    enabled: selectedPropertyScopedQueriesEnabled,
   });
   const obligationsQuery = useQuery({
     queryKey: ["obligations", selectedEntityId, selectedPropertyId],
     queryFn: () =>
       listObligations({
         entity_id: selectedEntityId,
-        property_id: selectedPropertyId || undefined,
+        property_id: selectedPropertyScopedQueriesEnabled
+          ? selectedPropertyId
+          : undefined,
       }),
-    enabled: Boolean(selectedEntityId),
+    enabled: entityScopedPropertyChildrenEnabled,
   });
   const rentRollQuery = useQuery({
     queryKey: ["rent-roll", selectedEntityId, rentRollPropertyId, rentRollAsOf],
@@ -2000,9 +2035,11 @@ function Workspace({
     queryFn: () =>
       listChargeRules({
         entity_id: selectedEntityId,
-        property_id: selectedPropertyId || undefined,
+        property_id: selectedPropertyScopedQueriesEnabled
+          ? selectedPropertyId
+          : undefined,
       }),
-    enabled: Boolean(selectedEntityId),
+    enabled: entityScopedPropertyChildrenEnabled,
   });
   const tenantOnboardingsQuery = useQuery({
     queryKey: ["tenant-onboarding", selectedEntityId],
@@ -2021,9 +2058,9 @@ function Workspace({
     refetchInterval: (query) =>
       isLeaseIntakeProcessing(query.state.data) ? 2500 : false,
   });
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    setRequestedPropertyId(params.get("property_id") ?? "");
     const ownerTag = params.get("owner_tag") ?? "";
     setOwnerTagFilter((current) => (current === ownerTag ? current : ownerTag));
     const occupancy = params.get("occupancy");
@@ -2093,6 +2130,7 @@ function Workspace({
     ) {
       setSelectedEntityId(next);
       setSelectedPropertyId("");
+      setRequestedPropertyId("");
       window.localStorage.removeItem(ENTITY_STORAGE_KEY);
       window.localStorage.removeItem(PROPERTY_STORAGE_KEY);
       const url = new URL(window.location.href);
@@ -2130,10 +2168,8 @@ function Workspace({
 
   const selectedProperty = useMemo(
     () =>
-      propertiesQuery.data?.find(
-        (property) => property.id === selectedPropertyId,
-      ),
-    [propertiesQuery.data, selectedPropertyId],
+      propertyRecords.find((property) => property.id === selectedPropertyId),
+    [propertyRecords, selectedPropertyId],
   );
   const selectedPropertyImage = useMemo(
     () => propertyPrimaryImage(selectedProperty),
@@ -2142,18 +2178,18 @@ function Workspace({
   const ownershipPaletteByLabel = useMemo(
     () =>
       propertyOwnershipPaletteMap(
-        propertiesQuery.data ?? [],
+        propertyRecords,
         selectedEntity?.name,
       ),
-    [propertiesQuery.data, selectedEntity?.name],
+    [propertyRecords, selectedEntity?.name],
   );
   const ownershipTags = useMemo(
     () =>
       propertyOwnershipTagDirectory(
-        propertiesQuery.data ?? [],
+        propertyRecords,
         selectedEntity?.name,
       ),
-    [propertiesQuery.data, selectedEntity?.name],
+    [propertyRecords, selectedEntity?.name],
   );
   const activeOwnerTag = useMemo(
     () => ownershipTags.find((tag) => tag.key === ownerTagFilter) ?? null,
@@ -2196,7 +2232,7 @@ function Workspace({
     return counts;
   }, [occupancyByPropertyId]);
   const displayedProperties = useMemo(() => {
-    const properties = propertiesQuery.data ?? [];
+    const properties = propertyRecords;
     let filtered = properties;
     if (ownerTagFilter) {
       filtered = filtered.filter((property) =>
@@ -2218,7 +2254,7 @@ function Workspace({
     occupancyByPropertyId,
     occupancyFilter,
     ownerTagFilter,
-    propertiesQuery.data,
+    propertyRecords,
     selectedEntity?.name,
   ]);
   // Only show the Area / Parking columns when at least one visible property
@@ -2318,8 +2354,12 @@ function Workspace({
     Boolean(selectedEntityId) &&
     !tenantOnboardingsQuery.data &&
     (tenantOnboardingsQuery.isLoading || tenantOnboardingsQuery.isFetching);
+  const requestedPropertyLoading =
+    requestedPropertyMissingFromList &&
+    !requestedPropertyQuery.error &&
+    (requestedPropertyQuery.isLoading || requestedPropertyQuery.isFetching);
   const unitsWorkspaceLoading =
-    Boolean(selectedPropertyId) &&
+    selectedPropertyScopedQueriesEnabled &&
     (tenancyUnitsLoading ||
       tenantsLoading ||
       leasesLoading ||
@@ -2329,6 +2369,7 @@ function Workspace({
     obligationsLoading ||
     rentRollLoading ||
     chargeRulesLoading ||
+    requestedPropertyLoading ||
     unitsWorkspaceLoading;
   const propertyWorkspaceRefreshing =
     Boolean(selectedEntityId) &&
@@ -2351,6 +2392,15 @@ function Workspace({
     rentRollQuery.error ??
     chargeRulesQuery.error ??
     tenantOnboardingsQuery.error;
+  const requestedPropertyNotFound =
+    requestedPropertyMissingFromList &&
+    isNotFoundError(requestedPropertyQuery.error);
+  const requestedPropertyLoadError =
+    requestedPropertyMissingFromList && !requestedPropertyNotFound
+      ? requestedPropertyQuery.error
+      : null;
+  const requestedPropertyRecordBlocked =
+    requestedPropertyNotFound || Boolean(requestedPropertyLoadError);
   const selectedPropertyApplyHistory = useMemo(
     () => propertyApplyHistory(selectedProperty),
     [selectedProperty],
@@ -2503,13 +2553,40 @@ function Workspace({
   });
 
   useEffect(() => {
-    if (!propertiesQuery.data) {
+    if (!propertiesQuery.data || propertiesQuery.error) {
       return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("property_id");
+    if (fromUrl) {
+      setRequestedPropertyId(fromUrl);
+      const isVisibleProperty = displayedProperties.some(
+        (property) => property.id === fromUrl,
+      );
+      const isKnownProperty = propertyRecords.some(
+        (property) => property.id === fromUrl,
+      );
+      if (!isVisibleProperty && !isKnownProperty) {
+        if (selectedPropertyId) {
+          setSelectedPropertyId("");
+          window.localStorage.removeItem(PROPERTY_STORAGE_KEY);
+          setEditingUnit(null);
+          setEditingLease(null);
+          setLeaseEditorOpen(false);
+          setUnitEditorOpen(false);
+          unitForm.reset(defaultUnitFormValues);
+          leaseForm.reset(defaultLeaseFormValues);
+          chargeRuleForm.reset(defaultChargeRuleFormValues);
+          obligationForm.setValue("lease_id", "");
+        }
+        return;
+      }
     }
     const properties = displayedProperties;
     if (properties.length === 0) {
       if (selectedPropertyId) {
         setSelectedPropertyId("");
+        setRequestedPropertyId("");
         window.localStorage.removeItem(PROPERTY_STORAGE_KEY);
         const url = new URL(window.location.href);
         url.searchParams.delete("property_id");
@@ -2526,8 +2603,6 @@ function Workspace({
       return;
     }
     if (!properties.some((property) => property.id === selectedPropertyId)) {
-      const params = new URLSearchParams(window.location.search);
-      const fromUrl = params.get("property_id");
       const stored =
         window.localStorage.getItem(PROPERTY_STORAGE_KEY) ??
         window.localStorage.getItem("stewart.property_id");
@@ -2536,6 +2611,7 @@ function Workspace({
         properties.find((property) => property.id === stored)?.id ??
         properties[0].id;
       setSelectedPropertyId(next);
+      setRequestedPropertyId(next);
       window.localStorage.setItem(PROPERTY_STORAGE_KEY, next);
       const url = new URL(window.location.href);
       url.searchParams.set("property_id", next);
@@ -2554,7 +2630,9 @@ function Workspace({
     displayedProperties,
     leaseForm,
     obligationForm,
+    propertyRecords,
     propertiesQuery.data,
+    propertiesQuery.error,
     selectedPropertyId,
     unitForm,
   ]);
@@ -3006,6 +3084,7 @@ function Workspace({
 
   function selectProperty(propertyId: string) {
     setSelectedPropertyId(propertyId);
+    setRequestedPropertyId(propertyId);
     window.localStorage.setItem(PROPERTY_STORAGE_KEY, propertyId);
     const url = new URL(window.location.href);
     url.searchParams.set("property_id", propertyId);
@@ -3388,6 +3467,9 @@ function Workspace({
     : leaseEditorTenantId
       ? tenantsById.get(leaseEditorTenantId)
       : undefined;
+  const propertyDirectoryHref = selectedEntityId
+    ? `/properties?entity_id=${encodeURIComponent(selectedEntityId)}`
+    : "/properties";
 
   return (
     <main className="min-h-screen">
@@ -3433,7 +3515,7 @@ function Workspace({
                               : "properties"
                           } tagged ${activeOwnerTag.label}`
                         : "0 properties for this ownership tag"
-                      : `${propertiesQuery.data?.length ?? 0} active properties`}
+                      : `${propertyRecords.length} active properties`}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -3535,40 +3617,75 @@ function Workspace({
             </SectionPanel>
           ) : null}
 
-          <div
-            className="mb-4 grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-4"
-            role="tablist"
-            aria-label="Property workspace sections"
-          >
-            {propertyWorkspaceTabs.map((tab) => {
-              const isActive = activeWorkspaceTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setActiveWorkspaceTab(tab.id)}
-                  className={`grid min-h-16 gap-1 rounded-xl px-3 py-2 text-left transition duration-200 ease-leasium ${
-                    isActive
-                      ? "bg-primary text-primary-foreground shadow-leasiumXs"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  <span className="text-sm font-semibold">{tab.label}</span>
-                  <span
-                    className={`text-xs ${
-                      isActive ? "text-primary-foreground/80" : ""
+          {requestedPropertyNotFound ? (
+            <SectionPanel title="Property not found" icon={<AlertTriangle size={17} />}>
+              <EmptyState
+                icon={<AlertTriangle size={18} />}
+                title="No property found."
+                description="This property may have been deleted or moved. Return to Properties to choose another record."
+                action={
+                  <Link
+                    href={propertyDirectoryHref}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                  >
+                    <MapPin size={16} />
+                    Back to Properties
+                  </Link>
+                }
+              />
+            </SectionPanel>
+          ) : null}
+
+          {requestedPropertyLoadError ? (
+            <SectionPanel
+              title="Property unavailable"
+              icon={<AlertTriangle size={17} />}
+            >
+              <EmptyState
+                icon={<AlertTriangle size={18} />}
+                title="Property unavailable"
+                description={friendlyError(requestedPropertyLoadError)}
+              />
+            </SectionPanel>
+          ) : null}
+
+          {!requestedPropertyRecordBlocked ? (
+            <div
+              className="mb-4 grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-4"
+              role="tablist"
+              aria-label="Property workspace sections"
+            >
+              {propertyWorkspaceTabs.map((tab) => {
+                const isActive = activeWorkspaceTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActiveWorkspaceTab(tab.id)}
+                    className={`grid min-h-16 gap-1 rounded-xl px-3 py-2 text-left transition duration-200 ease-leasium ${
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-leasiumXs"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                   >
-                    {tab.description}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                    <span className="text-sm font-semibold">{tab.label}</span>
+                    <span
+                      className={`text-xs ${
+                        isActive ? "text-primary-foreground/80" : ""
+                      }`}
+                    >
+                      {tab.description}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
 
-          {activeWorkspaceTab === "documents" ? (
+          {!requestedPropertyRecordBlocked &&
+          activeWorkspaceTab === "documents" ? (
             <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumXs">
               <div className="grid gap-4 p-4">
                 <div className="grid gap-3">
@@ -4485,7 +4602,8 @@ function Workspace({
             </section>
           ) : null}
 
-          {activeWorkspaceTab === "operations" ? (
+          {!requestedPropertyRecordBlocked &&
+          activeWorkspaceTab === "operations" ? (
             <section className="mb-4 overflow-hidden rounded-md border border-border bg-white">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                 <div>
@@ -4726,7 +4844,8 @@ function Workspace({
             </section>
           ) : null}
 
-          {activeWorkspaceTab === "billing" ? (
+          {!requestedPropertyRecordBlocked &&
+          activeWorkspaceTab === "billing" ? (
             <section className="mb-4 overflow-hidden rounded-md border border-border bg-white">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                 <div>
@@ -5009,7 +5128,8 @@ function Workspace({
             </section>
           ) : null}
 
-          {activeWorkspaceTab === "portfolio" ? (
+          {!requestedPropertyRecordBlocked &&
+          activeWorkspaceTab === "portfolio" ? (
             <div className="grid gap-3">
               {ownerTagFilter ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
@@ -5359,7 +5479,7 @@ function Workspace({
                     ownershipPaletteByLabel={ownershipPaletteByLabel}
                     isLoading={propertiesLoading}
                     isOwnerTagFiltered={Boolean(ownerTagFilter)}
-                    hasProperties={(propertiesQuery.data?.length ?? 0) > 0}
+                    hasProperties={propertyRecords.length > 0}
                     onSelect={selectProperty}
                     onEdit={startEdit}
                     onOwnerTagFilter={applyOwnerTagFilter}
@@ -5654,7 +5774,9 @@ function Workspace({
             </div>
           ) : null}
 
-          {activeWorkspaceTab === "billing" && selectedProperty ? (
+          {!requestedPropertyRecordBlocked &&
+          activeWorkspaceTab === "billing" &&
+          selectedProperty ? (
             <section className="mt-4 overflow-hidden rounded-md border border-border bg-white">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                 <div>
@@ -5832,7 +5954,9 @@ function Workspace({
             </section>
           ) : null}
 
-          {activeWorkspaceTab === "documents" && selectedProperty ? (
+          {!requestedPropertyRecordBlocked &&
+          activeWorkspaceTab === "documents" &&
+          selectedProperty ? (
             <section className="mt-4 overflow-hidden rounded-md border border-border bg-white">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                 <div>
@@ -5896,7 +6020,8 @@ function Workspace({
             </section>
           ) : null}
 
-          {activeWorkspaceTab === "operations" ? (
+          {!requestedPropertyRecordBlocked &&
+          activeWorkspaceTab === "operations" ? (
             <section className="mt-5 overflow-hidden rounded-md border border-border bg-white">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                 <div>

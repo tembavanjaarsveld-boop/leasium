@@ -5156,10 +5156,22 @@ export async function mockLeasiumApi(
       return;
     }
 
-    const premisePatchMatch = path.match(/^\/premises\/([^/]+)$/);
-    if (method === "PATCH" && premisePatchMatch) {
+    const premiseMatch = path.match(/^\/premises\/([^/]+)$/);
+    if (method === "GET" && premiseMatch) {
+      const property = properties.find(
+        (record) => record.id === premiseMatch[1],
+      );
+      if (property) {
+        await fulfillJson(route, property);
+        return;
+      }
+      await fulfillJson(route, { detail: "Property not found." }, 404);
+      return;
+    }
+
+    if (method === "PATCH" && premiseMatch) {
       const propertyIndex = properties.findIndex(
-        (property) => property.id === premisePatchMatch[1],
+        (property) => property.id === premiseMatch[1],
       );
       if (propertyIndex >= 0) {
         const payload = request.postDataJSON() as Record<string, JsonBody>;

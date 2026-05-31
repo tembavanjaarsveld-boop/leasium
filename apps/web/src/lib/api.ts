@@ -3335,6 +3335,10 @@ export function listProperties(entityId: string) {
   return request<PropertyRecord[]>(`/premises/by-entity/${entityId}`);
 }
 
+export function getProperty(propertyId: string) {
+  return request<PropertyRecord>(`/premises/${propertyId}`);
+}
+
 export function createProperty(payload: PropertyPayload) {
   return request<PropertyRecord>("/premises", {
     method: "POST",

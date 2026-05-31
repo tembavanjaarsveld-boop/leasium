@@ -324,6 +324,30 @@ before the Ticket 2.2 slice.
   content, then passed after primary-read errors began suppressing cached
   work-order data.
 
+### Property workspace deep-link error polish slice
+- Shipped 2026-06-01 after the Maintenance detail status-aware slice.
+- `/properties?entity_id=...&property_id=...` now keeps the requested
+  `property_id` when it is not in the selected entity's property list instead
+  of silently rewriting the URL to the first property.
+- `apps/web/src/lib/api.ts` now has `getProperty(property_id)` for the existing
+  backend `GET /premises/{property_id}` route. The workspace only uses that
+  direct read for missing deep-linked records, so normal list, unit, lease,
+  obligation, rent-roll, charge-rule, document, and enrichment flows stay on
+  their existing query paths.
+- 404 direct-read failures render `Property not found` with a return action to
+  Properties; non-404 direct-read failures render `Property unavailable` with
+  the API message. The blocked record state hides selected-property panels so
+  stale property detail does not sit under the error state. A review follow-up
+  also keeps selected-property child queries from widening to entity-wide reads
+  while a requested property is blocked, and keeps filtered deep-link selection
+  inside the filtered property list.
+- Red-green proof: the new Properties smoke first failed because missing and
+  broken deep links never rendered record-level headings and the app selected
+  the first property instead; after the status-aware branch, the focused smoke
+  passed **2 passed**. Review regressions for widened child queries and
+  filtered-list selection both failed red, then passed after the gates were
+  tightened. The full Properties UX smoke passed **8 passed**.
+
 ### Account operating-mode frontend gate slice
 - Shipped after the vendor-detail polish. Backend commit `cb4704f` already
   added `Organisation.operating_mode` (default `self_managed_owner`) plus the
@@ -406,9 +430,9 @@ before the Ticket 2.2 slice.
    owner email and touch no providers.
 2. Add richer owner dashboard sections after the shared-document boundary is
    reviewed on real SKJ files.
-3. Decide whether to continue the status-aware not-found pattern into property
-   workspace and tenant portal preview routes. Owner, Vendor, Tenant, and
-   maintenance work-order detail now use the shared `ApiError` contract.
+3. Decide whether to continue the status-aware not-found pattern into tenant
+   portal preview routes. Owner, Vendor, Tenant, maintenance work-order detail,
+   and property workspace deep links now use the shared `ApiError` contract.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel
