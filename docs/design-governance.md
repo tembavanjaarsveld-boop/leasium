@@ -74,6 +74,12 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
 
 - **People hub** (`/people`, commit `d0bd122`, then Phase 3 + Ticket 2.2 updates): one surface for Tenants · Owners · Vendors · Prospects(stub). Owners is a live directory on the new `/api/v1/owners`; Tenants/Vendors now render inline under the same hub instead of carrying link-out actions; `?tab=` URL state; reachable from the sidebar, command palette, and `G E`. Remba should review whether the inline Tenant/Vendor density is enough for repeated work.
 - **People record shape** (Ticket 2.2): Tenant, Owner, and Vendor detail pages now share `PeopleRecordLayout` with one header/action area and section links for Overview · Financials · Tasks · Notes · Files · Activity. Tenant detail keeps its existing inner panels, Owner detail reads `/api/v1/owners/{owner_id}`, and Vendor detail reads the contractor directory while recovering from stale selected-entity state. The section links are plain anchors, not ARIA tab widgets, so they remain honest navigation for assistive tech.
+- **People record error states**: Owner, Vendor, and Tenant detail pages now use
+  status-aware record states for missing records. Tenant detail only renders
+  `Tenant not found` for 404s from the primary tenant/detail reads; other load
+  failures stay on `Tenant unavailable` with the API message. Remba should
+  review whether the missing-record copy and directory handoff are plain enough
+  for operators.
 - **Navigation consolidation to 7 hubs** (Phase 3): sidebar is Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings). The standalone Tenants and Billing items are removed; People carries Tenants/Owners/Vendors; Work is active for Comms; Money groups Billing Readiness, Owner statements, Xero, and Basiq. Hub alias redirects (`/people/tenants`, `/people/vendors`, `/work`, `/work/comms`, `/money/*`) preserve moved-route entry points while the existing workspaces stay alive for deep links. Remba should review the People vs Properties split, Money label, and whether the command palette makes the folded destinations discoverable enough.
 - **Money hub** (`/money`): a focused finance hub with tabs for Billing · Statements · Xero · Basiq and review-first handoffs to the existing finance workspaces. It does not call providers, preview reconciliation, dispatch invoices, send owner email, or mutate Xero/Basiq state.
 - **Owner portal read-only preview** (`/owner-portal/[ownerId]`): portal-style,

@@ -214,4 +214,106 @@ test.describe("people record layout", () => {
     ).toBeVisible();
     await expect(page.getByText("Vendor unavailable")).toHaveCount(0);
   });
+
+  test("tenant detail shows a record-level not-found state", async ({
+    page,
+  }) => {
+    await page.route(
+      (url) =>
+        [
+          "/api/v1/tenants/missing-tenant",
+          "/api/v1/tenants/missing-tenant/detail",
+        ].includes(url.pathname),
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Tenant not found." }),
+        });
+      },
+    );
+
+    await page.goto("/tenants/missing-tenant");
+
+    await expect(
+      page.getByRole("heading", { name: "Tenant not found" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText("This tenant record may have been deleted"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Back to tenants" }),
+    ).toBeVisible();
+    await expect(page.getByText("Tenant unavailable")).toHaveCount(0);
+  });
+
+  test("tenant detail keeps generic load failures out of not-found state", async ({
+    page,
+  }) => {
+    await page.route(
+      (url) =>
+        [
+          "/api/v1/tenants/broken-tenant",
+          "/api/v1/tenants/broken-tenant/detail",
+        ].includes(url.pathname),
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Tenant service unavailable." }),
+        });
+      },
+    );
+
+    await page.goto("/tenants/broken-tenant");
+
+    await expect(
+      page.getByRole("heading", { name: "Tenant unavailable" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Tenant service unavailable.")).toBeVisible();
+    await expect(page.getByText("Tenant not found")).toHaveCount(0);
+  });
+
+  test("tenant detail gives non-404 primary failures priority over mixed 404s", async ({
+    page,
+  }) => {
+    await page.route("**/api/v1/tenants/mixed-failure", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Tenant register unavailable." }),
+      });
+    });
+    await page.route("**/api/v1/tenants/mixed-failure/detail", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Tenant not found." }),
+      });
+    });
+
+    await page.goto("/tenants/mixed-failure");
+
+    await expect(
+      page.getByRole("heading", { name: "Tenant unavailable" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Tenant register unavailable.")).toBeVisible();
+    await expect(page.getByText("Tenant not found")).toHaveCount(0);
+  });
 });

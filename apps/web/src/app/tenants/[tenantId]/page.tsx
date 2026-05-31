@@ -55,6 +55,7 @@ import {
   activateTenantOnboardingLease,
   applyPublicEnrichment,
   applyTenantContactChangeRequest,
+  ApiError,
   cancelTenantOnboarding,
   applyTenantOnboarding,
   createDocumentIntakeFromDocument,
@@ -139,6 +140,10 @@ function tenantName(tenant: TenantRecord) {
   return tenant.trading_name
     ? `${tenant.trading_name} (${tenant.legal_name})`
     : tenant.legal_name;
+}
+
+function isNotFoundError(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
 }
 
 function formatDate(value: string | null | undefined) {
@@ -1571,12 +1576,14 @@ function TenantDetail() {
     queryKey: ["tenant", tenantId],
     queryFn: () => getTenant(tenantId),
     enabled: Boolean(tenantId),
+    retry: false,
   });
 
   const tenantDetailQuery = useQuery({
     queryKey: ["tenant-detail", tenantId],
     queryFn: () => getTenantDetail(tenantId),
     enabled: Boolean(tenantId),
+    retry: false,
   });
 
   const correspondenceQuery = useQuery({
@@ -1604,6 +1611,14 @@ function TenantDetail() {
   });
 
   const tenant = tenantQuery.data;
+  const primaryTenantErrors = [
+    tenantQuery.error,
+    tenantDetailQuery.error,
+  ].filter((error): error is NonNullable<typeof error> => Boolean(error));
+  const tenantLoadError =
+    primaryTenantErrors.find((error) => !isNotFoundError(error)) ?? null;
+  const tenantNotFound =
+    !tenantLoadError && primaryTenantErrors.some(isNotFoundError);
   const tenantDetail = tenantDetailQuery.data;
   const tenantLeaseContexts = tenantDetail?.leases ?? [];
   // A tenant is "residential" if any of their leases is on a residential
@@ -2162,7 +2177,10 @@ function TenantDetail() {
     );
   }
 
-  if (tenantQuery.isLoading) {
+  if (
+    tenantQuery.isLoading ||
+    (!tenant && tenantQuery.isFetching && !tenantQuery.error)
+  ) {
     return (
       <main className="min-h-screen">
         <AppHeader />
@@ -2175,24 +2193,84 @@ function TenantDetail() {
     );
   }
 
+  if (tenantNotFound) {
+    return (
+      <main className="min-h-screen">
+        <AppHeader />
+        <div className="mx-auto grid max-w-6xl gap-5 px-5 py-6">
+          <PeopleRecordLayout
+            backHref="/people?tab=tenants"
+            backLabel="Tenants"
+            title="Tenant not found"
+            description="This tenant record could not be found in the current workspace."
+          >
+            <SectionPanel>
+              <EmptyState
+                icon={<AlertTriangle size={18} />}
+                title="No tenant record found."
+                description="This tenant record may have been deleted or moved. Return to the tenant directory to choose another record."
+                action={
+                  <Link href="/people?tab=tenants">
+                    <SecondaryButton type="button">
+                      Back to tenants
+                    </SecondaryButton>
+                  </Link>
+                }
+              />
+            </SectionPanel>
+          </PeopleRecordLayout>
+        </div>
+      </main>
+    );
+  }
+
+  if (tenantLoadError) {
+    return (
+      <main className="min-h-screen">
+        <AppHeader />
+        <div className="mx-auto grid max-w-6xl gap-5 px-5 py-6">
+          <PeopleRecordLayout
+            backHref="/people?tab=tenants"
+            backLabel="Tenants"
+            title="Tenant unavailable"
+            description="The tenant record could not be loaded."
+          >
+            <p className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+              <AlertTriangle size={16} />
+              {friendlyError(tenantLoadError)}
+            </p>
+          </PeopleRecordLayout>
+        </div>
+      </main>
+    );
+  }
+
   if (!tenant) {
     return (
       <main className="min-h-screen">
         <AppHeader />
-        <div className="mx-auto max-w-7xl px-5 py-5">
-          <SectionPanel>
-            <EmptyState
-              icon={<AlertTriangle size={18} />}
-              title="Tenant not found"
-              action={
-                <Link href="/tenants">
-                  <SecondaryButton type="button">
-                    Back to tenants
-                  </SecondaryButton>
-                </Link>
-              }
-            />
-          </SectionPanel>
+        <div className="mx-auto grid max-w-6xl gap-5 px-5 py-6">
+          <PeopleRecordLayout
+            backHref="/people?tab=tenants"
+            backLabel="Tenants"
+            title="Tenant unavailable"
+            description="The tenant record could not be loaded."
+          >
+            <SectionPanel>
+              <EmptyState
+                icon={<AlertTriangle size={18} />}
+                title="Tenant record unavailable."
+                description="The tenant record did not return data. Return to the tenant directory to choose another record."
+                action={
+                  <Link href="/people?tab=tenants">
+                    <SecondaryButton type="button">
+                      Back to tenants
+                    </SecondaryButton>
+                  </Link>
+                }
+              />
+            </SectionPanel>
+          </PeopleRecordLayout>
         </div>
       </main>
     );

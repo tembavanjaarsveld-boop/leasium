@@ -291,6 +291,22 @@ before the Ticket 2.2 slice.
   `b4af4b49f03a903276b85930a694483992ceb093` with `source=render`; live OpenAPI
   includes `/api/v1/contractors/{contractor_id}`.
 
+### Tenant detail status-aware error polish slice
+- Shipped 2026-06-01 after the owner/vendor record-level error states.
+- `/tenants/[tenantId]` now imports the shared `ApiError` status contract and
+  uses it on the primary tenant and tenant-detail reads. 404s render a
+  People-record `Tenant not found` state with a return action to the People
+  tenants directory; non-404 primary load failures render `Tenant unavailable`
+  with the API message instead of being mislabeled as missing records.
+- The slice leaves tenant child queries (portal accounts, leases, documents,
+  correspondence, intakes) on their existing paths and touches no provider,
+  email, Xero, Basiq, reconciliation, or backend mutation code.
+- Red-green proof: the new tenant People-record smoke first failed because the
+  page did not expose the expected record-level heading/description and generic
+  failures did not reach `Tenant unavailable`; after the status-aware branch,
+  the focused smoke passed **3 passed**, including the review-found mixed
+  500/404 primary-read edge case where the non-404 API message must win.
+
 ### Account operating-mode frontend gate slice
 - Shipped after the vendor-detail polish. Backend commit `cb4704f` already
   added `Organisation.operating_mode` (default `self_managed_owner`) plus the
@@ -373,9 +389,10 @@ before the Ticket 2.2 slice.
    owner email and touch no providers.
 2. Add richer owner dashboard sections after the shared-document boundary is
    reviewed on real SKJ files.
-3. Decide whether to extend status-aware API errors to other record pages with
-   route-specific not-found states. The shared `ApiError` contract is now in
-   place; owner and vendor details use it so far.
+3. Decide whether to continue the status-aware not-found pattern beyond People
+   records, e.g. property detail, maintenance detail, and tenant portal preview
+   routes. Owner, Vendor, and Tenant detail now use the shared `ApiError`
+   contract.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel
