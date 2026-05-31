@@ -2021,3 +2021,27 @@ Built and verified on Temba's Mac via Desktop Commander, **all uncommitted** —
 - **Ticket 1.3 — parity proven, endpoint swap DEFERRED:** `tests/integration/test_owner_statement_parity.py` proves the backfilled Owner/PropertyOwner data reproduces the legacy `_owner_identity_tuple` clusters exactly (attributed clusters match; unlinked == unattributed). The live `/owners/statements` endpoint is **unchanged** — the actual read-path swap (`_build_owner_statements` grouping via Owner with an unattributed fallback) is left for review against the real SKJ portfolio; this parity test is its safety net.
 
 Full integration suite now **340 passed / 1 skipped**, ruff clean. Remaining P0: the reviewed statements swap, then Phase 2 (People hub UI — design-facing, paused for your direction). To apply migration + run backfill once Docker is up: `docker compose up -d && .venv/bin/alembic upgrade head && .venv/bin/python -m scripts.backfill_owners`.
+
+## Cowork session 2026-05-31 (cont.) — process note: commit `ae6fabb` bundled extra work
+
+`ae6fabb "Add Leasium-vs-PropertyMe take-on strategy"` unintentionally bundled **17 files of the
+owner-portal-account-auth slice** (`owner_portal.py`, schemas, account UI, invite page, migration
+`20260531_0030_owner_portal_accounts`, `models.py`, auth tests, `api.ts`) with the one intended file
+(`market-research/Leasium_vs_PropertyMe_Strategy.md`). Cause: that work was already **staged in the
+git index**, and a bare `git commit` commits the whole index. No history harm (single local repo, no
+divergence); the commit **built green on Vercel and is live on leasium.ai**, and the slice's own doc
+updates were inside the same commit, so the work IS documented — only the commit **subject**
+under-describes it. History was **not** rewritten (amend/force-push on shared `main` is the dangerous
+move). **TODO: confirm Render applied migration `20260531_0030`** for the owner-portal-account backend.
+**Process fix going forward:** commit with **explicit pathspecs** (`git commit -- <path>`), never a bare
+`git commit`, so a shared index is never swept again.
+
+## Cowork session 2026-05-31 (cont.) — competitor teardowns (:Different, Ailo)
+
+Added `market-research/Leasium_vs_Different_Ailo_Teardown.md`. Key finding: **neither is a
+self-managing-owner SaaS rival.** Ailo = a modern B2B *agency* platform (a PropertyMe challenger, NPP
+payments, ~200k users, agencies 100–500 doors). :Different = a tech-enabled PM *service* (done-for-you),
+now largely white-labelling service delivery to agencies. So Leasium's "software for DIY owners" lane is
+open; its real competitor is the **decision to outsource** (an agency / :Different) and inertia
+(spreadsheets) — position against the **management fee**, and match the **NPP real-time + owner-app
+transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
