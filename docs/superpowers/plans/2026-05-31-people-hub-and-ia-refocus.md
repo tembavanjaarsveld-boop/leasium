@@ -18,7 +18,7 @@ Backlog: `docs/product-roadmap.md` → "DoorLoop benchmark refocus (2026-05-31)"
   Tenant, Owner, and Vendor records share one People record shell with the same
   Overview · Financials · Tasks · Notes · Files · Activity section links.
 - Phase 3 (nav consolidation to 7 hubs): **SHIPPED pending Remba review** — sidebar is Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings); `/money` hub added; Comms routes under Work; hub alias redirects added.
-- P1 owner portal read-only first: **IMPLEMENTED pending deploy verification** —
+- P1 owner portal read-only first: **SHIPPED pending Remba review** (`b47b7a3`) —
   operator-preview `/api/v1/owner-portal/{owner_id}` and
   `/owner-portal/[ownerId]` use first-class Owner links plus existing statement
   totals; true owner account/login remains deferred.
@@ -155,11 +155,11 @@ and distributions (P1+). Net-new feature count is low; it's mostly a structural 
 
 ## P1 preview (after P0 lands — separate plan)
 
-- **Owner portal (read-only first):** first operator-preview slice is implemented
-  pending deploy verification: owner identity, linked properties/splits, monthly
-  statement totals and statement property lines, with no-send/no-provider
-  guardrails. Next slice should add proper owner account/token auth before this
-  becomes a public owner login surface.
+- **Owner portal (read-only first):** first operator-preview slice shipped:
+  owner identity, linked properties/splits, monthly statement totals and
+  statement property lines, with no-send/no-provider guardrails. Next slice
+  should add proper owner account/token auth before this becomes a public owner
+  login surface.
 - **Tenant self-serve payments (AU rails):** PayTo / PayID / BPAY / direct debit; pay
   in-portal, reconcile review-first via the existing Basiq/Xero engine.
 - **Installable PWA** for operator field use + tenant portal on a phone.

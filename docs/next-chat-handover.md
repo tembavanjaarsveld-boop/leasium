@@ -108,7 +108,8 @@ before the Ticket 2.2 slice.
   `aa4374b9cc05d52582aab57884b2d43a33e8410d` with `source=render`.
 
 ### Owner portal read-only first slice
-- First owner portal slice is implemented pending commit/deploy verification.
+- First owner portal slice is shipped. Code commit: `b47b7a3`
+  (`Add read-only owner portal preview`).
 - Backend: new `GET /api/v1/owner-portal/{owner_id}?month=YYYY-MM` returns a
   read-only `operator_preview` payload scoped by the signed-in operator's
   entity role. It uses first-class `Owner` / `PropertyOwner` links and the
@@ -124,18 +125,20 @@ before the Ticket 2.2 slice.
 - Red-green proof: backend test failed first with 404, then passed after
   registration. Playwright smoke failed first on the missing route, then passed
   after the page landed.
-- Verification so far: owner portal + owner statement parity/owner tests
+- Verification: owner portal + owner statement parity/owner tests
   **22 passed**; targeted API ruff clean; targeted frontend eslint clean;
   `./node_modules/.bin/tsc --noEmit` clean; owner portal + People record smokes
   **5 passed**; `./node_modules/.bin/next build` succeeded.
+- Deployment verification before this docs-sync commit: Vercel production deploy
+  `dpl_BmDUL3NHvnFheAXA4jxfSwxo2ba9` for `b47b7a3` was **READY**; `https://leasium.ai`
+  returned HTTP 200; Render health reported
+  `b47b7a3b10a2b90f267991fd7c229de9ab4a3993` with `source=render`.
 
 ### Next
-1. Commit/push the owner portal read-only slice, then verify Vercel production,
-   `https://leasium.ai`, and Render health for the new commit.
-2. Before using shared-ownership splits in production statements, add a dedicated
+1. Before using shared-ownership splits in production statements, add a dedicated
    split-allocation ticket: `PropertyOwner.split_pct` exists, but this Ticket 1.3
    deliberately changed grouping only.
-3. Add true owner portal account/token auth before treating `/owner-portal` as a
+2. Add true owner portal account/token auth before treating `/owner-portal` as a
    public owner login surface; optionally add owner-detail route-level 404 polish
    if that matters before the auth slice.
 

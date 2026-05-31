@@ -60,8 +60,8 @@ Design-facing follow-ups (prototype-mode, not gated):
 1. People hub IA + a consistent people record-page shape.
 2. Nav consolidation to 7 hubs (introduce the **People** and **Money** groupings).
 3. Owner portal surface (read-only first) once the `Owner` entity lands.
-   First operator-preview slice is implemented pending deploy verification;
-   public owner login/account claiming remains the next auth slice.
+   First operator-preview slice is shipped; public owner login/account claiming
+   remains the next auth slice.
 
 Frontend work on these should run through the checked-in UI skills in
 `docs/external-skills/` (web-design-guidelines, composition-patterns, and the hallmark

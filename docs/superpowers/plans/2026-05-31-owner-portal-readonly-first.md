@@ -12,7 +12,7 @@
 
 ## Status — 2026-05-31
 
-**Implemented locally; pending commit/deploy verification.**
+**Shipped to production.** Code commit: `b47b7a3`.
 
 - Backend: `GET /api/v1/owner-portal/{owner_id}?month=YYYY-MM` returns an
   operator-preview payload scoped by entity role, using first-class
@@ -31,6 +31,10 @@
   `22 passed`; targeted API ruff clean; targeted frontend eslint clean;
   `tsc --noEmit` clean; owner portal + People record smokes `5 passed`;
   `next build` succeeded.
+- Deployment verification before this docs-sync commit: Vercel production deploy
+  `dpl_BmDUL3NHvnFheAXA4jxfSwxo2ba9` for `b47b7a3` was READY;
+  `https://leasium.ai` returned HTTP 200; Render health reported
+  `b47b7a3b10a2b90f267991fd7c229de9ab4a3993` with `source=render`.
 
 ## Files
 
