@@ -111,3 +111,51 @@ test("property workspace keeps access-specific error copy while sharing generic 
     "That property is no longer available. Select another property to continue.",
   );
 });
+
+test("tenant portal account reads are user-scoped and fail closed on refresh", async () => {
+  const text = await source("src/app/tenant-portal/tenant-portal-content.tsx");
+
+  expect(text).toContain(
+    'const tenantAccountUserKey = user?.id ?? "signed-out";',
+  );
+  expect(text).toContain(
+    'const tenantAccountRouteKey = token ? `token:${token}` : "account-entry";',
+  );
+  expect(text).toContain(
+    "const tokenTenantId = invitePreviewQuery.data?.tenant_id ?? null;",
+  );
+  expect(text).toContain("const accountPortalStateMatches =");
+  expect(text).toContain(
+    "accountPortalState?.userKey === tenantAccountUserKey",
+  );
+  expect(text).toContain(
+    "accountPortalState.routeKey === tenantAccountRouteKey",
+  );
+  expect(text).toMatch(
+    /queryKey:\s*\[\s*"tenant-portal-account-session",\s*tenantAccountUserKey,\s*tenantAccountContextKey,\s*\]/,
+  );
+  expect(text).toMatch(
+    /queryKey:\s*\[\s*"tenant-portal-account-status",\s*tenantAccountUserKey,\s*tenantAccountContextKey,\s*\]/,
+  );
+  expect(text).toContain("(!token || Boolean(tokenTenantId))");
+  expect(text).toContain('refetchOnMount: "always"');
+  expect(text).toContain("const accountQueryHasFreshData =");
+  expect(text).toContain("const accountPortal = accountQueryHasFreshData");
+  expect(text).toContain("const accountStatusQueryHasFreshData =");
+  expect(text).toContain("const accountStatus = accountStatusQueryHasFreshData");
+  expect(text).toContain("useLayoutEffect(() =>");
+  expect(text).toContain(
+    'queryClient.setQueryData(\n        [\n          "tenant-portal-account-session"',
+  );
+  expect(text).toMatch(
+    /catch\s*\{\s*handleAccountPortal\(null, null\);\s*return;\s*\}/,
+  );
+
+  const clearBeforePublish = text.indexOf("if (!accountQueryHasFreshData)");
+  const publishAccountPortal = text.indexOf(
+    "onAccountPortal(accountQuery.data.portal, accountQuery.data.authToken);",
+  );
+  expect(clearBeforePublish).toBeGreaterThan(-1);
+  expect(publishAccountPortal).toBeGreaterThan(-1);
+  expect(clearBeforePublish).toBeLessThan(publishAccountPortal);
+});

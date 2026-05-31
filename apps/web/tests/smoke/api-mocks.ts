@@ -5853,6 +5853,7 @@ export async function mockLeasiumApi(
     ) {
       const baseSession = tenantPortalSession();
       await fulfillJson(route, {
+        tenant_id: baseSession.tenant.id,
         property_name: `${baseSession.lease.property_name} — ${baseSession.lease.unit_label}`,
         property_address: baseSession.lease.property_address,
         tenant_display_name:

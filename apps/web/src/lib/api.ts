@@ -4170,6 +4170,7 @@ export function getTenantPortal(token: string) {
 }
 
 export type TenantPortalInvitePreviewRecord = {
+  tenant_id: string;
   property_name: string;
   property_address: string | null;
   tenant_display_name: string;

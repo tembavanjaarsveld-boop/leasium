@@ -10,7 +10,7 @@ import {
   useSignUp,
   useUser,
 } from "@clerk/nextjs";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
   Building2,
@@ -37,6 +37,7 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
 } from "react";
@@ -463,6 +464,13 @@ type TenantPortalActionItem = {
   title: string;
   detail: string;
   tone: "primary" | "success" | "warning" | "danger" | "neutral";
+};
+
+type TenantAccountPortalState = {
+  portal: TenantPortalRecord;
+  authToken: string | null;
+  userKey: string;
+  routeKey: string;
 };
 
 type MaintenanceSummary = {
@@ -2390,13 +2398,26 @@ function TenantAccountPanel({
   ) => void;
 }) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
-  const { user } = useUser();
+  const { user, isLoaded: userLoaded } = useUser();
+  const queryClient = useQueryClient();
   const authTimedOut = useAuthLoadTimeout(isLoaded);
   const returnTo = token
     ? `/tenant-portal/${encodeURIComponent(token)}`
     : returnToPath;
+  const tenantAccountUserKey = user?.id ?? "signed-out";
+  const tenantAccountContextKey = tokenTenantId ?? token ?? null;
+  const accountQueryEnabled =
+    isLoaded &&
+    isSignedIn &&
+    userLoaded &&
+    Boolean(user?.id) &&
+    (!token || Boolean(tokenTenantId));
   const accountQuery = useQuery({
-    queryKey: ["tenant-portal-account-session", tokenTenantId],
+    queryKey: [
+      "tenant-portal-account-session",
+      tenantAccountUserKey,
+      tenantAccountContextKey,
+    ],
     queryFn: async () => {
       const authToken = await getToken({ skipCache: true });
       if (!authToken) {
@@ -2405,23 +2426,41 @@ function TenantAccountPanel({
       const portal = await getTenantPortalAccountSession(authToken);
       return { authToken, portal };
     },
-    enabled: isLoaded && isSignedIn,
+    enabled: accountQueryEnabled,
+    refetchOnMount: "always",
     retry: false,
+    staleTime: 0,
+    gcTime: 0,
   });
   const accountStatusQuery = useQuery({
-    queryKey: ["tenant-portal-account-status"],
+    queryKey: [
+      "tenant-portal-account-status",
+      tenantAccountUserKey,
+      tenantAccountContextKey,
+    ],
     queryFn: async () => {
-      const authToken = await getToken();
+      const authToken = await getToken({ skipCache: true });
       if (!authToken) {
         throw new Error("Sign in before checking this tenant account.");
       }
       return getTenantPortalAccountStatus(authToken);
     },
-    enabled: isLoaded && isSignedIn,
+    enabled: accountQueryEnabled,
+    refetchOnMount: "always",
     retry: false,
+    staleTime: 0,
+    gcTime: 0,
   });
-  const accountPortal = accountQuery.data?.portal ?? null;
-  const accountStatus = accountStatusQuery.data ?? null;
+  const accountQueryHasFreshData =
+    accountQuery.isSuccess && !accountQuery.isError;
+  const accountPortal = accountQueryHasFreshData
+    ? accountQuery.data?.portal ?? null
+    : null;
+  const accountStatusQueryHasFreshData =
+    accountStatusQuery.isSuccess && !accountStatusQuery.isError;
+  const accountStatus = accountStatusQueryHasFreshData
+    ? accountStatusQuery.data
+    : null;
   const accountTenantMatches =
     Boolean(accountPortal) &&
     (!tokenTenantId || accountPortal?.tenant.id === tokenTenantId);
@@ -2429,8 +2468,12 @@ function TenantAccountPanel({
     ? `This portal link expires ${formatDateTime(tokenExpiresAt)}.`
     : "If the original link expired or was lost, ask the property team for a fresh portal link.";
 
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) {
+  useLayoutEffect(() => {
+    if (!isLoaded || !isSignedIn || !userLoaded) {
+      onAccountPortal(null, null);
+      return;
+    }
+    if (!accountQueryHasFreshData) {
       onAccountPortal(null, null);
       return;
     }
@@ -2438,16 +2481,17 @@ function TenantAccountPanel({
       onAccountPortal(accountQuery.data.portal, accountQuery.data.authToken);
       return;
     }
-    if (accountQuery.isError || (accountQuery.data && !accountTenantMatches)) {
+    if (accountQuery.data && !accountTenantMatches) {
       onAccountPortal(null, null);
     }
   }, [
     accountQuery.data,
-    accountQuery.isError,
+    accountQueryHasFreshData,
     accountTenantMatches,
     isLoaded,
     isSignedIn,
     onAccountPortal,
+    userLoaded,
   ]);
 
   const claimMutation = useMutation({
@@ -2465,8 +2509,16 @@ function TenantAccountPanel({
       return { authToken, portal };
     },
     onSuccess: (result) => {
+      queryClient.setQueryData(
+        [
+          "tenant-portal-account-session",
+          tenantAccountUserKey,
+          tenantAccountContextKey,
+        ],
+        result,
+      );
       onAccountPortal(result.portal, result.authToken);
-      accountQuery.refetch();
+      accountStatusQuery.refetch();
     },
   });
 
@@ -2510,7 +2562,11 @@ function TenantAccountPanel({
     );
   }
 
-  if (accountQuery.isLoading) {
+  if (
+    !userLoaded ||
+    accountQuery.isLoading ||
+    (accountQuery.isFetching && !accountQueryHasFreshData)
+  ) {
     return (
       <Panel title="Account Access" icon={<UserRound size={18} />}>
         <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
@@ -3626,6 +3682,7 @@ function TenantPortalContent({
     isSignedIn: clerkSignedIn,
   } = useAuth();
   const { user, isLoaded: clerkUserLoaded } = useUser();
+  const queryClient = useQueryClient();
   const clerkLoadTimedOut = useAuthLoadTimeout(clerkLoaded);
   const portalQuery = useQuery({
     queryKey: ["tenant-portal", token],
@@ -3647,16 +3704,35 @@ function TenantPortalContent({
     enabled: Boolean(token),
     retry: false,
   });
-  const [accountPortal, setAccountPortal] = useState<TenantPortalRecord | null>(
-    null,
-  );
-  const [accountAuthToken, setAccountAuthToken] = useState<string | null>(null);
+  const tenantAccountUserKey = user?.id ?? "signed-out";
+  const tenantAccountRouteKey = token ? `token:${token}` : "account-entry";
+  const tokenTenantId = invitePreviewQuery.data?.tenant_id ?? null;
+  const tenantAccountContextKey = tokenTenantId ?? token ?? null;
+  const [accountPortalState, setAccountPortalState] =
+    useState<TenantAccountPortalState | null>(null);
+  const accountPortalStateMatches =
+    accountPortalState?.userKey === tenantAccountUserKey &&
+    accountPortalState.routeKey === tenantAccountRouteKey;
+  const accountPortal = accountPortalStateMatches
+    ? accountPortalState.portal
+    : null;
+  const accountAuthToken = accountPortalStateMatches
+    ? accountPortalState.authToken
+    : null;
   const handleAccountPortal = useCallback(
     (nextPortal: TenantPortalRecord | null, nextAuthToken: string | null) => {
-      setAccountPortal(nextPortal);
-      setAccountAuthToken(nextPortal ? nextAuthToken : null);
+      if (!nextPortal || tenantAccountUserKey === "signed-out") {
+        setAccountPortalState(null);
+        return;
+      }
+      setAccountPortalState({
+        portal: nextPortal,
+        authToken: nextAuthToken,
+        userKey: tenantAccountUserKey,
+        routeKey: tenantAccountRouteKey,
+      });
     },
-    [],
+    [tenantAccountRouteKey, tenantAccountUserKey],
   );
   const inviteEmail = invitePreviewQuery.data?.tenant_email ?? null;
   const verifiedSignedInEmails = useMemo(() => {
@@ -3716,6 +3792,14 @@ function TenantPortalContent({
       return { authToken, portal };
     },
     onSuccess: (result) => {
+      queryClient.setQueryData(
+        [
+          "tenant-portal-account-session",
+          tenantAccountUserKey,
+          tenantAccountContextKey,
+        ],
+        result,
+      );
       handleAccountPortal(result.portal, result.authToken);
     },
   });
@@ -3766,38 +3850,56 @@ function TenantPortalContent({
     }
     const authToken = await getClerkToken({ skipCache: true });
     if (authToken) {
-      setAccountAuthToken(authToken);
+      setAccountPortalState((current) =>
+        current?.userKey === tenantAccountUserKey &&
+        current.routeKey === tenantAccountRouteKey
+          ? { ...current, authToken }
+          : current,
+      );
     }
     return authToken;
-  }, [clerkLoaded, clerkSignedIn, getClerkToken]);
+  }, [
+    clerkLoaded,
+    clerkSignedIn,
+    getClerkToken,
+    tenantAccountRouteKey,
+    tenantAccountUserKey,
+  ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     handleAccountPortal(null, null);
   }, [handleAccountPortal, token]);
 
   const refreshPortal = useCallback(
     async (nextPortal?: TenantPortalRecord) => {
       if (nextPortal) {
-        setAccountPortal(nextPortal);
+        handleAccountPortal(nextPortal, accountAuthToken);
         return;
       }
       if (accountPortal?.auth.mode === "tenant_portal_account") {
         const authToken = await getFreshAccountAuthToken();
-        if (authToken) {
-          try {
-            const refreshedPortal =
-              await getTenantPortalAccountSession(authToken);
-            setAccountPortal(refreshedPortal);
-            return;
-          } catch {
-            await portalQuery.refetch();
-            return;
-          }
+        if (!authToken) {
+          handleAccountPortal(null, null);
+          return;
+        }
+        try {
+          const refreshedPortal = await getTenantPortalAccountSession(authToken);
+          handleAccountPortal(refreshedPortal, authToken);
+          return;
+        } catch {
+          handleAccountPortal(null, null);
+          return;
         }
       }
       await portalQuery.refetch();
     },
-    [accountPortal?.auth.mode, getFreshAccountAuthToken, portalQuery],
+    [
+      accountAuthToken,
+      accountPortal?.auth.mode,
+      getFreshAccountAuthToken,
+      handleAccountPortal,
+      portalQuery,
+    ],
   );
 
   useEffect(() => {
@@ -5225,11 +5327,16 @@ function TenantPortalContent({
 
             <TenantAccountPanel
               token={token}
-              tokenTenantId={tokenPortal?.tenant.id ?? null}
+              tokenTenantId={tokenTenantId}
               tokenTenantName={
-                tokenPortal ? tenantDisplayName(tokenPortal.tenant) : null
+                invitePreviewQuery.data?.tenant_display_name ??
+                (tokenPortal ? tenantDisplayName(tokenPortal.tenant) : null)
               }
-              tokenExpiresAt={tokenPortal?.onboarding.expires_at ?? null}
+              tokenExpiresAt={
+                invitePreviewQuery.data?.expires_at ??
+                tokenPortal?.onboarding.expires_at ??
+                null
+              }
               returnToPath="/tenant-portal"
               onAccountPortal={handleAccountPortal}
             />

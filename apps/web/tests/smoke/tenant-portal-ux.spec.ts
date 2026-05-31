@@ -10,6 +10,7 @@ test("tenant portal invite loading reassures before exposing tenant details", as
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
+        tenant_id: "tenant-1",
         property_name: "Queen Street Retail Centre — Shop 3",
         property_address: "12 Queen Street, Brisbane City QLD 4000",
         tenant_display_name: "Bright Cafe",

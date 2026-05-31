@@ -372,6 +372,53 @@ before the Ticket 2.2 slice.
   Treat that as the next test-first tenant-portal hardening slice, separate from
   this operator-preview route polish.
 
+### Tenant portal account-session cache hardening slice
+- Shipped 2026-06-01 after the operator-preview error polish slice.
+- `GET /tenant-portal/invites/{token}/preview` now returns `tenant_id` alongside
+  the existing minimum-viable invite context. The frontend uses that id only to
+  bind token routes to a real token tenant without reopening the disabled
+  token-scoped portal read.
+- `TenantAccountPanel` now scopes account-session and account-status React Query
+  reads by Clerk user id plus token tenant context, revalidates on mount, uses
+  zero stale/cache retention for these private account reads, and asks Clerk for
+  a fresh bearer token with `skipCache: true`.
+- Account-scoped portal data now publishes to the parent only after a successful
+  account-session read for the current user/route. The parent stores account
+  portal state with a Clerk user key and route key, then derives renderable
+  account data only when both match the current render, so user switches and
+  token changes cannot paint previous tenant details. Failed, signed-out,
+  missing-user, missing-bearer, and wrong-tenant states clear the parent account
+  portal before tenant details, invoices, documents, payments, maintenance, or
+  preferences can render from stale account data.
+- The shared account-scoped `refreshPortal` path now fails closed as well:
+  missing fresh bearer tokens or account-session refresh failures call
+  `handleAccountPortal(null, null)` instead of falling back to token data or
+  leaving old account data visible.
+- Top-level claim success and Account Access claim success both seed the
+  account-session cache for the current user/token context before publishing the
+  account portal, so the just-claimed portal remains stable without reopening
+  the stale-cache path. Account lifecycle/status copy is also gated so retained
+  React Query data does not render after status refetch errors.
+- This is cache-boundary and preview-context hardening only. It does not change
+  tenant portal claim semantics, uploads, document downloads, notification
+  preferences, email, SMS, Xero, Basiq, reconciliation, provider refresh,
+  provider history, or backend mutation paths.
+- Red-green proof: the helper-consolidation smoke first failed because
+  account/session query keys were broad and account data could publish before a
+  fresh read; it then passed after user-scoped keys, revalidate-on-entry, and
+  fresh-data gating were added. A second red check failed because the shared
+  account refresh path still fell back after account-session errors; it passed
+  after that path was changed to clear account portal state.
+- Review: first review found a P1 after-paint stale portal clear and a P2
+  missing token tenant context; the follow-up review found two P2s around
+  top-level claim cache seeding and retained status data. All were fixed.
+  Final review found **no P1/P2 issues**.
+- Verification: focused helper smoke passed after each red/green fix; full
+  helper-consolidation smoke passed **3 passed**; tenant-portal UX smoke passed
+  **5 passed**; focused tenant portal API invite/account tests passed
+  **7 passed / 38 deselected**; targeted frontend `eslint`, frontend
+  `tsc --noEmit`, targeted backend `ruff`, and `git diff --check` passed.
+
 ### Account operating-mode frontend gate slice
 - Shipped after the vendor-detail polish. Backend commit `cb4704f` already
   added `Organisation.operating_mode` (default `self_managed_owner`) plus the
@@ -454,11 +501,12 @@ before the Ticket 2.2 slice.
    owner email and touch no providers.
 2. Add richer owner dashboard sections after the shared-document boundary is
    reviewed on real SKJ files.
-3. Harden tenant portal account/session cache boundaries so stale tenant account
-   data cannot render after session refetch failures, user switches, or token
-   changes. The operator preview route now uses the shared `ApiError` contract;
-   the remaining tenant-portal risk is account/session scoping rather than the
-   preview route.
+3. Add backend account/session scoping regression tests for multi-onboarding or
+   relinked tenant accounts before broader tenant rollout. Focus on
+   `/tenant-portal/account/session` and account-scoped documents/maintenance so
+   a linked Clerk user cannot receive another tenant's invoices, documents, or
+   portal details after relinks, revoked/restored accounts, or overlapping
+   onboarding history.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel

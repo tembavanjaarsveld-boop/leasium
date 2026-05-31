@@ -375,6 +375,7 @@ def test_tenant_portal_invite_preview_prefills_sign_in_email(
 
     assert response.status_code == 200
     body = response.json()
+    assert body["tenant_id"] == scope["tenant_id"]
     assert body["tenant_display_name"] == "Portal One"
     assert body["tenant_email"] == "avery@portal-one.example"
     assert body["property_name"] == "Portal Plaza — Shop 1"

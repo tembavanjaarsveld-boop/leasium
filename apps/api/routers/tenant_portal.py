@@ -1688,6 +1688,7 @@ def preview_tenant_portal_invite(
         f"{prop.name} — {unit.unit_label}" if unit.unit_label else prop.name
     )
     return TenantPortalInvitePreviewRead(
+        tenant_id=tenant.id,
         property_name=property_label,
         property_address=address,
         tenant_display_name=tenant.trading_name or tenant.legal_name,

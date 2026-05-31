@@ -18,6 +18,7 @@ class TenantPortalInvitePreviewRead(BaseModel):
     Never includes financial data or documents.
     """
 
+    tenant_id: UUID
     property_name: str
     property_address: str | None = None
     tenant_display_name: str
