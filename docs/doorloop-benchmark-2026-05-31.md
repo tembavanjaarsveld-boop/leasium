@@ -376,6 +376,49 @@ it counts.
 
 ---
 
+## 14. PropertyMe — the Australian incumbent benchmark
+
+DoorLoop sets the bar for *consumer-grade simplicity*; **PropertyMe sets the bar for the
+Australian market itself** and is the more important comparator for anyone serious about AU.
+It powers roughly **two-thirds of all Australian investment properties** across **6,000+
+agencies**, and — unlike DoorLoop — it is built ground-up for AU: **cloud trust accounting**
+is its spine, settlement runs on the **New Payments Platform (NPP)**, and compliance is
+state-by-state.
+
+**Critical framing:** PropertyMe sells to **licensed managing agents** running *other
+people's* properties (trust accounting = holding third-party money under state law). SKJ is
+a **direct commercial owner** receiving its own rent — so PropertyMe's core is a *different
+market*, not a feature gap to close. Treat it as a pattern library for AU-native execution,
+not a spec to clone. (Same logic that parked statutory trust-account reporting in the roadmap.)
+
+| Area | PropertyMe | Relevance to Leasium |
+|---|---|---|
+| **Trust accounting** | The core: bank feeds, reconciliation, **disbursements** (date/balance-triggered), automated mgmt/letting/admin fees, audit reporting, sales trust accounting | Low for SKJ (no agency / third-party trust money). Leasium uses **Xero** instead. Revisit only with an agency/residential expansion. |
+| **Payments (AU-native)** | **MePay** (rent) + **Trustless** — **NPP** settlement, daily disbursements, "no receipting" | ⭐ The concrete reference for Leasium's P1 **tenant payments on AU rails** (PayTo/PayID/BPAY/NPP). |
+| **Automations** | Event-trigger engine: new property · termination · new tenant · break-lease · vacate · rent-review-due → tasks/messages/checklists; "if-this-then-that"; Automation Studio; unlimited templates | ⭐ Direct pattern for Leasium's comms-queue / rent-review / arrears / lease-event work — but Leasium stays **review-first** where PropertyMe fires automatically. |
+| **AI** | **Reply with AiMe** (drafts tenant replies in a PM tone), **AiMe Comply** (state-based compliance Q&A in-app), **Bills AI** (scan messy/handwritten bills) | Parallels Ask Leasium / AI triage / Smart Intake; Bills AI ≈ a narrower Smart Intake. |
+| **Inspections** | Paperless, **360° photos**, map-based route planning, entry/exit reports, **InspectMe** (tenant self-inspection) | Residential-heavy; lower priority for SKJ commercial now, but the bar for an eventual inspections module. |
+| **Maintenance ("Jobs")** | Multi-supplier quotes, triggered owner/tenant/supplier messages, status tracking | Parity with Leasium Operations + contractor directory. |
+| **Bills** | Bills AI, barcode/QR auto-allocation, **BPAY batch**, bill approvals | BPAY batch + bill scanning are AU-specific patterns worth noting. |
+| **Portals + mobile** | Owner Access, Tenant Access, **native mobile apps** (owner/tenant + manager) | ⭐ Confirms Leasium's owner-portal / tenant-portal / PWA→native roadmap and sets the bar. |
+| **Comms** | Unified **Chat** inbox, inbound + outbound SMS, message-automation templates, @mentions, activity feeds | Parity-ish with Leasium Comms; unified inbox + @mentions are nice patterns. |
+| **Compliance** | Smoke-alarm/pool tracking, insurance-renewal reminders, lease renewals | Maps to Leasium obligations/compliance. |
+| **CRM ("Grow")** | Separate product to win new managements / grow the rent roll | Agency-growth tool — not relevant to a direct owner. |
+
+### What to borrow vs not chase
+- **Borrow:** the **NPP payments** model, the **event-trigger automation** vocabulary (kept review-first), and the **owner/tenant portal + native mobile** bar.
+- **Don't chase:** trust accounting, the agency CRM, and residential-letting depth — they serve PropertyMe's customer, not SKJ's.
+- **Where Leasium wins regardless:** document-first **Smart Intake**, **commercial-lease depth** (outgoings/options/make-good), **Xero** as an open accounting layer (vs PropertyMe's closed ledger), and review-first guardrails. PropertyMe is residential + agency + closed-ledger; Leasium is commercial + owner + document-AI + Xero.
+
+### Net read across both benchmarks
+DoorLoop = how to make a broad product *legible and simple* (the People/Properties IA, one
+nav, consistent records). PropertyMe = how to be *credibly Australian* (NPP payments,
+automation depth, native mobile, state compliance). Leasium's wedge sits between them:
+**DoorLoop's legibility + PropertyMe's AU-nativeness + a document-AI / commercial core that
+neither has.**
+
+---
+
 ## Sources
 
 - DoorLoop — Features: https://www.doorloop.com/features
@@ -385,4 +428,8 @@ it counts.
 - DoorLoop Help Center — Navigation: https://support.doorloop.com/en/articles/6974026-learn-how-to-navigate-doorloop
 - Video (structure only): *Complete DoorLoop Tutorial For Property Managers*, Darrel Wilson — https://www.youtube.com/watch?v=rPOjKzW6ghA
 - Reviews / pros & cons: G2 (https://www.g2.com/products/doorloop/reviews), Capterra (https://www.capterra.com/p/211768/DoorLoop/reviews/), Software Advice (https://www.softwareadvice.com/property/doorloop-profile/), The Close (https://theclose.com/doorloop-review/)
+- PropertyMe — Automations: https://www.propertyme.com.au/features/automations
+- PropertyMe — Features: https://www.propertyme.com.au/features
+- PropertyMe — home: https://www.propertyme.com.au/
+- PropertyMe — reviews/market: Capterra AU (https://www.capterra.com.au/software/156513/propertyme), PMVA 2025 software guide (https://www.pmva.com.au/best-software-for-property-management/)
 - Leasium internal: `docs/product-roadmap.md`, `stewart/core/models.py`, `apps/web/src/app/*`
