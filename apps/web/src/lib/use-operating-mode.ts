@@ -31,3 +31,7 @@ export function useOperatingMode(): {
     isResolved: Boolean(data),
   };
 }
+
+export function isManagingAgentOperatingMode(mode: OperatingMode): boolean {
+  return mode === "managing_agent" || mode === "hybrid";
+}

@@ -2239,6 +2239,7 @@ type MockLeasiumApiOptions = {
   tenantPortalActivityFeed?: boolean;
   operatingMode?: MockOperatingMode;
   canManageSecurity?: boolean;
+  ownerStatementMissingRecipientInvoice?: boolean;
   xeroDiagnosticsBlocked?: boolean;
   xeroDiagnosticsUnauthorized?: boolean;
   xeroDiagnosticsUnauthorizedStatus?: 401 | 403;
@@ -2259,6 +2260,8 @@ export async function mockLeasiumApi(
   let chargeTaxType: string | null = null;
   let operatingMode = options.operatingMode ?? "self_managed_owner";
   const canManageSecurity = options.canManageSecurity ?? true;
+  const ownerStatementMissingRecipientInvoice =
+    options.ownerStatementMissingRecipientInvoice ?? false;
   let xeroDraftApproved = false;
   let xeroDraftCreated = false;
   let xeroPaymentApplied = false;
@@ -2770,6 +2773,49 @@ export async function mockLeasiumApi(
         paid_cents: 0,
         outstanding_cents: 0,
         invoice_count: 0,
+      });
+    }
+    if (ownerStatementMissingRecipientInvoice) {
+      owners.set("No Email Entity Trust", {
+        owner_identity: "No Email Entity Trust",
+        owner_legal_name: "No Email Entity Trust",
+        trustee_name: "No Email Trustee Pty Ltd",
+        trust_name: null,
+        invoice_issuer_name: null,
+        billing_contact_name: null,
+        billing_email: null,
+        property_count: 1,
+        properties: [
+          {
+            property_id: "property-no-email",
+            property_name: "No Email House",
+            invoiced_cents: 99000,
+            paid_cents: 99000,
+            outstanding_cents: 0,
+            invoice_count: 1,
+            invoices: [
+              {
+                invoice_draft_id: "invoice-no-email",
+                invoice_number: "INV-NO-EMAIL",
+                title: "Local reporting invoice",
+                issue_date: `${month}-05`,
+                due_date: `${month}-15`,
+                total_cents: 99000,
+                paid_cents: 99000,
+                outstanding_cents: 0,
+                payment_status: "paid",
+                xero_invoice_id: null,
+                reconciliation_reference: null,
+                reconciliation_match_confidence: null,
+                reconciliation_bank_transaction_id: null,
+              },
+            ],
+          },
+        ],
+        invoiced_cents: 99000,
+        paid_cents: 99000,
+        outstanding_cents: 0,
+        invoice_count: 1,
       });
     }
     return {
@@ -3846,7 +3892,10 @@ export async function mockLeasiumApi(
       return;
     }
 
-    if (method === "PATCH" && path === "/security/organisation/operating-mode") {
+    if (
+      method === "PATCH" &&
+      path === "/security/organisation/operating-mode"
+    ) {
       const payload = request.postDataJSON() as {
         operating_mode?: MockOperatingMode;
       };

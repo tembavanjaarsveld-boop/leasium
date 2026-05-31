@@ -25,6 +25,10 @@ import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
 import { PageHeader, SectionPanel, Select, StatusBadge } from "@/components/ui";
 import { listEntities } from "@/lib/api";
+import {
+  isManagingAgentOperatingMode,
+  useOperatingMode,
+} from "@/lib/use-operating-mode";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
@@ -47,48 +51,55 @@ type MoneyDestination = {
   badges: string[];
 };
 
-const MONEY_DESTINATIONS: MoneyDestination[] = [
-  {
-    key: "billing",
-    title: "Billing Readiness",
-    description:
-      "Invoice blockers, delivery approvals, payment state, and month-end handoff.",
-    href: "/billing-readiness",
-    action: "Open Billing Readiness",
-    icon: <Wallet size={17} />,
-    badges: ["Invoices", "Delivery", "Payments"],
-  },
-  {
-    key: "statements",
-    title: "Owner statements",
-    description:
-      "Monthly owner packs, invoice evidence, PDFs, and dispatch review.",
-    href: "/statements",
-    action: "Open owner statements",
-    icon: <ReceiptText size={17} />,
-    badges: ["Owners", "PDF packs", "Review-only"],
-  },
-  {
-    key: "xero",
-    title: "Xero",
-    description:
-      "Connection diagnostics, contact mapping, draft posting review, and exceptions.",
-    href: "/settings?tab=xero",
-    action: "Open Xero settings",
-    icon: <PlugZap size={17} />,
-    badges: ["Diagnostics", "Mappings", "No direct write"],
-  },
-  {
-    key: "basiq",
-    title: "Basiq bank feed",
-    description:
-      "Read-only bank connection status and reconciliation preview controls.",
-    href: "/settings?tab=xero",
-    action: "Open Basiq controls",
-    icon: <Landmark size={17} />,
-    badges: ["Bank feed", "Preview", "Review-first"],
-  },
-];
+function moneyDestinations(showOwnerDispatch: boolean): MoneyDestination[] {
+  return [
+    {
+      key: "billing",
+      title: "Billing Readiness",
+      description:
+        "Invoice blockers, delivery approvals, payment state, and month-end handoff.",
+      href: "/billing-readiness",
+      action: "Open Billing Readiness",
+      icon: <Wallet size={17} />,
+      badges: ["Invoices", "Delivery", "Payments"],
+    },
+    {
+      key: "statements",
+      title: showOwnerDispatch ? "Owner statements" : "Entity statements",
+      description: showOwnerDispatch
+        ? "Monthly owner packs, invoice evidence, PDFs, and dispatch review."
+        : "Entity-grouped statement reports, invoice evidence, and local PDF packs.",
+      href: "/statements",
+      action: showOwnerDispatch
+        ? "Open owner statements"
+        : "Open entity statements",
+      icon: <ReceiptText size={17} />,
+      badges: showOwnerDispatch
+        ? ["Owners", "PDF packs", "Review-only"]
+        : ["Entities", "PDF packs", "Local report"],
+    },
+    {
+      key: "xero",
+      title: "Xero",
+      description:
+        "Connection diagnostics, contact mapping, draft posting review, and exceptions.",
+      href: "/settings?tab=xero",
+      action: "Open Xero settings",
+      icon: <PlugZap size={17} />,
+      badges: ["Diagnostics", "Mappings", "No direct write"],
+    },
+    {
+      key: "basiq",
+      title: "Basiq bank feed",
+      description:
+        "Read-only bank connection status and reconciliation preview controls.",
+      href: "/settings?tab=xero",
+      action: "Open Basiq controls",
+      icon: <Landmark size={17} />,
+      badges: ["Bank feed", "Preview", "Review-first"],
+    },
+  ];
+}
 
 function isMoneyTab(value: string | null): value is MoneyTab {
   return (
@@ -108,6 +119,8 @@ export default function MoneyPage() {
 }
 
 function MoneyContent() {
+  const { operatingMode } = useOperatingMode();
+  const showOwnerDispatch = isManagingAgentOperatingMode(operatingMode);
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
     queryFn: listEntities,
@@ -143,9 +156,10 @@ function MoneyContent() {
     window.history.replaceState(null, "", url.toString());
   }
 
+  const destinations = moneyDestinations(showOwnerDispatch);
   const activeDestination =
-    MONEY_DESTINATIONS.find((destination) => destination.key === activeTab) ??
-    MONEY_DESTINATIONS[0];
+    destinations.find((destination) => destination.key === activeTab) ??
+    destinations[0];
 
   return (
     <main className="min-h-screen">
@@ -169,7 +183,11 @@ function MoneyContent() {
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
         <PageHeader
           title="Money"
-          description="Billing, owner statements, Xero, and bank-feed review in one finance hub."
+          description={
+            showOwnerDispatch
+              ? "Billing, owner statements, Xero, and bank-feed review in one finance hub."
+              : "Billing, statements, Xero, and bank-feed review in one finance hub."
+          }
         />
 
         <div

@@ -95,7 +95,11 @@ test("money hub groups finance destinations and legacy links still resolve", asy
 
   await page.getByRole("tab", { name: "Statements" }).click();
   await expect(
-    page.getByRole("link", { name: "Open owner statements" }),
+    page.getByText("Entity statements", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("dispatch review")).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Open entity statements" }),
   ).toHaveAttribute("href", "/statements");
 
   await page.goto("/billing-readiness");
@@ -105,7 +109,7 @@ test("money hub groups finance destinations and legacy links still resolve", asy
 
   await page.goto("/statements");
   await expect(
-    page.getByRole("heading", { name: "Owner Statements" }),
+    page.getByRole("heading", { name: "Entity statements" }),
   ).toBeVisible();
 
   await page.goto("/money/statements");
@@ -113,4 +117,19 @@ test("money hub groups finance destinations and legacy links still resolve", asy
 
   await page.goto("/work/comms");
   await expect(page).toHaveURL(/\/comms$/);
+});
+
+test("money hub keeps owner-statement dispatch framing for managing agents", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await page.goto("/money?tab=statements");
+
+  await expect(
+    page.getByText("Owner statements", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("dispatch review")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open owner statements" }),
+  ).toHaveAttribute("href", "/statements");
 });

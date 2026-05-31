@@ -30,6 +30,8 @@ from stewart.core.db import utcnow
 from stewart.core.models import (
     InvoiceDraft,
     InvoiceDraftStatus,
+    OperatingMode,
+    Organisation,
     Owner,
     OwnerStatementDispatch,
     Property,
@@ -1004,6 +1006,28 @@ def _dispatch_receipt(row: OwnerStatementDispatch) -> OwnerStatementDispatchRece
     )
 
 
+def _assert_owner_statement_dispatch_mode(session: Session, user: CurrentUser) -> None:
+    organisation = session.scalar(
+        select(Organisation).where(Organisation.id == user.organisation_id)
+    )
+    operating_mode = (
+        organisation.operating_mode
+        if organisation is not None
+        else OperatingMode.self_managed_owner.value
+    )
+    if operating_mode not in {
+        OperatingMode.managing_agent.value,
+        OperatingMode.hybrid.value,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Owner statement email dispatch is available only for "
+                "managing-agent or hybrid accounts."
+            ),
+        )
+
+
 @router.get("/statements/dispatch", response_model=OwnerStatementDispatchListRead)
 def list_owner_statement_dispatch(
     entity_id: UUID,
@@ -1019,6 +1043,7 @@ def list_owner_statement_dispatch(
     """Return owner-statement dispatch receipts for a month (read-only)."""
 
     assert_entity_role(session, user, entity_id, READ_ROLES)
+    _assert_owner_statement_dispatch_mode(session, user)
     canonical_month = _resolve_statement_month(month)
     rows = list(
         session.scalars(
@@ -1057,6 +1082,7 @@ def send_owner_statement(
     """
 
     assert_entity_role(session, user, entity_id, DISPATCH_ROLES)
+    _assert_owner_statement_dispatch_mode(session, user)
     if not payload.approve:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -65,6 +65,10 @@ import {
   type XeroStatusRecord,
 } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
+import {
+  isManagingAgentOperatingMode,
+  useOperatingMode,
+} from "@/lib/use-operating-mode";
 import { friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -332,12 +336,7 @@ function financeChecklistCsv(checklist: FinanceChecklist) {
   return [
     ["Status", "Item", "Metric", "Detail"].map(csvCell).join(","),
     ...checklist.items.map((item) =>
-      [
-        checklistStatusLabel(item.status),
-        item.title,
-        item.metric,
-        item.detail,
-      ]
+      [checklistStatusLabel(item.status), item.title, item.metric, item.detail]
         .map(csvCell)
         .join(","),
     ),
@@ -548,13 +547,7 @@ function financeSignoffPacketCsv({
   const approvalSteps = buildDispatchApprovalSteps(dispatchRows);
   return [
     ["Section", "Item", "Status", "Metric", "Detail"].map(csvCell).join(","),
-    [
-      "Signoff",
-      formatMonthLabel(month),
-      status.label,
-      "",
-      status.detail,
-    ]
+    ["Signoff", formatMonthLabel(month), status.label, "", status.detail]
       .map(csvCell)
       .join(","),
     [
@@ -675,7 +668,10 @@ function dispatchApprovalPacketText(
   ].join("\n");
 }
 
-function dispatchApprovalCsv(rows: StatementDispatchReviewRow[], month: string) {
+function dispatchApprovalCsv(
+  rows: StatementDispatchReviewRow[],
+  month: string,
+) {
   const readyCount = rows.filter((row) => row.status === "ready").length;
   const reviewCount = rows.filter(
     (row) => row.status === "payment_review",
@@ -705,9 +701,7 @@ function dispatchApprovalCsv(rows: StatementDispatchReviewRow[], month: string) 
       "",
       rows.reduce((total, row) => total + row.invoiceCount, 0),
       rows.reduce((total, row) => total + row.propertyCount, 0),
-      formatMoney(
-        rows.reduce((total, row) => total + row.outstandingCents, 0),
-      ),
+      formatMoney(rows.reduce((total, row) => total + row.outstandingCents, 0)),
       "Dispatch approval queue review only.",
       DISPATCH_APPROVAL_EXPORT_GUARDRAIL,
     ],
@@ -852,15 +846,19 @@ function statementExceptionKindTone(kind: StatementExceptionKind) {
   return "warning" as const;
 }
 
-function buildStatementExceptionRows(
-  owners: OwnerStatementRecord[],
-): StatementExceptionRow[] {
+function buildStatementExceptionRows({
+  owners,
+  showOwnerDispatch,
+}: {
+  owners: OwnerStatementRecord[];
+  showOwnerDispatch: boolean;
+}): StatementExceptionRow[] {
   const rows: StatementExceptionRow[] = [];
   for (const owner of owners) {
     if (owner.invoice_count === 0) {
       continue;
     }
-    if (!owner.billing_email) {
+    if (showOwnerDispatch && !owner.billing_email) {
       rows.push({
         id: `${owner.owner_identity}-missing-recipient`,
         kind: "missing_recipient",
@@ -997,10 +995,12 @@ function buildFinanceChecklist({
   readiness,
   owners,
   xeroStatus,
+  showOwnerDispatch,
 }: {
   readiness: StatementPackReadiness;
   owners: OwnerStatementRecord[];
   xeroStatus: XeroStatusRecord | undefined;
+  showOwnerDispatch: boolean;
 }): FinanceChecklist {
   const ownersWithInvoices = owners.filter((owner) => owner.invoice_count > 0);
   const missingRecipientCount = ownersWithInvoices.filter(
@@ -1064,20 +1064,23 @@ function buildFinanceChecklist({
     {
       id: "recipient-review",
       title: "Recipient review",
-      detail:
-        ownersWithInvoices.length === 0
+      detail: !showOwnerDispatch
+        ? "Owner billing recipients are not required for local entity statement reports."
+        : ownersWithInvoices.length === 0
           ? "Recipient review unlocks once owner statements have invoices."
           : missingRecipientCount > 0
             ? "Add owner billing emails before statements can move to send approval."
             : "Every invoiced owner has a billing recipient recorded.",
-      status:
-        ownersWithInvoices.length === 0
+      status: !showOwnerDispatch
+        ? "complete"
+        : ownersWithInvoices.length === 0
           ? "locked"
           : missingRecipientCount > 0
             ? "blocked"
             : "complete",
-      metric:
-        missingRecipientCount > 0
+      metric: !showOwnerDispatch
+        ? "Not required"
+        : missingRecipientCount > 0
           ? `${missingRecipientCount} missing`
           : `${ownersWithInvoices.length} reviewed`,
     },
@@ -1116,13 +1119,16 @@ function buildFinanceChecklist({
     },
     {
       id: "dispatch-lock",
-      title: "Owner dispatch",
-      detail:
-        readiness.status === "ready" && missingRecipientCount === 0
+      title: showOwnerDispatch
+        ? "Owner dispatch"
+        : "Third-party owner dispatch off",
+      detail: showOwnerDispatch
+        ? readiness.status === "ready" && missingRecipientCount === 0
           ? "Send approval is ready for the next workflow slice; this page still cannot send owner emails."
-          : "Owner email dispatch remains locked while finance review is incomplete.",
-      status: "locked",
-      metric: "No email sent",
+          : "Owner email dispatch remains locked while finance review is incomplete."
+        : "Self-managed accounts keep entity-grouped statements local; third-party owner send workflows stay unavailable.",
+      status: showOwnerDispatch ? "locked" : "complete",
+      metric: showOwnerDispatch ? "No email sent" : "Local reports only",
     },
   ];
 
@@ -1169,6 +1175,8 @@ export default function StatementsPage() {
 }
 
 function StatementsContent() {
+  const { operatingMode } = useOperatingMode();
+  const showOwnerDispatch = isManagingAgentOperatingMode(operatingMode);
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
     queryFn: listEntities,
@@ -1219,8 +1227,9 @@ function StatementsContent() {
 
   const dispatchQuery = useQuery({
     queryKey: ["owner-statement-dispatch", selectedEntityId, month],
-    queryFn: () => getOwnerStatementDispatch({ entityId: selectedEntityId, month }),
-    enabled: Boolean(selectedEntityId && month),
+    queryFn: () =>
+      getOwnerStatementDispatch({ entityId: selectedEntityId, month }),
+    enabled: Boolean(showOwnerDispatch && selectedEntityId && month),
   });
 
   const invoiceDraftsQuery = useQuery({
@@ -1308,16 +1317,17 @@ function StatementsContent() {
         readiness: statementReadiness,
         owners,
         xeroStatus: xeroStatusQuery.data,
+        showOwnerDispatch,
       }),
-    [owners, statementReadiness, xeroStatusQuery.data],
+    [owners, showOwnerDispatch, statementReadiness, xeroStatusQuery.data],
   );
   const dispatchReviewRows = useMemo(
     () => buildDispatchReviewRows(owners, month),
     [month, owners],
   );
   const statementExceptionRows = useMemo(
-    () => buildStatementExceptionRows(owners),
-    [owners],
+    () => buildStatementExceptionRows({ owners, showOwnerDispatch }),
+    [owners, showOwnerDispatch],
   );
   const openedFromBilling = handoffSource === "billing-readiness";
 
@@ -1342,8 +1352,12 @@ function StatementsContent() {
 
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
         <PageHeader
-          title="Owner statements"
-          description="Per-owner monthly roll-up of invoiced, paid, and outstanding totals across the portfolio. PDF exports are review-only; owner email dispatch stays locked until an explicit approval flow is wired."
+          title={showOwnerDispatch ? "Owner statements" : "Entity statements"}
+          description={
+            showOwnerDispatch
+              ? "Per-owner monthly roll-up of invoiced, paid, and outstanding totals across the portfolio. PDF exports are review-only; owner email dispatch stays locked until an explicit approval flow is wired."
+              : "Entity-grouped monthly roll-up of invoiced, paid, and outstanding totals across the portfolio. PDF exports stay local to finance review."
+          }
         />
 
         <section className="grid gap-3 sm:grid-cols-2">
@@ -1393,8 +1407,9 @@ function StatementsContent() {
           readiness={statementReadiness}
           checklist={financeChecklist}
           exceptions={statementExceptionRows}
-          dispatchRows={dispatchReviewRows}
+          dispatchRows={showOwnerDispatch ? dispatchReviewRows : []}
           month={month}
+          showOwnerDispatch={showOwnerDispatch}
           loading={
             statementsQuery.isLoading ||
             invoiceDraftsQuery.isLoading ||
@@ -1408,15 +1423,20 @@ function StatementsContent() {
           loading={statementsQuery.isLoading}
           selectedOwnerIdentity={selectedOwnerIdentity}
           onSelectOwner={setSelectedOwnerIdentity}
+          showOwnerDispatch={showOwnerDispatch}
         />
 
-        <DispatchReviewPanel
-          rows={dispatchReviewRows}
-          month={month}
-          loading={statementsQuery.isLoading}
-          selectedOwnerIdentity={selectedOwnerIdentity}
-          onSelectOwner={setSelectedOwnerIdentity}
-        />
+        {showOwnerDispatch ? (
+          <DispatchReviewPanel
+            rows={dispatchReviewRows}
+            month={month}
+            loading={statementsQuery.isLoading}
+            selectedOwnerIdentity={selectedOwnerIdentity}
+            onSelectOwner={setSelectedOwnerIdentity}
+          />
+        ) : (
+          <SelfManagedDispatchGuardrailPanel />
+        )}
 
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric
@@ -1451,8 +1471,11 @@ function StatementsContent() {
             selectedOwnerIdentity={selectedOwnerIdentity}
             onSelectOwner={setSelectedOwnerIdentity}
             liveReceipt={
-              receiptsByOwner.get(selectedOwner.owner_identity) ?? null
+              showOwnerDispatch
+                ? (receiptsByOwner.get(selectedOwner.owner_identity) ?? null)
+                : null
             }
+            showOwnerDispatch={showOwnerDispatch}
           />
         ) : null}
 
@@ -1566,6 +1589,7 @@ function StatementPreviewPanel({
   selectedOwnerIdentity,
   onSelectOwner,
   liveReceipt,
+  showOwnerDispatch,
 }: {
   owner: OwnerStatementRecord;
   owners: OwnerStatementRecord[];
@@ -1575,6 +1599,7 @@ function StatementPreviewPanel({
   selectedOwnerIdentity: string;
   onSelectOwner: (value: string) => void;
   liveReceipt: OwnerStatementDispatchReceipt | null;
+  showOwnerDispatch: boolean;
 }) {
   const queryClient = useQueryClient();
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
@@ -1879,7 +1904,9 @@ function StatementPreviewPanel({
                       const sources = invoiceEvidenceSources(invoice);
                       return (
                         <tr
-                          key={invoice.invoice_draft_id ?? invoice.invoice_number}
+                          key={
+                            invoice.invoice_draft_id ?? invoice.invoice_number
+                          }
                           className="border-b border-border last:border-0"
                         >
                           <td className="py-2 pr-3 align-top">
@@ -1938,187 +1965,193 @@ function StatementPreviewPanel({
 
           <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
             Review state:{" "}
-            {owner.outstanding_cents > 0
-              ? "payment review remains open"
-              : "ready for owner dispatch"}
-            . Dispatch is still explicit and separate from this preview.
+            {showOwnerDispatch
+              ? owner.outstanding_cents > 0
+                ? "payment review remains open. Dispatch is still explicit and separate from this preview"
+                : "ready for owner dispatch. Dispatch is still explicit and separate from this preview"
+              : owner.outstanding_cents > 0
+                ? "payment review remains open. This account mode keeps statements local"
+                : "ready for local entity reporting"}
+            .
           </div>
         </div>
 
-        <div className="grid gap-4 rounded-md border border-border bg-white p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <span className="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
-                <MailCheck size={17} />
-              </span>
-              <div>
-                <h3 className="text-base font-semibold text-foreground">
-                  Dispatch review
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Check the recipient and owner-facing copy before a later send
-                  step.
-                </p>
-              </div>
-            </div>
-            <StatusBadge tone={recipientReady ? "success" : "warning"}>
-              {recipientReady ? "Recipient ready" : "Needs owner email"}
-            </StatusBadge>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="grid gap-2 text-sm">
-              <div>
-                <div className="text-xs font-semibold uppercase text-muted-foreground">
-                  To
-                </div>
-                <div className="mt-1 font-medium">
-                  {owner.billing_email ?? "No owner billing email recorded"}
+        {showOwnerDispatch ? (
+          <div className="grid gap-4 rounded-md border border-border bg-white p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <span className="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <MailCheck size={17} />
+                </span>
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">
+                    Dispatch review
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Check the recipient and owner-facing copy before a later
+                    send step.
+                  </p>
                 </div>
               </div>
-              <div>
-                <div className="text-xs font-semibold uppercase text-muted-foreground">
-                  Subject
+              <StatusBadge tone={recipientReady ? "success" : "warning"}>
+                {recipientReady ? "Recipient ready" : "Needs owner email"}
+              </StatusBadge>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="grid gap-2 text-sm">
+                <div>
+                  <div className="text-xs font-semibold uppercase text-muted-foreground">
+                    To
+                  </div>
+                  <div className="mt-1 font-medium">
+                    {owner.billing_email ?? "No owner billing email recorded"}
+                  </div>
                 </div>
-                <div className="mt-1 font-medium">{dispatchDraft.subject}</div>
+                <div>
+                  <div className="text-xs font-semibold uppercase text-muted-foreground">
+                    Subject
+                  </div>
+                  <div className="mt-1 font-medium">
+                    {dispatchDraft.subject}
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+                <SecondaryButton type="button" onClick={copyDispatchDraft}>
+                  <ClipboardCheck size={15} />
+                  Copy dispatch draft
+                </SecondaryButton>
+                <SecondaryButton type="button" onClick={downloadDispatchDraft}>
+                  <Download size={15} />
+                  Download dispatch draft
+                </SecondaryButton>
               </div>
             </div>
-            <div className="flex flex-wrap items-start gap-2 lg:justify-end">
-              <SecondaryButton type="button" onClick={copyDispatchDraft}>
-                <ClipboardCheck size={15} />
-                Copy dispatch draft
-              </SecondaryButton>
-              <SecondaryButton type="button" onClick={downloadDispatchDraft}>
-                <Download size={15} />
-                Download dispatch draft
-              </SecondaryButton>
+
+            <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted p-3 text-sm leading-6 text-foreground">
+              {dispatchDraft.body}
+            </pre>
+
+            {dispatchReceipt ? (
+              <p className="text-sm font-medium text-success">
+                {dispatchReceipt}
+              </p>
+            ) : null}
+
+            <div className="flex items-start gap-2 rounded-md bg-muted p-3 text-xs text-muted-foreground">
+              <ShieldCheck size={14} className="mt-0.5 shrink-0 text-primary" />
+              Review only. This does not send owner email, attach a PDF, or
+              update provider delivery history.
             </div>
-          </div>
 
-          <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted p-3 text-sm leading-6 text-foreground">
-            {dispatchDraft.body}
-          </pre>
-
-          {dispatchReceipt ? (
-            <p className="text-sm font-medium text-success">
-              {dispatchReceipt}
-            </p>
-          ) : null}
-
-          <div className="flex items-start gap-2 rounded-md bg-muted p-3 text-xs text-muted-foreground">
-            <ShieldCheck size={14} className="mt-0.5 shrink-0 text-primary" />
-            Review only. This does not send owner email, attach a PDF, or update
-            provider delivery history.
-          </div>
-
-          <div className="grid gap-3 border-t border-border pt-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm font-semibold text-foreground">
-                  Send statement
-                </h4>
-                {liveReceipt ? (
-                  <StatusBadge
-                    tone={dispatchReceiptStatusTone(liveReceipt.status)}
-                  >
-                    {dispatchReceiptStatusLabel(liveReceipt.status)}
-                  </StatusBadge>
+            <div className="grid gap-3 border-t border-border pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-semibold text-foreground">
+                    Send statement
+                  </h4>
+                  {liveReceipt ? (
+                    <StatusBadge
+                      tone={dispatchReceiptStatusTone(liveReceipt.status)}
+                    >
+                      {dispatchReceiptStatusLabel(liveReceipt.status)}
+                    </StatusBadge>
+                  ) : null}
+                </div>
+                {sendDisabledReason ? (
+                  <span className={chipClass("warning", { bordered: true })}>
+                    {sendDisabledReason}
+                  </span>
                 ) : null}
               </div>
-              {sendDisabledReason ? (
-                <span className={chipClass("warning", { bordered: true })}>
-                  {sendDisabledReason}
-                </span>
-              ) : null}
-            </div>
 
-            {confirmingSend ? (
-              <div className="grid gap-3 rounded-md border border-warning-strong/30 bg-warning-soft p-3">
-                <p className="text-sm font-medium text-warning-strong">
-                  Send this statement as a real email to{" "}
-                  {owner.billing_email}? This does not post to Xero, reconcile
-                  payments, or dispatch invoices.
-                  {alreadySent
-                    ? " A statement was already sent to this owner for this month; this resends it."
-                    : ""}
-                </p>
+              {confirmingSend ? (
+                <div className="grid gap-3 rounded-md border border-warning-strong/30 bg-warning-soft p-3">
+                  <p className="text-sm font-medium text-warning-strong">
+                    {`Send this statement as a real email to ${owner.billing_email}? This does not post to Xero, reconcile payments, or dispatch invoices.`}
+                    {alreadySent
+                      ? " A statement was already sent to this owner for this month; this resends it."
+                      : ""}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => sendMutation.mutate()}
+                      disabled={sendMutation.isPending}
+                    >
+                      {sendMutation.isPending ? (
+                        <RefreshCw size={15} className="animate-spin" />
+                      ) : (
+                        <Send size={15} />
+                      )}
+                      Confirm send
+                    </Button>
+                    <SecondaryButton
+                      type="button"
+                      onClick={() => setConfirmingSend(false)}
+                      disabled={sendMutation.isPending}
+                    >
+                      Cancel
+                    </SecondaryButton>
+                  </div>
+                </div>
+              ) : (
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
-                    onClick={() => sendMutation.mutate()}
-                    disabled={sendMutation.isPending}
+                    onClick={() => {
+                      sendMutation.reset();
+                      setConfirmingSend(true);
+                    }}
+                    disabled={Boolean(sendDisabledReason)}
                   >
-                    {sendMutation.isPending ? (
-                      <RefreshCw size={15} className="animate-spin" />
-                    ) : (
-                      <Send size={15} />
-                    )}
-                    Confirm send
+                    <Send size={15} />
+                    {alreadySent ? "Resend statement" : "Send statement"}
                   </Button>
-                  <SecondaryButton
-                    type="button"
-                    onClick={() => setConfirmingSend(false)}
-                    disabled={sendMutation.isPending}
-                  >
-                    Cancel
-                  </SecondaryButton>
+                  <p className="text-xs text-muted-foreground">
+                    A confirm step appears before any email is sent.
+                  </p>
                 </div>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  onClick={() => {
-                    sendMutation.reset();
-                    setConfirmingSend(true);
-                  }}
-                  disabled={Boolean(sendDisabledReason)}
-                >
-                  <Send size={15} />
-                  {alreadySent ? "Resend statement" : "Send statement"}
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  A confirm step appears before any email is sent.
-                </p>
-              </div>
-            )}
+              )}
 
-            {sendReceipt ? (
-              <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge
-                    tone={dispatchReceiptStatusTone(sendReceipt.status)}
-                  >
-                    {dispatchReceiptStatusLabel(sendReceipt.status)}
-                  </StatusBadge>
-                  {sendReceipt.recipient_email ? (
-                    <span className="text-muted-foreground">
-                      to {sendReceipt.recipient_email}
-                    </span>
+              {sendReceipt ? (
+                <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      tone={dispatchReceiptStatusTone(sendReceipt.status)}
+                    >
+                      {dispatchReceiptStatusLabel(sendReceipt.status)}
+                    </StatusBadge>
+                    {sendReceipt.recipient_email ? (
+                      <span className="text-muted-foreground">
+                        to {sendReceipt.recipient_email}
+                      </span>
+                    ) : null}
+                  </div>
+                  {sendReceipt.provider_message_id ? (
+                    <div className="text-xs text-muted-foreground">
+                      Provider message id: {sendReceipt.provider_message_id}
+                    </div>
+                  ) : null}
+                  {(sendReceipt.status === "failed" ||
+                    sendReceipt.status === "skipped") &&
+                  sendReceipt.error ? (
+                    <div className="text-xs font-medium text-danger">
+                      {sendReceipt.error}
+                    </div>
                   ) : null}
                 </div>
-                {sendReceipt.provider_message_id ? (
-                  <div className="text-xs text-muted-foreground">
-                    Provider message id: {sendReceipt.provider_message_id}
-                  </div>
-                ) : null}
-                {(sendReceipt.status === "failed" ||
-                  sendReceipt.status === "skipped") &&
-                sendReceipt.error ? (
-                  <div className="text-xs font-medium text-danger">
-                    {sendReceipt.error}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+              ) : null}
 
-            {sendMutation.isError ? (
-              <p className="text-sm font-medium text-danger">
-                {friendlyError(sendMutation.error)}
-              </p>
-            ) : null}
+              {sendMutation.isError ? (
+                <p className="text-sm font-medium text-danger">
+                  {friendlyError(sendMutation.error)}
+                </p>
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </SectionPanel>
   );
@@ -2428,6 +2461,7 @@ function FinanceSignoffPanel({
   exceptions,
   dispatchRows,
   month,
+  showOwnerDispatch,
   loading,
 }: {
   readiness: StatementPackReadiness;
@@ -2435,6 +2469,7 @@ function FinanceSignoffPanel({
   exceptions: StatementExceptionRow[];
   dispatchRows: StatementDispatchReviewRow[];
   month: string;
+  showOwnerDispatch: boolean;
   loading: boolean;
 }) {
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
@@ -2483,7 +2518,11 @@ function FinanceSignoffPanel({
   return (
     <SectionPanel
       title="Month-end signoff packet"
-      description="One finance handoff for statement readiness, checklist state, exceptions, and dispatch approval gates."
+      description={
+        showOwnerDispatch
+          ? "One finance handoff for statement readiness, checklist state, exceptions, and dispatch approval gates."
+          : "One finance handoff for statement readiness, checklist state, and local reporting exceptions."
+      }
       icon={<ClipboardCheck size={17} className="text-primary" />}
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -2519,8 +2558,9 @@ function FinanceSignoffPanel({
               {loading ? "Checking statement signoff" : status.detail}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Month {month} remains review-only until explicit owner dispatch is
-              wired.
+              {showOwnerDispatch
+                ? `Month ${month} remains review-only until explicit owner dispatch is wired.`
+                : `Month ${month} remains a local entity-reporting pack for this account mode.`}
             </p>
           </div>
           <div className="flex flex-wrap items-start gap-2 lg:justify-end">
@@ -2546,7 +2586,9 @@ function FinanceSignoffPanel({
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-4">
+        <div
+          className={`grid gap-3 ${showOwnerDispatch ? "md:grid-cols-4" : "md:grid-cols-3"}`}
+        >
           <div className="rounded-md border border-border bg-white p-3">
             <div className="text-xs font-semibold uppercase text-muted-foreground">
               Pack
@@ -2586,17 +2628,19 @@ function FinanceSignoffPanel({
               Recipient and payment cleanup
             </div>
           </div>
-          <div className="rounded-md border border-border bg-white p-3">
-            <div className="text-xs font-semibold uppercase text-muted-foreground">
-              Dispatch
+          {showOwnerDispatch ? (
+            <div className="rounded-md border border-border bg-white p-3">
+              <div className="text-xs font-semibold uppercase text-muted-foreground">
+                Dispatch
+              </div>
+              <div className="mt-1 font-semibold text-foreground">
+                {status.readyDispatchCount} ready
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Approval queue only
+              </div>
             </div>
-            <div className="mt-1 font-semibold text-foreground">
-              {status.readyDispatchCount} ready
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              Approval queue only
-            </div>
-          </div>
+          ) : null}
         </div>
       </div>
     </SectionPanel>
@@ -2609,12 +2653,14 @@ function StatementExceptionsPanel({
   loading,
   selectedOwnerIdentity,
   onSelectOwner,
+  showOwnerDispatch,
 }: {
   rows: StatementExceptionRow[];
   month: string;
   loading: boolean;
   selectedOwnerIdentity: string;
   onSelectOwner: (value: string) => void;
+  showOwnerDispatch: boolean;
 }) {
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
   const missingRecipientCount = rows.filter(
@@ -2640,7 +2686,11 @@ function StatementExceptionsPanel({
   return (
     <SectionPanel
       title="Finance exceptions"
-      description="Owner rows that need recipient or payment cleanup before dispatch approval."
+      description={
+        showOwnerDispatch
+          ? "Owner rows that need recipient or payment cleanup before dispatch approval."
+          : "Entity rows that need recipient or payment cleanup before finance signoff."
+      }
       icon={<AlertTriangle size={17} className="text-primary" />}
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -2741,6 +2791,25 @@ function StatementExceptionsPanel({
             </div>
           </>
         )}
+      </div>
+    </SectionPanel>
+  );
+}
+
+function SelfManagedDispatchGuardrailPanel() {
+  return (
+    <SectionPanel
+      title="Third-party owner dispatch off"
+      description="Self-managed accounts keep entity-grouped statements local to finance review."
+      icon={<ShieldCheck size={17} className="text-primary" />}
+      actions={<StatusBadge tone="neutral">Local reports only</StatusBadge>}
+    >
+      <div className="grid gap-3 p-4">
+        <p className="text-sm text-muted-foreground">
+          Statement PDFs, accountant packs, and invoice evidence stay available
+          for internal reporting. Owner email send controls and dispatch queues
+          are only shown for managing-agent or hybrid accounts.
+        </p>
       </div>
     </SectionPanel>
   );

@@ -3,7 +3,7 @@
 from datetime import date
 from io import BytesIO
 from typing import Any, TypedDict
-from uuid import uuid4
+from uuid import UUID, uuid4
 from zipfile import ZipFile
 
 from apps.api.routers.owners import (
@@ -22,7 +22,10 @@ from stewart.core.models import (
     Entity,
     InvoiceDraft,
     InvoiceDraftStatus,
+    OperatingMode,
+    Organisation,
     Owner,
+    OwnerStatementDispatch,
     Property,
     PropertyOwner,
     PropertyType,
@@ -41,6 +44,13 @@ def _entity(session: Session) -> Entity:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
     return entity
+
+
+def _set_operating_mode(session: Session, mode: OperatingMode) -> None:
+    organisation = session.scalar(select(Organisation))
+    assert organisation is not None
+    organisation.operating_mode = mode.value
+    session.commit()
 
 
 def _link_owner_from_property_fields(session: Session, prop: Property) -> Owner:
@@ -1437,6 +1447,7 @@ def test_send_owner_statement_requires_explicit_approval(
 ) -> None:
     """Provider guardrail: a statement is never sent without approve=true."""
 
+    _set_operating_mode(session, OperatingMode.managing_agent)
     scope = _seed_owner_with_invoices(
         session,
         trust_name="Approval Trust",
@@ -1469,6 +1480,64 @@ def test_send_owner_statement_requires_explicit_approval(
     assert listed["receipts"] == []
 
 
+def test_send_owner_statement_forbidden_for_self_managed_accounts(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Self-managed accounts keep reports but cannot send third-party owner email."""
+
+    scope = _seed_owner_with_invoices(
+        session,
+        trust_name="Self Managed Trust",
+        trustee_name="SM Trustee",
+        billing_email="owner@example.com",
+        properties=[("Self Managed Property", [(date(2026, 4, 10), 500_000, 0)])],
+    )
+    statements = client.get(
+        "/api/v1/owners/statements",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    ).json()
+    owner_identity = statements["owners"][0]["owner_identity"]
+
+    def boom(invite: Any, settings_arg: Any) -> DeliveryResult:
+        raise AssertionError("self-managed mode must not reach SendGrid dispatch")
+
+    monkeypatch.setattr("apps.api.routers.owners.send_owner_statement_email", boom)
+    session.add(
+        OwnerStatementDispatch(
+            entity_id=UUID(scope["entity_id"]),
+            owner_identity=owner_identity,
+            owner_identity_key=owner_identity.casefold(),
+            month="2026-04",
+            channel="email",
+            provider="sendgrid",
+            status="queued",
+            recipient_email="owner@example.com",
+            subject="Existing owner statement receipt",
+            provider_message_id="sg-existing",
+            invoice_count=1,
+            invoiced_cents=500_000,
+            outstanding_cents=500_000,
+        )
+    )
+    session.commit()
+
+    dispatch_response = client.get(
+        "/api/v1/owners/statements/dispatch",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+    assert dispatch_response.status_code == 403
+
+    response = client.post(
+        "/api/v1/owners/statements/send",
+        params={"entity_id": scope["entity_id"]},
+        json={"owner_identity": owner_identity, "month": "2026-04", "approve": True},
+    )
+    assert response.status_code == 403
+    assert "managing-agent" in response.json()["detail"]
+
+
 def test_send_owner_statement_queues_and_is_idempotent(
     client: TestClient,
     session: Session,
@@ -1476,6 +1545,7 @@ def test_send_owner_statement_queues_and_is_idempotent(
 ) -> None:
     """Approved send queues via SendGrid; a repeat send is idempotent."""
 
+    _set_operating_mode(session, OperatingMode.managing_agent)
     scope = _seed_owner_with_invoices(
         session,
         trust_name="Queue Trust",
@@ -1557,6 +1627,7 @@ def test_send_owner_statement_skips_without_recipient(
 ) -> None:
     """A configured, approved send still skips when the owner has no email."""
 
+    _set_operating_mode(session, OperatingMode.managing_agent)
     scope = _seed_owner_with_invoices(
         session,
         trust_name="No Email Trust",
@@ -1598,6 +1669,7 @@ def test_send_owner_statement_skips_when_provider_unconfigured(
 ) -> None:
     """Enabled but unconfigured SendGrid yields a skipped receipt, not a send."""
 
+    _set_operating_mode(session, OperatingMode.managing_agent)
     scope = _seed_owner_with_invoices(
         session,
         trust_name="Unconfigured Trust",

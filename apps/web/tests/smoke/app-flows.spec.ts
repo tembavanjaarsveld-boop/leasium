@@ -98,6 +98,7 @@ test("workspace guard asks signed-out operators to sign in when Clerk is configu
 test("dashboard shows the mocked portfolio and opens billing readiness", async ({
   page,
 }) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
   await page.goto("/");
 
   await expect(
@@ -394,12 +395,8 @@ test("billing readiness mobile actions keep 44px touch targets", async ({
   });
 
   await expectTouchTarget(deliveryFilterButton(/^All\b/));
-  await expectTouchTarget(
-    deliveryFilterButton(/^Needs action\b/),
-  );
-  await expectTouchTarget(
-    deliveryFilterButton(/^Ready to dispatch\b/),
-  );
+  await expectTouchTarget(deliveryFilterButton(/^Needs action\b/));
+  await expectTouchTarget(deliveryFilterButton(/^Ready to dispatch\b/));
   await expectTouchTarget(deliveryFilterButton(/^Complete\b/));
   await expectTouchTarget(deliveryFilterButton(/^Unpaid\b/));
   await deliveryFilterButton(/^Needs action\b/).click();
@@ -423,9 +420,7 @@ test("billing readiness mobile actions keep 44px touch targets", async ({
   await expectTouchTarget(
     staleDispatchCard.getByRole("link", { name: "Preview" }),
   );
-  await expectTouchTarget(
-    staleDispatchCard.getByRole("link", { name: "PDF" }),
-  );
+  await expectTouchTarget(staleDispatchCard.getByRole("link", { name: "PDF" }));
 });
 
 test("settings mobile tabs keep 44px touch targets", async ({ page }) => {
@@ -711,7 +706,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   expect(outboundLogCsv).toContain("contractor update email queued");
   expect(outboundLogCsv).toContain("maintenance_work_order:work/order?1");
   expect(outboundLogCsv).toContain(
-    "\"'=HYPERLINK(\"\"https://example.invalid\"\",\"\"Cool Air\"\")\"",
+    '"\'=HYPERLINK(""https://example.invalid"",""Cool Air"")"',
   );
   expect(outboundLogCsv).toContain(
     "Read-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, or refresh provider state.",
@@ -734,8 +729,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await outboundLogPanel
     .getByRole("button", { name: "Download outbound log CSV" })
     .click();
-  const filteredOutboundLogDownload =
-    await filteredOutboundLogDownloadPromise;
+  const filteredOutboundLogDownload = await filteredOutboundLogDownloadPromise;
   const filteredOutboundLogDownloadPath =
     await filteredOutboundLogDownload.path();
   expect(filteredOutboundLogDownloadPath).not.toBeNull();
@@ -1271,7 +1265,10 @@ test("tenants saved views capture and re-apply filter combos", async ({
     page.getByRole("button", { name: /^Submitted only/ }).first(),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: /^Submitted only/ }).first().click();
+  await page
+    .getByRole("button", { name: /^Submitted only/ })
+    .first()
+    .click();
   const activeSavedViewButton = page
     .getByRole("button", { name: /^Submitted only$/ })
     .first();
@@ -1838,9 +1835,7 @@ test("operations workspace keeps mobile rows compact", async ({ page }) => {
   await expectTouchTarget(
     page.getByRole("button", { name: /Show assignment follow-ups/ }),
   );
-  await expectTouchTarget(
-    page.getByRole("button", { name: /Show my work/ }),
-  );
+  await expectTouchTarget(page.getByRole("button", { name: /Show my work/ }));
   await expectTouchTarget(
     page.getByRole("link", { name: "Open tenants" }).first(),
   );
@@ -2083,17 +2078,27 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     workOrderCorrespondencePanel.getByText("tenant forward sms failed"),
   ).toBeVisible();
-  await expect(workOrderCorrespondencePanel.getByText("SendGrid email")).toBeVisible();
-  await expect(workOrderCorrespondencePanel.getByText("Twilio SMS")).toBeVisible();
-  await expect(workOrderCorrespondencePanel.getByText("Internal")).toBeVisible();
   await expect(
-    workOrderCorrespondencePanel.getByRole("link", { name: "Open Comms queue" }),
+    workOrderCorrespondencePanel.getByText("SendGrid email"),
+  ).toBeVisible();
+  await expect(
+    workOrderCorrespondencePanel.getByText("Twilio SMS"),
+  ).toBeVisible();
+  await expect(
+    workOrderCorrespondencePanel.getByText("Internal"),
+  ).toBeVisible();
+  await expect(
+    workOrderCorrespondencePanel.getByRole("link", {
+      name: "Open Comms queue",
+    }),
   ).toHaveAttribute("href", "/comms");
   await expect(
     workOrderCorrespondencePanel.getByRole("link", { name: "Open tenant" }),
   ).toHaveAttribute("href", "/tenants/tenant-1");
   await expect(
-    workOrderCorrespondencePanel.getByText("Opening this panel does not send email"),
+    workOrderCorrespondencePanel.getByText(
+      "Opening this panel does not send email",
+    ),
   ).toBeVisible();
   const workOrderCorrespondenceDownloadPromise = page.waitForEvent("download");
   await workOrderCorrespondencePanel
@@ -2111,11 +2116,15 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
     workOrderCorrespondencePath!,
     "utf8",
   );
-  expect(workOrderCorrespondenceCsv).toContain("maintenance_work_order:work-order-1");
-  expect(workOrderCorrespondenceCsv).toContain("maintenance_contractor_forward");
+  expect(workOrderCorrespondenceCsv).toContain(
+    "maintenance_work_order:work-order-1",
+  );
+  expect(workOrderCorrespondenceCsv).toContain(
+    "maintenance_contractor_forward",
+  );
   expect(workOrderCorrespondenceCsv).toContain("maintenance_tenant_forward");
   expect(workOrderCorrespondenceCsv).toContain(
-    "\"'=HYPERLINK(\"\"https://example.invalid\"\",\"\"Cool Air\"\")\"",
+    '"\'=HYPERLINK(""https://example.invalid"",""Cool Air"")"',
   );
   expect(workOrderCorrespondenceCsv).toContain(
     "Read-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, refresh providers, or mutate maintenance records.",
@@ -2908,7 +2917,7 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   expect(correspondenceCsv).toContain("arrears_case:arrears-1");
   expect(correspondenceCsv).toContain("inbound_message:inbound-message-1");
   expect(correspondenceCsv).toContain(
-    "\"'=HYPERLINK(\"\"https://example.invalid\"\",\"\"Mia\"\")\"",
+    '"\'=HYPERLINK(""https://example.invalid"",""Mia"")"',
   );
   expect(correspondenceCsv).toContain(
     "Review-only export: downloading this file does not send email or SMS",
@@ -4941,7 +4950,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     xeroContactPreviewPanel.getByText("Xero contact preview", { exact: true }),
   ).toBeVisible();
-  await expect(xeroContactPreviewPanel.getByText("Contacts fetched")).toBeVisible();
+  await expect(
+    xeroContactPreviewPanel.getByText("Contacts fetched"),
+  ).toBeVisible();
   await expect(
     xeroContactPreviewPanel.getByText("Bright Cafe").first(),
   ).toBeVisible();
@@ -5189,9 +5200,13 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     primaryDispatchRow.getByText("Bank feed was not mutated."),
   ).toBeVisible();
   await page.getByRole("button", { name: /Complete/ }).click();
-  await expect(page.getByRole("row").filter({ hasText: "INV-1001" })).toBeVisible();
+  await expect(
+    page.getByRole("row").filter({ hasText: "INV-1001" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: /Unpaid/ }).click();
-  await expect(page.getByRole("row").filter({ hasText: "INV-1002" })).toBeVisible();
+  await expect(
+    page.getByRole("row").filter({ hasText: "INV-1002" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("row").filter({ hasText: "INV-1001" }),
   ).toHaveCount(0);

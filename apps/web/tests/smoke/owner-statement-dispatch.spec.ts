@@ -3,7 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { mockLeasiumApi } from "./api-mocks";
 
 test.beforeEach(async ({ page }) => {
-  await mockLeasiumApi(page);
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
 });
 
 function watchOwnerStatementSendRequests(page: Page) {
@@ -60,9 +60,7 @@ test("owner statement send is two-step confirmed before any email fires", async 
 
   await expect(page.getByText("Queued")).toBeVisible();
   await expect(page.getByText("to owners@queenstreet.example")).toBeVisible();
-  await expect(
-    page.getByText("Provider message id: sg-smoke-1"),
-  ).toBeVisible();
+  await expect(page.getByText("Provider message id: sg-smoke-1")).toBeVisible();
   expect(sendRequests).toHaveLength(1);
 });
 

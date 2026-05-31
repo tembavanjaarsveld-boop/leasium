@@ -7,6 +7,50 @@ test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
 
+test("self-managed statements keep reports local and hide owner dispatch", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { ownerStatementMissingRecipientInvoice: true });
+  const providerRequests: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.url().includes("/api/v1/owners/statements/dispatch") ||
+      request.url().includes("/api/v1/owners/statements/send")
+    ) {
+      providerRequests.push(`${request.method()} ${request.url()}`);
+    }
+  });
+
+  await page.goto("/statements?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Statement preview" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Third-party owner dispatch off" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Owner billing recipients are not required"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Missing recipient", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Add owner billing emails")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Dispatch approval queue" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Send statement" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Copy dispatch draft" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Download dispatch draft" }),
+  ).toHaveCount(0);
+  expect(providerRequests).toHaveLength(0);
+});
+
 test("owner statement preview exposes invoice-level evidence", async ({
   page,
 }) => {
@@ -58,15 +102,14 @@ test("owner statement preview exposes invoice-level evidence", async ({
 test("owner statement dispatch approval queue exports review CSV", async ({
   page,
 }) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
   await page.goto("/statements?month=2026-05");
 
   await expect(
     page.getByRole("heading", { name: "Dispatch approval queue" }),
   ).toBeVisible();
   const dispatchDownloadPromise = page.waitForEvent("download");
-  await page
-    .getByRole("button", { name: "Download dispatch CSV" })
-    .click();
+  await page.getByRole("button", { name: "Download dispatch CSV" }).click();
   const dispatchDownload = await dispatchDownloadPromise;
   expect(dispatchDownload.suggestedFilename()).toBe(
     "owner-statement-dispatch-review-2026-05.csv",
@@ -89,15 +132,14 @@ test("owner statement dispatch approval queue exports review CSV", async ({
 test("owner statement dispatch draft downloads as review-only text", async ({
   page,
 }) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
   await page.goto("/statements?month=2026-05");
 
   await expect(
     page.getByRole("heading", { name: "Dispatch review" }),
   ).toBeVisible();
   const draftDownloadPromise = page.waitForEvent("download");
-  await page
-    .getByRole("button", { name: "Download dispatch draft" })
-    .click();
+  await page.getByRole("button", { name: "Download dispatch draft" }).click();
   const draftDownload = await draftDownloadPromise;
   expect(draftDownload.suggestedFilename()).toBe(
     "owner-statement-dispatch-draft-2026-05-queen-street-property-trust.txt",
