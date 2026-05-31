@@ -1401,7 +1401,7 @@ test("tenant list opens the quick-view detail drawer", async ({ page }) => {
   await expect(drawer).toBeHidden();
 });
 
-test("keyboard cheatsheet lists global and Go-to shortcuts", async ({
+test("keyboard cheatsheet hides owner-statement shortcuts for self-managed accounts", async ({
   page,
 }) => {
   await page.goto("/");
@@ -1420,13 +1420,44 @@ test("keyboard cheatsheet lists global and Go-to shortcuts", async ({
   await expect(page.getByText("Properties").last()).toBeVisible();
   await expect(page.getByText("Tenants").last()).toBeVisible();
   await expect(page.getByText("Comms queue")).toBeVisible();
-  await expect(page.getByText("Owner statements")).toBeVisible();
+  await expect(page.getByText("Owner statements")).toHaveCount(0);
   // The Go-to legend itself appears in the cheatsheet.
   await expect(page.getByText("Go to (press G, then…)")).toBeVisible();
   await page.mouse.click(300, 100);
   await expect(
     page.getByRole("dialog", { name: "Keyboard shortcuts" }),
   ).toBeHidden();
+
+  await page.getByRole("button", { name: "Open search" }).click();
+  await page
+    .getByRole("textbox", { name: "Command search" })
+    .fill("owner statements");
+  await expect(page.getByText("No matching action.")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Owner statements/i }),
+  ).toHaveCount(0);
+});
+
+test("keyboard shortcuts include owner statements for managing-agent accounts", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Show keyboard shortcuts" }).click();
+  await expect(page.getByText("Owner statements")).toBeVisible();
+  await page.mouse.click(300, 100);
+  await expect(
+    page.getByRole("dialog", { name: "Keyboard shortcuts" }),
+  ).toBeHidden();
+
+  await page.getByRole("button", { name: "Open search" }).click();
+  await page
+    .getByRole("textbox", { name: "Command search" })
+    .fill("owner statements");
+  await expect(
+    page.getByRole("link", { name: /Owner statements/i }),
+  ).toBeVisible();
 });
 
 test("dashboard activity feed groups recent audit rows", async ({ page }) => {

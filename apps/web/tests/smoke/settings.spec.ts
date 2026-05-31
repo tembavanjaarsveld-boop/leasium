@@ -194,6 +194,22 @@ test("settings can switch operating mode without orphaning self-managed owner re
   page,
 }) => {
   const operatingModePayloads: unknown[] = [];
+  const forbiddenProviderRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const callsProvider =
+      path.includes("/sendgrid") ||
+      path.includes("/twilio") ||
+      path.includes("/provider-dispatch") ||
+      path.includes("/provider-refresh") ||
+      path.includes("/provider-history") ||
+      path.includes("/xero/") ||
+      path.includes("/basiq");
+    if (callsProvider) {
+      forbiddenProviderRequests.push(`${request.method()} ${url.toString()}`);
+    }
+  });
   await page.route(
     (url) => url.pathname.endsWith("/owners"),
     async (route) => {
@@ -233,6 +249,7 @@ test("settings can switch operating mode without orphaning self-managed owner re
   expect(operatingModePayloads[0]).toEqual({ operating_mode: "hybrid" });
   await expect(operatingModeSelect).toHaveValue("hybrid");
   await expect(page.getByText("Your entities & trusts")).toHaveCount(0);
+  expect(forbiddenProviderRequests).toEqual([]);
 });
 
 test("settings operating-mode control is disabled without manage-security", async ({
