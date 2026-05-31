@@ -5464,6 +5464,10 @@ export function listContractors(entityId: string) {
   return request<ContractorRecord[]>(`/contractors?${params.toString()}`);
 }
 
+export function getContractor(contractorId: string) {
+  return request<ContractorRecord>(`/contractors/${contractorId}`);
+}
+
 export function createContractor(payload: ContractorCreatePayload) {
   return request<ContractorRecord>("/contractors", {
     method: "POST",

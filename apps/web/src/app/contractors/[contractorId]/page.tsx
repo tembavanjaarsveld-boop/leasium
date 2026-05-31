@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Building2,
@@ -14,7 +14,7 @@ import {
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import {
@@ -32,8 +32,9 @@ import {
   type StatusTone,
 } from "@/components/ui";
 import {
+  ApiError,
   type ContractorRecord,
-  listContractors,
+  getContractor,
   listEntities,
 } from "@/lib/api";
 import { friendlyError } from "@/lib/utils";
@@ -83,6 +84,10 @@ function serviceRadiusLabel(contractor: ContractorRecord) {
     return "No radius set";
   }
   return `${contractor.service_radius_km} km service radius`;
+}
+
+function isNotFoundError(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
 }
 
 function DetailItem({
@@ -163,49 +168,23 @@ function ContractorDetailContent() {
     if (first) setSelectedEntityId(first);
   }, [entitiesQuery.data, selectedEntityId]);
 
-  const entityIds = useMemo(
-    () => (entitiesQuery.data ?? []).map((entity) => entity.id),
-    [entitiesQuery.data],
-  );
-
-  const contractorQueries = useQueries({
-    queries: entityIds.map((entityId) => ({
-      queryKey: ["contractors", entityId],
-      queryFn: () => listContractors(entityId),
-      enabled: Boolean(contractorId),
-    })),
+  const contractorQuery = useQuery({
+    queryKey: ["contractor", contractorId],
+    queryFn: () => getContractor(contractorId ?? ""),
+    enabled: Boolean(contractorId),
   });
 
-  const contractorMatch = useMemo(
-    () => {
-      const rankedEntityIds = [
-        selectedEntityId,
-        ...entityIds.filter((entityId) => entityId !== selectedEntityId),
-      ].filter(Boolean);
-
-      for (const entityId of rankedEntityIds) {
-        const queryIndex = entityIds.indexOf(entityId);
-        const record = (contractorQueries[queryIndex]?.data ?? []).find(
-          (item) => item.id === contractorId,
-        );
-        if (record) return { contractor: record, entityId };
-      }
-      return null;
-    },
-    [contractorId, contractorQueries, entityIds, selectedEntityId],
-  );
-
   useEffect(() => {
-    if (!contractorMatch) return;
-    if (contractorMatch.entityId !== selectedEntityId) {
-      setSelectedEntityId(contractorMatch.entityId);
+    if (!contractorQuery.data) return;
+    if (contractorQuery.data.entity_id !== selectedEntityId) {
+      setSelectedEntityId(contractorQuery.data.entity_id);
     }
-  }, [contractorMatch, selectedEntityId]);
+  }, [contractorQuery.data, selectedEntityId]);
 
-  const isLoading =
-    entitiesQuery.isLoading ||
-    contractorQueries.some((query) => query.isLoading);
-  const contractorError = contractorQueries.find((query) => query.error)?.error;
+  const isLoading = entitiesQuery.isLoading || contractorQuery.isLoading;
+  const vendorNotFound = isNotFoundError(contractorQuery.error);
+  const genericError =
+    entitiesQuery.error || (vendorNotFound ? null : contractorQuery.error);
 
   return (
     <main className="min-h-screen">
@@ -228,34 +207,58 @@ function ContractorDetailContent() {
 
       <div className="mx-auto grid max-w-6xl gap-5 px-5 py-6">
         {isLoading ? (
-          <SectionPanel>
-            <SkeletonRows rows={5} />
-          </SectionPanel>
+          <PeopleRecordLayout
+            backHref="/people?tab=vendors"
+            backLabel="Vendors"
+            title="Loading vendor"
+            description="Fetching the vendor record and contact readiness."
+          >
+            <SectionPanel>
+              <SkeletonRows rows={5} />
+            </SectionPanel>
+          </PeopleRecordLayout>
         ) : null}
 
-        {entitiesQuery.error || contractorError ? (
-          <p className="rounded-md border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
-            {friendlyError(entitiesQuery.error ?? contractorError)}
-          </p>
+        {genericError ? (
+          <PeopleRecordLayout
+            backHref="/people?tab=vendors"
+            backLabel="Vendors"
+            title="Vendor unavailable"
+            description="The vendor record could not be loaded."
+          >
+            <p className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+              <AlertTriangle size={16} />
+              {friendlyError(genericError)}
+            </p>
+          </PeopleRecordLayout>
         ) : null}
 
-        {!isLoading && !contractorMatch ? (
-          <SectionPanel>
-            <EmptyState
-              icon={<AlertTriangle size={18} />}
-              title="Vendor not found"
-              description="This vendor is not in the selected entity's contractor directory."
-              action={
-                <Link href="/people?tab=vendors">
-                  <SecondaryButton type="button">Back to vendors</SecondaryButton>
-                </Link>
-              }
-            />
-          </SectionPanel>
+        {!isLoading && vendorNotFound ? (
+          <PeopleRecordLayout
+            backHref="/people?tab=vendors"
+            backLabel="Vendors"
+            title="Vendor not found"
+            description="This vendor record could not be found in the current workspace."
+          >
+            <SectionPanel>
+              <EmptyState
+                icon={<AlertTriangle size={18} />}
+                title="No vendor record found."
+                description="This vendor record may have been deleted or moved. Return to the vendor directory to choose another record."
+                action={
+                  <Link href="/people?tab=vendors">
+                    <SecondaryButton type="button">
+                      Back to vendors
+                    </SecondaryButton>
+                  </Link>
+                }
+              />
+            </SectionPanel>
+          </PeopleRecordLayout>
         ) : null}
 
-        {contractorMatch ? (
-          <ContractorRecordView contractor={contractorMatch.contractor} />
+        {contractorQuery.data ? (
+          <ContractorRecordView contractor={contractorQuery.data} />
         ) : null}
       </div>
     </main>

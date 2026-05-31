@@ -68,6 +68,18 @@ test.beforeEach(async ({ page }) => {
       body: JSON.stringify(OWNER),
     });
   });
+
+  await page.route("**/api/v1/contractors/contractor-1", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(CONTRACTORS[0]),
+    });
+  });
 });
 
 test.describe("people record layout", () => {
@@ -172,5 +184,34 @@ test.describe("people record layout", () => {
       page.getByRole("button", { name: "Back to owners" }),
     ).toBeVisible();
     await expect(page.getByText("Owner unavailable")).toHaveCount(0);
+  });
+
+  test("vendor detail shows a record-level not-found state", async ({
+    page,
+  }) => {
+    await page.route("**/api/v1/contractors/missing-vendor", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Contractor not found." }),
+      });
+    });
+
+    await page.goto("/contractors/missing-vendor");
+
+    await expect(
+      page.getByRole("heading", { name: "Vendor not found" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText("This vendor record may have been deleted"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Back to vendors" }),
+    ).toBeVisible();
+    await expect(page.getByText("Vendor unavailable")).toHaveCount(0);
   });
 });

@@ -50,6 +50,12 @@ def test_contractors_create_list_update_delete_full_lifecycle(
     assert created["priority"] == 1
     contractor_id = created["id"]
 
+    # Detail returns the created contractor for record pages.
+    detail = client.get(f"/api/v1/contractors/{contractor_id}")
+    assert detail.status_code == 200
+    assert detail.json()["id"] == contractor_id
+    assert detail.json()["name"] == "Bright Sparks Electrical"
+
     # List returns the new contractor.
     listed = client.get(
         "/api/v1/contractors",
@@ -200,9 +206,19 @@ def test_contractors_404_for_deleted_or_unknown(
     client.delete(f"/api/v1/contractors/{contractor_id}")
 
     # Patch on a soft-deleted row returns 404.
+    response = client.get(f"/api/v1/contractors/{contractor_id}")
+    assert response.status_code == 404
+
+    # Patch on a soft-deleted row returns 404.
     response = client.patch(
         f"/api/v1/contractors/{contractor_id}",
         json={"name": "Resurrection"},
+    )
+    assert response.status_code == 404
+
+    # Unknown id returns 404.
+    response = client.get(
+        "/api/v1/contractors/00000000-0000-0000-0000-000000000000",
     )
     assert response.status_code == 404
 

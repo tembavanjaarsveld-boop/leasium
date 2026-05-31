@@ -267,6 +267,26 @@ before the Ticket 2.2 slice.
   dynamic `/owners/[ownerId]` route; Render health reported
   `5b1496164e95d46b5756471f5dea77136bc5e78b` with `source=render`.
 
+### Vendor detail read + 404 polish slice
+- Shipped in this continuation after the owner-detail polish.
+- Backend: `GET /api/v1/contractors/{contractor_id}` returns one non-deleted
+  vendor/contractor record through the existing `READ_ROLES` role check. It is
+  read-only: no audit write, provider send, provider mutation, or dispatch path.
+- Frontend: `/contractors/[contractorId]` now reads the direct contractor detail
+  endpoint instead of searching contractor lists across every entity. After load
+  it still repairs stale selected-entity state to the contractor's `entity_id`.
+- 404s now render a record-level `Vendor not found` People-record state with a
+  return action to the vendor directory. Non-404 failures use the
+  `Vendor unavailable` error path.
+- Red-green proof: backend detail tests first failed with **405** before the
+  route existed, then passed. The new vendor not-found smoke first failed
+  because the page had no record-level `Vendor not found` heading, then passed.
+- Verification: `tests/integration/test_contractors_api.py` passed **4 passed**;
+  People-record smoke passed **6 passed**; targeted backend ruff, frontend
+  `eslint`, web `tsc --noEmit`, and `git diff --check` passed. Review agent
+  approved with no P1/P2 findings. Deployment verification still needs to happen
+  after the commit/push for this slice.
+
 ### Next
 1. Test production owner invites and secure document downloads with a real Clerk
    owner account before broad owner rollout.
@@ -279,7 +299,7 @@ before the Ticket 2.2 slice.
    reviewed on real SKJ files.
 3. Decide whether to extend status-aware API errors to other record pages with
    route-specific not-found states. The shared `ApiError` contract is now in
-   place, but only owner detail uses it so far.
+   place; owner and vendor details use it so far.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel

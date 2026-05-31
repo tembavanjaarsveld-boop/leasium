@@ -139,6 +139,18 @@ def _get_contractor_for_user(
     return contractor
 
 
+@router.get("/{contractor_id}", response_model=ContractorRead)
+def get_contractor(
+    contractor_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> ContractorRead:
+    """Return one non-deleted contractor visible to the operator."""
+
+    contractor = _get_contractor_for_user(contractor_id, user, session, READ_ROLES)
+    return _read(contractor)
+
+
 @router.patch("/{contractor_id}", response_model=ContractorRead)
 def update_contractor(
     contractor_id: UUID,

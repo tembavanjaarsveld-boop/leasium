@@ -80,6 +80,11 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   compatible `ApiError`, and `/owners/[ownerId]` renders a specific People-record
   `Owner not found` state for 404s while keeping non-404 failures on the generic
   unavailable path. Covered by People-record smoke.
+- [x] Vendor detail direct-read + 404 polish: `GET /api/v1/contractors/{id}` now
+  provides a read-only, role-checked vendor detail path, and
+  `/contractors/[contractorId]` uses it directly with a record-level
+  `Vendor not found` state for 404s while preserving stale selected-entity
+  recovery after load.
 - [~] Owner portal account/token v1: owner portal now has the read-only operator preview (`GET /api/v1/owner-portal/{owner_id}` + `/owner-portal/[ownerId]`) plus first account-auth scaffolding: local no-send owner claim invites, public safe invite preview, one-time Clerk bearer claim, bearer-only `/owner-portal/account/session`, `/owner-portal` account entry, and `/owner-portal/invite/[token]` claim gate. Pending Remba review and production migration/backfill verification before broad owner rollout.
 - [x] Insights overview v1: the Insights workspace now has a read-only backend overview for portfolio health, live exceptions, automation activity, billing risk, owner/entity snapshots, and a local `insights-review-packet-{as_of}.csv` export covering live exceptions, automation activity, finance/accounting readiness, owner/entity gaps, lease events, snapshot history, and no-provider-mutation guardrails. No record mutation, invoice posting, Xero sync, provider refresh, SendGrid/Twilio send, payment reconciliation apply, billing draft generation, provider dispatch, or provider-history write runs from the overview export.
 - [x] Shareable Insights snapshots v1: operators can freeze owner, finance, and lease-event snapshots from the live Insights overview into revocable public links with hashed tokens, expiry, public read-only rendering, and no live portfolio mutation.
