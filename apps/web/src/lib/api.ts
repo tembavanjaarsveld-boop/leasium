@@ -5203,6 +5203,75 @@ export function getOwnerStatementDispatch({
   );
 }
 
+// ---- Owner portal preview -------------------------------------------------
+
+export type OwnerPortalAuthRecord = {
+  mode: string;
+  boundary: string;
+  detail: string;
+};
+
+export type OwnerPortalOwnerRecord = {
+  id: string;
+  entity_id: string;
+  display_name: string;
+  legal_name: string | null;
+  abn: string | null;
+  trustee_name: string | null;
+  trust_name: string | null;
+  invoice_issuer_name: string | null;
+  billing_contact_name: string | null;
+  billing_email: string | null;
+  invoice_reference: string | null;
+  gst_registered: boolean | null;
+};
+
+export type OwnerPortalPropertyRecord = {
+  property_id: string;
+  property_name: string;
+  split_pct: number;
+};
+
+export type OwnerPortalStatementPropertyRecord = {
+  property_id: string;
+  property_name: string;
+  invoiced_cents: number;
+  paid_cents: number;
+  outstanding_cents: number;
+  invoice_count: number;
+};
+
+export type OwnerPortalStatementRecord = {
+  month: string;
+  owner_identity: string;
+  property_count: number;
+  properties: OwnerPortalStatementPropertyRecord[];
+  invoiced_cents: number;
+  paid_cents: number;
+  outstanding_cents: number;
+  invoice_count: number;
+};
+
+export type OwnerPortalRecord = {
+  auth: OwnerPortalAuthRecord;
+  owner: OwnerPortalOwnerRecord;
+  properties: OwnerPortalPropertyRecord[];
+  statement: OwnerPortalStatementRecord | null;
+  guardrails: string[];
+  generated_at: string;
+};
+
+export function getOwnerPortal(ownerId: string, month?: string) {
+  const params = new URLSearchParams();
+  if (month) {
+    params.set("month", month);
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return request<OwnerPortalRecord>(
+    `/owner-portal/${encodeURIComponent(ownerId)}${suffix}`,
+  );
+}
+
 // ---- Contractor directory -------------------------------------------------
 
 export const CONTRACTOR_CATEGORIES = [

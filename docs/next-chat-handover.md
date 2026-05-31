@@ -107,12 +107,37 @@ before the Ticket 2.2 slice.
   `leasium.ai`; `https://leasium.ai` returned HTTP 200; Render health reported
   `aa4374b9cc05d52582aab57884b2d43a33e8410d` with `source=render`.
 
+### Owner portal read-only first slice
+- First owner portal slice is implemented pending commit/deploy verification.
+- Backend: new `GET /api/v1/owner-portal/{owner_id}?month=YYYY-MM` returns a
+  read-only `operator_preview` payload scoped by the signed-in operator's
+  entity role. It uses first-class `Owner` / `PropertyOwner` links and the
+  existing owner-statement roll-up for monthly totals and property lines.
+- Frontend: new `/owner-portal/[ownerId]?month=YYYY-MM` portal-style route
+  renders owner identity, billing contact/email, linked property splits,
+  statement KPIs, statement property lines, and access-boundary guardrails.
+- Guardrails: this slice creates no owner portal account, sends no owner email,
+  downloads/sends no PDFs, writes no Xero data, reconciles no payments,
+  dispatches no invoices, refreshes no providers, and mutates no provider
+  history. True owner login/account claiming is intentionally deferred to the
+  next owner-portal auth slice.
+- Red-green proof: backend test failed first with 404, then passed after
+  registration. Playwright smoke failed first on the missing route, then passed
+  after the page landed.
+- Verification so far: owner portal + owner statement parity/owner tests
+  **22 passed**; targeted API ruff clean; targeted frontend eslint clean;
+  `./node_modules/.bin/tsc --noEmit` clean; owner portal + People record smokes
+  **5 passed**; `./node_modules/.bin/next build` succeeded.
+
 ### Next
-1. Before using shared-ownership splits in production statements, add a dedicated
+1. Commit/push the owner portal read-only slice, then verify Vercel production,
+   `https://leasium.ai`, and Render health for the new commit.
+2. Before using shared-ownership splits in production statements, add a dedicated
    split-allocation ticket: `PropertyOwner.split_pct` exists, but this Ticket 1.3
    deliberately changed grouping only.
-2. Continue with P1 owner portal read-only first, or add the owner-detail
-   route-level 404 polish if that matters before the portal surface.
+3. Add true owner portal account/token auth before treating `/owner-portal` as a
+   public owner login surface; optionally add owner-detail route-level 404 polish
+   if that matters before the auth slice.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel

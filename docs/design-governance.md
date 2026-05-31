@@ -60,6 +60,8 @@ Design-facing follow-ups (prototype-mode, not gated):
 1. People hub IA + a consistent people record-page shape.
 2. Nav consolidation to 7 hubs (introduce the **People** and **Money** groupings).
 3. Owner portal surface (read-only first) once the `Owner` entity lands.
+   First operator-preview slice is implemented pending deploy verification;
+   public owner login/account claiming remains the next auth slice.
 
 Frontend work on these should run through the checked-in UI skills in
 `docs/external-skills/` (web-design-guidelines, composition-patterns, and the hallmark
@@ -73,6 +75,14 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
 - **People record shape** (Ticket 2.2): Tenant, Owner, and Vendor detail pages now share `PeopleRecordLayout` with one header/action area and section links for Overview · Financials · Tasks · Notes · Files · Activity. Tenant detail keeps its existing inner panels, Owner detail reads `/api/v1/owners/{owner_id}`, and Vendor detail reads the contractor directory while recovering from stale selected-entity state. The section links are plain anchors, not ARIA tab widgets, so they remain honest navigation for assistive tech.
 - **Navigation consolidation to 7 hubs** (Phase 3): sidebar is Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings). The standalone Tenants and Billing items are removed; People carries Tenants/Owners/Vendors; Work is active for Comms; Money groups Billing Readiness, Owner statements, Xero, and Basiq. Hub alias redirects (`/people/tenants`, `/people/vendors`, `/work`, `/work/comms`, `/money/*`) preserve moved-route entry points while the existing workspaces stay alive for deep links. Remba should review the People vs Properties split, Money label, and whether the command palette makes the folded destinations discoverable enough.
 - **Money hub** (`/money`): a focused finance hub with tabs for Billing · Statements · Xero · Basiq and review-first handoffs to the existing finance workspaces. It does not call providers, preview reconciliation, dispatch invoices, send owner email, or mutate Xero/Basiq state.
+- **Owner portal read-only preview** (`/owner-portal/[ownerId]`): portal-style,
+  operator-previewed surface backed by `GET /api/v1/owner-portal/{owner_id}`.
+  It shows owner identity, linked property splits, selected-month statement
+  totals, statement property lines, and an explicit access boundary. It does
+  not create owner accounts, send owner email, download/send PDFs, write Xero
+  data, reconcile payments, dispatch invoices, refresh providers, or mutate
+  provider history. Remba should review whether the owner-facing density and
+  access-boundary language are clear before public owner auth is added.
 - **Canvas darkening** (globals.css, commit `65c1da8`): `--leasium-bg` #f6f8fb→#edf0f6 and `--leasium-slate-100` #f2f4f7→#e9edf3 so white cards lift off the background. Hierarchy preserved: cards (#fff) > canvas > muted/hover > border. Light mode only; dark-mode token untouched. Dial the canvas value if it reads too strong/weak on real data. Design source of truth §6 updated to match.
 - **Card elevation**: new `leasiumCard` Tailwind shadow — a tight contact layer + a soft ambient lift (`0 1px 2px /0.06, 0 4px 12px -2px /0.08`) — applied to `SectionPanel` and `DashboardMetricCard` so cards separate from the darker canvas; buttons/rows keep `leasiumXs`. Subtle border retained. Dial via the `leasiumCard` token in `apps/web/tailwind.config.ts`.
 
