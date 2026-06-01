@@ -704,6 +704,12 @@ changes, reminder updates, escalation updates, or assignment updates.
 Remba/SKJ review should check whether this belongs inline in each arrears row
 or behind a disclosure once case volume grows.
 
+2026-06-01 accessibility follow-up: the Arrears review packet presentation now
+lives in a focused `ArrearsReviewPacketPanel`, while Operations keeps the data
+derivation and export wiring. Copy/export and tenant/queue handoff controls now
+use the 44px mobile touch target baseline, matching the newer Work/maintenance
+mobile patterns.
+
 Ninth 2026-05-21 follow-up: Settings now adds a Work digest cadence selector (`daily`, `weekly`, or `off`) beside each operator's Work email toggle. This stores preference only; no scheduled digest is generated yet. Remba should review whether digest cadence belongs in the Users and roles table, whether the wording is clear enough before digest delivery exists, and whether notification preferences need their own settings section once more channels are added.
 
 Tenth 2026-05-21 follow-up: Operations can now generate a review-only Work digest preview for the selected daily or weekly cadence. The preview groups assigned work by operator, shows follow-up and provider-notice counts, links back to source work, and keeps a visible `No messages sent` guardrail. Remba should review whether digest generation belongs in the queue header, whether the preview is too dense for the first viewport, and whether this should move to a global notifications area once cron sending is introduced.

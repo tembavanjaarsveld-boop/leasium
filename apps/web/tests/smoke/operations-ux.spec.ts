@@ -46,6 +46,68 @@ test("mobile operations loading and queue actions stay readable", async ({
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("arrears review packet mobile controls stay touch-safe without mutations", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page);
+
+  const forbiddenMutationPaths: string[] = [];
+  const forbiddenPathPatterns = [
+    "/arrears/cases",
+    "/comms",
+    "/invoice",
+    "/xero",
+    "/basiq",
+    "/payment",
+    "/maintenance",
+    "/work-assignments",
+    "/tenant-onboarding",
+    "/tenants",
+    "/providers",
+    "/contractors",
+  ];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace("/api/v1", "");
+    if (
+      request.method() !== "GET" &&
+      forbiddenPathPatterns.some((pattern) => path.startsWith(pattern))
+    ) {
+      forbiddenMutationPaths.push(`${request.method()} ${path}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/operations?tab=arrears");
+
+  const packet = page.getByTestId("arrears-review-packet-arrears-1");
+  await expect(packet).toBeVisible({ timeout: 15_000 });
+
+  const controls = [
+    packet.getByRole("button", { name: "Copy packet" }),
+    packet.getByRole("button", { name: "Download packet CSV" }),
+    packet.getByRole("link", { name: "Open tenant" }),
+    packet.getByRole("link", { name: "Open queue" }),
+  ];
+
+  for (const control of controls) {
+    await expect(control).toBeVisible();
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  await controls[0].click();
+  const downloadPromise = page.waitForEvent("download");
+  await controls[1].click();
+  await downloadPromise;
+
+  expect(forbiddenMutationPaths).toEqual([]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("maintenance detail loading states use structured skeleton rows", async ({
   page,
 }) => {

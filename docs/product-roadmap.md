@@ -504,7 +504,10 @@ Official Re-Leased pages position their product around a few mature modules that
     already-loaded page data only and does not send email/SMS, tenant or owner
     messages, provider dispatch, Xero/Basiq writes, payment reconciliation,
     invoice updates, arrears status changes, reminder updates, escalation
-    updates, or assignment updates.
+    updates, or assignment updates. 2026-06-01 follow-up: the packet
+    presentation is split into `ArrearsReviewPacketPanel`, and its copy/export
+    buttons plus tenant/queue links now meet the 44px mobile touch target
+    baseline.
   - [x] Vendor portal read-only preview v1: `GET /api/v1/vendor-portal/{contractor_id}` and `/vendor-portal/[contractorId]` show only explicitly `vendor_portal_visible` work tied to `vendor_portal_contractor_id`, with safe vendor summary fields, contractor-visible comments, and no tenant identity, raw work-order body, provider delivery/history, invoice/source ids, email/SMS dispatch, Xero/Basiq write, or payment reconciliation.
   - [x] Vendor portal operator visibility controls v1: maintenance work-order detail now lets an operator choose a contractor-directory vendor, enter an explicit vendor-safe title, optionally add a vendor-visible note, and share/hide the work order from the read-only vendor portal through local metadata only. Backend share/unshare commands audit the local visibility change and do not send contractor email/SMS, dispatch work, touch provider history, write Xero/Basiq data, or reconcile payments.
 - [ ] Compliance and inspections: recurring checks, certifications, document expiry, fire/safety obligations, delegated owners, and audit trail.

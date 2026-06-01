@@ -6,6 +6,15 @@ Last updated: 2026-06-01
 
 Continuation from the tenant portal account cache hardening slice.
 
+### Arrears review packet mobile/accessibility polish
+- The Arrears review packet presentation moved out of the large Operations page
+  into `ArrearsReviewPacketPanel`, leaving packet derivation/copy/export wiring
+  in the page.
+- Packet actions and handoff links now use the 44px touch target baseline on
+  mobile: Copy packet, Download packet CSV, Open tenant, and Open queue.
+- Verification: focused Operations UX smoke passed **7 passed**; targeted
+  frontend eslint, `tsc --noEmit`, and `git diff --check` passed.
+
 ### Owner portal account cache hardening
 - `/owner-portal` account reads now use private owner-account query keys scoped
   by auth user and owner context, fetch fresh Clerk bearer tokens with
