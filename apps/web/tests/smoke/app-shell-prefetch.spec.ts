@@ -14,6 +14,9 @@ test("app shell disables automatic route prefetch for persistent navigation link
   expect(source).toContain(
     "<Link\n              {...shellLinkProps}\n              key={item.href}",
   );
+  expect(source).toMatch(
+    /mobileBottomNavItems\.map[\s\S]*<Link\s+\{\.\.\.shellLinkProps\}[\s\S]*href=\{item\.href\}/,
+  );
   expect(source).toContain(
     '<Link\n              {...shellLinkProps}\n              href="/notifications"',
   );

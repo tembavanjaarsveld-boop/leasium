@@ -165,7 +165,7 @@ test("mobile shell carries standalone metadata and avoids horizontal overflow", 
     page.getByRole("button", { name: "Open navigation" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Open navigation" }).click();
-  const mobileNav = page.getByRole("navigation", { name: "Primary" });
+  const mobileNav = page.getByRole("navigation", { name: /^Primary$/ });
   await expect(
     mobileNav.getByRole("link", { name: /^Dashboard/ }),
   ).toBeVisible();

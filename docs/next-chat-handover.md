@@ -30,6 +30,29 @@ Continuation from the tenant portal account cache hardening slice.
   smoke passed **1 passed**; targeted frontend `eslint`, `tsc --noEmit`,
   `git diff --check`, and production-style `next build` passed.
 
+### Mobile operator shell bottom-nav v1
+- Sub-md operator pages now carry a compact fixed bottom navigation for the
+  five field-operator hubs: Dashboard, Properties, People, Work, and Money.
+  Smart Intake, Insights, Settings, and the full seven-hub list remain in the
+  hamburger drawer and command palette. Treat this as shipped pending
+  Remba/real-device mobile review.
+- The bottom nav uses the same app-shell route matching as the desktop/sidebar
+  nav, marks the active destination with `aria-current="page"`, keeps each
+  item at 44px+ touch size, and reserves bottom body padding with safe-area
+  inset support so page content does not sit underneath it.
+- Red-green proof was captured in
+  `apps/web/tests/smoke/mobile-bottom-nav.spec.ts`: it failed first because no
+  `Mobile primary` nav existed on mobile, then passed once the shell and body
+  spacing were added. A follow-up assertion found the drawer's mobile nav rows
+  were only 36px tall; they now share the 44px minimum touch target. Desktop
+  stays free of the bottom nav.
+- Provider guardrails unchanged: this is frontend navigation chrome only; no
+  Xero, Basiq, SendGrid, Twilio, tenant email, payment reconciliation, or API
+  mutation paths were touched.
+- Verification: shell-adjacent Playwright smokes passed **10 passed**; targeted
+  frontend `eslint`, `tsc --noEmit`, `git diff --check`, and production-style
+  `next build` passed.
+
 ### Tenant portal backend account-scope hardening
 - Backend tenant portal reads now keep the durable account boundary all the way
   through shared portal endpoints: if a request carries a valid Clerk bearer

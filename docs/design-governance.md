@@ -1350,13 +1350,14 @@ Not addressed yet, queued for follow-up:
   lines). Surface adoption rides with each.
 - Migration of inline `friendlyError` / `StatusTone` redeclarations
   in the remaining 15 / 7 pages.
-- Mobile bottom-nav at sub-md (review §8.2) — deferred per
-  internal-first scope.
+- Mobile bottom-nav at sub-md (review §8.2) — shipped pending
+  Remba/real-device review on 2026-06-01 as a five-item operator bottom
+  nav for Dashboard, Properties, People, Work, and Money.
 - Container hierarchy — introduce a workspace `<Surface>` distinct from
   the aside `<SectionPanel>` so dense table pages stop reading as a stack
   of look-alike white cards.
 - Mobile/tablet IA — collapse sidebar at `md` instead of disappearing at
-  `lg`; consider a bottom-nav for the top 5 destinations on sub-`md`.
+  `lg`; keep the shipped sub-`md` bottom nav to the top five destinations.
 - Loading-state polish — replace remaining `... Loading` text-string
   loaders with section-level skeletons.
 - Chip-color token cleanup — replace hex literals in `StatusBadge` with

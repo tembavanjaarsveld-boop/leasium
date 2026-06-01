@@ -1103,7 +1103,10 @@ The fixed sidebar has three states by viewport:
 
 - **sub-md (<768px)**: sidebar hidden, hamburger button in the header
   opens a full-width drawer overlay. Drawer carries the full sidebar
-  content (mark + wordmark + labels).
+  content (mark + wordmark + labels). A compact bottom nav is fixed to
+  the viewport for the five field-operator hubs: Dashboard, Properties,
+  People, Work, and Money. The body reserves a bottom safe-area gutter
+  while the operator shell is mounted.
 - **md (768–1023px)**: fixed sidebar at 64px, icon-only. No labels
   or shortcuts text; the Work nav may carry a compact comms-count
   badge when the queue has drafts. `title` / accessible labels on each
@@ -1118,8 +1121,9 @@ clash with a 64px-wide square row); the bg-white/[0.12] surface
 tone alone carries the selected-row signal at icon-only width.
 
 A bottom-nav for the most-used five destinations at sub-md was
-considered (review §8.2) and deferred — for the internal-first
-period the hamburger drawer is enough.
+shipped pending Remba/real-device review in the 2026-06-01 mobile
+operator shell slice. Keep it to five items; secondary destinations stay
+in the hamburger drawer, command palette, and G-shortcuts.
 
 ### 10.5.5 Status chip vocabulary
 

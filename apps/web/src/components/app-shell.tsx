@@ -163,6 +163,17 @@ const navItems: NavItem[] = [
   },
 ];
 
+const mobileBottomNavHrefs = [
+  "/",
+  "/properties",
+  "/people",
+  "/operations",
+  "/money",
+];
+const mobileBottomNavItems = navItems.filter((item) =>
+  mobileBottomNavHrefs.includes(item.href),
+);
+
 const frequentActions: CommandAction[] = [
   {
     href: "/intake",
@@ -638,7 +649,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               className={cn(
                 // Hover state uses a subtle white tint so the row reads
                 // as "row under cursor" against the navy-900 sidebar.
-                "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-leasium-slate-300 transition hover:bg-white/[0.06] hover:text-white md:justify-center md:gap-0 md:px-0 lg:justify-start lg:gap-3 lg:px-3",
+                "group relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-leasium-slate-300 transition hover:bg-white/[0.06] hover:text-white md:justify-center md:gap-0 md:px-0 lg:justify-start lg:gap-3 lg:px-3",
                 // Active state — was bg-primary-soft/10 (EAF0FF at
                 // 10% opacity, effectively invisible on navy-900). Now
                 // bg-white/[0.12] gives a real surface tone so operators
@@ -741,6 +752,46 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           </aside>
         </div>
       ) : null}
+
+      <nav
+        aria-label="Mobile primary"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white/95 px-1 pt-1 shadow-[0_-8px_24px_rgba(16,24,40,0.08)] backdrop-blur md:hidden"
+        style={{
+          paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))",
+        }}
+      >
+        <div className="mx-auto grid max-w-md grid-cols-5 gap-0.5">
+          {mobileBottomNavItems.map((item) => {
+            const active = isNavActive(item);
+            const Icon = item.icon;
+            return (
+              <Link
+                {...shellLinkProps}
+                key={item.href}
+                href={item.href}
+                aria-label={item.label}
+                aria-current={active ? "page" : undefined}
+                onMouseEnter={() => router.prefetch(item.href)}
+                onFocus={() => router.prefetch(item.href)}
+                className={cn(
+                  "flex min-h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[11px] font-semibold leading-none text-muted-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
+                  active && "bg-primary-soft text-primary hover:bg-primary-soft",
+                )}
+              >
+                <Icon
+                  key="icon"
+                  size={17}
+                  aria-hidden="true"
+                  className="shrink-0"
+                />
+                <span key="label" className="max-w-full truncate">
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
 
       <header className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 py-2 min-[1600px]:max-w-none sm:px-4">
