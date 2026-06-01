@@ -2245,6 +2245,7 @@ type MockLeasiumApiOptions = {
   xeroDiagnosticsUnauthorizedStatus?: 401 | 403;
   xeroDiagnosticsUnavailable?: boolean;
   xeroDiagnosticsDraftReady?: boolean;
+  vendorPortalPriorExposure?: boolean;
 };
 
 export async function mockLeasiumApi(
@@ -2253,6 +2254,48 @@ export async function mockLeasiumApi(
 ) {
   tenants = jsonClone(initialTenants);
   maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);
+  if (options.vendorPortalPriorExposure) {
+    const priorExposureAt = "2026-05-20T01:19:00.000Z";
+    const metadata = jsonRecord(maintenanceWorkOrders[0].metadata);
+    const existingComments = Array.isArray(metadata.comments)
+      ? metadata.comments
+      : [];
+    const existingActivityHistory = Array.isArray(metadata.activity_history)
+      ? metadata.activity_history
+      : [];
+    maintenanceWorkOrders[0] = {
+      ...maintenanceWorkOrders[0],
+      metadata: {
+        ...metadata,
+        vendor_portal_visible: false,
+        vendor_portal_contractor_id: "contractor-2",
+        vendor_portal_title: "Previously saved portal title",
+        vendor_portal_hidden_at: priorExposureAt,
+        vendor_portal_hidden_by_user_id: operatorId,
+        comments: [
+          ...existingComments,
+          {
+            timestamp: "2026-05-20T01:18:00.000Z",
+            actor: operatorId,
+            visibility: "contractor",
+            body: "Previously saved vendor note",
+          },
+        ],
+        activity_history: [
+          ...existingActivityHistory,
+          {
+            timestamp: priorExposureAt,
+            actor: operatorId,
+            source: "operator_api",
+            event: "vendor_portal_hidden",
+            summary: "Hid work order from the vendor portal.",
+            status: maintenanceWorkOrders[0].status,
+          },
+        ],
+      },
+      updated_at: priorExposureAt,
+    };
+  }
   let xeroTenantId: string | null = null;
   let xeroConnectedAt: string | null = null;
   let xeroProviderConnected = false;

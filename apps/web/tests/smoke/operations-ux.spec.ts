@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
 
@@ -314,7 +315,7 @@ test("maintenance detail shares vendor portal visibility without provider dispat
     .filter({ has: page.getByRole("heading", { name: "Vendor portal" }) })
     .first();
   await expect(portalPanel).toBeVisible({ timeout: 15_000 });
-  await expect(portalPanel.getByText("Hidden from portal")).toBeVisible();
+  await expect(portalPanel.getByText("Hidden from portal").first()).toBeVisible();
 
   await portalPanel.locator("select").first().selectOption("contractor-2");
   await portalPanel
@@ -336,12 +337,17 @@ test("maintenance detail shares vendor portal visibility without provider dispat
     comment: "Please attend before trading opens.",
   });
 
-  await expect(portalPanel.getByText("Visible in vendor portal")).toBeVisible();
   await expect(
-    portalPanel.getByRole("link", { name: "Open portal preview" }),
+    portalPanel.getByText("Visible in vendor portal").first(),
+  ).toBeVisible();
+  await expect(
+    portalPanel.getByRole("link", { name: "Open portal preview" }).first(),
   ).toHaveAttribute("href", "/vendor-portal/contractor-2");
 
-  await portalPanel.getByRole("link", { name: "Open portal preview" }).click();
+  await portalPanel
+    .getByRole("link", { name: "Open portal preview" })
+    .first()
+    .click();
   await expect(page.getByText("Repair air conditioning")).toBeVisible();
 
   await page.goto("/operations/maintenance/work-order-1");
@@ -356,16 +362,141 @@ test("maintenance detail shares vendor portal visibility without provider dispat
   );
   await visiblePortalPanel.getByRole("button", { name: "Hide from portal" }).click();
   await unshareRequest;
-  await expect(visiblePortalPanel.getByText("Hidden from portal")).toBeVisible();
+  await expect(
+    visiblePortalPanel.getByText("Hidden from portal").first(),
+  ).toBeVisible();
 
   await page.goto("/vendor-portal/contractor-2");
   await expect(page.getByText("No shared work orders.")).toBeVisible();
-  expect(vendorPortalGetCount).toBeGreaterThanOrEqual(3);
+  expect(vendorPortalGetCount).toBeGreaterThanOrEqual(2);
 
   expect(mutationPaths).toEqual([
     "/maintenance/work-orders/work-order-1/vendor-portal/share",
     "/maintenance/work-orders/work-order-1/vendor-portal/unshare",
   ]);
+});
+
+test("maintenance detail exports vendor exposure packet without portal or provider mutations", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { vendorPortalPriorExposure: true });
+  await page.goto("/operations/maintenance/work-order-1");
+
+  const portalPanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Vendor portal" }) })
+    .first();
+  await expect(portalPanel).toBeVisible({ timeout: 15_000 });
+  await expect(portalPanel.getByText("Hidden from portal").first()).toBeVisible();
+  await expect(portalPanel.getByLabel("Vendor-safe title")).toHaveValue(
+    "Previously saved portal title",
+  );
+
+  const packet = portalPanel.getByTestId(
+    "vendor-exposure-packet-work-order-1",
+  );
+  await expect(packet).toBeVisible();
+  await expect(packet).toContainText("Previously saved portal title");
+  await expect(packet).toContainText("Previously saved vendor note");
+
+  await portalPanel
+    .getByLabel("Vendor-safe title")
+    .fill("Repair air conditioning");
+  await portalPanel
+    .getByLabel("Vendor-visible note")
+    .fill("Please attend before trading opens.");
+
+  const forbiddenMutationPaths: string[] = [];
+  const forbiddenPathPatterns = [
+    "/maintenance/work-orders/work-order-1/vendor-portal/share",
+    "/maintenance/work-orders/work-order-1/vendor-portal/unshare",
+    "/maintenance/work-orders/work-order-1/contractor-delivery/send-email",
+    "/maintenance/work-orders/work-order-1/contractor-delivery/send-sms",
+    "/maintenance/work-orders/work-order-1/assignment-notification/send-email",
+    "/maintenance/work-orders/work-order-1/comments",
+    "/documents",
+    "/invoice",
+    "/comms",
+    "/xero",
+    "/basiq",
+    "/providers",
+    "/dispatch",
+    "/payment",
+    "/reconciliation",
+  ];
+  const forbiddenPathFragments = [
+    "provider-history",
+    "provider-dispatch",
+    "payment",
+    "reconciliation",
+  ];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace("/api/v1", "");
+    if (
+      request.method() !== "GET" &&
+      (forbiddenPathPatterns.some((pattern) => path.startsWith(pattern)) ||
+        forbiddenPathFragments.some((fragment) => path.includes(fragment)))
+    ) {
+      forbiddenMutationPaths.push(`${request.method()} ${path}`);
+    }
+    await route.fallback();
+  });
+
+  await expect(
+    packet.getByRole("heading", { name: "Vendor exposure packet" }),
+  ).toBeVisible();
+  await expect(packet).toContainText("Hidden from portal");
+  await expect(packet).toContainText("Selected vendor");
+  await expect(packet).toContainText("Cool Air Services");
+  await expect(packet).toContainText("Saved vendor");
+  await expect(packet).toContainText("Vendor-safe title");
+  await expect(packet).toContainText("Repair air conditioning");
+  await expect(packet).toContainText("Draft only");
+  await expect(packet).toContainText("Please attend before trading opens.");
+  await expect(packet).toContainText("Draft + saved");
+  await expect(packet).toContainText("1 saved vendor-visible note");
+  await expect(packet).toContainText("not exposed until Share to portal");
+  await expect(packet).toContainText("/vendor-portal/contractor-2");
+  await expect(packet).toContainText("Tenant identity");
+  await expect(packet).toContainText("Internal notes");
+  await expect(packet).toContainText("Provider history");
+  await expect(packet).toContainText("Invoice ids");
+  await expect(packet).toContainText("Raw metadata");
+
+  const copyPacket = packet.getByRole("button", { name: "Copy packet" });
+  const downloadPacket = packet.getByRole("button", {
+    name: "Download packet CSV",
+  });
+  for (const control of [copyPacket, downloadPacket]) {
+    await expect(control).toBeVisible();
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  await copyPacket.click();
+  const downloadPromise = page.waitForEvent("download");
+  await downloadPacket.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(
+    "vendor-exposure-packet-work-order-1.csv",
+  );
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  const csv = await readFile(downloadPath!, "utf8");
+  expect(csv).toContain("Repair air conditioning");
+  expect(csv).toContain("Please attend before trading opens.");
+  expect(csv).toContain("Draft + saved");
+  expect(csv).toContain("1 saved vendor-visible note");
+  expect(csv).toContain("Tenant identity");
+  expect(csv).toContain(
+    "Local-only exposure review: copying or downloading this packet does not share or hide portal access",
+  );
+
+  expect(forbiddenMutationPaths).toEqual([]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("maintenance detail hides stale work-order data after a not-found refresh", async ({

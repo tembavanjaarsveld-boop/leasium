@@ -7,6 +7,25 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Vendor exposure packet v1
+- Maintenance work-order detail now has a read-only Vendor exposure packet
+  inside the operator-only Vendor portal panel, separate from the vendor preview
+  page.
+- The packet summarizes visibility state, selected/saved vendor, draft or saved
+  vendor-safe title, draft or saved vendor-visible note evidence, portal preview
+  target, and excluded vendor data: tenant identity, internal notes, provider
+  history, invoice ids, and raw metadata.
+- Local `Copy packet` and `Download packet CSV` actions export
+  `vendor-exposure-packet-{workOrderId}.csv` from already-loaded page data.
+  Draft title/note state wins over prior saved exposure evidence in both UI and
+  CSV until the operator explicitly shares.
+- Guardrails: copy/download do not share or hide portal access, send contractor
+  email/SMS, create comments, upload documents, draft invoices, call Comms,
+  Xero, Basiq, provider dispatch/history, payment, or reconciliation endpoints.
+- Verification: focused Operations UX smoke passed **8 passed** after
+  red-green worker coverage and parent hardening; targeted frontend eslint,
+  `tsc --noEmit`, and `git diff --check` passed.
+
 ### Work notification review packet v1
 - `/notifications` now has local `Copy review packet` and
   `Download review packet CSV` actions for the Work notice center, exporting

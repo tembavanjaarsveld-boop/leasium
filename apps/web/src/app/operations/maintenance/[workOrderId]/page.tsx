@@ -220,10 +220,37 @@ type MaintenanceReviewPacket = {
   links: MaintenanceReviewPacketLink[];
 };
 
+type VendorExposurePacketRow = {
+  label: string;
+  statusLabel: string;
+  value: string;
+  detail: string;
+  tone: StatusTone;
+};
+
+type VendorExposurePacket = {
+  visibilityLabel: string;
+  visibilityTone: StatusTone;
+  rows: VendorExposurePacketRow[];
+  excludedData: string[];
+  portalPreviewHref: string | null;
+};
+
 const EMPTY_CONTRACTORS: ContractorRecord[] = [];
 
 const MAINTENANCE_REVIEW_PACKET_GUARDRAIL =
   "Review-only packet: downloading or copying this file does not send email, SMS, portal messages, provider dispatch, invoice updates, Xero/Basiq writes, payment reconciliation, document uploads, or maintenance mutations.";
+
+const VENDOR_EXPOSURE_PACKET_GUARDRAIL =
+  "Local-only exposure review: copying or downloading this packet does not share or hide portal access, send contractor email or SMS, create comments, upload documents, draft invoices, call comms, Xero, Basiq, provider dispatch, payment, or reconciliation endpoints.";
+
+const VENDOR_EXPOSURE_PACKET_EXCLUDED_DATA = [
+  "Tenant identity",
+  "Internal notes",
+  "Provider history",
+  "Invoice ids",
+  "Raw metadata",
+];
 
 const emptyCompletionReviewNotes: Record<CompletionReviewAudience, string> = {
   owner: "",
@@ -591,6 +618,12 @@ function latestContractorComment(workOrder: MaintenanceWorkOrderRecord) {
   );
 }
 
+function contractorComments(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecordList(workOrder.metadata.comments).filter(
+    (entry) => metadataText(entry.visibility) === "contractor",
+  );
+}
+
 function vendorPortalVisible(workOrder: MaintenanceWorkOrderRecord) {
   return metadataRecord(workOrder.metadata).vendor_portal_visible === true;
 }
@@ -617,6 +650,17 @@ function contractorOptionLabel(contractor: ContractorRecord) {
   return [contractor.name, contractor.company_name]
     .filter((part): part is string => Boolean(part))
     .join(" - ");
+}
+
+function contractorLabelById(
+  contractors: ContractorRecord[],
+  contractorId: string | null | undefined,
+) {
+  if (!contractorId) {
+    return null;
+  }
+  const contractor = contractors.find((row) => row.id === contractorId);
+  return contractor ? contractorOptionLabel(contractor) : contractorId;
 }
 
 function preferredVendorPortalContractorId(
@@ -2385,6 +2429,178 @@ function maintenanceReviewPacketCsv({
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
+function vendorExposurePacketSummary({
+  workOrder,
+  contractors,
+  selectedContractorId,
+  vendorTitleDraft,
+  vendorCommentDraft,
+  portalPreviewHref,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  contractors: ContractorRecord[];
+  selectedContractorId: string;
+  vendorTitleDraft: string;
+  vendorCommentDraft: string;
+  portalPreviewHref: string | null;
+}): VendorExposurePacket {
+  const isVisible = vendorPortalVisible(workOrder);
+  const savedContractorId = vendorPortalContractorId(workOrder);
+  const savedTitle = vendorPortalTitle(workOrder);
+  const draftTitle = vendorTitleDraft.trim();
+  const draftComment = vendorCommentDraft.trim();
+  const comments = contractorComments(workOrder);
+  const latestComment = latestContractorComment(workOrder);
+  const selectedVendor =
+    contractorLabelById(contractors, selectedContractorId) ??
+    "No vendor selected";
+  const savedVendor =
+    contractorLabelById(contractors, savedContractorId) ?? "No saved vendor";
+  const noteCount = comments.length;
+  const titleIsDraft = Boolean(draftTitle && draftTitle !== savedTitle);
+
+  return {
+    visibilityLabel: isVisible ? "Visible in vendor portal" : "Hidden from portal",
+    visibilityTone: isVisible ? "success" : "neutral",
+    portalPreviewHref: isVisible ? portalPreviewHref : null,
+    excludedData: VENDOR_EXPOSURE_PACKET_EXCLUDED_DATA,
+    rows: [
+      {
+        label: "Visibility state",
+        statusLabel: isVisible ? "Visible" : "Hidden",
+        value: isVisible ? "Visible in vendor portal" : "Hidden from portal",
+        detail: isVisible
+          ? "The selected saved vendor can see the vendor-safe work-order evidence."
+          : "No vendor portal exposure is currently active.",
+        tone: isVisible ? "success" : "neutral",
+      },
+      {
+        label: "Selected vendor",
+        statusLabel: selectedContractorId ? "Selected" : "Not selected",
+        value: selectedVendor,
+        detail: selectedContractorId
+          ? "Selected in the local vendor portal controls."
+          : "No vendor is selected in the local controls.",
+        tone: selectedContractorId ? "primary" : "neutral",
+      },
+      {
+        label: "Saved vendor",
+        statusLabel: savedContractorId ? "Saved" : "Not saved",
+        value: savedVendor,
+        detail: savedContractorId
+          ? "Persisted as the vendor portal recipient."
+          : "No vendor has been saved for portal exposure.",
+        tone: savedContractorId ? "success" : "neutral",
+      },
+      {
+        label: "Vendor-safe title",
+        statusLabel: titleIsDraft ? "Draft only" : savedTitle ? "Saved" : "Missing",
+        value: draftTitle || savedTitle || "Vendor-safe title not saved",
+        detail: titleIsDraft
+          ? "Draft title in the local controls; not exposed until Share to portal."
+          : savedTitle
+            ? "This is the title exposed to the vendor portal."
+            : "No vendor-safe title has been drafted or saved; the internal work-order title remains excluded.",
+        tone: titleIsDraft ? "warning" : savedTitle ? "success" : "warning",
+      },
+      {
+        label: "Latest vendor-visible note",
+        statusLabel: draftComment
+          ? noteCount > 0
+            ? "Draft + saved"
+            : "Draft only"
+          : noteCount > 0
+            ? `${noteCount} saved`
+            : "None",
+        value:
+          draftComment ||
+          (latestComment && metadataText(latestComment.body)
+            ? metadataText(latestComment.body)!
+            : "No vendor-visible note"),
+        detail: draftComment
+          ? noteCount > 0
+            ? `Draft note in the local controls; ${noteCount} saved vendor-visible note${noteCount === 1 ? "" : "s"} already recorded.`
+            : "Draft note in the local controls; not exposed until Share to portal."
+          : noteCount > 0
+            ? `${noteCount} vendor-visible note${noteCount === 1 ? "" : "s"} saved.`
+            : "0 vendor-visible notes",
+        tone: draftComment ? "warning" : noteCount > 0 ? "success" : "neutral",
+      },
+      {
+        label: "Portal preview link",
+        statusLabel: isVisible && portalPreviewHref ? "Available" : "Not exposed",
+        value: portalPreviewHref ?? "No preview target",
+        detail:
+          isVisible && portalPreviewHref
+            ? "Operator preview link is available."
+            : portalPreviewHref
+              ? "Preview target exists for the selected vendor; this work order is not exposed until Share to portal."
+              : "No vendor preview target is available.",
+        tone: isVisible && portalPreviewHref ? "primary" : "neutral",
+      },
+    ],
+  };
+}
+
+function vendorExposurePacketText({
+  workOrder,
+  packet,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  packet: VendorExposurePacket;
+}) {
+  return [
+    "Vendor exposure packet",
+    `Work order id: ${workOrder.id}`,
+    `Visibility: ${packet.visibilityLabel}`,
+    "",
+    "Exposure evidence:",
+    ...packet.rows.map(
+      (row) => `- ${row.label}: ${row.value} - ${row.detail}`,
+    ),
+    "",
+    `Excluded from vendor exposure: ${packet.excludedData.join(", ")}`,
+    VENDOR_EXPOSURE_PACKET_GUARDRAIL,
+  ].join("\n");
+}
+
+function vendorExposurePacketCsv({
+  workOrder,
+  packet,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  packet: VendorExposurePacket;
+}) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    ["Category", "Item", "Status", "Value", "Detail", "Guardrail"],
+    [
+      "Work order",
+      "Work order id",
+      packet.visibilityLabel,
+      workOrder.id,
+      packet.visibilityLabel,
+      VENDOR_EXPOSURE_PACKET_GUARDRAIL,
+    ],
+    ...packet.rows.map((row) => [
+      "Exposure evidence",
+      row.label,
+      row.statusLabel,
+      row.value,
+      row.detail,
+      VENDOR_EXPOSURE_PACKET_GUARDRAIL,
+    ]),
+    ...packet.excludedData.map((item) => [
+      "Excluded data",
+      item,
+      "Excluded",
+      "Not shown to vendors",
+      "Excluded from the packet and vendor portal exposure review.",
+      VENDOR_EXPOSURE_PACKET_GUARDRAIL,
+    ]),
+  ];
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 function activityAuditText({
   workOrder,
   cards,
@@ -2712,6 +2928,117 @@ function MaintenanceReviewPacketPanel({
         </p>
       </div>
     </SectionPanel>
+  );
+}
+
+function VendorExposurePacketPanel({
+  workOrder,
+  packet,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  packet: VendorExposurePacket;
+}) {
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const copyPacket = async () => {
+    const copied = await copyTextToClipboard(
+      vendorExposurePacketText({ workOrder, packet }),
+    );
+    setReceipt(
+      copied
+        ? "Vendor exposure packet copied."
+        : "Copy unavailable in this browser.",
+    );
+  };
+  const downloadPacketCsv = () => {
+    saveBlob(
+      new Blob([vendorExposurePacketCsv({ workOrder, packet })], {
+        type: "text/csv;charset=utf-8",
+      }),
+      `vendor-exposure-packet-${workOrder.id}.csv`,
+    );
+    setReceipt("Vendor exposure packet CSV downloaded.");
+  };
+
+  return (
+    <div
+      className="grid gap-3 rounded-md border border-border bg-white px-3 py-3"
+      data-testid={`vendor-exposure-packet-${workOrder.id}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground">
+              Vendor exposure packet
+            </h3>
+            <StatusBadge tone={packet.visibilityTone}>
+              {packet.visibilityLabel}
+            </StatusBadge>
+          </div>
+          <p className="text-xs leading-5 text-muted-foreground">
+            Read-only exposure evidence generated from the data already loaded
+            on this page.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <SecondaryButton type="button" onClick={copyPacket}>
+            <ClipboardCheck size={15} />
+            Copy packet
+          </SecondaryButton>
+          <SecondaryButton type="button" onClick={downloadPacketCsv}>
+            <Download size={15} />
+            Download packet CSV
+          </SecondaryButton>
+        </div>
+      </div>
+
+      {receipt ? <p className="text-xs font-medium text-success">{receipt}</p> : null}
+
+      <div className="grid gap-2 md:grid-cols-2">
+        {packet.rows.map((row) => (
+          <div
+            key={row.label}
+            className="grid gap-1 rounded-md border border-border bg-muted/20 px-3 py-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-foreground">{row.label}</span>
+              <StatusBadge tone={row.tone}>{row.statusLabel}</StatusBadge>
+            </div>
+            <div className="break-words text-sm font-medium text-foreground">
+              {row.value}
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">
+              {row.detail}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {packet.portalPreviewHref ? (
+        <Link
+          href={packet.portalPreviewHref}
+          className="inline-flex min-h-11 w-fit items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+        >
+          <ArrowUpRight size={15} />
+          Open portal preview
+        </Link>
+      ) : null}
+
+      <div className="rounded-md border border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+        <div className="font-semibold text-foreground">
+          Excluded from vendor exposure
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {packet.excludedData.map((item) => (
+            <StatusBadge key={item} tone="neutral">
+              {item}
+            </StatusBadge>
+          ))}
+        </div>
+      </div>
+      <p className="rounded-md bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+        {VENDOR_EXPOSURE_PACKET_GUARDRAIL}
+      </p>
+    </div>
   );
 }
 
@@ -3188,6 +3515,27 @@ function MaintenanceDetailRoute() {
     vendorPortalSavedContractorId || vendorPortalContractorDraft
       ? `/vendor-portal/${vendorPortalSavedContractorId || vendorPortalContractorDraft}`
       : null;
+  const vendorExposurePacket = useMemo(
+    () =>
+      workOrder
+        ? vendorExposurePacketSummary({
+            workOrder,
+            contractors,
+            selectedContractorId: vendorPortalContractorDraft,
+            vendorTitleDraft: vendorPortalTitleDraft,
+            vendorCommentDraft: vendorPortalCommentDraft,
+            portalPreviewHref: vendorPortalPreviewHref,
+          })
+        : null,
+    [
+      contractors,
+      vendorPortalCommentDraft,
+      vendorPortalContractorDraft,
+      vendorPortalPreviewHref,
+      vendorPortalTitleDraft,
+      workOrder,
+    ],
+  );
   const vendorPortalShareDisabled =
     !workOrder ||
     workOrder.status === "completed" ||
@@ -4727,6 +5075,12 @@ function MaintenanceDetailRoute() {
                     <p className="text-xs text-warning">
                       Closed work orders cannot be shared to the vendor portal.
                     </p>
+                  ) : null}
+                  {vendorExposurePacket ? (
+                    <VendorExposurePacketPanel
+                      workOrder={workOrder}
+                      packet={vendorExposurePacket}
+                    />
                   ) : null}
                   {vendorPortalShareMutation.error ? (
                     <p className="text-sm text-danger">
