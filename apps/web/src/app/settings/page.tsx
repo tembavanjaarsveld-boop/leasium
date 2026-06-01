@@ -56,7 +56,6 @@ import {
   readAppearancePreference,
   SYSTEM_DARK_QUERY,
   type AppearanceMode,
-  type ResolvedAppearance,
 } from "@/lib/appearance";
 import {
   applyBasiqReconciliation,
@@ -232,7 +231,6 @@ function formatDateTime(value: string | null | undefined) {
 
 function SettingsAppearancePanel() {
   const [mode, setMode] = useState<AppearanceMode>("system");
-  const [resolved, setResolved] = useState<ResolvedAppearance>("light");
   const modeRef = useRef<AppearanceMode>("system");
 
   useEffect(() => {
@@ -240,10 +238,9 @@ function SettingsAppearancePanel() {
       const nextMode = event
         ? appearanceModeFromEvent(event) ?? readAppearancePreference()
         : readAppearancePreference();
-      const nextResolved = applyAppearancePreference(nextMode);
+      applyAppearancePreference(nextMode);
       modeRef.current = nextMode;
       setMode(nextMode);
-      setResolved(nextResolved);
     }
     function onStorage(event: StorageEvent) {
       if (event.key && event.key !== APPEARANCE_STORAGE_KEY) return;
@@ -271,34 +268,29 @@ function SettingsAppearancePanel() {
   const options: Array<{
     mode: AppearanceMode;
     label: string;
-    detail: string;
     icon: ReactNode;
   }> = [
     {
       mode: "system",
       label: "System",
-      detail: `Follow this device. Currently ${resolved}.`,
       icon: <Monitor size={16} />,
     },
     {
       mode: "light",
       label: "Light",
-      detail: "Use the bright operator workspace.",
       icon: <Sun size={16} />,
     },
     {
       mode: "dark",
       label: "Dark",
-      detail: "Use the low-light operator workspace.",
       icon: <Moon size={16} />,
     },
   ];
 
   function chooseAppearance(nextMode: AppearanceMode) {
-    const nextResolved = applyAppearancePreference(nextMode);
+    applyAppearancePreference(nextMode);
     modeRef.current = nextMode;
     setMode(nextMode);
-    setResolved(nextResolved);
     window.dispatchEvent(createAppearanceChangeEvent(nextMode));
   }
 
@@ -308,6 +300,7 @@ function SettingsAppearancePanel() {
     <SectionPanel
       title="Appearance"
       description="Choose a workspace appearance or follow this device."
+      className="max-w-3xl"
       icon={
         mode === "dark" ? (
           <Moon size={17} className="text-primary" />
@@ -319,36 +312,26 @@ function SettingsAppearancePanel() {
       }
       actions={<StatusBadge tone="neutral">{activeLabel} active</StatusBadge>}
     >
-      <div className="grid gap-3 p-4 sm:max-w-md">
+      <div className="flex flex-wrap items-center gap-2 p-3">
         {options.map((option) => {
           const isActive = mode === option.mode;
           return (
             <button
               key={option.mode}
               type="button"
-              aria-label={`${option.label} appearance`}
+              aria-label={`${option.label} appearance${
+                isActive ? " selected" : ""
+              }`}
               aria-pressed={isActive}
               onClick={() => chooseAppearance(option.mode)}
-              className={`grid gap-2 rounded-md border p-3 text-left transition hover:bg-muted/60 ${
+              className={`inline-flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition hover:bg-muted/70 ${
                 isActive
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-white"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-white text-muted-foreground hover:text-foreground"
               }`}
             >
-              <span className="flex items-center justify-between gap-2">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary-soft text-primary">
-                  {option.icon}
-                </span>
-                <StatusBadge tone={isActive ? "primary" : "neutral"}>
-                  {isActive ? "Selected" : option.label}
-                </StatusBadge>
-              </span>
-              <span className="font-semibold text-foreground">
-                {option.label}
-              </span>
-              <span className="text-sm text-muted-foreground">
-                {option.detail}
-              </span>
+              {option.icon}
+              <span>{option.label}</span>
             </button>
           );
         })}

@@ -137,10 +137,22 @@ test("settings appearance can choose light, dark, and system", async ({
 }) => {
   await page.goto("/settings");
 
+  const appearancePanel = page
+    .getByText("Choose a workspace appearance or follow this device.")
+    .locator("xpath=ancestor::section[1]");
+  await expect(appearancePanel).toBeVisible();
+  await expect(page.getByText("Locked for the MVP workspace.")).toHaveCount(0);
+  await expect(
+    page.getByText("Light workspace appearance for the MVP release."),
+  ).toHaveCount(0);
   await expect(page.getByText("System active")).toBeVisible();
   await expect(page.getByRole("button", { name: /^System/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Light/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Dark/ })).toBeVisible();
+  const appearanceButtons = appearancePanel.getByRole("button", {
+    name: /^(System|Light|Dark) appearance/,
+  });
+  await expect(appearanceButtons).toHaveCount(3);
   await expectAppearance(page, "system", "dark");
 
   await page.getByRole("button", { name: /^Light/ }).click();
@@ -154,6 +166,14 @@ test("settings appearance can choose light, dark, and system", async ({
   await page.getByRole("button", { name: /^System/ }).click();
   await expectAppearance(page, "system", "dark");
   await expect(page.getByText("System active")).toBeVisible();
+
+  const appearancePanelBox = await appearancePanel.boundingBox();
+  expect(appearancePanelBox?.height).toBeLessThan(180);
+  expect(appearancePanelBox?.width).toBeLessThan(900);
+  const appearanceButtonBoxes = await appearanceButtons.evaluateAll((buttons) =>
+    buttons.map((button) => button.getBoundingClientRect().height),
+  );
+  expect(appearanceButtonBoxes.every((height) => height >= 44)).toBe(true);
 });
 
 test("dark mode renders the core operator surfaces on desktop and mobile", async ({
