@@ -3297,7 +3297,7 @@ function PortfolioCompletionPanel({
                 <SecondaryButton
                   type="button"
                   onClick={copyEnrichmentQueue}
-                  className="min-h-9 rounded-lg px-3"
+                  className="min-h-11 rounded-lg px-3"
                 >
                   <Copy size={14} />
                   Copy queue
@@ -3305,7 +3305,7 @@ function PortfolioCompletionPanel({
                 <SecondaryButton
                   type="button"
                   onClick={downloadEnrichmentQueueCsv}
-                  className="min-h-9 rounded-lg px-3"
+                  className="min-h-11 rounded-lg px-3"
                 >
                   <Download size={14} />
                   Download queue CSV

@@ -12,6 +12,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Copy,
   Download,
   Loader2,
   Plus,
@@ -79,7 +80,7 @@ function aiSuggestReadiness(contractor: ContractorRecord) {
 
 function contractorDirectoryCsv(contractors: ContractorRecord[]) {
   const guardrail =
-    "Review-only export: downloading this file does not send contractor email or SMS, run maintenance AI classification, assign work-order contractors, create/update/delete contractors, write provider history, or dispatch receipts.";
+    "Review-only export: copying or downloading this file does not send contractor email or SMS, run maintenance AI classification, assign work-order contractors, create/update/delete contractors, write provider history, dispatch receipts, call SendGrid or Twilio, call Xero or Basiq, apply payments, or reconcile payments.";
   const rows: Array<Array<string | number | null | undefined>> = [
     [
       "Category",
@@ -173,13 +174,28 @@ function ContractorsContent() {
   const contractors = contractorsQuery.data ?? [];
 
   const [showCreate, setShowCreate] = useState(false);
+  const [directoryReceipt, setDirectoryReceipt] = useState<string | null>(null);
+  const directoryCsv = contractorDirectoryCsv(contractors);
+  const copyDirectoryCsv = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setDirectoryReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(directoryCsv);
+      setDirectoryReceipt("Contractor directory CSV copied.");
+    } catch {
+      setDirectoryReceipt("Copy unavailable in this browser.");
+    }
+  };
   const downloadDirectoryCsv = () => {
     saveBlob(
-      new Blob([contractorDirectoryCsv(contractors)], {
+      new Blob([directoryCsv], {
         type: "text/csv;charset=utf-8",
       }),
       "contractor-directory-readiness.csv",
     );
+    setDirectoryReceipt("Contractor directory CSV downloaded.");
   };
 
   return (
@@ -209,6 +225,14 @@ function ContractorsContent() {
             <div className="flex flex-wrap items-center gap-2">
               <SecondaryButton
                 type="button"
+                onClick={copyDirectoryCsv}
+                disabled={contractors.length === 0}
+              >
+                <Copy size={15} />
+                Copy directory CSV
+              </SecondaryButton>
+              <SecondaryButton
+                type="button"
                 onClick={downloadDirectoryCsv}
                 disabled={contractors.length === 0}
               >
@@ -225,6 +249,10 @@ function ContractorsContent() {
             </div>
           }
         />
+
+        {directoryReceipt ? (
+          <p className="text-sm font-medium text-success">{directoryReceipt}</p>
+        ) : null}
 
         {showCreate ? (
           <AddContractorForm

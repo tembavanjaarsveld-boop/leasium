@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
 
@@ -77,4 +78,65 @@ test("portfolio QA blocker triage shows per-reason counts, plain-English copy, a
   await expect(
     rentRollGroup.getByRole("button", { name: "Hide affected rows" }),
   ).toBeVisible();
+});
+
+test("portfolio QA enrichment queue actions meet mobile touch targets and stay local-only", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+
+  const mutationCalls: string[] = [];
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const method = request.method();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      mutationCalls.push(`${method} ${new URL(request.url()).pathname}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/portfolio-qa");
+
+  await expect(
+    page.getByText("AI-assisted enrichment candidates", { exact: true }),
+  ).toBeVisible();
+
+  const copyQueue = page.getByRole("button", {
+    name: "Copy queue",
+  });
+  const downloadQueueCsv = page.getByRole("button", {
+    name: "Download queue CSV",
+  });
+
+  for (const control of [copyQueue, downloadQueueCsv]) {
+    await expect(control).toBeVisible();
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  mutationCalls.length = 0;
+  await copyQueue.click();
+  await expect(page.getByText("Enrichment queue copied.")).toBeVisible();
+  const copiedQueue = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copiedQueue).toContain("Portfolio QA enrichment queue");
+  expect(copiedQueue).toContain("Review-only");
+
+  const downloadPromise = page.waitForEvent("download");
+  await downloadQueueCsv.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(
+    "portfolio-qa-enrichment-queue.csv",
+  );
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  const csv = await readFile(downloadPath!, "utf8");
+  expect(csv).toContain("Eagle Street Office");
+  expect(csv).toContain(
+    "Review-only: accept sourced suggestions only after checking citations.",
+  );
+  expect(mutationCalls).toEqual([]);
 });

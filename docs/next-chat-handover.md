@@ -7,6 +7,28 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Contractor export parity and Portfolio QA mobile actions
+- `/contractors` now has a local `Copy directory CSV` action beside
+  `Download directory CSV`; both use the same readiness CSV and show a local
+  receipt without sending external/provider work.
+- Contractor export guardrails now cover copying/downloading, contractor
+  create/update/delete, maintenance AI classification, contractor assignment,
+  provider history/dispatch, SendGrid/Twilio, Xero/Basiq, billing/invoice,
+  receipt, payment, and reconciliation boundaries.
+- Contractor smoke runs at 390px, verifies both export controls meet 44px
+  touch targets, proves copied/downloaded CSV parity, injects formula-looking
+  contractor fields, and checks the shared CSV formatter neutralizes them.
+- Portfolio QA enrichment queue `Copy queue` and `Download queue CSV` actions
+  now meet the 44px mobile touch baseline. The smoke verifies copy/download
+  remain local-only and no non-read API calls fire during those actions.
+- Agents implemented the two slices independently; final review caught a
+  missing contractor billing/invoice/receipt trap, which was patched and
+  reverified.
+- Verification: focused contractor smoke passed **1 passed**; focused
+  Portfolio QA smoke passed **3 passed**; touched contractor + Portfolio QA
+  smokes passed **4 passed**; targeted frontend eslint, `tsc --noEmit`, and
+  `git diff --check` passed.
+
 ### Insights packet copy and operations queue export guardrails
 - `/insights` now offers a local `Copy review packet` action beside
   `Download review CSV`; both use the same loaded overview/snapshot review
