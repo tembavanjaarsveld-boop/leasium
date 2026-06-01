@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Bell,
   CheckCircle2,
+  ClipboardCopy,
   Clock3,
   Download,
   ExternalLink,
@@ -813,6 +814,230 @@ function providerReadinessCsv({
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
+const reviewPacketGuardrail =
+  "Review-only packet: copying or downloading this packet does not send email, send SMS, run digests, mark notifications read, mark notifications reviewed, dispatch providers, call Comms, call Xero, call Basiq, refresh provider tokens, or mutate provider history.";
+
+function reviewPacketRows({
+  entityName,
+  generatedAt,
+  guardrails,
+  notices,
+  digestReceipts,
+}: {
+  entityName: string | null | undefined;
+  generatedAt: string | null | undefined;
+  guardrails: string[];
+  notices: WorkAssignmentNotificationCenterItemRecord[];
+  digestReceipts: WorkAssignmentNotificationCenterDigestRecord[];
+}) {
+  const noticeRows = notices.flatMap((notice) => {
+    const receipts = [
+      noticeChannelReceipt(notice, "email"),
+      noticeChannelReceipt(notice, "sms"),
+      noticeChannelReceipt(notice, "in_app"),
+    ].filter(
+      (receipt): receipt is WorkAssignmentNoticeChannelReceiptRecord =>
+        Boolean(receipt?.status || receipt?.action_available),
+    );
+    const noticeSummary = [
+      [
+        "Notice",
+        notice.title,
+        entityName,
+        notice.assignee_name,
+        notice.assignee_email,
+        label(notice.target_type),
+        channelLabel(noticeDeliveryChannel(notice)),
+        notice.notification_status ? label(notice.notification_status) : "",
+        notice.provider ? label(notice.provider) : "",
+        notice.notification_detail,
+        notice.summary,
+        notice.event_at ? formatDateTime(notice.event_at) : "",
+        formatDate(notice.due_date),
+        notice.follow_up_due ? "Yes" : "No",
+        noticeNextAction(notice),
+        templateLabel(notice.template_key, notice.template_version),
+        "",
+        reviewPacketGuardrail,
+      ],
+    ];
+    const receiptEvidence = receipts.map((receipt) => [
+      "Notice receipt",
+      notice.title,
+      entityName,
+      notice.assignee_name,
+      receiptRecipient(receipt),
+      label(notice.target_type),
+      channelLabel(receipt.channel),
+      receipt.status ? label(receipt.status) : "",
+      receipt.provider ? label(receipt.provider) : "",
+      receipt.detail,
+      receipt.provider_message_id,
+      receipt.attempted_at ? formatDateTime(receipt.attempted_at) : "",
+      receipt.receipt_at ? formatDateTime(receipt.receipt_at) : "",
+      receipt.delivery_attempt_count,
+      noticeNextAction(notice),
+      templateLabel(receipt.template_key, receipt.template_version),
+      receipt.rendered_message_preview?.subject,
+      reviewPacketGuardrail,
+    ]);
+    return [...noticeSummary, ...receiptEvidence];
+  });
+  const digestRows = digestReceipts.flatMap((receipt) => [
+    [
+      "Digest receipt",
+      `${label(receipt.cadence)} digest`,
+      entityName,
+      receipt.assignee_name,
+      receipt.assignee_email,
+      "Digest",
+      channelLabel(digestDeliveryChannel(receipt)),
+      receipt.delivery_status ? label(receipt.delivery_status) : "",
+      receipt.provider ? label(receipt.provider) : "",
+      receipt.delivery_detail,
+      receipt.rendered_message_preview?.subject,
+      formatDateTime(receipt.generated_at),
+      "",
+      receipt.delivery_attempt_count,
+      digestNextAction(receipt),
+      templateLabel(receipt.template_key, receipt.template_version),
+      receipt.provider_message_id,
+      reviewPacketGuardrail,
+    ],
+    ...(receipt.channel_receipts ?? []).map((channelReceipt) => [
+      "Digest channel receipt",
+      channelReceipt.label,
+      entityName,
+      receipt.assignee_name,
+      receiptRecipient(channelReceipt),
+      "Digest",
+      channelLabel(channelReceipt.channel),
+      channelReceipt.status ? label(channelReceipt.status) : "",
+      channelReceipt.provider ? label(channelReceipt.provider) : "",
+      channelReceipt.detail,
+      channelReceipt.provider_message_id,
+      channelReceipt.attempted_at
+        ? formatDateTime(channelReceipt.attempted_at)
+        : "",
+      channelReceipt.receipt_at ? formatDateTime(channelReceipt.receipt_at) : "",
+      channelReceipt.delivery_attempt_count,
+      digestNextAction(receipt),
+      templateLabel(channelReceipt.template_key, channelReceipt.template_version),
+      channelReceipt.rendered_message_preview?.subject,
+      reviewPacketGuardrail,
+    ]),
+  ]);
+
+  return [
+    [
+      "Type",
+      "Title",
+      "Entity",
+      "Assignee",
+      "Recipient",
+      "Work type",
+      "Channel",
+      "Status",
+      "Provider",
+      "Detail",
+      "Evidence",
+      "Event time",
+      "Due or receipt time",
+      "Attempts or follow-up",
+      "Next action",
+      "Template",
+      "Message evidence",
+      "Guardrail",
+    ],
+    [
+      "Packet",
+      "Work notification review packet",
+      entityName,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      `Generated ${formatDateTime(generatedAt)}`,
+      "",
+      "",
+      "",
+      "",
+      "Review work-notification evidence before taking explicit send or retry actions.",
+      "",
+      "",
+      reviewPacketGuardrail,
+    ],
+    ...noticeRows,
+    ...digestRows,
+    ...guardrails.map((guardrail) => [
+      "Center guardrail",
+      "Notification center guardrail",
+      entityName,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      guardrail,
+      "",
+      "",
+      "",
+      "",
+      "Keep review packet actions local-only.",
+      "",
+      "",
+      reviewPacketGuardrail,
+    ]),
+    [
+      "Packet guardrail",
+      "No-send guardrail",
+      entityName,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      reviewPacketGuardrail,
+      "",
+      "",
+      "",
+      "",
+      "Use explicit send, retry, mark reviewed, or provider actions separately.",
+      "",
+      "",
+      reviewPacketGuardrail,
+    ],
+  ];
+}
+
+function workNotificationReviewPacketCsv({
+  entityName,
+  generatedAt,
+  guardrails,
+  notices,
+  digestReceipts,
+}: {
+  entityName: string | null | undefined;
+  generatedAt: string | null | undefined;
+  guardrails: string[];
+  notices: WorkAssignmentNotificationCenterItemRecord[];
+  digestReceipts: WorkAssignmentNotificationCenterDigestRecord[];
+}) {
+  return reviewPacketRows({
+    entityName,
+    generatedAt,
+    guardrails,
+    notices,
+    digestReceipts,
+  })
+    .map((row) => row.map(csvCell).join(","))
+    .join("\n");
+}
+
 function ReceiptEvidenceDisclosure({
   receipt,
 }: {
@@ -1059,6 +1284,7 @@ function NotificationsWorkspace() {
   const [digestFilter, setDigestFilter] = useState<DigestFilter>("all");
   const [digestChannelFilter, setDigestChannelFilter] =
     useState<DeliveryChannelFilter>("all");
+  const [reviewPacketCopied, setReviewPacketCopied] = useState(false);
 
   const entitiesQuery = useQuery({
     queryKey: ["notifications-entities"],
@@ -1234,6 +1460,48 @@ function NotificationsWorkspace() {
       "work-notification-provider-readiness.csv",
     );
   };
+  const reviewPacketCsv = () => {
+    if (!center) {
+      return "";
+    }
+    return workNotificationReviewPacketCsv({
+      entityName: selectedEntity?.name,
+      generatedAt: center.generated_at,
+      guardrails: center.guardrails,
+      notices: center.notices,
+      digestReceipts: center.digest_receipts,
+    });
+  };
+  const copyReviewPacket = async () => {
+    const csv = reviewPacketCsv();
+    if (!csv) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(csv);
+    } catch {
+      const textArea = document.createElement("textarea");
+      textArea.value = csv;
+      textArea.setAttribute("readonly", "true");
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+    }
+    setReviewPacketCopied(true);
+  };
+  const downloadReviewPacketCsv = () => {
+    const csv = reviewPacketCsv();
+    if (!csv) {
+      return;
+    }
+    saveBlob(
+      new Blob([csv], { type: "text/csv;charset=utf-8" }),
+      "work-notification-review-packet.csv",
+    );
+  };
   const countCards = useMemo(
     () => [
       {
@@ -1359,7 +1627,23 @@ function NotificationsWorkspace() {
                 </StatusBadge>
                 <SecondaryButton
                   type="button"
-                  className="min-h-9 rounded-lg px-3 text-xs"
+                  className="min-h-11 rounded-lg px-3 text-xs"
+                  onClick={() => void copyReviewPacket()}
+                >
+                  <ClipboardCopy size={14} />
+                  Copy review packet
+                </SecondaryButton>
+                <SecondaryButton
+                  type="button"
+                  className="min-h-11 rounded-lg px-3 text-xs"
+                  onClick={downloadReviewPacketCsv}
+                >
+                  <Download size={14} />
+                  Download review packet CSV
+                </SecondaryButton>
+                <SecondaryButton
+                  type="button"
+                  className="min-h-11 rounded-lg px-3 text-xs"
                   onClick={downloadProviderReadinessCsv}
                 >
                   <Download size={14} />
@@ -1369,6 +1653,14 @@ function NotificationsWorkspace() {
             ) : null
           }
         >
+          {reviewPacketCopied ? (
+            <div
+              role="status"
+              className="border-b border-border bg-success-soft px-4 py-2 text-xs font-semibold text-success"
+            >
+              Review packet copied
+            </div>
+          ) : null}
           {center?.guardrails.length ? (
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
               <span>{center.guardrails[0]}</span>

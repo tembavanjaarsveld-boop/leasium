@@ -4,7 +4,25 @@ Last updated: 2026-06-01
 
 ## Codex continuation — 2026-06-01 (latest)
 
-Continuation from the tenant portal account cache hardening slice.
+Continuation from the tenant portal account cache hardening and Operations
+review-packet slices.
+
+### Work notification review packet v1
+- `/notifications` now has local `Copy review packet` and
+  `Download review packet CSV` actions for the Work notice center, exporting
+  `work-notification-review-packet.csv` from the already-loaded
+  notification-center response.
+- The packet includes notice rows, Email/SMS/In-app receipt evidence, digest
+  receipt evidence, generated timestamps, assignee/recipient/template/provider
+  evidence, next actions, center guardrails, and no-send/no-mutation guardrail
+  text.
+- Guardrails: copy/download do not send email or SMS, run digests, mark the
+  center read/reviewed, dispatch providers, call Comms, Xero, or Basiq, refresh
+  provider tokens, or mutate provider history. The packet controls also use the
+  44px touch target baseline.
+- Verification: focused Notifications smoke passed **2 passed** after
+  red-green worker coverage and parent hardening; targeted frontend eslint,
+  `tsc --noEmit`, and `git diff --check` passed.
 
 ### Arrears review packet mobile/accessibility polish
 - The Arrears review packet presentation moved out of the large Operations page
