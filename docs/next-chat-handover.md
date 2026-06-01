@@ -7,6 +7,20 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Owner portal preview parity hardening
+- `/owner-portal/[ownerId]` now reuses the shared owner portal dashboard view
+  used by account and invite flows, leaving only route gating, operating-mode
+  checks, and preview data loading in the operator-preview route.
+- The operator-preview smoke now exercises the Owner-visible packet end to end:
+  copy, CSV download, owner/property split/statement/document/maintenance
+  contents, `Operator preview` labeling, spreadsheet formula escaping, and the
+  no-send/no-provider guardrail copy.
+- Guardrails: the preview export smoke traps owner statement sends/dispatch/PDF
+  generation, Comms, Xero, Basiq, payments, reconciliation, owner-portal
+  mutation methods, and account-scoped shared-document downloads.
+- Verification: operator owner portal preview smoke passed **2 passed**;
+  targeted frontend eslint, `tsc --noEmit`, and `git diff --check` passed.
+
 ### Owner-visible review packet v1
 - `/owner-portal` and `/owner-portal/[ownerId]` now show a local
   Owner-visible packet derived from the already-loaded portal payload: owner

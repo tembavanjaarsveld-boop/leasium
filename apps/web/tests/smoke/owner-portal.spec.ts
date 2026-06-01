@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { expect, test } from "@playwright/test";
 
 import { mockLeasiumApi } from "./api-mocks";
@@ -74,7 +76,7 @@ const OWNER_PORTAL_RESPONSE = {
       byte_size: 13,
       category: "other",
       notes: "Quarterly property report",
-      source_label: "Shared by property team",
+      source_label: "=HYPERLINK(\"https://unsafe.example\")",
       created_at: "2026-05-31T00:00:00.000Z",
     },
   ],
@@ -110,10 +112,37 @@ test("owner portal preview renders read-only owner statement data", async ({
   page,
 }) => {
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
-  const attemptedSends: string[] = [];
+  const unsafeRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const method = request.method();
+    const mutatesOwnerPortal =
+      path.startsWith("/api/v1/owner-portal/") &&
+      ["DELETE", "PATCH", "POST"].includes(method);
+    const callsExternalOrDispatchPath =
+      path.startsWith("/api/v1/owners/statements/send") ||
+      path.startsWith("/api/v1/owners/statements/dispatch") ||
+      path.startsWith("/api/v1/owners/statements/pdf") ||
+      path.startsWith("/api/v1/comms") ||
+      path.startsWith("/api/v1/xero") ||
+      path.startsWith("/api/v1/basiq") ||
+      path.startsWith("/api/v1/payments") ||
+      path.startsWith("/api/v1/reconciliation");
+    const downloadsSharedDocument =
+      path.startsWith("/api/v1/owner-portal/account/documents/") &&
+      path.endsWith("/download");
+    if (
+      mutatesOwnerPortal ||
+      callsExternalOrDispatchPath ||
+      downloadsSharedDocument
+    ) {
+      unsafeRequests.push(`${method} ${path}`);
+    }
+  });
 
   await page.route("**/api/v1/owners/statements/send**", async (route) => {
-    attemptedSends.push(route.request().url());
+    unsafeRequests.push(`${route.request().method()} /api/v1/owners/statements/send`);
     await route.fulfill({ status: 500, body: "send must stay unused" });
   });
   await page.route("**/api/v1/owner-portal/owner-1**", async (route) => {
@@ -161,6 +190,41 @@ test("owner portal preview renders read-only owner statement data", async ({
   await expect(
     page.getByRole("button", { name: "Download packet CSV" }),
   ).toBeVisible();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy packet" }).click();
+  await expect(page.getByText("Owner-visible packet copied.")).toBeVisible();
+  const copiedPacket = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copiedPacket).toContain("SKJ Holdings Pty Ltd");
+  expect(copiedPacket).toContain("Operator preview");
+  expect(copiedPacket).toContain("Queen Street Retail Centre");
+  expect(copiedPacket).toContain("King Street Offices");
+  expect(copiedPacket).toContain("60%");
+  expect(copiedPacket).toContain("40%");
+  expect(copiedPacket).toContain("$17,600");
+  expect(copiedPacket).toContain("owner-visible-report.pdf");
+  expect(copiedPacket).toContain("Air conditioning quote review");
+  expect(copiedPacket).toContain("$1,250");
+  expect(copiedPacket).toContain("does not send owner email");
+  expect(copiedPacket).toContain("'=HYPERLINK");
+
+  const packetDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download packet CSV" }).click();
+  const packetDownload = await packetDownloadPromise;
+  expect(packetDownload.suggestedFilename()).toBe(
+    "owner-visible-review-packet-2026-05-owner-1.csv",
+  );
+  const packetDownloadPath = await packetDownload.path();
+  const packetCsv = await readFile(packetDownloadPath!, "utf8");
+  expect(packetCsv).toContain("SKJ Holdings Pty Ltd");
+  expect(packetCsv).toContain("Operator preview");
+  expect(packetCsv).toContain("Queen Street Retail Centre");
+  expect(packetCsv).toContain("King Street Offices");
+  expect(packetCsv).toContain("owner-visible-report.pdf");
+  expect(packetCsv).toContain("Air conditioning quote review");
+  expect(packetCsv).toContain("$1,250");
+  expect(packetCsv).toContain("does not send owner email");
+  expect(packetCsv).toContain("'=HYPERLINK");
+
   await expect(
     page.getByRole("button", { name: "Download owner-visible-report.pdf" }),
   ).toHaveCount(0);
@@ -170,7 +234,7 @@ test("owner portal preview renders read-only owner statement data", async ({
   await expect(
     page.getByText("Read-only owner portal", { exact: false }),
   ).toBeVisible();
-  expect(attemptedSends).toEqual([]);
+  expect(unsafeRequests).toEqual([]);
 });
 
 test("self-managed accounts do not open operator owner portal previews", async ({

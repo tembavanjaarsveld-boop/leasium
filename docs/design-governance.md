@@ -140,12 +140,15 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
 - **Owner-visible review packet** (`/owner-portal`, `/owner-portal/[ownerId]`):
   owner account and operator-preview dashboards now include a local
   `Copy packet` / `Download packet CSV` review artifact for Remba/accountant
-  checks. The packet combines the already-loaded owner identity, auth boundary,
+  checks. The operator-preview route now reuses the same dashboard component as
+  account and invite flows so future owner-visible panels stay in one place.
+  The packet combines the already-loaded owner identity, auth boundary,
   property splits, selected statement totals, shared document filenames/notes,
   owner-visible maintenance rows, and access-boundary guardrails. Exporting it
   does not send owner email, dispatch invoices, generate statement PDFs,
   download shared document files, call Comms/Xero/Basiq/payment/reconciliation
-  paths, or mutate owner-portal/provider history.
+  paths, or mutate owner-portal/provider history; smoke coverage now proves the
+  operator-preview copy/download path and spreadsheet formula escaping too.
 - **Owner portal account cache hardening** (`/owner-portal`): account-scoped
   owner status/session reads now use auth-user and owner-context query keys,
   fresh Clerk bearer tokens, and no-stale-cache settings. If the private account
