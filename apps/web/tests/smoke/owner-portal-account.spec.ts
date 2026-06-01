@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { expect, type Page, test } from "@playwright/test";
 
 const OWNER_INVITE_PREVIEW = {
@@ -77,7 +79,7 @@ const OWNER_PORTAL_ACCOUNT_RESPONSE = {
       byte_size: 17,
       category: "other",
       notes: null,
-      source_label: "Shared by property team",
+      source_label: "=HYPERLINK(\"https://unsafe.example\")",
       created_at: "2026-05-31T00:00:00.000Z",
     },
   ],
@@ -168,6 +170,28 @@ test("owner claim link shows only safe context before account claim", async ({
 test("owner account entry opens a linked owner portal without owner id", async ({
   page,
 }) => {
+  const unsafeRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const method = request.method();
+    const mutatesOwnerPortal =
+      path.startsWith("/api/v1/owner-portal/") &&
+      ["DELETE", "PATCH", "POST"].includes(method);
+    const callsExternalOrDispatchPath =
+      path.startsWith("/api/v1/owners/statements/send") ||
+      path.startsWith("/api/v1/owners/statements/dispatch") ||
+      path.startsWith("/api/v1/owners/statements/pdf") ||
+      path.startsWith("/api/v1/comms") ||
+      path.startsWith("/api/v1/xero") ||
+      path.startsWith("/api/v1/basiq") ||
+      path.startsWith("/api/v1/payments") ||
+      path.startsWith("/api/v1/reconciliation");
+    if (mutatesOwnerPortal || callsExternalOrDispatchPath) {
+      unsafeRequests.push(`${method} ${path}`);
+    }
+  });
+
   await page.route("**/api/v1/owner-portal/account/status", async (route) => {
     await route.fulfill({
       status: 200,
@@ -238,6 +262,47 @@ test("owner account entry opens a linked owner portal without owner id", async (
   await expect(page.getByText("twilio-secret")).toHaveCount(0);
   await expect(page.getByText("operator_upload")).toHaveCount(0);
   await expect(
+    page.getByRole("heading", { name: "Owner-visible packet" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Review-only export", { exact: false }),
+  ).toBeVisible();
+
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy packet" }).click();
+  await expect(page.getByText("Owner-visible packet copied.")).toBeVisible();
+  const copiedPacket = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copiedPacket).toContain("Owner Portal Pty Ltd");
+  expect(copiedPacket).toContain("Owner Portal Plaza");
+  expect(copiedPacket).toContain("100%");
+  expect(copiedPacket).toContain("$5,500");
+  expect(copiedPacket).toContain("owner-visible-report.pdf");
+  expect(copiedPacket).toContain("Lift service approval");
+  expect(copiedPacket).toContain("$2,200");
+  expect(copiedPacket).toContain("Review-only export");
+  expect(copiedPacket).toContain("does not send owner email");
+  expect(copiedPacket).toContain("download not triggered by packet export");
+  expect(copiedPacket).toContain("'=HYPERLINK");
+
+  const packetDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download packet CSV" }).click();
+  const packetDownload = await packetDownloadPromise;
+  expect(packetDownload.suggestedFilename()).toBe(
+    "owner-visible-review-packet-2026-05-owner-1.csv",
+  );
+  const packetDownloadPath = await packetDownload.path();
+  const packetCsv = await readFile(packetDownloadPath!, "utf8");
+  expect(packetCsv).toContain("Owner Portal Pty Ltd");
+  expect(packetCsv).toContain("Owner Portal Plaza");
+  expect(packetCsv).toContain("owner-visible-report.pdf");
+  expect(packetCsv).toContain("Lift service approval");
+  expect(packetCsv).toContain("$2,200");
+  expect(packetCsv).toContain("does not send owner email");
+  expect(packetCsv).toContain("'=HYPERLINK");
+  expect(downloads).toHaveLength(0);
+  expect(unsafeRequests).toEqual([]);
+
+  await expect(
     page.getByRole("button", {
       name: "Download owner-visible-report.pdf for Owner Portal Plaza",
     }),
@@ -257,6 +322,7 @@ test("owner account entry opens a linked owner portal without owner id", async (
     "owner-visible-report.pdf",
   );
   expect(downloads).toHaveLength(1);
+  expect(unsafeRequests).toEqual([]);
   await expect(page.getByText("operator_preview")).toHaveCount(0);
 });
 

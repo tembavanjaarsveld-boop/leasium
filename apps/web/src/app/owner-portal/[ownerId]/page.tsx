@@ -39,7 +39,10 @@ import {
   OwnerPortalDocumentsPanel,
   OwnerPortalMaintenancePanel,
 } from "../owner-portal-dashboard-sections";
-import { ownerPortalAuthLabel } from "../owner-portal-account-ui";
+import {
+  OwnerVisibleReviewPacketPanel,
+  ownerPortalAuthLabel,
+} from "../owner-portal-account-ui";
 
 function formatMoney(cents: number): string {
   return new Intl.NumberFormat("en-AU", {
@@ -288,6 +291,8 @@ function OwnerPortalView({ portal }: { portal: OwnerPortalRecord }) {
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
         <div className="grid gap-5">
+          <OwnerVisibleReviewPacketPanel portal={portal} />
+
           <SectionPanel
             title="Statement"
             description={formatMonth(statement?.month)}

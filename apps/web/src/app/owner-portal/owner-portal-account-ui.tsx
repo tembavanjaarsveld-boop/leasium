@@ -5,19 +5,24 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
+  ClipboardCheck,
+  Download,
   Mail,
   ReceiptText,
   ShieldCheck,
   WalletCards,
 } from "lucide-react";
+import { useState } from "react";
 
 import { LeasiumMark } from "@/components/brand";
 import {
   EmptyState,
+  SecondaryButton,
   SectionPanel,
   SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
+import { saveBlob } from "@/lib/download";
 import type {
   OwnerPortalPropertyRecord,
   OwnerPortalRecord,
@@ -63,6 +68,19 @@ function formatMonth(value: string | null | undefined): string {
     month: "long",
     year: "numeric",
   }).format(new Date(year, month - 1, 1));
+}
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) {
+    return "-";
+  }
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const date = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(value);
+  return new Intl.DateTimeFormat("en-AU", {
+    dateStyle: "medium",
+  }).format(date);
 }
 
 function formatSplit(split: number): string {
@@ -292,6 +310,279 @@ function GuardrailPanel({ guardrails }: { guardrails: string[] }) {
   );
 }
 
+const OWNER_VISIBLE_PACKET_GUARDRAIL =
+  "Review-only export: copying or downloading this packet does not send owner email, dispatch invoices, generate owner statement PDFs, call providers, write Xero or Basiq data, reconcile payments, download shared documents, or mutate provider history.";
+
+function csvCell(value: string | number | null | undefined) {
+  const raw = String(value ?? "");
+  const safeValue = /^[=+\-@]/.test(raw.trimStart()) ? `'${raw}` : raw;
+  return `"${safeValue.replaceAll('"', '""')}"`;
+}
+
+async function copyTextToClipboard(text: string) {
+  if (typeof navigator !== "undefined" && navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to the document-based copy path below.
+    }
+  }
+  if (typeof document === "undefined") {
+    return false;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  textarea.style.left = "-1000px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  return copied;
+}
+
+function titleCaseStatus(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function ownerVisiblePacketFilename(portal: OwnerPortalRecord) {
+  const month = portal.statement?.month ?? portal.generated_at.slice(0, 7);
+  const ownerId = portal.owner.id.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  return `owner-visible-review-packet-${month}-${ownerId || "owner"}.csv`;
+}
+
+function ownerVisiblePacketRows(portal: OwnerPortalRecord) {
+  const statement = portal.statement;
+  const rows: Array<[string, string, string, string]> = [
+    [
+      "Owner",
+      "Display name",
+      portal.owner.display_name,
+      portal.owner.billing_email ?? "No billing email",
+    ],
+    [
+      "Owner",
+      "Auth boundary",
+      ownerPortalAuthLabel(portal.auth.mode),
+      portal.auth.detail,
+    ],
+    [
+      "Portal",
+      "Generated at",
+      formatOwnerPortalDateTime(portal.generated_at),
+      "Already-loaded owner portal response.",
+    ],
+    [
+      "Statement",
+      "Period",
+      formatMonth(statement?.month),
+      statement ? "Owner statement totals are visible." : "No statement linked.",
+    ],
+    [
+      "Statement",
+      "Invoiced",
+      formatMoney(statement?.invoiced_cents ?? 0),
+      `${statement?.invoice_count ?? 0} invoice(s)`,
+    ],
+    [
+      "Statement",
+      "Paid",
+      formatMoney(statement?.paid_cents ?? 0),
+      "Payment summary shown in the portal.",
+    ],
+    [
+      "Statement",
+      "Outstanding",
+      formatMoney(statement?.outstanding_cents ?? 0),
+      "Outstanding owner statement balance.",
+    ],
+  ];
+
+  rows.push(
+    ...portal.properties.map(
+      (property): [string, string, string, string] => [
+        "Property split",
+        property.property_name,
+        formatSplit(property.split_pct),
+        `Property ID ${property.property_id}`,
+      ],
+    ),
+  );
+
+  rows.push(
+    ...(statement?.properties ?? []).map(
+      (property): [string, string, string, string] => [
+        "Statement property",
+        property.property_name,
+        formatMoney(property.outstanding_cents),
+        `${property.invoice_count} invoice(s), ${formatMoney(
+          property.invoiced_cents,
+        )} invoiced, ${formatMoney(property.paid_cents)} paid`,
+      ],
+    ),
+  );
+
+  rows.push(
+    ...portal.documents.map(
+      (document): [string, string, string, string] => [
+        "Shared document",
+        document.filename,
+        document.property_name,
+        `${document.source_label}; ${
+          document.notes ?? "No document note"
+        }; download not triggered by packet export`,
+      ],
+    ),
+  );
+
+  rows.push(
+    ...portal.maintenance.items.map(
+      (item): [string, string, string, string] => [
+        "Maintenance",
+        item.title,
+        item.quote_amount_cents === null
+          ? "No quote amount"
+          : formatMoney(item.quote_amount_cents),
+        `${item.property_name}; ${titleCaseStatus(item.priority)} priority; ${titleCaseStatus(
+          item.status,
+        )}; due ${formatDate(item.due_date)}; ${
+          item.approval_required
+            ? `approval ${titleCaseStatus(item.approval_status)}`
+            : "no approval required"
+        }`,
+      ],
+    ),
+  );
+
+  rows.push(
+    [
+      "Maintenance",
+      "Snapshot totals",
+      `${portal.maintenance.open_count} open / ${portal.maintenance.urgent_count} urgent / ${portal.maintenance.awaiting_approval_count} awaiting approval`,
+      "Owner-visible maintenance rows only.",
+    ],
+    ...portal.guardrails.map(
+      (guardrail, index): [string, string, string, string] => [
+        "Access boundary",
+        `Guardrail ${index + 1}`,
+        guardrail,
+        "Shown in the owner portal.",
+      ],
+    ),
+    [
+      "Access boundary",
+      "Review-only export",
+      OWNER_VISIBLE_PACKET_GUARDRAIL,
+      "Local copy/download only.",
+    ],
+  );
+
+  return rows;
+}
+
+function ownerVisiblePacketCsv(portal: OwnerPortalRecord) {
+  const header = ["section", "label", "value", "detail"];
+  return [header, ...ownerVisiblePacketRows(portal)]
+    .map((row) => row.map(csvCell).join(","))
+    .join("\n");
+}
+
+export function OwnerVisibleReviewPacketPanel({
+  portal,
+}: {
+  portal: OwnerPortalRecord;
+}) {
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const statement = portal.statement;
+  const copyPacket = async () => {
+    const copied = await copyTextToClipboard(ownerVisiblePacketCsv(portal));
+    setReceipt(
+      copied
+        ? "Owner-visible packet copied."
+        : "Copy unavailable in this browser.",
+    );
+  };
+  const downloadPacketCsv = () => {
+    saveBlob(
+      new Blob([ownerVisiblePacketCsv(portal)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      ownerVisiblePacketFilename(portal),
+    );
+    setReceipt("Owner-visible packet CSV downloaded.");
+  };
+
+  return (
+    <SectionPanel
+      title="Owner-visible packet"
+      description="Local review export from the owner-visible data already shown in this portal."
+      icon={<ClipboardCheck size={17} />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton type="button" onClick={copyPacket}>
+            <ClipboardCheck size={15} />
+            Copy packet
+          </SecondaryButton>
+          <SecondaryButton type="button" onClick={downloadPacketCsv}>
+            <Download size={15} />
+            Download packet CSV
+          </SecondaryButton>
+        </div>
+      }
+    >
+      <div className="grid gap-3 p-4 text-sm">
+        {receipt ? (
+          <p aria-live="polite" className="font-medium text-success" role="status">
+            {receipt}
+          </p>
+        ) : null}
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Owner
+            </p>
+            <p className="mt-1 font-semibold text-foreground">
+              {portal.owner.display_name}
+            </p>
+          </div>
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Property split
+            </p>
+            <p className="mt-1 font-semibold text-foreground">
+              {portal.properties.length} linked
+            </p>
+          </div>
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Statement
+            </p>
+            <p className="mt-1 font-semibold text-foreground">
+              {formatMoney(statement?.outstanding_cents ?? 0)} outstanding
+            </p>
+          </div>
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Maintenance
+            </p>
+            <p className="mt-1 font-semibold text-foreground">
+              {portal.maintenance.open_count} open
+            </p>
+          </div>
+        </div>
+        <p className="rounded-md bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+          {OWNER_VISIBLE_PACKET_GUARDRAIL}
+        </p>
+      </div>
+    </SectionPanel>
+  );
+}
+
 export function OwnerPortalAccountView({
   portal,
 }: {
@@ -358,6 +649,8 @@ export function OwnerPortalAccountView({
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
           <div className="grid gap-5">
+            <OwnerVisibleReviewPacketPanel portal={portal} />
+
             <SectionPanel
               title="Statement"
               description={formatMonth(statement?.month)}

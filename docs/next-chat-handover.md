@@ -7,6 +7,23 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Owner-visible review packet v1
+- `/owner-portal` and `/owner-portal/[ownerId]` now show a local
+  Owner-visible packet derived from the already-loaded portal payload: owner
+  identity, auth boundary, property splits, selected-month statement totals,
+  statement property lines, shared document filenames/notes, owner-visible
+  maintenance rows, and access-boundary guardrails.
+- Local `Copy packet` and `Download packet CSV` actions export
+  `owner-visible-review-packet-{month}-{ownerId}.csv` without fetching a new
+  statement PDF or downloading shared document files.
+- Guardrails: copy/download do not send owner email, dispatch invoices,
+  generate owner statement PDFs, call Comms, Xero, Basiq, payments, or
+  reconciliation paths, mutate owner-portal/provider history, or trigger shared
+  document downloads.
+- Verification: owner portal account smoke passed **4 passed** and operator
+  owner portal preview smoke passed **2 passed**; targeted frontend eslint,
+  `tsc --noEmit`, and `git diff --check` passed.
+
 ### Vendor exposure packet v1
 - Maintenance work-order detail now has a read-only Vendor exposure packet
   inside the operator-only Vendor portal panel, separate from the vendor preview

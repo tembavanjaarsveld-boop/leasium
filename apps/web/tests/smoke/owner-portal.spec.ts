@@ -155,6 +155,13 @@ test("owner portal preview renders read-only owner statement data", async ({
   await expect(page.getByText("dispatch@private.example")).toHaveCount(0);
   await expect(page.getByText("sendgrid-secret")).toHaveCount(0);
   await expect(
+    page.getByRole("heading", { name: "Owner-visible packet" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy packet" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download packet CSV" }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("button", { name: "Download owner-visible-report.pdf" }),
   ).toHaveCount(0);
   await expect(page.getByText("Operator preview")).toBeVisible();

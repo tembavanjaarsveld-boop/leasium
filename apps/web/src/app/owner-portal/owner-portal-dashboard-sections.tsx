@@ -56,9 +56,13 @@ function formatDate(value: string | null): string {
   if (!value) {
     return "No date";
   }
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const date = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(value);
   return new Intl.DateTimeFormat("en-AU", {
     dateStyle: "medium",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 const maintenanceStatusLabels: Record<
