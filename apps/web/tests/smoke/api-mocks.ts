@@ -6629,6 +6629,104 @@ export async function mockLeasiumApi(
 
     if (
       method === "POST" &&
+      path === "/maintenance/work-orders/work-order-1/vendor-portal/share"
+    ) {
+      const payload = request.postDataJSON() as {
+        contractor_id?: string;
+        title?: string;
+        comment?: string | null;
+      };
+      const timestamp = "2026-05-20T01:18:00.000Z";
+      const existingMetadata = jsonRecord(maintenanceWorkOrders[0].metadata);
+      const existingComments = Array.isArray(existingMetadata.comments)
+        ? existingMetadata.comments
+        : [];
+      const comment = payload.comment?.trim();
+      const commentRows = comment
+        ? [
+            ...existingComments,
+            {
+              timestamp,
+              actor: operatorId,
+              visibility: "contractor",
+              body: comment,
+            },
+          ]
+        : existingComments;
+      const metadata = {
+        ...existingMetadata,
+        vendor_portal_visible: true,
+        vendor_portal_contractor_id: payload.contractor_id ?? null,
+        vendor_portal_title: payload.title ?? "Maintenance item",
+        vendor_portal_shared_at: timestamp,
+        vendor_portal_shared_by_user_id: operatorId,
+        comments: commentRows,
+        activity_history: [
+          ...maintenanceWorkOrders[0].metadata.activity_history,
+          ...(comment
+            ? [
+                {
+                  timestamp,
+                  actor: operatorId,
+                  source: "operator_api",
+                  event: "comment_added",
+                  visibility: "contractor",
+                  summary: comment,
+                },
+              ]
+            : []),
+          {
+            timestamp,
+            actor: operatorId,
+            source: "operator_api",
+            event: "vendor_portal_shared",
+            summary: "Shared vendor-safe work order with contractor.",
+            status: maintenanceWorkOrders[0].status,
+          },
+        ],
+      };
+      Object.assign(maintenanceWorkOrders[0], {
+        metadata,
+        updated_at: timestamp,
+      });
+      await fulfillJson(route, maintenanceWorkOrders[0]);
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/maintenance/work-orders/work-order-1/vendor-portal/unshare"
+    ) {
+      const timestamp = "2026-05-20T01:19:00.000Z";
+      const metadata = {
+        ...jsonRecord(maintenanceWorkOrders[0].metadata),
+        vendor_portal_visible: false,
+        vendor_portal_hidden_at: timestamp,
+        vendor_portal_hidden_by_user_id: operatorId,
+        activity_history: [
+          ...maintenanceWorkOrders[0].metadata.activity_history,
+          {
+            timestamp,
+            actor: operatorId,
+            source: "operator_api",
+            event: "vendor_portal_hidden",
+            summary: "Hid work order from the vendor portal.",
+            status: maintenanceWorkOrders[0].status,
+          },
+        ],
+      };
+      delete metadata.vendor_portal_contractor_id;
+      delete metadata.vendor_portal_title;
+      Object.assign(maintenanceWorkOrders[0], {
+        metadata,
+        updated_at: timestamp,
+      });
+      await fulfillJson(route, maintenanceWorkOrders[0]);
+      return;
+    }
+
+    if (
+      method === "POST" &&
       path ===
         "/maintenance/work-orders/work-order-1/assignment-notification/send-email"
     ) {

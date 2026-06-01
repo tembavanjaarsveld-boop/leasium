@@ -74,6 +74,32 @@ Continuation from the tenant portal account cache hardening slice.
   passed **2 passed**; `tests/smoke/vendor-portal.spec.ts` passed
   **2 passed**; the vendor-record portal-link smoke passed **1 passed**.
 
+### Vendor portal operator visibility controls v1
+- Maintenance work-order detail now has a compact **Vendor portal** panel
+  beside the contractor context. Operators choose a real contractor-directory
+  vendor, enter an explicit vendor-safe title, optionally add a
+  vendor-visible note, and can share/hide the work order from the read-only
+  portal.
+- Backend commands:
+  `POST /api/v1/maintenance/work-orders/{work_order_id}/vendor-portal/share`
+  and `/unshare`. They mutate only local work-order metadata, append activity
+  history, and write confidential local audit rows under
+  `maintenance.vendor_portal.share` / `.unshare`.
+- Share requires a nonblank safe title and same-entity non-deleted contractor;
+  completed/cancelled work orders are blocked. Unshare is idempotent and clears
+  the contractor/title portal keys while leaving the rest of the work order
+  intact.
+- Guardrails: these controls create no vendor account/invite, send no
+  contractor email/SMS, dispatch no work, refresh no providers, write no
+  provider history, touch no Xero/Basiq data, and reconcile no payments.
+- Red-green proof: `tests/integration/test_vendor_portal_share_api.py`
+  passed **6 passed**; combined backend regression
+  `tests/integration/test_vendor_portal_share_api.py tests/integration/test_vendor_portal_api.py tests/integration/test_maintenance_arrears_api.py`
+  passed **32 passed**; browser regression
+  `tests/smoke/operations-ux.spec.ts tests/smoke/vendor-portal.spec.ts`
+  passed **8 passed**; targeted ruff, frontend eslint, `tsc --noEmit`,
+  `git diff --check`, and production-style `next build` passed.
+
 ### Tenant portal backend account-scope hardening
 - Backend tenant portal reads now keep the durable account boundary all the way
   through shared portal endpoints: if a request carries a valid Clerk bearer

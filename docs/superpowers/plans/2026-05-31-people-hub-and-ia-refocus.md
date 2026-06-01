@@ -26,6 +26,10 @@ Backlog: `docs/product-roadmap.md` → "DoorLoop benchmark refocus (2026-05-31)"
   operator-preview `/api/v1/vendor-portal/{contractor_id}` and
   `/vendor-portal/[contractorId]` expose only explicitly vendor-visible work
   with no provider sends/writes and no vendor account/login yet.
+- P1 vendor portal operator visibility controls: **SHIPPED pending Remba review** —
+  maintenance work-order detail can share/hide a job from the read-only vendor
+  portal with an explicit vendor-safe title and optional vendor-visible note;
+  backend commands mutate local metadata/audit only.
 
 Verified: P0 backend 344 passed / 1 skipped + ruff clean; frontend eslint/tsc + Vercel prod build green. Owner portal focused verification is tracked in `2026-05-31-owner-portal-readonly-first.md`. Migration applies on Render deploy; run `scripts.backfill_owners` to populate owners.
 
@@ -167,8 +171,9 @@ and distributions (P1+). Net-new feature count is low; it's mostly a structural 
 - **Tenant self-serve payments (AU rails):** PayTo / PayID / BPAY / direct debit; pay
   in-portal, reconcile review-first via the existing Basiq/Xero engine.
 - **Vendor portal (read-only first):** operator-preview slice shipped for safe
-  work visibility. Next vendor step is auth/invite design, not email/SMS or
-  provider dispatch.
+  work visibility, and operators can now explicitly share/hide maintenance
+  work orders from that preview. Next vendor step is auth/invite design, not
+  email/SMS or provider dispatch.
 - **Installable PWA** for operator field use + tenant portal on a phone.
 
 ## Definition of done for P0

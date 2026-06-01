@@ -152,6 +152,160 @@ test("maintenance detail keeps generic failures on unavailable state", async ({
   await expect(page.getByText("Work order not found")).toHaveCount(0);
 });
 
+test("maintenance detail shares vendor portal visibility without provider dispatch", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+  const mutationPaths: string[] = [];
+  let sharedToPortal = false;
+  let vendorPortalGetCount = 0;
+  const vendorPortalBody = () => ({
+    auth: {
+      mode: "operator_preview",
+      token_source: "bearer",
+      vendor_auth_configured: false,
+      boundary: "operator_session",
+      detail: "Read-only operator preview scoped by entity role.",
+    },
+    vendor: {
+      id: "contractor-2",
+      entity_id: "entity-1",
+      name: "Cool Air Services",
+      company_name: null,
+      categories: ["hvac"],
+      email: "service@coolair.example",
+      phone: "07 3000 1111",
+      service_radius_km: 15,
+      priority: 2,
+    },
+    work_orders: {
+      open_count: sharedToPortal ? 1 : 0,
+      urgent_count: sharedToPortal ? 1 : 0,
+      overdue_count: 0,
+      items: sharedToPortal
+        ? [
+            {
+              id: "work-order-1",
+              property_id: "property-1",
+              property_name: "Queen Street Retail Centre",
+              title: "Repair air conditioning",
+              status: "awaiting_approval",
+              priority: "urgent",
+              requested_at: "2026-05-19T01:00:00.000Z",
+              due_date: "2026-05-20",
+              contractor_assigned_at: "2026-05-19T02:00:00.000Z",
+              quote_amount_cents: 64000,
+              comments: [
+                {
+                  body: "Please attend before trading opens.",
+                  timestamp: "2026-05-20T01:18:00.000Z",
+                },
+              ],
+            },
+          ]
+        : [],
+    },
+    guardrails: [
+      "Read-only vendor portal: opening this page does not send contractor email or SMS.",
+    ],
+    generated_at: "2026-05-20T01:18:00.000Z",
+  });
+  await page.route("**/api/v1/vendor-portal/contractor-2", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    vendorPortalGetCount += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(vendorPortalBody()),
+    });
+  });
+  await page.route(
+    "**/api/v1/maintenance/work-orders/work-order-1/**",
+    async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname.replace("/api/v1", "");
+      if (request.method() === "POST") {
+        mutationPaths.push(path);
+        if (path.endsWith("/vendor-portal/share")) {
+          sharedToPortal = true;
+        }
+        if (path.endsWith("/vendor-portal/unshare")) {
+          sharedToPortal = false;
+        }
+      }
+      await route.fallback();
+    },
+  );
+
+  await page.goto("/vendor-portal/contractor-2");
+  await expect(page.getByText("No shared work orders.")).toBeVisible({
+    timeout: 15_000,
+  });
+
+  await page.goto("/operations/maintenance/work-order-1");
+
+  const portalPanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Vendor portal" }) })
+    .first();
+  await expect(portalPanel).toBeVisible({ timeout: 15_000 });
+  await expect(portalPanel.getByText("Hidden from portal")).toBeVisible();
+
+  await portalPanel.locator("select").first().selectOption("contractor-2");
+  await portalPanel
+    .getByLabel("Vendor-safe title")
+    .fill("Repair air conditioning");
+  await portalPanel
+    .getByLabel("Vendor-visible note")
+    .fill("Please attend before trading opens.");
+
+  const shareRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      request.url().includes("/vendor-portal/share"),
+  );
+  await portalPanel.getByRole("button", { name: "Share to portal" }).click();
+  expect((await shareRequest).postDataJSON()).toMatchObject({
+    contractor_id: "contractor-2",
+    title: "Repair air conditioning",
+    comment: "Please attend before trading opens.",
+  });
+
+  await expect(portalPanel.getByText("Visible in vendor portal")).toBeVisible();
+  await expect(
+    portalPanel.getByRole("link", { name: "Open portal preview" }),
+  ).toHaveAttribute("href", "/vendor-portal/contractor-2");
+
+  await portalPanel.getByRole("link", { name: "Open portal preview" }).click();
+  await expect(page.getByText("Repair air conditioning")).toBeVisible();
+
+  await page.goto("/operations/maintenance/work-order-1");
+  const visiblePortalPanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Vendor portal" }) })
+    .first();
+  const unshareRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      request.url().includes("/vendor-portal/unshare"),
+  );
+  await visiblePortalPanel.getByRole("button", { name: "Hide from portal" }).click();
+  await unshareRequest;
+  await expect(visiblePortalPanel.getByText("Hidden from portal")).toBeVisible();
+
+  await page.goto("/vendor-portal/contractor-2");
+  await expect(page.getByText("No shared work orders.")).toBeVisible();
+  expect(vendorPortalGetCount).toBeGreaterThanOrEqual(3);
+
+  expect(mutationPaths).toEqual([
+    "/maintenance/work-orders/work-order-1/vendor-portal/share",
+    "/maintenance/work-orders/work-order-1/vendor-portal/unshare",
+  ]);
+});
+
 test("maintenance detail hides stale work-order data after a not-found refresh", async ({
   page,
 }) => {

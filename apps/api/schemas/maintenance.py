@@ -306,6 +306,12 @@ class MaintenanceWorkOrderCommentCreate(BaseModel):
     visibility: MaintenanceCommentVisibility = "internal"
 
 
+class MaintenanceWorkOrderVendorPortalShare(BaseModel):
+    contractor_id: UUID
+    title: str = Field(min_length=1, max_length=160)
+    comment: str | None = Field(default=None, max_length=2000)
+
+
 class MaintenanceWorkOrderContractorEmailSend(BaseModel):
     subject: str | None = Field(default=None, max_length=200)
     body: str = Field(min_length=1, max_length=4000)

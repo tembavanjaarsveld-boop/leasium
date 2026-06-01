@@ -51,6 +51,7 @@ from apps.api.schemas.maintenance import (
     MaintenanceWorkOrderCreate,
     MaintenanceWorkOrderRead,
     MaintenanceWorkOrderUpdate,
+    MaintenanceWorkOrderVendorPortalShare,
 )
 from apps.api.work_assignments import (
     assignment_notification_sent,
@@ -69,6 +70,18 @@ WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 ACTIVITY_HISTORY_KEY = "activity_history"
 COMMENTS_KEY = "comments"
 CONTRACTOR_DELIVERY_KEY = "contractor_delivery"
+VENDOR_PORTAL_VISIBLE_KEY = "vendor_portal_visible"
+VENDOR_PORTAL_CONTRACTOR_ID_KEY = "vendor_portal_contractor_id"
+VENDOR_PORTAL_TITLE_KEY = "vendor_portal_title"
+VENDOR_PORTAL_SHARED_AT_KEY = "vendor_portal_shared_at"
+VENDOR_PORTAL_SHARED_BY_USER_ID_KEY = "vendor_portal_shared_by_user_id"
+VENDOR_PORTAL_SHARED_BY_ACTOR_KEY = "vendor_portal_shared_by_actor"
+VENDOR_PORTAL_HIDDEN_AT_KEY = "vendor_portal_hidden_at"
+VENDOR_PORTAL_HIDDEN_BY_USER_ID_KEY = "vendor_portal_hidden_by_user_id"
+VENDOR_PORTAL_CLOSED_STATUSES = {
+    MaintenanceWorkOrderStatus.completed,
+    MaintenanceWorkOrderStatus.cancelled,
+}
 ACTIVITY_TRACKED_FIELDS = (
     "title",
     "description",
@@ -939,6 +952,51 @@ def _work_order_for_user(
     return work_order
 
 
+def _contractor_for_vendor_portal_share(
+    contractor_id: UUID,
+    entity_id: UUID,
+    session: Session,
+) -> Contractor:
+    contractor = session.get(Contractor, contractor_id)
+    if (
+        contractor is None
+        or contractor.deleted_at is not None
+        or contractor.entity_id != entity_id
+    ):
+        raise _not_found("Contractor")
+    return contractor
+
+
+def _audit_vendor_portal_visibility(
+    *,
+    session: Session,
+    user: CurrentUser,
+    work_order: MaintenanceWorkOrder,
+    action_name: str,
+    contractor_id: UUID | None = None,
+) -> None:
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=work_order.entity_id,
+        action="update",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name=f"maintenance.vendor_portal.{action_name}",
+        tool_input={
+            "maintenance_work_order_id": str(work_order.id),
+            "contractor_id": str(contractor_id) if contractor_id is not None else None,
+        },
+        tool_output_summary=(
+            "Updated local vendor portal visibility; no contractor message, "
+            "provider dispatch, billing, payment, or reconciliation action ran."
+        ),
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+
+
 @router.get("", response_model=list[MaintenanceWorkOrderRead])
 def list_work_orders(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -1235,6 +1293,119 @@ def send_work_order_assignment_notification_email(
         tool_output_summary=(
             f"Attempted assignment notification delivery via {result.provider}: {result.status}."
         ),
+    )
+    session.commit()
+    session.refresh(work_order)
+    return work_order
+
+
+@router.post(
+    "/{work_order_id}/vendor-portal/share",
+    response_model=MaintenanceWorkOrderRead,
+)
+def share_work_order_to_vendor_portal(
+    work_order_id: UUID,
+    payload: MaintenanceWorkOrderVendorPortalShare,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> MaintenanceWorkOrder:
+    work_order = _work_order_for_user(work_order_id, user, session, WRITE_ROLES)
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Vendor portal title cannot be blank.",
+        )
+    if work_order.status in VENDOR_PORTAL_CLOSED_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Closed work orders cannot be shared to the vendor portal.",
+        )
+
+    contractor = _contractor_for_vendor_portal_share(
+        payload.contractor_id,
+        work_order.entity_id,
+        session,
+    )
+    metadata = dict(work_order.work_order_metadata or {})
+    now = utcnow().isoformat()
+    metadata.update(
+        {
+            VENDOR_PORTAL_VISIBLE_KEY: True,
+            VENDOR_PORTAL_CONTRACTOR_ID_KEY: str(contractor.id),
+            VENDOR_PORTAL_TITLE_KEY: title,
+            VENDOR_PORTAL_SHARED_AT_KEY: now,
+            VENDOR_PORTAL_SHARED_BY_USER_ID_KEY: str(user.id),
+            VENDOR_PORTAL_SHARED_BY_ACTOR_KEY: user.actor,
+        }
+    )
+    metadata.pop(VENDOR_PORTAL_HIDDEN_AT_KEY, None)
+    metadata.pop(VENDOR_PORTAL_HIDDEN_BY_USER_ID_KEY, None)
+
+    comment = (payload.comment or "").strip()
+    if comment:
+        metadata = _append_comment(
+            metadata,
+            actor=user.actor,
+            body=comment,
+            visibility="contractor",
+        )
+    work_order.work_order_metadata = _append_activity_history(
+        metadata,
+        _activity_entry(
+            actor=user.actor,
+            source="operator_api",
+            event="vendor_portal_shared",
+            summary=f"Shared vendor-safe work order with {contractor.name}.",
+            status_value=work_order.status,
+        ),
+    )
+    _audit_vendor_portal_visibility(
+        session=session,
+        user=user,
+        work_order=work_order,
+        action_name="share",
+        contractor_id=contractor.id,
+    )
+    session.commit()
+    session.refresh(work_order)
+    return work_order
+
+
+@router.post(
+    "/{work_order_id}/vendor-portal/unshare",
+    response_model=MaintenanceWorkOrderRead,
+)
+def unshare_work_order_from_vendor_portal(
+    work_order_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> MaintenanceWorkOrder:
+    work_order = _work_order_for_user(work_order_id, user, session, WRITE_ROLES)
+    metadata = dict(work_order.work_order_metadata or {})
+    metadata[VENDOR_PORTAL_VISIBLE_KEY] = False
+    metadata[VENDOR_PORTAL_HIDDEN_AT_KEY] = utcnow().isoformat()
+    metadata[VENDOR_PORTAL_HIDDEN_BY_USER_ID_KEY] = str(user.id)
+    metadata.pop(VENDOR_PORTAL_CONTRACTOR_ID_KEY, None)
+    metadata.pop(VENDOR_PORTAL_TITLE_KEY, None)
+    metadata.pop(VENDOR_PORTAL_SHARED_AT_KEY, None)
+    metadata.pop(VENDOR_PORTAL_SHARED_BY_USER_ID_KEY, None)
+    metadata.pop(VENDOR_PORTAL_SHARED_BY_ACTOR_KEY, None)
+    work_order.work_order_metadata = _append_activity_history(
+        metadata,
+        _activity_entry(
+            actor=user.actor,
+            source="operator_api",
+            event="vendor_portal_hidden",
+            summary="Hid work order from the vendor portal.",
+            status_value=work_order.status,
+        ),
+    )
+    _audit_vendor_portal_visibility(
+        session=session,
+        user=user,
+        work_order=work_order,
+        action_name="unshare",
     )
     session.commit()
     session.refresh(work_order)

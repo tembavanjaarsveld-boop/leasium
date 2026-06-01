@@ -28,7 +28,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
@@ -54,6 +61,7 @@ import {
   type DocumentRecord,
   getMaintenanceWorkOrderCommsCorrespondence,
   getMaintenanceWorkOrder,
+  listContractors,
   type InvoiceDraftRecord,
   invoiceDraftPreviewUrl,
   listDocuments,
@@ -66,7 +74,10 @@ import {
   type PropertyRecord,
   sendMaintenanceWorkOrderContractorEmail,
   sendMaintenanceWorkOrderContractorSms,
+  shareMaintenanceWorkOrderToVendorPortal,
   type TenantRecord,
+  type ContractorRecord,
+  unshareMaintenanceWorkOrderFromVendorPortal,
   updateMaintenanceWorkOrder,
   updateInvoiceDraft,
   uploadDocument,
@@ -188,6 +199,8 @@ type LiveReviewHandoffStep = {
   actionLabel: string;
   href?: string | null;
 };
+
+const EMPTY_CONTRACTORS: ContractorRecord[] = [];
 
 const emptyCompletionReviewNotes: Record<CompletionReviewAudience, string> = {
   owner: "",
@@ -553,6 +566,56 @@ function latestContractorComment(workOrder: MaintenanceWorkOrderRecord) {
           new Date(metadataText(a.timestamp) ?? "").getTime(),
       )[0] ?? null
   );
+}
+
+function vendorPortalVisible(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataRecord(workOrder.metadata).vendor_portal_visible === true;
+}
+
+function vendorPortalContractorId(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataText(
+    metadataRecord(workOrder.metadata).vendor_portal_contractor_id,
+  );
+}
+
+function vendorPortalTitle(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataText(metadataRecord(workOrder.metadata).vendor_portal_title);
+}
+
+function vendorPortalSharedAt(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataText(metadataRecord(workOrder.metadata).vendor_portal_shared_at);
+}
+
+function vendorPortalHiddenAt(workOrder: MaintenanceWorkOrderRecord) {
+  return metadataText(metadataRecord(workOrder.metadata).vendor_portal_hidden_at);
+}
+
+function contractorOptionLabel(contractor: ContractorRecord) {
+  return [contractor.name, contractor.company_name]
+    .filter((part): part is string => Boolean(part))
+    .join(" - ");
+}
+
+function preferredVendorPortalContractorId(
+  workOrder: MaintenanceWorkOrderRecord,
+  contractors: ContractorRecord[],
+) {
+  const savedId = vendorPortalContractorId(workOrder);
+  if (savedId) {
+    return savedId;
+  }
+  const contractorEmail = workOrder.contractor_email?.trim().toLowerCase();
+  const contractorName = workOrder.contractor_name?.trim().toLowerCase();
+  const match = contractors.find((contractor) => {
+    if (contractorEmail && contractor.email?.trim().toLowerCase() === contractorEmail) {
+      return true;
+    }
+    return (
+      Boolean(contractorName) &&
+      contractor.name.trim().toLowerCase() === contractorName
+    );
+  });
+  return match?.id ?? "";
 }
 
 function contractorHandoffSummary(workOrder: MaintenanceWorkOrderRecord) {
@@ -2670,6 +2733,11 @@ function MaintenanceDetailRoute() {
   const [activityAuditReceipt, setActivityAuditReceipt] = useState<
     string | null
   >(null);
+  const [vendorPortalContractorDraft, setVendorPortalContractorDraft] =
+    useState("");
+  const [vendorPortalTitleDraft, setVendorPortalTitleDraft] = useState("");
+  const [vendorPortalCommentDraft, setVendorPortalCommentDraft] = useState("");
+  const lastVendorPortalSyncKey = useRef<string | null>(null);
 
   const workOrderQuery = useQuery({
     queryKey: ["maintenance-work-order", workOrderId],
@@ -2697,6 +2765,11 @@ function MaintenanceDetailRoute() {
     queryFn: () => listTenants(entityId),
     enabled: Boolean(entityId),
   });
+  const contractorsQuery = useQuery({
+    queryKey: ["maintenance-detail-contractors", entityId],
+    queryFn: () => listContractors(entityId),
+    enabled: Boolean(entityId),
+  });
   const invoiceDraftsQuery = useQuery({
     queryKey: ["maintenance-detail-invoice-drafts", entityId],
     queryFn: () => listInvoiceDrafts({ entity_id: entityId }),
@@ -2710,8 +2783,69 @@ function MaintenanceDetailRoute() {
 
   const properties = propertiesQuery.data ?? [];
   const tenants = tenantsQuery.data ?? [];
+  const contractors = contractorsQuery.data ?? EMPTY_CONTRACTORS;
   const invoiceDrafts = invoiceDraftsQuery.data ?? [];
   const documents = documentsQuery.data ?? [];
+  const vendorPortalIsVisible = workOrder
+    ? vendorPortalVisible(workOrder)
+    : false;
+  const vendorPortalSavedContractorId = workOrder
+    ? vendorPortalContractorId(workOrder)
+    : null;
+  const vendorPortalSavedTitle = workOrder ? vendorPortalTitle(workOrder) : null;
+  const vendorPortalSyncKey = workOrder
+    ? [
+        workOrder.id,
+        vendorPortalSavedContractorId ?? "",
+        vendorPortalSavedTitle ?? "",
+        vendorPortalIsVisible ? "visible" : "hidden",
+      ].join(":")
+    : "empty";
+  const vendorPortalPreviewHref =
+    vendorPortalSavedContractorId || vendorPortalContractorDraft
+      ? `/vendor-portal/${vendorPortalSavedContractorId || vendorPortalContractorDraft}`
+      : null;
+  const vendorPortalShareDisabled =
+    !workOrder ||
+    workOrder.status === "completed" ||
+    workOrder.status === "cancelled" ||
+    !vendorPortalContractorDraft ||
+    !vendorPortalTitleDraft.trim();
+
+  useEffect(() => {
+    if (lastVendorPortalSyncKey.current === vendorPortalSyncKey) {
+      return;
+    }
+    lastVendorPortalSyncKey.current = vendorPortalSyncKey;
+    if (!workOrder) {
+      setVendorPortalContractorDraft("");
+      setVendorPortalTitleDraft("");
+      setVendorPortalCommentDraft("");
+      return;
+    }
+    setVendorPortalContractorDraft(
+      preferredVendorPortalContractorId(workOrder, contractors),
+    );
+    setVendorPortalTitleDraft(vendorPortalSavedTitle ?? "");
+    setVendorPortalCommentDraft("");
+  }, [contractors, vendorPortalSavedTitle, vendorPortalSyncKey, workOrder]);
+  useEffect(() => {
+    if (!workOrder || vendorPortalSavedContractorId || vendorPortalContractorDraft) {
+      return;
+    }
+    const preferredContractorId = preferredVendorPortalContractorId(
+      workOrder,
+      contractors,
+    );
+    if (preferredContractorId) {
+      setVendorPortalContractorDraft(preferredContractorId);
+    }
+  }, [
+    contractors,
+    vendorPortalContractorDraft,
+    vendorPortalSavedContractorId,
+    workOrder,
+  ]);
   const quoteDocuments = workOrder
     ? quoteDocumentRows(workOrder, documents)
     : [];
@@ -3155,6 +3289,17 @@ function MaintenanceDetailRoute() {
     commentMutation.mutate();
   };
 
+  const invalidateVendorPortalPreview = (
+    contractorId: string | null | undefined,
+  ) => {
+    if (!contractorId) {
+      return;
+    }
+    queryClient.invalidateQueries({
+      queryKey: ["vendor-portal", contractorId],
+    });
+  };
+
   const contractorEmailMutation = useMutation({
     mutationFn: () => {
       if (!workOrder) {
@@ -3197,6 +3342,61 @@ function MaintenanceDetailRoute() {
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", entityId],
+      });
+    },
+  });
+
+  const vendorPortalShareMutation = useMutation({
+    mutationFn: () => {
+      if (!workOrder) {
+        throw new Error("Work order is still loading.");
+      }
+      const title = vendorPortalTitleDraft.trim();
+      if (!vendorPortalContractorDraft || !title) {
+        throw new Error("Choose a vendor and enter a vendor-safe title.");
+      }
+      return shareMaintenanceWorkOrderToVendorPortal(workOrderId, {
+        contractor_id: vendorPortalContractorDraft,
+        title,
+        comment: vendorPortalCommentDraft.trim() || null,
+      });
+    },
+    onSuccess: (updatedWorkOrder) => {
+      setVendorPortalCommentDraft("");
+      setVendorPortalTitleDraft(vendorPortalTitle(updatedWorkOrder) ?? "");
+      setVendorPortalContractorDraft(
+        vendorPortalContractorId(updatedWorkOrder) ?? "",
+      );
+      invalidateVendorPortalPreview(
+        vendorPortalContractorId(updatedWorkOrder) ?? vendorPortalContractorDraft,
+      );
+      queryClient.setQueryData(
+        ["maintenance-work-order", workOrderId],
+        updatedWorkOrder,
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", entityId],
+      });
+    },
+  });
+
+  const vendorPortalUnshareMutation = useMutation({
+    mutationFn: () => unshareMaintenanceWorkOrderFromVendorPortal(workOrderId),
+    onSuccess: (updatedWorkOrder) => {
+      const previousContractorId =
+        vendorPortalSavedContractorId ?? vendorPortalContractorDraft;
+      setVendorPortalCommentDraft("");
+      setVendorPortalTitleDraft("");
+      setVendorPortalContractorDraft(
+        preferredVendorPortalContractorId(updatedWorkOrder, contractors),
+      );
+      invalidateVendorPortalPreview(previousContractorId);
+      queryClient.setQueryData(
+        ["maintenance-work-order", workOrderId],
+        updatedWorkOrder,
+      );
       queryClient.invalidateQueries({
         queryKey: ["operations-maintenance", entityId],
       });
@@ -3250,6 +3450,14 @@ function MaintenanceDetailRoute() {
       return;
     }
     contractorSmsMutation.mutate();
+  };
+
+  const handleVendorPortalShare = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (vendorPortalShareDisabled) {
+      return;
+    }
+    vendorPortalShareMutation.mutate();
   };
 
   const closeoutMutation = useMutation({
@@ -3985,6 +4193,142 @@ function MaintenanceDetailRoute() {
                     />
                   ) : null}
                 </div>
+              </SectionPanel>
+
+              <SectionPanel title="Vendor portal" icon={<Eye size={17} />}>
+                <form className="grid gap-3 p-4 text-sm" onSubmit={handleVendorPortalShare}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      tone={vendorPortalIsVisible ? "success" : "neutral"}
+                    >
+                      {vendorPortalIsVisible
+                        ? "Visible in vendor portal"
+                        : "Hidden from portal"}
+                    </StatusBadge>
+                    {vendorPortalIsVisible && vendorPortalSharedAt(workOrder) ? (
+                      <span className="text-xs text-muted-foreground">
+                        Shared {formatDateTime(vendorPortalSharedAt(workOrder))}
+                      </span>
+                    ) : !vendorPortalIsVisible && vendorPortalHiddenAt(workOrder) ? (
+                      <span className="text-xs text-muted-foreground">
+                        Hidden {formatDateTime(vendorPortalHiddenAt(workOrder))}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <p className="rounded-md border border-border bg-muted/30 p-2 text-xs leading-5 text-muted-foreground">
+                    Local portal visibility only. No contractor email, SMS,
+                    provider dispatch, billing, payment, or reconciliation action
+                    runs.
+                  </p>
+
+                  <Field label="Vendor">
+                    <Select
+                      value={vendorPortalContractorDraft}
+                      onChange={(event) =>
+                        setVendorPortalContractorDraft(event.target.value)
+                      }
+                      disabled={contractorsQuery.isLoading || vendorPortalIsVisible}
+                    >
+                      <option value="">
+                        {contractorsQuery.isLoading
+                          ? "Loading vendors"
+                          : "Choose a vendor"}
+                      </option>
+                      {contractors.map((contractor) => (
+                        <option key={contractor.id} value={contractor.id}>
+                          {contractorOptionLabel(contractor)}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field label="Vendor-safe title">
+                    <Input
+                      value={vendorPortalTitleDraft}
+                      onChange={(event) =>
+                        setVendorPortalTitleDraft(event.target.value)
+                      }
+                      placeholder="Repair air conditioning"
+                      disabled={vendorPortalIsVisible}
+                    />
+                  </Field>
+
+                  <label className="grid gap-1.5">
+                    <span className="font-medium text-foreground">
+                      Vendor-visible note
+                    </span>
+                    <textarea
+                      aria-label="Vendor-visible note"
+                      value={vendorPortalCommentDraft}
+                      onChange={(event) =>
+                        setVendorPortalCommentDraft(event.target.value)
+                      }
+                      rows={3}
+                      disabled={vendorPortalIsVisible}
+                      className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+                      placeholder="Optional note for the vendor portal."
+                    />
+                  </label>
+
+                  <div className="flex flex-wrap gap-2">
+                    {vendorPortalIsVisible ? (
+                      <SecondaryButton
+                        type="button"
+                        disabled={vendorPortalUnshareMutation.isPending}
+                        onClick={() => vendorPortalUnshareMutation.mutate()}
+                      >
+                        {vendorPortalUnshareMutation.isPending ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <Ban size={15} />
+                        )}
+                        Hide from portal
+                      </SecondaryButton>
+                    ) : (
+                      <Button
+                        type="submit"
+                        disabled={
+                          vendorPortalShareDisabled ||
+                          vendorPortalShareMutation.isPending
+                        }
+                      >
+                        {vendorPortalShareMutation.isPending ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <Eye size={15} />
+                        )}
+                        Share to portal
+                      </Button>
+                    )}
+                    {vendorPortalIsVisible && vendorPortalPreviewHref ? (
+                      <Link
+                        href={vendorPortalPreviewHref}
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                      >
+                        <ArrowUpRight size={15} />
+                        Open portal preview
+                      </Link>
+                    ) : null}
+                  </div>
+
+                  {workOrder.status === "completed" ||
+                  workOrder.status === "cancelled" ? (
+                    <p className="text-xs text-warning">
+                      Closed work orders cannot be shared to the vendor portal.
+                    </p>
+                  ) : null}
+                  {vendorPortalShareMutation.error ? (
+                    <p className="text-sm text-danger">
+                      {friendlyError(vendorPortalShareMutation.error)}
+                    </p>
+                  ) : null}
+                  {vendorPortalUnshareMutation.error ? (
+                    <p className="text-sm text-danger">
+                      {friendlyError(vendorPortalUnshareMutation.error)}
+                    </p>
+                  ) : null}
+                </form>
               </SectionPanel>
 
               <SectionPanel title="Invoice" icon={<ReceiptText size={17} />}>

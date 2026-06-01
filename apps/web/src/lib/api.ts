@@ -1204,6 +1204,12 @@ export type MaintenanceWorkOrderPayload = {
   metadata?: Record<string, unknown>;
 };
 
+export type MaintenanceWorkOrderVendorPortalSharePayload = {
+  contractor_id: string;
+  title: string;
+  comment?: string | null;
+};
+
 export type ArrearsCaseStatus =
   | "monitoring"
   | "active"
@@ -3829,6 +3835,30 @@ export function addMaintenanceWorkOrderComment(
     {
       method: "POST",
       body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function shareMaintenanceWorkOrderToVendorPortal(
+  workOrderId: string,
+  payload: MaintenanceWorkOrderVendorPortalSharePayload,
+) {
+  return request<MaintenanceWorkOrderRecord>(
+    `/maintenance/work-orders/${workOrderId}/vendor-portal/share`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function unshareMaintenanceWorkOrderFromVendorPortal(
+  workOrderId: string,
+) {
+  return request<MaintenanceWorkOrderRecord>(
+    `/maintenance/work-orders/${workOrderId}/vendor-portal/unshare`,
+    {
+      method: "POST",
     },
   );
 }
