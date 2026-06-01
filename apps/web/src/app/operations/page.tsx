@@ -109,7 +109,7 @@ const WORK_ASSIGNMENT_TEMPLATE_KEY = "work_assignment_notification";
 const WORK_ASSIGNMENT_TEMPLATE_VERSION = "v1";
 const OPERATIONS_METRIC_LOADING_LABEL = "Checking";
 const OPERATIONS_QUEUE_EXPORT_GUARDRAIL =
-  "Review-only export: downloading this file does not send SendGrid or Twilio messages, send tenant owner or provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records.";
+  "Local-only review export: downloading this file does not send SendGrid or Twilio messages, send tenant, owner, or provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, perform Xero/Basiq writes, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records.";
 const ARREARS_REVIEW_PACKET_GUARDRAIL =
   "Review-only arrears packet: downloading or copying this file does not send email, SMS, tenant messages, owner messages, provider dispatch, Xero/Basiq writes, payment reconciliation, invoice updates, arrears status changes, reminder updates, escalation updates, or assignment updates.";
 

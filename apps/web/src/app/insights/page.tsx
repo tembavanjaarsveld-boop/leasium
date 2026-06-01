@@ -711,6 +711,19 @@ function InsightsWorkspace() {
     setReviewExportReceipt("Insights review CSV downloaded.");
   }
 
+  async function copyReviewPacket() {
+    if (!overview) {
+      return;
+    }
+    const packet = insightsReviewPacketCsv(overview, snapshots);
+    try {
+      await navigator.clipboard.writeText(packet);
+    } catch {
+      window.prompt("Copy insights review packet", packet);
+    }
+    setReviewExportReceipt("Insights review packet copied.");
+  }
+
   async function copySnapshotLink(value: string) {
     try {
       await navigator.clipboard.writeText(value);
@@ -826,6 +839,14 @@ function InsightsWorkspace() {
                   <RefreshCw size={15} />
                 )}
                 {isOverviewFetching ? "Refreshing…" : "Refresh"}
+              </SecondaryButton>
+              <SecondaryButton
+                type="button"
+                onClick={() => void copyReviewPacket()}
+                disabled={!overview}
+              >
+                <Copy size={15} />
+                Copy review packet
               </SecondaryButton>
               <SecondaryButton
                 type="button"

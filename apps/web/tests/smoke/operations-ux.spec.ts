@@ -3,13 +3,137 @@ import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
 
+function parseCsvRows(csv: string) {
+  return csv
+    .trim()
+    .split("\n")
+    .map((line) =>
+      Array.from(line.matchAll(/"((?:[^"]|"")*)"(?:,|$)/g), ([, cell]) =>
+        cell.replaceAll('""', '"'),
+      ),
+    );
+}
+
 test("mobile operations loading and queue actions stay readable", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockLeasiumApi(page);
+  const forbiddenMutationPaths: string[] = [];
+  const forbiddenPathPatterns = [
+    "/providers",
+    "/provider-dispatch",
+    "/provider-history",
+    "/billing",
+    "/invoice",
+    "/xero",
+    "/basiq",
+    "/payment",
+    "/reconciliation",
+    "/comms",
+    "/tenants",
+    "/tenant-onboarding",
+    "/contractors",
+    "/maintenance",
+    "/arrears",
+    "/obligations",
+    "/work-assignments",
+  ];
   await page.route("**/api/v1/**", async (route) => {
-    const path = new URL(route.request().url()).pathname;
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const apiPath = path.replace("/api/v1", "");
+    if (request.method() === "GET" && apiPath === "/maintenance/work-orders") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: "work-order-1",
+            entity_id: "entity-1",
+            property_id: "property-1",
+            tenancy_unit_id: "unit-1",
+            tenant_id: "tenant-1",
+            lease_id: "lease-1",
+            title: "Air conditioning fault",
+            description: "Tenant reported warm air from the shopfront unit.",
+            status: "awaiting_approval",
+            priority: "urgent",
+            requested_at: "2026-05-19T01:00:00.000Z",
+            contractor_name: "Cool Air Services",
+            contractor_email: "service@coolair.example",
+            contractor_phone: "07 3000 1111",
+            contractor_assigned_at: "2026-05-19T02:00:00.000Z",
+            approval_required: true,
+            approval_status: "pending",
+            approval_limit_cents: 50000,
+            quote_amount_cents: 64000,
+            approved_by_user_id: null,
+            approved_at: null,
+            approval_notes: null,
+            source_document_id: null,
+            invoice_draft_id: null,
+            invoice_reference: null,
+            invoice_amount_cents: null,
+            source_reference: "Tenant email",
+            due_date: "2026-05-20",
+            completed_at: null,
+            notes: "Needs owner approval before work proceeds.",
+            document_ids: [],
+            photo_document_ids: [],
+            metadata: {},
+            created_at: "2026-05-19T01:00:00.000Z",
+            updated_at: "2026-05-19T01:00:00.000Z",
+            deleted_at: null,
+          },
+          {
+            id: "work-order-formula",
+            entity_id: "entity-1",
+            property_id: "property-1",
+            tenancy_unit_id: "unit-1",
+            tenant_id: "tenant-1",
+            lease_id: "lease-1",
+            title: "=HYPERLINK(\"https://example.invalid\",\"open\")",
+            description: "+Tenant supplied spreadsheet-like subject",
+            status: "requested",
+            priority: "normal",
+            requested_at: "2026-05-19T03:00:00.000Z",
+            contractor_name: null,
+            contractor_email: null,
+            contractor_phone: null,
+            contractor_assigned_at: null,
+            approval_required: false,
+            approval_status: null,
+            approval_limit_cents: null,
+            quote_amount_cents: null,
+            approved_by_user_id: null,
+            approved_at: null,
+            approval_notes: null,
+            source_document_id: null,
+            invoice_draft_id: null,
+            invoice_reference: null,
+            invoice_amount_cents: null,
+            source_reference: "@tenant upload",
+            due_date: "2026-05-21",
+            completed_at: null,
+            notes: "-review before dispatch",
+            document_ids: [],
+            photo_document_ids: [],
+            metadata: {},
+            created_at: "2026-05-19T03:00:00.000Z",
+            updated_at: "2026-05-19T03:00:00.000Z",
+            deleted_at: null,
+          },
+        ]),
+      });
+      return;
+    }
+    if (
+      request.method() !== "GET" &&
+      forbiddenPathPatterns.some((pattern) => apiPath.startsWith(pattern))
+    ) {
+      forbiddenMutationPaths.push(`${request.method()} ${apiPath}`);
+    }
     if (!path.endsWith("/entities")) {
       await page.waitForTimeout(1200);
     }
@@ -43,6 +167,50 @@ test("mobile operations loading and queue actions stay readable", async ({
   const actionBox = await downloadQueueCsv.boundingBox();
   expect(actionBox).not.toBeNull();
   expect(actionBox?.width).toBeGreaterThanOrEqual(300);
+
+  const downloadPromise = page.waitForEvent("download");
+  await downloadQueueCsv.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(
+    "operations-work-queue-review.csv",
+  );
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  const csv = await readFile(downloadPath!, "utf8");
+  const rows = parseCsvRows(csv);
+
+  expect(rows[0]).toEqual([
+    "Kind",
+    "Title",
+    "Context",
+    "Due",
+    "Urgency",
+    "Completion",
+    "Assignee",
+    "Notification",
+    "Follow-up",
+    "Guardrail",
+  ]);
+  expect(csv).toContain("Local-only review export");
+  expect(csv).toContain("does not send SendGrid or Twilio messages");
+  expect(csv).toContain("dispatch providers");
+  expect(csv).toContain("Xero/Basiq writes");
+  expect(csv).toContain("payment reconciliation");
+  expect(csv).toContain(
+    "update maintenance, arrears, onboarding, or assignment records",
+  );
+  expect(csv).toContain("Air conditioning fault");
+  expect(csv).toContain(
+    "\"'=HYPERLINK(\"\"https://example.invalid\"\",\"\"open\"\")\"",
+  );
+  expect(
+    rows
+      .flat()
+      .filter(Boolean)
+      .filter((cell) => /^[=+\-@]/.test(cell)),
+  ).toEqual([]);
+  expect(csv).not.toMatch(/(?:^|,)"[=+\-@]/m);
+  expect(forbiddenMutationPaths).toEqual([]);
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });

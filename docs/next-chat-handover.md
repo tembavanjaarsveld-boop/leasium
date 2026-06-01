@@ -7,6 +7,26 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Insights packet copy and operations queue export guardrails
+- `/insights` now offers a local `Copy review packet` action beside
+  `Download review CSV`; both use the same loaded overview/snapshot review
+  packet data and preserve the review-only guardrail language.
+- Insights smoke stubs clipboard, copies and downloads the review packet,
+  compares the key review sections across both outputs, and traps provider,
+  Xero, send, payment, reconciliation, billing draft, invoice draft, and
+  snapshot create/revoke API paths.
+- Operations queue CSV guardrails now use local-only wording and explicitly
+  call out Xero/Basiq writes. The mobile operations smoke downloads
+  `operations-work-queue-review.csv`, verifies headers and guardrail text,
+  injects a formula-looking queue item, and proves the exported CSV is
+  formula-safe.
+- Agents implemented the two slices independently; final review caught the
+  missing Insights snapshot mutation trap, which was patched and reverified.
+- Verification: focused Insights smoke passed **2 passed**; focused mobile
+  Operations queue smoke passed **1 passed**; touched Insights + Operations UX
+  smokes passed **12 passed**; targeted frontend eslint, `tsc --noEmit`, and
+  `git diff --check` passed.
+
 ### Owner documents and completion packet mobile hardening
 - Owner portal shared-document metadata now wraps long unbroken property,
   source, and notes values inside the mobile document row instead of forcing

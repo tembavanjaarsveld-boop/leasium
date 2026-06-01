@@ -10,6 +10,51 @@ test.beforeEach(async ({ page }) => {
 test("insights exports review packet CSV from loaded overview data", async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as Window & { __copiedInsightsPacket?: string })
+            .__copiedInsightsPacket = text;
+        },
+      },
+    });
+  });
+
+  const forbiddenApiCalls: string[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+    const isSnapshotMutation =
+      request.method() !== "GET" &&
+      (path === "/insights/snapshots" ||
+        /^\/insights\/snapshots\/[^/]+\/revoke$/.test(path));
+    const isForbiddenPath =
+      isSnapshotMutation ||
+      path.includes("/provider") ||
+      path.includes("/xero") ||
+      path.includes("/send") ||
+      path.includes("/dispatch") ||
+      path.includes("/payment") ||
+      path.includes("/reconciliation") ||
+      path.includes("/comms") ||
+      path.includes("/billing-drafts") ||
+      path.includes("/invoice-drafts");
+
+    if (isForbiddenPath) {
+      forbiddenApiCalls.push(`${request.method()} ${path}`);
+      await route.fulfill({
+        status: 418,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "review packet must stay local-only" }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
   await page.goto("/insights");
 
   await expect(
@@ -25,6 +70,14 @@ test("insights exports review packet CSV from loaded overview data", async ({
   await expect(
     page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
   ).toBeVisible();
+
+  await page.getByRole("button", { name: "Copy review packet" }).click();
+  await expect(page.getByText("Insights review packet copied.")).toBeVisible();
+  const copiedPacket = await page.evaluate(
+    () =>
+      (window as Window & { __copiedInsightsPacket?: string })
+        .__copiedInsightsPacket ?? "",
+  );
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download review CSV" }).click();
@@ -50,6 +103,24 @@ test("insights exports review packet CSV from loaded overview data", async ({
   expect(csv).toContain(
     "Review-only export: downloading this file does not create or revoke snapshots, write Xero data, refresh providers, send SendGrid or Twilio messages, send tenant, owner, or provider email, apply payment reconciliation, generate billing drafts, dispatch providers, or mutate provider history.",
   );
+
+  for (const packet of [copiedPacket, csv]) {
+    expect(packet).toContain("Live exception");
+    expect(packet).toContain("Insurance certificate renewal");
+    expect(packet).toContain("Automation activity");
+    expect(packet).toContain("Created reviewed lease records");
+    expect(packet).toContain("Finance snapshot");
+    expect(packet).toContain("Accounting readiness");
+    expect(packet).toContain("Owner / entity snapshot");
+    expect(packet).toContain("Lease event");
+    expect(packet).toContain("Bright Cafe Pty Ltd rent review");
+    expect(packet).toContain("Snapshot history");
+    expect(packet).toContain("No saved snapshots");
+    expect(packet).toContain(
+      "Review-only export: downloading this file does not create or revoke snapshots, write Xero data, refresh providers, send SendGrid or Twilio messages, send tenant, owner, or provider email, apply payment reconciliation, generate billing drafts, dispatch providers, or mutate provider history.",
+    );
+  }
+  expect(forbiddenApiCalls).toEqual([]);
 });
 
 test("insights splits the Xero-status guardrail into label and caption", async ({
