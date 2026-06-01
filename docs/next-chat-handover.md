@@ -6,6 +6,17 @@ Last updated: 2026-06-01
 
 Continuation from the tenant portal account cache hardening slice.
 
+### Owner portal account cache hardening
+- `/owner-portal` account reads now use private owner-account query keys scoped
+  by auth user and owner context, fetch fresh Clerk bearer tokens with
+  `skipCache: true` when Clerk is enabled, and opt out of the shared five-minute
+  query cache with `staleTime: 0`, `gcTime: 0`, and refetch-on-mount.
+- A failed account-session read no longer keeps rendering previously cached
+  owner private data: owner name, property, statement totals, shared documents,
+  and maintenance rows are cleared behind the unavailable/recovery state.
+- Verification: owner portal account smoke passed **4 passed**; targeted
+  frontend eslint, `tsc --noEmit`, and `git diff --check` passed.
+
 ### Arrears review packet v1
 - Operations → Arrears rows now carry a read-only Review packet deriving next
   action, balance-age evidence, reminder/dispute/escalation/promise state,

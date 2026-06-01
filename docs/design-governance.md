@@ -137,6 +137,13 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   history, message bodies, source document ids, invoice handoff ids, raw
   metadata, completed work, or work from unlinked properties. Viewing it sends
   no messages and mutates no work orders or providers.
+- **Owner portal account cache hardening** (`/owner-portal`): account-scoped
+  owner status/session reads now use auth-user and owner-context query keys,
+  fresh Clerk bearer tokens, and no-stale-cache settings. If the private account
+  session read fails, the page shows the unavailable/recovery state without
+  retaining the previous owner name, property, statement totals, shared
+  documents, or maintenance rows. This is a privacy/safety hardening slice, not
+  a visual redesign.
 - **Canvas darkening** (globals.css, commit `65c1da8`): `--leasium-bg` #f6f8fb→#edf0f6 and `--leasium-slate-100` #f2f4f7→#e9edf3 so white cards lift off the background. Hierarchy preserved: cards (#fff) > canvas > muted/hover > border. Dial the canvas value if it reads too strong/weak on real data. Design source of truth §6 updated to match.
 - **Card elevation**: new `leasiumCard` Tailwind shadow — a tight contact layer + a soft ambient lift (`0 1px 2px /0.06, 0 4px 12px -2px /0.08`) — applied to `SectionPanel` and `DashboardMetricCard` so cards separate from the darker canvas; buttons/rows keep `leasiumXs`. Subtle border retained. Dial via the `leasiumCard` token in `apps/web/tailwind.config.ts`.
 - **Dark mode v1** (`apps/web/src/lib/appearance.ts`, `layout.tsx`, `AppHeader`, Settings, globals.css): workspace appearance now supports System, Light, and Dark. The first-paint script resolves the stored/system preference before React loads, toggles the root `.dark` class, and keeps `data-theme` / `data-appearance` in sync. The header utility button cycles the preference, Settings exposes the three choices, and smoke coverage checks Dashboard, Smart Intake, Properties, People/Tenants, and Operations on desktop + mobile for dark canvas/text and toolbar contrast. Clerk sign-in/sign-up remains pinned to the light Clerk appearance object; live hosted Clerk rendering under dark OS/browser settings stays a Remba/operator review item.

@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth, useUser } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { LogIn, RefreshCw } from "lucide-react";
 import Link from "next/link";
@@ -22,6 +23,21 @@ function accountHref(path: string) {
   return `${path}?redirect_url=${encodeURIComponent("/owner-portal")}`;
 }
 
+const privateOwnerAccountQueryOptions = {
+  retry: false,
+  staleTime: 0,
+  gcTime: 0,
+  refetchOnMount: "always" as const,
+};
+
+type OwnerAccountAuthContext = {
+  authLoaded: boolean;
+  queryEnabled: boolean;
+  requiresAuthToken: boolean;
+  userKey: string;
+  getAuthToken: () => Promise<string | null>;
+};
+
 function AccountLinks() {
   return (
     <div className="flex flex-wrap gap-3">
@@ -42,24 +58,59 @@ function AccountLinks() {
   );
 }
 
-function OwnerPortalEntryContent() {
+function OwnerPortalAccountQueries({ auth }: { auth: OwnerAccountAuthContext }) {
   const searchParams = useSearchParams();
   const month = searchParams.get("month") ?? ownerPortalStatementMonth();
   const statusQuery = useQuery({
-    queryKey: ["owner-portal-account-status"],
-    queryFn: () => getOwnerPortalAccountStatus(),
-    retry: false,
+    queryKey: ["owner-portal-account-status", auth.userKey],
+    queryFn: async () => {
+      const authToken = await auth.getAuthToken();
+      if (auth.requiresAuthToken && !authToken) {
+        throw new Error("Sign in before opening the owner portal.");
+      }
+      return getOwnerPortalAccountStatus(authToken);
+    },
+    enabled: auth.queryEnabled,
+    ...privateOwnerAccountQueryOptions,
   });
-  const accountLinked = statusQuery.data?.status === "active";
+  const accountStatus =
+    statusQuery.isSuccess && !statusQuery.isError ? statusQuery.data : null;
+  const accountLinked = accountStatus?.status === "active";
+  const ownerAccountContextKey =
+    accountStatus?.owner_id ?? accountStatus?.owner_name ?? "no-owner-account";
   const sessionQuery = useQuery({
-    queryKey: ["owner-portal-account-session", month],
-    queryFn: () => getOwnerPortalAccountSession(month),
-    enabled: accountLinked,
-    retry: false,
+    queryKey: [
+      "owner-portal-account-session",
+      auth.userKey,
+      ownerAccountContextKey,
+      month,
+    ],
+    queryFn: async () => {
+      const authToken = await auth.getAuthToken();
+      if (auth.requiresAuthToken && !authToken) {
+        throw new Error("Sign in before opening the owner portal.");
+      }
+      return getOwnerPortalAccountSession(month, authToken);
+    },
+    enabled: auth.queryEnabled && accountLinked,
+    ...privateOwnerAccountQueryOptions,
   });
 
-  if (statusQuery.isLoading) {
+  if (!auth.authLoaded || (auth.queryEnabled && statusQuery.isLoading)) {
     return <OwnerPortalLoading title="Checking owner account" />;
+  }
+
+  if (!auth.queryEnabled) {
+    return (
+      <OwnerPortalNotice title="Open your owner portal">
+        <p>
+          Sign in with the owner login linked to your Leasium owner portal. If
+          this is your first visit, open the claim link from the property team
+          first.
+        </p>
+        <AccountLinks />
+      </OwnerPortalNotice>
+    );
   }
 
   if (statusQuery.error) {
@@ -77,7 +128,7 @@ function OwnerPortalEntryContent() {
   }
 
   if (!accountLinked) {
-    const status = statusQuery.data?.status ?? "unlinked";
+    const status = accountStatus?.status ?? "unlinked";
     return (
       <OwnerPortalNotice
         title="Open your owner portal"
@@ -89,7 +140,7 @@ function OwnerPortalEntryContent() {
               ? "Owner account access revoked"
               : "No owner account linked"}
           </p>
-          <p className="mt-1">{statusQuery.data?.recovery_hint}</p>
+          <p className="mt-1">{accountStatus?.recovery_hint}</p>
         </div>
         <AccountLinks />
       </OwnerPortalNotice>
@@ -116,11 +167,58 @@ function OwnerPortalEntryContent() {
     );
   }
 
-  if (!sessionQuery.data) {
+  const accountSession =
+    sessionQuery.isSuccess && !sessionQuery.isError ? sessionQuery.data : null;
+
+  if (!accountSession) {
     return null;
   }
 
-  return <OwnerPortalAccountView portal={sessionQuery.data} />;
+  return <OwnerPortalAccountView portal={accountSession} />;
+}
+
+function OwnerPortalEntryContentWithAuth() {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { user, isLoaded: userLoaded } = useUser();
+  const authLoaded = isLoaded && userLoaded;
+
+  return (
+    <OwnerPortalAccountQueries
+      auth={{
+        authLoaded,
+        queryEnabled: authLoaded && isSignedIn && Boolean(user?.id),
+        requiresAuthToken: true,
+        userKey: user?.id ?? "signed-out",
+        getAuthToken: () => getToken({ skipCache: true }),
+      }}
+    />
+  );
+}
+
+function OwnerPortalEntryContentWithoutAuth() {
+  return (
+    <OwnerPortalAccountQueries
+      auth={{
+        authLoaded: true,
+        queryEnabled: true,
+        requiresAuthToken: false,
+        userKey: "auth-provider-disabled",
+        getAuthToken: async () => null,
+      }}
+    />
+  );
+}
+
+function OwnerPortalEntryContent() {
+  const ownerAccountAuthEnabled = Boolean(
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  );
+
+  return ownerAccountAuthEnabled ? (
+    <OwnerPortalEntryContentWithAuth />
+  ) : (
+    <OwnerPortalEntryContentWithoutAuth />
+  );
 }
 
 export default function OwnerPortalAccountEntryPage() {

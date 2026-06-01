@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const OWNER_INVITE_PREVIEW = {
   owner_display_name: "Owner Portal Pty Ltd",
@@ -108,6 +108,20 @@ const OWNER_PORTAL_ACCOUNT_RESPONSE = {
   ],
   generated_at: "2026-05-31T00:00:00.000Z",
 };
+
+async function navigateWithAppRouter(page: Page, href: string) {
+  await page.evaluate((targetHref) => {
+    const router = (
+      window as typeof window & {
+        next?: { router?: { push: (href: string) => void } };
+      }
+    ).next?.router;
+    if (!router) {
+      throw new Error("Next router unavailable.");
+    }
+    router.push(targetHref);
+  }, href);
+}
 
 test("owner claim link shows only safe context before account claim", async ({
   page,
@@ -244,6 +258,91 @@ test("owner account entry opens a linked owner portal without owner id", async (
   );
   expect(downloads).toHaveLength(1);
   await expect(page.getByText("operator_preview")).toHaveCount(0);
+});
+
+test("owner account entry clears owner data after account session failure", async ({
+  page,
+}) => {
+  let failSessionReads = false;
+
+  await page.route("**/api/v1/owner-portal/account/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "active",
+        owner_id: "owner-1",
+        owner_name: "Owner Portal Pty Ltd",
+        email: "owner@example.test",
+        linked_at: "2026-05-31T00:00:00.000Z",
+        last_seen_at: "2026-05-31T00:00:00.000Z",
+        revoked_at: null,
+        recovery_hint:
+          "This owner login can open the owner portal without the original claim link.",
+      }),
+    });
+  });
+  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
+    if (failSessionReads) {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Owner account session expired." }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(OWNER_PORTAL_ACCOUNT_RESPONSE),
+    });
+  });
+
+  await page.goto("/owner-portal?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Owner portal" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Owner Portal Pty Ltd").first()).toBeVisible();
+  await expect(page.getByText("Owner Portal Plaza").first()).toBeVisible();
+  await expect(page.getByText("$5,500").first()).toBeVisible();
+  await expect(
+    page.getByText("owner-visible-report.pdf", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByText("Lift service approval")).toBeVisible();
+  await expect(page.getByText("$2,200 quote")).toBeVisible();
+
+  failSessionReads = true;
+
+  await navigateWithAppRouter(page, "/owner-portal?month=2026-06");
+  await expect(page).toHaveURL(/month=2026-06/);
+  await expect(
+    page.getByRole("heading", { name: "Owner portal unavailable" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Owner Portal Pty Ltd")).toHaveCount(0);
+  await expect(page.getByText("Owner Portal Plaza")).toHaveCount(0);
+  await expect(page.getByText("$5,500")).toHaveCount(0);
+  await expect(
+    page.getByText("owner-visible-report.pdf", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Lift service approval")).toHaveCount(0);
+  await expect(page.getByText("$2,200 quote")).toHaveCount(0);
+
+  await navigateWithAppRouter(page, "/owner-portal?month=2026-05");
+  await expect(page).toHaveURL(/month=2026-05/);
+
+  await expect(
+    page.getByRole("heading", { name: "Owner portal unavailable" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Owner Portal Pty Ltd")).toHaveCount(0);
+  await expect(page.getByText("Owner Portal Plaza")).toHaveCount(0);
+  await expect(page.getByText("$5,500")).toHaveCount(0);
+  await expect(
+    page.getByText("owner-visible-report.pdf", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Lift service approval")).toHaveCount(0);
+  await expect(page.getByText("$2,200 quote")).toHaveCount(0);
 });
 
 test("owner account entry guides unlinked or revoked logins without data", async ({
