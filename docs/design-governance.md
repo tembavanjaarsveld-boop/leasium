@@ -181,6 +181,14 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   is rolled back into the same 409 recovery path. Migration `20260601_0032`
   adds the database invariant: one active owner portal account per Clerk
   provider id.
+- **Owner portal production smoke runway** (`docs/owner-portal-production-smoke.md`):
+  live-Clerk owner verification is now split into a read-only account smoke and
+  a separately approved claim pass. The read-only smoke opens `/owner-portal`
+  with a saved owner Clerk session, allows only owner account status/session
+  reads plus optional shared-document download, and aborts owner portal
+  mutations, statement dispatch/PDF, Comms, Xero, Basiq, payments, and
+  reconciliation requests. Use this before broad rollout, after the target
+  database proves migration `20260601_0032`.
 - **Owner portal preview error/cache parity** (`/owner-portal/[ownerId]`):
   operator-preview reads now match the tenant preview freshness pattern with
   no stale cache, no retry delay, and refetch-on-return. 404s must use

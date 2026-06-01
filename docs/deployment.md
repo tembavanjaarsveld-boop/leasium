@@ -445,6 +445,82 @@ from a wheel. Run Alembic from the repository or extracted artifact root so the
 existing `script_location = migrations` setting resolves to the bundled
 `migrations/` directory.
 
+### Owner Portal Migration `20260601_0032`
+
+Before applying owner portal migration `20260601_0032`, verify the SQL console
+or Render shell is pointed at the intended Neon/production database. Runtime
+Alembic uses the active `DATABASE_URL` through `migrations/env.py`, not the
+static URL in `alembic.ini`.
+
+```sql
+SELECT current_database() AS database_name,
+       current_user AS database_user,
+       inet_server_addr() AS server_addr,
+       inet_server_port() AS server_port;
+
+SELECT version_num FROM alembic_version;
+```
+
+Run the duplicate-active-provider preflight on that same target database:
+
+```sql
+SELECT
+  auth_provider,
+  auth_provider_id,
+  COUNT(*) AS active_rows,
+  array_agg(id ORDER BY updated_at DESC) AS account_ids,
+  array_agg(owner_id ORDER BY updated_at DESC) AS owner_ids,
+  array_agg(email ORDER BY updated_at DESC) AS emails
+FROM owner_portal_account
+WHERE status = 'active'
+  AND revoked_at IS NULL
+  AND deleted_at IS NULL
+GROUP BY auth_provider, auth_provider_id
+HAVING COUNT(*) > 1;
+```
+
+If rows are returned, do not apply the migration yet. Pick the intended
+surviving owner account for each provider identity, then revoke or soft-delete
+duplicates in a transaction and rerun the preflight:
+
+```sql
+BEGIN;
+
+UPDATE owner_portal_account
+SET status = 'revoked',
+    revoked_at = COALESCE(revoked_at, now()),
+    updated_at = now()
+WHERE id IN ('duplicate-account-id');
+
+-- Rerun the duplicate preflight here; COMMIT only when it returns no rows.
+COMMIT;
+```
+
+After Render runs `alembic upgrade head`, verify the target database reached the
+new revision and has the unique partial index:
+
+```sql
+SELECT version_num FROM alembic_version;
+
+SELECT schemaname, indexname, indexdef
+FROM pg_indexes
+WHERE tablename = 'owner_portal_account'
+  AND indexname = 'owner_portal_account_auth_provider_active_idx';
+```
+
+Recovery guidance:
+
+- If the migration fails on duplicates, Postgres should leave the database at
+  the previous revision. Clean the duplicate active rows on the same target
+  database, then rerun the deploy/start command.
+- If the migration succeeds but the API deploy fails, redeploy the same or newer
+  artifact containing `20260601_0032`; do not run an older backend against the
+  advanced database.
+- If an emergency rollback is required after a successful migration, run
+  `alembic downgrade 20260531_0031` from an artifact that contains this
+  migration. That drops the index only; it does not undo any manual duplicate
+  cleanup. Restore from backup if cleanup touched the wrong rows.
+
 Treat Alembic migrations and the API runtime as one release. If Render applies a
 new migration and the deploy then falls back to an older service image or commit,
 the older code may fail on startup because the database `alembic_version` points

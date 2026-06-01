@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -125,6 +126,26 @@ const OWNER_AUTH_SMOKE_TOKEN =
 const OWNER_AUTH_SMOKE_ENABLED = Boolean(
   OWNER_AUTH_SMOKE_TOKEN && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
 );
+const OWNER_PORTAL_LIVE_ENABLED =
+  process.env.LEASIUM_SMOKE_OWNER_PORTAL_ACCOUNT_LIVE === "1" ||
+  process.env.LEASIUM_SMOKE_OWNER_PORTAL_LIVE === "1";
+const OWNER_PORTAL_LIVE_OWNER_STORAGE =
+  process.env.LEASIUM_SMOKE_OWNER_PORTAL_STORAGE ??
+  process.env.LEASIUM_SMOKE_OWNER_PORTAL_OWNER_STORAGE;
+const OWNER_PORTAL_LIVE_OWNER_STORAGE_EXISTS =
+  Boolean(OWNER_PORTAL_LIVE_OWNER_STORAGE) &&
+  existsSync(OWNER_PORTAL_LIVE_OWNER_STORAGE!);
+const OWNER_PORTAL_LIVE_BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "";
+const OWNER_PORTAL_LIVE_BASE_URL_IS_HTTPS =
+  OWNER_PORTAL_LIVE_BASE_URL.startsWith("https://");
+const OWNER_PORTAL_LIVE_MONTH =
+  process.env.LEASIUM_SMOKE_OWNER_PORTAL_MONTH ?? "2026-05";
+const OWNER_PORTAL_LIVE_EXPECT_OWNER =
+  process.env.LEASIUM_SMOKE_OWNER_PORTAL_EXPECT_OWNER_NAME ??
+  process.env.LEASIUM_SMOKE_OWNER_PORTAL_EXPECT_OWNER;
+const OWNER_PORTAL_LIVE_EXPECT_DOCUMENT =
+  process.env.LEASIUM_SMOKE_OWNER_PORTAL_EXPECT_DOCUMENT;
+const EMPTY_STORAGE_STATE = { cookies: [], origins: [] };
 
 const OWNER_PORTAL_ACCOUNT_EMPTY_RESPONSE = {
   ...OWNER_PORTAL_ACCOUNT_RESPONSE,
@@ -328,6 +349,154 @@ function skipCacheCallCount(tokenOptions: unknown[]) {
       (option as { skipCache?: unknown }).skipCache === true,
   ).length;
 }
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+test.describe("live Clerk owner portal account", () => {
+  test.skip(
+    !OWNER_PORTAL_LIVE_ENABLED ||
+      !OWNER_PORTAL_LIVE_BASE_URL_IS_HTTPS ||
+      !OWNER_PORTAL_LIVE_OWNER_STORAGE_EXISTS,
+    "Runs only with an explicit HTTPS live owner Clerk storage state.",
+  );
+
+  test.use({
+    storageState: OWNER_PORTAL_LIVE_OWNER_STORAGE_EXISTS
+      ? OWNER_PORTAL_LIVE_OWNER_STORAGE
+      : EMPTY_STORAGE_STATE,
+  });
+
+  test("live Clerk owner account opens read-only owner portal without mutations", async ({
+    page,
+  }) => {
+    const unsafeRequests: string[] = [];
+    const ownerAccountRequests: string[] = [];
+    const ownerAccountAuthorizations: string[] = [];
+    await page.route("**/api/v1/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname;
+      const method = request.method();
+      const isOwnerAccountReadPath =
+        path === "/api/v1/owner-portal/account/status" ||
+        path === "/api/v1/owner-portal/account/session";
+      const isDocumentDownloadPath =
+        Boolean(OWNER_PORTAL_LIVE_EXPECT_DOCUMENT) &&
+        path.startsWith("/api/v1/owner-portal/account/documents/") &&
+        path.endsWith("/download");
+      const isOwnerAccountRead =
+        method === "GET" && isOwnerAccountReadPath;
+      const isAllowedDocumentDownload =
+        method === "GET" && isDocumentDownloadPath;
+      const isAllowedPreflight =
+        method === "OPTIONS" &&
+        (isOwnerAccountReadPath || isDocumentDownloadPath);
+      if (isOwnerAccountRead || isAllowedDocumentDownload) {
+        ownerAccountRequests.push(`${method} ${path}`);
+        const authorization = request.headers().authorization;
+        if (authorization) {
+          ownerAccountAuthorizations.push(authorization);
+        }
+      }
+
+      const unsafeOwnerPortalRequest =
+        path.startsWith("/api/v1/owner-portal/") &&
+        !isOwnerAccountRead &&
+        !isAllowedDocumentDownload &&
+        !isAllowedPreflight;
+      const unsafeProviderOrDispatchRequest =
+        path.startsWith("/api/v1/owners/statements/send") ||
+        path.startsWith("/api/v1/owners/statements/dispatch") ||
+        path.startsWith("/api/v1/owners/statements/pdf") ||
+        path.startsWith("/api/v1/comms") ||
+        path.startsWith("/api/v1/xero") ||
+        path.startsWith("/api/v1/basiq") ||
+        path.startsWith("/api/v1/payments") ||
+        path.startsWith("/api/v1/reconciliation");
+      if (unsafeOwnerPortalRequest || unsafeProviderOrDispatchRequest) {
+        unsafeRequests.push(`${method} ${path}`);
+        await route.abort();
+        return;
+      }
+
+      await route.continue();
+    });
+
+    await page.goto(
+      `/owner-portal?month=${encodeURIComponent(OWNER_PORTAL_LIVE_MONTH)}`,
+    );
+    expect(page.url()).not.toContain("/sign-in");
+    expect(page.url()).not.toContain("/sign-up");
+    expect(page.url()).not.toContain("/welcome");
+    expect(page.url()).not.toContain("/access");
+
+    await expect(
+      page.getByRole("heading", { name: "Owner portal" }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Owner account", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Owner-visible packet" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy packet" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Download packet CSV" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Access boundary" }),
+    ).toBeVisible();
+    await expect(page.getByText("Read-only owner portal")).toBeVisible();
+    await expect(page.getByText("No owner account linked")).toHaveCount(0);
+    await expect(page.getByText("Owner portal unavailable")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Sign in" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Create login" })).toHaveCount(
+      0,
+    );
+    await expect(page.getByText("owner_portal_account")).toHaveCount(0);
+    await expect(page.getByText("operator_preview")).toHaveCount(0);
+    await expect(page.getByText("operator_upload")).toHaveCount(0);
+    await expect(page.getByText("twilio-secret")).toHaveCount(0);
+    await expect(page.getByText("sendgrid-secret")).toHaveCount(0);
+    if (OWNER_PORTAL_LIVE_EXPECT_OWNER) {
+      await expect(
+        page.getByText(OWNER_PORTAL_LIVE_EXPECT_OWNER).first(),
+      ).toBeVisible();
+    }
+
+    expect(ownerAccountRequests).toContain(
+      "GET /api/v1/owner-portal/account/status",
+    );
+    expect(ownerAccountRequests).toContain(
+      "GET /api/v1/owner-portal/account/session",
+    );
+    expect(ownerAccountAuthorizations.length).toBeGreaterThanOrEqual(2);
+    expect(
+      ownerAccountAuthorizations.every((header) => header.startsWith("Bearer ")),
+    ).toBe(true);
+
+    const packetDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download packet CSV" }).click();
+    await packetDownloadPromise;
+
+    if (OWNER_PORTAL_LIVE_EXPECT_DOCUMENT) {
+      const documentDownloadPromise = page.waitForEvent("download");
+      await page
+        .getByRole("button", {
+          name: new RegExp(
+            `^Download ${escapeRegExp(OWNER_PORTAL_LIVE_EXPECT_DOCUMENT)} for `,
+          ),
+        })
+        .first()
+        .click();
+      expect((await documentDownloadPromise).suggestedFilename()).toBe(
+        OWNER_PORTAL_LIVE_EXPECT_DOCUMENT,
+      );
+    }
+
+    expect(unsafeRequests).toEqual([]);
+  });
+});
 
 test("owner invite claim sends fresh owner bearer token when auth is enabled", async ({
   page,

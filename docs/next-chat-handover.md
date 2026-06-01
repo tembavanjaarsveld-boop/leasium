@@ -50,6 +50,28 @@ review-packet slices.
   `.venv/bin/python -m pytest tests/integration/test_owner_portal_auth_api.py -q`
   passed **12 passed**; targeted backend `ruff` passed.
 
+### Owner portal production smoke runway
+- Added `docs/owner-portal-production-smoke.md` for the owner rollout proof:
+  target-database duplicate-active-provider preflight, migration
+  `20260601_0032` verification, Clerk guard preflight, owner Clerk storage-state
+  capture, read-only owner-account smoke, optional shared-document download, and
+  a separately approved claim pass.
+- Added an opt-in Playwright smoke in
+  `apps/web/tests/smoke/owner-portal-account.spec.ts`, gated by
+  `LEASIUM_SMOKE_OWNER_PORTAL_ACCOUNT_LIVE=1`,
+  `PLAYWRIGHT_BASE_URL=https://...`, and
+  `LEASIUM_SMOKE_OWNER_PORTAL_STORAGE=<storage-state.json>`. It opens only
+  `/owner-portal`, proves the live owner account status/session reads carry
+  bearer auth, verifies the owner portal/access-boundary/packet controls, and
+  aborts forbidden owner-portal mutation, statement dispatch/PDF, Comms, Xero,
+  Basiq, payment, and reconciliation requests. Shared-document download remains
+  optional via `LEASIUM_SMOKE_OWNER_PORTAL_EXPECT_DOCUMENT`.
+- Added deployment docs for the `20260601_0032` target-database proof and
+  duplicate cleanup/rollback guidance. Automated Alembic migration coverage
+  still requires `TEST_DATABASE_URL`; local smoke without that URL skips.
+- Verification: live owner account smoke default run passed as **1 skipped**;
+  targeted frontend `eslint` for the smoke spec passed.
+
 ### Owner statement ZIP CSV hardening
 - Backend owner statement ZIP packs now formula-harden both included CSVs:
   `MANIFEST-{month}.csv` and `INVOICE-EVIDENCE-{month}.csv`.
@@ -888,8 +910,7 @@ before the Ticket 2.2 slice.
 1. Apply/verify migration `20260601_0032` in the target database before broad
    owner rollout. If the duplicate preflight fails, revoke or soft-delete the
    duplicate active owner portal account rows first.
-2. Test production owner invites and secure document downloads with a real Clerk
-   owner account before broad owner rollout.
+2. Run `docs/owner-portal-production-smoke.md` with a real Clerk owner account.
    This is blocked in Codex without operator input: it needs a real operator
    Clerk session, a chosen production owner, a matching owner Clerk account, an
    eligible `owner_portal_visible` document, and explicit approval because invite
