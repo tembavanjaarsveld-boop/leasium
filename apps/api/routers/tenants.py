@@ -167,6 +167,17 @@ def _parse_datetime(value: Any) -> datetime | None:
         return None
 
 
+def _parse_uuid(value: Any) -> UUID | None:
+    if isinstance(value, UUID):
+        return value
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return UUID(value)
+    except ValueError:
+        return None
+
+
 def _account_recovery_receipt(account: TenantPortalAccount) -> dict[str, Any]:
     receipt = (account.account_metadata or {}).get("last_recovery_receipt")
     return receipt if isinstance(receipt, dict) else {}
@@ -784,12 +795,12 @@ def _reviewed_change_history(
                     occurred_at=occurred_at,
                     source=str(source or "tenant_onboarding"),
                     source_label="Tenant onboarding",
-                    source_id=UUID(source_id) if isinstance(source_id, str) else None,
+                    source_id=_parse_uuid(source_id),
                     status=str(entry.get("status") or "applied"),
                     notes=notes if isinstance(notes, str) else None,
                     changes=_change_rows(entry.get("changes")),
+                )
             )
-        )
 
     portal_requests = (tenant.tenant_metadata or {}).get(PORTAL_CONTACT_REQUESTS_KEY)
     if isinstance(portal_requests, list):
@@ -806,10 +817,7 @@ def _reviewed_change_history(
                 continue
             source_uuid: UUID | None = None
             if isinstance(request_id, str):
-                try:
-                    source_uuid = UUID(request_id)
-                except ValueError:
-                    source_uuid = None
+                source_uuid = _parse_uuid(request_id)
             notes = entry.get("notes")
             rows.append(
                 TenantReviewedChangeRead(

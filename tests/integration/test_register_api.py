@@ -185,6 +185,48 @@ def test_tenant_crud_writes_audit_and_filters_soft_deleted(
     assert session.scalar(select(Tenant).where(Tenant.id == UUID(tenant_id))) is not None
 
 
+def test_tenant_detail_ignores_invalid_legacy_review_source_id(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/tenants",
+        json={
+            "entity_id": entity_id,
+            "legal_name": "Legacy Review Tenant Pty Ltd",
+            "metadata": {
+                "reviewed_change_history": [
+                    {
+                        "source": "tenant_onboarding",
+                        "tenant_onboarding_id": "legacy-import-row",
+                        "status": "applied",
+                        "applied_at": "2026-05-31T09:30:00+00:00",
+                        "changes": [
+                            {
+                                "field": "contact_email",
+                                "label": "Contact email",
+                                "before": "old@example.test",
+                                "after": "new@example.test",
+                            }
+                        ],
+                    }
+                ]
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    tenant_id = create_response.json()["id"]
+
+    detail_response = client.get(f"/api/v1/tenants/{tenant_id}/detail")
+
+    assert detail_response.status_code == 200
+    reviewed_change = detail_response.json()["reviewed_changes"][0]
+    assert reviewed_change["source_id"] is None
+    assert reviewed_change["changes"][0]["after"] == "new@example.test"
+
+
 def test_lease_crud_inherits_unit_property_and_tenant_scope(
     client: TestClient,
     session: Session,
