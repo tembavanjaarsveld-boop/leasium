@@ -6,6 +6,26 @@ Last updated: 2026-06-01
 
 Continuation from the tenant portal account cache hardening slice.
 
+### Installable PWA mobile runway v1
+- Web now exposes a typed App Router manifest at `/manifest.webmanifest` with
+  `display: standalone`, root `start_url`/`scope`, Leasium theme/background
+  colours, the existing SVG app icon, and shortcuts for Smart Intake, People,
+  and Money.
+- Root metadata now emits application name, manifest link, icon/apple icon
+  links, mobile-web-app and Apple standalone tags, format-detection guard, and
+  a `viewport` export with `viewport-fit=cover`, light/dark `theme-color`, and
+  `color-scheme: light dark`.
+- `/manifest.webmanifest` is public through the temporary access gate alongside
+  `/icon.svg`; the v1 deliberately adds no service worker, Workbox, runtime
+  cache, or private-data offline storage.
+- Red-green proof was captured in
+  `apps/web/tests/smoke/pwa-mobile.spec.ts`: it first failed for missing
+  manifest/standalone metadata and for the manifest route being gated, then
+  passed after the metadata + public-route changes.
+- Verification: PWA/mobile smoke passed **3 passed**; adjacent mobile-header
+  smoke passed **1 passed**; targeted frontend `eslint`, `tsc --noEmit`,
+  `git diff --check`, and production-style `next build` passed.
+
 ### Tenant portal backend account-scope hardening
 - Backend tenant portal reads now keep the durable account boundary all the way
   through shared portal endpoints: if a request carries a valid Clerk bearer
@@ -590,15 +610,13 @@ before the Ticket 2.2 slice.
    eligible `owner_portal_visible` document, and explicit approval because invite
    creation/account claim mutate production state, even though they send no
    owner email and touch no providers.
-2. Installable PWA mobile runway v1 is the next low-provider-risk UX slice:
-   manifest/standalone metadata plus mobile shell smoke, with no service worker
-   or private-data offline caching in v1.
-3. Add backend account/session scoping regression tests for multi-onboarding or
-   relinked tenant accounts before broader tenant rollout. Focus on
-   `/tenant-portal/account/session` and account-scoped documents/maintenance so
-   a linked Clerk user cannot receive another tenant's invoices, documents, or
-   portal details after relinks, revoked/restored accounts, or overlapping
-   onboarding history.
+2. Real-device PWA install review on iOS/Android: confirm the standalone launch
+   experience and decide whether to add PNG/maskable icons or launch images.
+   Keep v1's no-service-worker/no-private-offline-data constraint unless the
+   operator explicitly approves an offline strategy.
+3. Continue the low-provider-risk UX runway: mobile bottom-nav/field-operator
+   shell review, then vendor portal read-only foundations. Avoid provider
+   sends/writes unless explicitly approved.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel

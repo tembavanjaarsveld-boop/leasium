@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { OperatorAuthProvider } from "@/components/operator-auth-provider";
@@ -18,8 +18,36 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  applicationName: "Leasium",
   title: "Leasium | Lease operations, automated",
   description: "Review-first automation for lease and tenant workflows.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Leasium",
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#edf0f6" },
+    { media: "(prefers-color-scheme: dark)", color: "#0d1424" },
+  ],
 };
 
 export default function RootLayout({
