@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import { mockLeasiumApi } from "./api-mocks";
 
@@ -127,6 +127,20 @@ const OWNER_PORTAL_EMPTY_RESPONSE = {
     items: [],
   },
 };
+
+async function navigateWithAppRouter(page: Page, href: string) {
+  await page.evaluate((targetHref) => {
+    const router = (
+      window as typeof window & {
+        next?: { router?: { push: (href: string) => void } };
+      }
+    ).next?.router;
+    if (!router) {
+      throw new Error("Next router unavailable.");
+    }
+    router.push(targetHref);
+  }, href);
+}
 
 test("owner portal preview renders read-only owner statement data", async ({
   page,
@@ -283,6 +297,123 @@ test("self-managed accounts do not open operator owner portal previews", async (
     page.getByRole("link", { name: "Open entity statements" }),
   ).toHaveAttribute("href", "/statements");
   expect(ownerPortalRequests).toEqual([]);
+});
+
+test("owner portal preview shows not-found copy without stale owner data", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await page.route("**/api/v1/owner-portal/owner-missing**", async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: "Owner portal preview not found for this owner.",
+      }),
+    });
+  });
+
+  await page.goto("/owner-portal/owner-missing?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Owner portal preview not found" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByText("Owner portal preview not found for this owner."),
+  ).toBeVisible();
+  await expect(page.getByText("SKJ Holdings Pty Ltd")).toHaveCount(0);
+  await expect(page.getByText("Queen Street Retail Centre")).toHaveCount(0);
+  await expect(page.getByText("$17,600")).toHaveCount(0);
+});
+
+test("owner portal preview keeps service failures generic with API detail", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await page.route("**/api/v1/owner-portal/owner-1**", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: "Owner portal provider temporarily unavailable.",
+      }),
+    });
+  });
+
+  await page.goto("/owner-portal/owner-1?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Owner portal unavailable" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByText("Owner portal provider temporarily unavailable."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Owner portal preview not found" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("SKJ Holdings Pty Ltd")).toHaveCount(0);
+});
+
+test("owner portal preview refetches on return and clears stale owner data", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  let ownerOneMode: "success" | "not_found" = "success";
+  let ownerOneRequests = 0;
+
+  await page.route("**/api/v1/owner-portal/owner-1**", async (route) => {
+    ownerOneRequests += 1;
+    if (ownerOneMode === "not_found") {
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: "Owner portal preview no longer exists.",
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(OWNER_PORTAL_RESPONSE),
+    });
+  });
+  await page.route("**/api/v1/owner-portal/owner-2**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...OWNER_PORTAL_RESPONSE,
+        owner: {
+          ...OWNER_PORTAL_RESPONSE.owner,
+          id: "owner-2",
+          display_name: "Other Owner Pty Ltd",
+          legal_name: "Other Owner Pty Ltd",
+        },
+      }),
+    });
+  });
+
+  await page.goto("/owner-portal/owner-1?month=2026-05");
+  await expect(page.getByText("SKJ Holdings Pty Ltd").first()).toBeVisible({
+    timeout: 15_000,
+  });
+
+  ownerOneMode = "not_found";
+  await navigateWithAppRouter(page, "/owner-portal/owner-2?month=2026-05");
+  await expect(page.getByText("Other Owner Pty Ltd").first()).toBeVisible();
+  await navigateWithAppRouter(page, "/owner-portal/owner-1?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Owner portal preview not found" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Owner portal preview no longer exists."),
+  ).toBeVisible();
+  await expect(page.getByText("SKJ Holdings Pty Ltd")).toHaveCount(0);
+  await expect(page.getByText("Queen Street Retail Centre")).toHaveCount(0);
+  expect(ownerOneRequests).toBeGreaterThanOrEqual(2);
 });
 
 test("owner portal preview renders mobile empty states without overflow", async ({

@@ -345,6 +345,10 @@ Equifax/illion; RTBA/state RTAs).
   no properties, no statement, no shared documents, and no open maintenance,
   including visible packet controls, read-only guardrails, no horizontal
   overflow, and no unsafe provider/accounting/document-download calls.
+  2026-06-01 follow-up 2: operator-preview reads now avoid the shared
+  five-minute query cache, refetch on return, render 404s as `Owner portal
+  preview not found`, and clear stale owner/property/statement rows when a
+  previously valid preview disappears.
 - [x] **CSV export hardening v1.** Review/export CSV builders now share
   `apps/web/src/lib/csv.ts`, which quotes all cells, preserves embedded quotes,
   and prefixes spreadsheet formula-looking values before download. Dashboard,

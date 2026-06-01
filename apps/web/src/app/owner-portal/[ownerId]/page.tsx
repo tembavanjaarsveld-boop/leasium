@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
 import { QueryProvider } from "@/components/query-provider";
-import { getOwnerPortal } from "@/lib/api";
+import { ApiError, getOwnerPortal } from "@/lib/api";
 import {
   isManagingAgentOperatingMode,
   useOperatingMode,
@@ -18,6 +18,10 @@ import {
   OwnerPortalLoading,
   OwnerPortalNotice,
 } from "../owner-portal-account-ui";
+
+function isOwnerPortalPreviewNotFoundError(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
+}
 
 function OwnerPortalContent() {
   const params = useParams<{ ownerId?: string | string[] }>();
@@ -33,7 +37,11 @@ function OwnerPortalContent() {
     queryKey: ["owner-portal", ownerId, month],
     queryFn: () => getOwnerPortal(ownerId ?? "", month ?? ""),
     enabled: Boolean(ownerId && month && showOwnerPortalPreview),
+    refetchOnMount: "always",
+    retry: false,
+    staleTime: 0,
   });
+  const previewNotFound = isOwnerPortalPreviewNotFoundError(portalQuery.error);
 
   if (!month) {
     return (
@@ -74,7 +82,14 @@ function OwnerPortalContent() {
 
   if (portalQuery.error) {
     return (
-      <OwnerPortalNotice title="Owner portal unavailable" tone="danger">
+      <OwnerPortalNotice
+        title={
+          previewNotFound
+            ? "Owner portal preview not found"
+            : "Owner portal unavailable"
+        }
+        tone={previewNotFound ? "warning" : "danger"}
+      >
         <p>{friendlyError(portalQuery.error)}</p>
       </OwnerPortalNotice>
     );

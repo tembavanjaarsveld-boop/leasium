@@ -156,6 +156,12 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   retaining the previous owner name, property, statement totals, shared
   documents, or maintenance rows. This is a privacy/safety hardening slice, not
   a visual redesign.
+- **Owner portal preview error/cache parity** (`/owner-portal/[ownerId]`):
+  operator-preview reads now match the tenant preview freshness pattern with
+  no stale cache, no retry delay, and refetch-on-return. 404s must use
+  `Owner portal preview not found` instead of a generic outage state, and stale
+  owner/property/statement rows must disappear if a previously valid preview
+  later returns 404.
 - **Owner portal mobile empty-state parity** (`/owner-portal`,
   `/owner-portal/[ownerId]`): owner account and operator-preview dashboards now
   have matching mobile smoke coverage for no linked properties, no statement,

@@ -7,6 +7,20 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Owner portal preview error/cache parity
+- `/owner-portal/[ownerId]` now follows the tenant operator-preview freshness
+  pattern: preview reads use `retry: false`, `staleTime: 0`, and
+  `refetchOnMount: "always"` so returning to an owner preview rechecks the
+  backend instead of trusting the shared five-minute query cache.
+- 404s render `Owner portal preview not found` with the API detail, while
+  non-404 failures stay on the generic `Owner portal unavailable` path.
+- Guardrails: the smoke proves a 404 does not keep stale owner/property/statement
+  rows on screen after a previously successful preview, and the existing
+  self-managed operating-mode gate still blocks preview API reads entirely.
+- Verification: focused owner portal preview error/cache smokes passed
+  **3 passed**; full owner portal preview smoke passed after the route change;
+  targeted frontend eslint, `tsc --noEmit`, and `git diff --check` passed.
+
 ### CSV export hardening v1
 - Review/export CSV builders now share `apps/web/src/lib/csv.ts`, which quotes
   every cell, doubles embedded quotes, and prefixes spreadsheet formula-looking
