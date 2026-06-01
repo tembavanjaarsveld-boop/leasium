@@ -611,14 +611,51 @@ def _wrap_pdf_lines(lines: list[str]) -> list[str]:
     return wrapped
 
 
-def _statement_pdf_bytes(statement: OwnerStatementRead, month: str) -> bytes:
+def _is_self_managed_statement_export(operating_mode: str) -> bool:
+    return operating_mode == OperatingMode.self_managed_owner.value
+
+
+def _statement_export_operating_mode(
+    session: Session,
+    user: CurrentUser,
+) -> str:
+    organisation = session.scalar(
+        select(Organisation).where(Organisation.id == user.organisation_id)
+    )
+    if organisation is None:
+        return OperatingMode.self_managed_owner.value
+    return organisation.operating_mode
+
+
+def _statement_pdf_bytes(
+    statement: OwnerStatementRead,
+    month: str,
+    operating_mode: str,
+) -> bytes:
     """Render a compact text PDF without introducing a new provider dependency."""
 
+    if _is_self_managed_statement_export(operating_mode):
+        title = "LEASIUM ENTITY STATEMENT"
+        review_line = "Review-only local entity-reporting export."
+        identity_label = "Entity"
+        final_note = (
+            "Review only. This PDF is a local entity-reporting export and does "
+            "not post to Xero or update provider history."
+        )
+    else:
+        title = "LEASIUM OWNER STATEMENT"
+        review_line = "Review-only export. Not sent to owner."
+        identity_label = "Owner"
+        final_note = (
+            "Review only. This PDF does not send owner email, post to Xero, "
+            "or update provider history."
+        )
+
     lines = [
-        "LEASIUM OWNER STATEMENT",
-        "Review-only export. Not sent to owner.",
+        title,
+        review_line,
         "",
-        f"Owner: {statement.owner_identity}",
+        f"{identity_label}: {statement.owner_identity}",
         f"Month: {month}",
         "",
         "Billing",
@@ -676,8 +713,7 @@ def _statement_pdf_bytes(statement: OwnerStatementRead, month: str) -> bytes:
     lines.extend(
         [
             "",
-            "Review only. This PDF does not send owner email, post to Xero, "
-            "or update provider history.",
+            final_note,
         ]
     )
 
@@ -739,12 +775,16 @@ def _statement_pdf_bytes(statement: OwnerStatementRead, month: str) -> bytes:
     return bytes(output)
 
 
-def _statement_filename(owner_identity: str, month: str) -> str:
+def _statement_filename(owner_identity: str, month: str, operating_mode: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", owner_identity).strip("-").lower()
+    if _is_self_managed_statement_export(operating_mode):
+        return f"entity-statement-{month}-{slug or 'entity'}.pdf"
     return f"owner-statement-{month}-{slug or 'owner'}.pdf"
 
 
-def _statement_pack_filename(month: str) -> str:
+def _statement_pack_filename(month: str, operating_mode: str) -> str:
+    if _is_self_managed_statement_export(operating_mode):
+        return f"entity-statement-pack-{month}.zip"
     return f"owner-statement-pack-{month}.zip"
 
 
@@ -754,43 +794,75 @@ def _csv_cell(value: object) -> str:
     return '"' + safe_text.replace('"', '""') + '"'
 
 
-def _statement_pack_manifest_csv(statements: OwnerStatementsRead) -> str:
-    rows: list[list[object]] = [
-        [
-            "owner_identity",
-            "billing_email",
-            "recipient_ready",
-            "property_count",
-            "invoice_count",
-            "invoiced_cents",
-            "paid_cents",
-            "outstanding_cents",
-            "review_status",
+def _statement_pack_manifest_csv(
+    statements: OwnerStatementsRead,
+    operating_mode: str,
+) -> str:
+    self_managed = _is_self_managed_statement_export(operating_mode)
+    if self_managed:
+        rows: list[list[object]] = [
+            [
+                "entity_identity",
+                "property_count",
+                "invoice_count",
+                "invoiced_cents",
+                "paid_cents",
+                "outstanding_cents",
+                "review_status",
+            ]
         ]
-    ]
+    else:
+        rows = [
+            [
+                "owner_identity",
+                "billing_email",
+                "recipient_ready",
+                "property_count",
+                "invoice_count",
+                "invoiced_cents",
+                "paid_cents",
+                "outstanding_cents",
+                "review_status",
+            ]
+        ]
     for statement in statements.owners:
         if statement.invoice_count <= 0:
             continue
-        rows.append(
-            [
-                statement.owner_identity,
-                statement.billing_email or "",
-                "yes" if statement.billing_email else "no",
-                statement.property_count,
-                statement.invoice_count,
-                statement.invoiced_cents,
-                statement.paid_cents,
-                statement.outstanding_cents,
-                "payment_review" if statement.outstanding_cents > 0 else "ready",
-            ]
-        )
+        common_cells = [
+            statement.owner_identity,
+            statement.property_count,
+            statement.invoice_count,
+            statement.invoiced_cents,
+            statement.paid_cents,
+            statement.outstanding_cents,
+            "payment_review" if statement.outstanding_cents > 0 else "ready",
+        ]
+        if self_managed:
+            rows.append(common_cells)
+        else:
+            rows.append(
+                [
+                    statement.owner_identity,
+                    statement.billing_email or "",
+                    "yes" if statement.billing_email else "no",
+                    *common_cells[1:],
+                ]
+            )
     return "\n".join(",".join(_csv_cell(cell) for cell in row) for row in rows) + "\n"
 
 
-def _statement_pack_invoice_evidence_csv(statements: OwnerStatementsRead) -> str:
+def _statement_pack_invoice_evidence_csv(
+    statements: OwnerStatementsRead,
+    operating_mode: str,
+) -> str:
+    identity_header = (
+        "entity_identity"
+        if _is_self_managed_statement_export(operating_mode)
+        else "owner_identity"
+    )
     rows: list[list[object]] = [
         [
-            "owner_identity",
+            identity_header,
             "property_name",
             "invoice_draft_id",
             "invoice_number",
@@ -832,30 +904,51 @@ def _statement_pack_invoice_evidence_csv(statements: OwnerStatementsRead) -> str
     return "\n".join(",".join(_csv_cell(cell) for cell in row) for row in rows) + "\n"
 
 
-def _statement_pack_zip_bytes(statements: OwnerStatementsRead) -> bytes:
+def _statement_pack_zip_bytes(
+    statements: OwnerStatementsRead,
+    operating_mode: str,
+) -> bytes:
     included = [statement for statement in statements.owners if statement.invoice_count > 0]
     total_invoiced = sum(statement.invoiced_cents for statement in included)
     total_paid = sum(statement.paid_cents for statement in included)
     total_outstanding = sum(statement.outstanding_cents for statement in included)
     missing_recipients = sum(1 for statement in included if not statement.billing_email)
+    self_managed = _is_self_managed_statement_export(operating_mode)
     buffer = BytesIO()
     with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
         for statement in included:
             archive.writestr(
-                _statement_filename(statement.owner_identity, statements.month),
-                _statement_pdf_bytes(statement, statements.month),
+                _statement_filename(
+                    statement.owner_identity,
+                    statements.month,
+                    operating_mode,
+                ),
+                _statement_pdf_bytes(statement, statements.month, operating_mode),
             )
         archive.writestr(
             f"MANIFEST-{statements.month}.csv",
-            _statement_pack_manifest_csv(statements),
+            _statement_pack_manifest_csv(statements, operating_mode),
         )
         archive.writestr(
             f"INVOICE-EVIDENCE-{statements.month}.csv",
-            _statement_pack_invoice_evidence_csv(statements),
+            _statement_pack_invoice_evidence_csv(statements, operating_mode),
         )
-        archive.writestr(
-            f"README-{statements.month}.txt",
-            (
+        if self_managed:
+            readme = (
+                "Review-only entity statement pack generated by Leasium.\n"
+                f"Month: {statements.month}\n"
+                f"Entities included: {len(included)}\n"
+                f"Invoiced cents: {total_invoiced}\n"
+                f"Paid cents: {total_paid}\n"
+                f"Outstanding cents: {total_outstanding}\n"
+                "Use MANIFEST CSV for local entity-reporting review.\n"
+                "Use INVOICE-EVIDENCE CSV to review the invoice-level source "
+                "data behind local entity-reporting totals.\n"
+                "No Xero posting, payment reconciliation, or provider delivery "
+                "history mutation was performed.\n"
+            )
+        else:
+            readme = (
                 "Review-only owner statement pack generated by Leasium.\n"
                 f"Month: {statements.month}\n"
                 f"Owners included: {len(included)}\n"
@@ -868,7 +961,10 @@ def _statement_pack_zip_bytes(statements: OwnerStatementsRead) -> bytes:
                 "data behind owner totals.\n"
                 "No owner email, Xero posting, payment reconciliation, or provider "
                 "delivery history mutation was performed.\n"
-            ),
+            )
+        archive.writestr(
+            f"README-{statements.month}.txt",
+            readme,
         )
     return buffer.getvalue()
 
@@ -929,9 +1025,14 @@ def get_owner_statement_pdf(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Owner statement not found for this month.",
         )
-    filename = _statement_filename(statement.owner_identity, statements.month)
+    operating_mode = _statement_export_operating_mode(session, user)
+    filename = _statement_filename(
+        statement.owner_identity,
+        statements.month,
+        operating_mode,
+    )
     return Response(
-        content=_statement_pdf_bytes(statement, statements.month),
+        content=_statement_pdf_bytes(statement, statements.month, operating_mode),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -958,9 +1059,10 @@ def get_owner_statement_pdf_pack(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No owner statements found for this month.",
         )
-    filename = _statement_pack_filename(statements.month)
+    operating_mode = _statement_export_operating_mode(session, user)
+    filename = _statement_pack_filename(statements.month, operating_mode)
     return Response(
-        content=_statement_pack_zip_bytes(statements),
+        content=_statement_pack_zip_bytes(statements, operating_mode),
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -1120,6 +1222,7 @@ def send_owner_statement(
         return _dispatch_receipt(existing)
 
     settings = get_settings()
+    operating_mode = _statement_export_operating_mode(session, user)
     invite = OwnerStatementEmail(
         entity_id=entity_id,
         owner_identity=statement.owner_identity,
@@ -1131,8 +1234,12 @@ def send_owner_statement(
         outstanding_label=_format_money(statement.outstanding_cents),
         property_count=statement.property_count,
         invoice_count=statement.invoice_count,
-        pdf_filename=_statement_filename(statement.owner_identity, statements.month),
-        pdf_content=_statement_pdf_bytes(statement, statements.month),
+        pdf_filename=_statement_filename(
+            statement.owner_identity,
+            statements.month,
+            operating_mode,
+        ),
+        pdf_content=_statement_pdf_bytes(statement, statements.month, operating_mode),
         template_key=settings.owner_statement_email_template_key,
         template_version=settings.owner_statement_email_template_version,
     )

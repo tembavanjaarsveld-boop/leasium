@@ -1159,6 +1159,7 @@ def test_owner_statement_pdf_downloads_review_pack(
     client: TestClient,
     session: Session,
 ) -> None:
+    _set_operating_mode(session, OperatingMode.managing_agent)
     scope = _seed_owner_with_invoices(
         session,
         trust_name="PDF Trust",
@@ -1177,7 +1178,10 @@ def test_owner_statement_pdf_downloads_review_pack(
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
-    assert response.headers["content-disposition"].endswith(".pdf\"")
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="owner-statement-2026-04-pdf-trust-'
+        'trustee-pdf-trustee-pty-ltd.pdf"'
+    )
     assert response.content.startswith(b"%PDF-1.4")
     text = "\n".join(
         page.extract_text() or ""
@@ -1186,6 +1190,49 @@ def test_owner_statement_pdf_downloads_review_pack(
     assert "PDF Trust" in text
     assert "PDF Property" in text
     assert "$5,000" in text
+
+
+def test_owner_statement_pdf_uses_entity_wording_for_self_managed_accounts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    _set_operating_mode(session, OperatingMode.self_managed_owner)
+    scope = _seed_owner_with_invoices(
+        session,
+        trust_name="Local Entity Trust",
+        trustee_name="Local Entity Trustee Pty Ltd",
+        properties=[
+            ("Local Entity Property", [(date(2026, 4, 10), 500_000, 125_000)])
+        ],
+    )
+
+    response = client.get(
+        "/api/v1/owners/statements/pdf",
+        params={
+            "entity_id": scope["entity_id"],
+            "month": "2026-04",
+            "owner_identity": (
+                "Local Entity Trust "
+                "(Trustee: Local Entity Trustee Pty Ltd)"
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="entity-statement-2026-04-local-entity-trust-'
+        'trustee-local-entity-trustee-pty-ltd.pdf"'
+    )
+    assert response.content.startswith(b"%PDF-1.4")
+    text = "\n".join(
+        page.extract_text() or ""
+        for page in PdfReader(BytesIO(response.content)).pages
+    )
+    assert "LEASIUM ENTITY STATEMENT" in text
+    assert "Review-only local entity-reporting export." in text
+    assert "Entity: Local Entity Trust" in text
+    assert "Not sent to owner" not in text
 
 
 def test_owner_statement_pdf_wraps_long_finance_evidence_rows(
@@ -1301,6 +1348,7 @@ def test_owner_statement_pdf_pack_downloads_all_review_pdfs(
     client: TestClient,
     session: Session,
 ) -> None:
+    _set_operating_mode(session, OperatingMode.managing_agent)
     scope = _seed_owner_with_invoices(
         session,
         trust_name="Pack Trust A",
@@ -1342,10 +1390,67 @@ def test_owner_statement_pdf_pack_downloads_all_review_pdfs(
     assert first_pdf.startswith(b"%PDF-1.4")
 
 
+def test_owner_statement_pdf_pack_uses_entity_wording_for_self_managed_accounts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    _set_operating_mode(session, OperatingMode.self_managed_owner)
+    scope = _seed_owner_with_invoices(
+        session,
+        trust_name="Local Pack Trust A",
+        trustee_name="Local Pack Trustee A Pty Ltd",
+        properties=[
+            ("Local Pack Property A", [(date(2026, 4, 10), 500_000, 500_000)])
+        ],
+    )
+    _seed_owner_with_invoices(
+        session,
+        trust_name="Local Pack Trust B",
+        trustee_name="Local Pack Trustee B Pty Ltd",
+        properties=[
+            ("Local Pack Property B", [(date(2026, 4, 11), 250_000, 0)])
+        ],
+    )
+
+    response = client.get(
+        "/api/v1/owners/statements/pdf-pack",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="entity-statement-pack-2026-04.zip"'
+    )
+    with ZipFile(BytesIO(response.content)) as archive:
+        names = archive.namelist()
+        pdf_names = [name for name in names if name.endswith(".pdf")]
+        manifest = archive.read("MANIFEST-2026-04.csv").decode()
+        invoice_evidence = archive.read("INVOICE-EVIDENCE-2026-04.csv").decode()
+        readme = archive.read("README-2026-04.txt").decode()
+
+    assert len(pdf_names) == 2
+    assert all(name.startswith("entity-statement-2026-04-") for name in pdf_names)
+    assert "entity_identity" in manifest
+    assert "owner_identity" not in manifest
+    assert "billing_email" not in manifest
+    assert "recipient_ready" not in manifest
+    assert "entity_identity" in invoice_evidence
+    assert "owner_identity" not in invoice_evidence
+    assert "Local Pack Trust A" in manifest
+    assert "Local Pack Trust B" in manifest
+    assert "Entities included: 2" in readme
+    assert "Missing owner billing emails" not in readme
+    assert "recipient readiness" not in readme
+    assert "owner totals" not in readme
+    assert "local entity-reporting totals" in readme
+
+
 def test_owner_statement_pdf_pack_csvs_escape_spreadsheet_formulas(
     client: TestClient,
     session: Session,
 ) -> None:
+    _set_operating_mode(session, OperatingMode.managing_agent)
     entity = _entity(session)
     doc = StoredDocument(
         entity_id=entity.id,

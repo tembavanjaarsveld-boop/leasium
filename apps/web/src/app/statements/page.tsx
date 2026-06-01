@@ -356,10 +356,13 @@ function ownerSlug(ownerIdentity: string) {
   );
 }
 
-function ownerInvoiceEvidenceCsv(owner: OwnerStatementRecord) {
+function ownerInvoiceEvidenceCsv(
+  owner: OwnerStatementRecord,
+  showOwnerDispatch: boolean,
+) {
   return [
     [
-      "Owner",
+      showOwnerDispatch ? "Owner" : "Entity",
       "Property",
       "Invoice",
       "Title",
@@ -1631,12 +1634,15 @@ function StatementsContent() {
 function statementSummaryText({
   owner,
   month,
+  showOwnerDispatch,
 }: {
   owner: OwnerStatementRecord;
   month: string;
+  showOwnerDispatch: boolean;
 }) {
+  const statementLabel = showOwnerDispatch ? "Owner" : "Entity";
   const lines = [
-    `Owner statement review: ${owner.owner_identity}`,
+    `${statementLabel} statement review: ${owner.owner_identity}`,
     `Month: ${formatMonthLabel(month)}`,
     `Properties: ${owner.property_count}`,
     `Invoices: ${owner.invoice_count}`,
@@ -1771,7 +1777,9 @@ function StatementPreviewPanel({
       setCopyReceipt("Copy unavailable in this browser.");
       return;
     }
-    await navigator.clipboard.writeText(statementSummaryText({ owner, month }));
+    await navigator.clipboard.writeText(
+      statementSummaryText({ owner, month, showOwnerDispatch }),
+    );
     setCopyReceipt("Review summary copied.");
   };
   const copyDispatchDraft = async () => {
@@ -1807,9 +1815,9 @@ function StatementPreviewPanel({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `owner-statement-${month}-${ownerSlug(
-        owner.owner_identity,
-      )}.pdf`;
+      anchor.download = showOwnerDispatch
+        ? `owner-statement-${month}-${ownerSlug(owner.owner_identity)}.pdf`
+        : `entity-statement-${month}-${ownerSlug(owner.owner_identity)}.pdf`;
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
@@ -1823,19 +1831,27 @@ function StatementPreviewPanel({
   };
   const downloadInvoiceEvidence = () => {
     saveBlob(
-      new Blob([ownerInvoiceEvidenceCsv(owner)], {
+      new Blob([ownerInvoiceEvidenceCsv(owner, showOwnerDispatch)], {
         type: "text/csv;charset=utf-8",
       }),
-      `owner-statement-invoice-evidence-${month}-${ownerSlug(
-        owner.owner_identity,
-      )}.csv`,
+      showOwnerDispatch
+        ? `owner-statement-invoice-evidence-${month}-${ownerSlug(
+            owner.owner_identity,
+          )}.csv`
+        : `entity-statement-invoice-evidence-${month}-${ownerSlug(
+            owner.owner_identity,
+          )}.csv`,
     );
   };
 
   return (
     <SectionPanel
       title="Statement preview"
-      description="Finance review pack before PDF export or owner dispatch."
+      description={
+        showOwnerDispatch
+          ? "Finance review pack before PDF export or owner dispatch."
+          : "Finance review pack for local entity-reporting export."
+      }
       icon={<ReceiptText size={17} className="text-primary" />}
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -1849,11 +1865,15 @@ function StatementPreviewPanel({
     >
       <div className="grid gap-4 p-4">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <Field label="Owner">
+          <Field label={showOwnerDispatch ? "Owner" : "Entity"}>
             <Select
               value={selectedOwnerIdentity}
               onChange={(event) => onSelectOwner(event.target.value)}
-              aria-label="Select statement owner"
+              aria-label={
+                showOwnerDispatch
+                  ? "Select statement owner"
+                  : "Select statement entity"
+              }
             >
               {owners.map((item) => (
                 <option key={item.owner_identity} value={item.owner_identity}>
@@ -1900,7 +1920,7 @@ function StatementPreviewPanel({
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
             <div>
               <div className="text-xs font-semibold uppercase text-muted-foreground">
-                Owner statement
+                {showOwnerDispatch ? "Owner statement" : "Entity statement"}
               </div>
               <h2 className="mt-1 text-2xl font-semibold text-foreground">
                 {owner.owner_identity}
@@ -1978,7 +1998,8 @@ function StatementPreviewPanel({
                   Invoice evidence
                 </h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Source invoice lines included in this owner statement.
+                  Source invoice lines included in this{" "}
+                  {showOwnerDispatch ? "owner" : "entity"} statement.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">

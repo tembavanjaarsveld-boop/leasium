@@ -7,6 +7,29 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Command search and entity statement export parity
+- Mobile command search now matches the keyboard-shortcuts overlay: the close
+  control meets the 44px touch baseline, and the dialog is constrained above the
+  fixed mobile bottom nav with safe-area-aware scrolling for long action lists.
+- `/statements` self-managed preview/export paths now use entity/local-reporting
+  framing beyond the signoff panel: visible preview labels, copied summary text,
+  invoice-evidence CSV headers, and client download filenames switch to
+  `Entity statement` / `entity-statement-*` while managing-agent accounts keep
+  owner-statement wording.
+- Backend statement PDF and ZIP exports are mode-aware too. Self-managed
+  accounts receive `entity-statement-*` PDF/pack filenames, entity-labelled PDF
+  bodies, manifest/invoice-evidence CSV headers without owner-recipient columns,
+  and README copy focused on local entity-reporting; managing-agent/hybrid
+  exports preserve owner-statement pack naming and recipient-readiness fields.
+- Guardrails: mobile shell smoke covers command search touch safety and bottom
+  nav clearance without provider calls; statements smoke covers self-managed
+  summary/evidence/signoff copy and downloads without owner-statement framing;
+  owner API integration covers self-managed and managing-agent PDF/ZIP
+  filenames, README/manifest wording, and formula-safe pack CSVs.
+- Verification: touched mobile nav + statements smokes passed **11 passed**;
+  owner API integration passed **27 passed**; targeted backend `ruff`, frontend
+  eslint, `tsc --noEmit`, and `git diff --check` passed.
+
 ### Mobile overlays and entity signoff parity
 - Mobile keyboard-shortcuts overlay controls now meet the 44px touch target
   baseline, and the shortcuts dialog is constrained to the safe area above the

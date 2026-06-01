@@ -72,6 +72,39 @@ test("self-managed statements keep reports local and hide owner dispatch", async
   expect(exceptionsText.toLowerCase()).not.toContain("owner dispatch");
   expect(exceptionsText.toLowerCase()).not.toContain("dispatch approval");
   expect(exceptionsText.toLowerCase()).not.toContain("owner statement");
+
+  await expect(page.getByText("Owner statement", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByText("Entity statement", { exact: true }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Copy summary" }).click();
+  const summaryText = await page.evaluate(() => navigator.clipboard.readText());
+  expect(summaryText).toContain("Entity statement review");
+  expect(summaryText).toContain("Queen Street Property Trust");
+  expect(summaryText.toLowerCase()).not.toContain("owner statement");
+  expect(summaryText.toLowerCase()).not.toContain("owner-statement");
+
+  const evidence = page.getByRole("region", { name: "Invoice evidence" });
+  await expect(evidence).toContainText(
+    "Source invoice lines included in this entity statement.",
+  );
+  const evidenceDownloadPromise = page.waitForEvent("download");
+  await evidence
+    .getByRole("button", { name: "Download invoice evidence CSV" })
+    .click();
+  const evidenceDownload = await evidenceDownloadPromise;
+  expect(evidenceDownload.suggestedFilename()).toBe(
+    "entity-statement-invoice-evidence-2026-05-queen-street-property-trust.csv",
+  );
+  const evidenceDownloadPath = await evidenceDownload.path();
+  expect(evidenceDownloadPath).not.toBeNull();
+  const evidenceCsv = await readFile(evidenceDownloadPath!, "utf8");
+  expect(evidenceCsv).toContain('"Entity","Property","Invoice","Title"');
+  expect(evidenceCsv.toLowerCase()).not.toContain("owner statement");
+  expect(evidenceCsv.toLowerCase()).not.toContain("owner-statement");
   expect(providerRequests).toHaveLength(0);
 });
 
