@@ -2356,17 +2356,28 @@ function SettingsWorkspace() {
     [brandedTemplates, communicationTemplates],
   );
 
+  const communicationTemplateOverridesCsv = () =>
+    communicationTemplateOverrideCsv({
+      runtimeTemplates: communicationTemplates,
+      brandedTemplates,
+    });
+
+  const copyCommunicationTemplateOverridesCsv = async () => {
+    const copied = await copyTextToClipboard(
+      communicationTemplateOverridesCsv(),
+    );
+    setTemplateOverrideExportReceipt(
+      copied
+        ? "Template override CSV copied."
+        : "Copy unavailable in this browser.",
+    );
+  };
+
   const downloadCommunicationTemplateOverridesCsv = () => {
     saveBlob(
-      new Blob(
-        [
-          communicationTemplateOverrideCsv({
-            runtimeTemplates: communicationTemplates,
-            brandedTemplates,
-          }),
-        ],
-        { type: "text/csv;charset=utf-8" },
-      ),
+      new Blob([communicationTemplateOverridesCsv()], {
+        type: "text/csv;charset=utf-8",
+      }),
       "communication-template-overrides.csv",
     );
     setTemplateOverrideExportReceipt("Template override CSV downloaded.");
@@ -4732,8 +4743,16 @@ function SettingsWorkspace() {
                   <div className="flex flex-wrap gap-2">
                     <SecondaryButton
                       type="button"
+                      onClick={copyCommunicationTemplateOverridesCsv}
+                      className="min-h-11 rounded-lg px-3"
+                    >
+                      <Copy size={14} />
+                      Copy overrides CSV
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
                       onClick={downloadCommunicationTemplateOverridesCsv}
-                      className="min-h-10 rounded-lg px-3"
+                      className="min-h-11 rounded-lg px-3"
                     >
                       <Download size={14} />
                       Download overrides CSV

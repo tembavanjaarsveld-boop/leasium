@@ -1,7 +1,93 @@
-import { expect, test } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+  test,
+} from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
+
+const DISPATCH_APPROVAL_EXPORT_GUARDRAIL =
+  "Review-only export: downloading this file does not download owner PDFs, download PDF packs, send owner email, dispatch comms, dispatch invoices, write Xero data, preview or apply payment reconciliation, refresh providers, or mutate provider history.";
+const DISPATCH_APPROVAL_COPY_GUARDRAIL =
+  "Review-only export: copying this packet does not download owner PDFs, download PDF packs, send owner email, dispatch comms, dispatch invoices, write Xero data, preview or apply payment reconciliation, refresh providers, or mutate provider history.";
+const DISPATCH_DRAFT_EXPORT_GUARDRAIL =
+  "Review-only export: downloading this file does not send owner email, dispatch comms, attach or download owner PDFs, write Xero data, preview or apply payment reconciliation, dispatch invoices, refresh providers, or mutate provider history.";
+
+async function expectTouchTarget(control: Locator, label: string) {
+  await expect(control, `${label} should be visible`).toBeVisible();
+  const box = await control.boundingBox();
+  expect(box, `${label} should have a rendered box`).not.toBeNull();
+  expect(
+    box!.width,
+    `${label} should be at least 44px wide`,
+  ).toBeGreaterThanOrEqual(44);
+  expect(
+    box!.height,
+    `${label} should be at least 44px tall`,
+  ).toBeGreaterThanOrEqual(44);
+}
+
+function isForbiddenDispatchReviewExportRequest(request: Request) {
+  const url = new URL(request.url());
+  const path = url.pathname.replace(/^\/api\/v1/, "").toLowerCase();
+  const method = request.method();
+  const isMutation = !["GET", "HEAD", "OPTIONS"].includes(method);
+
+  return (
+    path.startsWith("/owners/statements/send") ||
+    path.startsWith("/owners/statements/dispatch") ||
+    path.startsWith("/owners/statements/pdf") ||
+    path.startsWith("/comms") ||
+    path.startsWith("/xero") ||
+    path.startsWith("/basiq") ||
+    path.includes("sendgrid") ||
+    path.includes("twilio") ||
+    path.includes("/provider-dispatch") ||
+    path.includes("provider-refresh") ||
+    path.includes("provider-history") ||
+    path.includes("/history") ||
+    path.includes("/reconciliation-preview") ||
+    path.includes("/reconciliation-apply") ||
+    (isMutation &&
+      ((path.includes("/invoice-drafts") &&
+        (path.includes("delivery") ||
+          path.includes("dispatch") ||
+          path.includes("email") ||
+          path.includes("sms"))) ||
+        path.includes("/billing") ||
+        path.includes("/payment") ||
+        path.includes("/reconciliation") ||
+        path.includes("/provider") ||
+        path.includes("/dispatch") ||
+        path.includes("/email") ||
+        path.includes("/sms")))
+  );
+}
+
+async function trapForbiddenDispatchReviewExportRequests(page: Page) {
+  const requests: string[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    if (isForbiddenDispatchReviewExportRequest(request)) {
+      const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+      requests.push(`${request.method()} ${path}`);
+      await route.fulfill({
+        status: 418,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "dispatch review export must stay local-only",
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+  return requests;
+}
 
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
@@ -318,12 +404,47 @@ test("owner statement preview exposes invoice-level evidence", async ({
 test("owner statement dispatch approval queue exports review CSV", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/statements?month=2026-05");
 
   await expect(
     page.getByRole("heading", { name: "Dispatch approval queue" }),
   ).toBeVisible();
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Copy approval packet" }),
+    "Copy approval packet",
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Download dispatch CSV" }),
+    "Download dispatch CSV",
+  );
+  const reviewButtons = page.getByRole("button", { name: "Review" });
+  const reviewButtonCount = await reviewButtons.count();
+  expect(reviewButtonCount).toBeGreaterThan(0);
+  for (let index = 0; index < reviewButtonCount; index += 1) {
+    await expectTouchTarget(
+      reviewButtons.nth(index),
+      `Dispatch row Review button ${index + 1}`,
+    );
+  }
+
+  const forbiddenRequests =
+    await trapForbiddenDispatchReviewExportRequests(page);
+
+  await page.getByRole("button", { name: "Copy approval packet" }).click();
+  const copiedPacket = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(copiedPacket).toContain("Owner statement dispatch approval queue");
+  expect(copiedPacket).toContain("Queen Street Property Trust");
+  expect(copiedPacket).toContain("owners@queenstreet.example");
+  expect(copiedPacket).toContain("Payment review");
+  expect(copiedPacket).toContain("Owner statement for May 2026");
+  expect(copiedPacket).toContain("Recipient gate");
+  expect(copiedPacket).toContain(DISPATCH_APPROVAL_COPY_GUARDRAIL);
+
   const dispatchDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download dispatch CSV" }).click();
   const dispatchDownload = await dispatchDownloadPromise;
@@ -340,20 +461,44 @@ test("owner statement dispatch approval queue exports review CSV", async ({
   expect(dispatchCsv).toContain("2");
   expect(dispatchCsv).toContain("$17,600");
   expect(dispatchCsv).toContain("Recipient gate");
-  expect(dispatchCsv).toContain(
-    "Review-only export: downloading this file does not download owner PDFs, download PDF packs, send owner email, dispatch comms, dispatch invoices, write Xero data, preview or apply payment reconciliation, refresh providers, or mutate provider history.",
-  );
+  expect(dispatchCsv).toContain(DISPATCH_APPROVAL_EXPORT_GUARDRAIL);
+  expect(forbiddenRequests).toEqual([]);
 });
 
 test("owner statement dispatch draft downloads as review-only text", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/statements?month=2026-05");
 
   await expect(
     page.getByRole("heading", { name: "Dispatch review" }),
   ).toBeVisible();
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Copy dispatch draft" }),
+    "Copy dispatch draft",
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Download dispatch draft" }),
+    "Download dispatch draft",
+  );
+
+  const forbiddenRequests =
+    await trapForbiddenDispatchReviewExportRequests(page);
+
+  await page.getByRole("button", { name: "Copy dispatch draft" }).click();
+  const copiedDraftText = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(copiedDraftText).toContain("To: owners@queenstreet.example");
+  expect(copiedDraftText).toContain(
+    "Subject: Owner statement for May 2026 - Queen Street Property Trust",
+  );
+  expect(copiedDraftText).toContain("Hi Mia Accounts,");
+  expect(copiedDraftText).toContain(DISPATCH_DRAFT_EXPORT_GUARDRAIL);
+
   const draftDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download dispatch draft" }).click();
   const draftDownload = await draftDownloadPromise;
@@ -370,7 +515,7 @@ test("owner statement dispatch draft downloads as review-only text", async ({
   expect(draftText).toContain("Hi Mia Accounts,");
   expect(draftText).toContain("Invoiced: $17,600");
   expect(draftText).toContain("Outstanding: $17,600");
-  expect(draftText).toContain(
-    "Review-only export: downloading this file does not send owner email, dispatch comms, attach or download owner PDFs, write Xero data, preview or apply payment reconciliation, dispatch invoices, refresh providers, or mutate provider history.",
-  );
+  expect(draftText).toContain(DISPATCH_DRAFT_EXPORT_GUARDRAIL);
+  expect(copiedDraftText).toBe(draftText);
+  expect(forbiddenRequests).toEqual([]);
 });

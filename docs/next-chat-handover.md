@@ -7,6 +7,37 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Settings, statements, and Comms export parity
+- Settings Organisation template overrides now have a local `Copy overrides
+  CSV` action beside `Download overrides CSV`; both actions share the same
+  communication template override CSV builder and keep formula-safe stored
+  override fields.
+- The template override smoke runs at 390px, proves copy/download parity,
+  checks 44px export controls and proximity, and traps template, notification,
+  Comms, invoice, onboarding, provider, SendGrid/Twilio, Xero/Basiq, billing,
+  payment, and reconciliation side effects during local export.
+- Statements dispatch approval rows now use the shared touch-safe secondary
+  button baseline, and dispatch approval/draft copy and download paths carry
+  fuller local-only guardrails without wiring PDF, PDF-pack, email, invoice,
+  accounting, reconciliation, or provider mutation flows.
+- Statements smoke verifies approval packet copy, dispatch CSV download,
+  dispatch draft copy/download parity, 44px controls, and no dispatch,
+  provider, accounting, Comms, email, SMS, billing, payment, or reconciliation
+  side effects.
+- Comms outbound log now has `Copy outbound log CSV` beside `Download outbound
+  log CSV`; both use the same filtered outbound-log CSV builder and preserve
+  filter metadata for the Needs attention view.
+- New Comms outbound-log smoke proves copy/download parity, mobile touch
+  sizing, filter proximity, generated-date/filter/total metadata, local
+  guardrails, and no send, dismiss, provider, queue, invoice, billing,
+  payment, reconciliation, Xero/Basiq, SendGrid, or Twilio side effects.
+- Agents implemented the three slices independently; final review found no
+  blocking P1/P2 issues.
+- Verification: focused Settings + Statements + Comms export smokes passed
+  **4 passed**; touched Settings/Statements/Comms export smokes passed
+  **14 passed**; existing Comms outbound-log app flow passed **1 passed**;
+  targeted frontend eslint, `tsc --noEmit`, and `git diff --check` passed.
+
 ### Tenant correspondence and Smart Intake export parity
 - Tenant detail correspondence now has a local `Copy correspondence CSV`
   beside `Download correspondence CSV`; both actions share the same

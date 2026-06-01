@@ -589,6 +589,9 @@ function CommsContent() {
   const [reviewCsvCopyReceipt, setReviewCsvCopyReceipt] = useState<string | null>(
     null,
   );
+  const [outboundLogCsvCopyReceipt, setOutboundLogCsvCopyReceipt] = useState<
+    string | null
+  >(null);
   const reviewCsv = () => {
     if (!queueQuery.data) {
       return null;
@@ -624,26 +627,40 @@ function CommsContent() {
       `comms-queue-review-${commsQueueReviewDate(queueQuery.data.generated_at)}.csv`,
     );
   };
-  const downloadOutboundLogCsv = ({
+  const outboundLogCsv = ({
     events,
     filterLabel,
     totalEvents,
   }: OutboundLogDownload) => {
     if (!outboundLogQuery.data) {
+      return null;
+    }
+    return commsOutboundLogCsv({
+      events,
+      generatedAt: outboundLogQuery.data.generated_at,
+      filterLabel,
+      totalEvents,
+    });
+  };
+  const copyOutboundLogCsv = async (download: OutboundLogDownload) => {
+    const csv = outboundLogCsv(download);
+    if (!csv) {
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setOutboundLogCsvCopyReceipt("Clipboard is not available.");
+      return;
+    }
+    await navigator.clipboard.writeText(csv);
+    setOutboundLogCsvCopyReceipt("Outbound log CSV copied.");
+  };
+  const downloadOutboundLogCsv = (download: OutboundLogDownload) => {
+    const csv = outboundLogCsv(download);
+    if (!outboundLogQuery.data || !csv) {
       return;
     }
     saveBlob(
-      new Blob(
-        [
-          commsOutboundLogCsv({
-            events,
-            generatedAt: outboundLogQuery.data.generated_at,
-            filterLabel,
-            totalEvents,
-          }),
-        ],
-        { type: "text/csv;charset=utf-8" },
-      ),
+      new Blob([csv], { type: "text/csv;charset=utf-8" }),
       `comms-outbound-log-${commsQueueReviewDate(outboundLogQuery.data.generated_at)}.csv`,
     );
   };
@@ -739,7 +756,9 @@ function CommsContent() {
           guardrails={outboundLogQuery.data?.guardrails ?? []}
           isLoading={outboundLogQuery.isLoading}
           error={outboundLogQuery.error}
+          onCopy={copyOutboundLogCsv}
           onDownload={downloadOutboundLogCsv}
+          copyReceipt={outboundLogCsvCopyReceipt}
           downloadDisabled={!outboundLogQuery.data || outboundLogEvents.length === 0}
         />
         {candidates.length ? (
@@ -886,14 +905,18 @@ function OutboundLogPanel({
   guardrails,
   isLoading,
   error,
+  onCopy,
   onDownload,
+  copyReceipt,
   downloadDisabled,
 }: {
   events: CommsCorrespondenceEventRecord[];
   guardrails: string[];
   isLoading: boolean;
   error: unknown;
+  onCopy: (download: OutboundLogDownload) => void | Promise<void>;
   onDownload: (download: OutboundLogDownload) => void;
+  copyReceipt: string | null;
   downloadDisabled: boolean;
 }) {
   const [selectedOutboundFilter, setSelectedOutboundFilter] =
@@ -931,6 +954,12 @@ function OutboundLogPanel({
       : `Showing ${filteredEvents.length} of ${events.length} dispatch receipts in ${selectedFilterLabel}.`;
   const isDownloadDisabled =
     downloadDisabled || filteredEvents.length === 0 || isLoading || Boolean(error);
+  const outboundLogExport: OutboundLogDownload = {
+    events: filteredEvents,
+    filterLabel:
+      selectedOutboundFilter === "all" ? "All" : selectedFilterLabel,
+    totalEvents: events.length,
+  };
   return (
     <SectionPanel
       title="Outbound log"
@@ -941,19 +970,25 @@ function OutboundLogPanel({
           <StatusBadge tone="neutral">{countLabel}</StatusBadge>
           <SecondaryButton
             type="button"
-            onClick={() =>
-              onDownload({
-                events: filteredEvents,
-                filterLabel:
-                  selectedOutboundFilter === "all" ? "All" : selectedFilterLabel,
-                totalEvents: events.length,
-              })
-            }
+            onClick={() => {
+              void onCopy(outboundLogExport);
+            }}
+            disabled={isDownloadDisabled}
+          >
+            <Copy size={15} />
+            Copy outbound log CSV
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            onClick={() => onDownload(outboundLogExport)}
             disabled={isDownloadDisabled}
           >
             <Download size={15} />
             Download outbound log CSV
           </SecondaryButton>
+          {copyReceipt ? (
+            <StatusBadge tone="success">{copyReceipt}</StatusBadge>
+          ) : null}
         </div>
       }
     >

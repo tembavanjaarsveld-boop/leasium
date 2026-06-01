@@ -75,6 +75,8 @@ import { friendlyError } from "@/lib/utils";
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const DISPATCH_APPROVAL_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not download owner PDFs, download PDF packs, send owner email, dispatch comms, dispatch invoices, write Xero data, preview or apply payment reconciliation, refresh providers, or mutate provider history.";
+const DISPATCH_APPROVAL_COPY_GUARDRAIL =
+  "Review-only export: copying this packet does not download owner PDFs, download PDF packs, send owner email, dispatch comms, dispatch invoices, write Xero data, preview or apply payment reconciliation, refresh providers, or mutate provider history.";
 const DISPATCH_DRAFT_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not send owner email, dispatch comms, attach or download owner PDFs, write Xero data, preview or apply payment reconciliation, dispatch invoices, refresh providers, or mutate provider history.";
 
@@ -746,7 +748,7 @@ function dispatchApprovalPacketText(
         } | Outstanding: ${formatMoney(row.outstandingCents)} | ${row.subject}`,
     ),
     "",
-    "Review-only: this queue does not send owner email or update provider delivery history.",
+    DISPATCH_APPROVAL_COPY_GUARDRAIL,
   ].join("\n");
 }
 
@@ -3186,7 +3188,6 @@ function DispatchReviewPanel({
                           <SecondaryButton
                             type="button"
                             onClick={() => onSelectOwner(row.ownerIdentity)}
-                            className="h-8 px-2.5 text-xs"
                           >
                             Review
                           </SecondaryButton>
