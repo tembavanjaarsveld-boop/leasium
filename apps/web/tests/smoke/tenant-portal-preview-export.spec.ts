@@ -220,13 +220,47 @@ test("tenant portal preview CSV copy and download stay local, touch-safe, and CS
   const downloadPreviewCsv = page.getByRole("button", {
     name: "Download preview CSV",
   });
-  for (const control of [copyPreviewCsv, downloadPreviewCsv]) {
+  const copyActivitySummary = page.getByRole("button", {
+    name: "Copy summary",
+  });
+  for (const control of [
+    copyPreviewCsv,
+    downloadPreviewCsv,
+    copyActivitySummary,
+  ]) {
     await expect(control).toBeVisible();
     const box = await control.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(44);
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
+
+  forbiddenMutationCalls.length = 0;
+  await copyActivitySummary.click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain("Tenant portal activity summary");
+  const activitySummary = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(activitySummary.split("\n")[0]).toBe("Tenant portal activity summary");
+  expect(activitySummary).toContain("5 recent portal updates");
+  expect(activitySummary).toContain(
+    "| Preferences saved | Your portal notification preferences were updated.",
+  );
+  expect(activitySummary).toContain(
+    "| Document uploaded | +tenant-visible-insurance.pdf - insurance.",
+  );
+  expect(activitySummary).toContain(
+    "| Maintenance request sent | -urgent repair",
+  );
+  expect(activitySummary).toContain(
+    "| Contact request sent | Requested contact detail changes are with the property team.",
+  );
+  expect(activitySummary).toContain(
+    "| Portal invite sent | The property team sent this tenant portal invite.",
+  );
+  expect(forbiddenMutationCalls).toEqual([]);
 
   forbiddenMutationCalls.length = 0;
   await copyPreviewCsv.click();

@@ -3,6 +3,30 @@ import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
 
+function expectTouchTarget(box: { width: number; height: number } | null) {
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThanOrEqual(44);
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+}
+
+function expectTenantCorrespondenceCsv(correspondenceCsv: string) {
+  expect(correspondenceCsv).toContain("Tenant correspondence");
+  expect(correspondenceCsv).toContain("Inbound email");
+  expect(correspondenceCsv).toContain("Broken tap");
+  expect(correspondenceCsv).toContain("comms draft email queued");
+  expect(correspondenceCsv).toContain("arrears_case:arrears-1");
+  expect(correspondenceCsv).toContain("inbound_message:inbound-message-1");
+  expect(correspondenceCsv).toContain("maintenance_work_order:work/order?1");
+  expect(correspondenceCsv).toContain(
+    '"\'=HYPERLINK(""https://example.invalid"",""Mia"")"',
+  );
+  expect(correspondenceCsv).not.toMatch(/(?:^|,)"[=+\-@]/m);
+  expect(correspondenceCsv).toContain(
+    "Review-only export: downloading this file does not send email or SMS",
+  );
+  expect(correspondenceCsv).toContain("fetch document bytes.");
+}
+
 test("mobile tenant rows expose invite actions without raw loading placeholders", async ({
   page,
 }) => {
@@ -115,9 +139,20 @@ test("tenant detail correspondence export is touch-safe and local-only on mobile
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("tenantCopiedCorrespondenceCsv");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          window.localStorage.setItem("tenantCopiedCorrespondenceCsv", text);
+        },
+      },
+    });
+  });
   await mockLeasiumApi(page);
 
-  let downloadStarted = false;
+  let localExportStarted = false;
   const forbiddenApiCalls: string[] = [];
   const forbiddenMutationPrefixes = [
     "/tenants",
@@ -139,12 +174,13 @@ test("tenant detail correspondence export is touch-safe and local-only on mobile
     const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
     const method = request.method();
     const documentByteDownload =
-      path.includes("/documents/") && path.includes("/download");
+      (path.includes("/documents/") && path.includes("/download")) ||
+      path.includes("document-byte");
     const forbiddenMutation =
       method !== "GET" &&
       forbiddenMutationPrefixes.some((prefix) => path.startsWith(prefix));
 
-    if (downloadStarted && (forbiddenMutation || documentByteDownload)) {
+    if (localExportStarted && (forbiddenMutation || documentByteDownload)) {
       forbiddenApiCalls.push(`${method} ${path}`);
       await route.fulfill({
         status: 418,
@@ -164,20 +200,62 @@ test("tenant detail correspondence export is touch-safe and local-only on mobile
     page.getByRole("heading", { name: "Bright Cafe" }),
   ).toBeVisible();
 
-  const downloadCorrespondenceCsv = page.getByRole("button", {
+  const correspondencePanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Correspondence" }),
+    })
+    .first();
+  const copyCorrespondenceCsv = correspondencePanel.getByRole("button", {
+    name: "Copy correspondence CSV",
+  });
+  const downloadCorrespondenceCsv = correspondencePanel.getByRole("button", {
     name: "Download correspondence CSV",
   });
+  await expect(copyCorrespondenceCsv).toBeVisible();
+  await expect(copyCorrespondenceCsv).toBeEnabled();
   await expect(downloadCorrespondenceCsv).toBeVisible();
   await expect(downloadCorrespondenceCsv).toBeEnabled();
-  const actionBox = await downloadCorrespondenceCsv.boundingBox();
-  expect(actionBox).not.toBeNull();
-  expect(actionBox!.width).toBeGreaterThanOrEqual(44);
-  expect(actionBox!.height).toBeGreaterThanOrEqual(44);
+  const copyActionBox = await copyCorrespondenceCsv.boundingBox();
+  const downloadActionBox = await downloadCorrespondenceCsv.boundingBox();
+  expectTouchTarget(copyActionBox);
+  expectTouchTarget(downloadActionBox);
+  const verticalGap = Math.max(
+    0,
+    Math.max(copyActionBox!.y, downloadActionBox!.y) -
+      Math.min(
+        copyActionBox!.y + copyActionBox!.height,
+        downloadActionBox!.y + downloadActionBox!.height,
+      ),
+  );
+  const horizontalGap = Math.max(
+    0,
+    Math.max(copyActionBox!.x, downloadActionBox!.x) -
+      Math.min(
+        copyActionBox!.x + copyActionBox!.width,
+        downloadActionBox!.x + downloadActionBox!.width,
+      ),
+  );
+  expect(Math.min(verticalGap, horizontalGap)).toBeLessThanOrEqual(12);
   await expect(downloadCorrespondenceCsv).not.toHaveClass(
     /(?:^|\s)h-8(?:\s|$)/,
   );
+  await expect(copyCorrespondenceCsv).not.toHaveClass(/(?:^|\s)h-8(?:\s|$)/);
 
-  downloadStarted = true;
+  localExportStarted = true;
+  await copyCorrespondenceCsv.click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.localStorage.getItem("tenantCopiedCorrespondenceCsv"),
+      ),
+    )
+    .not.toBeNull();
+  const copiedCorrespondenceCsv = await page.evaluate(() =>
+    window.localStorage.getItem("tenantCopiedCorrespondenceCsv"),
+  );
+  expect(copiedCorrespondenceCsv).not.toBeNull();
+
   const downloadPromise = page.waitForEvent("download");
   await downloadCorrespondenceCsv.click();
   const download = await downloadPromise;
@@ -188,20 +266,8 @@ test("tenant detail correspondence export is touch-safe and local-only on mobile
   expect(downloadPath).not.toBeNull();
   const correspondenceCsv = await readFile(downloadPath!, "utf8");
 
-  expect(correspondenceCsv).toContain("Tenant correspondence");
-  expect(correspondenceCsv).toContain("Inbound email");
-  expect(correspondenceCsv).toContain("Broken tap");
-  expect(correspondenceCsv).toContain("comms draft email queued");
-  expect(correspondenceCsv).toContain("arrears_case:arrears-1");
-  expect(correspondenceCsv).toContain("inbound_message:inbound-message-1");
-  expect(correspondenceCsv).toContain(
-    '"\'=HYPERLINK(""https://example.invalid"",""Mia"")"',
-  );
-  expect(correspondenceCsv).not.toMatch(/(?:^|,)"[=+\-@]/m);
-  expect(correspondenceCsv).toContain(
-    "Review-only export: downloading this file does not send email or SMS",
-  );
-  expect(correspondenceCsv).toContain("fetch document bytes.");
+  expect(copiedCorrespondenceCsv).toBe(correspondenceCsv);
+  expectTenantCorrespondenceCsv(correspondenceCsv);
   expect(forbiddenApiCalls).toEqual([]);
 
   await page.unrouteAll({ behavior: "ignoreErrors" });

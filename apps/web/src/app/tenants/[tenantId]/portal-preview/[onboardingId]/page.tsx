@@ -560,7 +560,7 @@ function RecentActivityPanel({
         <SecondaryButton
           type="button"
           onClick={copyActivitySummary}
-          className="min-h-9 rounded-xl px-3"
+          className="min-h-11 rounded-xl px-3"
         >
           <Copy size={15} />
           Copy summary

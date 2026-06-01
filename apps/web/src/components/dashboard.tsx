@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock3,
+  Copy,
   Download,
   FileText,
   FileUp,
@@ -3513,9 +3514,27 @@ export function Dashboard({
     documentIntakeMutation.mutate(file);
   }
 
+  function reviewQueueCsv() {
+    return smartIntakeReviewQueueCsv(filteredReviewIntakes);
+  }
+
+  async function copyReviewQueueCsv() {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setIntakeNotice("Clipboard is not available in this browser.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(reviewQueueCsv());
+      setIntakeNotice("Review queue CSV copied.");
+    } catch {
+      setIntakeNotice("Clipboard is not available in this browser.");
+    }
+  }
+
   function downloadReviewQueueCsv() {
     saveBlob(
-      new Blob([smartIntakeReviewQueueCsv(filteredReviewIntakes)], {
+      new Blob([reviewQueueCsv()], {
         type: "text/csv;charset=utf-8",
       }),
       `smart-intake-review-queue-${reviewQueueFilter}.csv`,
@@ -3951,6 +3970,20 @@ export function Dashboard({
                         <option value="inspection_report">Inspections</option>
                         <option value="lease">Leases</option>
                       </Select>
+                      <SecondaryButton
+                        type="button"
+                        className="h-9"
+                        onClick={() => {
+                          void copyReviewQueueCsv();
+                        }}
+                        disabled={
+                          documentIntakesLoading ||
+                          filteredReviewIntakes.length === 0
+                        }
+                      >
+                        <Copy size={15} />
+                        Copy review queue CSV
+                      </SecondaryButton>
                       <SecondaryButton
                         type="button"
                         className="h-9"

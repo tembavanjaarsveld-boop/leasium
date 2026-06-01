@@ -1107,6 +1107,17 @@ function tenantCorrespondenceCsv(data: CommsTenantCorrespondenceRecord) {
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
+function tenantCorrespondenceCsvExport(
+  data: CommsTenantCorrespondenceRecord,
+  fallbackTenantId: string,
+) {
+  const filenameName = slugifyFilename(data.tenant_name) || fallbackTenantId;
+  return {
+    csv: tenantCorrespondenceCsv(data),
+    filename: `tenant-correspondence-${filenameName}.csv`,
+  };
+}
+
 function shortId(value: string | null | undefined) {
   return value ? value.slice(0, 8) : null;
 }
@@ -2158,17 +2169,36 @@ function TenantDetail() {
     uploadDocumentMutation.mutate();
   }
 
-  function downloadCorrespondenceCsv() {
+  function correspondenceCsvExport() {
     const data = correspondenceQuery.data;
     if (!data) {
+      return null;
+    }
+    return tenantCorrespondenceCsvExport(data, tenantId);
+  }
+
+  async function copyCorrespondenceCsv() {
+    const exportFile = correspondenceCsvExport();
+    if (
+      !exportFile ||
+      typeof navigator === "undefined" ||
+      !navigator.clipboard
+    ) {
       return;
     }
-    const filenameName = slugifyFilename(data.tenant_name) || tenantId;
+    await navigator.clipboard.writeText(exportFile.csv).catch(() => undefined);
+  }
+
+  function downloadCorrespondenceCsv() {
+    const exportFile = correspondenceCsvExport();
+    if (!exportFile) {
+      return;
+    }
     saveBlob(
-      new Blob([tenantCorrespondenceCsv(data)], {
+      new Blob([exportFile.csv], {
         type: "text/csv;charset=utf-8",
       }),
-      `tenant-correspondence-${filenameName}.csv`,
+      exportFile.filename,
     );
   }
 
@@ -4339,6 +4369,17 @@ function TenantDetail() {
                   <StatusBadge tone="neutral">
                     {correspondenceEvents.length} events
                   </StatusBadge>
+                  <SecondaryButton
+                    type="button"
+                    onClick={copyCorrespondenceCsv}
+                    disabled={
+                      !correspondenceQuery.data ||
+                      correspondenceEvents.length === 0
+                    }
+                  >
+                    <ClipboardCopy size={14} />
+                    Copy correspondence CSV
+                  </SecondaryButton>
                   <SecondaryButton
                     type="button"
                     onClick={downloadCorrespondenceCsv}

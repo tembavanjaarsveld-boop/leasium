@@ -7,6 +7,32 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Tenant correspondence and Smart Intake export parity
+- Tenant detail correspondence now has a local `Copy correspondence CSV`
+  beside `Download correspondence CSV`; both actions share the same
+  correspondence CSV/filename helper and preserve the review-only export
+  guardrail.
+- Tenant correspondence smoke runs at 390px, verifies copy/download parity,
+  44px export controls, formula-neutralized counterparty data, target-link
+  content, no document-byte fetch, and no tenant/Comms/provider, onboarding,
+  portal, SendGrid/Twilio, Xero, or Basiq mutations during local export.
+- Tenant operator preview Recent Activity `Copy summary` now meets the 44px
+  mobile touch baseline. The preview smoke verifies clipboard summary content
+  and keeps the existing CSV copy/download parity and no-mutation checks.
+- Smart Intake review queue now has `Copy review queue CSV` beside `Download
+  queue CSV`; both use the same filtered review-queue CSV builder.
+- New Smart Intake export smoke proves copy/download parity across tenant
+  portal, inbound email attachment, and inspection filters, formula-safe review
+  queue fields, 390px touch targets, and no apply/accept/maintenance,
+  onboarding, Comms, provider, financial, Xero/Basiq, email, or SMS side
+  effects.
+- Agents implemented the three slices independently; final review found no
+  blocking P1/P2 issues.
+- Verification: focused tenant correspondence + tenant preview + Smart Intake
+  smokes passed **3 passed**; touched tenant and Smart Intake smoke coverage
+  passed **6 passed**; targeted frontend eslint, `tsc --noEmit`, and
+  `git diff --check` passed.
+
 ### Operations, notifications, and tenant export parity
 - `/operations` queue now has a local `Copy queue CSV` action beside
   `Download queue CSV`; both actions use the same filtered queue CSV builder,
