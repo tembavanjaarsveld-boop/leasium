@@ -7,6 +7,26 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Owner documents and completion packet mobile hardening
+- Owner portal shared-document metadata now wraps long unbroken property,
+  source, and notes values inside the mobile document row instead of forcing
+  horizontal overflow.
+- The populated owner shared-document smoke now injects long unbroken
+  metadata strings and proves each visible value plus the download control
+  stays inside a 390px viewport.
+- Maintenance completion review packet Copy/Download controls now meet the
+  44px touch baseline on mobile. The smoke proves copy and CSV download stay
+  local, retain the review-only guardrail, and do not mutate maintenance,
+  provider, Comms, billing, payment, or reconciliation APIs.
+- Restored separate maintenance Review packet coverage for copied/CSV handoff
+  links, including Comms and tenant links, with the same no-mutation guardrail.
+- Agent review caught one restored-test guardrail gap; the direct work-order
+  mutation trap was added and reverified.
+- Verification: focused owner shared-document smoke passed **1 passed**;
+  focused maintenance review-packet smokes passed **2 passed**; touched owner
+  portal account and Operations UX smokes passed **17 passed / 4 skipped**;
+  targeted frontend eslint, `tsc --noEmit`, and `git diff --check` passed.
+
 ### Command search and entity statement export parity
 - Mobile command search now matches the keyboard-shortcuts overlay: the close
   control meets the 44px touch baseline, and the dialog is constrained above the

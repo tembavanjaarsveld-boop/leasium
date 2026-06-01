@@ -1189,6 +1189,12 @@ test("owner account entry keeps populated shared documents inside mobile viewpor
   await page.setViewportSize({ width: 390, height: 844 });
   const longFilename =
     "owner-visible-settlement-reconciliation-and-capex-approval-evidence-with-a-very-long-file-name-2026-05.pdf";
+  const longPropertyName =
+    "OwnerPortalPropertyWithAnUnbrokenIdentifierThatShouldWrapInsideTheSharedDocumentsMetadataColumn";
+  const longSourceLabel =
+    "UploadedFromSourceSystemWithAnExtremelyLongUnbrokenIdentifierThatShouldNeverForceHorizontalOverflow";
+  const longNotes =
+    "NotesContainAnUnbrokenOperationalReferenceThatShouldWrapSafelyInsideTheOwnerPortalSharedDocumentsPanel";
 
   await page.route("**/api/v1/owner-portal/account/status", async (route) => {
     await route.fulfill({
@@ -1217,6 +1223,9 @@ test("owner account entry keeps populated shared documents inside mobile viewpor
           {
             ...OWNER_PORTAL_ACCOUNT_RESPONSE.documents[0],
             filename: longFilename,
+            property_name: longPropertyName,
+            source_label: longSourceLabel,
+            notes: longNotes,
           },
         ],
       }),
@@ -1226,9 +1235,26 @@ test("owner account entry keeps populated shared documents inside mobile viewpor
   await page.goto("/owner-portal?month=2026-05");
 
   const downloadButton = page.getByRole("button", {
-    name: `Download ${longFilename} for Owner Portal Plaza`,
+    name: `Download ${longFilename} for ${longPropertyName}`,
   });
   await expect(downloadButton).toBeVisible({ timeout: 15_000 });
+  for (const metadataText of [
+    longPropertyName,
+    longSourceLabel,
+    longNotes,
+  ]) {
+    await expect(page.getByText(metadataText, { exact: false })).toBeVisible();
+    expect(
+      await page.getByText(metadataText, { exact: false }).evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return (
+          rect.left >= 0 &&
+          rect.right <= window.innerWidth &&
+          element.scrollWidth <= element.clientWidth
+        );
+      }),
+    ).toBe(true);
+  }
   expect(
     await downloadButton.evaluate((element) => {
       const rect = element.getBoundingClientRect();

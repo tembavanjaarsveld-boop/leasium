@@ -201,7 +201,7 @@ export function OwnerPortalDocumentsPanel({
               key={document.id}
               className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto]"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 [overflow-wrap:anywhere]">
                 <div className="flex min-w-0 items-center gap-2">
                   <FileText className="shrink-0 text-primary" size={16} />
                   <p className="truncate text-sm font-semibold text-foreground">

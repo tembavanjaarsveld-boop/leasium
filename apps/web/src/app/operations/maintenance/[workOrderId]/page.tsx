@@ -3126,7 +3126,7 @@ function CompletionReviewPacketPanel({
           <StatusBadge tone={packet.tone}>{packet.statusLabel}</StatusBadge>
           <SecondaryButton
             type="button"
-            className="min-h-9 rounded-lg px-3 text-xs"
+            className="min-h-11 rounded-lg px-3 text-xs"
             onClick={copyPacket}
           >
             <ClipboardCheck size={14} />
@@ -3134,7 +3134,7 @@ function CompletionReviewPacketPanel({
           </SecondaryButton>
           <SecondaryButton
             type="button"
-            className="min-h-9 rounded-lg px-3 text-xs"
+            className="min-h-11 rounded-lg px-3 text-xs"
             onClick={downloadPacketCsv}
           >
             <Download size={14} />

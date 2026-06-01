@@ -499,7 +499,7 @@ test("maintenance detail exports vendor exposure packet without portal or provid
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("maintenance review packet copy includes handoff links without mutations", async ({
+test("maintenance review packet copy and CSV include handoff links without mutations", async ({
   page,
 }) => {
   await mockLeasiumApi(page);
@@ -518,6 +518,7 @@ test("maintenance review packet copy includes handoff links without mutations", 
 
   const forbiddenMutationPaths: string[] = [];
   const forbiddenPathPatterns = [
+    "/maintenance/work-orders/work-order-1",
     "/maintenance/work-orders/work-order-1/contractor-delivery/send-email",
     "/maintenance/work-orders/work-order-1/contractor-delivery/send-sms",
     "/maintenance/work-orders/work-order-1/vendor-portal",
@@ -563,6 +564,153 @@ test("maintenance review packet copy includes handoff links without mutations", 
   expect(copied).toContain("Handoff links:");
   expect(copied).toContain("Open Comms: /comms");
   expect(copied).toContain("Open tenant: /tenants/tenant-1");
+
+  const downloadPromise = page.waitForEvent("download");
+  await packet.getByRole("button", { name: "Download packet CSV" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(
+    "maintenance-review-packet-work-order-1.csv",
+  );
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  const csv = await readFile(downloadPath!, "utf8");
+  expect(csv).toContain("Handoff link");
+  expect(csv).toContain("Open Comms");
+  expect(csv).toContain("/tenants/tenant-1");
+
+  expect(forbiddenMutationPaths).toEqual([]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("maintenance review packet mobile actions export locally without mutations", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (
+            window as Window & { __copiedMaintenancePacket?: string }
+          ).__copiedMaintenancePacket = text;
+        },
+      },
+    });
+  });
+
+  await page.goto("/operations/maintenance/work-order-1");
+  await page.evaluate(async () => {
+    await fetch("/api/v1/maintenance/work-orders/work-order-1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        status: "completed",
+        completed_at: "2026-05-21T01:30:00.000Z",
+        metadata: {
+          closeout: {
+            completed_at: "2026-05-21T01:30:00.000Z",
+            note: "Closeout confirmed after contractor attendance.",
+            history: [
+              {
+                at: "2026-05-21T01:30:00.000Z",
+                actor: "operator-1",
+                note: "Closeout confirmed after contractor attendance.",
+                photo_document_id: "portal-photo-1",
+                photo_document_ids: ["portal-photo-1"],
+              },
+            ],
+            communication: {
+              owner_update:
+                "The air conditioning repair has been completed and evidence is on file.",
+              tenant_update:
+                "The air conditioning repair has been completed. Please reply if the fault returns.",
+              contractor_follow_up:
+                "Thanks for completing the air conditioning repair. Evidence has been recorded.",
+            },
+          },
+        },
+      }),
+    });
+  });
+
+  const forbiddenMutationPaths: string[] = [];
+  const forbiddenPathPatterns = [
+    "/maintenance/work-orders/work-order-1",
+    "/maintenance/work-orders/work-order-1/contractor-delivery/send-email",
+    "/maintenance/work-orders/work-order-1/contractor-delivery/send-sms",
+    "/maintenance/work-orders/work-order-1/vendor-portal",
+    "/maintenance/work-orders/work-order-1/comments",
+    "/invoice",
+    "/comms",
+    "/xero",
+    "/basiq",
+    "/providers",
+    "/dispatch",
+    "/payment",
+    "/reconciliation",
+  ];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace("/api/v1", "");
+    if (
+      request.method() !== "GET" &&
+      forbiddenPathPatterns.some((pattern) => path.startsWith(pattern))
+    ) {
+      forbiddenMutationPaths.push(`${request.method()} ${path}`);
+    }
+    await route.fallback();
+  });
+
+  await page.reload();
+
+  const packet = page
+    .getByText("Completion review packet", { exact: true })
+    .locator("xpath=ancestor::div[contains(@class, 'border-border')][1]");
+  await expect(packet).toBeVisible({ timeout: 15_000 });
+
+  const copyPacket = packet.getByRole("button", { name: "Copy packet" });
+  const downloadPacket = packet.getByRole("button", {
+    name: "Download packet CSV",
+  });
+
+  for (const control of [copyPacket, downloadPacket]) {
+    await expect(control).toBeVisible();
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  await copyPacket.click();
+  await expect(
+    packet.getByText("Completion review packet copied."),
+  ).toBeVisible();
+
+  const copied = await page.evaluate(
+    () =>
+      (window as Window & { __copiedMaintenancePacket?: string })
+        .__copiedMaintenancePacket,
+  );
+  expect(copied).toContain("Operations completion review packet");
+  expect(copied).toContain("Owner completion review");
+  expect(copied).toContain(
+    "Review-only: no owner, tenant, contractor, email, SMS",
+  );
+
+  const downloadPromise = page.waitForEvent("download");
+  await downloadPacket.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(
+    "maintenance-completion-review-work-order-1.csv",
+  );
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  const csv = await readFile(downloadPath!, "utf8");
+  expect(csv).toContain("Owner completion review");
+  expect(csv).toContain("Review-only: no owner, tenant, contractor, email, SMS");
+
   expect(forbiddenMutationPaths).toEqual([]);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
