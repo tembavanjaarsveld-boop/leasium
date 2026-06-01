@@ -72,6 +72,27 @@ Continuation from the tenant portal account cache hardening slice.
   Smart Intake, Properties, People/Tenants, and Operations at desktop + mobile
   widths, plus blocked-storage first-paint/manual-change regressions.
 
+### Owner portal maintenance snapshot
+- Owner account and operator-preview dashboards now include a read-only
+  `Maintenance snapshot` section for linked owner properties. The API exposes
+  open, urgent, and awaiting-approval counts plus a narrow item projection for
+  work orders explicitly marked `owner_portal_visible`: work-order id, property
+  id/name, owner-safe `owner_portal_title`, status, priority, requested/due/
+  completed dates, approval state, and quote amount.
+- The projection deliberately omits raw tenant-entered work-order titles, tenant
+  identity, unit/lease ids, contractor names/contact details, internal
+  notes/comments, provider receipts/history, message bodies, source document
+  ids, invoice handoff ids, raw metadata, completed/cancelled work, and work
+  from unlinked or cross-entity properties.
+- Guardrails unchanged: opening the portal does not send owner email, contact
+  contractors/tenants, dispatch invoices, write Xero/Basiq/provider data,
+  reconcile payments, refresh providers, mutate provider history, or mutate work
+  orders.
+- Verification: backend owner portal + account + statement parity suite passed
+  **19 passed**; targeted backend `ruff` passed; targeted frontend `eslint`
+  passed; frontend `tsc --noEmit` passed; owner portal account/preview smokes
+  passed **5 passed**.
+
 ## Codex continuation — 2026-05-31 (latest)
 
 Continuation from the Codex takeover. Branch `main` was current at `b7ec1f7`
@@ -569,8 +590,9 @@ before the Ticket 2.2 slice.
    eligible `owner_portal_visible` document, and explicit approval because invite
    creation/account claim mutate production state, even though they send no
    owner email and touch no providers.
-2. Add richer owner dashboard sections after the shared-document boundary is
-   reviewed on real SKJ files.
+2. Installable PWA mobile runway v1 is the next low-provider-risk UX slice:
+   manifest/standalone metadata plus mobile shell smoke, with no service worker
+   or private-data offline caching in v1.
 3. Add backend account/session scoping regression tests for multi-onboarding or
    relinked tenant accounts before broader tenant rollout. Focus on
    `/tenant-portal/account/session` and account-scoped documents/maintenance so

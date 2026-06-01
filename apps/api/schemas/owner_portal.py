@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
-from stewart.core.models import DocumentCategory
+from stewart.core.models import (
+    DocumentCategory,
+    MaintenanceApprovalStatus,
+    MaintenancePriority,
+    MaintenanceWorkOrderStatus,
+)
 
 
 class OwnerPortalAuthRead(BaseModel):
@@ -134,6 +139,32 @@ class OwnerPortalDocumentRead(BaseModel):
     created_at: datetime
 
 
+class OwnerPortalMaintenanceItemRead(BaseModel):
+    """Owner-safe maintenance item without tenant, contractor, or provider detail."""
+
+    id: UUID
+    property_id: UUID
+    property_name: str
+    title: str
+    status: MaintenanceWorkOrderStatus
+    priority: MaintenancePriority
+    requested_at: datetime
+    due_date: date | None = None
+    completed_at: datetime | None = None
+    approval_required: bool
+    approval_status: MaintenanceApprovalStatus
+    quote_amount_cents: int | None = None
+
+
+class OwnerPortalMaintenanceRead(BaseModel):
+    """Open maintenance snapshot for linked owner properties."""
+
+    open_count: int
+    urgent_count: int
+    awaiting_approval_count: int
+    items: list[OwnerPortalMaintenanceItemRead] = Field(default_factory=list)
+
+
 class OwnerPortalRead(BaseModel):
     """Read response for an operator-previewed owner portal."""
 
@@ -142,5 +173,13 @@ class OwnerPortalRead(BaseModel):
     properties: list[OwnerPortalPropertyRead] = Field(default_factory=list)
     statement: OwnerPortalStatementRead | None = None
     documents: list[OwnerPortalDocumentRead] = Field(default_factory=list)
+    maintenance: OwnerPortalMaintenanceRead = Field(
+        default_factory=lambda: OwnerPortalMaintenanceRead(
+            open_count=0,
+            urgent_count=0,
+            awaiting_approval_count=0,
+            items=[],
+        )
+    )
     guardrails: list[str] = Field(default_factory=list)
     generated_at: datetime

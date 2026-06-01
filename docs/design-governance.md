@@ -127,6 +127,16 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   reconciles no payments, and mutates no provider history. Remba should review
   whether `Shared documents` is clear enough and whether future document groups
   need stronger owner-facing labels.
+- **Owner portal maintenance snapshot** (`/owner-portal`, `/owner-portal/[ownerId]`):
+  owner account and operator-preview dashboards now show open maintenance counts
+  and a compact linked-property work list only when the work order is explicitly
+  marked owner-visible. Rows use the owner-safe title stored for the portal plus
+  property, status, priority, due date, approval state, and quote amount. It
+  does not expose raw tenant-entered titles, tenant identity, unit/lease ids,
+  contractor names or contact details, internal notes/comments, provider
+  history, message bodies, source document ids, invoice handoff ids, raw
+  metadata, completed work, or work from unlinked properties. Viewing it sends
+  no messages and mutates no work orders or providers.
 - **Canvas darkening** (globals.css, commit `65c1da8`): `--leasium-bg` #f6f8fb→#edf0f6 and `--leasium-slate-100` #f2f4f7→#e9edf3 so white cards lift off the background. Hierarchy preserved: cards (#fff) > canvas > muted/hover > border. Dial the canvas value if it reads too strong/weak on real data. Design source of truth §6 updated to match.
 - **Card elevation**: new `leasiumCard` Tailwind shadow — a tight contact layer + a soft ambient lift (`0 1px 2px /0.06, 0 4px 12px -2px /0.08`) — applied to `SectionPanel` and `DashboardMetricCard` so cards separate from the darker canvas; buttons/rows keep `leasiumXs`. Subtle border retained. Dial via the `leasiumCard` token in `apps/web/tailwind.config.ts`.
 - **Dark mode v1** (`apps/web/src/lib/appearance.ts`, `layout.tsx`, `AppHeader`, Settings, globals.css): workspace appearance now supports System, Light, and Dark. The first-paint script resolves the stored/system preference before React loads, toggles the root `.dark` class, and keeps `data-theme` / `data-appearance` in sync. The header utility button cycles the preference, Settings exposes the three choices, and smoke coverage checks Dashboard, Smart Intake, Properties, People/Tenants, and Operations on desktop + mobile for dark canvas/text and toolbar contrast. Clerk sign-in/sign-up remains pinned to the light Clerk appearance object; live hosted Clerk rendering under dark OS/browser settings stays a Remba/operator review item.

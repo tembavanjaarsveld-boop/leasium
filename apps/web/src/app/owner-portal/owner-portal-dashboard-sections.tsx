@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { Download, FileText } from "lucide-react";
+import { AlertTriangle, CalendarDays, Download, FileText, Wrench } from "lucide-react";
 
 import {
   EmptyState,
@@ -12,6 +12,8 @@ import {
 import {
   downloadOwnerPortalAccountDocument,
   type OwnerPortalDocumentRecord,
+  type OwnerPortalMaintenanceItemRecord,
+  type OwnerPortalMaintenanceRecord,
 } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
 import { friendlyError } from "@/lib/utils";
@@ -40,6 +42,121 @@ function formatBytes(bytes: number): string {
     return `${(bytes / 1_000).toFixed(1)} KB`;
   }
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+function formatMoney(cents: number): string {
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
+function formatDate(value: string | null): string {
+  if (!value) {
+    return "No date";
+  }
+  return new Intl.DateTimeFormat("en-AU", {
+    dateStyle: "medium",
+  }).format(new Date(value));
+}
+
+const maintenanceStatusLabels: Record<
+  OwnerPortalMaintenanceItemRecord["status"],
+  string
+> = {
+  requested: "Requested",
+  triaged: "Triaged",
+  assigned: "Assigned",
+  awaiting_approval: "Awaiting approval",
+  approved: "Approved",
+  in_progress: "In progress",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+const maintenancePriorityLabels: Record<
+  OwnerPortalMaintenanceItemRecord["priority"],
+  string
+> = {
+  low: "Low",
+  normal: "Normal",
+  high: "High",
+  urgent: "Urgent",
+};
+
+function maintenancePriorityTone(
+  priority: OwnerPortalMaintenanceItemRecord["priority"],
+): "neutral" | "primary" | "warning" | "danger" {
+  if (priority === "urgent") return "danger";
+  if (priority === "high") return "warning";
+  if (priority === "normal") return "primary";
+  return "neutral";
+}
+
+export function OwnerPortalMaintenancePanel({
+  maintenance,
+}: {
+  maintenance: OwnerPortalMaintenanceRecord;
+}) {
+  return (
+    <SectionPanel
+      title="Maintenance snapshot"
+      description={`${maintenance.open_count} open / ${maintenance.urgent_count} urgent / ${maintenance.awaiting_approval_count} awaiting approval`}
+      icon={<Wrench size={17} />}
+    >
+      {maintenance.items.length ? (
+        <div className="divide-y divide-border">
+          {maintenance.items.map((item) => (
+            <div
+              key={item.id}
+              className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto]"
+            >
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+                    {item.title}
+                  </p>
+                  <StatusBadge tone={maintenancePriorityTone(item.priority)}>
+                    {maintenancePriorityLabels[item.priority]}
+                  </StatusBadge>
+                  <StatusBadge tone="neutral">
+                    {maintenanceStatusLabels[item.status]}
+                  </StatusBadge>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {item.property_name}
+                </p>
+                <p className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-5 text-muted-foreground">
+                  <CalendarDays size={13} />
+                  Due {formatDate(item.due_date)}
+                  {item.approval_required ? (
+                    <span className="inline-flex items-center gap-1">
+                      <AlertTriangle size={13} />
+                      {item.approval_status === "pending"
+                        ? "Approval pending"
+                        : "Approval tracked"}
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+              {item.quote_amount_cents !== null ? (
+                <div className="text-sm font-semibold text-foreground md:text-right">
+                  {formatMoney(item.quote_amount_cents)} quote
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          title="No open maintenance."
+          description="Open owner-visible maintenance items for linked properties will appear here."
+          icon={<Wrench size={18} />}
+        />
+      )}
+    </SectionPanel>
+  );
 }
 
 export function OwnerPortalDocumentsPanel({

@@ -5301,12 +5301,35 @@ export type OwnerPortalDocumentRecord = {
   created_at: string;
 };
 
+export type OwnerPortalMaintenanceItemRecord = {
+  id: string;
+  property_id: string;
+  property_name: string;
+  title: string;
+  status: MaintenanceWorkOrderStatus;
+  priority: MaintenancePriority;
+  requested_at: string;
+  due_date: string | null;
+  completed_at: string | null;
+  approval_required: boolean;
+  approval_status: MaintenanceApprovalStatus;
+  quote_amount_cents: number | null;
+};
+
+export type OwnerPortalMaintenanceRecord = {
+  open_count: number;
+  urgent_count: number;
+  awaiting_approval_count: number;
+  items: OwnerPortalMaintenanceItemRecord[];
+};
+
 export type OwnerPortalRecord = {
   auth: OwnerPortalAuthRecord;
   owner: OwnerPortalOwnerRecord;
   properties: OwnerPortalPropertyRecord[];
   statement: OwnerPortalStatementRecord | null;
   documents: OwnerPortalDocumentRecord[];
+  maintenance: OwnerPortalMaintenanceRecord;
   guardrails: string[];
   generated_at: string;
 };

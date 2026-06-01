@@ -81,6 +81,27 @@ const OWNER_PORTAL_ACCOUNT_RESPONSE = {
       created_at: "2026-05-31T00:00:00.000Z",
     },
   ],
+  maintenance: {
+    open_count: 1,
+    urgent_count: 1,
+    awaiting_approval_count: 1,
+    items: [
+      {
+        id: "work-order-1",
+        property_id: "property-1",
+        property_name: "Owner Portal Plaza",
+        title: "Lift service approval",
+        status: "awaiting_approval",
+        priority: "urgent",
+        requested_at: "2026-05-31T00:00:00.000Z",
+        due_date: "2026-06-08",
+        completed_at: null,
+        approval_required: true,
+        approval_status: "pending",
+        quote_amount_cents: 220000,
+      },
+    ],
+  },
   guardrails: [
     "Read-only owner portal: opening this page does not send owner email, dispatch invoices, write Xero data, reconcile payments, refresh providers, or mutate provider history.",
     "Shared document downloads are account-scoped and limited to files explicitly shared by the property team for this owner; no owner statement PDFs are generated or sent from the portal.",
@@ -194,6 +215,13 @@ test("owner account entry opens a linked owner portal without owner id", async (
     page.getByText("owner-visible-report.pdf", { exact: true }).first(),
   ).toBeVisible();
   await expect(page.getByText("Quarterly property report")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Maintenance snapshot" }),
+  ).toBeVisible();
+  await expect(page.getByText("Lift service approval")).toBeVisible();
+  await expect(page.getByText("$2,200 quote")).toBeVisible();
+  await expect(page.getByText("contractor@example.test")).toHaveCount(0);
+  await expect(page.getByText("twilio-secret")).toHaveCount(0);
   await expect(page.getByText("operator_upload")).toHaveCount(0);
   await expect(
     page.getByRole("button", {

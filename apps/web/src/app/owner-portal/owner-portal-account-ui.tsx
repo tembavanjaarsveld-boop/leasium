@@ -24,7 +24,10 @@ import type {
   OwnerPortalStatementPropertyRecord,
 } from "@/lib/api";
 
-import { OwnerPortalDocumentsPanel } from "./owner-portal-dashboard-sections";
+import {
+  OwnerPortalDocumentsPanel,
+  OwnerPortalMaintenancePanel,
+} from "./owner-portal-dashboard-sections";
 
 export function ownerPortalStatementMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -391,6 +394,8 @@ export function OwnerPortalAccountView({
                 />
               )}
             </SectionPanel>
+
+            <OwnerPortalMaintenancePanel maintenance={portal.maintenance} />
 
             <OwnerPortalDocumentsPanel
               accountMode={portal.auth.mode === "owner_portal_account"}

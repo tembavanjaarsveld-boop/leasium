@@ -35,7 +35,10 @@ import {
 } from "@/lib/use-operating-mode";
 import { friendlyError } from "@/lib/utils";
 
-import { OwnerPortalDocumentsPanel } from "../owner-portal-dashboard-sections";
+import {
+  OwnerPortalDocumentsPanel,
+  OwnerPortalMaintenancePanel,
+} from "../owner-portal-dashboard-sections";
 import { ownerPortalAuthLabel } from "../owner-portal-account-ui";
 
 function formatMoney(cents: number): string {
@@ -326,6 +329,8 @@ function OwnerPortalView({ portal }: { portal: OwnerPortalRecord }) {
             accountMode={false}
             documents={portal.documents}
           />
+
+          <OwnerPortalMaintenancePanel maintenance={portal.maintenance} />
 
           <GuardrailPanel guardrails={portal.guardrails} />
         </div>

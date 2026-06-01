@@ -12,6 +12,10 @@ from stewart.core.models import (
     Entity,
     InvoiceDraft,
     InvoiceDraftStatus,
+    MaintenanceApprovalStatus,
+    MaintenancePriority,
+    MaintenanceWorkOrder,
+    MaintenanceWorkOrderStatus,
     OperatingMode,
     Organisation,
     Owner,
@@ -372,6 +376,123 @@ def test_owner_portal_lists_only_explicit_owner_visible_property_documents(
     assert "source" not in document
     assert document["created_at"]
     assert "file_data" not in document
+
+
+def test_owner_portal_lists_safe_maintenance_snapshot_for_linked_properties(
+    client: TestClient,
+    session: Session,
+) -> None:
+    owner = _seed_owner_portal_owner(session)
+    entity = _entity(session)
+    linked_property = _linked_owner_property(session, owner)
+    tenant = Tenant(entity_id=entity.id, legal_name="Private Tenant Pty Ltd")
+    unlinked_property = Property(
+        entity_id=entity.id,
+        name="Unlinked Maintenance Property",
+        street_address="10 Other Street",
+        property_type=PropertyType.commercial_office,
+    )
+    session.add_all([tenant, unlinked_property])
+    session.flush()
+    owner_visible_work = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        tenant_id=tenant.id,
+        title="Tenant Mary Smith says the tenancy is too warm",
+        description="Tenant reported the tenancy is too warm.",
+        status=MaintenanceWorkOrderStatus.awaiting_approval,
+        priority=MaintenancePriority.urgent,
+        approval_required=True,
+        approval_status=MaintenanceApprovalStatus.pending,
+        quote_amount_cents=125_000,
+        contractor_name="Private Contractor",
+        contractor_email="dispatch@private.example",
+        contractor_phone="+61400111222",
+        due_date=date(2026, 6, 7),
+        notes="Internal owner-facing note should stay private.",
+        work_order_metadata={
+            "comments": [
+                {
+                    "visibility": "internal",
+                    "body": "Internal-only comment must not leave Leasium.",
+                }
+            ],
+            "contractor_delivery": {
+                "email": {"send": {"provider_message_id": "sendgrid-secret"}}
+            },
+            "owner_portal_visible": True,
+            "owner_portal_title": "Air conditioning quote review",
+        },
+    )
+    hidden_sensitive_work = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        tenant_id=tenant.id,
+        title="Tenant Jane Smith reported a private medical issue",
+        status=MaintenanceWorkOrderStatus.requested,
+        priority=MaintenancePriority.high,
+    )
+    completed_work = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        title="Completed gutter clean",
+        status=MaintenanceWorkOrderStatus.completed,
+        priority=MaintenancePriority.normal,
+        completed_at=datetime(2026, 5, 20),
+    )
+    cross_property_work = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        property_id=unlinked_property.id,
+        title="Other owner repair",
+        status=MaintenanceWorkOrderStatus.requested,
+        priority=MaintenancePriority.urgent,
+    )
+    session.add_all(
+        [owner_visible_work, hidden_sensitive_work, completed_work, cross_property_work]
+    )
+    session.commit()
+
+    response = client.get(
+        f"/api/v1/owner-portal/{owner.id}",
+        params={"month": "2026-05"},
+    )
+
+    assert response.status_code == 200, response.text
+    maintenance = response.json()["maintenance"]
+    assert maintenance["open_count"] == 1
+    assert maintenance["urgent_count"] == 1
+    assert maintenance["awaiting_approval_count"] == 1
+    assert len(maintenance["items"]) == 1
+    item = maintenance["items"][0]
+    requested_at = item.pop("requested_at")
+    assert item == {
+        "id": str(owner_visible_work.id),
+        "property_id": str(linked_property.id),
+        "property_name": linked_property.name,
+        "title": "Air conditioning quote review",
+        "status": "awaiting_approval",
+        "priority": "urgent",
+        "due_date": "2026-06-07",
+        "completed_at": None,
+        "approval_required": True,
+        "approval_status": "pending",
+        "quote_amount_cents": 125_000,
+    }
+    assert requested_at.startswith(
+        owner_visible_work.requested_at.replace(tzinfo=None).isoformat()
+    )
+    serialized = response.text
+    assert "Private Tenant Pty Ltd" not in serialized
+    assert "Tenant Mary Smith" not in serialized
+    assert "Tenant Jane Smith" not in serialized
+    assert "tenant_id" not in serialized
+    assert "Private Contractor" not in serialized
+    assert "dispatch@private.example" not in serialized
+    assert "+61400111222" not in serialized
+    assert "Internal-only comment" not in serialized
+    assert "sendgrid-secret" not in serialized
+    assert "Other owner repair" not in serialized
+    assert "Completed gutter clean" not in serialized
 
 
 def test_owner_portal_preview_hides_deleted_owners(

@@ -331,8 +331,14 @@ Equifax/illion; RTBA/state RTAs).
   without an owner id in the URL. The first secure document-share slice now
   lists property-level files explicitly marked `owner_portal_visible` and lets
   signed-in owner accounts download only those linked-property files through an
-  account-scoped endpoint. These owner-client portal paths are now
-  managing-agent/hybrid-only under the operating-mode gate. Richer owner
+  account-scoped endpoint. The dashboard now also includes a safe maintenance
+  snapshot for linked owner properties: open/urgent/awaiting-approval counts
+  plus explicitly owner-visible work items with owner-safe title, property,
+  status, priority, due date, approval state, and quote amount only. It
+  deliberately omits raw tenant-entered titles, tenant identity, contractor
+  contacts, internal notes/comments, provider receipts, raw metadata, and
+  completed or cross-property work. These owner-client portal paths are
+  managing-agent/hybrid only under the operating-mode gate. Richer owner
   dashboard sections remain next.
 - [ ] **Tenant self-serve payments on AU rails.** PayTo / PayID / BPAY / direct debit
   (Monoova / Zai / Stripe AU). Tenants pay in-portal; reconciliation stays review-first

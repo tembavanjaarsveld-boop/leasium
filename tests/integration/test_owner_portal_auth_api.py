@@ -19,6 +19,10 @@ from stewart.core.models import (
     InvoiceDraftStatus,
     Lease,
     LeaseStatus,
+    MaintenanceApprovalStatus,
+    MaintenancePriority,
+    MaintenanceWorkOrder,
+    MaintenanceWorkOrderStatus,
     OperatingMode,
     Organisation,
     Owner,
@@ -336,6 +340,7 @@ def test_owner_portal_account_claim_and_bearer_session_are_scoped(
         )
 
     monkeypatch.setattr(owner_portal_router, "_owner_portal_identity", fake_identity)
+    monkeypatch.setattr(owner_portal_router, "_current_statement_month", lambda: "2026-05")
 
     claim_response = client.post(
         "/api/v1/owner-portal/account/claim",
@@ -403,6 +408,81 @@ def test_owner_portal_account_claim_and_bearer_session_are_scoped(
         headers={"Authorization": "Bearer owner-subject-one"},
     )
     assert revoked_session.status_code == 401
+
+
+def test_owner_portal_account_session_includes_safe_maintenance_snapshot(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    app.dependency_overrides[get_settings] = _owner_account_settings
+    owner = _seed_owner(session)
+    invite = _create_invite(client, owner)
+
+    def fake_identity(authorization, settings):  # noqa: ANN001, ARG001
+        return ClerkIdentity(
+            provider_id="owner-subject-one",
+            verified_email="owner@example.test",
+        )
+
+    monkeypatch.setattr(owner_portal_router, "_owner_portal_identity", fake_identity)
+
+    claim_response = client.post(
+        "/api/v1/owner-portal/account/claim",
+        headers={"Authorization": "Bearer owner-subject-one"},
+        json={"portal_token": invite["portal_token"]},
+    )
+    assert claim_response.status_code == 200, claim_response.text
+
+    linked_property = _linked_owner_property(session, owner)
+    tenant = Tenant(entity_id=owner.entity_id, legal_name="Private Tenant Pty Ltd")
+    session.add(tenant)
+    session.flush()
+    work_order = MaintenanceWorkOrder(
+        entity_id=owner.entity_id,
+        property_id=linked_property.id,
+        tenant_id=tenant.id,
+        title="Tenant private roof leak description",
+        description="Tenant private description must not be exposed.",
+        status=MaintenanceWorkOrderStatus.awaiting_approval,
+        priority=MaintenancePriority.urgent,
+        approval_required=True,
+        approval_status=MaintenanceApprovalStatus.pending,
+        quote_amount_cents=185_000,
+        contractor_name="Private Roofer",
+        contractor_email="roofer@example.test",
+        work_order_metadata={
+            "owner_portal_visible": True,
+            "owner_portal_title": "Roof leak quote review",
+            "contractor_delivery": {
+                "email": {"send": {"provider_message_id": "sendgrid-secret"}}
+            }
+        },
+    )
+    session.add(work_order)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/owner-portal/account/session",
+        params={"month": "2026-05"},
+        headers={"Authorization": "Bearer owner-subject-one"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["auth"]["mode"] == "owner_portal_account"
+    assert body["maintenance"]["open_count"] == 1
+    assert body["maintenance"]["urgent_count"] == 1
+    assert body["maintenance"]["awaiting_approval_count"] == 1
+    assert body["maintenance"]["items"][0]["title"] == "Roof leak quote review"
+    assert body["maintenance"]["items"][0]["quote_amount_cents"] == 185_000
+    serialized = response.text
+    assert "Private Tenant Pty Ltd" not in serialized
+    assert "Tenant private roof leak description" not in serialized
+    assert "tenant_id" not in serialized
+    assert "Private Roofer" not in serialized
+    assert "roofer@example.test" not in serialized
+    assert "sendgrid-secret" not in serialized
 
 
 def test_owner_portal_account_reads_forbidden_for_self_managed_accounts(

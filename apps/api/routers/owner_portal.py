@@ -22,6 +22,9 @@ from stewart.core.db import utcnow
 from stewart.core.models import (
     DocumentCategory,
     Entity,
+    MaintenancePriority,
+    MaintenanceWorkOrder,
+    MaintenanceWorkOrderStatus,
     OperatingMode,
     Organisation,
     Owner,
@@ -44,6 +47,8 @@ from apps.api.schemas.owner_portal import (
     OwnerPortalDocumentRead,
     OwnerPortalInvitePreviewRead,
     OwnerPortalInviteRead,
+    OwnerPortalMaintenanceItemRead,
+    OwnerPortalMaintenanceRead,
     OwnerPortalOwnerRead,
     OwnerPortalPropertyRead,
     OwnerPortalRead,
@@ -84,6 +89,16 @@ OWNER_PORTAL_INVITE_GUARDRAILS = [
 ]
 OWNER_PORTAL_INVITE_TTL_DAYS = 30
 OWNER_PORTAL_DOCUMENT_VISIBLE_KEY = "owner_portal_visible"
+OWNER_PORTAL_MAINTENANCE_VISIBLE_KEY = "owner_portal_visible"
+OWNER_PORTAL_MAINTENANCE_TITLE_KEY = "owner_portal_title"
+OWNER_PORTAL_OPEN_MAINTENANCE_STATUSES = {
+    MaintenanceWorkOrderStatus.requested,
+    MaintenanceWorkOrderStatus.triaged,
+    MaintenanceWorkOrderStatus.assigned,
+    MaintenanceWorkOrderStatus.awaiting_approval,
+    MaintenanceWorkOrderStatus.approved,
+    MaintenanceWorkOrderStatus.in_progress,
+}
 
 
 def _current_statement_month() -> str:
@@ -96,6 +111,24 @@ def _owner_portal_token_hash(token: str) -> str:
 
 def _new_owner_portal_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def _metadata_dict(value: object) -> dict[str, object]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _metadata_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _owner_portal_maintenance_title(metadata: dict[str, object]) -> str:
+    return (
+        _metadata_text(metadata.get(OWNER_PORTAL_MAINTENANCE_TITLE_KEY))
+        or "Maintenance item"
+    )
 
 
 def _assert_owner_portal_operating_mode(session: Session, entity_id: UUID) -> None:
@@ -415,6 +448,85 @@ def _owner_portal_documents(
     return visible_documents
 
 
+def _owner_portal_maintenance(
+    owner: Owner,
+    session: Session,
+    properties: list[OwnerPortalPropertyRead],
+) -> OwnerPortalMaintenanceRead:
+    property_ids = {row.property_id for row in properties}
+    if not property_ids:
+        return OwnerPortalMaintenanceRead(
+            open_count=0,
+            urgent_count=0,
+            awaiting_approval_count=0,
+            items=[],
+        )
+
+    rows = session.execute(
+        select(
+            MaintenanceWorkOrder.id,
+            MaintenanceWorkOrder.property_id,
+            Property.name.label("property_name"),
+            MaintenanceWorkOrder.work_order_metadata,
+            MaintenanceWorkOrder.status,
+            MaintenanceWorkOrder.priority,
+            MaintenanceWorkOrder.requested_at,
+            MaintenanceWorkOrder.due_date,
+            MaintenanceWorkOrder.completed_at,
+            MaintenanceWorkOrder.approval_required,
+            MaintenanceWorkOrder.approval_status,
+            MaintenanceWorkOrder.quote_amount_cents,
+        )
+        .join(Property, Property.id == MaintenanceWorkOrder.property_id)
+        .join(PropertyOwner, PropertyOwner.property_id == MaintenanceWorkOrder.property_id)
+        .where(
+            MaintenanceWorkOrder.entity_id == owner.entity_id,
+            MaintenanceWorkOrder.property_id.in_(list(property_ids)),
+            MaintenanceWorkOrder.status.in_(OWNER_PORTAL_OPEN_MAINTENANCE_STATUSES),
+            MaintenanceWorkOrder.deleted_at.is_(None),
+            PropertyOwner.owner_id == owner.id,
+            Property.entity_id == owner.entity_id,
+            Property.deleted_at.is_(None),
+        )
+        .order_by(
+            MaintenanceWorkOrder.due_date.asc().nullslast(),
+            MaintenanceWorkOrder.requested_at.desc(),
+        )
+    ).all()
+
+    items: list[OwnerPortalMaintenanceItemRead] = []
+    for row in rows:
+        metadata = _metadata_dict(row.work_order_metadata)
+        if metadata.get(OWNER_PORTAL_MAINTENANCE_VISIBLE_KEY) is not True:
+            continue
+        items.append(
+            OwnerPortalMaintenanceItemRead(
+                id=row.id,
+                property_id=row.property_id,
+                property_name=row.property_name,
+                title=_owner_portal_maintenance_title(metadata),
+                status=row.status,
+                priority=row.priority,
+                requested_at=row.requested_at,
+                due_date=row.due_date,
+                completed_at=row.completed_at,
+                approval_required=row.approval_required,
+                approval_status=row.approval_status,
+                quote_amount_cents=row.quote_amount_cents,
+            )
+        )
+    return OwnerPortalMaintenanceRead(
+        open_count=len(items),
+        urgent_count=sum(1 for item in items if item.priority == MaintenancePriority.urgent),
+        awaiting_approval_count=sum(
+            1
+            for item in items
+            if item.status == MaintenanceWorkOrderStatus.awaiting_approval
+        ),
+        items=items,
+    )
+
+
 def _owner_portal_document(
     owner: Owner,
     document_id: UUID,
@@ -535,6 +647,7 @@ def _portal_read(
         properties=properties,
         statement=statement,
         documents=_owner_portal_documents(owner, session, properties),
+        maintenance=_owner_portal_maintenance(owner, session, properties),
         guardrails=OWNER_PORTAL_GUARDRAILS,
         generated_at=owner_statements.generated_at,
     )
