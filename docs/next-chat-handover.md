@@ -6,6 +6,17 @@ Last updated: 2026-06-01
 
 Continuation from the tenant portal account cache hardening slice.
 
+### Arrears review packet v1
+- Operations → Arrears rows now carry a read-only Review packet deriving next
+  action, balance-age evidence, reminder/dispute/escalation/promise state,
+  assignment state, safe tenant/queue links, copy summary, and CSV export from
+  already-loaded Operations data.
+- Guardrails: copy/download do not send email/SMS, tenant or owner messages,
+  provider dispatch, Xero/Basiq writes, payment reconciliation, invoice updates,
+  arrears status changes, reminder updates, escalation updates, or assignment
+  updates.
+- Verification: focused Operations smoke passed after red-green coverage.
+
 ### Maintenance review packet v1
 - Work-order detail now has a read-only Review packet near the top of the page,
   deriving next action, evidence rows, safe links, copy summary, and CSV export

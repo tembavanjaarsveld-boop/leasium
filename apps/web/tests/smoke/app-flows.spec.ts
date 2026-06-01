@@ -1663,6 +1663,21 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   page,
 }) => {
   await page.goto("/operations");
+  const arrearsPacketMutationPaths: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (
+      request.method() !== "GET" &&
+      (url.pathname.includes("/api/v1/arrears") ||
+        url.pathname.includes("/api/v1/comms/dispatch") ||
+        url.pathname.includes("/api/v1/comms/dismiss") ||
+        url.pathname.includes("/api/v1/xero") ||
+        url.pathname.includes("/api/v1/basiq") ||
+        url.pathname.includes("/api/v1/invoice-drafts"))
+    ) {
+      arrearsPacketMutationPaths.push(`${request.method()} ${url.pathname}`);
+    }
+  });
 
   await expect(
     page.getByRole("heading", { name: "Operations", exact: true }),
@@ -1802,6 +1817,59 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await page.getByRole("tab", { name: /Arrears/ }).click();
   await expect(page.getByText("$8,800").first()).toBeVisible();
   await expect(page.getByText("raised").first()).toBeVisible();
+  const arrearsPacket = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", {
+        name: "Arrears and credit control",
+      }),
+    })
+    .locator("[data-testid='arrears-review-packet-arrears-1']");
+  await expect(arrearsPacket).toBeVisible();
+  await expect(
+    arrearsPacket.getByText("Review dispute before reminder"),
+  ).toBeVisible();
+  await expect(arrearsPacket.getByText("Balance age")).toBeVisible();
+  await expect(arrearsPacket.getByText("1-30 $8,800")).toBeVisible();
+  await expect(arrearsPacket.getByText("Reminder", { exact: true })).toBeVisible();
+  await expect(arrearsPacket.getByText("Dispute", { exact: true })).toBeVisible();
+  await expect(arrearsPacket.getByText("raised", { exact: true })).toBeVisible();
+  await expect(
+    arrearsPacket.getByText("Escalation", { exact: true }),
+  ).toBeVisible();
+  await expect(arrearsPacket.getByText("Promise", { exact: true })).toBeVisible();
+  await expect(
+    arrearsPacket.getByText("Assignment", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    arrearsPacket.getByRole("link", { name: "Open tenant" }),
+  ).toHaveAttribute("href", "/tenants/tenant-1");
+  await expect(
+    arrearsPacket.getByRole("link", { name: "Open queue" }),
+  ).toHaveAttribute("href", "/operations?tab=queue");
+  await arrearsPacket.getByRole("button", { name: "Copy packet" }).click();
+  await expect(
+    arrearsPacket.getByText("Arrears review packet copied."),
+  ).toBeVisible();
+
+  const arrearsPacketDownloadPromise = page.waitForEvent("download");
+  await arrearsPacket
+    .getByRole("button", { name: "Download packet CSV" })
+    .click();
+  const arrearsPacketDownload = await arrearsPacketDownloadPromise;
+  expect(arrearsPacketDownload.suggestedFilename()).toBe(
+    "arrears-review-packet-arrears-1.csv",
+  );
+  const arrearsPacketPath = await arrearsPacketDownload.path();
+  expect(arrearsPacketPath).not.toBeNull();
+  const arrearsPacketCsv = await readFile(arrearsPacketPath!, "utf8");
+  expect(arrearsPacketCsv).toContain("Bright Cafe");
+  expect(arrearsPacketCsv).toContain("$8,800");
+  expect(arrearsPacketCsv).toContain("Review dispute before reminder");
+  expect(arrearsPacketCsv).toContain(
+    "Review-only arrears packet: downloading or copying this file does not send email, SMS, tenant messages, owner messages, provider dispatch, Xero/Basiq writes, payment reconciliation, invoice updates, arrears status changes, reminder updates, escalation updates, or assignment updates.",
+  );
+  expect(arrearsPacketMutationPaths).toEqual([]);
   await page.getByRole("button", { name: "Escalate" }).click();
   await expect(
     page

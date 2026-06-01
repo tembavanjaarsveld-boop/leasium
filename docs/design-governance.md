@@ -687,6 +687,16 @@ Eighth 2026-05-21 follow-up: the Work queue now includes a compact `Notice inbox
 
 2026-05-28 follow-up: Operations queue now adds a local `Download queue CSV` action for the currently visible queue rows. The export covers item kind, title, property/tenant context, due date, urgency chip, completion state, assignee, notification status, reminder/escalation cues, and review-only guardrails from already-loaded Operations data. It does not send SendGrid/Twilio messages, send tenant/owner/provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records. Remba/SKJ review should decide whether this packet belongs in the queue header or behind a Work tools disclosure once queue volume grows.
 
+2026-06-01 follow-up: Operations Arrears rows now include a compact read-only
+Review packet with next action, balance-age evidence, reminder, dispute,
+escalation, promise-to-pay, assignment state, safe tenant/queue handoffs, local
+copy, and local CSV export. The packet uses already-loaded Operations data only
+and does not send email/SMS, tenant or owner messages, provider dispatch,
+Xero/Basiq writes, payment reconciliation, invoice updates, arrears status
+changes, reminder updates, escalation updates, or assignment updates.
+Remba/SKJ review should check whether this belongs inline in each arrears row
+or behind a disclosure once case volume grows.
+
 Ninth 2026-05-21 follow-up: Settings now adds a Work digest cadence selector (`daily`, `weekly`, or `off`) beside each operator's Work email toggle. This stores preference only; no scheduled digest is generated yet. Remba should review whether digest cadence belongs in the Users and roles table, whether the wording is clear enough before digest delivery exists, and whether notification preferences need their own settings section once more channels are added.
 
 Tenth 2026-05-21 follow-up: Operations can now generate a review-only Work digest preview for the selected daily or weekly cadence. The preview groups assigned work by operator, shows follow-up and provider-notice counts, links back to source work, and keeps a visible `No messages sent` guardrail. Remba should review whether digest generation belongs in the queue header, whether the preview is too dense for the first viewport, and whether this should move to a global notifications area once cron sending is introduced.

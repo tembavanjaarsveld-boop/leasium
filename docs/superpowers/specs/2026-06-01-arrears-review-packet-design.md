@@ -93,7 +93,7 @@ Coverage should assert:
 - `Open tenant` points to `/tenants/tenant-1`.
 - Copy action shows a local receipt.
 - CSV download filename is
-  `arrears-review-packet-arrears-case-1.csv`.
+  `arrears-review-packet-arrears-1.csv`.
 - CSV includes Bright Cafe, the balance, the next action, and the guardrail.
 - Copy/download do not call forbidden mutation/provider paths.
 
