@@ -64,6 +64,7 @@ import {
   type XeroAccountingFreshnessRecord,
   type XeroStatusRecord,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
   isManagingAgentOperatingMode,
@@ -326,10 +327,6 @@ function financeChecklistText(checklist: FinanceChecklist) {
     "",
     "Review-only: owner dispatch remains locked until the explicit approval workflow is wired.",
   ].join("\n");
-}
-
-function csvCell(value: string | number | null | undefined) {
-  return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
 function financeChecklistCsv(checklist: FinanceChecklist) {

@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-05-31
+Last updated: 2026-06-01
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -156,6 +156,16 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   retaining the previous owner name, property, statement totals, shared
   documents, or maintenance rows. This is a privacy/safety hardening slice, not
   a visual redesign.
+- **Owner portal mobile empty-state parity** (`/owner-portal`,
+  `/owner-portal/[ownerId]`): owner account and operator-preview dashboards now
+  have matching mobile smoke coverage for no linked properties, no statement,
+  no shared documents, and no open maintenance. The packet actions, selected
+  period, empty-state copy, and read-only guardrail must stay visible at 390px
+  without clipping or horizontal overflow, even with long owner email strings.
+  Opening or exporting these empty states still must not send owner email,
+  dispatch invoices, generate statement PDFs, download shared documents, call
+  Comms/Xero/Basiq/payment/reconciliation paths, or mutate owner-portal/provider
+  history.
 - **Canvas darkening** (globals.css, commit `65c1da8`): `--leasium-bg` #f6f8fb→#edf0f6 and `--leasium-slate-100` #f2f4f7→#e9edf3 so white cards lift off the background. Hierarchy preserved: cards (#fff) > canvas > muted/hover > border. Dial the canvas value if it reads too strong/weak on real data. Design source of truth §6 updated to match.
 - **Card elevation**: new `leasiumCard` Tailwind shadow — a tight contact layer + a soft ambient lift (`0 1px 2px /0.06, 0 4px 12px -2px /0.08`) — applied to `SectionPanel` and `DashboardMetricCard` so cards separate from the darker canvas; buttons/rows keep `leasiumXs`. Subtle border retained. Dial via the `leasiumCard` token in `apps/web/tailwind.config.ts`.
 - **Dark mode v1** (`apps/web/src/lib/appearance.ts`, `layout.tsx`, `AppHeader`, Settings, globals.css): workspace appearance now supports System, Light, and Dark. The first-paint script resolves the stored/system preference before React loads, toggles the root `.dark` class, and keeps `data-theme` / `data-appearance` in sync. The header utility button cycles the preference, Settings exposes the three choices, and smoke coverage checks Dashboard, Smart Intake, Properties, People/Tenants, and Operations on desktop + mobile for dark canvas/text and toolbar contrast. Clerk sign-in/sign-up remains pinned to the light Clerk appearance object; live hosted Clerk rendering under dark OS/browser settings stays a Remba/operator review item.

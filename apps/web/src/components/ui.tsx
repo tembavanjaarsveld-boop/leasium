@@ -342,13 +342,17 @@ export function chipClass(
 
 export function StatusBadge({
   tone = "neutral",
+  className,
   children,
 }: {
   tone?: StatusTone;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <span className={cn(chipClass(tone), "whitespace-nowrap")}>{children}</span>
+    <span className={cn(chipClass(tone), "whitespace-nowrap", className)}>
+      {children}
+    </span>
   );
 }
 

@@ -38,6 +38,7 @@ import {
 } from "@/components/dashboard/DashboardMetricCard";
 import { UpcomingLeaseEventsPanel } from "@/components/dashboard/UpcomingLeaseEventsPanel";
 import { RegisterImportPanel } from "@/app/intake/register-import-panel";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import { friendlyError } from "@/lib/utils";
 import {
@@ -378,11 +379,6 @@ function confidenceLabel(value: number | null | undefined) {
     return "Check match";
   }
   return "Needs review";
-}
-
-function csvCell(value: string | number | null | undefined) {
-  const text = value == null ? "" : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
 }
 
 function countLabel(count: number, singular: string, plural = `${singular}s`) {

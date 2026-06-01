@@ -45,6 +45,7 @@ import {
   listContractors,
   listEntities,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import { friendlyError } from "@/lib/utils";
 
@@ -61,11 +62,6 @@ const PRIORITY_TONE: Record<number, StatusTone> = {
   2: "neutral",
   3: "warning",
 };
-
-function csvCell(value: string | number | null | undefined) {
-  const text = value == null ? "" : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
-}
 
 function contactReadiness(value: string | null | undefined, label: string) {
   return value?.trim() ? `${label} ready` : `${label} missing`;

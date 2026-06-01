@@ -43,6 +43,7 @@ import {
   type WorkAssignmentNoticeGroup,
   type WorkAssignmentRenderedMessagePreviewRecord,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
@@ -145,11 +146,6 @@ function label(value: string) {
   return value
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function csvCell(value: string | number | boolean | null | undefined) {
-  const text = value == null ? "" : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
 }
 
 function channelLabel(value: string | null | undefined) {

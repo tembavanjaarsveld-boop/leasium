@@ -86,6 +86,7 @@ import {
   type WorkAssignmentDigestRunRecord,
   type WorkAssignmentRenderedMessagePreviewRecord,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import { cn, friendlyError } from "@/lib/utils";
 
@@ -615,10 +616,6 @@ function label(value: string | null | undefined) {
 function sentenceLabel(value: string | null | undefined) {
   const text = label(value);
   return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-function csvCell(value: string | number | null | undefined) {
-  return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
 async function copyTextToClipboard(value: string) {

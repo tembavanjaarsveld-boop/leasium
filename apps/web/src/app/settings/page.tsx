@@ -126,6 +126,7 @@ import {
   type WorkAssignmentNotificationTemplateKind,
   type WorkAssignmentNotificationTemplateRecord,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
   ownershipChipClassName,
@@ -643,10 +644,6 @@ const XERO_FRESHNESS_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices, send email or SMS, refresh providers, or mutate provider history.";
 const TEMPLATE_OVERRIDE_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not wire stored templates into send paths, add edit controls, send notifications, run digests, send invoices, send tenant onboarding messages, send contractor updates, mutate preferences, or write provider history.";
-
-function csvCell(value: string | number | null | undefined) {
-  return `"${String(value ?? "").replaceAll('"', '""')}"`;
-}
 
 function xeroExceptionRecordLine(issue: XeroExceptionQueueItemRecord) {
   return [

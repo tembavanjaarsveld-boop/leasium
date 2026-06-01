@@ -108,6 +108,26 @@ const OWNER_PORTAL_RESPONSE = {
   generated_at: "2026-05-31T00:00:00.000Z",
 };
 
+const LONG_OWNER_BILLING_EMAIL =
+  "owner.accounts.with.an.extremely.long.mailbox.name@very-long-owner-domain.example";
+
+const OWNER_PORTAL_EMPTY_RESPONSE = {
+  ...OWNER_PORTAL_RESPONSE,
+  owner: {
+    ...OWNER_PORTAL_RESPONSE.owner,
+    billing_email: LONG_OWNER_BILLING_EMAIL,
+  },
+  properties: [],
+  statement: null,
+  documents: [],
+  maintenance: {
+    open_count: 0,
+    urgent_count: 0,
+    awaiting_approval_count: 0,
+    items: [],
+  },
+};
+
 test("owner portal preview renders read-only owner statement data", async ({
   page,
 }) => {
@@ -263,4 +283,81 @@ test("self-managed accounts do not open operator owner portal previews", async (
     page.getByRole("link", { name: "Open entity statements" }),
   ).toHaveAttribute("href", "/statements");
   expect(ownerPortalRequests).toEqual([]);
+});
+
+test("owner portal preview renders mobile empty states without overflow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  const unsafeRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const method = request.method();
+    if (
+      (path.startsWith("/api/v1/owner-portal/") &&
+        ["DELETE", "PATCH", "POST"].includes(method)) ||
+      path.startsWith("/api/v1/owners/statements/send") ||
+      path.startsWith("/api/v1/owners/statements/dispatch") ||
+      path.startsWith("/api/v1/owners/statements/pdf") ||
+      path.startsWith("/api/v1/comms") ||
+      path.startsWith("/api/v1/xero") ||
+      path.startsWith("/api/v1/basiq") ||
+      path.startsWith("/api/v1/payments") ||
+      path.startsWith("/api/v1/reconciliation") ||
+      (path.startsWith("/api/v1/owner-portal/account/documents/") &&
+        path.endsWith("/download"))
+    ) {
+      unsafeRequests.push(`${method} ${path}`);
+    }
+  });
+  await page.route("**/api/v1/owner-portal/owner-1**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(OWNER_PORTAL_EMPTY_RESPONSE),
+    });
+  });
+
+  await page.goto("/owner-portal/owner-1?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Owner portal" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("heading", { name: "Owner-visible packet" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy packet" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download packet CSV" }),
+  ).toBeVisible();
+  await expect(page.getByText("0 linked")).toBeVisible();
+  await expect(page.getByText("$0 outstanding")).toBeVisible();
+  await expect(page.getByText("0 open").first()).toBeVisible();
+  await expect(page.getByText("No statement available.")).toBeVisible();
+  await expect(page.getByText("No open maintenance.")).toBeVisible();
+  await expect(page.getByText("No shared documents.")).toBeVisible();
+  await expect(page.getByText("No linked properties.")).toBeVisible();
+  await expect(page.getByText("May 2026").first()).toBeVisible();
+  await expect(
+    page.getByText("Read-only owner portal", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(LONG_OWNER_BILLING_EMAIL, { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page
+      .getByText(LONG_OWNER_BILLING_EMAIL, { exact: true })
+      .evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= window.innerWidth;
+      }),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  expect(unsafeRequests).toEqual([]);
 });

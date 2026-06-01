@@ -22,6 +22,7 @@ import {
   SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import type {
   OwnerPortalPropertyRecord,
@@ -313,12 +314,6 @@ function GuardrailPanel({ guardrails }: { guardrails: string[] }) {
 const OWNER_VISIBLE_PACKET_GUARDRAIL =
   "Review-only export: copying or downloading this packet does not send owner email, dispatch invoices, generate owner statement PDFs, call providers, write Xero or Basiq data, reconcile payments, download shared documents, or mutate provider history.";
 
-function csvCell(value: string | number | null | undefined) {
-  const raw = String(value ?? "");
-  const safeValue = /^[=+\-@]/.test(raw.trimStart()) ? `'${raw}` : raw;
-  return `"${safeValue.replaceAll('"', '""')}"`;
-}
-
 async function copyTextToClipboard(text: string) {
   if (typeof navigator !== "undefined" && navigator.clipboard) {
     try {
@@ -350,14 +345,22 @@ function titleCaseStatus(value: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function ownerVisiblePacketFilename(portal: OwnerPortalRecord) {
-  const month = portal.statement?.month ?? portal.generated_at.slice(0, 7);
+function ownerVisiblePacketFilename(
+  portal: OwnerPortalRecord,
+  selectedMonth?: string | null,
+) {
+  const month =
+    portal.statement?.month ?? selectedMonth ?? portal.generated_at.slice(0, 7);
   const ownerId = portal.owner.id.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
   return `owner-visible-review-packet-${month}-${ownerId || "owner"}.csv`;
 }
 
-function ownerVisiblePacketRows(portal: OwnerPortalRecord) {
+function ownerVisiblePacketRows(
+  portal: OwnerPortalRecord,
+  selectedMonth?: string | null,
+) {
   const statement = portal.statement;
+  const periodMonth = statement?.month ?? selectedMonth;
   const rows: Array<[string, string, string, string]> = [
     [
       "Owner",
@@ -380,7 +383,7 @@ function ownerVisiblePacketRows(portal: OwnerPortalRecord) {
     [
       "Statement",
       "Period",
-      formatMonth(statement?.month),
+      formatMonth(periodMonth),
       statement ? "Owner statement totals are visible." : "No statement linked.",
     ],
     [
@@ -485,22 +488,29 @@ function ownerVisiblePacketRows(portal: OwnerPortalRecord) {
   return rows;
 }
 
-function ownerVisiblePacketCsv(portal: OwnerPortalRecord) {
+function ownerVisiblePacketCsv(
+  portal: OwnerPortalRecord,
+  selectedMonth?: string | null,
+) {
   const header = ["section", "label", "value", "detail"];
-  return [header, ...ownerVisiblePacketRows(portal)]
+  return [header, ...ownerVisiblePacketRows(portal, selectedMonth)]
     .map((row) => row.map(csvCell).join(","))
     .join("\n");
 }
 
 export function OwnerVisibleReviewPacketPanel({
   portal,
+  selectedMonth,
 }: {
   portal: OwnerPortalRecord;
+  selectedMonth?: string | null;
 }) {
   const [receipt, setReceipt] = useState<string | null>(null);
   const statement = portal.statement;
   const copyPacket = async () => {
-    const copied = await copyTextToClipboard(ownerVisiblePacketCsv(portal));
+    const copied = await copyTextToClipboard(
+      ownerVisiblePacketCsv(portal, selectedMonth),
+    );
     setReceipt(
       copied
         ? "Owner-visible packet copied."
@@ -509,10 +519,10 @@ export function OwnerVisibleReviewPacketPanel({
   };
   const downloadPacketCsv = () => {
     saveBlob(
-      new Blob([ownerVisiblePacketCsv(portal)], {
+      new Blob([ownerVisiblePacketCsv(portal, selectedMonth)], {
         type: "text/csv;charset=utf-8",
       }),
-      ownerVisiblePacketFilename(portal),
+      ownerVisiblePacketFilename(portal, selectedMonth),
     );
     setReceipt("Owner-visible packet CSV downloaded.");
   };
@@ -585,10 +595,13 @@ export function OwnerVisibleReviewPacketPanel({
 
 export function OwnerPortalAccountView({
   portal,
+  selectedMonth,
 }: {
   portal: OwnerPortalRecord;
+  selectedMonth?: string | null;
 }) {
   const statement = portal.statement;
+  const periodMonth = statement?.month ?? selectedMonth;
   const propertyCount = portal.properties.length;
 
   return (
@@ -607,9 +620,14 @@ export function OwnerPortalAccountView({
                 </StatusBadge>
               ) : null}
               {portal.owner.billing_email ? (
-                <StatusBadge tone="neutral">
-                  <Mail size={13} />
-                  {portal.owner.billing_email}
+                <StatusBadge
+                  className="max-w-full min-w-0 items-start whitespace-normal break-all text-left leading-5"
+                  tone="neutral"
+                >
+                  <Mail className="mt-0.5 shrink-0" size={13} />
+                  <span className="min-w-0 break-all">
+                    {portal.owner.billing_email}
+                  </span>
                 </StatusBadge>
               ) : null}
               {portal.owner.gst_registered ? (
@@ -649,11 +667,14 @@ export function OwnerPortalAccountView({
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
           <div className="grid gap-5">
-            <OwnerVisibleReviewPacketPanel portal={portal} />
+            <OwnerVisibleReviewPacketPanel
+              portal={portal}
+              selectedMonth={periodMonth}
+            />
 
             <SectionPanel
               title="Statement"
-              description={formatMonth(statement?.month)}
+              description={formatMonth(periodMonth)}
               icon={<ReceiptText size={17} />}
             >
               {statement ? (
@@ -736,7 +757,7 @@ export function OwnerPortalAccountView({
 
             <SectionPanel title="Period" icon={<CalendarDays size={17} />}>
               <div className="p-4 text-sm text-muted-foreground">
-                {formatMonth(statement?.month)}
+                {formatMonth(periodMonth)}
               </div>
             </SectionPanel>
           </aside>

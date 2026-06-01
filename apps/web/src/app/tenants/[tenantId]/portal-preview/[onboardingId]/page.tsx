@@ -35,6 +35,7 @@ import {
   TenantPortalDocumentRecord,
   TenantPortalRecord,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import { cn, friendlyError } from "@/lib/utils";
 
@@ -84,10 +85,6 @@ function maintenanceEventLabel(value: string) {
     return "Team update";
   }
   return label(value);
-}
-
-function csvCell(value: string | number | null | undefined) {
-  return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
 function slugifyFilename(value: string) {

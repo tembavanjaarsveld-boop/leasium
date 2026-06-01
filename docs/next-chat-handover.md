@@ -7,6 +7,34 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### CSV export hardening v1
+- Review/export CSV builders now share `apps/web/src/lib/csv.ts`, which quotes
+  every cell, doubles embedded quotes, and prefixes spreadsheet formula-looking
+  values (`=`, `+`, `-`, `@`, including whitespace-leading values) before
+  download.
+- Migrated exports: Dashboard, Billing Readiness, Comms, Contractors, Insights,
+  Notifications, Operations, maintenance detail, Owner portal, Portfolio QA,
+  Settings, Statements, tenant detail, and tenant portal preview.
+- Guardrails: the source smoke now prevents these review exports from drifting
+  back to local `csvCell` implementations without the shared formula-safe
+  helper.
+- Verification: CSV helper/source smokes passed **7 passed**; targeted frontend
+  eslint, `tsc --noEmit`, and `git diff --check` passed.
+
+### Owner portal mobile empty-state parity
+- `/owner-portal` and `/owner-portal/[ownerId]` now have matching 390px smoke
+  coverage for empty owner accounts/previews: no linked properties, no
+  statement, no shared documents, and no open maintenance.
+- The mobile smokes assert the Owner-visible packet controls remain visible,
+  empty-state copy renders, the selected period stays visible without a linked
+  statement, the read-only guardrail remains present, and the long owner billing
+  email fits inside the mobile viewport.
+- Guardrails: the tests continue trapping owner statement sends/dispatch/PDF
+  generation, Comms, Xero, Basiq, payments, reconciliation, owner-portal
+  mutations, and account document downloads.
+- Verification: owner portal account + preview smokes passed **8 passed**;
+  targeted frontend eslint, `tsc --noEmit`, and `git diff --check` passed.
+
 ### Owner portal preview parity hardening
 - `/owner-portal/[ownerId]` now reuses the shared owner portal dashboard view
   used by account and invite flows, leaving only route gating, operating-mode

@@ -84,7 +84,9 @@ function OwnerPortalContent() {
     return null;
   }
 
-  return <OwnerPortalAccountView portal={portalQuery.data} />;
+  return (
+    <OwnerPortalAccountView portal={portalQuery.data} selectedMonth={month} />
+  );
 }
 
 function OwnerPortalPageShell() {

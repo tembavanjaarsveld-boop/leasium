@@ -49,6 +49,7 @@ import {
   LiveExceptionRecord,
   revokeInsightsSnapshot,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import { cn, friendlyError } from "@/lib/utils";
 
@@ -102,10 +103,6 @@ function formatMoney(cents: number | null | undefined) {
     currency: "AUD",
     maximumFractionDigits: 0,
   }).format(cents / 100);
-}
-
-function csvCell(value: string | number | null | undefined) {
-  return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
 function labelStatus(value: string | null | undefined) {

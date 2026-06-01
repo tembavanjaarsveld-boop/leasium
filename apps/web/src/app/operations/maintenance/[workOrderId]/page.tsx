@@ -83,6 +83,7 @@ import {
   uploadDocument,
   type WorkAssignmentNoticeChannelReceiptRecord,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import { friendlyError } from "@/lib/utils";
 
@@ -323,13 +324,6 @@ function formatMoney(cents: number | null | undefined) {
     currency: "AUD",
     maximumFractionDigits: 2,
   }).format(cents / 100);
-}
-
-function csvCell(value: string | number | null | undefined) {
-  const raw = value == null ? "" : String(value);
-  const text =
-    typeof value === "string" && /^[\s]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
-  return `"${text.replaceAll('"', '""')}"`;
 }
 
 function correspondenceKindLabel(event: CommsCorrespondenceEventRecord) {

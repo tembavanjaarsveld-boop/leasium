@@ -99,6 +99,31 @@ test("operator intake-adjacent pages use shared error and chip-tone helpers", as
   }
 });
 
+test("CSV review exports use the shared formula-safe CSV helper", async () => {
+  const files = [
+    "src/components/dashboard.tsx",
+    "src/app/billing-readiness/page.tsx",
+    "src/app/comms/page.tsx",
+    "src/app/contractors/page.tsx",
+    "src/app/insights/page.tsx",
+    "src/app/notifications/page.tsx",
+    "src/app/operations/page.tsx",
+    "src/app/operations/maintenance/[workOrderId]/page.tsx",
+    "src/app/owner-portal/owner-portal-account-ui.tsx",
+    "src/app/portfolio-qa/page.tsx",
+    "src/app/settings/page.tsx",
+    "src/app/statements/page.tsx",
+    "src/app/tenants/[tenantId]/page.tsx",
+    "src/app/tenants/[tenantId]/portal-preview/[onboardingId]/page.tsx",
+  ];
+
+  for (const file of files) {
+    const text = await source(file);
+    expect(text).toContain("@/lib/csv");
+    expect(text).not.toContain("function csvCell(");
+  }
+});
+
 test("property workspace keeps access-specific error copy while sharing generic errors", async () => {
   const text = await source("src/components/property-workspace.tsx");
 

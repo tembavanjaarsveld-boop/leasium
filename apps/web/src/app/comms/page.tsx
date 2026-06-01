@@ -65,6 +65,7 @@ import {
   listEntities,
   uploadDocument,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -187,13 +188,6 @@ function formatDateTime(value: string | null | undefined) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
-}
-
-function csvCell(value: string | number | null | undefined) {
-  const raw = value == null ? "" : String(value);
-  const text =
-    typeof value === "string" && /^[\s]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
-  return `"${text.replaceAll('"', '""')}"`;
 }
 
 function commsQueueReviewDate(value: string | null | undefined) {

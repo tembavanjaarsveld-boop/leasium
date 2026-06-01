@@ -340,7 +340,18 @@ Equifax/illion; RTBA/state RTAs).
   contacts, internal notes/comments, provider receipts, raw metadata, and
   completed or cross-property work. These owner-client portal paths are
   managing-agent/hybrid only under the operating-mode gate. Richer owner
-  dashboard sections remain next.
+  dashboard sections remain next. 2026-06-01 follow-up: owner account and
+  operator-preview paths now have matching 390px mobile empty-state smokes for
+  no properties, no statement, no shared documents, and no open maintenance,
+  including visible packet controls, read-only guardrails, no horizontal
+  overflow, and no unsafe provider/accounting/document-download calls.
+- [x] **CSV export hardening v1.** Review/export CSV builders now share
+  `apps/web/src/lib/csv.ts`, which quotes all cells, preserves embedded quotes,
+  and prefixes spreadsheet formula-looking values before download. Dashboard,
+  Billing Readiness, Comms, Contractors, Insights, Notifications, Operations,
+  maintenance detail, Owner portal, Portfolio QA, Settings, Statements, tenant
+  detail, and tenant portal preview now import the shared helper, with smoke
+  coverage preventing local unsafe `csvCell` drift.
 - [ ] **Tenant self-serve payments on AU rails.** PayTo / PayID / BPAY / direct debit
   (Monoova / Zai / Stripe AU). Tenants pay in-portal; reconciliation stays review-first
   through the existing Basiq/Xero engine. DoorLoop's #1 value driver, AU-correct.

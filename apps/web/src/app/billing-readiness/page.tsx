@@ -60,6 +60,7 @@ import {
   type RentRollRow,
   type XeroAccountingFreshnessRecord,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -232,11 +233,6 @@ function formatMoney(cents: number | null | undefined) {
     currency: "AUD",
     maximumFractionDigits: 0,
   }).format(cents / 100);
-}
-
-function csvCell(value: string | number | null | undefined) {
-  const text = value == null ? "" : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
 }
 
 function friendlyError(error: unknown, fallback: string) {

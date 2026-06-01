@@ -97,6 +97,7 @@ import {
   uploadDocument,
   updateTenant,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
   onboardingDeliveryDetail,
@@ -1024,12 +1025,6 @@ function correspondenceTargetLink(
     return { href: "/operations", label: "Open work queue" };
   }
   return null;
-}
-
-function csvCell(value: string | number | null | undefined) {
-  const text = String(value ?? "");
-  const safeText = /^[=+\-@]/.test(text.trimStart()) ? `'${text}` : text;
-  return `"${safeText.replaceAll('"', '""')}"`;
 }
 
 function slugifyFilename(value: string) {

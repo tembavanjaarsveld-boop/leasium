@@ -68,6 +68,7 @@ import {
   type RentRollRow,
   type TenantOnboardingRecord,
 } from "@/lib/api";
+import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import { cn, friendlyError } from "@/lib/utils";
 
@@ -2144,10 +2145,6 @@ function cleanupReportText({
       : ["- Clear: no blocked cleanup rows remain in the current scan."]),
   ];
   return lines.join("\n");
-}
-
-function csvCell(value: string | number | null | undefined) {
-  return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
 function cleanupReportCsv({
