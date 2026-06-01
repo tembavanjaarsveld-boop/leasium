@@ -32,7 +32,13 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
-    apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [
+      {
+        url: "/icons/leasium-icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+      },
+    ],
   },
   other: {
     "apple-mobile-web-app-capable": "yes",

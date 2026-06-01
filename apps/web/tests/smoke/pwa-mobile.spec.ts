@@ -8,7 +8,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("pwa assets stay outside the temporary access gate", () => {
-  for (const path of ["/manifest.webmanifest", "/icon.svg"]) {
+  for (const path of [
+    "/manifest.webmanifest",
+    "/icon.svg",
+    "/icons/leasium-icon-192.png",
+    "/icons/leasium-icon-512.png",
+    "/icons/leasium-maskable-512.png",
+  ]) {
     expect(isPublicOperatorPath(path)).toBe(true);
   }
 });
@@ -51,8 +57,39 @@ test("root exposes installable app metadata without offline caching", async ({
         sizes: "any",
         type: "image/svg+xml",
       }),
+      expect.objectContaining({
+        src: "/icons/leasium-icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      }),
+      expect.objectContaining({
+        src: "/icons/leasium-icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      }),
+      expect.objectContaining({
+        src: "/icons/leasium-maskable-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
+      }),
     ]),
   );
+  for (const icon of manifest.icons.filter(
+    (entry: { type?: string }) => entry.type === "image/png",
+  )) {
+    const iconResponse = await page.request.get(
+      new URL(icon.src, page.url()).toString(),
+    );
+    expect(iconResponse.ok()).toBe(true);
+    expect(iconResponse.headers()["content-type"]).toContain("image/png");
+    const bytes = await iconResponse.body();
+    expect(bytes.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+  }
 
   const serviceWorkers = await page.evaluate(async () => {
     if (!("serviceWorker" in navigator)) return [];

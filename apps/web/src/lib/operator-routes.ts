@@ -14,6 +14,7 @@ export const publicOperatorPathPrefixes = [
   "/snapshots/",
   "/welcome",
   "/icon.svg",
+  "/icons/",
   "/manifest.webmanifest",
 ];
 
