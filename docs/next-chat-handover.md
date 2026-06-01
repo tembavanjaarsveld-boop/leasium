@@ -73,8 +73,10 @@ review-packet slices.
   claim request, renders the owner portal packet after claim, and keeps the
   forbidden-request trap empty by aborting any other `/api/v1` request.
 - Added deployment docs for the `20260601_0032` target-database proof and
-  duplicate cleanup/rollback guidance. Automated Alembic migration coverage
-  still requires `TEST_DATABASE_URL`; local smoke without that URL skips.
+  duplicate cleanup/rollback guidance. Credential-free SQLite migration coverage
+  now exercises the duplicate-active-provider guard and active-only unique-index
+  behavior; the full Postgres Alembic apply smoke still requires
+  `TEST_DATABASE_URL`.
 - Verification: full owner portal account smoke passed **6 passed / 4 skipped**;
   targeted frontend `eslint`, `tsc --noEmit`, and `git diff --check` passed.
 
